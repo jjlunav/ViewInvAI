@@ -52,7 +52,7 @@ function requestGuard(request, { websocket = false } = {}) {
   const origin = request.headers.get("Origin");
   if (origin && origin !== url.origin) return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
   const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
-  if (site && !["same-origin", "same-site", "none"].includes(site)) {
+  if (site && !["same-origin", "none"].includes(site)) {
     return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
   }
   if (websocket && (request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
@@ -139,10 +139,9 @@ async function openTradeRepublicSocket() {
 }
 
 async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", resolution = 60000) {
-  const safeIsin = String(isin || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const requestedExchange = String(exchange || "LSX").trim().toUpperCase();
-  const safeExchange = requestedExchange === "LSX" ? "LSX" : "LSX";
-  if (!/^[A-Z0-9]{12}$/.test(safeIsin)) throw new Error("Invalid ISIN");
+  const safeIsin = String(isin || "").trim().toUpperCase();
+  const safeExchange = "LSX";
+  if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(safeIsin)) throw new Error("Invalid ISIN");
   const allowedRanges = new Set(["1d","1w","1m","3m","6m","1y","5y","max"]);
   const safeRange = allowedRanges.has(range) ? range : "1d";
   const safeResolution = Math.max(60000, Math.min(86400000, Number(resolution) || 60000));
@@ -268,7 +267,11 @@ async function fetchNasdaqQuote(symbol) {
 
 async function nasdaqQuotes(request) {
   const url = new URL(request.url);
-  const symbols = [...new Set((url.searchParams.get("symbols") || "")
+  const rawSymbols = url.searchParams.get("symbols") || "";
+  if (rawSymbols.length > 400) {
+    return jsonResponse({ quotes: [], error: "Query too large" }, 400, { "Cache-Control": "no-store" });
+  }
+  const symbols = [...new Set(rawSymbols
     .split(",")
     .map(safeStockSymbol)
     .filter(Boolean))].slice(0, 25);
@@ -288,22 +291,26 @@ async function nasdaqQuotes(request) {
   );
 }
 
-function validTrClientMessage(data, subscriptions) {
+function validTrClientMessage(data, state) {
   if (typeof data !== "string" || data.length > 512) return false;
-  if (data === "connect 30") return true;
+  if (data === "connect 30") {
+    if (state.connected) return false;
+    state.connected = true;
+    return true;
+  }
   let m = data.match(/^unsub\s+(\d{1,7})$/);
   if (m) {
-    subscriptions.delete(m[1]);
+    state.subscriptions.delete(m[1]);
     return true;
   }
   m = data.match(/^sub\s+(\d{1,7})\s+(.+)$/);
   if (!m) return false;
-  if (subscriptions.size >= 1000 && !subscriptions.has(m[1])) return false;
+  if (state.subscriptions.size >= 1000 && !state.subscriptions.has(m[1])) return false;
   let payload;
   try { payload = JSON.parse(m[2]); } catch (_) { return false; }
   if (!payload || payload.type !== "ticker" || typeof payload.id !== "string") return false;
   if (!/^[A-Z0-9]{12}\.LSX$/.test(payload.id)) return false;
-  subscriptions.add(m[1]);
+  state.subscriptions.add(m[1]);
   return true;
 }
 
@@ -343,9 +350,9 @@ async function proxyTradeRepublic(request) {
     } catch (_) {}
   };
 
-  const subscriptions = new Set();
+  const clientState = { connected: false, subscriptions: new Set() };
   browser.addEventListener("message", event => {
-    if (!validTrClientMessage(event.data, subscriptions)) {
+    if (!validTrClientMessage(event.data, clientState)) {
       safeClose(browser, 1008, "Policy violation");
       safeClose(upstream, 1008, "Policy violation");
       return;
