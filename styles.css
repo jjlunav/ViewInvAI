@@ -88,3 +88,28 @@
  .event-context,.event-impact{font-size:8px}
  .event-sources .verification,.event-sources a,.event-sources>span:not(.verification){font-size:8px}
 }
+
+/* Compact scrolling tape with the strongest US market movers */
+.market-tape-bar{height:29px;display:flex;align-items:center;border-bottom:1px solid #182a34;background:#08131b;position:sticky;top:50px;z-index:19;overflow:hidden}
+.market-tape-label{flex:0 0 auto;height:100%;display:flex;align-items:center;padding:0 10px;border-right:1px solid #223640;color:#6f8995;font-size:8px;font-weight:800;letter-spacing:.7px;white-space:nowrap;background:#091720}
+.market-tape-viewport{min-width:0;flex:1;overflow:hidden;position:relative;mask-image:linear-gradient(to right,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.market-tape-track{display:flex;width:max-content;will-change:transform;animation:marketTape var(--tape-duration,48s) linear infinite}
+.market-tape-set{display:flex;align-items:center;gap:4px;padding-right:4px}
+.market-tape-item{height:28px;display:flex;align-items:center;gap:5px;padding:0 8px;border-right:1px solid #1b2f39;color:#b8c9d0;text-decoration:none;white-space:nowrap;font-size:9px}
+.market-tape-item:hover{background:#10212a}
+.market-tape-item strong{font-size:10px;color:#e6f1f4}
+.market-tape-price{color:#8da4ae}
+.market-tape-loading{display:flex;align-items:center;height:28px;padding:0 10px;color:#6b828d;font-size:9px}
+.market-tape-bar:hover .market-tape-track{animation-play-state:paused}
+@keyframes marketTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){
+ .market-tape-viewport{overflow-x:auto;mask-image:none}
+ .market-tape-track{animation:none}
+ .market-tape-set[aria-hidden="true"]{display:none}
+}
+@media(max-width:680px){
+ .market-tape-bar{height:27px;top:44px}
+ .market-tape-label{padding:0 6px;font-size:7px;max-width:74px;overflow:hidden;text-overflow:ellipsis}
+ .market-tape-item{height:26px;padding:0 6px;gap:4px;font-size:8px}
+ .market-tape-item strong{font-size:9px}
+}
