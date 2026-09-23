@@ -738,28 +738,45 @@ function drawLiveChart(el){
  let s=stockByKey(el._chartKey),preferTr=!!el._chartPreferTr;
  let points=(el._chartPoints||[]).slice(),q=chartQuote(s,preferTr);
  if(q){
+  let qt=chartNumber(q.time);
+  if(qt!==null&&qt<1e12)qt*=1000;
+  if(qt===null)qt=Date.now();
   let last=points[points.length-1];
-  if(!last||q.time>last.time)points.push({time:q.time,price:q.price,live:true});
-  else if(last)points[points.length-1]={time:last.time,price:q.price,live:true};
+  // Keep live ticks in the chart history. Previously they were appended only
+  // to a temporary copy, so if the historical endpoint returned 0/1 points
+  // the mobile chart could remain blank forever.
+  if(!last||qt>last.time)points.push({time:qt,price:q.price,live:true});
+  else if(last&&qt===last.time)points[points.length-1]={time:last.time,price:q.price,live:true};
+  else if(last&&q.price!==last.price)points.push({time:Math.max(Date.now(),last.time+1),price:q.price,live:true});
  }
  points=chartCleanPoints(points);
+ el._chartPoints=points.slice();
  let status=el.querySelector('.live-chart-status'),svg=el.querySelector('svg');
  if(!svg||!status)return;
+
+ // Set the SVG viewport before handling the empty/one-point state. On narrow
+ // mobile screens the old hard-coded x=500 empty-state text was outside the
+ // visible SVG, which made the graph look completely black.
+ let rect=svg.getBoundingClientRect(),w=Math.max(280,Math.round(rect.width||el.clientWidth||360)),h=Math.max(180,Math.round(rect.height||240));
+ svg.setAttribute('viewBox','0 0 '+w+' '+h);
+
  let now=Date.now(),age=q?Math.max(0,now-(q.receivedAt||q.time||now)):null;
  if(q){
   let freshness=age<10000?'EN DIRECTO':age<60000?'ACTUALIZANDO':'DATO ANTIGUO';
-  status.innerHTML='<span><b>'+E(q.label)+'</b> · '+E(freshness)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
+  let historyNote=el._chartHistoryUnavailable?' · historial cargándose desde cotizaciones en directo':'';
+  status.innerHTML='<span><b>'+E(q.label)+'</b> · '+E(freshness)+E(historyNote)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
   status.classList.toggle('stale',age>=60000);
  }else{
   status.innerHTML='<span><b>'+(preferTr?'Trade Republic':'Nasdaq')+'</b> · esperando cotización actual</span>';
   status.classList.add('stale');
  }
  if(points.length<2){
-  svg.innerHTML=chartSvgText(500,170,'Esperando suficientes datos para dibujar el gráfico','chart-empty','middle');
+  let msg=el._chartHistoryUnavailable
+   ?'Histórico no disponible · esperando la siguiente cotización'
+   :'Esperando suficientes datos para dibujar el gráfico';
+  svg.innerHTML=chartSvgText(w/2,h/2,msg,'chart-empty','middle');
   return;
  }
- let rect=svg.getBoundingClientRect(),w=Math.max(300,Math.round(rect.width||1000)),h=Math.max(190,Math.round(rect.height||340));
- svg.setAttribute('viewBox','0 0 '+w+' '+h);
  let compact=w<560,left=compact?48:66,right=compact?68:88,top=18,bottom=34,plotW=w-left-right,plotH=h-top-bottom;
  let prices=points.map(p=>p.price),min=Math.min(...prices),max=Math.max(...prices);
  let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);min-=pad;max+=pad;span=max-min||1;
@@ -807,10 +824,12 @@ async function loadMiniChart(el){
   if(j.error)throw Error(j.error);
   el._chartPoints=chartCleanPoints(j.points||[]);
   el._chartSource=j.source||'';
+  el._chartHistoryUnavailable=el._chartPoints.length<2;
  }catch(err){
   console.warn('live chart history warning',err);
   el._chartPoints=[];
-  let st=el.querySelector('.live-chart-status');if(st)st.innerHTML='<span>Histórico no disponible; mostrando cotización actual en directo</span>';
+  el._chartHistoryUnavailable=true;
+  let st=el.querySelector('.live-chart-status');if(st)st.innerHTML='<span>Histórico no disponible; construyendo gráfico con cotizaciones en directo</span>';
  }
  el._chartReady=true;
  drawLiveChart(el);
