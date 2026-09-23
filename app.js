@@ -1,193 +1,67 @@
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => [...document.querySelectorAll(s)];
-
-const STORAGE_DATA = 'entrypointtrade:data:v1';
-const STORAGE_FILTERS = 'entrypointtrade:filters:v1';
-
-const emptyData = { stocks: [], events: [], updatedAt: null };
-let data = loadData();
-let state = {
-  view: 'entry',
-  entryMarket: 'tr',
-  radarMarket: 'tr',
-  session: 'regular',
-  filters: getPreset('intraday')
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const DATA='data/market.json', KEY='entrypointtrade:filters:v3';
+let db={stocks:[],events:[],meta:{}}, loading=false;
+let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday'};
+const V={entry:'01 Potencial de entrada',future:'02 Potencial futuro',radar:'03 Radar de acciones',calendar:'04 Calendario y noticias',catalog:'05 Catálogo Trade Republic'};
+const P={
+ short:{minChange:1,maxChange:0,minRelVolume:1.2,minAdx:18,minRsi:38,maxRsi:72,minVolume:0,trend:false,illiquid:true,sort:'score'},
+ medium:{minChange:0,maxChange:0,minRelVolume:1,minAdx:15,minRsi:35,maxRsi:78,minVolume:0,trend:true,illiquid:true,sort:'score'},
+ broad:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'score'},
+ intraday:{minChange:2,maxChange:0,minRelVolume:1.5,minAdx:20,minRsi:40,maxRsi:70,minVolume:0,trend:false,illiquid:true,sort:'score'},
+ exploded:{minChange:20,maxChange:0,minRelVolume:1.5,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'change'},
+ afterhours:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'afterhours'},
+ strict:{minChange:1,maxChange:0,minRelVolume:1.3,minAdx:22,minRsi:42,maxRsi:68,minVolume:0,trend:true,illiquid:true,sort:'score'}
 };
+function preset(n){if(n==='saved'){try{return Object.assign({},P.intraday,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){return Object.assign({},P.intraday)}}return Object.assign({},P[n]||P.intraday)}
+state.filters=preset('intraday');
 
-const viewNames = {
-  entry: '01 Potencial de entrada', future: '02 Potencial futuro', radar: '03 Radar de acciones',
-  calendar: '04 Calendario y noticias', catalog: '05 Catálogo Trade Republic', sources: '06 Fuentes y cobertura'
-};
+function N(v){v=Number(v);return Number.isFinite(v)?v:null}
+function E(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function F(v,d=2){v=N(v);return v===null?'—':v.toLocaleString('es-ES',{maximumFractionDigits:d})}
+function I(v){v=N(v);return v===null?'—':Math.round(v).toLocaleString('es-ES')}
+function PR(v){v=N(v);return v===null?'—':v.toLocaleString('es-ES',{maximumFractionDigits:v<1?6:4})}
+function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
+function C(v){v=N(v);return v===null?'':v>=0?'positive':'negative'}
+function DF(v){if(!v)return'—';let d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('es-ES')}
+function NY(){let a=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());return Object.fromEntries(a.map(x=>[x.type,x.value]))}
+function auto(){let p=NY(),m=+p.hour*60 + +p.minute;if(m>=240&&m<570)return'premarket';if(m>=570&&m<960)return'regular';if(m>=960&&m<1200)return'postmarket';return'previous'}
+function SES(){return state.session==='auto'?auto():state.session}
+function SN(s){return({premarket:'Premarket',regular:'Sesión regular',postmarket:'Postmarket',previous:'Sesión anterior'})[s]||s}
+function SP(s,se=SES()){return se==='premarket'?(N(s.premarketPrice)??N(s.price)):se==='postmarket'?(N(s.postmarketPrice)??N(s.price)):N(s.price)}
+function SC(s,se=SES()){return se==='premarket'?N(s.premarketChangePct):se==='postmarket'?N(s.postmarketChangePct):N(s.changePct)}
+function SV(s,se=SES()){return se==='premarket'?N(s.premarketVolume):se==='postmarket'?N(s.postmarketVolume):N(s.volume)}
+function RV(s){return N(s.relVolume)??(N(s.volume)!==null&&N(s.avgVolume)>0?N(s.volume)/N(s.avgVolume):null)}
+function trend(s){let p=N(s.price),a=N(s.ema20),b=N(s.ema50);return p===null||a===null||b===null||p>=a&&a>=b}
+function score(s,se=SES()){let x=0,c=SC(s,se)??0,r=RV(s)??0,a=N(s.adx)??0,z=N(s.rsi);x+=Math.max(-20,Math.min(35,c*1.6))+Math.min(25,r*7)+Math.min(18,a*.55);if(z!==null)x+=z>=45&&z<=72?12:z>72?5:3;if(N(s.price)!==null&&N(s.ema20)!==null&&s.price>s.ema20)x+=5;if(N(s.ema20)!==null&&N(s.ema50)!==null&&s.ema20>s.ema50)x+=5;return Math.max(0,Math.min(100,x))}
+function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
+function why(s,se){let b=[],c=SC(s,se),r=RV(s);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
+function card(s,i,se=SES(),dense=false){let c=SC(s,se),p=SP(s,se),v=SV(s,se);return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(s.ticker)+'</strong><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick"><b>'+PR(p)+'</b><span class="'+C(c)+'">'+PC(c)+'</span>'+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'</div></div><details class="stock-details"><summary>Detalles <span class="summary-hint">'+SN(se)+' · '+I(v)+' vol. · '+F(score(s,se),0)+' pts técnicos</span></summary><div class="detail-grid"><div><small>Regular</small><b>'+PR(s.price)+'</b><span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span></div><div><small>Premarket</small><b>'+PR(s.premarketPrice)+'</b><span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span></div><div><small>Postmarket</small><b>'+PR(s.postmarketPrice)+'</b><span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span></div><div><small>Volumen</small><b>'+I(v)+'</b><span>'+F(RV(s),2)+'× rel.</span></div><div><small>RSI / ADX</small><b>'+F(s.rsi,1)+' / '+F(s.adx,1)+'</b><span>EMA20 '+PR(s.ema20)+'</span></div><div><small>1 sem / 1 mes</small><b>'+PC(s.perfWeek)+'</b><span>'+PC(s.perfMonth)+'</span></div></div><div class="why-line"><strong>Por qué aparece:</strong> '+E(why(s,se))+'</div><div class="meta-line">'+E(s.exchange||'')+' · '+E(s.currency||'USD')+(s.isin?' · ISIN '+E(s.isin):'')+(s.earningsDate?' · resultados '+DF(s.earningsDate):'')+'</div>'+links(s)+'</details></article>'}
+function market(s,m){return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA'].includes(String(s.exchange||'').toUpperCase()):true}
+function fromUI(){return{minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,minVolume:+$('#minVolume').value||0,trend:$('#requireTrend').checked,illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort}}
+function toUI(x){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(k=>$('#'+k).value=x[k]);$('#requireTrend').checked=!!x.trend;$('#excludeIlliquid').checked=!!x.illiquid}
+function entry(){let q=state.filters,se=q.sort==='afterhours'?'postmarket':SES(),a=db.stocks.filter(s=>market(s,state.entryMarket)).filter(s=>{let c=SC(s,se);if(c===null||c<q.minChange)return false;if(q.maxChange>0&&c>q.maxChange)return false;let r=RV(s);if(q.minRelVolume>0&&r!==null&&r<q.minRelVolume)return false;if(q.minAdx>0&&N(s.adx)!==null&&s.adx<q.minAdx)return false;if(N(s.rsi)!==null&&(s.rsi<q.minRsi||s.rsi>q.maxRsi))return false;let v=SV(s,se);if(q.minVolume>0&&v!==null&&v<q.minVolume)return false;if(q.trend&&!trend(s))return false;if(q.illiquid&&v!==null&&v<10000)return false;return true});if(q.sort==='afterhours')a.sort((x,y)=>(SC(y,'postmarket')??-999)-(SC(x,'postmarket')??-999));else if(q.sort==='change')a.sort((x,y)=>(SC(y,se)??-999)-(SC(x,se)??-999));else a.sort((x,y)=>score(y,se)-score(x,se));return[a,se]}
+function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);$('#entryCount').textContent=a.length+' candidatas';$('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';$('#entryTag').textContent=state.filters.sort==='afterhours'?'SUBIDAS POSTMARKET':state.preset==='exploded'?'EXPLOSIÓN EN SESIÓN':se==='premarket'?'IMPULSO PREMARKET':'SEGUIMIENTO';$('#entryLead').textContent=state.filters.sort==='afterhours'?'Acciones ordenadas por mayor subida después del cierre regular de EEUU.':'Señales técnicas y movimientos de mercado, sin precio mínimo.';$('#entryResults').innerHTML=a.length?a.slice(0,150).map((s,i)=>card(s,i,se)).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión.</div>'}
+function ET(t){return({medical:'Médico / regulatorio',earnings:'Resultados',contract:'Contrato / adjudicación',corporate:'Operación corporativa',other:'Otro'})[t]||'Evento'}
+function renderFuture(){let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=new Date(),cut=new Date(Date.now()+h*864e5),a=(db.events||[]).filter(e=>{let d=new Date(e.date);return!isNaN(d)&&d>=now&&d<=cut&&(t==='all'||e.type===t)&&(!tr||e.tradeRepublicVerified)}).sort((x,y)=>new Date(x.date)-new Date(y.date));$('#futureResults').innerHTML=a.length?a.slice(0,150).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card"><div class="stock-main"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick"><b>'+DF(e.date)+'</b><span>'+ET(e.type)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'</div></div><details class="stock-details"><summary>Detalles</summary><div class="why-line"><strong>Hecho:</strong> '+E(e.fact||'Evento fechado por el proveedor.')+'</div><div class="why-line"><strong>Lectura:</strong> '+E(e.hypothesis||'Puede aumentar la volatilidad; no implica una dirección concreta.')+'</div>'+links(s)+'</details></article>'}).join(''):'<div class="empty-state">No hay eventos próximos con estos filtros.</div>'}
+function renderRadar(){let q=$('#radarSearch').value.trim().toLowerCase(),rs=state.radarSession,se=rs==='all'?SES():rs,a=db.stocks.filter(s=>state.radarMarket==='all'||market(s,state.radarMarket)).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q));if(rs!=='all')a=a.filter(s=>SC(s,rs)!==null);if(state.radarDirection==='up')a=a.filter(s=>(SC(s,se)??0)>0);if(state.radarDirection==='down')a=a.filter(s=>(SC(s,se)??0)<0);a.sort((x,y)=>(SC(y,se)??-999)-(SC(x,se)??-999));$('#radarResults').innerHTML=a.length?a.slice(0,300).map((s,i)=>card(s,i,se,true)).join(''):'<div class="empty-state">Sin valores con estos filtros.</div>'}
+function renderCalendar(){let a=[...(db.events||[])].sort((x,y)=>new Date(x.date)-new Date(y.date));$('#calendarResults').innerHTML=a.length?a.slice(0,300).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card dense-card"><div class="stock-main"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick"><b>'+DF(e.date)+'</b><span>'+ET(e.type)+'</span></div></div><details class="stock-details"><summary>Detalles</summary><div class="why-line">'+E(e.fact||'Evento')+'</div>'+links(s)+'</details></article>'}).join(''):'<div class="empty-state">Sin eventos disponibles.</div>'}
+function renderCatalog(){let q=$('#catalogSearch').value.trim().toLowerCase(),a=db.stocks.filter(s=>s.tradeRepublicVerified).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.ticker).localeCompare(String(y.ticker)));$('#catalogCount').textContent=a.length.toLocaleString('es-ES')+' cotizando · '+Number(db.meta.trOfficialCount||0).toLocaleString('es-ES')+' universo oficial';$('#catalogResults').innerHTML=a.length?a.slice(0,600).map((s,i)=>card(s,i,'regular',true)).join(''):'<div class="empty-state">No hay coincidencias verificadas cargadas.</div>'}
+function status(){let age=db.meta.updatedAt?Math.round((Date.now()-new Date(db.meta.updatedAt))/60000):null;$('#providerState').textContent=db.stocks.length?'TradingView · '+(age??'—')+' min':'Sin datos';$('#providerState').classList.toggle('stale',age!==null&&age>30)}
+function render(){renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
+async function load(force=false){if(loading)return;loading=true;$('#providerState').textContent='Actualizando…';try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/60000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);$('#providerState').textContent='Datos no disponibles';if(!db.stocks.length)$$('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
+function show(v){if(!V[v])return;$$('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#breadcrumbView').textContent=V[v];$('#mobileView').value=v;$('#sidebar').classList.remove('open');render()}
+function clock(){let p=NY();$('#nyTime').textContent=p.hour+':'+p.minute+' · Nueva York'}
 
-function loadData(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_DATA)) || structuredClone(emptyData); }
-  catch { return structuredClone(emptyData); }
-}
-function saveData(){ localStorage.setItem(STORAGE_DATA, JSON.stringify(data)); }
-
-function getPreset(name){
-  const presets = {
-    short:{minChange:1,maxChange:0,minRelVolume:1.2,minAdx:18,minRsi:38,maxRsi:70,explosionThreshold:25,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:true,requireTrend:false,excludeIlliquid:true},
-    medium:{minChange:0,maxChange:0,minRelVolume:1,minAdx:15,minRsi:35,maxRsi:75,explosionThreshold:30,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:false,requireTrend:true,excludeIlliquid:true},
-    broad:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,explosionThreshold:20,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:false,requireTrend:false,excludeIlliquid:false},
-    intraday:{minChange:2,maxChange:0,minRelVolume:1.5,minAdx:20,minRsi:40,maxRsi:65,explosionThreshold:20,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:true,requireTrend:false,excludeIlliquid:true},
-    exploded:{minChange:20,maxChange:0,minRelVolume:2,minAdx:0,minRsi:0,maxRsi:100,explosionThreshold:20,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:true,requireTrend:false,excludeIlliquid:true},
-    strict:{minChange:1,maxChange:0,minRelVolume:1.3,minAdx:22,minRsi:42,maxRsi:68,explosionThreshold:25,minVolume:0,prioritizeCatalysts:true,adjustFromOpen:true,requireTrend:true,excludeIlliquid:true}
-  };
-  if(name==='saved'){
-    try{return JSON.parse(localStorage.getItem(STORAGE_FILTERS)) || presets.intraday;}catch{return presets.intraday;}
-  }
-  return structuredClone(presets[name] || presets.intraday);
-}
-
-function showView(name){
-  state.view = name;
-  $$('.view').forEach(v=>v.classList.remove('active'));
-  $(`#view-${name}`).classList.add('active');
-  $$('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
-  $('#breadcrumbView').textContent = viewNames[name];
-  $('#sidebar').classList.remove('open');
-  renderAll();
-}
-
-function updateNyTime(){
-  const parts = new Intl.DateTimeFormat('es-ES',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
-  $('#nyTime').textContent = `${parts} · Nueva York`;
-}
-setInterval(updateNyTime, 30000); updateNyTime();
-
-function fmtNum(n, digits=2){ return Number.isFinite(Number(n)) ? Number(n).toLocaleString('es-ES',{maximumFractionDigits:digits}) : '—'; }
-function fmtPrice(n){ return Number.isFinite(Number(n)) ? `${Number(n).toLocaleString('es-ES',{maximumFractionDigits:6})}` : '—'; }
-function fmtPct(n){ return Number.isFinite(Number(n)) ? `${Number(n)>=0?'+':''}${fmtNum(n,2)}%` : '—'; }
-function safe(s){ return String(s ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-
-function currentFiltersFromUi(){
-  return {
-    minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,
-    minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,
-    explosionThreshold:+$('#explosionThreshold').value||0,minVolume:+$('#minVolume').value||0,
-    prioritizeCatalysts:$('#prioritizeCatalysts').checked,adjustFromOpen:$('#adjustFromOpen').checked,
-    requireTrend:$('#requireTrend').checked,excludeIlliquid:$('#excludeIlliquid').checked
-  };
-}
-function filtersToUi(f){
-  for(const k of ['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','explosionThreshold','minVolume']) $(`#${k}`).value=f[k];
-  for(const k of ['prioritizeCatalysts','adjustFromOpen','requireTrend','excludeIlliquid']) $(`#${k}`).checked=!!f[k];
-}
-
-function normalizeStock(s){
-  return {
-    ticker:String(s.ticker||'').toUpperCase(), name:s.name||'', isin:s.isin||'', market:s.market||'',
-    tradeRepublicVerified:!!s.tradeRepublicVerified, price:Number(s.price), session:s.session||'regular',
-    changePct:Number(s.changePct), volume:Number(s.volume), avgVolume:Number(s.avgVolume), relVolume:Number(s.relVolume),
-    adx:Number(s.adx), rsi:Number(s.rsi), score:Number(s.score), trendOk:s.trendOk!==false,
-    liquidityRisk:!!s.liquidityRisk, catalyst:s.catalyst||'', catalystConfirmed:!!s.catalystConfirmed,
-    why:s.why||'', risk:s.risk||'', updatedAt:s.updatedAt||''
-  };
-}
-function filteredStocks(){
-  const f=state.filters;
-  return data.stocks.map(normalizeStock).filter(s=>{
-    if(state.entryMarket==='tr' && !s.tradeRepublicVerified) return false;
-    if(state.entryMarket==='us' && s.market && !/NASDAQ|NYSE|AMEX|NYSE ARCA/i.test(s.market)) return false;
-    if(state.session!=='previous' && s.session && s.session!==state.session) return false;
-    // Deliberately no minimum-price condition anywhere in this function.
-    if(Number.isFinite(s.changePct) && s.changePct < f.minChange) return false;
-    if(f.maxChange>0 && Number.isFinite(s.changePct) && s.changePct > f.maxChange) return false;
-    if(f.minRelVolume>0 && Number.isFinite(s.relVolume) && s.relVolume < f.minRelVolume) return false;
-    if(f.minAdx>0 && Number.isFinite(s.adx) && s.adx < f.minAdx) return false;
-    if(Number.isFinite(s.rsi) && (s.rsi < f.minRsi || s.rsi > f.maxRsi)) return false;
-    if(f.minVolume>0 && Number.isFinite(s.volume) && s.volume < f.minVolume) return false;
-    if(f.requireTrend && !s.trendOk) return false;
-    if(f.excludeIlliquid && s.liquidityRisk) return false;
-    return true;
-  }).sort((a,b)=>(b.score||0)-(a.score||0));
-}
-
-function renderEntry(){
-  const list=filteredStocks();
-  const sessionNames={regular:'Sesión regular',premarket:'Premarket',previous:'Sesión anterior'};
-  $('#entrySessionText').textContent=`${state.entryMarket==='tr'?'Trade Republic':'Resto del mercado · EEUU'} · ${sessionNames[state.session]}`;
-  $('#entryCount').textContent=`${list.length} candidatas`;
-  $('#analyzedCount').textContent=data.stocks.length;
-  $('#pendingCount').textContent='0';
-  const root=$('#entryResults');
-  if(!list.length){root.innerHTML='<div class="empty-state">Sin candidatas con los datos actuales. Importa datos en <strong>Fuentes y cobertura</strong> o conecta una fuente real. El filtro de precio mínimo ya no existe.</div>';return;}
-  root.innerHTML=list.map((s,i)=>`
-    <article class="candidate-card">
-      <div class="candidate-top"><div><div class="candidate-title"><span class="rank">${i+1}.</span><span class="ticker">${safe(s.ticker)}</span><span class="name">${safe(s.name)}</span></div><div class="event-meta">${safe(s.market)} ${s.tradeRepublicVerified?'<span class="pill ok">TR verificada</span>':''}</div></div><div class="score">${fmtNum(s.score,1)} pts</div></div>
-      <div class="metrics">
-        <div class="metric"><div class="k">Precio</div><div class="v">${fmtPrice(s.price)}</div></div>
-        <div class="metric"><div class="k">Variación</div><div class="v ${s.changePct>=0?'pos':'neg'}">${fmtPct(s.changePct)}</div></div>
-        <div class="metric"><div class="k">Volumen</div><div class="v">${fmtNum(s.volume,0)}</div></div>
-        <div class="metric"><div class="k">Volumen rel.</div><div class="v">${fmtNum(s.relVolume,2)}x</div></div>
-        <div class="metric"><div class="k">ADX</div><div class="v">${fmtNum(s.adx,1)}</div></div>
-        <div class="metric"><div class="k">RSI</div><div class="v">${fmtNum(s.rsi,1)}</div></div>
-      </div>
-      <div class="why"><strong>Por qué aparece:</strong> ${safe(s.why || buildWhy(s))}${s.catalyst?`<br><strong>Catalizador:</strong> ${safe(s.catalyst)} ${s.catalystConfirmed?'(confirmado)':'(sin confirmar)'}`:''}${s.risk?`<br><strong>Riesgo:</strong> ${safe(s.risk)}`:''}</div>
-    </article>`).join('');
-}
-function buildWhy(s){
-  const bits=[]; if(Number.isFinite(s.changePct)) bits.push(`variación ${fmtPct(s.changePct)}`); if(Number.isFinite(s.relVolume)) bits.push(`volumen relativo ${fmtNum(s.relVolume,2)}x`); if(Number.isFinite(s.adx)) bits.push(`ADX ${fmtNum(s.adx,1)}`); if(Number.isFinite(s.rsi)) bits.push(`RSI ${fmtNum(s.rsi,1)}`); return bits.length?bits.join(' · '):'Cumple los filtros activos.';
-}
-
-function renderFuture(){
-  const horizon=+$('#futureHorizon').value; const type=$('#futureType').value; const trOnly=$('#futureTrOnly').checked;
-  const now=new Date(); const cutoff=new Date(now.getTime()+horizon*86400000);
-  const list=(data.events||[]).filter(e=>{
-    const d=new Date(e.date); if(isNaN(d)) return false; if(d<now||d>cutoff) return false;
-    if(type!=='all' && e.type!==type) return false; if(trOnly && !e.tradeRepublicVerified) return false; return true;
-  }).sort((a,b)=>(b.potentialScore||0)-(a.potentialScore||0));
-  const root=$('#futureResults');
-  if(!list.length){root.innerHTML='<div class="empty-state">No hay eventos próximos cargados con estos filtros. Importa un JSON con eventos fechados para alimentar esta sección.</div>';return;}
-  root.innerHTML=list.map(e=>`
-    <article class="future-card"><div class="event-line"><div><div class="candidate-title"><span class="ticker">${safe(e.ticker)}</span><span class="name">${safe(e.name||'')}</span></div><div class="event-meta">${new Date(e.date).toLocaleDateString('es-ES')} · ${safe(e.source||'Fuente no indicada')} ${e.tradeRepublicVerified?'<span class="pill ok">TR verificada</span>':''}</div></div><span class="event-badge">${safe(eventTypeName(e.type))}</span></div>
-    <div class="metrics"><div class="metric"><div class="k">Potencial evento</div><div class="v">${fmtNum(e.potentialScore,1)}/100</div></div><div class="metric"><div class="k">Días</div><div class="v">${Math.ceil((new Date(e.date)-now)/86400000)}</div></div><div class="metric"><div class="k">Confirmación</div><div class="v">${e.confirmed?'Confirmado':'Pendiente'}</div></div></div>
-    <div class="fact-hypothesis"><div><h4>Hecho comprobado</h4><p>${safe(e.fact||'Sin descripción.')}</p></div><div><h4>Hipótesis de impacto</h4><p>${safe(e.hypothesis||'Sin hipótesis.')}</p></div></div></article>`).join('');
-}
-function eventTypeName(t){return ({medical:'Médico / regulatorio',earnings:'Resultados',contract:'Contrato / adjudicación',corporate:'Operación corporativa',other:'Otro'})[t]||'Evento';}
-
-function radarStocks(){
-  return data.stocks.map(normalizeStock).filter(s=>state.radarMarket==='all'||(state.radarMarket==='tr'?s.tradeRepublicVerified:/NASDAQ|NYSE|AMEX|NYSE ARCA/i.test(s.market||'')));
-}
-function renderRadar(){
-  const rows=radarStocks(); $('#radarBody').innerHTML=rows.length?rows.map(s=>`<tr><td><strong>${safe(s.ticker)}</strong></td><td>${safe(s.name)}</td><td>${fmtPrice(s.price)}</td><td>${safe(s.session)}</td><td class="${s.changePct>=0?'positive':'negative'}">${fmtPct(s.changePct)}</td><td>${fmtNum(s.relVolume,2)}x</td><td>${s.tradeRepublicVerified?'<span class="pill ok">Sí</span>':'<span class="muted">No verificada</span>'}</td></tr>`).join(''):'<tr><td colspan="7" class="muted">Sin datos cargados.</td></tr>';
-}
-function renderCalendar(){
-  const list=[...(data.events||[])].sort((a,b)=>new Date(a.date)-new Date(b.date)); const root=$('#calendarResults');
-  root.innerHTML=list.length?list.map(e=>`<article class="future-card"><div class="event-line"><div><strong>${safe(e.ticker)}</strong> · ${safe(e.name||'')}</div><span class="event-badge">${new Date(e.date).toLocaleDateString('es-ES')}</span></div><div class="why"><strong>${safe(eventTypeName(e.type))}:</strong> ${safe(e.fact||'')}</div></article>`).join(''):'<div class="empty-state">Sin eventos cargados.</div>';
-}
-function renderCatalog(){
-  const q=$('#catalogSearch').value.trim().toLowerCase(); const list=data.stocks.map(normalizeStock).filter(s=>s.tradeRepublicVerified).filter(s=>!q||[s.ticker,s.name,s.isin].some(v=>String(v).toLowerCase().includes(q)));
-  $('#catalogCount').textContent=`${list.length} valores`; $('#catalogBody').innerHTML=list.length?list.map(s=>`<tr><td><strong>${safe(s.ticker)}</strong></td><td>${safe(s.name)}</td><td>${safe(s.isin||'—')}</td><td>${safe(s.market||'—')}</td><td><span class="pill ok">Verificada</span></td></tr>`).join(''):'<tr><td colspan="5" class="muted">Sin valores verificados cargados.</td></tr>';
-}
-function renderSources(){ $('#sourceSummary').textContent=`${data.stocks.length} acciones · ${(data.events||[]).length} eventos cargados${data.updatedAt?` · actualizado ${new Date(data.updatedAt).toLocaleString('es-ES')}`:''}.`; $('#providerState').textContent=data.stocks.length||data.events.length?'Datos importados':'Datos locales'; }
-function renderAll(){ renderEntry(); renderFuture(); renderRadar(); renderCalendar(); renderCatalog(); renderSources(); }
-
-$$('.nav-item').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
-$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry();});
-$('#toggleFilters').addEventListener('click',()=>$('#filterPanel').classList.toggle('collapsed'));
-$('#presetSelect').addEventListener('change',e=>{state.filters=getPreset(e.target.value);filtersToUi(state.filters);});
-$('#applyFilters').addEventListener('click',()=>{state.filters=currentFiltersFromUi();renderEntry();});
-$('#resetFilters').addEventListener('click',()=>{state.filters=getPreset($('#presetSelect').value);filtersToUi(state.filters);renderEntry();});
-$('#saveFilters').addEventListener('click',()=>{const f=currentFiltersFromUi(); localStorage.setItem(STORAGE_FILTERS,JSON.stringify(f)); state.filters=f; $('#presetSelect').value='saved'; alert('Criterio personalizado guardado en este navegador.');});
-
-$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry();}));
-$$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.radarMarket=b.dataset.tab;$$('[data-tab-group="radarMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderRadar();}));
-
-['futureHorizon','futureType','futureTrOnly'].forEach(id=>$(`#${id}`).addEventListener('change',renderFuture));
-$('#catalogSearch').addEventListener('input',renderCatalog);
-['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$(`#${id}`).addEventListener('click',renderAll));
-
-$('#jsonImport').addEventListener('change', async (e)=>{
-  const file=e.target.files[0]; if(!file) return;
-  try{
-    const parsed=JSON.parse(await file.text());
-    if(!Array.isArray(parsed.stocks) || !Array.isArray(parsed.events)) throw new Error('El JSON debe contener arrays stocks y events.');
-    data={stocks:parsed.stocks,events:parsed.events,updatedAt:new Date().toISOString()}; saveData(); renderAll(); alert('Datos importados correctamente.');
-  }catch(err){alert(`No se pudo importar: ${err.message}`);} finally{e.target.value='';}
-});
-$('#clearData').addEventListener('click',()=>{if(confirm('¿Vaciar todos los datos importados?')){data=structuredClone(emptyData);saveData();renderAll();}});
-
-filtersToUi(state.filters); renderAll();
+$$('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileView').addEventListener('change',e=>show(e.target.value));$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry()});
+$('#presetSelect').addEventListener('change',e=>{state.preset=e.target.value;state.filters=preset(state.preset);if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}toUI(state.filters);renderEntry()});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry()});$('#resetFilters').addEventListener('click',()=>{state.filters=preset(state.preset);toUI(state.filters);renderEntry()});
+$('#saveFilters').addEventListener('click',()=>{let x=fromUI();localStorage.setItem(KEY,JSON.stringify(x));state.preset='saved';state.filters=x;$('#presetSelect').value='saved';renderEntry()});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry()}));
+$$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.radarMarket=b.dataset.tab;$$('[data-tab-group="radarMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderRadar()}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
+$('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);
+['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+toUI(state.filters);clock();setInterval(clock,30000);setInterval(()=>load(false),60000);load(true);
