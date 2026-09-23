@@ -85,3 +85,68 @@ jobs:
 
           print("Frontend y comprobaciones de seguridad: OK")
           PY
+      - name: Smoke test en navegador real
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::Chrome/Chromium no está disponible en el runner"
+            exit 1
+          fi
+
+          rm -rf /tmp/catalyst-smoke
+          mkdir -p /tmp/catalyst-smoke/data
+          cp index.html app.js styles.css /tmp/catalyst-smoke/
+          cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":false}],"events":[]}
+          JSON
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/catalyst-smoke/index.html")
+          html = p.read_text(encoding="utf-8")
+          inject = r'''
+          <script>
+          window.addEventListener('load', () => {
+            setTimeout(() => {
+              try {
+                if (!db || !Array.isArray(db.stocks) || !db.stocks.length) throw new Error('market data not loaded');
+                const s = db.stocks[0];
+                s.usLivePrice = 10.25;
+                s.usLiveReceivedAt = Date.now();
+                s.usLiveIsRealTime = true;
+                document.body.dataset.smokeApp = 'ok';
+                openStock(s, 'smoke test', false);
+                setTimeout(() => {
+                  const canvas = document.querySelector('.live-chart-canvas');
+                  const profileOpen = document.body.classList.contains('stock-detail-open');
+                  document.body.dataset.smokeProfile = canvas && profileOpen ? 'ok' : 'fail';
+                }, 1200);
+              } catch (err) {
+                document.body.dataset.smokeError = String(err && err.message || err);
+                console.error(err);
+              }
+            }, 1200);
+          });
+          </script>
+          '''
+          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          PY
+
+          cd /tmp/catalyst-smoke
+          python -m http.server 4173 --bind 127.0.0.1 >/tmp/catalyst-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 1
+
+          "$CHROME"             --headless=new             --no-sandbox             --disable-gpu             --disable-dev-shm-usage             --virtual-time-budget=9000             --dump-dom             http://127.0.0.1:4173/             > /tmp/catalyst-dom.html 2> /tmp/catalyst-chrome.log
+
+          grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html
+          grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html
+
+          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError' /tmp/catalyst-chrome.log; then
+            cat /tmp/catalyst-chrome.log
+            exit 1
+          fi
+
+          echo "Smoke test navegador: OK"
