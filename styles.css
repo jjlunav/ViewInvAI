@@ -22,15 +22,11 @@
 .preset-option{position:relative;border:0;background:transparent;color:#dbe6ea;text-align:left;padding:8px 9px;border-radius:6px;cursor:pointer;font-size:11px;white-space:nowrap}
 .preset-option:hover,.preset-option:focus-visible{background:#18332c;color:#fff;outline:none}
 .preset-option.active{color:#71e7be}
-.preset-desc{display:none;position:absolute;left:calc(100% + 9px);top:50%;transform:translateY(-50%);width:285px;white-space:normal;background:#101e28;border:1px solid #315161;border-radius:7px;padding:9px 10px;color:#b9cad2;font-size:10px;line-height:1.45;box-shadow:0 12px 30px rgba(0,0,0,.38);pointer-events:none}
-.preset-option:hover .preset-desc,.preset-option:focus-visible .preset-desc{display:block}
 @media(max-width:900px){.preset-desc{left:auto;right:calc(100% + 9px)}}
 @media(max-width:680px){
  .preset-picker{min-width:0;width:100%}
  .preset-menu{position:fixed;left:8px;right:8px;top:88px;min-width:0;max-height:70vh;overflow:auto}
- .preset-option{white-space:normal;padding:8px}
- .preset-desc,.preset-option:hover .preset-desc,.preset-option:focus-visible .preset-desc{display:block;position:static;transform:none;width:auto;margin-top:3px;padding:0;border:0;background:transparent;box-shadow:none;color:#78909c;font-size:9px;line-height:1.35}
-}
+ .preset-option{white-space:normal;padding:8px}}
 
 /* Individually lockable criterion inputs */
 .criterion-field{display:grid;gap:3px;min-width:94px}
@@ -122,16 +118,6 @@
 .metric-help{position:relative;outline:none;cursor:help}
 .metric-help small{display:flex;align-items:center;gap:4px}
 .info-dot{font-size:8px;color:#5f7c89;opacity:.8}
-.metric-help-text{display:none;position:absolute;z-index:90;left:7px;right:7px;top:calc(100% - 3px);padding:7px 8px;border:1px solid #315161;border-radius:6px;background:#101e28;color:#c2d1d7;font-size:9px;line-height:1.4;box-shadow:0 12px 26px rgba(0,0,0,.45);text-transform:none;letter-spacing:0}
-@media(hover:hover) and (pointer:fine){
- .metric-help:hover{background:#0d1b24}
- .metric-help:hover .metric-help-text{display:block}
-}
-.metric-help:focus{background:#0d1b24}
-.metric-help:focus .metric-help-text{display:block}
 @media(max-width:680px){
  .ranking-line{padding:6px 8px;font-size:8px}
- .metric-help{cursor:pointer}
- .metric-help-text{position:static;grid-column:1/-1;margin-top:4px;padding:5px 6px;box-shadow:none;font-size:8px}
- .metric-help:focus .metric-help-text{display:block}
 }
