@@ -6,6 +6,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 let usLive={busy:false,lastFetchAt:0};
+let tvChartAvailability=new Map();
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
@@ -794,33 +795,92 @@ function links(s){
 }
 function tradingViewChartSymbol(s,useTr=false){
  if(!s)return'';
- if(useTr&&trTradable(s)){
-  let code=String(s.trWkn||s.trTicker||'').trim().toUpperCase();
-  return code?'LSX:'+code:'';
- }
+ if(useTr)return String(s.trTvSymbol||'').trim().toUpperCase();
  return String(s.tvSymbol||(((s.exchange||'NASDAQ')+':'+(s.ticker||'')))).trim().toUpperCase();
 }
+function trTradingViewCandidate(s){
+ if(!s||!trTradable(s))return'';
+ return String(s.trTicker||'').trim().toUpperCase();
+}
+async function ensureTradingViewTrSymbol(s){
+ let candidate=trTradingViewCandidate(s);
+ if(!candidate){
+  if(s){s.trTvSymbol='';s.trTvChecked=true}
+  return'';
+ }
+ let isin=String(s.trIsin||s.isin||'').trim().toUpperCase();
+ let key='LSX:'+candidate+'|'+isin;
+ if(tvChartAvailability.has(key)){
+  let cached=tvChartAvailability.get(key)||'';
+  s.trTvSymbol=cached;s.trTvChecked=true;
+  return cached;
+ }
+ try{
+  let url='/api/tv-symbol?symbol='+encodeURIComponent(candidate)+(isin?'&isin='+encodeURIComponent(isin):'');
+  let response=await fetch(url,{cache:'default'});
+  if(!response.ok)throw Error(response.status);
+  let data=await response.json();
+  let symbol=data&&data.available?String(data.symbol||'').trim().toUpperCase():'';
+  if(symbol&&!/^LSX:[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(symbol))symbol='';
+  tvChartAvailability.set(key,symbol);
+  s.trTvSymbol=symbol;s.trTvChecked=true;
+  return symbol;
+ }catch(_){
+  s.trTvSymbol='';s.trTvChecked=false;
+  return'';
+ }
+}
 function chartMarketName(s,useTr=false){
- if(useTr)return (s.trExchange||'LSX')+' · '+(s.trTicker||s.trWkn||'TR');
+ if(useTr)return (s.trExchange||'LSX')+' · '+(s.trTicker||'TR');
  return (s.exchange||'EEUU')+' · '+(s.ticker||'');
 }
+function chartMarketControls(s,usAvailable,trAvailable,active){
+ if(usAvailable&&trAvailable){
+  return '<div class="chart-market-switch" role="group" aria-label="Cambiar mercado del gráfico">'+
+   '<button type="button" class="chart-market-toggle'+(active==='us'?' active':'')+'" data-chart-market="us">EEUU · '+E(s.ticker||'')+'</button>'+
+   '<button type="button" class="chart-market-toggle'+(active==='tr'?' active':'')+'" data-chart-market="tr">LSX · '+E(s.trTicker||'TR')+'</button></div>';
+ }
+ if(trAvailable)return '<div class="chart-market-single">LSX · '+E(s.trTicker||'TR')+'</div>';
+ if(usAvailable)return '<div class="chart-market-single">EEUU · '+E(s.ticker||'')+'</div>';
+ return '<div class="chart-market-single">Sin mercado disponible</div>';
+}
+function setChartMarketUi(block,s,usAvailable,trAvailable,active,preferTr=false){
+ if(!block||!s)return;
+ let current=block.querySelector('.chart-market-switch,.chart-market-single');
+ if(current)current.outerHTML=chartMarketControls(s,usAvailable,trAvailable,active);
+ let caption=block.querySelector('.chart-market-caption');
+ if(!caption)return;
+ if(!active){
+  caption.textContent='TradingView no ofrece un gráfico disponible para este valor.';
+  return;
+ }
+ if(preferTr&&!trAvailable&&usAvailable){
+  caption.innerHTML='La opción LSX no está disponible o no ha podido verificarse en TradingView. Mostrando únicamente <b>'+E(chartMarketName(s,false))+'</b>.';
+  return;
+ }
+ if(usAvailable&&trAvailable){
+  caption.innerHTML='Mostrando <b>'+E(chartMarketName(s,active==='tr'))+'</b>. Ambos mercados están disponibles en TradingView; puedes alternar entre ellos.';
+  return;
+ }
+ caption.innerHTML='Mostrando <b>'+E(chartMarketName(s,active==='tr'))+'</b>. Es el único mercado disponible en TradingView para este valor.';
+}
 function miniChart(s,preferTr=false){
- let canTr=!!(s&&trTradable(s)&&(s.trWkn||s.trTicker));
- let useTr=preferTr&&canTr;
- let controls=canTr
-  ?'<div class="chart-market-switch" role="group" aria-label="Cambiar mercado del gráfico">'+
-    '<button type="button" class="chart-market-toggle'+(!useTr?' active':'')+'" data-chart-market="us">EEUU · '+E(s.ticker||'')+'</button>'+
-    '<button type="button" class="chart-market-toggle'+(useTr?' active':'')+'" data-chart-market="tr">LSX · '+E(s.trTicker||s.trWkn||'TR')+'</button></div>'
-  :'<div class="chart-market-single">EEUU · '+E(s.ticker||'')+'</div>';
- return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'">'+
+ let checkTr=!!trTradingViewCandidate(s);
+ let controls=checkTr
+  ?'<div class="chart-market-single chart-market-checking">Comprobando mercados de TradingView…</div>'
+  :'<div class="chart-market-single">EEUU · '+E(s&&s.ticker||'')+'</div>';
+ let caption=checkTr
+  ?'Comprobando qué mercados están realmente disponibles en TradingView…'
+  :'Mostrando <b>'+E(chartMarketName(s,false))+'</b>.';
+ return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<div class="mini-chart-title"><div><strong>TradingView · velas 1 min</strong><span>Horario extendido cuando TradingView lo ofrece para ese mercado.</span></div>'+controls+'</div>'+
-  '<div class="chart-market-caption">Mostrando <b>'+E(chartMarketName(s,useTr))+'</b>. El gráfico arranca siempre en el mismo mercado que la cotización de la ficha.</div>'+
-  '<div class="mini-chart tv-advanced-chart" data-stock-key="'+E(stockKey(s))+'" data-chart-market="'+(useTr?'tr':'us')+'"><div class="chart-placeholder">Cargando TradingView…</div></div></div>';
+  '<div class="chart-market-caption">'+caption+'</div>'+
+  '<div class="mini-chart tv-advanced-chart" data-stock-key="'+E(stockKey(s))+'" data-chart-market="us"><div class="chart-placeholder">'+(checkTr?'Comprobando disponibilidad en TradingView…':'Cargando TradingView…')+'</div></div></div>';
 }
 function renderTradingViewChart(el,market){
  if(!el)return;
  let s=stockByKey(el.dataset.stockKey);if(!s)return;
- let canTr=!!(trTradable(s)&&(s.trWkn||s.trTicker));
+ let canTr=!!tradingViewChartSymbol(s,true);
  let useTr=market==='tr'&&canTr;
  let symbol=tradingViewChartSymbol(s,useTr);
  if(!symbol){
@@ -861,16 +921,29 @@ function renderTradingViewChart(el,market){
  wrap.appendChild(script);
  el.appendChild(wrap);
 }
-function loadMiniChart(el){
+async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
  el.dataset.loaded='1';
- renderTradingViewChart(el,el.dataset.chartMarket||'us');
+ let block=el.closest('.tv-chart-block'),s=stockByKey(el.dataset.stockKey);
+ if(!block||!s)return;
+ let usAvailable=!!tradingViewChartSymbol(s,false);
+ let trAvailable=false;
+ if(trTradingViewCandidate(s))trAvailable=!!(await ensureTradingViewTrSymbol(s));
+ let preferTr=block.dataset.chartPreferTr==='1';
+ let market=preferTr&&trAvailable?'tr':usAvailable?'us':trAvailable?'tr':'';
+ setChartMarketUi(block,s,usAvailable,trAvailable,market,preferTr);
+ if(!market){
+  el.innerHTML='<div class="chart-placeholder">TradingView no ofrece un gráfico disponible para este valor.</div>';
+  return;
+ }
+ renderTradingViewChart(el,market);
 }
 function switchMiniChartMarket(button){
  let block=button&&button.closest('.tv-chart-block');if(!block)return;
  let el=block.querySelector('.tv-advanced-chart'),s=stockByKey(block.dataset.stockKey);if(!el||!s)return;
  let market=button.dataset.chartMarket==='tr'?'tr':'us';
- if(market==='tr'&&!(trTradable(s)&&(s.trWkn||s.trTicker)))return;
+ if(market==='tr'&&!tradingViewChartSymbol(s,true))return;
+ if(market==='us'&&!tradingViewChartSymbol(s,false))return;
  block.querySelectorAll('.chart-market-toggle').forEach(b=>b.classList.toggle('active',b===button));
  let caption=block.querySelector('.chart-market-caption');
  if(caption)caption.innerHTML='Mostrando <b>'+E(chartMarketName(s,market==='tr'))+'</b>. Cambio de gráfico únicamente; la cotización superior permanece en el mercado de la ficha.';
