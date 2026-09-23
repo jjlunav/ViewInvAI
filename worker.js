@@ -13,8 +13,57 @@ const NASDAQ_HEADERS = {
   "Referer": "https://www.nasdaq.com/"
 };
 
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://api.traderepublic.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; media-src 'none'; upgrade-insecure-requests",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=31536000"
+};
+
+function applySecurityHeaders(headers) {
+  const out = new Headers(headers || {});
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) out.set(name, value);
+  out.delete("Access-Control-Allow-Origin");
+  out.delete("Access-Control-Allow-Credentials");
+  return out;
+}
+
+function secureResponse(response) {
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: applySecurityHeaders(response.headers)
+  });
+}
+
+function jsonResponse(payload, status = 200, extraHeaders = {}) {
+  const headers = applySecurityHeaders(new Headers(extraHeaders));
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  return new Response(JSON.stringify(payload), { status, headers });
+}
+
+function requestGuard(request, { websocket = false } = {}) {
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: applySecurityHeaders() });
+  const url = new URL(request.url);
+  const origin = request.headers.get("Origin");
+  if (origin && origin !== url.origin) return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
+  const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
+  if (site && !["same-origin", "same-site", "none"].includes(site)) {
+    return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
+  }
+  if (websocket && (request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
+    return new Response("Expected WebSocket upgrade", { status: 426, headers: applySecurityHeaders() });
+  }
+  return null;
+}
+
 function safeStockSymbol(symbol) {
-  return String(symbol || "").toUpperCase().replace(/[^A-Z0-9.\-]/g, "");
+  const value = String(symbol || "").trim().toUpperCase();
+  return /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(value) ? value : "";
 }
 
 async function fetchNasdaqChart(symbol) {
@@ -30,7 +79,7 @@ async function fetchNasdaqChart(symbol) {
   if (!response.ok) throw new Error("Nasdaq chart " + response.status);
   const json = await response.json();
   const data = json && json.data;
-  const raw = data && Array.isArray(data.chart) ? data.chart : [];
+  const raw = data && Array.isArray(data.chart) ? data.chart.slice(-1500) : [];
   const points = raw.map(point => ({
     time: Number(point.x),
     price: parseMarketNumber(point.y != null ? point.y : point.z && (point.z.price || point.z.value)),
@@ -91,7 +140,8 @@ async function openTradeRepublicSocket() {
 
 async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", resolution = 60000) {
   const safeIsin = String(isin || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const safeExchange = String(exchange || "LSX").toUpperCase().replace(/[^A-Z0-9]/g, "") || "LSX";
+  const requestedExchange = String(exchange || "LSX").trim().toUpperCase();
+  const safeExchange = requestedExchange === "LSX" ? "LSX" : "LSX";
   if (!/^[A-Z0-9]{12}$/.test(safeIsin)) throw new Error("Invalid ISIN");
   const allowedRanges = new Set(["1d","1w","1m","3m","6m","1y","5y","max"]);
   const safeRange = allowedRanges.has(range) ? range : "1d";
@@ -115,7 +165,7 @@ async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", r
       if (code === "E") throw new Error("Trade Republic history subscription rejected");
       if (code !== "A") continue;
       const data = JSON.parse(body || "{}");
-      const aggregates = Array.isArray(data.aggregates) ? data.aggregates : [];
+      const aggregates = Array.isArray(data.aggregates) ? data.aggregates.slice(-5000) : [];
       return {
         isin: safeIsin,
         exchange: safeExchange,
@@ -149,12 +199,14 @@ async function nasdaqChart(request) {
     if (quote && quote.price != null) {
       points.push({ time: Date.now(), price: quote.price, volume: quote.volume || null, live: true });
     }
-    return Response.json(
+    return jsonResponse(
       { symbol, points, quote, source: "Nasdaq", fetchedAt: new Date().toISOString() },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Access-Control-Allow-Origin": "*" } }
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate" }
     );
   } catch (error) {
-    return Response.json({ error: String(error && error.message || error) }, { status: 502 });
+    console.warn("Nasdaq chart upstream error", String(error && error.message || error));
+    return jsonResponse({ error: "Upstream market data unavailable" }, 502, { "Cache-Control": "no-store" });
   }
 }
 
@@ -166,11 +218,10 @@ async function tradeRepublicHistory(request) {
   const resolution = Number(url.searchParams.get("resolution") || 60000);
   try {
     const result = await fetchTradeRepublicHistory(isin, exchange, range, resolution);
-    return Response.json(result, {
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Access-Control-Allow-Origin": "*" }
-    });
+    return jsonResponse(result, 200, { "Cache-Control": "no-store, no-cache, must-revalidate" });
   } catch (error) {
-    return Response.json({ error: String(error && error.message || error) }, { status: 502 });
+    console.warn("Trade Republic history upstream error", String(error && error.message || error));
+    return jsonResponse({ error: "Upstream market data unavailable" }, 502, { "Cache-Control": "no-store" });
   }
 }
 
@@ -219,27 +270,46 @@ async function nasdaqQuotes(request) {
   const url = new URL(request.url);
   const symbols = [...new Set((url.searchParams.get("symbols") || "")
     .split(",")
-    .map(x => x.trim().toUpperCase())
+    .map(safeStockSymbol)
     .filter(Boolean))].slice(0, 25);
 
   if (!symbols.length) {
-    return Response.json({ quotes: [], error: "No symbols" }, { status: 400 });
+    return jsonResponse({ quotes: [], error: "No valid symbols" }, 400, { "Cache-Control": "no-store" });
   }
 
   const settled = await Promise.allSettled(symbols.map(fetchNasdaqQuote));
   const quotes = settled
     .map((result, i) => result.status === "fulfilled" && result.value ? result.value : { symbol: symbols[i], error: "unavailable" });
 
-  return Response.json(
+  return jsonResponse(
     { quotes, fetchedAt: new Date().toISOString(), source: "Nasdaq website quote API" },
-    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Access-Control-Allow-Origin": "*" } }
+    200,
+    { "Cache-Control": "no-store, no-cache, must-revalidate" }
   );
 }
 
-async function proxyTradeRepublic(request) {
-  if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
-    return new Response("Expected WebSocket upgrade", { status: 426 });
+function validTrClientMessage(data, subscriptions) {
+  if (typeof data !== "string" || data.length > 512) return false;
+  if (data === "connect 30") return true;
+  let m = data.match(/^unsub\s+(\d{1,7})$/);
+  if (m) {
+    subscriptions.delete(m[1]);
+    return true;
   }
+  m = data.match(/^sub\s+(\d{1,7})\s+(.+)$/);
+  if (!m) return false;
+  if (subscriptions.size >= 1000 && !subscriptions.has(m[1])) return false;
+  let payload;
+  try { payload = JSON.parse(m[2]); } catch (_) { return false; }
+  if (!payload || payload.type !== "ticker" || typeof payload.id !== "string") return false;
+  if (!/^[A-Z0-9]{12}\.LSX$/.test(payload.id)) return false;
+  subscriptions.add(m[1]);
+  return true;
+}
+
+async function proxyTradeRepublic(request) {
+  const guard = requestGuard(request, { websocket: true });
+  if (guard) return guard;
 
   const pair = new WebSocketPair();
   const [client, browser] = Object.values(pair);
@@ -273,8 +343,18 @@ async function proxyTradeRepublic(request) {
     } catch (_) {}
   };
 
-  browser.addEventListener("message", event => safeSend(upstream, event.data));
-  upstream.addEventListener("message", event => safeSend(browser, event.data));
+  const subscriptions = new Set();
+  browser.addEventListener("message", event => {
+    if (!validTrClientMessage(event.data, subscriptions)) {
+      safeClose(browser, 1008, "Policy violation");
+      safeClose(upstream, 1008, "Policy violation");
+      return;
+    }
+    safeSend(upstream, event.data);
+  });
+  upstream.addEventListener("message", event => {
+    if (typeof event.data === "string" && event.data.length <= 262144) safeSend(browser, event.data);
+  });
 
   browser.addEventListener("close", event => safeClose(upstream, event.code || 1000, "browser closed"));
   upstream.addEventListener("close", event => safeClose(browser, event.code || 1000, "upstream closed"));
@@ -292,14 +372,17 @@ export default {
       return proxyTradeRepublic(request);
     }
     if (url.pathname === "/api/us-live") {
+      const guard = requestGuard(request); if (guard) return guard;
       return nasdaqQuotes(request);
     }
     if (url.pathname === "/api/us-chart") {
+      const guard = requestGuard(request); if (guard) return guard;
       return nasdaqChart(request);
     }
     if (url.pathname === "/api/tr-history") {
+      const guard = requestGuard(request); if (guard) return guard;
       return tradeRepublicHistory(request);
     }
-    return env.ASSETS.fetch(request);
+    return secureResponse(await env.ASSETS.fetch(request));
   }
 };
