@@ -827,7 +827,7 @@ function quickProfileHtml(s){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · sesión extendida cuando está disponible</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
@@ -892,7 +892,7 @@ function profileHtml(s,view){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot base '+E(updated)+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   trRelation+trNote+feedWarning+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · 24H/24x5 cuando está disponible</span></div>'+miniChart(s)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
@@ -1200,7 +1200,7 @@ window.addEventListener('beforeunload',saveUiState);
 setInterval(clock,1000);
 setInterval(()=>load(false),15000);
 load(true);
-)+v.toLocaleString('es-ES',{minimumFractionDigits:v<10?2:2,maximumFractionDigits:v<1?6:v<10?4:2});
+)+v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:v<1?6:v<10?4:2});
 }
 function chartFormatTime(ms){
  let d=new Date(ms);
@@ -1219,8 +1219,8 @@ function chartCleanPoints(points){
  out.sort((a,b)=>a.time-b.time);
  return out.slice(-900);
 }
-function chartSvgText(x,y,text,cls,anchor='start'){
- return '<text x="'+x+'" y="'+y+'" class="'+cls+'" text-anchor="'+anchor+'">'+E(text)+'</text>';
+function chartSvgText(x,y,value,cls,anchor='start'){
+ return '<text x="'+x+'" y="'+y+'" class="'+cls+'" text-anchor="'+anchor+'">'+E(value)+'</text>';
 }
 function drawLiveChart(el){
  if(!el||!el._chartReady)return;
