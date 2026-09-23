@@ -6,20 +6,19 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923m">
+  <link rel="stylesheet" href="styles.css?v=20260923n">
 </head>
 <body>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark">⌁</div>
-      <div><div class="brand-name">CatalystPulse</div><div class="brand-subtitle">CATALIZADORES · SEÑALES · MOMENTUM</div></div>
+      <div><div class="brand-name">CatalystPulse</div><div class="brand-subtitle"><span>CATALIZADORES</span><i aria-hidden="true"></i><span>SEÑALES</span><i aria-hidden="true"></i><span>MOMENTUM</span></div></div>
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
       <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
-      <button class="nav-item" data-view="radar"><span>◉</span>Radar de acciones</button>
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
@@ -180,24 +179,6 @@
       <div id="futureResults" class="stock-list"></div>
     </section>
 
-    <section class="view" id="view-radar">
-      <div class="page-heading compact-heading">
-        <div><h1>Radar de acciones</h1><p class="lead">Precio, variación, premarket, postmarket, volumen y técnicos.</p></div>
-        <button class="btn icon-btn" id="refreshRadar" title="Actualizar">↻</button>
-      </div>
-      <div class="control-strip">
-        <input id="radarSearch" class="input grow" placeholder="Buscar ticker o empresa">
-        <select id="radarSession" class="select"><option value="all">Todas las sesiones</option><option value="premarket">Premarket</option><option value="regular">Regular</option><option value="postmarket">Postmarket</option></select>
-        <select id="radarDirection" class="select"><option value="all">Todas</option><option value="up">↑ Subidas</option><option value="down">↓ Bajadas</option></select>
-      </div>
-      <div class="market-tabs compact-tabs" data-tab-group="radarMarket">
-        <button class="tab active" data-tab="tr">Trade Republic</button>
-        <button class="tab" data-tab="all">Catálogo completo</button>
-        <button class="tab" data-tab="us">Resto EEUU</button>
-      </div>
-      <div id="radarResults" class="stock-list dense"></div>
-    </section>
-
     <section class="view" id="view-calendar">
       <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Eventos fechados, resultados y catalizadores asociados a los valores.</p></div></div>
       <div id="calendarResults" class="stock-list"></div>
@@ -207,11 +188,14 @@
       <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Instrumentos disponibles en Trade Republic, identificados por ISIN y relacionados con su cotización estadounidense cuando corresponde.</p></div></div>
       <div id="catalogDetail" class="stock-profile is-hidden"></div>
       <div id="catalogBrowse">
-        <div class="control-strip">
-          <input id="catalogSearch" class="input grow" placeholder="Buscar ticker TR/LSX, ticker EEUU, empresa o ISIN">
+        <div class="catalog-toolbar">
+          <input id="catalogSearch" class="input grow" placeholder="Buscar en cualquier columna del catálogo TR">
+          <button type="button" class="btn ghost catalog-reset-columns" data-catalog-mode="tr">Restablecer columnas</button>
+          <button type="button" class="btn ghost catalog-clear-filters" data-catalog-mode="tr">Limpiar filtros</button>
           <span id="catalogCount" class="count-pill">0</span>
         </div>
-        <div id="catalogResults" class="stock-list dense"></div>
+        <div class="catalog-help">Haz clic en una cabecera para ordenar · arrástrala para cambiar su posición · usa la segunda fila para filtrar (ej.: &gt;20, &lt;5, 10..30).</div>
+        <div id="catalogResults" class="catalog-sheet-wrap"></div>
       </div>
     </section>
 
@@ -219,11 +203,14 @@
       <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Acciones y ADR negociados en Nasdaq, NYSE, AMEX y NYSE Arca cargados en CatalystPulse.</p></div></div>
       <div id="catalogUSDetail" class="stock-profile is-hidden"></div>
       <div id="catalogUSBrowse">
-        <div class="control-strip">
-          <input id="catalogUSSearch" class="input grow" placeholder="Buscar ticker, empresa o ISIN">
+        <div class="catalog-toolbar">
+          <input id="catalogUSSearch" class="input grow" placeholder="Buscar en cualquier columna del catálogo EEUU">
+          <button type="button" class="btn ghost catalog-reset-columns" data-catalog-mode="us">Restablecer columnas</button>
+          <button type="button" class="btn ghost catalog-clear-filters" data-catalog-mode="us">Limpiar filtros</button>
           <span id="catalogUSCount" class="count-pill">0</span>
         </div>
-        <div id="catalogUSResults" class="stock-list dense"></div>
+        <div class="catalog-help">Haz clic en una cabecera para ordenar · arrástrala para cambiar su posición · usa la segunda fila para filtrar (ej.: &gt;20, &lt;5, 10..30).</div>
+        <div id="catalogUSResults" class="catalog-sheet-wrap"></div>
       </div>
     </section>
 
@@ -253,6 +240,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923m"></script>
+<script src="app.js?v=20260923n"></script>
 </body>
 </html>
