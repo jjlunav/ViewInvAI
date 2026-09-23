@@ -105,6 +105,16 @@ jobs:
           from pathlib import Path
           p = Path("/tmp/catalyst-smoke/index.html")
           html = p.read_text(encoding="utf-8")
+          pre = r'''<script>
+          window.addEventListener('error', (e) => {
+            document.documentElement.dataset.runtimeError = String((e && (e.message || (e.error && e.error.message))) || 'runtime error');
+          });
+          window.addEventListener('unhandledrejection', (e) => {
+            document.documentElement.dataset.runtimeError = String((e && e.reason && (e.reason.message || e.reason)) || 'unhandled rejection');
+          });
+          </script>
+          '''
+          html = html.replace('<script src="app.js', pre + '<script src="app.js', 1)
           inject = r'''
           <script>
           (() => {
@@ -173,6 +183,7 @@ jobs:
           if ! grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html; then
             echo "::error::La aplicación no llegó a renderizar una acción"
             grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
+            grep -o 'data-runtime-error="[^"]*"' /tmp/catalyst-dom.html || true
             python - <<'PY'
           from pathlib import Path
           dom = Path("/tmp/catalyst-dom.html").read_text(encoding="utf-8", errors="replace")
