@@ -6,6 +6,7 @@ import unicodedata
 import datetime as dt
 from difflib import SequenceMatcher
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -23,7 +24,8 @@ TR_URLS = [
     "https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf",
 ]
 OUT = Path("data/market.json")
-TMP = Path("/tmp/tr_universe.pdf")
+TR_PDF_MAX_BYTES = 50 * 1024 * 1024
+TR_PDF_MAX_PAGES = 5000
 NEWS_SYMBOL_LIMIT = 60
 NEWS_DAYS = 7
 NEWS_PER_SYMBOL = 10
@@ -57,21 +59,29 @@ def norm(s):
 
 def tr_universe():
     source = None
+    pdf_bytes = None
     for url in TR_URLS:
         try:
             r = requests.get(url, headers=HEADERS, timeout=60)
-            if r.ok and r.content[:4] == b"%PDF":
-                TMP.write_bytes(r.content)
+            content = r.content if r.ok else b""
+            if (
+                content[:4] == b"%PDF"
+                and 0 < len(content) <= TR_PDF_MAX_BYTES
+            ):
+                pdf_bytes = content
                 source = url
                 break
         except Exception:
             pass
-    if not source:
+    if not source or not pdf_bytes:
         return {}, 0, None
 
     pat = re.compile(r"^([A-Z]{2}[A-Z0-9]{10})\s+(.+)$")
     rows = []
-    for page in PdfReader(str(TMP)).pages:
+    reader = PdfReader(BytesIO(pdf_bytes), strict=False)
+    if len(reader.pages) > TR_PDF_MAX_PAGES:
+        raise RuntimeError("Trade Republic universe PDF exceeds page safety limit")
+    for page in reader.pages:
         for line in (page.extract_text() or "").splitlines():
             m = pat.match(line.strip())
             if m:
