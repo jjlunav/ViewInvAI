@@ -832,7 +832,7 @@ function rankingWhy(s,next,se,q,pos){
 function why(s,se){let b=[],c=FC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
 function entryChangeHtml(s,se){
  let v=FC(s,se),live=se==='regular'&&usLiveChange(s)!==null;
- return '<span class="'+C(v)+'"'+(live?' data-us-live-change-key="'+E(stockKey(s))+'"':'')+'>'+PC(v)+'</span>';
+ return '<span class="quote-change '+C(v)+'"'+(live?' data-us-live-change-key="'+E(stockKey(s))+'"':'')+'>'+PC(v)+'</span>';
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
  let ch=FC(s,se),p=SP(s,se),hint=rankText||why(s,se);
