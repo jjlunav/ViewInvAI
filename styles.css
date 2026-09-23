@@ -51,15 +51,15 @@
 }
 
 /* Lazy TradingView mini chart inside every expanded stock */
-.mini-chart-block{padding:7px 11px 4px;border-top:1px solid #192a34}
-.mini-chart-title{font-size:9px;color:#68818d;text-transform:uppercase;letter-spacing:.35px;margin-bottom:4px}
-.mini-chart{height:118px;width:100%;min-width:0;overflow:hidden;border:1px solid #1f3542;border-radius:7px;background:#08131b}
-.mini-chart .tradingview-widget-container,.mini-chart .tradingview-widget-container__widget{width:100%;height:100%}
-.chart-placeholder{height:100%;display:grid;place-items:center;color:#627d89;font-size:9px}
+.mini-chart-block{padding:8px 11px 5px;border-top:1px solid #192a34;background:#05090c}
+.mini-chart-title{font-size:9px;color:#78939f;text-transform:uppercase;letter-spacing:.35px;margin-bottom:5px}
+.mini-chart{height:255px;width:100%;min-width:0;overflow:hidden;border:1px solid #1d3039;border-radius:7px;background:#000}
+.mini-chart .tradingview-widget-container,.mini-chart .tradingview-widget-container__widget{width:100%;height:100%;background:#000}
+.chart-placeholder{height:100%;display:grid;place-items:center;color:#627d89;font-size:9px;background:#000}
 @media(max-width:680px){
- .mini-chart-block{padding:6px 8px 3px}
- .mini-chart{height:96px}
- .mini-chart-title{font-size:8px}
+ .mini-chart-block{padding:6px 8px 4px}
+ .mini-chart{height:205px}
+ .mini-chart-title{font-size:8px;line-height:1.25}
 }
 
 /* Grouped catalysts per stock */
@@ -114,4 +114,24 @@
  .market-tape-item{height:31px;padding:0 7px;gap:4px;font-size:9px}
  .market-tape-item strong{font-size:10px}
  .market-tape-price{font-size:8px}
+}
+
+/* Metric explanations + transparent ranking rationale */
+.ranking-line{padding:7px 11px;border-top:1px solid #192a34;background:#0d1821;color:#9fb2bb;font-size:9px;line-height:1.45}
+.ranking-line strong{color:#d8e5ea}
+.metric-help{position:relative;outline:none;cursor:help}
+.metric-help small{display:flex;align-items:center;gap:4px}
+.info-dot{font-size:8px;color:#5f7c89;opacity:.8}
+.metric-help-text{display:none;position:absolute;z-index:90;left:7px;right:7px;top:calc(100% - 3px);padding:7px 8px;border:1px solid #315161;border-radius:6px;background:#101e28;color:#c2d1d7;font-size:9px;line-height:1.4;box-shadow:0 12px 26px rgba(0,0,0,.45);text-transform:none;letter-spacing:0}
+@media(hover:hover) and (pointer:fine){
+ .metric-help:hover{background:#0d1b24}
+ .metric-help:hover .metric-help-text{display:block}
+}
+.metric-help:focus{background:#0d1b24}
+.metric-help:focus .metric-help-text{display:block}
+@media(max-width:680px){
+ .ranking-line{padding:6px 8px;font-size:8px}
+ .metric-help{cursor:pointer}
+ .metric-help-text{position:static;grid-column:1/-1;margin-top:4px;padding:5px 6px;box-shadow:none;font-size:8px}
+ .metric-help:focus .metric-help-text{display:block}
 }
