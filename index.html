@@ -71,7 +71,6 @@
           <option value="premarket">Premarket</option>
           <option value="regular">Sesión regular</option>
           <option value="postmarket">Postmarket · tras cierre EEUU</option>
-          <option value="previous">Sesión anterior</option>
         </select>
         <div class="preset-picker" id="presetPicker">
           <button type="button" class="select preset-trigger" id="presetTrigger" aria-haspopup="listbox" aria-expanded="false">
@@ -85,6 +84,7 @@
             <button type="button" class="preset-option" data-value="exploded" title="Localiza acciones que ya han subido con fuerza durante la sesión actual."><span>Explosión en la sesión</span></button>
             <button type="button" class="preset-option" data-value="afterhours" title="Ordena por mayor subida en postmarket después del cierre regular de EEUU."><span>Más suben tras cierre EEUU</span></button>
             <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos para reducir señales débiles."><span>Histórico y tendencia estrictos</span></button>
+            <button type="button" class="preset-option" data-value="custom" title="Carga el último criterio personalizado que hayas guardado en este navegador."><span>Personalizado guardado</span></button>
           </div>
           <select id="presetSelect" class="preset-native" aria-hidden="true" tabindex="-1">
             <option value="short">Corto plazo · 1–5 sesiones</option>
@@ -94,6 +94,7 @@
             <option value="exploded">Explosión en la sesión</option>
             <option value="afterhours">Más suben tras cierre EEUU</option>
             <option value="strict">Histórico y tendencia estrictos</option>
+            <option value="custom">Personalizado guardado</option>
           </select>
         </div>
         <button class="btn secondary" id="applyFilters">Aplicar</button>
@@ -108,16 +109,16 @@
       <details class="filter-panel compact-details" id="filterDetails">
         <summary>Configurar criterio</summary>
         <div class="filters-grid">
-          <div class="criterion-field" title="Variación mínima exigida en la sesión seleccionada; una acción debe subir al menos este porcentaje para aparecer.">
-            <label for="minChange">Subida mín. % <span class="param-info">ⓘ</span></label>
+          <div class="criterion-field" title="Variación porcentual mínima exigida en la sesión seleccionada. El porcentaje que ves en cada resultado es exactamente el que se usa para este filtro.">
+            <label for="minChange">Variación mín. % <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minChange" type="number" step="0.1" value="2" readonly><button type="button" class="field-lock" data-target="minChange" aria-label="Desbloquear subida mínima" title="Desbloquear este parámetro">🔒</button></div>
           </div>
-          <div class="criterion-field" title="Límite máximo de subida admitido; sirve para excluir acciones que ya se han disparado demasiado. Con 0 no hay límite.">
-            <label for="maxChange">Subida máx. % <span class="param-info">ⓘ</span></label>
+          <div class="criterion-field" title="Variación porcentual máxima admitida en la sesión seleccionada. Con 0 no hay límite máximo.">
+            <label for="maxChange">Variación máx. % <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="maxChange" type="number" step="0.1" value="0" readonly><button type="button" class="field-lock" data-target="maxChange" aria-label="Desbloquear subida máxima" title="Desbloquear este parámetro">🔒</button></div>
             <small>0 = sin máximo</small>
           </div>
-          <div class="criterion-field" title="Compara el volumen actual con su volumen medio reciente; 1,5× significa un 50% más actividad de lo habitual.">
+          <div class="criterion-field" title="En sesión regular compara el volumen actual con el volumen medio diario. En premarket/postmarket compara el volumen de ese tramo con el volumen medio diario; por eso los valores no son directamente equivalentes entre sesiones.">
             <label for="minRelVolume">Vol. relativo mín. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minRelVolume" type="number" step="0.1" value="1.5" readonly><button type="button" class="field-lock" data-target="minRelVolume" aria-label="Desbloquear volumen relativo" title="Desbloquear este parámetro">🔒</button></div>
           </div>
@@ -140,19 +141,20 @@
           </div>
         </div>
         <div class="checks-grid">
-          <label class="filter-toggle" title="Exige una estructura de tendencia compatible usando precio, EMA20 y EMA50 cuando están disponibles.">
+          <label class="filter-toggle" title="Exige precio ≥ EMA20 ≥ EMA50. Si falta cualquiera de esos datos, el valor no supera este filtro.">
             <input id="requireTrend" type="checkbox">
             <span class="toggle-switch" aria-hidden="true"></span>
-            <span class="toggle-copy"><span class="toggle-title">Exigir histórico/tendencia</span></span>
+            <span class="toggle-copy"><span class="toggle-title">Exigir tendencia EMA20/EMA50</span></span>
           </label>
-          <label class="filter-toggle" title="Descarta valores con volumen demasiado bajo para reducir señales poco fiables.">
+          <label class="filter-toggle" title="Excluye valores con menos de 10.000 títulos negociados en la sesión o con spread BID/ASK superior al 8% cuando ese dato está disponible.">
             <input id="excludeIlliquid" type="checkbox" checked>
             <span class="toggle-switch" aria-hidden="true"></span>
-            <span class="toggle-copy"><span class="toggle-title">Penalizar liquidez baja</span></span>
+            <span class="toggle-copy"><span class="toggle-title">Excluir liquidez baja</span></span>
           </label>
         </div>
         <div class="filter-actions">
           <button class="btn ghost" id="resetFilters">Restablecer</button>
+          <button class="btn secondary" id="saveCustomFilters">Guardar personalizado</button>
         </div>
       </details>
 
