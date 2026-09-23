@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260924r19">
+  <link rel="stylesheet" href="styles.css?v=20260924r22">
 </head>
 <body>
 <div class="app-shell">
@@ -19,6 +19,7 @@
     <nav class="nav">
       <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
       <button class="nav-item" data-view="recommendation"><span>◎</span>Recomendación actual</button>
+      <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
@@ -189,6 +190,48 @@
       <div id="recommendationResults" class="recommendation-grid"><div class="empty-state">Calculando candidatas…</div></div>
     </section>
 
+    <section class="view" id="view-heatmap">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Mapa de calor</h1>
+          <p class="lead">Vista visual del mercado agrupada por sectores. El tamaño de cada acción representa su capitalización bursátil cuando está disponible y el color refleja la variación de la sesión seleccionada.</p>
+        </div>
+        <button class="btn icon-btn" id="refreshHeatmap" title="Actualizar">↻</button>
+      </div>
+      <div class="heatmap-toolbar">
+        <div class="market-tabs compact-tabs heatmap-market-tabs" data-tab-group="heatmapMarket">
+          <button class="tab active" data-tab="tr">Trade Republic</button>
+          <button class="tab" data-tab="us">EEUU</button>
+        </div>
+        <select id="heatmapSession" class="select">
+          <option value="auto">Sesión automática</option>
+          <option value="premarket">Premarket</option>
+          <option value="regular">Sesión regular</option>
+          <option value="postmarket">Postmarket</option>
+        </select>
+        <select id="heatmapLimit" class="select">
+          <option value="100">Top 100 por capitalización</option>
+          <option value="250" selected>Top 250 por capitalización</option>
+          <option value="500">Top 500 por capitalización</option>
+        </select>
+        <div class="heatmap-legend" aria-label="Leyenda del mapa de calor">
+          <span class="heat-legend loss-strong">≤ -5%</span>
+          <span class="heat-legend loss">-2%</span>
+          <span class="heat-legend flat">0%</span>
+          <span class="heat-legend gain">+2%</span>
+          <span class="heat-legend gain-strong">≥ +5%</span>
+        </div>
+      </div>
+      <div class="status-line">
+        <span id="heatmapSessionText">Sesión automática</span>
+        <span>·</span>
+        <span id="heatmapCount">0 acciones</span>
+        <span>·</span>
+        <span id="heatmapUpdated">pendiente</span>
+      </div>
+      <div id="heatmapResults" class="heatmap-board"><div class="empty-state">Cargando mapa de calor…</div></div>
+    </section>
+
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
         <div><h1>Potencial futuro</h1><p class="lead">Localiza acciones con catalizadores próximos o noticias recientes capaces de aumentar la volatilidad antes del movimiento. Puedes limitar por horizonte temporal, tipo de evento y disponibilidad confirmada en Trade Republic.</p></div>
@@ -270,6 +313,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r21"></script>
+<script src="app.js?v=20260924r22"></script>
 </body>
 </html>
