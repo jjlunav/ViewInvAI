@@ -425,7 +425,7 @@ function renderCalendar(){
 function status(){}
 function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();renderCatalogUS();status()}
 async function load(force=false){if(loading)return;loading=true;try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/900000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
-function show(v){if(!V[v])return;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');render()}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile)state.profileKey=null;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');render()}
 let lastLeaderSession=null;
 function clock(){
  let now=new Date();
@@ -445,9 +445,34 @@ document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=
 $('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 document.addEventListener('click',e=>{
  let b=e.target.closest&&e.target.closest('.fav-star');
- if(!b)return;
- e.preventDefault();e.stopPropagation();
- toggleFavorite(b.dataset.favKey);
+ if(b){
+  e.preventDefault();e.stopPropagation();
+  toggleFavorite(b.dataset.favKey);
+  return;
+ }
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){
+  e.preventDefault();e.stopPropagation();
+  state.profileKey=null;
+  render();
+  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
+  return;
+ }
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link'))return;
+  e.preventDefault();e.stopPropagation();
+  let s=stockByKey(row.dataset.stockKey);
+  if(s)openStock(s);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key))return;
+ if(e.target.closest&&e.target.closest('.fav-star'))return;
+ e.preventDefault();
+ let s=stockByKey(row.dataset.stockKey);
+ if(s)openStock(s);
 });
 $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry()});
 function setPreset(value){
@@ -470,6 +495,6 @@ document.addEventListener('toggle',e=>{let d=e.target;if(d&&d.matches&&d.matches
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry()}));
 $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.radarMarket=b.dataset.tab;$$('[data-tab-group="radarMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderRadar()}));
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
-$('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);
+$('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);$('#catalogUSSearch').addEventListener('input',renderCatalogUS);
 ['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
 toUI(state.filters);lockAllCriteria();initLeadersDock();clock();setInterval(clock,30000);setInterval(()=>load(false),180000);load(true);
