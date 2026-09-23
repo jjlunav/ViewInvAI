@@ -1,6 +1,8 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
+const TR_LIVE_URL='wss://api.traderepublic.com';
+let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null};
 let favorites=readFavorites();
 let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday',profileKey:null,profileReason:''};
 const V={entry:'01 Potencial de entrada',future:'02 Potencial futuro',radar:'03 Radar de acciones',calendar:'04 Calendario y noticias',catalog:'05 Catálogo Trade Republic',catalogUS:'06 Catálogo EEUU'};
@@ -32,19 +34,53 @@ function priceCurrencies(s,p){
  if(cur==='EUR')return{eur:p,usd:fx?p*fx:null};
  return{usd:p,eur:fx?p/fx:null};
 }
+function trIsin(s){return String((s&&s.trIsin)||(s&&s.tradeRepublicVerified&&s&&s.isin)||'').trim()}
+function trLivePrice(s){return N(s&&s.trLivePrice)}
+function trLivePre(s){return N(s&&s.trLivePre)}
+function trLiveChange(s){
+ let direct=N(s&&s.trLiveChangePct);
+ if(direct!==null)return direct;
+ let p=trLivePrice(s),pre=trLivePre(s);
+ return p!==null&&pre>0?(p/pre-1)*100:null;
+}
+function trPriceValues(s,fallback){
+ let live=trLivePrice(s),fx=eurUsd();
+ if(live!==null)return{eur:live,usd:fx?live*fx:null,direct:true};
+ let x=priceCurrencies(s,fallback);
+ return{eur:x.eur,usd:x.usd,direct:false};
+}
+function pricePairInner(s,p,preferTr=false){
+ let d='\u0024';
+ if(preferTr&&s&&s.tradeRepublicVerified){
+  let x=trPriceValues(s,p);
+  return '<strong>'+money(x.eur,'€')+'</strong><small>/ '+money(x.usd,d)+'</small>';
+ }
+ let x=priceCurrencies(s,p);
+ return '<strong>'+money(x.usd,d)+'</strong><small>/ '+money(x.eur,'€')+'</small>';
+}
 function pricePair(s,p,preferTr=false){
- let x=priceCurrencies(s,p),d='\u0024';
- let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
- let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
- let source=preferTr?'Precio en € convertido desde la cotización EEUU mediante EUR/USD; la cotización LSX/TR puede diferir por mercado y spread.':'Precio EEUU en $; valor en € mostrado como referencia mediante EUR/USD.';
- return '<span class="price-pair" title="'+E(source)+'"><strong>'+primary+'</strong><small>/ '+secondary+'</small></span>';
+ let liveAttrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-key="'+E(stockKey(s))+'"':'';
+ let direct=preferTr&&trLivePrice(s)!==null;
+ let source=preferTr
+  ?(direct?'Cotización LSX en tiempo real recibida directamente de Trade Republic. El precio en $ es una conversión EUR/USD de referencia.':'Esperando cotización LSX en tiempo real; mientras tanto se muestra una conversión desde la cotización EEUU.')
+  :'Precio EEUU en $; valor en € mostrado como referencia mediante EUR/USD.';
+ return '<span class="price-pair'+(direct?' live-quote':'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
 }
 function levelPair(s,p,preferTr=false){
- let x=priceCurrencies(s,p),d='\u0024';
- let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
- let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
- return primary+' / '+secondary;
+ let d='\u0024';
+ if(preferTr&&s&&s.tradeRepublicVerified){
+  let x=trPriceValues(s,p);
+  return money(x.eur,'€')+' / '+money(x.usd,d);
+ }
+ let x=priceCurrencies(s,p);
+ return money(x.usd,d)+' / '+money(x.eur,'€');
 }
+function liveChangeHtml(s,fallback,preferTr=false){
+ let value=preferTr&&s&&s.tradeRepublicVerified?(trLiveChange(s)??N(fallback)):N(fallback);
+ let attrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-change-key="'+E(stockKey(s))+'"':'';
+ return '<span class="'+C(value)+'"'+attrs+'>'+PC(value)+'</span>';
+}
+
 function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
 function C(v){v=N(v);return v===null?'':v>=0?'positive':'negative'}
 function DF(v){if(v===null||v===undefined||v==='')return'—';let raw=v;if(typeof raw==='string'&&/^\d+$/.test(raw))raw=Number(raw);if(typeof raw==='number'&&raw>0&&raw<1e12)raw*=1000;let d=new Date(raw);return isNaN(d)?'—':d.toLocaleDateString('es-ES')}
@@ -72,6 +108,112 @@ function scoreParts(s,se=SES()){
 }
 function score(s,se=SES()){return scoreParts(s,se).total}
 
+
+function trStockByKey(key){let s=stockByKey(key);return s&&s.tradeRepublicVerified&&trIsin(s)?s:null}
+function trApplyTickerPayload(s,payload){
+ if(!s||!payload)return;
+ let last=N(payload.last&&payload.last.price);
+ let bid=N(payload.bid&&payload.bid.price);
+ let ask=N(payload.ask&&payload.ask.price);
+ let pre=N(payload.pre&&payload.pre.price);
+ let open=N(payload.open&&payload.open.price);
+ let px=last??bid??ask;
+ if(px!==null)s.trLivePrice=px;
+ if(bid!==null)s.trLiveBid=bid;
+ if(ask!==null)s.trLiveAsk=ask;
+ if(pre!==null)s.trLivePre=pre;
+ if(open!==null)s.trLiveOpen=open;
+ if(px!==null&&pre>0)s.trLiveChangePct=(px/pre-1)*100;
+ s.trLiveQuality=payload.qualityId||'';
+ let times=[payload.last&&payload.last.time,payload.bid&&payload.bid.time,payload.ask&&payload.ask.time].map(N).filter(x=>x!==null);
+ if(times.length)s.trLiveUpdatedAt=Math.max(...times);
+ s.trLiveReceivedAt=Date.now();
+}
+function trSendSubscriptions(){
+ if(!trLive.connected||!trLive.ws||trLive.ws.readyState!==WebSocket.OPEN)return;
+ for(let key of trLive.wanted){
+  if(trLive.subByKey.has(key))continue;
+  let s=trStockByKey(key);if(!s)continue;
+  let id=trIsin(s)+'.LSX',sub=String(trLive.seq++);
+  trLive.subByKey.set(key,sub);trLive.keyBySub.set(sub,key);
+  trLive.ws.send('sub '+sub+' '+JSON.stringify({type:'ticker',id}));
+ }
+}
+function trScheduleReconnect(){
+ if(trLive.reconnectTimer)return;
+ let wait=Math.min(30000,1000*Math.pow(2,Math.min(trLive.reconnectAttempt++,5)));
+ trLive.reconnectTimer=setTimeout(()=>{trLive.reconnectTimer=null;connectTrLive()},wait);
+}
+function connectTrLive(){
+ if(trLive.connected||trLive.connecting)return;
+ if(typeof WebSocket==='undefined')return;
+ trLive.connecting=true;
+ let ws;
+ try{ws=new WebSocket(TR_LIVE_URL)}catch(_){trLive.connecting=false;trScheduleReconnect();return}
+ trLive.ws=ws;
+ ws.onopen=()=>{try{ws.send('connect 30')}catch(_){}};
+ ws.onmessage=e=>{
+  let msg=String(e.data||'');
+  if(msg==='connected'||msg.startsWith('connected')){
+   trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.subByKey.clear();trLive.keyBySub.clear();trSendSubscriptions();return;
+  }
+  let m=msg.match(/^(\d+)\s+([A-Z])(?:\s+([\s\S]+))?$/);
+  if(!m||!m[3])return;
+  let key=trLive.keyBySub.get(m[1]);if(!key)return;
+  let payload;try{payload=JSON.parse(m[3])}catch(_){return}
+  let s=trStockByKey(key);if(s)trApplyTickerPayload(s,payload);
+ };
+ ws.onerror=()=>{};
+ ws.onclose=()=>{
+  trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();trScheduleReconnect();
+ };
+}
+function ensureTrLiveKey(key){
+ let s=trStockByKey(key);if(!s)return;
+ trLive.wanted.add(key);connectTrLive();trSendSubscriptions();
+}
+function observeTrLivePrices(root=document){
+ if(!('IntersectionObserver' in window)){
+  root.querySelectorAll('[data-tr-live-key],[data-tr-live-change-key]').forEach(el=>ensureTrLiveKey(el.dataset.trLiveKey||el.dataset.trLiveChangeKey));
+  return;
+ }
+ if(!trLive.observer)trLive.observer=new IntersectionObserver(entries=>{
+  for(let entry of entries)if(entry.isIntersecting){
+   let el=entry.target,key=el.dataset.trLiveKey||el.dataset.trLiveChangeKey;
+   if(key)ensureTrLiveKey(key);
+  }
+ },{rootMargin:'300px 0px'});
+ root.querySelectorAll('[data-tr-live-key],[data-tr-live-change-key]').forEach(el=>trLive.observer.observe(el));
+}
+function refreshTrLiveDom(){
+ document.querySelectorAll('[data-tr-live-key]').forEach(el=>{
+  let s=trStockByKey(el.dataset.trLiveKey);if(!s)return;
+  let fallback=SP(s,currentMarketSession());
+  let direct=trLivePrice(s)!==null;
+  el.innerHTML=pricePairInner(s,fallback,true);
+  el.classList.toggle('live-quote',direct);
+  el.title=direct?'Cotización LSX en tiempo real · Trade Republic'+(s.trLiveQuality?' · '+s.trLiveQuality:''):'Esperando cotización LSX en tiempo real';
+ });
+ document.querySelectorAll('[data-tr-live-change-key]').forEach(el=>{
+  let s=trStockByKey(el.dataset.trLiveChangeKey);if(!s)return;
+  let v=trLiveChange(s);if(v===null)return;
+  el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0);
+ });
+ let liveProfile=document.querySelector('[data-tr-profile-live-key]');
+ if(liveProfile){
+  let s=trStockByKey(liveProfile.dataset.trProfileLiveKey);
+  if(s&&trLivePrice(s)!==null){
+   let strong=liveProfile.querySelector('strong'),chg=liveProfile.querySelector('span');
+   if(strong)strong.innerHTML=pricePairInner(s,SP(s,currentMarketSession()),true);
+   let v=trLiveChange(s);if(chg&&v!==null){chg.textContent=PC(v);chg.className=C(v)}
+  }
+ }
+}
+function initTrLive(){
+ connectTrLive();
+ setInterval(refreshTrLiveDom,1000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)connectTrLive()});
+}
 function readFavorites(){
  try{
   let raw=JSON.parse(localStorage.getItem(FAV_KEY)||'[]');
@@ -155,7 +297,7 @@ function topGainers(kind,se){
 }
 function leaderItem(s,se,i,preferTr=false){
  let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
- return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div><span class="'+C(ch)+'">'+PC(ch)+'</span></div><div class="leader-body"><div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
+ return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body"><div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
 }
 function leadersPinned(){
  try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
@@ -226,7 +368,7 @@ function renderFavorites(){
  }
  box.innerHTML=stocks.map(s=>{
   let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div><div class="favorite-stats"><span class="'+C(ch)+'">'+PC(ch)+'</span><small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
+  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div><div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }
 function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
@@ -294,7 +436,7 @@ function rankingWhy(s,next,se,q,pos){
 function why(s,se){let b=[],c=SC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
  let ch=SC(s,se),p=SP(s,se),hint=rankText||why(s,se);
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+pricePair(s,p,preferTr)+'<span class="'+C(ch)+'">'+PC(ch)+'</span>'+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+pricePair(s,p,preferTr)+liveChangeHtml(s,ch,preferTr)+'+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
 function fromUI(){return{minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,minVolume:+$('#minVolume').value||0,trend:$('#requireTrend').checked,illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort}}
@@ -365,7 +507,7 @@ function catalogCard(s,i,mode){
   ?'<span class="pill ok">'+E(s.trExchange||'LSX')+'</span>'+(s.instrumentLinkStatus==='same_isin'?'<span class="pill isin-ok">ISIN ✓</span>':s.instrumentLinkStatus==='unverified'?'<span class="pill isin-pending">ISIN ?</span>':'')
   :(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'');
  let pending=mode==='tr'&&!s.trTicker?'<span class="catalog-pending">ticker LSX pendiente</span>':'';
- return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+pricePair(s,p,mode==='tr')+'<span class="'+C(ch)+'">'+PC(ch)+'</span>'+badge+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+pricePair(s,p,mode==='tr')+liveChangeHtml(s,ch,mode==='tr')+badge+'<span class="open-arrow">→</span></div></div></article>';
 }
 function stockEvents(s){
  return (db.events||[]).filter(e=>{
@@ -395,7 +537,7 @@ function profileHtml(s,view){
  let trRelation=isTr
   ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+(s.trTicker?E((s.trExchange||'LSX')+':'+s.trTicker):'Ticker LSX aún no resuelto')+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong>'+relationBadge+'</div>'
   :(s.tradeRepublicCandidate?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong>'+relationBadge+'</div>':'');
- let trNote=isTr?'<div class="profile-data-note">El ticker principal es el de Trade Republic/LSX. El precio principal se muestra en € y, a continuación, en $. Mientras no dispongamos de una cotización LSX directa para ese instante, el € es una conversión de la cotización estadounidense '+E(relatedUs)+' usando EUR/USD; puede diferir ligeramente de la app de Trade Republic por mercado y spread.</div>':'';
+ let trNote=isTr?'<div class="profile-data-note">El ticker principal es el de Trade Republic/LSX. El precio principal se alimenta directamente de la cotización LSX en tiempo real y se muestra en €; el $ es una referencia convertida mediante EUR/USD. Si el stream LSX no está disponible temporalmente, se usa como respaldo la cotización estadounidense '+E(relatedUs)+' usando EUR/USD; puede diferir ligeramente de la app de Trade Republic por mercado y spread.</div>':'';
  let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
  let linkStatus=s.instrumentLinkStatus==='same_isin'
   ?'Misma acción · ISIN coincidente'
@@ -495,7 +637,7 @@ function renderCalendar(){
 }
 
 function status(){}
-function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();renderCatalogUS();status()}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();renderCatalogUS();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
 async function load(force=false){
  if(loading)return;
  loading=true;
@@ -589,4 +731,4 @@ $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
 $('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);$('#catalogUSSearch').addEventListener('input',renderCatalogUS);
 ['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
-toUI(state.filters);lockAllCriteria();initLeadersDock();clock();setInterval(clock,30000);setInterval(()=>load(false),1000);load(true);
+toUI(state.filters);lockAllCriteria();initLeadersDock();initTrLive();clock();setInterval(clock,30000);setInterval(()=>load(false),1000);load(true);
