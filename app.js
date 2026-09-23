@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1';
+const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday'};
@@ -107,6 +107,50 @@ function topGainers(kind,se){
 function leaderItem(s,se,i){
  let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
  return '<div class="leader-item" title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<a target="_blank" rel="noopener" href="'+tvHref(s)+'"><strong>'+E(s.ticker)+'</strong></a></div><span class="'+C(ch)+'">'+PC(ch)+'</span></div><a class="leader-body" target="_blank" rel="noopener" href="'+tvHref(s)+'"><div class="leader-price">'+PR(p)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></a></div>';
+}
+function leadersPinned(){
+ try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
+}
+let leadersHideTimer=null;
+function setLeadersPinned(on){
+ try{localStorage.setItem(LEADERS_PIN_KEY,on?'1':'0')}catch(_){}
+ document.body.classList.toggle('leaders-pinned',on);
+ if(on)document.body.classList.add('leaders-open');
+ else document.body.classList.remove('leaders-open');
+ let b=$('#leadersPin');
+ if(b){
+  b.classList.toggle('active',on);
+  b.setAttribute('aria-pressed',on?'true':'false');
+  b.title=on?'Quitar barra fija':'Dejar esta barra fija';
+ }
+}
+function showLeadersDock(){
+ clearTimeout(leadersHideTimer);
+ document.body.classList.add('leaders-open');
+}
+function hideLeadersDockSoon(){
+ if(document.body.classList.contains('leaders-pinned'))return;
+ clearTimeout(leadersHideTimer);
+ leadersHideTimer=setTimeout(()=>document.body.classList.remove('leaders-open'),420);
+}
+function initLeadersDock(){
+ let dock=$('#marketLeaders'),hot=$('#leadersHotzone'),pin=$('#leadersPin');
+ if(!dock||!hot||!pin)return;
+ setLeadersPinned(leadersPinned());
+ hot.addEventListener('mouseenter',showLeadersDock);
+ dock.addEventListener('mouseenter',showLeadersDock);
+ dock.addEventListener('mouseleave',hideLeadersDockSoon);
+ hot.addEventListener('click',showLeadersDock);
+ dock.addEventListener('focusin',showLeadersDock);
+ dock.addEventListener('focusout',hideLeadersDockSoon);
+ pin.addEventListener('click',e=>{
+  e.stopPropagation();
+  setLeadersPinned(!document.body.classList.contains('leaders-pinned'));
+ });
+ document.addEventListener('mousemove',e=>{
+  if(document.body.classList.contains('leaders-pinned'))return;
+  if(window.innerHeight-e.clientY<=12)showLeadersDock();
+ });
 }
 function renderMarketLeaders(){
  let se=currentMarketSession(),label=sessionStageLabel(se)+' · TOP 10 SUBIDAS';
@@ -315,4 +359,4 @@ $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
 $('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);
 ['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
-toUI(state.filters);lockAllCriteria();clock();setInterval(clock,30000);setInterval(()=>load(false),180000);load(true);
+toUI(state.filters);lockAllCriteria();initLeadersDock();clock();setInterval(clock,30000);setInterval(()=>load(false),180000);load(true);
