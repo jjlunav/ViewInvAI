@@ -298,6 +298,7 @@ function trApplyTickerPayload(s,payload){
  if(times.length)s.trLiveUpdatedAt=Math.max(...times);
  s.trLiveReceivedAt=Date.now();
  trLive.lastDataAt=s.trLiveReceivedAt;
+ scheduleEntryAutoSort();
 }
 function trSendSubscriptions(){
  if(!trLive.connected||!trLive.ws||trLive.ws.readyState!==WebSocket.OPEN)return;
@@ -475,16 +476,32 @@ async function pollUsLive(){
   let j=await r.json(),by=new Map(stocks.map(s=>[String(s.ticker||'').toUpperCase(),s]));
   for(let q of (j.quotes||[])){let s=by.get(String(q.symbol||'').toUpperCase());if(s)usApplyQuote(s,q)}
   usLive.lastFetchAt=Date.now();
-  if(state.currentView==='entry')renderEntry();
+  scheduleEntryAutoSort(0);
   refreshUsLiveDom();
  }catch(e){console.warn('US live quote warning',e)}
  finally{usLive.busy=false}
+}
+let entryAutoSortTimer=null;
+function entryDomOrder(){
+ return [...document.querySelectorAll('#entryResults .stock-card')].map(card=>{
+  let row=card.querySelector('[data-stock-key]');
+  return row&&row.dataset.stockKey||'';
+ }).filter(Boolean).join('|');
+}
+function scheduleEntryAutoSort(delay=120){
+ if(state.currentView!=='entry'||document.hidden||document.body.classList.contains('stock-detail-open'))return;
+ clearTimeout(entryAutoSortTimer);
+ entryAutoSortTimer=setTimeout(()=>{
+  entryAutoSortTimer=null;
+  let [a]=entry(),next=a.slice(0,150).map(stockKey).join('|');
+  if(next!==entryDomOrder())renderEntry();
+ },Math.max(0,delay));
 }
 function initUsLive(){
  setInterval(refreshUsLiveDom,1000);
  setInterval(pollUsLive,3000);
  setTimeout(pollUsLive,700);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollUsLive()});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();scheduleEntryAutoSort(0)}});
 }
 function readFavorites(){
  try{
@@ -809,21 +826,8 @@ function metric(label,main,sub,help,mainClass='',subClass=''){
  return '<div class="metric-help" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span></div>';
 }
 function rankingWhy(s,next,se,q,pos){
- if(q.sort==='afterhours'){
-  let a=SC(s,'postmarket'),b=next?SC(next,'postmarket'):null;
-  return 'Puesto #'+pos+' porque este criterio ordena exclusivamente por subida postmarket: '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.');
- }
- if(q.sort==='change'){
-  let a=FC(s,se),b=next?FC(next,se):null;
-  return 'Puesto #'+pos+' porque “Explosión en la sesión” ordena por mayor variación en '+SN(se)+': '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.');
- }
- let a=scoreParts(s,se),b=next?scoreParts(next,se):null;
- let names={movimiento:'movimiento',volumen:'volumen relativo',adx:'fuerza ADX',rsi:'zona RSI',precioEma:'precio sobre EMA20',tendenciaEma:'EMA20 sobre EMA50'};
- let components='movimiento '+F(a.movimiento,1)+' · volumen '+F(a.volumen,1)+' · ADX '+F(a.adx,1)+' · RSI '+F(a.rsi,1)+' · tendencia '+F(a.precioEma+a.tendenciaEma,1);
- if(!next)return 'Puesto #'+pos+' · score '+F(a.total,1)+'/100. Desglose: '+components+'.';
- let diffs=Object.keys(names).map(k=>({k,d:a[k]-b[k]})).filter(x=>x.d>0.15).sort((x,y)=>y.d-x.d).slice(0,3);
- let reason=diffs.length?diffs.map(x=>names[x.k]+' +'+F(x.d,1)+' pt').join(', '):'mejor score agregado';
- return 'Puesto #'+pos+' · score '+F(a.total,1)+'/100 frente a '+F(b.total,1)+'/100 de #'+(pos+1)+' '+E(next.ticker)+'. Ventaja principal: '+reason+'. Desglose: '+components+'.';
+ let a=FC(s,se),b=next?FC(next,se):null;
+ return 'Puesto #'+pos+' por variación porcentual en '+SN(se)+': '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.')+' El orden se actualiza automáticamente con las cotizaciones.';
 }
 function why(s,se){let b=[],c=FC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
 function entryChangeHtml(s,se){
@@ -870,16 +874,18 @@ function entry(){
   if(q.illiquid&&lowLiquidity(s,se,preferTr))return false;
   return true;
  });
- if(q.sort==='afterhours')a.sort((x,y)=>(FC(y,'postmarket')??-999)-(FC(x,'postmarket')??-999));
- else if(q.sort==='change')a.sort((x,y)=>(FC(y,se)??-999)-(FC(x,se)??-999));
- else a.sort((x,y)=>score(y,se)-score(x,se));
+ // Potencial de entrada is always ranked by the percentage currently shown
+ // in the selected session. Technical criteria decide eligibility, never rank.
+ a.sort((x,y)=>{
+  let ax=FC(x,se),by=FC(y,se),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
+  if(bv!==av)return bv-av;
+  return String(x.ticker||'').localeCompare(String(y.ticker||''));
+ });
  return[a,se];
 }
 function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);$('#entryCount').textContent=a.length+' candidatas';$('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';$('#entryTag').textContent=state.filters.sort==='afterhours'?'SUBIDAS POSTMARKET':state.filters.sort==='change'?'EXPLOSIÓN EN SESIÓN':se==='premarket'?'IMPULSO PREMARKET':'SEGUIMIENTO';$('#entryLead').textContent=state.filters.sort==='afterhours'
- ?'Acciones ordenadas por mayor subida después del cierre regular de EEUU.'
- :state.preset==='intraday'
-  ?'Movimiento intradía como filtro principal; volumen relativo, ADX y RSI se usan para ordenar por calidad, no para vaciar el listado por defecto.'
-  :'Señales técnicas y movimientos de mercado, sin precio mínimo.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>'}
+ ?'Orden automático por mayor variación porcentual en postmarket; la posición cambia al actualizarse las cotizaciones.'
+ :'Orden automático por mayor variación porcentual de '+SN(se).toLowerCase()+'. Los filtros deciden qué acciones aparecen; el porcentaje decide siempre su posición.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>'}
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
 function EU(e){let u=String(e.url||'');return /^https?:\/\//i.test(u)?'<a class="event-link" target="_blank" rel="noopener" href="'+E(u)+'">Abrir noticia / fuente ↗</a>':''}
