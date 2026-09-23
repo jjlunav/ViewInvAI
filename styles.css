@@ -61,3 +61,30 @@
  .mini-chart{height:96px}
  .mini-chart-title{font-size:8px}
 }
+
+/* Grouped catalysts per stock */
+.event-list{display:grid;gap:0;border-top:1px solid #192a34}
+.event-item{padding:8px 11px;border-bottom:1px solid #192a34;background:#0b151d}
+.event-item:last-child{border-bottom:0}
+.event-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.event-item-head>div{display:flex;align-items:center;gap:7px;min-width:0}
+.event-item-head strong{font-size:10px;color:#dce8ec}
+.event-item-head span{font-size:9px;color:#6f8995}
+.event-item-head time{font-size:9px;color:#8fa8b4;white-space:nowrap}
+.event-title{font-size:10px;color:#cbd9df;margin-top:4px;line-height:1.35}
+.event-context,.event-impact{font-size:9px;color:#8ea3ad;margin-top:3px;line-height:1.35}
+.event-impact strong{color:#c9d8de}
+.event-sources{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px}
+.event-sources .verification{font-size:8px;color:#70bfa5;border:1px solid #28594a;border-radius:5px;padding:2px 5px}
+.event-sources a,.event-sources>span:not(.verification){font-size:8px;color:#a9c9e8;text-decoration:none;border:1px solid #294358;border-radius:5px;padding:2px 5px}
+.event-sources a:hover{color:#fff;border-color:#4b7291}
+@media(max-width:680px){
+ .event-item{padding:6px 8px}
+ .event-item-head{gap:6px}
+ .event-item-head>div{display:grid;gap:0}
+ .event-item-head strong{font-size:9px}
+ .event-item-head time{font-size:8px}
+ .event-title{font-size:9px}
+ .event-context,.event-impact{font-size:8px}
+ .event-sources .verification,.event-sources a,.event-sources>span:not(.verification){font-size:8px}
+}
