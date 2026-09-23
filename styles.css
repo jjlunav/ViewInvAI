@@ -49,3 +49,15 @@
  .criterion-field:nth-child(3) .criterion-control input,.criterion-field:nth-child(4) .criterion-control input{width:88px!important}
  .field-lock{width:26px;height:26px;font-size:11px}
 }
+
+/* Lazy TradingView mini chart inside every expanded stock */
+.mini-chart-block{padding:7px 11px 4px;border-top:1px solid #192a34}
+.mini-chart-title{font-size:9px;color:#68818d;text-transform:uppercase;letter-spacing:.35px;margin-bottom:4px}
+.mini-chart{height:118px;width:100%;min-width:0;overflow:hidden;border:1px solid #1f3542;border-radius:7px;background:#08131b}
+.mini-chart .tradingview-widget-container,.mini-chart .tradingview-widget-container__widget{width:100%;height:100%}
+.chart-placeholder{height:100%;display:grid;place-items:center;color:#627d89;font-size:9px}
+@media(max-width:680px){
+ .mini-chart-block{padding:6px 8px 3px}
+ .mini-chart{height:96px}
+ .mini-chart-title{font-size:8px}
+}
