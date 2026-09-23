@@ -1040,7 +1040,7 @@ function renderFuture(){
  $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
   let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
-  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,'',!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,label+' · '+when,!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
@@ -1048,7 +1048,7 @@ function renderCalendar(){
  let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
  $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
   let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
-  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,EL(e)+' · '+DF(e.date),!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
 }
 
