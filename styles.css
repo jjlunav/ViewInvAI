@@ -324,3 +324,9 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
 @media(max-width:680px){
  .profile-tv-widget,.profile-tv-widget[data-widget-kind="fundamentals"],.profile-tv-widget[data-widget-kind="news"]{height:360px}
 }
+
+.relation-status{font-size:8px;padding:2px 5px;border-radius:999px;border:1px solid #35505b}
+.relation-status.ok,.pill.isin-ok{color:#78e5c0;border-color:#2d705d;background:#102a23}
+.relation-status.warn{color:#ff9ca2;border-color:#74434a;background:#2a171b}
+.relation-status.pending,.pill.isin-pending{color:#e2bf67;border-color:#6a5528;background:#2a2414}
+.pill.isin-ok,.pill.isin-pending{font-size:8px}
