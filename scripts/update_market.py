@@ -25,8 +25,8 @@ NEWS_PER_SYMBOL = 10
 COLS = [
     "name","description","exchange","currency","close","change","volume",
     "average_volume_10d_calc","relative_volume_10d_calc",
-    "premarket_close","premarket_change","premarket_volume",
-    "postmarket_close","postmarket_change","postmarket_volume",
+    "premarket_close","premarket_change","premarket_volume","premarket_time",
+    "postmarket_close","postmarket_change","postmarket_volume","postmarket_time",
     "RSI","ADX","EMA20","EMA50","Perf.W","Perf.1M",
     "earnings_release_next_date","earnings_release_next_calendar_date","earnings_release_next_time","earnings_release_next_trading_date_fq","update_mode","last_bar_update_time",
 ]
@@ -108,29 +108,53 @@ def tr_match(name, idx):
     return None
 
 def tv():
-    payload = {
+    # Do not restrict to is_primary. US pre-market leaderboards also contain
+    # ADRs / secondary US listings, and excluding them drops real movers.
+    base_payload = {
         "filter": [
             {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "is_primary", "operation": "equal", "right": True},
-            {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
+            {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX", "NYSE ARCA", "NYSEARCA"]},
         ],
         "options": {"lang": "en"},
         "markets": ["america"],
         "symbols": {"query": {"types": []}, "tickers": []},
         "columns": COLS,
-        "sort": {"sortBy": "volume", "sortOrder": "desc"},
-        "range": [0, 10000],
+        # Stable ordering makes pagination safer while prices are moving.
+        "sort": {"sortBy": "name", "sortOrder": "asc"},
     }
     headers = dict(HEADERS)
     headers["Content-Type"] = "application/json"
-    r = requests.post(TV_URL, json=payload, headers=headers, timeout=90)
-    r.raise_for_status()
-    raw = r.json()
-    out = []
 
-    for row in raw.get("data") or []:
+    raw_rows = []
+    total = None
+    offset = 0
+    page_size = 10000
+
+    while True:
+        payload = dict(base_payload)
+        payload["range"] = [offset, offset + page_size]
+        r = requests.post(TV_URL, json=payload, headers=headers, timeout=90)
+        r.raise_for_status()
+        raw = r.json()
+        page = raw.get("data") or []
+        if total is None:
+            total = raw.get("totalCount")
+        if not page:
+            break
+        raw_rows.extend(page)
+        offset += len(page)
+        if total is None or offset >= total:
+            break
+
+    out = []
+    seen = set()
+
+    for row in raw_rows:
         d = dict(zip(COLS, row.get("d") or []))
         sym = row.get("s", "")
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
         if ":" in sym:
             ex, ticker = sym.split(":", 1)
         else:
@@ -150,9 +174,11 @@ def tv():
             "premarketPrice": d.get("premarket_close"),
             "premarketChangePct": d.get("premarket_change"),
             "premarketVolume": d.get("premarket_volume"),
+            "premarketTime": d.get("premarket_time"),
             "postmarketPrice": d.get("postmarket_close"),
             "postmarketChangePct": d.get("postmarket_change"),
             "postmarketVolume": d.get("postmarket_volume"),
+            "postmarketTime": d.get("postmarket_time"),
             "rsi": d.get("RSI"),
             "adx": d.get("ADX"),
             "ema20": d.get("EMA20"),
@@ -165,7 +191,7 @@ def tv():
             "updateMode": d.get("update_mode"),
             "lastBarUpdateTime": d.get("last_bar_update_time"),
         })
-    return out, raw.get("totalCount")
+    return out, total
 
 def event_date(v):
     if v in (None, ""):
