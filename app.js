@@ -1642,7 +1642,24 @@ function helpTextFor(el){
  if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
  return null;
 }
-let activeHelpTarget=null;
+let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
+const HELP_HOVER_DELAY_MS=1800;
+function cancelPendingHelp(target=null){
+ if(target&&pendingHelpTarget!==target)return;
+ if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
+ pendingHelpTarget=null;
+}
+function scheduleHelpBanner(target){
+ if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
+ cancelPendingHelp();
+ pendingHelpTarget=target;
+ helpHoverTimer=setTimeout(()=>{
+  helpHoverTimer=null;
+  let t=pendingHelpTarget;
+  pendingHelpTarget=null;
+  if(t&&t.matches(':hover'))showHelpBanner(t);
+ },HELP_HOVER_DELAY_MS);
+}
 function positionHelpBanner(target){
  let banner=$('#hoverHelpBanner');if(!banner||!target)return;
  let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
@@ -1658,6 +1675,7 @@ function showHelpBanner(target){
  banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
 }
 function hideHelpBanner(target=null){
+ if(target)cancelPendingHelp(target);else cancelPendingHelp();
  if(target&&activeHelpTarget!==target)return;
  let banner=$('#hoverHelpBanner');if(!banner)return;
  banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
@@ -1690,9 +1708,23 @@ function initHelpSystem(){
   if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
   el.removeAttribute('title');
  });
- document.addEventListener('pointerover',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t&&t!==activeHelpTarget)showHelpBanner(t)});
- document.addEventListener('pointerout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget)))hideHelpBanner(t)});
- document.addEventListener('focusin',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)showHelpBanner(t)});
+ document.addEventListener('pointerover',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(!t||t===activeHelpTarget)return;
+  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
+  scheduleHelpBanner(t);
+ });
+ document.addEventListener('pointerout',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
+   cancelPendingHelp(t);
+   hideHelpBanner(t);
+  }
+ });
+ document.addEventListener('focusin',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t){cancelPendingHelp();showHelpBanner(t)}
+ });
  document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
  window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
  window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
