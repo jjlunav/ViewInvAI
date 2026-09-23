@@ -112,7 +112,7 @@ def tv():
     # ADRs / secondary US listings, and excluding them drops real movers.
     base_payload = {
         "filter": [
-            {"left": "type", "operation": "equal", "right": "stock"},
+            {"left": "type", "operation": "in_range", "right": ["stock", "dr"]},
             {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX", "NYSE ARCA", "NYSEARCA"]},
         ],
         "options": {"lang": "en"},
