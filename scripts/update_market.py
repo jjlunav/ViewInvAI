@@ -28,7 +28,7 @@ COLS = [
     "premarket_close","premarket_change","premarket_volume",
     "postmarket_close","postmarket_change","postmarket_volume",
     "RSI","ADX","EMA20","EMA50","Perf.W","Perf.1M",
-    "earnings_release_next_trading_date_fq","update_mode","last_bar_update_time",
+    "earnings_release_next_date","earnings_release_next_calendar_date","earnings_release_next_time","earnings_release_next_trading_date_fq","update_mode","last_bar_update_time",
 ]
 SUFFIX = {
     "inc","incorporated","corp","corporation","co","company","ltd","limited",
@@ -159,7 +159,9 @@ def tv():
             "ema50": d.get("EMA50"),
             "perfWeek": d.get("Perf.W"),
             "perfMonth": d.get("Perf.1M"),
-            "earningsDate": d.get("earnings_release_next_trading_date_fq"),
+            "earningsDate": d.get("earnings_release_next_date") or d.get("earnings_release_next_calendar_date") or d.get("earnings_release_next_trading_date_fq"),
+            "earningsCalendarDate": d.get("earnings_release_next_calendar_date"),
+            "earningsTimeCode": d.get("earnings_release_next_time"),
             "updateMode": d.get("update_mode"),
             "lastBarUpdateTime": d.get("last_bar_update_time"),
         })
@@ -179,7 +181,7 @@ def event_date(v):
 def classify_news(title):
     t = (title or "").lower()
     groups = [
-        ("medical", r"\b(fda|pdufa|clinical|trial|phase\s*[123]|topline|patient|endpoint|drug|therapy|vaccine|biotech|study|oncology|approval)\b"),
+        ("medical", r"\b(fda|pdufa|clinical|trial|phase\s*[123]|topline|patient|endpoint|drug|therapy|vaccine|biotech|study|oncology|drug approval|fda approval)\b"),
         ("earnings", r"\b(earnings|quarter|quarterly|results|revenue|eps|guidance|outlook|profit|sales forecast)\b"),
         ("financing", r"\b(offering|dilution|dilutive|shelf|at-the-market|atm offering|convertible|warrants?|registered direct|private placement|notes offering|capital raise)\b"),
         ("contract", r"\b(contract|award|order|adjudication|partnership|partner|agreement|deal|tender|procurement|customer|license agreement)\b"),
@@ -219,6 +221,110 @@ def hypothesis_for(category):
         "event": "Presentaciones, conferencias y eventos pueden introducir información nueva o cambiar expectativas.",
         "news": "La noticia está vinculada al valor y puede afectar expectativas o volatilidad; requiere revisar el contenido y la fuente.",
     }.get(category, "Puede aumentar la volatilidad; no implica una dirección concreta.")
+
+
+def source_tier(name):
+    n = (name or "").strip().lower()
+    primary = (
+        "reuters","dow jones","businesswire","business wire","pr newswire",
+        "globenewswire","accesswire","sec","securities and exchange",
+        "fda","food and drug administration","nasdaq","nyse","investor relations"
+    )
+    reputable = (
+        "tradingview","investing","benzinga","zacks","quartr","seeking alpha",
+        "marketwatch","bloomberg","cnbc","yahoo finance","dpa-afx","dpa_afx",
+        "mt newswires","tipranks","the fly"
+    )
+    if any(x in n for x in primary):
+        return 3
+    if any(x in n for x in reputable):
+        return 2
+    return 0
+
+def source_kind(name):
+    tier = source_tier(name)
+    return "primaria / alta confianza" if tier >= 3 else "medio financiero reputado" if tier == 2 else "sin validar"
+
+def story_norm(title):
+    s = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\b(nasdaq|nyse|amex|stock|shares?|inc|corp|corporation|company|ltd|plc)\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    stop = {"the","a","an","and","or","to","of","for","in","on","as","with","at","by","from","is","are"}
+    return " ".join(x for x in s.split() if x not in stop)
+
+def same_story(a, b):
+    if a.get("ticker") != b.get("ticker"):
+        return False
+    da = event_date(a.get("date"))
+    db = event_date(b.get("date"))
+    if da and db and abs((da - db).total_seconds()) > 3 * 86400:
+        return False
+    ta, tb = story_norm(a.get("title")), story_norm(b.get("title"))
+    if not ta or not tb:
+        return False
+    ratio = SequenceMatcher(None, ta, tb).ratio()
+    sa, sb = set(ta.split()), set(tb.split())
+    overlap = len(sa & sb) / max(1, len(sa | sb))
+    return ratio >= 0.70 or overlap >= 0.60
+
+def cluster_news_events(events):
+    """Merge copies of the same story while preserving independent source links."""
+    clusters = []
+    for e in sorted(events, key=lambda x: (x.get("ticker") or "", x.get("date") or "")):
+        match = None
+        for cl in clusters:
+            if cl["ticker"] == e.get("ticker") and same_story(cl["items"][0], e):
+                match = cl
+                break
+        if match is None:
+            match = {"ticker": e.get("ticker"), "items": []}
+            clusters.append(match)
+        match["items"].append(e)
+
+    out = []
+    for cl in clusters:
+        items = cl["items"]
+        sources = []
+        seen_sources = set()
+        for item in items:
+            name = item.get("source") or "Fuente"
+            tier = source_tier(name)
+            if tier < 2:
+                continue
+            url = item.get("url")
+            key = (name.strip().lower(), url or "")
+            if key in seen_sources:
+                continue
+            seen_sources.add(key)
+            sources.append({"name": name, "url": url, "tier": tier, "kind": source_kind(name)})
+
+        # Do not publish stories supported only by unvalidated/community feeds.
+        if not sources:
+            continue
+
+        best = max(
+            items,
+            key=lambda x: (
+                source_tier(x.get("source")),
+                x.get("impactScore") or 0,
+                len(x.get("title") or ""),
+            ),
+        ).copy()
+        sources.sort(key=lambda s: (-s["tier"], s["name"].lower()))
+        best["sources"] = sources
+        best["sourceCount"] = len(sources)
+        best["corroborated"] = len({s["name"].lower() for s in sources}) >= 2
+        best["verification"] = (
+            f"Contrastada en {best['sourceCount']} fuentes"
+            if best["corroborated"]
+            else f"Fuente validada: {sources[0]['name']}"
+        )
+        best["relatedHeadlines"] = len(items)
+        best["impactScore"] = max((x.get("impactScore") or 0) for x in items)
+        best["date"] = max((x.get("date") or "") for x in items)
+        out.append(best)
+
+    return out
 
 def fetch_news(symbol=None):
     params = {"client": "web", "lang": "en"}
@@ -317,7 +423,7 @@ def build_news_events(stocks, now):
         if i < len(chosen):
             time.sleep(0.35)
 
-    return out
+    return cluster_news_events(out)
 
 def main():
     previous = {}
@@ -363,6 +469,11 @@ def main():
                 "type": "earnings",
                 "title": "Próxima publicación de resultados",
                 "source": "TradingView",
+                "sources": [{"name": "TradingView", "url": None, "tier": 2, "kind": "medio financiero reputado"}],
+                "sourceCount": 1,
+                "corroborated": False,
+                "verification": "Calendario de mercado: TradingView",
+                "timeCode": s.get("earningsTimeCode"),
                 "impactScore": 76,
                 "tradeRepublicVerified": s["tradeRepublicVerified"],
                 "fact": "Fecha de resultados indicada por el proveedor de mercado.",
@@ -388,7 +499,7 @@ def main():
             "trMatchedCount": matched,
             "trUniverseSource": tr_source,
             "newsCount": len(news_events),
-            "notes": "Datos públicos o diferidos según proveedor. Las noticias y eventos son catalizadores potenciales, no predicciones de dirección.",
+            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
         },
         "stocks": stocks,
         "events": events,
