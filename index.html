@@ -110,12 +110,12 @@
 
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
-        <div><h1>Potencial futuro <span class="tag teal">ANTES DEL MOVIMIENTO</span></h1><p class="lead">Eventos próximos que podrían provocar movimientos anormales.</p></div>
+        <div><h1>Potencial futuro <span class="tag teal">ANTES DEL MOVIMIENTO</span></h1><p class="lead">Catalizadores, noticias y eventos que pueden provocar movimientos anormales.</p></div>
         <button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button>
       </div>
       <div class="control-strip">
-        <select id="futureHorizon" class="select"><option value="1">1 día · día siguiente</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
-        <select id="futureType" class="select"><option value="all">Todos los eventos</option><option value="medical">Médico / regulatorio</option><option value="earnings">Resultados</option><option value="contract">Contrato / adjudicación</option><option value="corporate">Operación corporativa</option><option value="other">Otros</option></select>
+        <select id="futureHorizon" class="select"><option value="1">1 día</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
+        <select id="futureType" class="select"><option value="all">Todo tipo de catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
         <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
       </div>
       <div id="futureResults" class="stock-list"></div>
