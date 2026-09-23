@@ -103,7 +103,7 @@ function pricePair(s,p,preferTr=false){
  let liveAttrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-key="'+E(stockKey(s))+'"':' data-us-live-key="'+E(stockKey(s))+'"';
  let direct=preferTr?(trLivePrice(s)!==null):(usLivePrice(s)!==null);
  let source=preferTr
-  ?(direct?'Cotización LSX en tiempo real recibida directamente de Trade Republic. El precio en $ es una conversión EUR/USD de referencia.':'Esperando cotización LSX en tiempo real; mientras tanto se muestra una conversión desde la cotización EEUU.')
+  ?(direct?'Cotización LSX recibida directamente del ticker de Trade Republic. El precio en $ es solo una conversión EUR/USD de referencia.':'Esperando la cotización exacta LSX de Trade Republic; no se sustituye por precios de otros mercados.')
   :(direct?'Cotización actual recibida desde Nasdaq.com; el valor en € es una conversión EUR/USD de referencia.':'Esperando cotización Nasdaq actual; se muestra temporalmente el último snapshot disponible.');
  return '<span class="price-pair'+(direct?' live-quote':'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
 }
@@ -268,7 +268,7 @@ function trSendSubscriptions(){
  for(let key of trLive.wanted){
   if(trLive.subByKey.has(key))continue;
   let s=trStockByKey(key);if(!s)continue;
-  let id=trIsin(s)+'.LSX',sub=String(trLive.seq++);
+  let id=trIsin(s)+'.'+String(s.trExchange||'LSX'),sub=String(trLive.seq++);
   trLive.subByKey.set(key,sub);trLive.keyBySub.set(sub,key);
   trLive.ws.send('sub '+sub+' '+JSON.stringify({type:'ticker',id}));
  }
@@ -294,7 +294,11 @@ function connectTrLive(){
   let m=msg.match(/^(\d+)\s+([A-Z])(?:\s+([\s\S]+))?$/);
   if(!m)return;
   let sid=m[1],code=m[2],body=m[3]||'',key=trLive.keyBySub.get(sid);if(!key)return;
-  if(code==='C'||code==='E'){trLive.payloadBySub.delete(sid);return}
+  if(code==='C'||code==='E'){
+   trLive.payloadBySub.delete(sid);trLive.keyBySub.delete(sid);trLive.subByKey.delete(key);
+   if(code==='C')setTimeout(trSendSubscriptions,250);
+   return;
+  }
   let full=body;
   try{
    if(code==='A')trLive.payloadBySub.set(sid,body);
