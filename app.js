@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
+const DATA='data/market.json', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
@@ -155,11 +155,35 @@ function SES(){return state.session==='auto'?auto():state.session}
 function SN(s){return({premarket:'Premarket',regular:'Sesión regular',postmarket:'Postmarket',previous:'Sesión anterior'})[s]||s}
 function SP(s,se=SES()){return se==='premarket'?(N(s.premarketPrice)??N(s.price)):se==='postmarket'?(N(s.postmarketPrice)??N(s.price)):N(s.price)}
 function SC(s,se=SES()){return se==='premarket'?N(s.premarketChangePct):se==='postmarket'?N(s.postmarketChangePct):N(s.changePct)}
-function SV(s,se=SES()){return se==='premarket'?N(s.premarketVolume):se==='postmarket'?N(s.postmarketVolume):N(s.volume)}
-function RV(s,se=SES()){if(se==='premarket'||se==='postmarket')return null;return N(s.relVolume)??(N(s.volume)!==null&&N(s.avgVolume)>0?N(s.volume)/N(s.avgVolume):null)}
-function trend(s){let p=N(s.price),a=N(s.ema20),b=N(s.ema50);return p===null||a===null||b===null||p>=a&&a>=b}
+function SV(s,se=SES()){return se==='premarket'?N(s.premarketVolume):se==='postmarket'?N(s.postmarketVolume):(N(s.usLiveVolume)??N(s.volume))}
+function FC(s,se=SES()){
+ // The entry screener and the percentage rendered in each row must use the same metric.
+ // For the regular session prefer the current US quote; pre/post use their explicit session snapshots.
+ return se==='regular'?(usLiveChange(s)??SC(s,se)):SC(s,se);
+}
+function RV(s,se=SES()){
+ // TradingView only supplies relative_volume_10d_calc for regular trading.
+ // For extended hours use that session's volume divided by average daily volume rather than silently passing N/D.
+ if(se==='regular'){
+  let v=SV(s,se),avg=N(s.avgVolume);
+  return v!==null&&avg>0?v/avg:N(s.relVolume);
+ }
+ let v=SV(s,se),avg=N(s.avgVolume);
+ return v!==null&&avg>0?v/avg:null;
+}
+function trend(s){let p=N(s.price),a=N(s.ema20),b=N(s.ema50);return p!==null&&a!==null&&b!==null&&p>=a&&a>=b}
+function validQuoteNumber(v){v=N(v);return v!==null&&v>0?v:null}
+function spreadPct(s,preferTr=false){
+ let bid=validQuoteNumber(preferTr?s&&s.trLiveBid:usLiveBid(s)),ask=validQuoteNumber(preferTr?s&&s.trLiveAsk:usLiveAsk(s));
+ if(bid===null||ask===null||ask<bid)return null;
+ let mid=(bid+ask)/2;return mid>0?(ask-bid)/mid*100:null;
+}
+function lowLiquidity(s,se=SES(),preferTr=false){
+ let v=SV(s,se),sp=spreadPct(s,preferTr);
+ return (v!==null&&v<10000)||(sp!==null&&sp>8);
+}
 function scoreParts(s,se=SES()){
- let ch=SC(s,se)??0,rv=RV(s,se)??0,adx=N(s.adx)??0,rsi=N(s.rsi);
+ let ch=FC(s,se)??0,rv=RV(s,se)??0,adx=N(s.adx)??0,rsi=N(s.rsi);
  let parts={
   movimiento:Math.max(-20,Math.min(35,ch*1.6)),
   volumen:Math.min(25,rv*7),
@@ -568,7 +592,7 @@ function rankingWhy(s,next,se,q,pos){
   return 'Puesto #'+pos+' porque este criterio ordena exclusivamente por subida postmarket: '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.');
  }
  if(q.sort==='change'){
-  let a=SC(s,se),b=next?SC(next,se):null;
+  let a=FC(s,se),b=next?FC(next,se):null;
   return 'Puesto #'+pos+' porque “Explosión en la sesión” ordena por mayor variación en '+SN(se)+': '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.');
  }
  let a=scoreParts(s,se),b=next?scoreParts(next,se):null;
@@ -579,17 +603,51 @@ function rankingWhy(s,next,se,q,pos){
  let reason=diffs.length?diffs.map(x=>names[x.k]+' +'+F(x.d,1)+' pt').join(', '):'mejor score agregado';
  return 'Puesto #'+pos+' · score '+F(a.total,1)+'/100 frente a '+F(b.total,1)+'/100 de #'+(pos+1)+' '+E(next.ticker)+'. Ventaja principal: '+reason+'. Desglose: '+components+'.';
 }
-function why(s,se){let b=[],c=SC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
+function why(s,se){let b=[],c=FC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
+function entryChangeHtml(s,se){
+ let v=FC(s,se),live=se==='regular'&&usLiveChange(s)!==null;
+ return '<span class="'+C(v)+'"'+(live?' data-us-live-change-key="'+E(stockKey(s))+'"':'')+'>'+PC(v)+'</span>';
+}
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
- let ch=SC(s,se),p=SP(s,se),hint=rankText||why(s,se);
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+liveChangeHtml(s,ch,preferTr)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ let ch=FC(s,se),p=SP(s,se),hint=rankText||why(s,se);
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+entryChangeHtml(s,se)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
-function fromUI(){return{minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,minVolume:+$('#minVolume').value||0,trend:$('#requireTrend').checked,illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort}}
+function numInput(id,fallback,min=-Infinity,max=Infinity){let v=N($('#'+id).value);if(v===null)v=fallback;return Math.max(min,Math.min(max,v))}
+function fromUI(){
+ let minChange=numInput('minChange',0,-100,100000),maxChange=numInput('maxChange',0,0,100000);
+ let minRsi=numInput('minRsi',0,0,100),maxRsi=numInput('maxRsi',100,0,100);
+ if(maxChange>0&&maxChange<minChange)maxChange=minChange;
+ if(maxRsi<minRsi)maxRsi=minRsi;
+ return{minChange,maxChange,minRelVolume:numInput('minRelVolume',0,0,100000),minAdx:numInput('minAdx',0,0,100),
+  minRsi,maxRsi,minVolume:numInput('minVolume',0,0,1e15),trend:$('#requireTrend').checked,
+  illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort};
+}
 function lockCriterion(id,locked=true){let input=$('#'+id),btn=$('.field-lock[data-target="'+id+'"]');if(!input||!btn)return;input.readOnly=locked;btn.classList.toggle('unlocked',!locked);btn.textContent=locked?'🔒':'🔓';btn.title=locked?'Desbloquear este parámetro':'Bloquear este parámetro';btn.setAttribute('aria-label',locked?'Desbloquear '+id:'Bloquear '+id)}
 function lockAllCriteria(){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(id=>lockCriterion(id,true))}
 function toUI(x){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(k=>$('#'+k).value=x[k]);$('#requireTrend').checked=!!x.trend;$('#excludeIlliquid').checked=!!x.illiquid}
-function entry(){let q=state.filters,se=q.sort==='afterhours'?'postmarket':SES(),a=db.stocks.filter(s=>market(s,state.entryMarket)).filter(s=>{let c=SC(s,se);if(c===null||c<q.minChange)return false;if(q.maxChange>0&&c>q.maxChange)return false;let r=RV(s,se);if(q.minRelVolume>0&&r!==null&&r<q.minRelVolume)return false;if(q.minAdx>0&&N(s.adx)!==null&&s.adx<q.minAdx)return false;if(N(s.rsi)!==null&&(s.rsi<q.minRsi||s.rsi>q.maxRsi))return false;let v=SV(s,se);if(q.minVolume>0&&v!==null&&v<q.minVolume)return false;if(q.trend&&!trend(s))return false;if(q.illiquid&&v!==null&&v<10000)return false;return true});if(q.sort==='afterhours')a.sort((x,y)=>(SC(y,'postmarket')??-999)-(SC(x,'postmarket')??-999));else if(q.sort==='change')a.sort((x,y)=>(SC(y,se)??-999)-(SC(x,se)??-999));else a.sort((x,y)=>score(y,se)-score(x,se));return[a,se]}
+function entryUniverseMatch(s){
+ if(state.entryMarket==='tr')return !!s.tradeRepublicVerified;
+ // “Resto EEUU” means US-listed stocks that are not already in the verified TR set.
+ return market(s,'us')&&!s.tradeRepublicVerified;
+}
+function entry(){
+ let q=state.filters,se=q.sort==='afterhours'?'postmarket':SES(),preferTr=state.entryMarket==='tr';
+ let a=db.stocks.filter(entryUniverseMatch).filter(s=>{
+  let ch=FC(s,se);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
+  let rv=RV(s,se);if(q.minRelVolume>0&&(rv===null||rv<q.minRelVolume))return false;
+  let adx=N(s.adx);if(q.minAdx>0&&(adx===null||adx<q.minAdx))return false;
+  let rsi=N(s.rsi);if((q.minRsi>0||q.maxRsi<100)&&(rsi===null||rsi<q.minRsi||rsi>q.maxRsi))return false;
+  let v=SV(s,se);if(q.minVolume>0&&(v===null||v<q.minVolume))return false;
+  if(q.trend&&!trend(s))return false;
+  if(q.illiquid&&lowLiquidity(s,se,preferTr))return false;
+  return true;
+ });
+ if(q.sort==='afterhours')a.sort((x,y)=>(FC(y,'postmarket')??-999)-(FC(x,'postmarket')??-999));
+ else if(q.sort==='change')a.sort((x,y)=>(FC(y,se)??-999)-(FC(x,se)??-999));
+ else a.sort((x,y)=>score(y,se)-score(x,se));
+ return[a,se];
+}
 function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);$('#entryCount').textContent=a.length+' candidatas';$('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';$('#entryTag').textContent=state.filters.sort==='afterhours'?'SUBIDAS POSTMARKET':state.preset==='exploded'?'EXPLOSIÓN EN SESIÓN':se==='premarket'?'IMPULSO PREMARKET':'SEGUIMIENTO';$('#entryLead').textContent=state.filters.sort==='afterhours'?'Acciones ordenadas por mayor subida después del cierre regular de EEUU.':'Señales técnicas y movimientos de mercado, sin precio mínimo.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión.</div>'}
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
@@ -810,10 +868,20 @@ function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id
 function catalogSession(mode){let id=mode==='tr'?'#catalogSession':'#catalogUSSession',v=$(id)?.value||'auto';return v==='auto'?currentMarketSession():v}
 function catalogFilterMatch(value,filter,type){
  filter=String(filter||'').trim();if(!filter)return true;
- if(type==='number'||type==='date'){
+ if(type==='number'){
   let n=N(value);if(n===null)return false;
   let m=filter.match(/^\s*(>=|<=|>|<|=)?\s*(-?\d+(?:[.,]\d+)?)\s*$/);
-  if(m){let target=Number(m[2].replace(',','.')),op=m[1]||'=';if(op==='>')return n>target;if(op==='<')return n<target;if(op==='>=')return n>=target;if(op==='<=')return n<=target;return n===target}
+  if(!m)return false;
+  let target=Number(m[2].replace(',','.')),op=m[1]||'=';
+  if(op==='>')return n>target;if(op==='<')return n<target;if(op==='>=')return n>=target;if(op==='<=')return n<=target;return n===target;
+ }
+ if(type==='date'){
+  let n=N(value);if(n===null)return false;
+  let raw=filter.replace(/^\s*(>=|<=|>|<|=)\s*/,'').trim(),op=(filter.match(/^\s*(>=|<=|>|<|=)/)||[])[1]||'=';
+  let parts=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/),d=parts?new Date(+parts[3],+parts[2]-1,+parts[1]):new Date(raw);
+  if(isNaN(d))return false;
+  let target=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(),day=864e5,current=new Date(n),cur=new Date(current.getFullYear(),current.getMonth(),current.getDate()).getTime();
+  if(op==='>')return cur>target;if(op==='<')return cur<target;if(op==='>=')return cur>=target;if(op==='<=')return cur<=target;return cur>=target&&cur<target+day;
  }
  return String(value??'').toLowerCase().includes(filter.toLowerCase());
 }
