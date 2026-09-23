@@ -745,7 +745,7 @@ let liveChartTimer=null;
 function miniChart(s,preferTr=false){
  let useTr=preferTr&&s&&s.tradeRepublicVerified;
  let source=useTr?'Trade Republic / '+(s.trExchange||'LSX'):'Nasdaq';
- return '<div class="mini-chart-block live-chart-block"><div class="mini-chart-title"><span>Intradiario · 1 min · mismo feed que el precio mostrado</span><span class="live-chart-source">'+E(source)+'</span></div><div class="mini-chart live-market-chart" data-stock-key="'+E(stockKey(s))+'" data-prefer-tr="'+(useTr?'1':'0')+'"><div class="chart-placeholder">Cargando histórico intradía…</div></div></div>';
+ return '<div class="mini-chart-block live-chart-block"><div class="mini-chart-title"><span>Velas japonesas · 1 min · mismo feed que el precio mostrado</span><span class="live-chart-source">'+E(source)+'</span></div><div class="mini-chart live-market-chart" data-stock-key="'+E(stockKey(s))+'" data-prefer-tr="'+(useTr?'1':'0')+'"><div class="chart-placeholder">Cargando velas de 1 minuto…</div></div></div>';
 }
 function chartNumber(v){v=Number(v);return Number.isFinite(v)?v:null}
 function chartQuote(s,preferTr){
@@ -768,17 +768,34 @@ function chartFormatTime(ms){
  if(!Number.isFinite(d.getTime()))return '—';
  return new Intl.DateTimeFormat('es-ES',{hour:'2-digit',minute:'2-digit',hour12:false}).format(d);
 }
+const CHART_CANDLE_MS=60000;
 function chartCleanPoints(points){
- let out=[],lastTime=null;
+ let buckets=new Map();
  for(let p of (points||[])){
-  let time=chartNumber(p.time),price=chartNumber(p.price??p.close);
-  if(time===null||price===null||price<=0)continue;
+  let time=chartNumber(p.time);
+  if(time===null)continue;
   if(time<1e12)time*=1000;
-  if(lastTime===time&&out.length){out[out.length-1]={time,price};continue}
-  out.push({time,price});lastTime=time;
+  let bucket=Math.floor(time/CHART_CANDLE_MS)*CHART_CANDLE_MS;
+  let close=chartNumber(p.close??p.price);
+  if(close===null||close<=0)continue;
+  let open=chartNumber(p.open)??close;
+  let high=chartNumber(p.high)??Math.max(open,close);
+  let low=chartNumber(p.low)??Math.min(open,close);
+  if(open<=0||high<=0||low<=0)continue;
+  high=Math.max(high,open,close);
+  low=Math.min(low,open,close);
+  let volume=chartNumber(p.volume);
+  let b=buckets.get(bucket);
+  if(!b){
+   buckets.set(bucket,{time:bucket,open,high,low,close,volume:volume??null});
+  }else{
+   b.high=Math.max(b.high,high);
+   b.low=Math.min(b.low,low);
+   b.close=close;
+   if(volume!==null)b.volume=(b.volume??0)+volume;
+  }
  }
- out.sort((a,b)=>a.time-b.time);
- return out.slice(-900);
+ return [...buckets.values()].sort((a,b)=>a.time-b.time).slice(-900);
 }
 function chartSvgText(x,y,value,cls,anchor='start'){
  return '<text x="'+x+'" y="'+y+'" class="'+cls+'" text-anchor="'+anchor+'">'+E(value)+'</text>';
@@ -786,25 +803,28 @@ function chartSvgText(x,y,value,cls,anchor='start'){
 function drawLiveChart(el){
  if(!el||!el._chartReady)return;
  let s=stockByKey(el._chartKey),preferTr=!!el._chartPreferTr;
- let points=(el._chartPoints||[]).slice(),q=chartQuote(s,preferTr);
+ let candles=(el._chartPoints||[]).map(x=>Object.assign({},x)),q=chartQuote(s,preferTr);
 
  if(q){
   let qt=chartNumber(q.time),observed=chartNumber(q.receivedAt);
   if(qt!==null&&qt<1e12)qt*=1000;
   if(observed!==null&&observed<1e12)observed*=1000;
-  let sampleTime=observed??qt??Date.now(),last=points[points.length-1];
+  let sampleTime=observed??qt??Date.now();
+  let bucket=Math.floor(sampleTime/CHART_CANDLE_MS)*CHART_CANDLE_MS;
+  let last=candles[candles.length-1];
 
-  // A quote observation is a legitimate chart point even when the price has
-  // not changed. This lets the chart grow on quiet symbols instead of staying
-  // blank while waiting for a trade at a different price.
-  if(!last)points.push({time:sampleTime,price:q.price,live:true});
-  else if(sampleTime>last.time+4000)points.push({time:sampleTime,price:q.price,live:true});
-  else if(q.price!==last.price)points.push({time:Math.max(sampleTime,last.time+1),price:q.price,live:true});
-  else if(sampleTime>=last.time)points[points.length-1]={time:last.time,price:q.price,live:true};
+  if(!last||bucket>last.time){
+   candles.push({time:bucket,open:q.price,high:q.price,low:q.price,close:q.price,volume:null,live:true});
+  }else if(bucket===last.time){
+   last.high=Math.max(last.high,q.price);
+   last.low=Math.min(last.low,q.price);
+   last.close=q.price;
+   last.live=true;
+  }
  }
 
- points=chartCleanPoints(points);
- el._chartPoints=points.slice();
+ candles=chartCleanPoints(candles);
+ el._chartPoints=candles.map(x=>Object.assign({},x));
 
  let status=el.querySelector('.live-chart-status'),canvas=el.querySelector('canvas');
  if(!canvas||!status)return;
@@ -817,11 +837,11 @@ function drawLiveChart(el){
  let now=Date.now(),age=q?Math.max(0,now-(q.receivedAt||q.time||now)):null;
  if(q){
   let freshness=age<10000?'EN DIRECTO':age<60000?'ACTUALIZANDO':'DATO ANTIGUO';
-  let historyNote=el._chartHistoryUnavailable?' · gráfico construido con cotizaciones en directo':'';
-  status.innerHTML='<span><b>'+E(q.label)+'</b> · '+E(freshness)+E(historyNote)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
+  let historyNote=el._chartHistoryUnavailable?' · velas construidas con cotizaciones en directo':'';
+  status.innerHTML='<span><b>'+E(q.label)+'</b> · VELAS 1 MIN · '+E(freshness)+E(historyNote)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
   status.classList.toggle('stale',age>=60000);
  }else{
-  status.innerHTML='<span><b>'+(preferTr?'Trade Republic':'Nasdaq')+'</b> · esperando cotización actual</span>';
+  status.innerHTML='<span><b>'+(preferTr?'Trade Republic':'Nasdaq')+'</b> · VELAS 1 MIN · esperando cotización actual</span>';
   status.classList.add('stale');
  }
 
@@ -847,62 +867,59 @@ function drawLiveChart(el){
   ctx.save();ctx.font=font;ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(String(value),x,y);ctx.restore();
  }
 
- if(!points.length){
-  label('Esperando datos de mercado…',w/2,h/2,'center','#829aa5');
+ if(!candles.length){
+  label('Esperando velas de mercado…',w/2,h/2,'center','#829aa5');
   return;
  }
 
- if(points.length===1){
-  let p=points[0],y=top+plotH/2,x=left+plotW*.68;
-  line(left,y,left+plotW,y,'#6e8791',1,[4,4]);
-  ctx.save();ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle='#55e2b6';ctx.fill();ctx.strokeStyle='#d9fff3';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
-  label(chartFormatPrice(p.price,preferTr),left+plotW+8,y,'left','#829aa5');
-  label(chartFormatTime(p.time),x,h-12,'center','#6f8792');
-  label('Esperando más puntos para formar la curva',w/2,14,'center','#829aa5');
-  return;
- }
+ // Keep one-minute candles readable: mobile shows roughly the latest hour,
+ // wider screens show more history without compressing candles into a line.
+ let maxVisible=Math.max(36,Math.min(compact?72:180,Math.floor(plotW/(compact?4.5:5.5))));
+ let visible=candles.slice(-maxVisible);
 
- let prices=points.map(p=>p.price),min=Math.min(...prices),max=Math.max(...prices);
+ let highs=visible.map(p=>p.high),lows=visible.map(p=>p.low);
+ let min=Math.min(...lows),max=Math.max(...highs);
  let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);
  min-=pad;max+=pad;span=max-min||1;
- let minT=points[0].time,maxT=points[points.length-1].time;
- if(maxT<=minT)maxT=minT+60000;
- let X=t=>left+(t-minT)/(maxT-minT)*plotW,Y=p=>top+(max-p)/span*plotH;
+ let Y=p=>top+(max-p)/span*plotH;
 
  for(let i=0;i<5;i++){
   let f=i/4,y=top+f*plotH,val=max-f*span;
   line(left,y,left+plotW,y,'#182a33');
   label(chartFormatPrice(val,preferTr),left+plotW+8,y);
  }
- for(let i=0;i<5;i++){
-  let f=i/4,x=left+f*plotW,t=minT+f*(maxT-minT);
-  line(x,top,x,top+plotH,'#11212a');
-  label(chartFormatTime(t),x,h-11,'center');
+
+ let slot=plotW/Math.max(1,visible.length);
+ let candleW=Math.max(2,Math.min(10,slot*.62));
+ let wickW=compact?1:1.2;
+ let upColor='#55e2b6',downColor='#ff7b82';
+
+ for(let i=0;i<visible.length;i++){
+  let p=visible[i],x=left+slot*(i+.5),yo=Y(p.open),yc=Y(p.close),yh=Y(p.high),yl=Y(p.low);
+  let up=p.close>=p.open,color=up?upColor:downColor;
+  line(x,yh,x,yl,color,wickW);
+  let bodyTop=Math.min(yo,yc),bodyH=Math.max(1.5,Math.abs(yc-yo));
+  ctx.save();
+  ctx.fillStyle=color;
+  ctx.fillRect(x-candleW/2,bodyTop,candleW,bodyH);
+  ctx.restore();
  }
 
- let first=points[0].price,last=points[points.length-1].price,up=last>=first;
- let stroke=up?'#55e2b6':'#ff7b82';
+ for(let i=0;i<5;i++){
+  let idx=Math.round((visible.length-1)*(i/4));
+  let p=visible[Math.max(0,Math.min(visible.length-1,idx))];
+  let x=left+slot*(idx+.5);
+  line(x,top,x,top+plotH,'#11212a');
+  label(chartFormatTime(p.time),x,h-11,'center');
+ }
 
- let gradient=ctx.createLinearGradient(0,top,0,top+plotH);
- gradient.addColorStop(0,up?'rgba(85,226,182,.20)':'rgba(255,123,130,.18)');
- gradient.addColorStop(1,'rgba(5,9,12,0)');
- ctx.save();
- ctx.beginPath();
- points.forEach((p,i)=>{let x=X(p.time),y=Y(p.price);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
- ctx.lineTo(X(points[points.length-1].time),top+plotH);
- ctx.lineTo(X(points[0].time),top+plotH);
- ctx.closePath();ctx.fillStyle=gradient;ctx.fill();ctx.restore();
-
- ctx.save();ctx.beginPath();
- points.forEach((p,i)=>{let x=X(p.time),y=Y(p.price);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
- ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();ctx.restore();
-
- let lastX=X(points[points.length-1].time),lastY=Y(last);
+ let last=visible[visible.length-1],lastY=Y(last.close),lastX=left+slot*(visible.length-.5);
+ let lastUp=last.close>=last.open,lastColor=lastUp?upColor:downColor;
  line(left,lastY,left+plotW,lastY,'#6e8791',1,[4,4]);
- ctx.save();ctx.beginPath();ctx.arc(lastX,lastY,5,0,Math.PI*2);ctx.fillStyle=stroke;ctx.fill();ctx.strokeStyle=up?'#d9fff3':'#ffd5d7';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+ ctx.save();ctx.beginPath();ctx.arc(lastX,lastY,3.5,0,Math.PI*2);ctx.fillStyle=lastColor;ctx.fill();ctx.restore();
 
- let hi=Math.max(...prices),lo=Math.min(...prices);
- label('Máx '+chartFormatPrice(hi,preferTr)+' · Mín '+chartFormatPrice(lo,preferTr),left,13,'left','#829aa5');
+ let hi=Math.max(...highs),lo=Math.min(...lows);
+ label('Máx '+chartFormatPrice(hi,preferTr)+' · Mín '+chartFormatPrice(lo,preferTr)+' · '+visible.length+' velas',left,13,'left','#829aa5');
 }
 async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
@@ -1100,7 +1117,7 @@ function quickProfileHtml(s){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Velas japonesas · 1 min · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
@@ -1165,7 +1182,7 @@ function profileHtml(s,view){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot base '+E(updated)+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   trRelation+trNote+feedWarning+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Velas japonesas · 1 min · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
