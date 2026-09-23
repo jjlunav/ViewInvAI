@@ -667,7 +667,7 @@ function entryChangeHtml(s,se){
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
  let ch=FC(s,se),p=SP(s,se),hint=rankText||why(s,se);
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+entryChangeHtml(s,se)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span class="stock-name">'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+entryChangeHtml(s,se)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
 function numInput(id,fallback,min=-Infinity,max=Infinity){let v=N($('#'+id).value);if(v===null)v=fallback;return Math.max(min,Math.min(max,v))}
