@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923e">
+  <link rel="stylesheet" href="styles.css?v=20260923g">
 </head>
 <body>
 <div class="app-shell">
@@ -211,7 +211,11 @@
       <div id="catalogResults" class="stock-list dense"></div>
     </section>
 
-    <div class="market-leaders market-leaders-bottom" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
+    <div class="market-leaders market-leaders-dock" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
+      <div class="leaders-dock-toolbar">
+        <span class="leaders-dock-handle" aria-hidden="true"></span>
+        <button type="button" class="leaders-pin" id="leadersPin" aria-pressed="false" title="Dejar esta barra fija">📌</button>
+      </div>
       <section class="leader-market" aria-label="Top 10 mercado de Estados Unidos">
         <div class="leader-market-head">
           <strong>EEUU</strong>
@@ -227,11 +231,12 @@
         <div class="leader-grid" id="leadersTR"><span class="leader-loading">Cargando mercado…</span></div>
       </section>
     </div>
+    <div class="leaders-hotzone" id="leadersHotzone" aria-hidden="true"></div>
     
 
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923f"></script>
+<script src="app.js?v=20260923g"></script>
 </body>
 </html>
