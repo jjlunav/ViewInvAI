@@ -55,7 +55,7 @@ Cada acción aparece en una fila compacta con ticker, nombre, precio, variación
 - RSI y ADX.
 - EMA de 20 sesiones.
 - Rendimiento semanal y mensual.
-- Gráfico intradía de TradingView con velas japonesas de 5 minutos, fondo negro, volumen y horario extendido cuando el símbolo lo soporta. Se carga solo al desplegar la acción.
+- Gráfico intradía de TradingView con velas japonesas de 1 minuto, fondo negro, volumen y horario extendido cuando el símbolo lo soporta. Se carga solo al desplegar la acción.
 - Motivos objetivos por los que la acción aparece en el filtro.
 - Mercado, divisa, ISIN cuando está disponible y próxima fecha de resultados cuando existe.
 
