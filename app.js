@@ -705,7 +705,9 @@ function drawLiveChart(el){
   svg.innerHTML=chartSvgText(500,170,'Esperando suficientes datos para dibujar el gráfico','chart-empty','middle');
   return;
  }
- let w=1000,h=340,left=66,right=88,top=18,bottom=34,plotW=w-left-right,plotH=h-top-bottom;
+ let rect=svg.getBoundingClientRect(),w=Math.max(300,Math.round(rect.width||1000)),h=Math.max(190,Math.round(rect.height||340));
+ svg.setAttribute('viewBox','0 0 '+w+' '+h);
+ let compact=w<560,left=compact?48:66,right=compact?68:88,top=18,bottom=34,plotW=w-left-right,plotH=h-top-bottom;
  let prices=points.map(p=>p.price),min=Math.min(...prices),max=Math.max(...prices);
  let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);min-=pad;max+=pad;span=max-min||1;
  let minT=points[0].time,maxT=points[points.length-1].time;if(maxT<=minT)maxT=minT+60000;
@@ -741,7 +743,7 @@ async function loadMiniChart(el){
  let key=el.dataset.stockKey,s=stockByKey(key);if(!s)return;
  let preferTr=el.dataset.preferTr==='1'&&!!s.tradeRepublicVerified;
  el.dataset.loaded='1';el._chartKey=key;el._chartPreferTr=preferTr;
- el.innerHTML='<div class="live-chart-status"><span>Cargando histórico…</span></div><svg class="live-chart-svg" viewBox="0 0 1000 340" preserveAspectRatio="none" role="img" aria-label="Gráfico intradía en tiempo real"></svg>';
+ el.innerHTML='<div class="live-chart-status"><span>Cargando histórico…</span></div><svg class="live-chart-svg" preserveAspectRatio="none" role="img" aria-label="Gráfico intradía en tiempo real"></svg>';
  try{
   let url=preferTr
    ?'/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000'
