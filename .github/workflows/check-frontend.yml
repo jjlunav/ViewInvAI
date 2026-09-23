@@ -98,7 +98,7 @@ jobs:
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
           cp index.html app.js styles.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
-          {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":false}],"events":[]}
+          {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
 
           python - <<'PY'
