@@ -63,7 +63,13 @@ La sección combina eventos previstos con noticias recientes. Incluye, entre otr
 - Noticias regulatorias, legales o relacionadas con la cotización.
 - Otras noticias de actualidad vinculadas a la empresa.
 
-Para noticias, la ventana seleccionada representa antigüedad máxima; para eventos programados, representa cuánto falta hasta el evento. Cada elemento muestra la fuente cuando está disponible y distingue el hecho de su posible relevancia. La aparición de un catalizador no implica que la acción vaya a subir o bajar.
+La ventana de Potencial futuro mira hacia delante desde el momento actual: 1, 2, 3, 4, 5, 6, 7, 14, 30 o 60 días. Las noticias publicadas durante el día actual pueden acompañar a los eventos previstos cuando sean relevantes.
+
+Cada acción aparece una sola vez. Si existen varios catalizadores o noticias asociados al mismo valor dentro de la ventana seleccionada, todos se agrupan dentro del desplegable de esa acción.
+
+Cuando el proveedor facilita una hora concreta, se muestra junto a la fecha en hora de Nueva York. Si la hora no está disponible, no se inventa.
+
+Las noticias duplicadas procedentes de distintos medios se agrupan por hecho y se conservan sus fuentes como contraste. Solo se publican noticias procedentes de fuentes financieras reputadas o fuentes primarias disponibles; cuando varias fuentes independientes cubren el mismo hecho, la interfaz lo indica. La aparición de un catalizador no implica que la acción vaya a subir o bajar.
 
 ## Radar de acciones
 
