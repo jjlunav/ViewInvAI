@@ -10,6 +10,14 @@ La cinta se desplaza automáticamente de forma horizontal cuando hay muchos valo
 
 ## Potencial de entrada
 
+### Orden del ranking
+
+Cada acción del ranking explica por qué ocupa su posición. En los criterios basados en score se muestran el score total y sus componentes: movimiento de precio, volumen relativo, ADX, RSI y estructura respecto a EMA20/EMA50. La comparación indica qué factores aportan la ventaja frente a la acción situada inmediatamente debajo.
+
+En los filtros de “Explosión en la sesión” y “Más suben tras cierre EEUU”, el orden se explica directamente por la variación porcentual utilizada por ese criterio.
+
+
+
 Esta pantalla muestra acciones que cumplen el criterio seleccionado. La lista puede limitarse a valores verificados en Trade Republic o ampliarse al resto del mercado estadounidense.
 
 ### Sesiones
@@ -38,7 +46,7 @@ El desplegable Configurar criterio muestra subida mínima y máxima, volumen rel
 
 ## Detalle de una acción
 
-Cada acción aparece en una fila compacta con ticker, nombre, precio, variación y estado de Trade Republic. Al pulsar directamente sobre la fila de la acción se despliega o se oculta su información:
+Cada acción aparece en una fila compacta con ticker, nombre, precio, variación y estado de Trade Republic. Al pulsar directamente sobre la fila de la acción se despliega o se oculta su información. Al situar el cursor sobre cada métrica se muestra una explicación de qué representa; en móvil la misma ayuda puede abrirse al tocar/focalizar el dato:
 
 - Precio y variación regular.
 - Precio y variación de premarket.
@@ -47,7 +55,7 @@ Cada acción aparece en una fila compacta con ticker, nombre, precio, variación
 - RSI y ADX.
 - EMA de 20 sesiones.
 - Rendimiento semanal y mensual.
-- Mini gráfico de TradingView de 1 mes, cargado solo al desplegar la acción.
+- Gráfico intradía de TradingView con velas japonesas de 5 minutos, fondo negro, volumen y horario extendido cuando el símbolo lo soporta. Se carga solo al desplegar la acción.
 - Motivos objetivos por los que la acción aparece en el filtro.
 - Mercado, divisa, ISIN cuando está disponible y próxima fecha de resultados cuando existe.
 
