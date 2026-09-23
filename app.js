@@ -1647,8 +1647,44 @@ function heatmapTile(s,se,maxWeight){
 }
 function compactMoney(v){
  v=N(v);if(v===null)return'—';
- let a=Math.abs(v);
- if(a>=1e12)return '
+ let a=Math.abs(v),prefix='USD ';
+ if(a>=1e12)return prefix+F(v/1e12,1)+'T';
+ if(a>=1e9)return prefix+F(v/1e9,1)+'B';
+ if(a>=1e6)return prefix+F(v/1e6,1)+'M';
+ return prefix+I(v);
+}
+function renderHeatmap(){
+ let box=$('#heatmapResults');if(!box)return;
+ let se=heatmapSession(),limit=Math.max(25,Math.min(500,N(heatmapState.limit)||250));
+ let universe=heatmapUniverse().filter(s=>heatmapChange(s,se)!==null);
+ universe.sort((a,b)=>heatmapWeight(b)-heatmapWeight(a));
+ let selected=universe.slice(0,limit),groups=new Map();
+ for(let s of selected){
+  let sector=String(s.sector||'Sin sector').trim()||'Sin sector';
+  if(!groups.has(sector))groups.set(sector,[]);
+  groups.get(sector).push(s);
+ }
+ let sectors=[...groups.entries()].map(([name,stocks])=>({
+  name,
+  stocks,
+  weight:stocks.reduce((sum,s)=>sum+heatmapWeight(s),0),
+  avg:heatmapSectorAverage(stocks,se)
+ })).sort((a,b)=>b.weight-a.weight);
+ let maxSector=sectors.length?sectors[0].weight:1;
+ box.innerHTML=sectors.length?sectors.map(sec=>{
+  let maxStock=Math.max(1,...sec.stocks.map(heatmapWeight));
+  let span=heatmapSectorSpan(sec.weight,maxSector);
+  return '<section class="heat-sector '+heatmapChangeClass(sec.avg)+'" style="--sector-span:'+span+'">'+
+   '<div class="heat-sector-head"><div><strong>'+E(sec.name)+'</strong><small>'+sec.stocks.length+' acciones</small></div><b class="'+C(sec.avg)+'">'+PC(sec.avg)+'</b></div>'+
+   '<div class="heat-sector-grid">'+sec.stocks.map(s=>heatmapTile(s,se,maxStock)).join('')+'</div>'+
+   '</section>';
+ }).join(''):'<div class="empty-state">No hay datos suficientes para construir el mapa de calor en esta sesión.</div>';
+ let marketLabel=heatmapState.market==='tr'?'Trade Republic':'EEUU';
+ let ses=$('#heatmapSessionText');if(ses)ses.textContent=marketLabel+' · '+SN(se);
+ let count=$('#heatmapCount');if(count)count.textContent=selected.length+' de '+universe.length+' acciones';
+ let upd=$('#heatmapUpdated');if(upd)upd.textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';
+}
+function markRecommendationSold(mode){
  if(!['us','tr'].includes(mode))return;
  let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
  recommendationState.sold[mode][key]=Date.now();
