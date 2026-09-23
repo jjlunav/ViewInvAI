@@ -94,8 +94,8 @@ jobs:
             exit 1
           fi
 
-          rm -rf /tmp/catalyst-smoke
-          mkdir -p /tmp/catalyst-smoke/data
+          rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
+          mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
           cp index.html app.js styles.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":false}],"events":[]}
@@ -107,27 +107,47 @@ jobs:
           html = p.read_text(encoding="utf-8")
           inject = r'''
           <script>
-          window.addEventListener('load', () => {
-            setTimeout(() => {
-              try {
-                if (!db || !Array.isArray(db.stocks) || !db.stocks.length) throw new Error('market data not loaded');
-                const s = db.stocks[0];
-                s.usLivePrice = 10.25;
-                s.usLiveReceivedAt = Date.now();
-                s.usLiveIsRealTime = true;
-                document.body.dataset.smokeApp = 'ok';
-                openStock(s, 'smoke test', false);
-                setTimeout(() => {
-                  const canvas = document.querySelector('.live-chart-canvas');
-                  const profileOpen = document.body.classList.contains('stock-detail-open');
-                  document.body.dataset.smokeProfile = canvas && profileOpen ? 'ok' : 'fail';
-                }, 1200);
-              } catch (err) {
-                document.body.dataset.smokeError = String(err && err.message || err);
-                console.error(err);
+          (() => {
+            const started = Date.now();
+
+            function fail(message) {
+              document.body.dataset.smokeError = String(message);
+              console.error('SMOKE_FAIL', message);
+            }
+
+            function waitForProfile() {
+              const canvas = document.querySelector('.live-chart-canvas');
+              const profileOpen = document.body.classList.contains('stock-detail-open');
+              if (canvas && profileOpen) {
+                document.body.dataset.smokeProfile = 'ok';
+                return;
               }
-            }, 1200);
-          });
+              if (Date.now() - started < 7500) {
+                setTimeout(waitForProfile, 100);
+                return;
+              }
+              fail('profile or chart canvas did not open');
+              document.body.dataset.smokeProfile = 'fail';
+            }
+
+            function waitForRow() {
+              const row = document.querySelector('#entryResults [data-stock-key]');
+              if (row) {
+                document.body.dataset.smokeApp = 'ok';
+                row.click();
+                setTimeout(waitForProfile, 100);
+                return;
+              }
+              if (Date.now() - started < 6000) {
+                setTimeout(waitForRow, 100);
+                return;
+              }
+              fail('entry row was not rendered');
+              document.body.dataset.smokeApp = 'fail';
+            }
+
+            setTimeout(waitForRow, 100);
+          })();
           </script>
           '''
           p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
@@ -139,12 +159,32 @@ jobs:
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
 
-          "$CHROME"             --headless=new             --no-sandbox             --disable-gpu             --disable-dev-shm-usage             --virtual-time-budget=9000             --dump-dom             http://127.0.0.1:4173/             > /tmp/catalyst-dom.html 2> /tmp/catalyst-chrome.log
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --user-data-dir=/tmp/catalyst-chrome-profile \
+            --virtual-time-budget=10000 \
+            --dump-dom \
+            http://127.0.0.1:4173/ \
+            > /tmp/catalyst-dom.html 2> /tmp/catalyst-chrome.log
 
-          grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html
-          grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html
+          if ! grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::La aplicación no llegó a renderizar una acción"
+            grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
+            tail -100 /tmp/catalyst-chrome.log || true
+            exit 1
+          fi
 
-          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError' /tmp/catalyst-chrome.log; then
+          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::No se pudo abrir el detalle/gráfico en navegador real"
+            grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
+            tail -100 /tmp/catalyst-chrome.log || true
+            exit 1
+          fi
+
+          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|SMOKE_FAIL' /tmp/catalyst-chrome.log; then
             cat /tmp/catalyst-chrome.log
             exit 1
           fi
