@@ -80,11 +80,36 @@ async function fetchNasdaqChart(symbol) {
   const json = await response.json();
   const data = json && json.data;
   const raw = data && Array.isArray(data.chart) ? data.chart.slice(-1500) : [];
-  const points = raw.map(point => ({
-    time: Number(point.x),
-    price: parseMarketNumber(point.y != null ? point.y : point.z && (point.z.price || point.z.value)),
-    volume: parseMarketNumber(point.w != null ? point.w : point.z && point.z.shares)
-  })).filter(point => Number.isFinite(point.time) && point.price != null);
+  const points = raw.map(point => {
+    const z = point && point.z && typeof point.z === "object" ? point.z : {};
+    const close = parseMarketNumber(
+      point.y != null ? point.y :
+      z.close != null ? z.close :
+      z.closePrice != null ? z.closePrice :
+      z.price != null ? z.price : z.value
+    );
+    const open = parseMarketNumber(
+      point.o != null ? point.o :
+      z.open != null ? z.open : z.openPrice
+    );
+    const high = parseMarketNumber(
+      point.h != null ? point.h :
+      z.high != null ? z.high : z.highPrice
+    );
+    const low = parseMarketNumber(
+      point.l != null ? point.l :
+      z.low != null ? z.low : z.lowPrice
+    );
+    return {
+      time: Number(point.x),
+      price: close,
+      open,
+      high,
+      low,
+      close,
+      volume: parseMarketNumber(point.w != null ? point.w : z.shares != null ? z.shares : z.volume)
+    };
+  }).filter(point => Number.isFinite(point.time) && point.close != null);
   return {
     symbol: (data && data.symbol) || safe,
     points,
