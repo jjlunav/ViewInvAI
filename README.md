@@ -26,7 +26,6 @@ Esta pantalla muestra acciones que cumplen el criterio seleccionado. La lista pu
 - Premarket: utiliza precio, variación y volumen anteriores a la apertura regular.
 - Sesión regular: utiliza la cotización de la sesión principal de Estados Unidos.
 - Postmarket · tras cierre EEUU: utiliza la negociación posterior al cierre.
-- Sesión anterior: mantiene como referencia los datos de la última sesión regular.
 
 ### Criterios
 
@@ -42,7 +41,11 @@ No existe un precio mínimo. Una acción puede aparecer independientemente de su
 
 ### Filtros configurables
 
-El desplegable Configurar criterio muestra subida mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. Los campos numéricos están bloqueados por defecto; cada parámetro tiene su propio botón de candado para desbloquearlo individualmente antes de modificarlo. También permite activar o desactivar la exigencia de tendencia y el filtro de liquidez.
+El desplegable Configurar criterio muestra variación mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. Los campos numéricos están bloqueados por defecto; cada parámetro tiene su propio botón de candado para desbloquearlo individualmente antes de modificarlo. Los filtros activos son estrictos: si un dato necesario no está disponible, el valor no supera ese filtro.
+
+El porcentaje mostrado en cada candidato de Potencial de entrada es el mismo que utiliza la lógica de filtrado. En sesión regular se prioriza la cotización actual de EEUU cuando está disponible; premarket y postmarket usan sus métricas específicas. El volumen relativo de premarket/postmarket se calcula frente al volumen medio diario y no debe interpretarse como equivalente exacto al volumen relativo de la sesión regular.
+
+La opción de tendencia exige precio ≥ EMA20 ≥ EMA50. La opción de liquidez excluye valores con menos de 10.000 títulos negociados o, cuando existe BID/ASK válido, con un spread superior al 8 %. El botón Guardar personalizado almacena el criterio en el navegador y lo recupera desde Personalizado guardado.
 
 ## Detalle de una acción
 

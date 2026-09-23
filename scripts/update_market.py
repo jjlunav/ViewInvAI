@@ -296,9 +296,9 @@ def verify_us_isins(stocks, previous):
         elif tr_isin:
             stock["instrumentLinkStatus"] = "unverified"
             stock["isinLinkVerified"] = False
-            # Keep the candidate available while the external ISIN lookup is
-            # temporarily unresolved, but never label the cross-market link as verified.
-            stock["tradeRepublicVerified"] = True
+            # The instrument exists in the TR universe, but its US cross-market identity
+            # is unresolved. Keep it as a candidate, never as verified.
+            stock["tradeRepublicVerified"] = False
             stock["isin"] = tr_isin
             unresolved += 1
         elif us_isin:
