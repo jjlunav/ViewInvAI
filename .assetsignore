@@ -4,3 +4,6 @@ README.md
 wrangler.jsonc
 .assetsignore
 worker.js
+.git/
+requirements.txt
+requirements-security.txt
