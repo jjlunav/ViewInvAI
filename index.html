@@ -77,13 +77,13 @@
             <span id="presetLabel">Impulso intradía</span><span class="preset-caret">⌄</span>
           </button>
           <div class="preset-menu" id="presetMenu" role="listbox" aria-label="Criterio de entrada">
-            <button type="button" class="preset-option" data-value="short" title="Filtra por movimiento mínimo y liquidez; volumen relativo, ADX, RSI y tendencia pesan en la puntuación para ordenar los candidatos."><span>Corto plazo · 1–5 sesiones</span></button>
-            <button type="button" class="preset-option" data-value="medium" title="Exige estructura de tendencia y liquidez; el resto de métricas técnicas se usa para ordenar los candidatos por puntuación."><span>Medio plazo · 2–6 semanas</span></button>
-            <button type="button" class="preset-option" data-value="broad" title="Reduce restricciones para explorar más valores y detectar candidatos adicionales."><span>Exploración amplia</span></button>
-            <button type="button" class="preset-option active" data-value="intraday" title="Exige movimiento intradía mínimo y liquidez. Volumen relativo, ADX y RSI se usan para priorizar, no como barreras rígidas por defecto."><span>Impulso intradía</span></button>
+            <button type="button" class="preset-option" data-value="short" title="Filtra por movimiento mínimo y liquidez. Las candidatas se ordenan siempre por mayor variación porcentual de la sesión seleccionada."><span>Corto plazo · 1–5 sesiones</span></button>
+            <button type="button" class="preset-option" data-value="medium" title="Exige estructura de tendencia y liquidez. Las candidatas se ordenan siempre por mayor variación porcentual."><span>Medio plazo · 2–6 semanas</span></button>
+            <button type="button" class="preset-option" data-value="broad" title="Reduce restricciones para explorar más valores; el listado sigue ordenado automáticamente por mayor variación porcentual."><span>Exploración amplia</span></button>
+            <button type="button" class="preset-option active" data-value="intraday" title="Exige movimiento intradía mínimo y liquidez. El listado se reordena automáticamente por mayor variación porcentual."><span>Impulso intradía</span></button>
             <button type="button" class="preset-option" data-value="exploded" title="Localiza acciones que ya han subido con fuerza durante la sesión actual."><span>Explosión en la sesión</span></button>
             <button type="button" class="preset-option" data-value="afterhours" title="Ordena por mayor subida en postmarket después del cierre regular de EEUU."><span>Más suben tras cierre EEUU</span></button>
-            <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos para reducir señales débiles."><span>Histórico y tendencia estrictos</span></button>
+            <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos; el orden final sigue siendo siempre por mayor variación porcentual."><span>Histórico y tendencia estrictos</span></button>
             <button type="button" class="preset-option" data-value="custom" title="Carga el último criterio personalizado que hayas guardado en este navegador."><span>Personalizado guardado</span></button>
           </div>
           <select id="presetSelect" class="preset-native" aria-hidden="true" tabindex="-1">
