@@ -173,6 +173,15 @@ jobs:
           if ! grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html; then
             echo "::error::La aplicación no llegó a renderizar una acción"
             grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
+            python - <<'PY'
+          from pathlib import Path
+          dom = Path("/tmp/catalyst-dom.html").read_text(encoding="utf-8", errors="replace")
+          for needle in ('id="entrySessionText"', 'id="entryCount"', 'id="entryResults"'):
+              pos = dom.find(needle)
+              if pos >= 0:
+                  print("\nDOM DEBUG", needle)
+                  print(dom[max(0, pos-250):pos+1600])
+          PY
             tail -100 /tmp/catalyst-chrome.log || true
             exit 1
           fi
