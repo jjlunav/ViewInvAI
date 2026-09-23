@@ -31,3 +31,21 @@
  .preset-option{white-space:normal;padding:8px}
  .preset-desc,.preset-option:hover .preset-desc,.preset-option:focus-visible .preset-desc{display:block;position:static;transform:none;width:auto;margin-top:3px;padding:0;border:0;background:transparent;box-shadow:none;color:#78909c;font-size:9px;line-height:1.35}
 }
+
+/* Individually lockable criterion inputs */
+.criterion-field{display:grid;gap:3px;min-width:94px}
+.criterion-field>label{font-size:10px;color:#8398a4}
+.criterion-control{display:flex;align-items:center;gap:4px}
+.criterion-control input{width:78px!important;margin-top:0!important}
+.criterion-field:nth-child(3) .criterion-control input,.criterion-field:nth-child(4) .criterion-control input{width:102px!important}
+.criterion-control input[readonly]{opacity:.72;cursor:default;background:#08121a;color:#a2b3bb}
+.field-lock{width:28px;height:28px;display:grid;place-items:center;border:1px solid #2b414e;border-radius:6px;background:#101d27;color:#a9bbc3;cursor:pointer;padding:0;font-size:12px;line-height:1}
+.field-lock:hover{border-color:#4a6d7d;color:#fff}
+.field-lock.unlocked{border-color:#3b806b;background:#17382f;color:#bff6e3}
+.criterion-field small{font-size:8px;color:#617a87}
+@media(max-width:680px){
+ .criterion-field{min-width:86px}
+ .criterion-control input{width:68px!important}
+ .criterion-field:nth-child(3) .criterion-control input,.criterion-field:nth-child(4) .criterion-control input{width:88px!important}
+ .field-lock{width:26px;height:26px;font-size:11px}
+}
