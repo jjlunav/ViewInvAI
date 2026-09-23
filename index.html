@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923r2">
+  <link rel="stylesheet" href="styles.css?v=20260923r3">
 </head>
 <body>
 <div class="app-shell">
@@ -77,10 +77,10 @@
             <span id="presetLabel">Impulso intradía</span><span class="preset-caret">⌄</span>
           </button>
           <div class="preset-menu" id="presetMenu" role="listbox" aria-label="Criterio de entrada">
-            <button type="button" class="preset-option" data-value="short" title="Busca movimientos aprovechables a 1–5 sesiones con impulso, volumen y fuerza técnica."><span>Corto plazo · 1–5 sesiones</span></button>
-            <button type="button" class="preset-option" data-value="medium" title="Prioriza tendencias sostenidas y una estructura técnica más estable a 2–6 semanas."><span>Medio plazo · 2–6 semanas</span></button>
+            <button type="button" class="preset-option" data-value="short" title="Filtra por movimiento mínimo y liquidez; volumen relativo, ADX, RSI y tendencia pesan en la puntuación para ordenar los candidatos."><span>Corto plazo · 1–5 sesiones</span></button>
+            <button type="button" class="preset-option" data-value="medium" title="Exige estructura de tendencia y liquidez; el resto de métricas técnicas se usa para ordenar los candidatos por puntuación."><span>Medio plazo · 2–6 semanas</span></button>
             <button type="button" class="preset-option" data-value="broad" title="Reduce restricciones para explorar más valores y detectar candidatos adicionales."><span>Exploración amplia</span></button>
-            <button type="button" class="preset-option active" data-value="intraday" title="Busca impulso en la sesión actual con subida, volumen relativo y fuerza técnica."><span>Impulso intradía</span></button>
+            <button type="button" class="preset-option active" data-value="intraday" title="Exige movimiento intradía mínimo y liquidez. Volumen relativo, ADX y RSI se usan para priorizar, no como barreras rígidas por defecto."><span>Impulso intradía</span></button>
             <button type="button" class="preset-option" data-value="exploded" title="Localiza acciones que ya han subido con fuerza durante la sesión actual."><span>Explosión en la sesión</span></button>
             <button type="button" class="preset-option" data-value="afterhours" title="Ordena por mayor subida en postmarket después del cierre regular de EEUU."><span>Más suben tras cierre EEUU</span></button>
             <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos para reducir señales débiles."><span>Histórico y tendencia estrictos</span></button>
@@ -242,6 +242,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923r2"></script>
+<script src="app.js?v=20260923r3"></script>
 </body>
 </html>
