@@ -67,7 +67,7 @@
       </div>
 
       <div class="control-strip">
-        <select id="sessionSelect" class="select" title="Selecciona qué tramo del mercado usar para precio, variación y volumen; Automática cambia entre premarket, regular y postmarket según Nueva York.">
+        <select id="sessionSelect" class="select">
           <option value="auto">Sesión automática</option>
           <option value="premarket">Premarket</option>
           <option value="regular">Sesión regular</option>
@@ -78,22 +78,26 @@
             <span id="presetLabel">Impulso intradía</span><span class="preset-caret">⌄</span>
           </button>
           <div class="preset-menu" id="presetMenu" role="listbox" aria-label="Criterio de entrada">
-            <button type="button" class="preset-option" data-value="short" title="Filtra por movimiento mínimo y liquidez. Las candidatas se ordenan siempre por mayor variación porcentual de la sesión seleccionada."><span>Corto plazo · 1–5 sesiones</span></button>
-            <button type="button" class="preset-option" data-value="medium" title="Exige estructura de tendencia y liquidez. Las candidatas se ordenan siempre por mayor variación porcentual."><span>Medio plazo · 2–6 semanas</span></button>
-            <button type="button" class="preset-option" data-value="broad" title="Reduce restricciones para explorar más valores; el listado sigue ordenado automáticamente por mayor variación porcentual."><span>Exploración amplia</span></button>
-            <button type="button" class="preset-option active" data-value="intraday" title="Exige movimiento intradía mínimo y liquidez. El listado se reordena automáticamente por mayor variación porcentual."><span>Impulso intradía</span></button>
-            <button type="button" class="preset-option" data-value="exploded" title="Localiza acciones que ya han subido con fuerza durante la sesión actual."><span>Explosión en la sesión</span></button>
-            <button type="button" class="preset-option" data-value="afterhours" title="Ordena por mayor subida en postmarket después del cierre regular de EEUU."><span>Más suben tras cierre EEUU</span></button>
-            <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos; el orden final sigue siendo siempre por mayor variación porcentual."><span>Histórico y tendencia estrictos</span></button>
-            <button type="button" class="preset-option" data-value="custom" title="Carga el último criterio personalizado que hayas guardado en este navegador."><span>Personalizado guardado</span></button>
+            <button type="button" class="preset-option" data-value="short"><span>Corto plazo · 1–5 sesiones</span></button>
+            <button type="button" class="preset-option" data-value="medium"><span>Medio plazo · 2–6 semanas</span></button>
+            <button type="button" class="preset-option" data-value="broad"><span>Exploración amplia</span></button>
+            <button type="button" class="preset-option active" data-value="intraday"><span>Impulso intradía</span></button>
+            <button type="button" class="preset-option" data-value="emerging"><span>Impulso naciente</span></button>
+            <button type="button" class="preset-option" data-value="exploded"><span>Explosión en la sesión</span></button>
+            <button type="button" class="preset-option" data-value="premarketExplosion"><span>Explosión Premarket</span></button>
+            <button type="button" class="preset-option" data-value="postmarketExplosion"><span>Explosión Postmarket</span></button>
+            <button type="button" class="preset-option" data-value="strict"><span>Histórico y tendencia estrictos</span></button>
+            <button type="button" class="preset-option" data-value="custom"><span>Personalizado guardado</span></button>
           </div>
           <select id="presetSelect" class="preset-native" aria-hidden="true" tabindex="-1">
             <option value="short">Corto plazo · 1–5 sesiones</option>
             <option value="medium">Medio plazo · 2–6 semanas</option>
             <option value="broad">Exploración amplia</option>
             <option value="intraday" selected>Impulso intradía</option>
+            <option value="emerging">Impulso naciente</option>
             <option value="exploded">Explosión en la sesión</option>
-            <option value="afterhours">Más suben tras cierre EEUU</option>
+            <option value="premarketExplosion">Explosión Premarket</option>
+            <option value="postmarketExplosion">Explosión Postmarket</option>
             <option value="strict">Histórico y tendencia estrictos</option>
             <option value="custom">Personalizado guardado</option>
           </select>
@@ -266,6 +270,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923r16"></script>
+<script src="app.js?v=20260924r18"></script>
 </body>
 </html>
