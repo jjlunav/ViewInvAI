@@ -4,16 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="EntryPointTrade - radar de mercado y búsqueda de catalizadores.">
-  <title>EntryPointTrade</title>
+  <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
+  <title>CatalystPulse</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div class="market-tape-bar" id="marketTapeBar" aria-label="Acciones con más movimiento del mercado de Estados Unidos">
+  <span class="market-tape-label">MOVIMIENTO EEUU</span>
+  <div class="market-tape-viewport">
+    <div class="market-tape-track" id="marketTapeTrack">
+      <span class="market-tape-loading">Cargando mercado…</span>
+    </div>
+  </div>
+</div>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark">⌁</div>
-      <div><div class="brand-name">EntryPointTrade</div><div class="brand-subtitle">RADAR DE MERCADO</div></div>
+      <div><div class="brand-name">CatalystPulse</div><div class="brand-subtitle">RADAR DE MERCADO</div></div>
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
@@ -36,19 +44,10 @@
           <option value="calendar">Calendario y noticias</option>
           <option value="catalog">Catálogo Trade Republic</option>
         </select>
-        <div class="breadcrumb">EntryPointTrade / <span id="breadcrumbView">01 Potencial de entrada</span></div>
+        <div class="breadcrumb">CatalystPulse / <span id="breadcrumbView">01 Potencial de entrada</span></div>
       </div>
       <div class="topbar-right"><span id="nyTime">--:-- NY</span><span id="providerState" class="provider-state">Cargando…</span></div>
     </header>
-
-    <div class="market-tape-bar" id="marketTapeBar" aria-label="Acciones con más movimiento del mercado de Estados Unidos">
-      <span class="market-tape-label">MOVIMIENTO EEUU</span>
-      <div class="market-tape-viewport">
-        <div class="market-tape-track" id="marketTapeTrack">
-          <span class="market-tape-loading">Cargando mercado…</span>
-        </div>
-      </div>
-    </div>
 
     <section class="view active" id="view-entry">
       <div class="page-heading compact-heading">
@@ -211,7 +210,7 @@
       <div id="catalogResults" class="stock-list dense"></div>
     </section>
 
-    <footer>EntryPointTrade · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="app.js"></script>
