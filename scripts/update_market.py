@@ -8,10 +8,12 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import requests
+import websocket
 from pypdf import PdfReader
 
 TV_URL = "https://scanner.tradingview.com/america/scan"
 NEWS_URL = "https://news-headlines.tradingview.com/v2/headlines"
+TR_WS_URL = "wss://api.traderepublic.com"
 TR_URLS = [
     "https://assets.traderepublic.com/assets/files/ES/Instrument_Universe_ES_en.pdf",
     "https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf",
@@ -21,6 +23,8 @@ TMP = Path("/tmp/tr_universe.pdf")
 NEWS_SYMBOL_LIMIT = 60
 NEWS_DAYS = 7
 NEWS_PER_SYMBOL = 10
+TR_METADATA_LIMIT = 600
+TR_METADATA_BATCH = 75
 
 COLS = [
     "name","description","exchange","currency","close","change","volume",
@@ -192,6 +196,116 @@ def tv():
             "lastBarUpdateTime": d.get("last_bar_update_time"),
         })
     return out, total
+
+
+def cached_tr_metadata(previous):
+    cache = {}
+    for row in previous.get("stocks") or []:
+        isin = row.get("isin")
+        ticker = row.get("trTicker")
+        if not isin or not ticker:
+            continue
+        cache[isin] = {
+            "trTicker": ticker,
+            "trExchange": row.get("trExchange") or "LSX",
+            "trNameAtExchange": row.get("trNameAtExchange"),
+            "trWkn": row.get("trWkn"),
+            "trActive": row.get("trActive"),
+        }
+    return cache
+
+def fetch_tr_metadata(stocks, previous):
+    """Resolve the exact symbolAtExchange used by Trade Republic/LSX.
+
+    Public instrument metadata is requested by ISIN. Failures are non-fatal:
+    market data still publishes and unresolved symbols can be filled on a later run.
+    """
+    cache = cached_tr_metadata(previous)
+    candidates = []
+    seen = set()
+    for row in sorted(stocks, key=mover_score, reverse=True):
+        isin = row.get("isin")
+        if not isin or isin in seen or isin in cache:
+            continue
+        seen.add(isin)
+        candidates.append(isin)
+        if len(candidates) >= TR_METADATA_LIMIT:
+            break
+
+    if not candidates:
+        return cache
+
+    ws = None
+    try:
+        ws = websocket.create_connection(
+            TR_WS_URL,
+            timeout=12,
+            origin="https://app.traderepublic.com",
+            header=["User-Agent: Mozilla/5.0"],
+        )
+        ws.send("connect 30")
+        hello = ws.recv()
+        if not str(hello).startswith("connected"):
+            raise RuntimeError(f"unexpected TR websocket greeting: {str(hello)[:80]}")
+
+        sub_id = 1
+        for start in range(0, len(candidates), TR_METADATA_BATCH):
+            batch = candidates[start:start + TR_METADATA_BATCH]
+            pending = {}
+            for isin in batch:
+                sid = str(sub_id)
+                sub_id += 1
+                pending[sid] = isin
+                payload = json.dumps({"type": "instrument", "id": isin}, separators=(",", ":"))
+                ws.send(f"sub {sid} {payload}")
+
+            deadline = time.time() + 25
+            while pending and time.time() < deadline:
+                try:
+                    msg = ws.recv()
+                except websocket.WebSocketTimeoutException:
+                    break
+                parts = str(msg).split(" ", 2)
+                if len(parts) < 2:
+                    continue
+                sid, kind = parts[0], parts[1]
+                if sid not in pending:
+                    continue
+                isin = pending[sid]
+                if kind == "A" and len(parts) == 3:
+                    try:
+                        data = json.loads(parts[2])
+                    except Exception:
+                        data = {}
+                    exchanges = data.get("exchanges") or []
+                    chosen = next((x for x in exchanges if x.get("slug") == "LSX" and x.get("active", True)), None)
+                    if chosen is None:
+                        chosen = next((x for x in exchanges if x.get("slug") == "LSX"), None)
+                    if chosen and chosen.get("symbolAtExchange"):
+                        cache[isin] = {
+                            "trTicker": chosen.get("symbolAtExchange"),
+                            "trExchange": chosen.get("slug") or "LSX",
+                            "trNameAtExchange": chosen.get("nameAtExchange") or data.get("name"),
+                            "trWkn": data.get("wkn"),
+                            "trActive": bool(chosen.get("active", data.get("active", True))),
+                        }
+                    try:
+                        ws.send(f"unsub {sid}")
+                    except Exception:
+                        pass
+                    pending.pop(sid, None)
+                elif kind in ("E", "C"):
+                    pending.pop(sid, None)
+            time.sleep(0.12)
+    except Exception as exc:
+        print("trade republic metadata warning", str(exc))
+    finally:
+        if ws is not None:
+            try:
+                ws.close()
+            except Exception:
+                pass
+    return cache
 
 def event_date(v):
     if v in (None, ""):
@@ -476,6 +590,17 @@ def main():
         s["tradeRepublicVerified"] = bool(isin)
         if isin:
             matched += 1
+
+    tr_meta = fetch_tr_metadata(stocks, previous)
+    tr_ticker_count = 0
+    for s in stocks:
+        meta = tr_meta.get(s.get("isin"))
+        if meta:
+            for key, value in meta.items():
+                if value is not None and value != "":
+                    s[key] = value
+            if s.get("trTicker"):
+                tr_ticker_count += 1
         for key in list(s):
             if s[key] is None or s[key] == "":
                 del s[key]
@@ -523,6 +648,7 @@ def main():
             "totalProvider": total,
             "trOfficialCount": tr_count,
             "trMatchedCount": matched,
+            "trTickerCount": tr_ticker_count,
             "trUniverseSource": tr_source,
             "newsCount": len(news_events),
             "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
@@ -532,7 +658,7 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
-    print(len(stocks), "stocks;", matched, "TR matches;", len(events), "events;", len(news_events), "news")
+    print(len(stocks), "stocks;", matched, "TR matches;", tr_ticker_count, "TR tickers;", len(events), "events;", len(news_events), "news")
 
 if __name__ == "__main__":
     main()
