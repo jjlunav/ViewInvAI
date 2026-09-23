@@ -7,7 +7,7 @@ let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),ke
 let usLive={busy:false,lastFetchAt:0};
 let uiRestoredScroll=false;
 let favorites=readFavorites();
-let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',currentView:'entry',savedScrollY:0};
+let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
 const V={entry:'01 Potencial de entrada',future:'02 Potencial futuro',calendar:'03 Calendario y noticias',catalog:'04 Catálogo Trade Republic',catalogUS:'05 Catálogo EEUU'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
@@ -466,8 +466,9 @@ function stockByKey(key){
  key=String(key||'').toUpperCase();
  return db.stocks.find(s=>stockKey(s)===key)||null;
 }
-function stockOpenAttrs(s,reason=''){
- return ' data-stock-key="'+E(stockKey(s))+'"'+(reason?' data-stock-reason="'+E(reason)+'"':'')+' role="button" tabindex="0"';
+function stockOpenAttrs(s,reason='',preferTr=null){
+ let pref=preferTr===true?'1':preferTr===false?'0':'';
+ return ' data-stock-key="'+E(stockKey(s))+'"'+(reason?' data-stock-reason="'+E(reason)+'"':'')+(pref?' data-stock-prefer-tr="'+pref+'"':'')+' role="button" tabindex="0"';
 }
 function tickerDisplay(s,preferTr=false){
  let us=String((s&&s.ticker)||'');
@@ -479,14 +480,33 @@ function tickerDisplay(s,preferTr=false){
  return '<strong>'+E(us)+'</strong>';
 }
 
-function openStock(s,reason=''){
+function viewLabel(v){return String(V[v]||'Vista').replace(/^\d+\s*/,'')}
+function inferProfilePreferTr(s){
+ if(state.currentView==='catalog')return true;
+ if(state.currentView==='catalogUS')return false;
+ if(state.currentView==='entry')return state.entryMarket==='tr'&&!!s.tradeRepublicVerified;
+ return !!s.tradeRepublicVerified;
+}
+function openStock(s,reason='',preferTr=null){
  if(!s)return;
  state.profileKey=stockKey(s);
  state.profileReason=reason||'';
- state.currentView=s.tradeRepublicVerified?'catalog':'catalogUS';
+ state.profileOriginView=state.currentView;
+ state.profileOriginScroll=Math.max(0,Math.round(window.scrollY||0));
+ state.profilePreferTr=preferTr===true?true:preferTr===false?false:inferProfilePreferTr(s);
  saveUiState();
- show(state.currentView,true);
+ renderQuickProfile();
+ document.body.classList.add('stock-detail-open');
+ let box=$('#stockQuickDetail');if(box)box.classList.remove('is-hidden');
  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
+}
+function closeQuickProfile(restoreScroll=true){
+ let y=state.profileOriginScroll||0;
+ document.body.classList.remove('stock-detail-open');
+ let box=$('#stockQuickDetail');if(box){box.classList.add('is-hidden');box.innerHTML=''}
+ state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;
+ saveUiState();
+ if(restoreScroll)requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'smooth'}));
 }
 
 function favButton(s){
@@ -535,7 +555,7 @@ function topGainers(kind,se){
 }
 function leaderItem(s,se,i,preferTr=false){
  let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
- return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
+ return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s,'',preferTr)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
 }
 function leadersPinned(){
  try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
@@ -606,7 +626,7 @@ function renderFavorites(){
  }
  box.innerHTML=stocks.map(s=>{
   let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div>'+bidAskHtml(s,!!s.tradeRepublicVerified)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
+  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s,'',!!s.tradeRepublicVerified)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div>'+bidAskHtml(s,!!s.tradeRepublicVerified)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }
 function links(s){
@@ -667,7 +687,7 @@ function entryChangeHtml(s,se){
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
  let ch=FC(s,se),p=SP(s,se),hint=rankText||why(s,se);
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span class="stock-name">'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+entryChangeHtml(s,se)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint,preferTr)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span class="stock-name">'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+entryChangeHtml(s,se)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
 function numInput(id,fallback,min=-Infinity,max=Infinity){let v=N($('#'+id).value);if(v===null)v=fallback;return Math.max(min,Math.min(max,v))}
@@ -780,6 +800,45 @@ function profileKpi(label,main,sub=''){
 }
 function profileIdentity(label,value,extra=''){
  return '<div class="profile-identity"><small>'+E(label)+'</small><strong>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
+}
+function quickProfileHtml(s){
+ let isTr=state.profilePreferTr===true&&!!s.tradeRepublicVerified,se=currentMarketSession();
+ let title=isTr?(s.trTicker||s.ticker):s.ticker;
+ let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ let origin=state.profileOriginView||state.currentView,back='← Volver a '+viewLabel(origin);
+ let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
+ let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
+ let events=stockEvents(s),now=Date.now();
+ let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
+ let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,4);
+ let context=state.profileReason?'<div class="profile-context"><strong>Motivo de aparición:</strong> '+E(state.profileReason)+'</div>':'';
+ let kpis=[
+  profileKpi(isTr?'Precio LSX':'Precio EEUU',currentPrice,currentChange),
+  profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
+  profileKpi('Volumen',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
+  profileKpi('Vol. relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
+  profileKpi('RSI / ADX',F(s.rsi,1)+' / '+F(s.adx,1),'Momentum / fuerza'),
+  profileKpi('EMA20 / EMA50',PR(s.ema20)+' / '+PR(s.ema50),'Estructura técnica'),
+  profileKpi('1 semana / 1 mes',PC(s.perfWeek)+' / '+PC(s.perfMonth),'Rendimiento'),
+  profileKpi('Resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
+ ].join('');
+ let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
+ let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
+ let relation=isTr?'<div class="profile-data-note">Precio, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+'. El gráfico y los técnicos usan la referencia de '+E((s.exchange||'EEUU')+':'+(s.ticker||''))+'.</div>':'';
+ return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
+  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
+  relation+context+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · sesión extendida cuando está disponible</span></div>'+miniChart(s)+'</section>'+
+  '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
+  '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
+  '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
+}
+function renderQuickProfile(){
+ let box=$('#stockQuickDetail');if(!box)return;
+ let s=state.profileKey?stockByKey(state.profileKey):null;
+ if(!s){closeQuickProfile(false);return}
+ box.innerHTML=quickProfileHtml(s);
+ requestAnimationFrame(()=>{box.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(box);pollUsLive()});
 }
 function profileHtml(s,view){
  let isTr=view==='catalog',se=currentMarketSession();
@@ -958,7 +1017,7 @@ function catalogTable(mode,rows,se){
  rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
  let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
  let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'> 10':'Filtrar')+'"></th>').join('');
- let body=rows.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s)+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
+ let body=rows.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
  return {html:'<table class="catalog-table" data-mode="'+mode+'"><thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table>',count:rows.length};
 }
 function renderCatalogTable(mode){
@@ -972,8 +1031,8 @@ function renderCatalogTable(mode){
 function resetCatalogColumns(mode){
  catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogSaveOrder(mode);renderCatalogTable(mode);
 }
-function renderCatalog(){if(renderProfileView('catalog'))return;renderCatalogTable('tr')}
-function renderCatalogUS(){if(renderProfileView('catalogUS'))return;renderCatalogTable('us')}
+function renderCatalog(){renderCatalogTable('tr')}
+function renderCatalogUS(){renderCatalogTable('us')}
 function renderFuture(){
  let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
  let filtered=(db.events||[]).filter(e=>futureWindowEvent(e,h,now)&&(t==='all'||e.type===t)&&(!tr||e.tradeRepublicVerified));
@@ -981,7 +1040,7 @@ function renderFuture(){
  $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
   let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
-  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,label+' · '+when,!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
@@ -989,12 +1048,12 @@ function renderCalendar(){
  let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
  $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
   let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
-  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,EL(e)+' · '+DF(e.date),!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
 }
 
 function status(){}
-function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();if(state.currentView==='catalog')renderCatalog();if(state.currentView==='catalogUS')renderCatalogUS();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();if(state.currentView==='catalog')renderCatalog();if(state.currentView==='catalogUS')renderCatalogUS();if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
 async function load(force=false){
  if(loading)return;
  loading=true;
@@ -1021,7 +1080,7 @@ async function load(force=false){
   loading=false
  }
 }
-function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){state.profileKey=null;state.profileReason='';}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
 let lastLeaderSession=null;
 function clock(){
  let now=new Date();
@@ -1042,18 +1101,20 @@ $('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('op
 document.addEventListener('click',e=>{
  let b=e.target.closest&&e.target.closest('.fav-star');
  if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
  let back=e.target.closest&&e.target.closest('[data-profile-back]');
- if(back){e.preventDefault();e.stopPropagation();state.profileKey=null;state.profileReason='';saveUiState();render();requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));return}
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
  let row=e.target.closest&&e.target.closest('[data-stock-key]');
  if(row){
   if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
-  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey);if(s)openStock(s,row.dataset.stockReason||'');
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
  }
 });
 document.addEventListener('keydown',e=>{
  let row=e.target.closest&&e.target.closest('[data-stock-key]');
  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
- e.preventDefault();let s=stockByKey(row.dataset.stockKey);if(s)openStock(s,row.dataset.stockReason||'');
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
 });
 $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry();setTimeout(pollUsLive,0)});
 function setPreset(value){
