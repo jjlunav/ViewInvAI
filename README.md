@@ -22,14 +22,13 @@ Esta pantalla muestra acciones que cumplen el criterio seleccionado. La lista pu
 - Impulso intradía: busca acciones con movimiento y volumen relativo durante la sesión.
 - Explosión en la sesión: destaca acciones que ya han registrado una subida fuerte en la sesión actual.
 - Más suben tras cierre EEUU: ordena las acciones por su subida en postmarket después del cierre regular estadounidense.
-- Personalizado guardado: recupera el último criterio personalizado guardado en el navegador.
 - Histórico y tendencia estrictos: exige condiciones de tendencia más restrictivas.
 
 No existe un precio mínimo. Una acción puede aparecer independientemente de su cotización si cumple el resto de condiciones.
 
 ### Filtros configurables
 
-El desplegable Configurar criterio permite modificar subida mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. También permite exigir tendencia y penalizar valores con liquidez reducida.
+El desplegable Configurar criterio muestra subida mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. Los campos numéricos están bloqueados por defecto; cada parámetro tiene su propio botón de candado para desbloquearlo individualmente antes de modificarlo. También permite activar o desactivar la exigencia de tendencia y el filtro de liquidez.
 
 ## Detalle de una acción
 
