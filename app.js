@@ -33,8 +33,18 @@ function priceCurrencies(s,p){
  return{usd:p,eur:fx?p/fx:null};
 }
 function pricePair(s,p,preferTr=false){
- let x=priceCurrencies(s,p);
- let primary=preferTr?money(x.eur,'€'):money(x.usd,'
+ let x=priceCurrencies(s,p),d='\u0024';
+ let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
+ let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
+ let source=preferTr?'Precio en € convertido desde la cotización EEUU mediante EUR/USD; la cotización LSX/TR puede diferir por mercado y spread.':'Precio EEUU en $; valor en € mostrado como referencia mediante EUR/USD.';
+ return '<span class="price-pair" title="'+E(source)+'"><strong>'+primary+'</strong><small>/ '+secondary+'</small></span>';
+}
+function levelPair(s,p,preferTr=false){
+ let x=priceCurrencies(s,p),d='\u0024';
+ let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
+ let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
+ return primary+' / '+secondary;
+}
 function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
 function C(v){v=N(v);return v===null?'':v>=0?'positive':'negative'}
 function DF(v){if(v===null||v===undefined||v==='')return'—';let raw=v;if(typeof raw==='string'&&/^\d+$/.test(raw))raw=Number(raw);if(typeof raw==='number'&&raw>0&&raw<1e12)raw*=1000;let d=new Date(raw);return isNaN(d)?'—':d.toLocaleDateString('es-ES')}
