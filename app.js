@@ -638,27 +638,136 @@ function links(s){
   '<a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a>'+
   '<a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>';
 }
-function miniChart(s){
- let symbol=String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||'')));
- return '<div class="mini-chart-block"><div class="mini-chart-title">Velas 1 min · sesión 24H/24x5 cuando está disponible · overnight + premarket + regular + postmarket</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>';
+let liveChartTimer=null;
+function miniChart(s,preferTr=false){
+ let useTr=preferTr&&s&&s.tradeRepublicVerified;
+ let source=useTr?'Trade Republic / '+(s.trExchange||'LSX'):'Nasdaq';
+ return '<div class="mini-chart-block live-chart-block"><div class="mini-chart-title"><span>Intradiario · 1 min · mismo feed que el precio mostrado</span><span class="live-chart-source">'+E(source)+'</span></div><div class="mini-chart live-market-chart" data-stock-key="'+E(stockKey(s))+'" data-prefer-tr="'+(useTr?'1':'0')+'"><div class="chart-placeholder">Cargando histórico intradía…</div></div></div>';
 }
-function loadMiniChart(el){
+function chartNumber(v){v=Number(v);return Number.isFinite(v)?v:null}
+function chartQuote(s,preferTr){
+ if(!s)return null;
+ if(preferTr){
+  let price=trLivePrice(s),time=N(s.trLiveLastAt)??N(s.trLiveReceivedAt);
+  if(price===null)return null;
+  return{price,time:time||Date.now(),receivedAt:N(s.trLiveReceivedAt)||Date.now(),label:'TR / '+(s.trExchange||'LSX'),realtime:true};
+ }
+ let price=usLivePrice(s),time=N(s.usLiveReceivedAt);
+ if(price===null)return null;
+ return{price,time:time||Date.now(),receivedAt:N(s.usLiveReceivedAt)||Date.now(),label:'Nasdaq',realtime:!!s.usLiveIsRealTime};
+}
+function chartFormatPrice(v,preferTr){
+ v=chartNumber(v);if(v===null)return '—';
+ return (preferTr?'€':'$')+v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:v<1?6:v<10?4:2});
+}
+function chartFormatTime(ms){
+ let d=new Date(ms);
+ if(!Number.isFinite(d.getTime()))return '—';
+ return new Intl.DateTimeFormat('es-ES',{hour:'2-digit',minute:'2-digit',hour12:false}).format(d);
+}
+function chartCleanPoints(points){
+ let out=[],lastTime=null;
+ for(let p of (points||[])){
+  let time=chartNumber(p.time),price=chartNumber(p.price??p.close);
+  if(time===null||price===null||price<=0)continue;
+  if(time<1e12)time*=1000;
+  if(lastTime===time&&out.length){out[out.length-1]={time,price};continue}
+  out.push({time,price});lastTime=time;
+ }
+ out.sort((a,b)=>a.time-b.time);
+ return out.slice(-900);
+}
+function chartSvgText(x,y,value,cls,anchor='start'){
+ return '<text x="'+x+'" y="'+y+'" class="'+cls+'" text-anchor="'+anchor+'">'+E(value)+'</text>';
+}
+function drawLiveChart(el){
+ if(!el||!el._chartReady)return;
+ let s=stockByKey(el._chartKey),preferTr=!!el._chartPreferTr;
+ let points=(el._chartPoints||[]).slice(),q=chartQuote(s,preferTr);
+ if(q){
+  let last=points[points.length-1];
+  if(!last||q.time>last.time)points.push({time:q.time,price:q.price,live:true});
+  else if(last)points[points.length-1]={time:last.time,price:q.price,live:true};
+ }
+ points=chartCleanPoints(points);
+ let status=el.querySelector('.live-chart-status'),svg=el.querySelector('svg');
+ if(!svg||!status)return;
+ let now=Date.now(),age=q?Math.max(0,now-(q.receivedAt||q.time||now)):null;
+ if(q){
+  let freshness=age<10000?'EN DIRECTO':age<60000?'ACTUALIZANDO':'DATO ANTIGUO';
+  status.innerHTML='<span><b>'+E(q.label)+'</b> · '+E(freshness)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
+  status.classList.toggle('stale',age>=60000);
+ }else{
+  status.innerHTML='<span><b>'+(preferTr?'Trade Republic':'Nasdaq')+'</b> · esperando cotización actual</span>';
+  status.classList.add('stale');
+ }
+ if(points.length<2){
+  svg.innerHTML=chartSvgText(500,170,'Esperando suficientes datos para dibujar el gráfico','chart-empty','middle');
+  return;
+ }
+ let rect=svg.getBoundingClientRect(),w=Math.max(300,Math.round(rect.width||1000)),h=Math.max(190,Math.round(rect.height||340));
+ svg.setAttribute('viewBox','0 0 '+w+' '+h);
+ let compact=w<560,left=compact?48:66,right=compact?68:88,top=18,bottom=34,plotW=w-left-right,plotH=h-top-bottom;
+ let prices=points.map(p=>p.price),min=Math.min(...prices),max=Math.max(...prices);
+ let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);min-=pad;max+=pad;span=max-min||1;
+ let minT=points[0].time,maxT=points[points.length-1].time;if(maxT<=minT)maxT=minT+60000;
+ let X=t=>left+(t-minT)/(maxT-minT)*plotW,Y=p=>top+(max-p)/span*plotH;
+ let grid='',labels='';
+ for(let i=0;i<5;i++){
+  let f=i/4,y=top+f*plotH,val=max-f*span;
+  grid+='<line x1="'+left+'" y1="'+y.toFixed(1)+'" x2="'+(w-right)+'" y2="'+y.toFixed(1)+'" class="chart-grid-line"/>';
+  labels+=chartSvgText(w-right+8,y+4,chartFormatPrice(val,preferTr),'chart-axis-label');
+ }
+ for(let i=0;i<5;i++){
+  let f=i/4,x=left+f*plotW,t=minT+f*(maxT-minT);
+  grid+='<line x1="'+x.toFixed(1)+'" y1="'+top+'" x2="'+x.toFixed(1)+'" y2="'+(h-bottom)+'" class="chart-grid-line vertical"/>';
+  labels+=chartSvgText(x,h-10,chartFormatTime(t),'chart-axis-label','middle');
+ }
+ let path=points.map((p,i)=>(i?'L':'M')+X(p.time).toFixed(2)+' '+Y(p.price).toFixed(2)).join(' ');
+ let first=points[0].price,last=points[points.length-1].price,up=last>=first;
+ let area=path+' L '+X(points[points.length-1].time).toFixed(2)+' '+(h-bottom)+' L '+X(points[0].time).toFixed(2)+' '+(h-bottom)+' Z';
+ let lastX=X(points[points.length-1].time),lastY=Y(last);
+ let hi=Math.max(...prices),lo=Math.min(...prices);
+ svg.innerHTML=
+  '<defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" class="chart-fill-start"/><stop offset="100%" class="chart-fill-end"/></linearGradient></defs>'+
+  grid+
+  '<path d="'+area+'" class="chart-area"/>'+
+  '<path d="'+path+'" class="chart-line '+(up?'up':'down')+'"/>'+
+  '<line x1="'+left+'" y1="'+lastY.toFixed(2)+'" x2="'+(w-right)+'" y2="'+lastY.toFixed(2)+'" class="chart-last-line"/>'+
+  '<circle cx="'+lastX.toFixed(2)+'" cy="'+lastY.toFixed(2)+'" r="5" class="chart-live-dot '+(up?'up':'down')+'"/>'+
+  labels+
+  chartSvgText(left,14,'Máx '+chartFormatPrice(hi,preferTr)+' · Mín '+chartFormatPrice(lo,preferTr),'chart-range-label');
+}
+async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
- let symbol=el.dataset.symbol;if(!symbol)return;
- el.dataset.loaded='1';
- el.innerHTML='<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>';
- let box=el.querySelector('.tradingview-widget-container'),script=document.createElement('script');
- script.type='text/javascript';script.async=true;
- script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
- script.textContent=JSON.stringify({
-  autosize:true,symbol,interval:'1',timezone:'America/New_York',theme:'dark',
-  backgroundColor:'#000000',gridColor:'rgba(255,255,255,0.06)',style:'1',locale:'es',
-  hide_side_toolbar:true,hide_top_toolbar:false,hide_legend:false,hide_volume:false,
-  allow_symbol_change:false,save_image:false,withdateranges:true,
-  extended_hours:true,session:'24h',details:false,hotlist:false,calendar:false,
-  support_host:'https://www.tradingview.com'
+ let key=el.dataset.stockKey,s=stockByKey(key);if(!s)return;
+ let preferTr=el.dataset.preferTr==='1'&&!!s.tradeRepublicVerified;
+ el.dataset.loaded='1';el._chartKey=key;el._chartPreferTr=preferTr;
+ el.innerHTML='<div class="live-chart-status"><span>Cargando histórico…</span></div><svg class="live-chart-svg" preserveAspectRatio="none" role="img" aria-label="Gráfico intradía en tiempo real"></svg>';
+ try{
+  let url=preferTr
+   ?'/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000'
+   :'/api/us-chart?symbol='+encodeURIComponent(s.ticker||'');
+  let r=await fetch(url,{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+  if(!r.ok)throw Error('HTTP '+r.status);
+  let j=await r.json();
+  if(j.error)throw Error(j.error);
+  el._chartPoints=chartCleanPoints(j.points||[]);
+  el._chartSource=j.source||'';
+ }catch(err){
+  console.warn('live chart history warning',err);
+  el._chartPoints=[];
+  let st=el.querySelector('.live-chart-status');if(st)st.innerHTML='<span>Histórico no disponible; mostrando cotización actual en directo</span>';
+ }
+ el._chartReady=true;
+ drawLiveChart(el);
+ if(!liveChartTimer)liveChartTimer=setInterval(refreshLiveCharts,1000);
+}
+function refreshLiveCharts(){
+ document.querySelectorAll('.live-market-chart[data-loaded="1"]').forEach(el=>{
+  if(!el.isConnected||el.offsetParent===null)return;
+  drawLiveChart(el);
  });
- box.appendChild(script);
 }
 function metric(label,main,sub,help,mainClass='',subClass=''){
  return '<div class="metric-help" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span></div>';
@@ -828,7 +937,7 @@ function quickProfileHtml(s){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · sesión extendida cuando está disponible</span></div>'+miniChart(s)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
@@ -861,7 +970,7 @@ function profileHtml(s,view){
   :'';
  let feedWarning=!isTr
   ?'<div class="profile-feed-warning '+(s.usLiveIsRealTime?'live':'')+'">'+(s.usLiveIsRealTime
-    ?'Precio, BID y ASK actuales: Nasdaq.com · '+E(s.usLiveMarketStatus||'sesión EEUU')+'. El gráfico usa TradingView/Cboe One; pueden existir pequeñas diferencias entre feeds o centros de negociación.'
+    ?'Precio, BID, ASK y gráfico intradía usan datos de Nasdaq.com. El último punto del gráfico se actualiza con la misma cotización actual mostrada en la ficha.'
     :'El snapshot del screener EEUU está diferido ('+E(s.updateMode||'sin modo')+'). CatalystPulse intenta sustituir precio, BID y ASK por la cotización actual de Nasdaq.com para los valores visibles. Para igualdad exacta entre cabecera y gráfico ambos deben usar el mismo feed SIP.')+'</div>'
   :'';
  let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
@@ -893,12 +1002,12 @@ function profileHtml(s,view){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot base '+E(updated)+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   trRelation+trNote+feedWarning+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · 24H/24x5 cuando está disponible</span></div>'+miniChart(s)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' recientes</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>'+
-  '<section class="profile-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Verificación externa del mismo valor</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico: TradingView. Noticias y eventos: sus fuentes enlazadas.</div>'+links(s)+'</section>';
+  '<section class="profile-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Verificación externa del mismo valor</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico: mismo feed de mercado que la cotización mostrada (Trade Republic/LSX o Nasdaq). Noticias y eventos: sus fuentes enlazadas.</div>'+links(s)+'</section>';
 }
 function renderProfileView(view){
  let isTr=view==='catalog',detail=$(isTr?'#catalogDetail':'#catalogUSDetail'),browse=$(isTr?'#catalogBrowse':'#catalogUSBrowse');
