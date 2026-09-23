@@ -61,9 +61,21 @@ function clock(){let p=NY();$('#nyTime').textContent=p.hour+':'+p.minute+' · Nu
 $$('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
 $('#mobileView').addEventListener('change',e=>show(e.target.value));$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry()});
-$('#presetSelect').addEventListener('change',e=>{state.preset=e.target.value;state.filters=preset(state.preset);if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}toUI(state.filters);renderEntry()});
+function setPreset(value){
+ state.preset=value;
+ $('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=preset(state.preset);
+ if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ toUI(state.filters);renderEntry();
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
 $('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry()});$('#resetFilters').addEventListener('click',()=>{state.filters=preset(state.preset);toUI(state.filters);renderEntry()});
-$('#saveFilters').addEventListener('click',()=>{let x=fromUI();localStorage.setItem(KEY,JSON.stringify(x));state.preset='saved';state.filters=x;$('#presetSelect').value='saved';renderEntry()});
+$('#saveFilters').addEventListener('click',()=>{let x=fromUI();localStorage.setItem(KEY,JSON.stringify(x));state.filters=x;setPreset('saved')});
 $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry()}));
 $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.radarMarket=b.dataset.tab;$$('[data-tab-group="radarMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderRadar()}));
