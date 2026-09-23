@@ -3,3 +3,4 @@ scripts/
 README.md
 wrangler.jsonc
 .assetsignore
+worker.js
