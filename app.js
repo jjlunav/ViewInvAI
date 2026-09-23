@@ -81,7 +81,7 @@ function renderMarketTape(){
 function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
 function miniChart(s){
  let symbol=String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||'')));
- return '<div class="mini-chart-block"><div class="mini-chart-title">Velas 5 min · volumen · horario extendido 04:00–20:00 NY</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>';
+ return '<div class="mini-chart-block"><div class="mini-chart-title">Velas 1 min · volumen · horario extendido 04:00–20:00 NY</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>';
 }
 function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
@@ -92,7 +92,7 @@ function loadMiniChart(el){
  script.type='text/javascript';script.async=true;
  script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
  script.textContent=JSON.stringify({
-  autosize:true,symbol,interval:'5',timezone:'America/New_York',theme:'dark',
+  autosize:true,symbol,interval:'1',timezone:'America/New_York',theme:'dark',
   backgroundColor:'#000000',gridColor:'rgba(255,255,255,0.06)',style:'1',locale:'es',
   hide_side_toolbar:true,hide_top_toolbar:true,hide_legend:false,hide_volume:false,
   allow_symbol_change:false,save_image:false,withdateranges:false,
