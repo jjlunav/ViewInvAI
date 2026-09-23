@@ -3,7 +3,7 @@ const DATA='data/market.json', CUSTOM_FILTER_KEY='catalystpulse:customFilter:v1'
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
-let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0};
+let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 let usLive={busy:false,lastFetchAt:0};
 let uiRestoredScroll=false;
 let favorites=readFavorites();
@@ -77,8 +77,9 @@ function trLiveChange(s){
 function trPriceValues(s,fallback){
  let live=trLivePrice(s),fx=eurUsd();
  if(live!==null)return{eur:live,usd:fx?live*fx:null,direct:true};
- let x=priceCurrencies(s,fallback);
- return{eur:x.eur,usd:x.usd,direct:false};
+ // Never invent a Trade Republic/LSX price from another market. If the live
+ // TR ticker has not arrived yet, show N/D until the exact LSX quote is received.
+ return{eur:null,usd:null,direct:false};
 }
 function usLivePrice(s){return N(s&&s.usLivePrice)}
 function usLiveBid(s){return N(s&&s.usLiveBid)??N(s&&s.usBid)}
@@ -102,7 +103,7 @@ function pricePair(s,p,preferTr=false){
  let liveAttrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-key="'+E(stockKey(s))+'"':' data-us-live-key="'+E(stockKey(s))+'"';
  let direct=preferTr?(trLivePrice(s)!==null):(usLivePrice(s)!==null);
  let source=preferTr
-  ?(direct?'Cotización LSX en tiempo real recibida directamente de Trade Republic. El precio en $ es una conversión EUR/USD de referencia.':'Esperando cotización LSX en tiempo real; mientras tanto se muestra una conversión desde la cotización EEUU.')
+  ?(direct?'Cotización LSX recibida directamente del ticker de Trade Republic. El precio en $ es solo una conversión EUR/USD de referencia.':'Esperando la cotización exacta LSX de Trade Republic; no se sustituye por precios de otros mercados.')
   :(direct?'Cotización actual recibida desde Nasdaq.com; el valor en € es una conversión EUR/USD de referencia.':'Esperando cotización Nasdaq actual; se muestra temporalmente el último snapshot disponible.');
  return '<span class="price-pair'+(direct?' live-quote':'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
 }
@@ -216,6 +217,25 @@ function score(s,se=SES()){return scoreParts(s,se).total}
 
 
 function trStockByKey(key){let s=stockByKey(key);return s&&s.tradeRepublicVerified&&trIsin(s)?s:null}
+function trDecodeLiteral(s){
+ try{return decodeURIComponent(String(s||'').replace(/\+/g,' '))}catch(_){return String(s||'')}
+}
+function trApplyDelta(prev,delta){
+ prev=String(prev||'');let cursor=0,out='';
+ for(let chunk of String(delta||'').split('\t')){
+  if(!chunk)continue;
+  let op=chunk[0],arg=chunk.slice(1);
+  if(op==='+')out+=trDecodeLiteral(arg);
+  else if(op==='='){
+   let n=Number(arg);if(!Number.isFinite(n)||n<0)throw Error('Delta TR inválido');
+   out+=prev.slice(cursor,cursor+n);cursor+=n;
+  }else if(op==='-'){
+   let n=Number(arg);if(!Number.isFinite(n)||n<0)throw Error('Delta TR inválido');
+   cursor+=n;
+  }else throw Error('Operación delta TR desconocida');
+ }
+ return out;
+}
 function trApplyTickerPayload(s,payload){
  if(!s||!payload)return;
  let last=N(payload.last&&payload.last.price);
@@ -223,27 +243,32 @@ function trApplyTickerPayload(s,payload){
  let ask=N(payload.ask&&payload.ask.price);
  let pre=N(payload.pre&&payload.pre.price);
  let open=N(payload.open&&payload.open.price);
- let px=last??bid??ask,old=N(s.trLivePrice);
- if(px!==null){
-  if(old!==null&&px!==old){s.trLiveDirection=px>old?'up':'down';s.trLiveDirectionAt=Date.now()}
-  s.trLivePrice=px;
+ let old=N(s.trLivePrice);
+
+ // "last" is the Trade Republic/LSX last traded price. Bid and ask are
+ // separate order-book quotes and must never be substituted for the last price.
+ if(last!==null){
+  if(old!==null&&last!==old){s.trLiveDirection=last>old?'up':'down';s.trLiveDirectionAt=Date.now()}
+  s.trLivePrice=last;
+  s.trLiveLastAt=N(payload.last&&payload.last.time)??Date.now();
  }
- if(bid!==null)s.trLiveBid=bid;
- if(ask!==null)s.trLiveAsk=ask;
+ if(bid!==null){s.trLiveBid=bid;s.trLiveBidAt=N(payload.bid&&payload.bid.time)??Date.now()}
+ if(ask!==null){s.trLiveAsk=ask;s.trLiveAskAt=N(payload.ask&&payload.ask.time)??Date.now()}
  if(pre!==null)s.trLivePre=pre;
  if(open!==null)s.trLiveOpen=open;
- if(px!==null&&pre>0)s.trLiveChangePct=(px/pre-1)*100;
- s.trLiveQuality=payload.qualityId||'';
- let times=[payload.last&&payload.last.time,payload.bid&&payload.bid.time,payload.ask&&payload.ask.time].map(N).filter(x=>x!==null);
+ if(N(s.trLivePrice)!==null&&N(s.trLivePre)>0)s.trLiveChangePct=(N(s.trLivePrice)/N(s.trLivePre)-1)*100;
+ s.trLiveQuality=payload.qualityId||s.trLiveQuality||'';
+ let times=[s.trLiveLastAt,s.trLiveBidAt,s.trLiveAskAt].map(N).filter(x=>x!==null);
  if(times.length)s.trLiveUpdatedAt=Math.max(...times);
  s.trLiveReceivedAt=Date.now();
+ trLive.lastDataAt=s.trLiveReceivedAt;
 }
 function trSendSubscriptions(){
  if(!trLive.connected||!trLive.ws||trLive.ws.readyState!==WebSocket.OPEN)return;
  for(let key of trLive.wanted){
   if(trLive.subByKey.has(key))continue;
   let s=trStockByKey(key);if(!s)continue;
-  let id=trIsin(s)+'.LSX',sub=String(trLive.seq++);
+  let id=trIsin(s)+'.'+String(s.trExchange||'LSX'),sub=String(trLive.seq++);
   trLive.subByKey.set(key,sub);trLive.keyBySub.set(sub,key);
   trLive.ws.send('sub '+sub+' '+JSON.stringify({type:'ticker',id}));
  }
@@ -264,17 +289,31 @@ function connectTrLive(){
  ws.onmessage=e=>{
   let msg=String(e.data||'');
   if(msg==='connected'||msg.startsWith('connected')){
-   trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.proxyFailures=0;trLive.subByKey.clear();trLive.keyBySub.clear();trSendSubscriptions();return;
+   trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.proxyFailures=0;trLive.subByKey.clear();trLive.keyBySub.clear();trLive.payloadBySub.clear();trSendSubscriptions();return;
   }
   let m=msg.match(/^(\d+)\s+([A-Z])(?:\s+([\s\S]+))?$/);
-  if(!m||!m[3])return;
-  let key=trLive.keyBySub.get(m[1]);if(!key)return;
-  let payload;try{payload=JSON.parse(m[3])}catch(_){return}
-  let s=trStockByKey(key);if(s)trApplyTickerPayload(s,payload);
+  if(!m)return;
+  let sid=m[1],code=m[2],body=m[3]||'',key=trLive.keyBySub.get(sid);if(!key)return;
+  if(code==='C'||code==='E'){
+   trLive.payloadBySub.delete(sid);trLive.keyBySub.delete(sid);trLive.subByKey.delete(key);
+   if(code==='C')setTimeout(trSendSubscriptions,250);
+   return;
+  }
+  let full=body;
+  try{
+   if(code==='A')trLive.payloadBySub.set(sid,body);
+   else if(code==='D'){
+    full=trApplyDelta(trLive.payloadBySub.get(sid)||'',body);
+    trLive.payloadBySub.set(sid,full);
+   }else return;
+   let payload=JSON.parse(full),s=trStockByKey(key);
+   if(s)trApplyTickerPayload(s,payload);
+  }catch(e){console.warn('TR live delta warning',e)}
+
  };
  ws.onerror=()=>{};
  ws.onclose=()=>{
-  trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();
+  trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();trLive.payloadBySub.clear();
   if(!trLive.usingDirect&&++trLive.proxyFailures>=2)trLive.usingDirect=true;
   trScheduleReconnect();
  };
@@ -320,7 +359,7 @@ function refreshTrLiveDom(){
   let v=trLiveChange(s);if(v===null)return;
   el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0);
  });
- if(state.entryMarket==='tr'&&$('#entryUpdated'))$('#entryUpdated').textContent='LSX LIVE · '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+ if(state.entryMarket==='tr'&&$('#entryUpdated'))$('#entryUpdated').textContent=trLive.lastDataAt?'LSX · último dato '+new Date(trLive.lastDataAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'LSX · esperando cotización';
 }
 function initTrLive(){
  connectTrLive();
@@ -970,7 +1009,7 @@ async function load(force=false){
   let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
   for(let s of j.stocks){
    let old=previous.get(stockKey(s));if(!old)continue;
-   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveDirection','trLiveDirectionAt','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
   }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   render();
