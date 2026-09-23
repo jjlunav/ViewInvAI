@@ -192,7 +192,7 @@ async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", r
 async function nasdaqChart(request) {
   const url = new URL(request.url);
   const symbol = safeStockSymbol(url.searchParams.get("symbol"));
-  if (!symbol) return Response.json({ error: "No symbol" }, { status: 400 });
+  if (!symbol) return jsonResponse({ error: "No valid symbol" }, 400, { "Cache-Control": "no-store" });
   try {
     const [chart, quote] = await Promise.all([fetchNasdaqChart(symbol), fetchNasdaqQuote(symbol)]);
     const points = chart && Array.isArray(chart.points) ? chart.points.slice(-1200) : [];
