@@ -105,7 +105,7 @@ jobs:
               if not path.endswith((".yml", ".yaml")):
                   continue
               for line in text.splitlines():
-                  m = re.search(r"uses:\s*([^\s#]+)", line)
+                  m = re.match(r"^\s*-\s+uses:\s*([^\s#]+)", line)
                   if not m:
                       continue
                   ref = m.group(1)
