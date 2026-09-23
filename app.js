@@ -82,30 +82,60 @@ function trPriceValues(s,fallback){
  return{eur:null,usd:null,direct:false};
 }
 function usLivePrice(s){return N(s&&s.usLivePrice)}
-function usLiveBid(s){return N(s&&s.usLiveBid)??N(s&&s.usBid)}
-function usLiveAsk(s){return N(s&&s.usLiveAsk)??N(s&&s.usAsk)}
+// BID/ASK shown in the live UI must come from the current Nasdaq quote.
+// Do not fall back to the delayed screener snapshot because that can make
+// the spread look current when it is not.
+function usLiveBid(s){return N(s&&s.usLiveBid)}
+function usLiveAsk(s){return N(s&&s.usLiveAsk)}
 function usLiveChange(s){return N(s&&s.usLiveChangePct)}
+function decimalPlaces(v,cap=6){
+ v=N(v);if(v===null)return 0;
+ let s=Math.abs(v).toFixed(cap).replace(/0+$/,'').replace(/\.$/,'');
+ let p=s.indexOf('.');
+ return p<0?0:s.length-p-1;
+}
+function quotePrecision(s,preferTr=false,fallback=null){
+ let vals=preferTr
+  ?[trLivePrice(s),N(s&&s.trLiveBid),N(s&&s.trLiveAsk),N(fallback)]
+  :[usLivePrice(s),usLiveBid(s),usLiveAsk(s),N(fallback)];
+ vals=vals.map(N).filter(v=>v!==null);
+ if(!vals.length)return 2;
+ let cap=vals.some(v=>Math.abs(v)<1)?6:4;
+ return Math.min(cap,Math.max(2,...vals.map(v=>decimalPlaces(v,cap))));
+}
+function quoteMoney(v,symbol,decimals){
+ v=N(v);if(v===null)return symbol+'—';
+ decimals=Math.max(0,Math.min(6,Number(decimals)||0));
+ return symbol+v.toLocaleString('es-ES',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+}
+function quoteDirClass(dir){return dir==='up'?'quote-up':dir==='down'?'quote-down':''}
+function setQuoteDirection(el,dir){
+ if(!el)return;
+ el.classList.remove('quote-up','quote-down');
+ let cls=quoteDirClass(dir);if(cls)el.classList.add(cls);
+}
 function usPriceValues(s,fallback){
  let usd=usLivePrice(s)??N(fallback),fx=eurUsd();
  return{usd,eur:usd!==null&&fx?usd/fx:null,direct:usLivePrice(s)!==null};
 }
 
 function pricePairInner(s,p,preferTr=false){
- let d='\u0024';
+ let d='\u0024',dec=quotePrecision(s,preferTr,p);
  if(preferTr&&s&&s.tradeRepublicVerified){
   let x=trPriceValues(s,p);
-  return '<strong>'+money(x.eur,'€')+'</strong><small>/ '+money(x.usd,d)+'</small>';
+  return '<strong>'+quoteMoney(x.eur,'€',dec)+'</strong><small>/ '+quoteMoney(x.usd,d,dec)+'</small>';
  }
  let x=usPriceValues(s,p);
- return '<strong>'+money(x.usd,d)+'</strong><small>'+money(x.eur,'€')+'</small>';
+ return '<strong>'+quoteMoney(x.usd,d,dec)+'</strong><small>'+quoteMoney(x.eur,'€',dec)+'</small>';
 }
 function pricePair(s,p,preferTr=false){
  let liveAttrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-key="'+E(stockKey(s))+'"':' data-us-live-key="'+E(stockKey(s))+'"';
  let direct=preferTr?(trLivePrice(s)!==null):(usLivePrice(s)!==null);
+ let dir=preferTr?s&&s.trLiveDirection:s&&s.usLiveDirection,dirCls=quoteDirClass(dir);
  let source=preferTr
   ?(direct?'Cotización LSX recibida directamente del ticker de Trade Republic. El precio en $ es solo una conversión EUR/USD de referencia.':'Esperando la cotización exacta LSX de Trade Republic; no se sustituye por precios de otros mercados.')
   :(direct?'Cotización actual recibida desde Nasdaq.com; el valor en € es una conversión EUR/USD de referencia.':'Esperando cotización Nasdaq actual; se muestra temporalmente el último snapshot disponible.');
- return '<span class="price-pair'+(direct?' live-quote':'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
+ return '<span class="price-pair'+(direct?' live-quote':'')+(dirCls?' '+dirCls:'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
 }
 function levelPair(s,p,preferTr=false){
  let d='\u0024';
@@ -124,37 +154,37 @@ function snapshotPricePair(s,p,preferTr=false){
 }
 function bidAskInner(s,preferTr=false){
  let bid=preferTr?N(s&&s.trLiveBid):usLiveBid(s),ask=preferTr?N(s&&s.trLiveAsk):usLiveAsk(s),sym=preferTr?'€':'\u0024';
- return '<span class="quote-side bid"><small>BID</small><strong>'+money(bid,sym)+'</strong></span><span class="quote-side ask"><small>ASK</small><strong>'+money(ask,sym)+'</strong></span>';
+ let dec=quotePrecision(s,preferTr);
+ let bidDir=preferTr?s&&s.trLiveBidDirection:s&&s.usLiveBidDirection;
+ let askDir=preferTr?s&&s.trLiveAskDirection:s&&s.usLiveAskDirection;
+ let bc=quoteDirClass(bidDir),ac=quoteDirClass(askDir);
+ return '<span class="quote-side bid'+(bc?' '+bc:'')+'"><small>BID</small><strong>'+quoteMoney(bid,sym,dec)+'</strong></span><span class="quote-side ask'+(ac?' '+ac:'')+'"><small>ASK</small><strong>'+quoteMoney(ask,sym,dec)+'</strong></span>';
 }
 function bidAskHtml(s,preferTr=false){
  if(!s)return '';
  if(preferTr&&s.tradeRepublicVerified){
-  return '<span class="quote-spread quote-spread-tr" data-tr-spread-key="'+E(stockKey(s))+'" title="Bid y Ask de LSX / Trade Republic">'+bidAskInner(s,true)+'</span>';
+  return '<span class="quote-spread quote-spread-tr" data-tr-spread-key="'+E(stockKey(s))+'" title="BID = mejor precio comprador · ASK = mejor precio vendedor · ambos son distintos del último precio negociado">'+bidAskInner(s,true)+'</span>';
  }
- return '<span class="quote-spread quote-spread-us'+(s.usLiveIsRealTime?' realtime':'')+'" data-us-spread-key="'+E(stockKey(s))+'" title="'+(s.usLiveIsRealTime?'Bid y Ask actuales recibidos desde Nasdaq.com':'Esperando Bid/Ask actual de Nasdaq.com')+'">'+bidAskInner(s,false)+'</span>';
+ return '<span class="quote-spread quote-spread-us '+(s.usLiveIsRealTime?'realtime':'delayed')+'" data-us-spread-key="'+E(stockKey(s))+'" title="'+(s.usLiveIsRealTime?'Bid y Ask actuales recibidos desde Nasdaq.com':'Bid/Ask no marcado como tiempo real por Nasdaq; no se reutiliza el snapshot diferido')+'">'+bidAskInner(s,false)+'</span>';
 }
-function flashQuote(el,dir){
- if(!el||!dir)return;
- el.classList.remove('quote-flash-up','quote-flash-down');
- void el.offsetWidth;
- el.classList.add(dir==='up'?'quote-flash-up':'quote-flash-down');
- setTimeout(()=>el.classList.remove('quote-flash-up','quote-flash-down'),1500);
-}
+function flashQuote(el,dir){setQuoteDirection(el,dir)}
 
 function trPriceCell(s,which,se){
- let x=trPriceValues(s,SP(s,se)),value=which==='eur'?x.eur:x.usd,sym=which==='eur'?'€':'\u0024';
- return '<span class="table-price-cell" data-tr-price-'+which+'-key="'+E(stockKey(s))+'">'+money(value,sym)+'</span>';
+ let x=trPriceValues(s,SP(s,se)),value=which==='eur'?x.eur:x.usd,sym=which==='eur'?'€':'\u0024',dec=quotePrecision(s,true,SP(s,se));
+ let cls=quoteDirClass(s&&s.trLiveDirection);
+ return '<span class="table-price-cell'+(cls?' '+cls:'')+'" data-tr-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span>';
 }
 function usPriceCell(s,which,se){
- let x=usPriceValues(s,SP(s,se)),value=which==='usd'?x.usd:x.eur,sym=which==='usd'?'\u0024':'€';
- return '<span class="table-price-cell" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+money(value,sym)+'</span>';
+ let x=usPriceValues(s,SP(s,se)),value=which==='usd'?x.usd:x.eur,sym=which==='usd'?'\u0024':'€',dec=quotePrecision(s,false,SP(s,se));
+ let cls=quoteDirClass(s&&s.usLiveDirection);
+ return '<span class="table-price-cell'+(cls?' '+cls:'')+'" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span>';
 }
 function liveChangeHtml(s,fallback,preferTr=false){
  let value=preferTr&&s&&s.tradeRepublicVerified?(trLiveChange(s)??N(fallback)):(usLiveChange(s)??N(fallback));
  let attrs=preferTr&&s&&s.tradeRepublicVerified
   ?' data-tr-live-change-key="'+E(stockKey(s))+'"'
   :' data-us-live-change-key="'+E(stockKey(s))+'"';
- return '<span class="'+C(value)+'"'+attrs+'>'+PC(value)+'</span>';
+ return '<span class="quote-change '+C(value)+'"'+attrs+'>'+PC(value)+'</span>';
 }
 
 function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
@@ -243,7 +273,7 @@ function trApplyTickerPayload(s,payload){
  let ask=N(payload.ask&&payload.ask.price);
  let pre=N(payload.pre&&payload.pre.price);
  let open=N(payload.open&&payload.open.price);
- let old=N(s.trLivePrice);
+ let old=N(s.trLivePrice),oldBid=N(s.trLiveBid),oldAsk=N(s.trLiveAsk);
 
  // "last" is the Trade Republic/LSX last traded price. Bid and ask are
  // separate order-book quotes and must never be substituted for the last price.
@@ -252,8 +282,14 @@ function trApplyTickerPayload(s,payload){
   s.trLivePrice=last;
   s.trLiveLastAt=N(payload.last&&payload.last.time)??Date.now();
  }
- if(bid!==null){s.trLiveBid=bid;s.trLiveBidAt=N(payload.bid&&payload.bid.time)??Date.now()}
- if(ask!==null){s.trLiveAsk=ask;s.trLiveAskAt=N(payload.ask&&payload.ask.time)??Date.now()}
+ if(bid!==null){
+  if(oldBid!==null&&bid!==oldBid)s.trLiveBidDirection=bid>oldBid?'up':'down';
+  s.trLiveBid=bid;s.trLiveBidAt=N(payload.bid&&payload.bid.time)??Date.now();
+ }
+ if(ask!==null){
+  if(oldAsk!==null&&ask!==oldAsk)s.trLiveAskDirection=ask>oldAsk?'up':'down';
+  s.trLiveAsk=ask;s.trLiveAskAt=N(payload.ask&&payload.ask.time)??Date.now();
+ }
  if(pre!==null)s.trLivePre=pre;
  if(open!==null)s.trLiveOpen=open;
  if(N(s.trLivePrice)!==null&&N(s.trLivePre)>0)s.trLiveChangePct=(N(s.trLivePrice)/N(s.trLivePre)-1)*100;
@@ -342,18 +378,15 @@ function refreshTrLiveDom(){
   el.innerHTML=pricePairInner(s,fallback,true);
   el.classList.toggle('live-quote',direct);
   el.title=direct?'Cotización LSX en tiempo real · Trade Republic'+(s.trLiveQuality?' · '+s.trLiveQuality:''):'Esperando cotización LSX en tiempo real';
-  if(s.trLiveDirection&&Date.now()-(s.trLiveDirectionAt||0)<1900){
-   let seen=Number(el.dataset.flashAt||0);
-   if(seen!==(s.trLiveDirectionAt||0)){el.dataset.flashAt=String(s.trLiveDirectionAt||0);flashQuote(el,s.trLiveDirection)}
-  }
+  setQuoteDirection(el,s.trLiveDirection);
  });
  document.querySelectorAll('[data-tr-spread-key]').forEach(el=>{let s=trStockByKey(el.dataset.trSpreadKey);if(s)el.innerHTML=bidAskInner(s,true)});
- document.querySelectorAll('[data-tr-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trBidKey);if(s)el.textContent=money(s.trLiveBid,'€')});
- document.querySelectorAll('[data-tr-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trAskKey);if(s)el.textContent=money(s.trLiveAsk,'€')});
- document.querySelectorAll('[data-tr-price-eur-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceEurKey);if(s)el.textContent=money(trPriceValues(s,SP(s,currentMarketSession())).eur,'€')});
- document.querySelectorAll('[data-tr-price-usd-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceUsdKey);if(s)el.textContent=money(trPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024')});
- document.querySelectorAll('[data-tr-live-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveBidKey);if(s)el.textContent=money(s.trLiveBid,'€')});
- document.querySelectorAll('[data-tr-live-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveAskKey);if(s)el.textContent=money(s.trLiveAsk,'€')});
+ document.querySelectorAll('[data-tr-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trBidKey);if(!s)return;el.textContent=quoteMoney(s.trLiveBid,'€',quotePrecision(s,true));setQuoteDirection(el,s.trLiveBidDirection)});
+ document.querySelectorAll('[data-tr-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trAskKey);if(!s)return;el.textContent=quoteMoney(s.trLiveAsk,'€',quotePrecision(s,true));setQuoteDirection(el,s.trLiveAskDirection)});
+ document.querySelectorAll('[data-tr-price-eur-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceEurKey);if(!s)return;el.textContent=quoteMoney(trPriceValues(s,SP(s,currentMarketSession())).eur,'€',quotePrecision(s,true,SP(s,currentMarketSession())));setQuoteDirection(el,s.trLiveDirection)});
+ document.querySelectorAll('[data-tr-price-usd-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceUsdKey);if(!s)return;el.textContent=quoteMoney(trPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024',quotePrecision(s,true,SP(s,currentMarketSession())));setQuoteDirection(el,s.trLiveDirection)});
+ document.querySelectorAll('[data-tr-live-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveBidKey);if(!s)return;el.textContent=quoteMoney(s.trLiveBid,'€',quotePrecision(s,true));setQuoteDirection(el,s.trLiveBidDirection)});
+ document.querySelectorAll('[data-tr-live-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveAskKey);if(!s)return;el.textContent=quoteMoney(s.trLiveAsk,'€',quotePrecision(s,true));setQuoteDirection(el,s.trLiveAskDirection)});
  document.querySelectorAll('[data-tr-live-change-key]').forEach(el=>{
   let s=trStockByKey(el.dataset.trLiveChangeKey);if(!s)return;
   let v=trLiveChange(s);if(v===null)return;
@@ -390,13 +423,19 @@ function usVisibleKeys(){
 }
 function usApplyQuote(s,q){
  if(!s||!q||q.error)return;
- let old=N(s.usLivePrice),px=N(q.price);
+ let old=N(s.usLivePrice),oldBid=N(s.usLiveBid),oldAsk=N(s.usLiveAsk),px=N(q.price),bid=N(q.bid),ask=N(q.ask);
  if(px!==null){
   if(old!==null&&px!==old){s.usLiveDirection=px>old?'up':'down';s.usLiveDirectionAt=Date.now()}
   s.usLivePrice=px;
  }
- if(N(q.bid)!==null)s.usLiveBid=N(q.bid);
- if(N(q.ask)!==null)s.usLiveAsk=N(q.ask);
+ if(bid!==null){
+  if(oldBid!==null&&bid!==oldBid)s.usLiveBidDirection=bid>oldBid?'up':'down';
+  s.usLiveBid=bid;
+ }else s.usLiveBid=null;
+ if(ask!==null){
+  if(oldAsk!==null&&ask!==oldAsk)s.usLiveAskDirection=ask>oldAsk?'up':'down';
+  s.usLiveAsk=ask;
+ }else s.usLiveAsk=null;
  if(N(q.bidSize)!==null)s.usLiveBidSize=N(q.bidSize);
  if(N(q.askSize)!==null)s.usLiveAskSize=N(q.askSize);
  if(N(q.volume)!==null)s.usLiveVolume=N(q.volume);
@@ -413,16 +452,13 @@ function refreshUsLiveDom(){
   el.innerHTML=pricePairInner(s,SP(s,currentMarketSession()),false);
   el.classList.toggle('live-quote',usLivePrice(s)!==null);
   el.title=s.usLiveIsRealTime?'Cotización Nasdaq actual':'Último dato Nasdaq disponible';
-  if(s.usLiveDirection&&Date.now()-(s.usLiveDirectionAt||0)<1900){
-   let seen=Number(el.dataset.flashAt||0);
-   if(seen!==(s.usLiveDirectionAt||0)){el.dataset.flashAt=String(s.usLiveDirectionAt||0);flashQuote(el,s.usLiveDirection)}
-  }
+  setQuoteDirection(el,s.usLiveDirection);
  });
- document.querySelectorAll('[data-us-spread-key]').forEach(el=>{let s=usStockByKey(el.dataset.usSpreadKey);if(s){el.innerHTML=bidAskInner(s,false);el.classList.toggle('realtime',!!s.usLiveIsRealTime)}});
- document.querySelectorAll('[data-us-bid-key]').forEach(el=>{let s=usStockByKey(el.dataset.usBidKey);if(s)el.textContent=money(usLiveBid(s),'\u0024')});
- document.querySelectorAll('[data-us-ask-key]').forEach(el=>{let s=usStockByKey(el.dataset.usAskKey);if(s)el.textContent=money(usLiveAsk(s),'\u0024')});
- document.querySelectorAll('[data-us-price-usd-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceUsdKey);if(s)el.textContent=money(usPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024')});
- document.querySelectorAll('[data-us-price-eur-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceEurKey);if(s)el.textContent=money(usPriceValues(s,SP(s,currentMarketSession())).eur,'€')});
+ document.querySelectorAll('[data-us-spread-key]').forEach(el=>{let s=usStockByKey(el.dataset.usSpreadKey);if(s){el.innerHTML=bidAskInner(s,false);el.classList.toggle('realtime',!!s.usLiveIsRealTime);el.classList.toggle('delayed',!s.usLiveIsRealTime)}});
+ document.querySelectorAll('[data-us-bid-key]').forEach(el=>{let s=usStockByKey(el.dataset.usBidKey);if(!s)return;el.textContent=quoteMoney(usLiveBid(s),'\u0024',quotePrecision(s,false));setQuoteDirection(el,s.usLiveBidDirection)});
+ document.querySelectorAll('[data-us-ask-key]').forEach(el=>{let s=usStockByKey(el.dataset.usAskKey);if(!s)return;el.textContent=quoteMoney(usLiveAsk(s),'\u0024',quotePrecision(s,false));setQuoteDirection(el,s.usLiveAskDirection)});
+ document.querySelectorAll('[data-us-price-usd-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceUsdKey);if(!s)return;el.textContent=quoteMoney(usPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024',quotePrecision(s,false,SP(s,currentMarketSession())));setQuoteDirection(el,s.usLiveDirection)});
+ document.querySelectorAll('[data-us-price-eur-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceEurKey);if(!s)return;el.textContent=quoteMoney(usPriceValues(s,SP(s,currentMarketSession())).eur,'€',quotePrecision(s,false,SP(s,currentMarketSession())));setQuoteDirection(el,s.usLiveDirection)});
  document.querySelectorAll('[data-us-live-change-key]').forEach(el=>{let s=usStockByKey(el.dataset.usLiveChangeKey);if(!s)return;let v=usLiveChange(s);if(v===null)return;el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0)});
  if(state.entryMarket!=='tr'&&$('#entryUpdated')&&usLive.lastFetchAt){
   $('#entryUpdated').textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -1029,8 +1065,8 @@ const CATALOG_COLUMNS={
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).eur,cell:(s,se)=>trPriceCell(s,'eur',se)},
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).usd,cell:(s,se)=>trPriceCell(s,'usd',se)},
   {id:'change',label:'%',type:'number',value:(s,se)=>trLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),true)},
-  {id:'bid',label:'Bid €',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number" data-tr-bid-key="'+E(stockKey(s))+'">'+money(s.trLiveBid,'€')+'</span>'},
-  {id:'ask',label:'Ask €',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number" data-tr-ask-key="'+E(stockKey(s))+'">'+money(s.trLiveAsk,'€')+'</span>'},
+  {id:'bid',label:'Bid €',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveBidDirection)+'" data-tr-bid-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveBid,'€',quotePrecision(s,true))+'</span>'},
+  {id:'ask',label:'Ask €',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveAskDirection)+'" data-tr-ask-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveAsk,'€',quotePrecision(s,true))+'</span>'},
   {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>SV(s,se),cell:(s,se)=>compactVol(SV(s,se))},
   {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
   {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
@@ -1061,8 +1097,7 @@ const CATALOG_COLUMNS={
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>usLivePrice(s)??SP(s,se),cell:(s,se)=>usPriceCell(s,'usd',se)},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>usPriceValues(s,SP(s,se)).eur,cell:(s,se)=>usPriceCell(s,'eur',se)},
   {id:'change',label:'%',type:'number',value:(s,se)=>usLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),false)},
-  {id:'bid',label:'Bid USD',type:'number',value:s=>usLiveBid(s),cell:s=>'<span data-us-bid-key="'+E(stockKey(s))+'">'+money(usLiveBid(s),'$')+'</span>'},
-  {id:'ask',label:'Ask USD',type:'number',value:s=>usLiveAsk(s),cell:s=>'<span data-us-ask-key="'+E(stockKey(s))+'">'+money(usLiveAsk(s),'$')+'</span>'},
+  {id:'bid',label:'Bid USD',type:'number',value:s=>usLiveBid(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveBidDirection)+'" data-us-bid-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveBid(s),'
   {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>N(s.usLiveVolume)??SV(s,se),cell:(s,se)=>compactVol(N(s.usLiveVolume)??SV(s,se))},
   {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
   {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
@@ -1177,7 +1212,504 @@ async function load(force=false){
   let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
   for(let s of j.stocks){
    let old=previous.get(stockKey(s));if(!old)continue;
-   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){uiRestoredScroll=true;requestAnimationFrame(()=>window.scrollTo(0,state.savedScrollY||0))}
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='afterhours'||state.filters.sort==='change'?state.filters.sort:'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});
+$('#catalogUSSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,160)});
+['refreshEntry','refreshFuture'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('beforeunload',saveUiState);
+setInterval(clock,1000);
+setInterval(()=>load(false),15000);
+load(true);
+,quotePrecision(s,false))+'</span>'},
+  {id:'ask',label:'Ask USD',type:'number',value:s=>usLiveAsk(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveAskDirection)+'" data-us-ask-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveAsk(s),'
+  {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>N(s.usLiveVolume)??SV(s,se),cell:(s,se)=>compactVol(N(s.usLiveVolume)??SV(s,se))},
+  {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
+  {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
+  {id:'premarketPrice',label:'Pre USD',type:'number',value:s=>N(s.premarketPrice),cell:s=>PR(s.premarketPrice)},
+  {id:'premarketChange',label:'Pre %',type:'number',value:s=>N(s.premarketChangePct),cell:s=>'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span>'},
+  {id:'premarketVolume',label:'Vol. pre',type:'number',value:s=>N(s.premarketVolume),cell:s=>compactVol(s.premarketVolume)},
+  {id:'regularPrice',label:'Regular USD',type:'number',value:s=>N(s.price),cell:s=>PR(s.price)},
+  {id:'regularChange',label:'Regular %',type:'number',value:s=>N(s.changePct),cell:s=>'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span>'},
+  {id:'postmarketPrice',label:'Post USD',type:'number',value:s=>N(s.postmarketPrice),cell:s=>PR(s.postmarketPrice)},
+  {id:'postmarketChange',label:'Post %',type:'number',value:s=>N(s.postmarketChangePct),cell:s=>'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span>'},
+  {id:'postmarketVolume',label:'Vol. post',type:'number',value:s=>N(s.postmarketVolume),cell:s=>compactVol(s.postmarketVolume)},
+  {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
+  {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
+  {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
+  {id:'ema50',label:'EMA50',type:'number',value:s=>N(s.ema50),cell:s=>PR(s.ema50)},
+  {id:'week',label:'1 sem.',type:'number',value:s=>N(s.perfWeek),cell:s=>'<span class="'+C(s.perfWeek)+'">'+PC(s.perfWeek)+'</span>'},
+  {id:'month',label:'1 mes',type:'number',value:s=>N(s.perfMonth),cell:s=>'<span class="'+C(s.perfMonth)+'">'+PC(s.perfMonth)+'</span>'},
+  {id:'tr',label:'Trade Republic',type:'text',value:s=>s.tradeRepublicVerified?'sí':'no',cell:s=>s.tradeRepublicVerified?'<span class="pill ok">'+E(s.trTicker||'TR')+'</span>':'—'},
+  {id:'isin',label:'ISIN',type:'text',value:s=>s.usIsin||s.isin||'',cell:s=>E(s.usIsin||s.isin||'—')},
+  {id:'feed',label:'Feed',type:'text',value:s=>s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||''),cell:s=>'<span class="'+(s.usLiveIsRealTime?'feed-live':'feed-delayed')+'">'+E(s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||'—'))+'</span>'},
+  {id:'updated',label:'Último dato',type:'text',value:s=>s.usLiveTimestamp||s.lastBarUpdateTime||'',cell:s=>E(s.usLiveTimestamp||'—')},
+  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
+ ]
+};
+const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null},us:{sort:'ticker',dir:1,filters:{},order:null}};
+function catalogStorageKey(mode){return 'catalystpulse:catalogColumns:'+mode+':v1'}
+function catalogLoadOrder(mode){
+ if(catalogState[mode].order)return catalogState[mode].order;
+ let ids=CATALOG_COLUMNS[mode].map(c=>c.id),saved=[];
+ try{saved=JSON.parse(localStorage.getItem(catalogStorageKey(mode))||'[]')}catch(_){}
+ saved=Array.isArray(saved)?saved.filter(x=>ids.includes(x)):[];
+ catalogState[mode].order=[...saved,...ids.filter(x=>!saved.includes(x))];
+ return catalogState[mode].order;
+}
+function catalogSaveOrder(mode){try{localStorage.setItem(catalogStorageKey(mode),JSON.stringify(catalogState[mode].order||[]))}catch(_){}}
+function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
+function catalogSession(mode){let id=mode==='tr'?'#catalogSession':'#catalogUSSession',v=$(id)?.value||'auto';return v==='auto'?currentMarketSession():v}
+function catalogFilterMatch(value,filter,type){
+ filter=String(filter||'').trim();if(!filter)return true;
+ if(type==='number'){
+  let n=N(value);if(n===null)return false;
+  let m=filter.match(/^\s*(>=|<=|>|<|=)?\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+  if(!m)return false;
+  let target=Number(m[2].replace(',','.')),op=m[1]||'=';
+  if(op==='>')return n>target;if(op==='<')return n<target;if(op==='>=')return n>=target;if(op==='<=')return n<=target;return n===target;
+ }
+ if(type==='date'){
+  let n=N(value);if(n===null)return false;
+  let raw=filter.replace(/^\s*(>=|<=|>|<|=)\s*/,'').trim(),op=(filter.match(/^\s*(>=|<=|>|<|=)/)||[])[1]||'=';
+  let parts=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/),d=parts?new Date(+parts[3],+parts[2]-1,+parts[1]):new Date(raw);
+  if(isNaN(d))return false;
+  let target=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(),day=864e5,current=new Date(n),cur=new Date(current.getFullYear(),current.getMonth(),current.getDate()).getTime();
+  if(op==='>')return cur>target;if(op==='<')return cur<target;if(op==='>=')return cur>=target;if(op==='<=')return cur<=target;return cur>=target&&cur<target+day;
+ }
+ return String(value??'').toLowerCase().includes(filter.toLowerCase());
+}
+function catalogSortValue(v,type){if(v===null||v===undefined||v==='')return type==='text'?'':-Infinity;return type==='text'?String(v).toLowerCase():Number(v)}
+function catalogTable(mode,rows,se){
+ let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0];
+ rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type)));
+ rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
+ let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
+ let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'> 10':'Filtrar')+'"></th>').join('');
+ let body=rows.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
+ return {html:'<table class="catalog-table" data-mode="'+mode+'"><thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table>',count:rows.length};
+}
+function renderCatalogTable(mode){
+ let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
+ let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
+ let rows=db.stocks.filter(s=>isTr?!!s.tradeRepublicVerified:market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')).toLowerCase().includes(q)));
+ let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;
+ let count=$(isTr?'#catalogCount':'#catalogUSCount');count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU');
+ requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
+}
+function resetCatalogColumns(mode){
+ catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogSaveOrder(mode);renderCatalogTable(mode);
+}
+function renderCatalog(){renderCatalogTable('tr')}
+function renderCatalogUS(){renderCatalogTable('us')}
+function renderFuture(){
+ let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
+ let filtered=(db.events||[]).filter(e=>futureWindowEvent(e,h,now)&&(t==='all'||e.type===t)&&(!tr||e.tradeRepublicVerified));
+ let groups=groupFutureEvents(filtered);
+ $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
+  let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
+  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
+  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,label+' · '+when,!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
+}
+
+function renderCalendar(){
+ let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
+ $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
+  let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
+  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,EL(e)+' · '+DF(e.date),!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+ }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
+}
+
+function status(){}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();if(state.currentView==='catalog')renderCatalog();if(state.currentView==='catalogUS')renderCatalogUS();if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let r=await fetch(DATA+'?v='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){uiRestoredScroll=true;requestAnimationFrame(()=>window.scrollTo(0,state.savedScrollY||0))}
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='afterhours'||state.filters.sort==='change'?state.filters.sort:'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});
+$('#catalogUSSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,160)});
+['refreshEntry','refreshFuture'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('beforeunload',saveUiState);
+setInterval(clock,1000);
+setInterval(()=>load(false),15000);
+load(true);
+,quotePrecision(s,false))+'</span>'},
+  {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>N(s.usLiveVolume)??SV(s,se),cell:(s,se)=>compactVol(N(s.usLiveVolume)??SV(s,se))},
+  {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
+  {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
+  {id:'premarketPrice',label:'Pre USD',type:'number',value:s=>N(s.premarketPrice),cell:s=>PR(s.premarketPrice)},
+  {id:'premarketChange',label:'Pre %',type:'number',value:s=>N(s.premarketChangePct),cell:s=>'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span>'},
+  {id:'premarketVolume',label:'Vol. pre',type:'number',value:s=>N(s.premarketVolume),cell:s=>compactVol(s.premarketVolume)},
+  {id:'regularPrice',label:'Regular USD',type:'number',value:s=>N(s.price),cell:s=>PR(s.price)},
+  {id:'regularChange',label:'Regular %',type:'number',value:s=>N(s.changePct),cell:s=>'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span>'},
+  {id:'postmarketPrice',label:'Post USD',type:'number',value:s=>N(s.postmarketPrice),cell:s=>PR(s.postmarketPrice)},
+  {id:'postmarketChange',label:'Post %',type:'number',value:s=>N(s.postmarketChangePct),cell:s=>'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span>'},
+  {id:'postmarketVolume',label:'Vol. post',type:'number',value:s=>N(s.postmarketVolume),cell:s=>compactVol(s.postmarketVolume)},
+  {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
+  {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
+  {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
+  {id:'ema50',label:'EMA50',type:'number',value:s=>N(s.ema50),cell:s=>PR(s.ema50)},
+  {id:'week',label:'1 sem.',type:'number',value:s=>N(s.perfWeek),cell:s=>'<span class="'+C(s.perfWeek)+'">'+PC(s.perfWeek)+'</span>'},
+  {id:'month',label:'1 mes',type:'number',value:s=>N(s.perfMonth),cell:s=>'<span class="'+C(s.perfMonth)+'">'+PC(s.perfMonth)+'</span>'},
+  {id:'tr',label:'Trade Republic',type:'text',value:s=>s.tradeRepublicVerified?'sí':'no',cell:s=>s.tradeRepublicVerified?'<span class="pill ok">'+E(s.trTicker||'TR')+'</span>':'—'},
+  {id:'isin',label:'ISIN',type:'text',value:s=>s.usIsin||s.isin||'',cell:s=>E(s.usIsin||s.isin||'—')},
+  {id:'feed',label:'Feed',type:'text',value:s=>s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||''),cell:s=>'<span class="'+(s.usLiveIsRealTime?'feed-live':'feed-delayed')+'">'+E(s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||'—'))+'</span>'},
+  {id:'updated',label:'Último dato',type:'text',value:s=>s.usLiveTimestamp||s.lastBarUpdateTime||'',cell:s=>E(s.usLiveTimestamp||'—')},
+  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
+ ]
+};
+const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null},us:{sort:'ticker',dir:1,filters:{},order:null}};
+function catalogStorageKey(mode){return 'catalystpulse:catalogColumns:'+mode+':v1'}
+function catalogLoadOrder(mode){
+ if(catalogState[mode].order)return catalogState[mode].order;
+ let ids=CATALOG_COLUMNS[mode].map(c=>c.id),saved=[];
+ try{saved=JSON.parse(localStorage.getItem(catalogStorageKey(mode))||'[]')}catch(_){}
+ saved=Array.isArray(saved)?saved.filter(x=>ids.includes(x)):[];
+ catalogState[mode].order=[...saved,...ids.filter(x=>!saved.includes(x))];
+ return catalogState[mode].order;
+}
+function catalogSaveOrder(mode){try{localStorage.setItem(catalogStorageKey(mode),JSON.stringify(catalogState[mode].order||[]))}catch(_){}}
+function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
+function catalogSession(mode){let id=mode==='tr'?'#catalogSession':'#catalogUSSession',v=$(id)?.value||'auto';return v==='auto'?currentMarketSession():v}
+function catalogFilterMatch(value,filter,type){
+ filter=String(filter||'').trim();if(!filter)return true;
+ if(type==='number'){
+  let n=N(value);if(n===null)return false;
+  let m=filter.match(/^\s*(>=|<=|>|<|=)?\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+  if(!m)return false;
+  let target=Number(m[2].replace(',','.')),op=m[1]||'=';
+  if(op==='>')return n>target;if(op==='<')return n<target;if(op==='>=')return n>=target;if(op==='<=')return n<=target;return n===target;
+ }
+ if(type==='date'){
+  let n=N(value);if(n===null)return false;
+  let raw=filter.replace(/^\s*(>=|<=|>|<|=)\s*/,'').trim(),op=(filter.match(/^\s*(>=|<=|>|<|=)/)||[])[1]||'=';
+  let parts=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/),d=parts?new Date(+parts[3],+parts[2]-1,+parts[1]):new Date(raw);
+  if(isNaN(d))return false;
+  let target=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(),day=864e5,current=new Date(n),cur=new Date(current.getFullYear(),current.getMonth(),current.getDate()).getTime();
+  if(op==='>')return cur>target;if(op==='<')return cur<target;if(op==='>=')return cur>=target;if(op==='<=')return cur<=target;return cur>=target&&cur<target+day;
+ }
+ return String(value??'').toLowerCase().includes(filter.toLowerCase());
+}
+function catalogSortValue(v,type){if(v===null||v===undefined||v==='')return type==='text'?'':-Infinity;return type==='text'?String(v).toLowerCase():Number(v)}
+function catalogTable(mode,rows,se){
+ let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0];
+ rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type)));
+ rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
+ let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
+ let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'> 10':'Filtrar')+'"></th>').join('');
+ let body=rows.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
+ return {html:'<table class="catalog-table" data-mode="'+mode+'"><thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table>',count:rows.length};
+}
+function renderCatalogTable(mode){
+ let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
+ let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
+ let rows=db.stocks.filter(s=>isTr?!!s.tradeRepublicVerified:market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')).toLowerCase().includes(q)));
+ let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;
+ let count=$(isTr?'#catalogCount':'#catalogUSCount');count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU');
+ requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
+}
+function resetCatalogColumns(mode){
+ catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogSaveOrder(mode);renderCatalogTable(mode);
+}
+function renderCatalog(){renderCatalogTable('tr')}
+function renderCatalogUS(){renderCatalogTable('us')}
+function renderFuture(){
+ let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
+ let filtered=(db.events||[]).filter(e=>futureWindowEvent(e,h,now)&&(t==='all'||e.type===t)&&(!tr||e.tradeRepublicVerified));
+ let groups=groupFutureEvents(filtered);
+ $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
+  let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
+  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
+  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,label+' · '+when,!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
+}
+
+function renderCalendar(){
+ let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
+ $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
+  let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
+  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,EL(e)+' · '+DF(e.date),!!s.tradeRepublicVerified)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+ }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
+}
+
+function status(){}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();if(state.currentView==='catalog')renderCatalog();if(state.currentView==='catalogUS')renderCatalogUS();if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let r=await fetch(DATA+'?v='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
   }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   render();
