@@ -713,6 +713,48 @@ def build_news_events(stocks, now):
 
     return cluster_news_events(out)
 
+def attach_previous_snapshot(stocks, previous, now):
+    """Attach the immediately previous market snapshot for short-term acceleration detection.
+
+    The scheduled workflow normally runs every five minutes. Only a recent snapshot is
+    accepted so session resets or stale workflow runs cannot create false momentum.
+    """
+    prev_time = event_date((previous.get("meta") or {}).get("updatedAt"))
+    if not prev_time:
+        return None
+    age_minutes = (now - prev_time).total_seconds() / 60.0
+    if age_minutes < 1 or age_minutes > 20:
+        return None
+
+    prev_by_symbol = {
+        row.get("tvSymbol"): row
+        for row in previous.get("stocks") or []
+        if row.get("tvSymbol")
+    }
+    fields = [
+        ("changePct", "previousChangePct"),
+        ("premarketChangePct", "previousPremarketChangePct"),
+        ("postmarketChangePct", "previousPostmarketChangePct"),
+        ("volume", "previousVolume"),
+        ("premarketVolume", "previousPremarketVolume"),
+        ("postmarketVolume", "previousPostmarketVolume"),
+    ]
+    attached = 0
+    for stock in stocks:
+        prev = prev_by_symbol.get(stock.get("tvSymbol"))
+        if not prev:
+            continue
+        copied = False
+        for source, target in fields:
+            value = prev.get(source)
+            if value is not None and value != "":
+                stock[target] = value
+                copied = True
+        if copied:
+            stock["momentumSnapshotMinutes"] = round(age_minutes, 2)
+            attached += 1
+    return attached
+
 def main():
     previous = {}
     if OUT.exists():
@@ -721,6 +763,7 @@ def main():
         except Exception:
             pass
 
+    now = dt.datetime.now(dt.timezone.utc)
     idx, tr_count, tr_source = tr_universe()
     eur_usd, eur_usd_source = fetch_eur_usd(previous)
 
@@ -731,6 +774,8 @@ def main():
             previous.setdefault("meta", {})["lastError"] = str(exc)
             OUT.write_text(json.dumps(previous, ensure_ascii=False, separators=(",", ":")))
         raise
+
+    attach_previous_snapshot(stocks, previous, now)
 
     matched = 0
     for s in stocks:
@@ -769,7 +814,6 @@ def main():
             if s[key] is None or s[key] == "":
                 del s[key]
 
-    now = dt.datetime.now(dt.timezone.utc)
     events = []
 
     for s in stocks:
