@@ -12,3 +12,22 @@
 @media(max-width:680px){.app-shell{display:block}.sidebar{position:fixed;left:-240px;width:230px;z-index:50;transition:left .18s;box-shadow:12px 0 30px rgba(0,0,0,.35)}.sidebar.open{left:0}.topbar{height:44px;padding:0 8px}.mobile-menu{display:block;border:0;background:transparent;color:#fff;font-size:18px;padding:4px}.mobile-view{display:block;background:#0e1b24;color:#eaf3f6;border:1px solid #2c414d;border-radius:6px;padding:6px;max-width:190px;font-size:11px}.breadcrumb{display:none}.topbar-right{font-size:9px;gap:5px}.provider-state{padding:4px 5px}.view{padding:10px 8px 26px}.page-heading h1{font-size:20px}.lead{font-size:10px}.compact-heading{align-items:center}.control-strip{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:7px 0}.control-strip .grow{grid-column:1/-1;min-width:0}.control-strip .check-inline{grid-column:1/-1}.select,.input,.btn{min-width:0;width:100%;padding:7px;font-size:11px}.icon-btn{width:36px;min-width:36px}.compact-tabs{margin:5px 0}.tab{padding:6px 8px;font-size:10px}.filter-panel{margin:5px 0}.filters-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.checks-grid{grid-template-columns:1fr;gap:5px}.filter-actions{display:grid;grid-template-columns:1fr 1fr}.status-line{font-size:9px;margin:6px 0}.stock-list{gap:4px}.stock-main{padding:7px 8px}.rank{width:19px;height:19px;font-size:9px}.stock-id{gap:6px}.stock-id>div{display:grid;gap:0}.stock-id strong{font-size:13px}.stock-id span:not(.rank){font-size:9px;max-width:145px}.stock-quick{gap:6px}.stock-quick b{font-size:12px}.stock-quick>span{font-size:10px}.stock-details>summary{padding:5px 8px;font-size:9px}.summary-hint{max-width:70%}.detail-grid{grid-template-columns:repeat(3,1fr)}.detail-grid>div{padding:5px 6px}.detail-grid small{font-size:8px}.detail-grid b{font-size:10px}.detail-grid span{font-size:9px}.why-line,.meta-line{padding:6px 8px;font-size:9px}.external-links{padding:6px 8px;gap:4px}.external-links a{font-size:9px;padding:4px 5px}.tag{display:inline-block;margin-left:3px}footer{padding:12px 8px;font-size:8px}}
 @media(max-width:380px){.topbar-right .provider-state{display:none}.mobile-view{max-width:160px}.stock-id span:not(.rank){max-width:105px}.detail-grid{grid-template-columns:repeat(2,1fr)}}.event-link{display:inline-block;margin:0 11px 7px;color:#8fd9c0;text-decoration:none;font-size:10px}.event-link:hover{color:#d9fff3}@media(max-width:680px){.event-link{margin:0 8px 6px;font-size:9px}}
 @media(max-width:680px){.event-type{max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.event-quick{gap:4px}.stock-quick .chevron{font-size:10px}}
+
+.preset-picker{position:relative;min-width:240px}
+.preset-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;text-align:left}
+.preset-caret{color:#7f98a4}
+.preset-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
+.preset-menu{display:none;position:absolute;z-index:60;top:calc(100% + 5px);left:0;min-width:280px;background:#0d1821;border:1px solid #29404d;border-radius:8px;box-shadow:0 16px 38px rgba(0,0,0,.4);padding:5px}
+.preset-picker.open .preset-menu{display:grid}
+.preset-option{position:relative;border:0;background:transparent;color:#dbe6ea;text-align:left;padding:8px 9px;border-radius:6px;cursor:pointer;font-size:11px;white-space:nowrap}
+.preset-option:hover,.preset-option:focus-visible{background:#18332c;color:#fff;outline:none}
+.preset-option.active{color:#71e7be}
+.preset-desc{display:none;position:absolute;left:calc(100% + 9px);top:50%;transform:translateY(-50%);width:285px;white-space:normal;background:#101e28;border:1px solid #315161;border-radius:7px;padding:9px 10px;color:#b9cad2;font-size:10px;line-height:1.45;box-shadow:0 12px 30px rgba(0,0,0,.38);pointer-events:none}
+.preset-option:hover .preset-desc,.preset-option:focus-visible .preset-desc{display:block}
+@media(max-width:900px){.preset-desc{left:auto;right:calc(100% + 9px)}}
+@media(max-width:680px){
+ .preset-picker{min-width:0;width:100%}
+ .preset-menu{position:fixed;left:8px;right:8px;top:88px;min-width:0;max-height:70vh;overflow:auto}
+ .preset-option{white-space:normal;padding:8px}
+ .preset-desc,.preset-option:hover .preset-desc,.preset-option:focus-visible .preset-desc{display:block;position:static;transform:none;width:auto;margin-top:3px;padding:0;border:0;background:transparent;box-shadow:none;color:#78909c;font-size:9px;line-height:1.35}
+}
