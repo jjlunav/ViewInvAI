@@ -589,7 +589,7 @@ $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
 $('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);$('#catalogUSSearch').addEventListener('input',renderCatalogUS);
 ['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
-toUI(state.filters);lockAllCriteria();initLeadersDock();clock();setInterval(clock,30000);setInterval(()=>load(false),1000);load(true););
+toUI(state.filters);lockAllCriteria();initLeadersDock();clock();setInterval(clock,30000);setInterval(()=>load(false),1000);load(true);
  let secondary=preferTr?money(x.usd,'
 function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
 function C(v){v=N(v);return v===null?'':v>=0?'positive':'negative'}
