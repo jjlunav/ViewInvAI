@@ -1,0 +1,33 @@
+name: Validar frontend
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "index.html"
+      - "styles.css"
+      - ".github/workflows/check-frontend.yml"
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar sintaxis JavaScript
+        run: node --check app.js
+      - name: Comprobar IDs esenciales
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("index.html").read_text()
+          required = [
+              "view-entry","view-future","view-radar","view-calendar",
+              "view-catalog","view-catalogUS","catalogDetail","catalogUSDetail",
+              "catalogSearch","catalogUSSearch","marketLeaders"
+          ]
+          missing = [x for x in required if f'id="{x}"' not in html]
+          if missing:
+              raise SystemExit("Faltan IDs: " + ", ".join(missing))
+          print("Frontend OK")
+          PY
