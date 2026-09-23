@@ -5,13 +5,16 @@ import time
 import unicodedata
 import datetime as dt
 from difflib import SequenceMatcher
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 import websocket
 from pypdf import PdfReader
 
 TV_URL = "https://scanner.tradingview.com/america/scan"
+TV_SEARCH_URL = "https://symbol-search.tradingview.com/symbol_search/v3/"
 NEWS_URL = "https://news-headlines.tradingview.com/v2/headlines"
 TR_WS_URL = "wss://api.traderepublic.com"
 TR_URLS = [
@@ -27,7 +30,7 @@ TR_METADATA_LIMIT = 2200  # enough to complete unresolved TR/LSX symbols in one 
 TR_METADATA_BATCH = 75
 
 COLS = [
-    "name","description","exchange","currency","close","change","volume",
+    "name","description","type","exchange","currency","close","change","volume",
     "average_volume_10d_calc","relative_volume_10d_calc",
     "premarket_close","premarket_change","premarket_volume","premarket_time",
     "postmarket_close","postmarket_change","postmarket_volume","postmarket_time",
@@ -168,6 +171,7 @@ def tv():
             "tvSymbol": sym,
             "ticker": ticker,
             "name": d.get("description") or ticker,
+            "instrumentType": d.get("type") or "stock",
             "exchange": d.get("exchange") or ex,
             "currency": d.get("currency") or "USD",
             "price": d.get("close"),
@@ -198,10 +202,113 @@ def tv():
     return out, total
 
 
+
+def clean_tv_text(value):
+    return re.sub(r"</?em>", "", str(value or "")).strip()
+
+def fetch_us_isin(stock):
+    ticker = stock.get("ticker")
+    exchange = stock.get("exchange")
+    if not ticker or not exchange:
+        return None
+    params = {
+        "text": ticker,
+        "hl": 0,
+        "exchange": exchange,
+        "lang": "en",
+        "search_type": stock.get("instrumentType") or "undefined",
+        "domain": "production",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Origin": "https://www.tradingview.com",
+    }
+    try:
+        r = requests.get(TV_SEARCH_URL, params=params, headers=headers, timeout=15)
+        r.raise_for_status()
+        items = (r.json() or {}).get("symbols") or []
+        ex_norm = str(exchange).upper().replace(" ", "")
+        for item in items:
+            sym = clean_tv_text(item.get("symbol"))
+            ex = clean_tv_text(item.get("exchange")).upper().replace(" ", "")
+            if sym.upper() == str(ticker).upper() and ex == ex_norm and item.get("isin"):
+                return str(item["isin"]).strip().upper()
+        # A few feeds normalize NYSE ARCA differently. Exact ticker is still
+        # required; use the first ISIN only when there is one unambiguous match.
+        exact = [
+            str(item.get("isin")).strip().upper()
+            for item in items
+            if clean_tv_text(item.get("symbol")).upper() == str(ticker).upper() and item.get("isin")
+        ]
+        exact = list(dict.fromkeys(exact))
+        return exact[0] if len(exact) == 1 else None
+    except Exception:
+        return None
+
+def verify_us_isins(stocks, previous):
+    prev_by_symbol = {
+        row.get("tvSymbol"): row
+        for row in previous.get("stocks") or []
+        if row.get("tvSymbol")
+    }
+    pending = []
+    for stock in stocks:
+        prev = prev_by_symbol.get(stock.get("tvSymbol")) or {}
+        cached = prev.get("usIsin")
+        if cached:
+            stock["usIsin"] = cached
+        elif stock.get("trIsin"):
+            pending.append(stock)
+
+    # Eight workers keeps the public search endpoint load modest while allowing
+    # all TR candidates to be validated within the scheduled workflow.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_map = {pool.submit(fetch_us_isin, stock): stock for stock in pending}
+        for future in as_completed(future_map):
+            stock = future_map[future]
+            try:
+                us_isin = future.result()
+            except Exception:
+                us_isin = None
+            if us_isin:
+                stock["usIsin"] = us_isin
+
+    same = different = unresolved = 0
+    for stock in stocks:
+        tr_isin = stock.get("trIsin")
+        us_isin = stock.get("usIsin")
+        if tr_isin and us_isin:
+            if str(tr_isin).upper() == str(us_isin).upper():
+                stock["instrumentLinkStatus"] = "same_isin"
+                stock["isinLinkVerified"] = True
+                stock["tradeRepublicVerified"] = True
+                stock["isin"] = us_isin
+                same += 1
+            else:
+                stock["instrumentLinkStatus"] = "different_isin"
+                stock["isinLinkVerified"] = False
+                stock["tradeRepublicVerified"] = False
+                stock["isin"] = us_isin
+                different += 1
+        elif tr_isin:
+            stock["instrumentLinkStatus"] = "unverified"
+            stock["isinLinkVerified"] = False
+            # Keep the candidate available while the external ISIN lookup is
+            # temporarily unresolved, but never label the cross-market link as verified.
+            stock["tradeRepublicVerified"] = True
+            stock["isin"] = tr_isin
+            unresolved += 1
+        elif us_isin:
+            stock["isin"] = us_isin
+            stock["tradeRepublicVerified"] = False
+        else:
+            stock["tradeRepublicVerified"] = False
+    return same, different, unresolved
+
 def cached_tr_metadata(previous):
     cache = {}
     for row in previous.get("stocks") or []:
-        isin = row.get("isin")
+        isin = row.get("trIsin") or row.get("isin")
         ticker = row.get("trTicker")
         if not isin or not ticker:
             continue
@@ -224,8 +331,8 @@ def fetch_tr_metadata(stocks, previous):
     candidates = []
     seen = set()
     for row in sorted(stocks, key=mover_score, reverse=True):
-        isin = row.get("isin")
-        if not isin or isin in seen or isin in cache:
+        isin = row.get("trIsin")
+        if not row.get("tradeRepublicVerified") or not isin or isin in seen or isin in cache:
             continue
         seen.add(isin)
         candidates.append(isin)
@@ -586,15 +693,17 @@ def main():
     matched = 0
     for s in stocks:
         isin = tr_match(s["name"], idx) if idx else None
-        s["isin"] = isin
-        s["tradeRepublicVerified"] = bool(isin)
+        s["trIsin"] = isin
+        s["tradeRepublicCandidate"] = bool(isin)
         if isin:
             matched += 1
+
+    same_isin, different_isin, unresolved_isin = verify_us_isins(stocks, previous)
 
     tr_meta = fetch_tr_metadata(stocks, previous)
     tr_ticker_count = 0
     for s in stocks:
-        meta = tr_meta.get(s.get("isin"))
+        meta = tr_meta.get(s.get("trIsin"))
         if meta:
             for key, value in meta.items():
                 if value is not None and value != "":
@@ -649,6 +758,9 @@ def main():
             "trOfficialCount": tr_count,
             "trMatchedCount": matched,
             "trTickerCount": tr_ticker_count,
+            "sameIsinCount": same_isin,
+            "differentIsinCount": different_isin,
+            "unresolvedIsinCount": unresolved_isin,
             "trUniverseSource": tr_source,
             "newsCount": len(news_events),
             "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
@@ -658,7 +770,7 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
-    print(len(stocks), "stocks;", matched, "TR matches;", tr_ticker_count, "TR tickers;", len(events), "events;", len(news_events), "news")
+    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", len(events), "events;", len(news_events), "news")
 
 if __name__ == "__main__":
     main()
