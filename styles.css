@@ -1264,3 +1264,110 @@ body.stock-detail-open .main{padding-bottom:0!important}
  .stock-profile-page .profile-chart-section .live-market-chart{height:250px!important}
  .chart-axis-label,.chart-range-label{font-size:9px}
 }
+
+
+/* Stable live quote layout and persistent direction colours */
+.stock-quick{
+ display:grid!important;
+ grid-template-columns:104px 112px 72px 38px 18px;
+ align-items:center;
+ justify-content:end!important;
+ column-gap:10px!important;
+}
+.stock-quick .quote-spread{
+ width:104px!important;
+ min-width:104px!important;
+ max-width:104px!important;
+ display:grid!important;
+ grid-template-columns:1fr!important;
+ gap:3px!important;
+ padding:0!important;
+}
+.stock-quick .quote-side{
+ width:104px!important;
+ min-width:104px!important;
+ max-width:104px!important;
+ display:grid!important;
+ grid-template-columns:28px 1fr!important;
+ align-items:center!important;
+ gap:6px!important;
+ padding:4px 7px!important;
+}
+.stock-quick .quote-side small{text-align:left}
+.stock-quick .quote-side strong{
+ text-align:right;
+ width:100%;
+ font-variant-numeric:tabular-nums;
+}
+.stock-quick .price-pair{
+ width:112px!important;
+ min-width:112px!important;
+ max-width:112px!important;
+ display:grid!important;
+ justify-items:end!important;
+ align-content:center;
+ padding:3px 5px!important;
+}
+.stock-quick .price-pair>strong,
+.stock-quick .price-pair>small{
+ width:100%;
+ text-align:right;
+ font-variant-numeric:tabular-nums;
+}
+.stock-quick .quote-change{
+ width:72px;
+ min-width:72px;
+ max-width:72px;
+ text-align:right;
+ justify-self:end;
+ font-variant-numeric:tabular-nums;
+}
+.stock-quick .pill{
+ width:38px;
+ min-width:38px;
+ justify-self:center;
+ text-align:center;
+}
+.stock-quick .open-arrow{
+ width:18px;
+ min-width:18px;
+ justify-self:end;
+ text-align:right;
+}
+.quote-up,
+.quote-up>strong{color:var(--green)!important}
+.quote-down,
+.quote-down>strong{color:var(--red)!important}
+.quote-side.quote-up{border-color:rgba(81,223,164,.55)!important}
+.quote-side.quote-down{border-color:rgba(255,123,130,.55)!important}
+.price-pair.quote-up>strong{color:var(--green)!important}
+.price-pair.quote-down>strong{color:var(--red)!important}
+.table-price-cell.quote-up,
+.table-live-number.quote-up{color:var(--green)!important}
+.table-price-cell.quote-down,
+.table-live-number.quote-down{color:var(--red)!important}
+
+@media(max-width:900px){
+ .stock-quick{
+  grid-template-columns:96px 102px 68px 36px 16px!important;
+  column-gap:7px!important;
+ }
+ .stock-quick .quote-spread,
+ .stock-quick .quote-side{width:96px!important;min-width:96px!important;max-width:96px!important}
+ .stock-quick .price-pair{width:102px!important;min-width:102px!important;max-width:102px!important}
+ .stock-quick .quote-change{width:68px;min-width:68px;max-width:68px}
+ .stock-quick .pill{width:36px;min-width:36px}
+ .stock-quick .open-arrow{width:16px;min-width:16px}
+}
+@media(max-width:680px){
+ .stock-quick{
+  grid-template-columns:92px 98px 64px 34px 14px!important;
+  column-gap:4px!important;
+ }
+ .stock-quick .quote-spread,
+ .stock-quick .quote-side{width:92px!important;min-width:92px!important;max-width:92px!important}
+ .stock-quick .price-pair{width:98px!important;min-width:98px!important;max-width:98px!important}
+ .stock-quick .quote-change{width:64px;min-width:64px;max-width:64px}
+ .stock-quick .pill{width:34px;min-width:34px}
+ .stock-quick .open-arrow{width:14px;min-width:14px}
+}
