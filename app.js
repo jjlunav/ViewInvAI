@@ -1957,9 +1957,9 @@ $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#f
 $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
-$('[data-tab-group="heatmapMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
+$$('[data-tab-group="heatmapMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
  heatmapState.market=b.dataset.tab==='us'?'us':'tr';
- $('[data-tab-group="heatmapMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
+ $$('[data-tab-group="heatmapMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
  renderHeatmap();
 }));
 $('#heatmapSession').addEventListener('change',e=>{heatmapState.session=e.target.value;renderHeatmap()});
