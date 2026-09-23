@@ -49,7 +49,21 @@ Cada detalle incluye accesos directos a TradingView, Investing.com, StockMarketW
 
 ## Potencial futuro
 
-Muestra eventos próximos asociados a acciones. Se puede elegir el horizonte temporal y el tipo de evento. Las fechas de resultados disponibles se incorporan al calendario. La vista separa el hecho fechado de la posible repercusión y no interpreta un evento como garantía de subida.
+Agrupa catalizadores capaces de aumentar la volatilidad de una acción. El selector temporal ofrece ventanas de 1, 2, 3, 4, 5, 6, 7, 14, 30 y 60 días.
+
+La sección combina eventos previstos con noticias recientes. Incluye, entre otros:
+
+- Resultados y cambios de guidance.
+- Estudios clínicos, ensayos, FDA y noticias sanitarias.
+- Contratos, adjudicaciones, acuerdos y licencias.
+- Fusiones, adquisiciones, splits, reestructuraciones y otras operaciones corporativas.
+- Financiación, ampliaciones, ofertas, convertibles, warrants y posibles situaciones de dilución.
+- Cambios de rating y precio objetivo de analistas.
+- Conferencias, presentaciones, investor days y otros eventos.
+- Noticias regulatorias, legales o relacionadas con la cotización.
+- Otras noticias de actualidad vinculadas a la empresa.
+
+Para noticias, la ventana seleccionada representa antigüedad máxima; para eventos programados, representa cuánto falta hasta el evento. Cada elemento muestra la fuente cuando está disponible y distingue el hecho de su posible relevancia. La aparición de un catalizador no implica que la acción vaya a subir o bajar.
 
 ## Radar de acciones
 
