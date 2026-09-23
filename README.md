@@ -1,85 +1,85 @@
-# EntryPointTrade - reconstrucción local
+# EntryPointTrade
 
-Esta es una reconstrucción independiente del Site de EntryPointTrade para poder seguir desarrollándolo sin depender de los mensajes de Work.
+EntryPointTrade es un radar de mercado orientado a localizar, ordenar y revisar acciones mediante datos de mercado, filtros técnicos y eventos próximos.
 
-## Qué está incluido
+## Potencial de entrada
 
-- Potencial de entrada con los criterios vistos en el Site.
-- Criterios: corto plazo, medio plazo, exploración amplia, impulso intradía, explosión en la sesión, personalizado e histórico/tendencia estrictos.
-- Guardado del criterio personalizado en `localStorage`.
-- **El filtro de precio mínimo está eliminado completamente**: no existe campo de UI ni condición de filtrado por precio mínimo.
-- Potencial futuro colocado inmediatamente después de Potencial de entrada.
-- Radar de acciones.
-- Calendario y noticias.
-- Catálogo Trade Republic, limitado a valores marcados como `tradeRepublicVerified: true`.
-- Fuentes y cobertura con importación JSON.
-- Interfaz responsive y modo oscuro similar al Site original.
+Esta pantalla muestra acciones que cumplen el criterio seleccionado. La lista puede limitarse a valores verificados en Trade Republic o ampliarse al resto del mercado estadounidense.
 
-## Importante
+### Sesiones
 
-Esta versión no inventa cotizaciones ni noticias. Sin una fuente conectada aparecerán estados vacíos. El siguiente paso será conectar fuentes de mercado/noticias reales o un backend propio.
+- Sesión automática: cambia la lectura principal según la hora de Nueva York.
+- Premarket: utiliza precio, variación y volumen anteriores a la apertura regular.
+- Sesión regular: utiliza la cotización de la sesión principal de Estados Unidos.
+- Postmarket · tras cierre EEUU: utiliza la negociación posterior al cierre.
+- Sesión anterior: mantiene como referencia los datos de la última sesión regular.
 
-## Ejecutarlo
+### Criterios
 
-No requiere dependencias.
+- Corto plazo · 1–5 sesiones: prioriza impulso, volumen y situación técnica para un horizonte corto.
+- Medio plazo · 2–6 semanas: da más importancia a la tendencia y reduce el peso del movimiento intradía.
+- Exploración amplia: aplica condiciones poco restrictivas para revisar un universo mayor.
+- Impulso intradía: busca acciones con movimiento y volumen relativo durante la sesión.
+- Explosión en la sesión: destaca acciones que ya han registrado una subida fuerte en la sesión actual.
+- Más suben tras cierre EEUU: ordena las acciones por su subida en postmarket después del cierre regular estadounidense.
+- Personalizado guardado: recupera el último criterio personalizado guardado en el navegador.
+- Histórico y tendencia estrictos: exige condiciones de tendencia más restrictivas.
 
-```bash
-cd entrypointtrade-rebuild
-python -m http.server 8080
-```
+No existe un precio mínimo. Una acción puede aparecer independientemente de su cotización si cumple el resto de condiciones.
 
-Después abre `http://localhost:8080`.
+### Filtros configurables
 
-También puede abrirse `index.html` directamente, aunque para futuras integraciones con APIs es mejor usar un servidor local.
+El desplegable Configurar criterio permite modificar subida mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. También permite exigir tendencia y penalizar valores con liquidez reducida.
 
-## Importar datos
+## Detalle de una acción
 
-Ve a **Fuentes y cobertura -> Importar JSON**. El archivo debe tener esta estructura:
+Cada acción aparece en una fila compacta con ticker, nombre, precio, variación y estado de Trade Republic. Al abrir Detalles se muestran:
 
-```json
-{
-  "stocks": [],
-  "events": []
-}
-```
+- Precio y variación regular.
+- Precio y variación de premarket.
+- Precio y variación de postmarket.
+- Volumen y volumen relativo.
+- RSI y ADX.
+- EMA de 20 sesiones.
+- Rendimiento semanal y mensual.
+- Motivos objetivos por los que la acción aparece en el filtro.
+- Mercado, divisa, ISIN cuando está disponible y próxima fecha de resultados cuando existe.
 
-Consulta `data/example.json` para ver los campos admitidos. Ese fichero usa datos ficticios exclusivamente para documentar el formato.
+Cada detalle incluye accesos directos a TradingView, Investing.com, StockMarketWatch y StockTwits.
 
-## Campos principales de stocks
+## Potencial futuro
 
-- `ticker`
-- `name`
-- `isin`
-- `market`
-- `tradeRepublicVerified`
-- `price`
-- `session`: `regular`, `premarket` o `previous`
-- `changePct`
-- `volume`
-- `avgVolume`
-- `relVolume`
-- `adx`
-- `rsi`
-- `score`
-- `trendOk`
-- `liquidityRisk`
-- `catalyst`
-- `catalystConfirmed`
-- `why`
-- `risk`
+Muestra eventos próximos asociados a acciones. Se puede elegir el horizonte temporal y el tipo de evento. Las fechas de resultados disponibles se incorporan al calendario. La vista separa el hecho fechado de la posible repercusión y no interpreta un evento como garantía de subida.
 
-No existe ningún campo `minPrice`, `minimumPrice` ni equivalente.
+## Radar de acciones
 
-## Campos principales de events
+Permite explorar el universo de mercado con búsqueda por ticker o empresa. Puede filtrarse por sesión, por dirección del movimiento y por cobertura:
 
-- `ticker`
-- `name`
-- `date` (ISO 8601)
-- `type`: `medical`, `earnings`, `contract`, `corporate`, `other`
-- `tradeRepublicVerified`
-- `confirmed`
-- `potentialScore`
-- `source`
-- `fact`
-- `hypothesis`
+- Trade Republic.
+- Catálogo completo.
+- Resto del mercado estadounidense.
 
+Cada resultado utiliza el mismo desplegable compacto de detalles y los mismos enlaces externos que Potencial de entrada.
+
+## Calendario y noticias
+
+Agrupa los eventos fechados asociados a las acciones. Cada elemento puede desplegarse para consultar su descripción y abrir la acción en las fuentes externas disponibles.
+
+## Catálogo Trade Republic
+
+Muestra las acciones cuya disponibilidad ha podido contrastarse con el universo oficial de instrumentos de Trade Republic. Se puede buscar por ticker, empresa o ISIN. El contador indica tanto las coincidencias con cotización como el tamaño del universo oficial procesado.
+
+## Actualización de datos
+
+La barra superior muestra el proveedor y la antigüedad aproximada de los datos. Los botones de actualización vuelven a cargar el conjunto publicado más reciente. La aplicación comprueba periódicamente si existe una actualización nueva.
+
+## Uso en móvil
+
+La interfaz está diseñada para mostrar mucha información en poco espacio:
+
+- Navegación compacta.
+- Filas de acciones reducidas.
+- Detalles plegables.
+- Indicadores reorganizados en cuadrícula.
+- Filtros plegables.
+- Enlaces externos visibles solo al abrir una acción.
