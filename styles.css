@@ -367,3 +367,8 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
  .profile-live .price-pair>strong{font-size:18px}
  .profile-live .price-pair>small{font-size:8px!important}
 }
+
+.price-pair.live-quote{position:relative}
+.price-pair.live-quote>strong{color:#79edc4}
+.price-pair.live-quote:before{content:"";width:5px;height:5px;border-radius:50%;background:#58e0b4;box-shadow:0 0 7px rgba(88,224,180,.65);display:inline-block;margin-right:4px;vertical-align:middle}
+.snapshot-price:before{display:none!important}
