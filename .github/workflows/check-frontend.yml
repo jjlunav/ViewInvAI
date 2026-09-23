@@ -42,7 +42,7 @@ jobs:
           workflow = Path(".github/workflows/check-frontend.yml").read_text(encoding="utf-8")
 
           required = [
-              "view-entry","view-future","view-calendar",
+              "view-entry","view-recommendation","recommendationResults","view-future","view-calendar",
               "view-catalog","view-catalogUS","catalogDetail","catalogUSDetail",
               "catalogSearch","catalogUSSearch","marketLeaders"
           ]
@@ -116,9 +116,9 @@ jobs:
             }
 
             function waitForProfile() {
-              const canvas = document.querySelector('.live-chart-canvas');
+              const chart = document.querySelector('.tv-advanced-chart');
               const profileOpen = document.body.classList.contains('stock-detail-open');
-              if (canvas && profileOpen) {
+              if (chart && profileOpen) {
                 document.body.dataset.smokeProfile = 'ok';
                 return;
               }
@@ -126,7 +126,7 @@ jobs:
                 setTimeout(waitForProfile, 100);
                 return;
               }
-              fail('profile or chart canvas did not open');
+              fail('profile or TradingView chart did not open');
               document.body.dataset.smokeProfile = 'fail';
             }
 

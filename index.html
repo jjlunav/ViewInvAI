@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923r14">
+  <link rel="stylesheet" href="styles.css?v=20260923r15">
 </head>
 <body>
 <div class="app-shell">
@@ -18,6 +18,7 @@
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
       <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
+      <button class="nav-item" data-view="recommendation"><span>◎</span>Recomendación actual</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
@@ -168,6 +169,22 @@
       <div id="entryResults" class="stock-list"></div>
     </section>
 
+    <section class="view" id="view-recommendation">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Recomendación actual <span class="tag teal">IA MULTI-FACTOR</span></h1>
+          <p class="lead">Una candidata de EEUU y otra de Trade Republic, mantenidas hasta que la tesis cambie y marques la salida.</p>
+        </div>
+        <button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button>
+      </div>
+      <div class="recommendation-intro">
+        <strong>Análisis adaptativo y explicable</strong>
+        <span>Combina momentum, volumen relativo, ADX, RSI, EMA20/EMA50, rendimiento, liquidez/spread y noticias/eventos. No fuerza una compra: si la convicción no supera el umbral, mostrará VIGILAR o ESPERAR.</span>
+      </div>
+      <div class="status-line"><span id="recommendationUpdated">pendiente</span></div>
+      <div id="recommendationResults" class="recommendation-grid"><div class="empty-state">Calculando candidatas…</div></div>
+    </section>
+
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
         <div><h1>Potencial futuro <span class="tag teal">ANTES DEL MOVIMIENTO</span></h1><p class="lead">Catalizadores, noticias y eventos que pueden provocar movimientos anormales.</p></div>
@@ -244,6 +261,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923r14"></script>
+<script src="app.js?v=20260923r15"></script>
 </body>
 </html>

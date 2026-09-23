@@ -285,7 +285,7 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
 .profile-kpi strong{font-size:14px;color:#e7f0f3}
 .profile-kpi>span{font-size:9px;color:#92a7b0}
 .profile-chart-section .mini-chart-block{padding:8px;background:#05090c}
-.profile-chart-section .mini-chart-title{display:none}
+.profile-chart-section .mini-chart-title{display:flex}
 .profile-chart-section .mini-chart{height:430px;border-radius:8px}
 .profile-events{border-top:0}
 .profile-empty{padding:14px 11px;color:#718994;font-size:9px}
@@ -1387,4 +1387,75 @@ body.stock-detail-open .main{padding-bottom:0!important}
  .stock-quick .quote-change{width:64px;min-width:64px;max-width:64px}
  .stock-quick .pill{width:34px;min-width:34px}
  .stock-quick .open-arrow{width:14px;min-width:14px}
+}
+
+
+/* TradingView dual-market chart */
+.tv-chart-block{background:#05090c}
+.tv-chart-block .mini-chart-title{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:#08131a;border-bottom:1px solid #182a33;text-transform:none;letter-spacing:0}
+.tv-chart-block .mini-chart-title>div:first-child{display:grid;gap:2px}
+.tv-chart-block .mini-chart-title strong{font-size:10px;color:#dce8ec}
+.tv-chart-block .mini-chart-title span{font-size:8px;color:#718b96}
+.chart-market-switch{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.chart-market-toggle,.chart-market-single{border:1px solid #2a4551;border-radius:999px;background:#0b1921;color:#8ca4ae;padding:5px 8px;font:inherit;font-size:8px;font-weight:750;white-space:nowrap}
+button.chart-market-toggle{cursor:pointer}
+.chart-market-toggle.active{border-color:#43e4b2;background:#113329;color:#8ff0cf;box-shadow:inset 0 0 0 1px rgba(67,228,178,.12)}
+.chart-market-toggle:hover{border-color:#4f7888;color:#d8e6ea}
+.chart-market-caption{padding:6px 10px;border-bottom:1px solid #152832;background:#061017;color:#728c97;font-size:8px}
+.chart-market-caption b{color:#a8c3cc}
+.tv-advanced-chart{display:block!important;overflow:hidden;background:#05090c}
+.tv-advanced-chart .tradingview-widget-container,.tv-advanced-chart .tradingview-widget-container__widget{width:100%!important;height:100%!important}
+.tv-advanced-chart iframe{width:100%!important;height:100%!important;border:0!important}
+@media(max-width:680px){
+ .tv-chart-block .mini-chart-title{align-items:flex-start;flex-direction:column}
+ .chart-market-switch{justify-content:flex-start;width:100%}
+}
+
+/* Current recommendation */
+.recommendation-intro{display:flex;align-items:flex-start;gap:10px;margin:0 0 10px;padding:10px 12px;border:1px solid #24404c;border-radius:10px;background:#09161e;color:#87a0aa;font-size:9px;line-height:1.45}
+.recommendation-intro strong{color:#dce8ec;white-space:nowrap}
+.recommendation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.recommendation-card{min-width:0;border:1px solid #29404d;border-radius:12px;background:#0a151d;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.18)}
+.reco-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid #1c303a;background:#0c1922}
+.reco-card-head>div:first-child{min-width:0}
+.reco-card-head small{display:block;color:#6f8995;font-size:8px;letter-spacing:.6px}
+.reco-title{display:flex;align-items:center;gap:7px;margin-top:4px;min-width:0}
+.reco-title strong{font-size:23px;color:#77e8c2}
+.reco-title span{color:#9cb0b8;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.reco-signal{display:grid;justify-items:end;gap:2px;padding:6px 8px;border:1px solid #38515d;border-radius:9px;min-width:78px}
+.reco-signal b{font-size:11px}
+.reco-signal span{font-size:8px;color:#8da2ac}
+.reco-signal.buy{border-color:#2b7b61;background:#0d2d23}.reco-signal.buy b{color:#69efbf}
+.reco-signal.sell{border-color:#7a3d45;background:#2b1519}.reco-signal.sell b{color:#ff8d96}
+.reco-signal.hold{border-color:#5f6640;background:#252414}.reco-signal.hold b{color:#e6d56f}
+.reco-signal.watch{border-color:#46677c;background:#132430}.reco-signal.watch b{color:#8fd7ff}
+.reco-signal.wait b{color:#9cb0b8}
+.reco-live{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #1a2c35;background:#07121a}
+.reco-thesis{padding:11px 14px;border-bottom:1px solid #1a2c35}
+.reco-thesis strong{font-size:10px;color:#d8e6ea}
+.reco-thesis p{margin:5px 0 0;color:#8ca2ab;font-size:9px;line-height:1.45}
+.reco-factors{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#1b2d36}
+.reco-factor{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;background:#08141c;padding:8px 9px;min-width:0}
+.reco-factor>div{display:grid;gap:2px;min-width:0}
+.reco-factor span{font-size:8px;color:#b9cbd1}
+.reco-factor small{font-size:7.5px;color:#667f8a;line-height:1.3}
+.reco-factor b{font-size:10px;white-space:nowrap}
+.reco-events{padding:10px 14px;border-top:1px solid #1c303a}
+.reco-events h4{margin:0 0 7px;color:#c9d9de;font-size:9px}
+.reco-event{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;padding:5px 0;border-top:1px solid #142731;font-size:8px}
+.reco-event:first-of-type{border-top:0}
+.reco-event strong{color:#75dcb9}.reco-event span{color:#94aab3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reco-event small{color:#607a85}.reco-event.muted{display:block;color:#718994}
+.reco-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-top:1px solid #1c303a}
+.reco-sold{border-color:#7a3d45!important;background:#32171c!important;color:#ffafb5!important}
+.reco-exit-wait{font-size:7.5px;color:#617b86;text-align:right}
+.reco-foot{padding:8px 14px;background:#061017;color:#5f7883;font-size:7.5px;line-height:1.4}
+@media(max-width:1000px){.recommendation-grid{grid-template-columns:1fr}}
+@media(max-width:680px){
+ .recommendation-intro{flex-direction:column}
+ .reco-card-head{align-items:flex-start}
+ .reco-factors{grid-template-columns:1fr}
+ .reco-live{justify-content:flex-start}
+ .reco-actions{align-items:stretch;flex-direction:column}
+ .reco-exit-wait{text-align:left}
+ .reco-event{grid-template-columns:1fr}.reco-event span{white-space:normal}
 }
