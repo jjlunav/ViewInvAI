@@ -33,7 +33,7 @@ El desplegable Configurar criterio permite modificar subida mínima y máxima, v
 
 ## Detalle de una acción
 
-Cada acción aparece en una fila compacta con ticker, nombre, precio, variación y estado de Trade Republic. Al abrir Detalles se muestran:
+Cada acción aparece en una fila compacta con ticker, nombre, precio, variación y estado de Trade Republic. Al pulsar directamente sobre la fila de la acción se despliega o se oculta su información:
 
 - Precio y variación regular.
 - Precio y variación de premarket.
@@ -73,7 +73,7 @@ Permite explorar el universo de mercado con búsqueda por ticker o empresa. Pued
 - Catálogo completo.
 - Resto del mercado estadounidense.
 
-Cada resultado utiliza el mismo desplegable compacto de detalles y los mismos enlaces externos que Potencial de entrada.
+Cada resultado se abre pulsando sobre la propia fila y utiliza los mismos enlaces externos que Potencial de entrada.
 
 ## Calendario y noticias
 
