@@ -1152,3 +1152,115 @@ body.stock-detail-open .main{padding-bottom:0!important}
 @media(max-width:380px){
  .quick-kpi-grid{grid-template-columns:1fr}
 }
+
+
+/* Same-feed live intraday charts */
+.live-chart-block{background:#05090c}
+.live-chart-block .mini-chart-title{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:10px;
+ color:#76909b;
+ text-transform:none;
+ letter-spacing:0
+}
+.live-chart-source{
+ color:#8fdcc3;
+ font-weight:750;
+ white-space:nowrap
+}
+.live-market-chart{
+ position:relative;
+ display:grid;
+ grid-template-rows:auto minmax(0,1fr);
+ overflow:hidden;
+ background:#05090c
+}
+.live-chart-status{
+ min-height:28px;
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:10px;
+ padding:5px 9px;
+ border-bottom:1px solid #182a33;
+ background:#08131a;
+ color:#8da3ad;
+ font-size:9px;
+ font-variant-numeric:tabular-nums
+}
+.live-chart-status b{color:#cfe2e7}
+.live-chart-status.stale{color:#d2b36d}
+.live-chart-svg{
+ display:block;
+ width:100%;
+ height:100%;
+ min-width:0;
+ min-height:0;
+ background:#05090c
+}
+.chart-grid-line{
+ stroke:#182a33;
+ stroke-width:1;
+ vector-effect:non-scaling-stroke
+}
+.chart-grid-line.vertical{stroke:#11212a}
+.chart-area{fill:url(#chartFill);stroke:none}
+.chart-fill-start{stop-color:#43e4b2;stop-opacity:.20}
+.chart-fill-end{stop-color:#43e4b2;stop-opacity:0}
+.chart-line{
+ fill:none;
+ stroke:#55e2b6;
+ stroke-width:2;
+ vector-effect:non-scaling-stroke
+}
+.chart-line.down{stroke:#ff7b82}
+.chart-last-line{
+ stroke:#6e8791;
+ stroke-width:1;
+ stroke-dasharray:4 4;
+ vector-effect:non-scaling-stroke
+}
+.chart-live-dot{
+ fill:#55e2b6;
+ stroke:#d9fff3;
+ stroke-width:1.5;
+ vector-effect:non-scaling-stroke
+}
+.chart-live-dot.down{fill:#ff7b82;stroke:#ffd5d7}
+.chart-axis-label{
+ fill:#6f8792;
+ font-size:10px;
+ font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif
+}
+.chart-range-label{
+ fill:#829aa5;
+ font-size:10px;
+ font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif
+}
+.chart-empty{
+ fill:#6f8792;
+ font-size:12px;
+ font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif
+}
+
+@media(max-width:680px){
+ .live-chart-block .mini-chart-title{
+  align-items:flex-start;
+  flex-direction:column;
+  gap:2px
+ }
+ .live-chart-source{font-size:8px}
+ .live-chart-status{
+  min-height:34px;
+  align-items:flex-start;
+  flex-direction:column;
+  gap:2px;
+  padding:5px 7px;
+  font-size:8px
+ }
+ .profile-chart-section .live-market-chart{height:270px!important}
+ .stock-profile-page .profile-chart-section .live-market-chart{height:250px!important}
+ .chart-axis-label,.chart-range-label{font-size:9px}
+}
