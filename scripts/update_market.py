@@ -65,7 +65,7 @@ def tr_match(name,idx):
 
 def tv():
  payload={
-  "filter":[{"left":"exchange","operation":"in_range","right":["NASDAQ","NYSE","AMEX"]}],
+  "filter":[{"left":"type","operation":"equal","right":"stock"},{"left":"is_primary","operation":"equal","right":True},{"left":"exchange","operation":"in_range","right":["NASDAQ","NYSE","AMEX"]}],
   "options":{"lang":"en"},"markets":["america"],
   "symbols":{"query":{"types":[]},"tickers":[]},"columns":COLS,
   "sort":{"sortBy":"volume","sortOrder":"desc"},"range":[0,10000]
@@ -111,6 +111,8 @@ def main():
   isin=tr_match(s["name"],idx) if idx else None
   s["isin"]=isin; s["tradeRepublicVerified"]=bool(isin)
   if isin:matched+=1
+  for key in list(s):
+   if s[key] is None or s[key]=="": del s[key]
  now=dt.datetime.now(dt.timezone.utc); events=[]
  for s in stocks:
   d=event_date(s.get("earningsDate"))
