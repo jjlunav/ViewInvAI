@@ -41,12 +41,14 @@
     </nav>
     <section class="favorites-panel" aria-label="Acciones favoritas">
       <div class="favorites-head">
-        <div><span class="favorites-star">★</span><strong>FAVORITAS</strong></div>
-        <span id="favoritesCount">0</span>
+        <div class="favorites-title">
+          <span class="favorites-star" aria-hidden="true">★</span>
+          <div><strong>FAVORITOS</strong><span>Mi seguimiento</span></div>
+        </div>
+        <span class="favorites-count" id="favoritesCount">0</span>
       </div>
-      <div class="favorites-subtitle">Seguimiento especial</div>
       <div class="favorites-list" id="favoritesList">
-        <div class="favorites-empty">Marca una ☆ junto a una acción.</div>
+        <div class="favorites-empty"><span aria-hidden="true">☆</span><p>Pulsa la estrella de cualquier acción para guardarla aquí.</p></div>
       </div>
     </section>
   </aside>
