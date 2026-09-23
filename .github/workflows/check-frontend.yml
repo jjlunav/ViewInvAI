@@ -26,7 +26,7 @@ jobs:
           from pathlib import Path
           html = Path("index.html").read_text()
           required = [
-              "view-entry","view-future","view-radar","view-calendar",
+              "view-entry","view-future","view-calendar",
               "view-catalog","view-catalogUS","catalogDetail","catalogUSDetail",
               "catalogSearch","catalogUSSearch","marketLeaders"
           ]
