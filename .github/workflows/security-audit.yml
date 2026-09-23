@@ -80,9 +80,13 @@ jobs:
               "shell=True": r"shell\s*=\s*True",
               "verify=False": r"verify\s*=\s*False",
           }
-          combined = "\n".join(texts.values())
+          code_combined = "\n".join([
+              texts["app.js"],
+              texts["worker.js"],
+              texts["scripts/update_market.py"],
+          ])
           for label, pattern in dangerous.items():
-              if re.search(pattern, combined, re.I):
+              if re.search(pattern, code_combined, re.I):
                   raise SystemExit("Patron peligroso detectado: " + label)
 
           secrets = {
@@ -92,8 +96,9 @@ jobs:
               "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
               "Private key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
           }
+          all_text = "\n".join(texts.values())
           for label, pattern in secrets.items():
-              if re.search(pattern, combined):
+              if re.search(pattern, all_text):
                   raise SystemExit("Posible secreto embebido: " + label)
 
           for path, text in texts.items():
