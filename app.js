@@ -22,16 +22,65 @@ function restoreUiState(){
  try{
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
   if(x&&V[x.view])state.currentView=x.view;
+  if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
+  if(x&&['auto','premarket','regular','postmarket','previous'].includes(x.session))state.session=x.session;
+  if(x&&(P[x.preset]||x.preset==='custom'))state.preset=x.preset;
+
+  if(x&&x.filters&&typeof x.filters==='object'){
+   let base=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+   let numeric=['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'];
+   for(let k of numeric){let v=N(x.filters[k]);if(v!==null)base[k]=v}
+   if(typeof x.filters.trend==='boolean')base.trend=x.filters.trend;
+   if(typeof x.filters.illiquid==='boolean')base.illiquid=x.filters.illiquid;
+   if(['score','change','afterhours'].includes(x.filters.sort))base.sort=x.filters.sort;
+   state.filters=base;
+  }
+
   if(x&&x.profileKey)state.profileKey=x.profileKey;
   if(x&&x.profileReason)state.profileReason=x.profileReason;
+  if(x&&V[x.profileOriginView])state.profileOriginView=x.profileOriginView;
+  state.profileOriginScroll=N(x&&x.profileOriginScroll)??0;
+  state.profilePreferTr=x&&x.profilePreferTr===true?true:x&&x.profilePreferTr===false?false:null;
   state.savedScrollY=N(x&&x.scrollY)??0;
  }catch(_){}
+
  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+state.currentView));
  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===state.currentView));
+
+ let session=$('#sessionSelect');if(session)session.value=state.session;
+ let presetSelect=$('#presetSelect');if(presetSelect)presetSelect.value=state.preset;
+ let presetOpt=$('.preset-option[data-value="'+state.preset+'"]');
+ if(presetOpt){
+  let label=presetOpt.querySelector('span');
+  if(label&&$('#presetLabel'))$('#presetLabel').textContent=label.textContent;
+  document.querySelectorAll('.preset-option').forEach(el=>el.classList.toggle('active',el===presetOpt));
+ }
+ $('[data-tab-group="entryMarket"] .tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===state.entryMarket));
+
+ let quick=$('#stockQuickDetail');
+ if(state.profileKey){
+  document.body.classList.add('stock-detail-open');
+  if(quick)quick.classList.remove('is-hidden');
+ }else{
+  document.body.classList.remove('stock-detail-open');
+  if(quick)quick.classList.add('is-hidden');
+ }
 }
 function saveUiState(){
  try{
-  localStorage.setItem(UI_KEY,JSON.stringify({view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',scrollY:Math.max(0,Math.round(window.scrollY||0))}));
+  localStorage.setItem(UI_KEY,JSON.stringify({
+   view:state.currentView||'entry',
+   entryMarket:state.entryMarket,
+   session:state.session,
+   preset:state.preset,
+   filters:state.filters,
+   profileKey:state.profileKey||null,
+   profileReason:state.profileReason||'',
+   profileOriginView:state.profileOriginView||null,
+   profileOriginScroll:Math.max(0,Math.round(state.profileOriginScroll||0)),
+   profilePreferTr:state.profilePreferTr,
+   scrollY:Math.max(0,Math.round(window.scrollY||0))
+  }));
  }catch(_){}
 }
 let saveUiTimer=null;
@@ -737,83 +786,129 @@ function drawLiveChart(el){
  if(!el||!el._chartReady)return;
  let s=stockByKey(el._chartKey),preferTr=!!el._chartPreferTr;
  let points=(el._chartPoints||[]).slice(),q=chartQuote(s,preferTr);
+
  if(q){
-  let qt=chartNumber(q.time);
+  let qt=chartNumber(q.time),observed=chartNumber(q.receivedAt);
   if(qt!==null&&qt<1e12)qt*=1000;
-  if(qt===null)qt=Date.now();
-  let last=points[points.length-1];
-  // Keep live ticks in the chart history. Previously they were appended only
-  // to a temporary copy, so if the historical endpoint returned 0/1 points
-  // the mobile chart could remain blank forever.
-  if(!last||qt>last.time)points.push({time:qt,price:q.price,live:true});
-  else if(last&&qt===last.time)points[points.length-1]={time:last.time,price:q.price,live:true};
-  else if(last&&q.price!==last.price)points.push({time:Math.max(Date.now(),last.time+1),price:q.price,live:true});
+  if(observed!==null&&observed<1e12)observed*=1000;
+  let sampleTime=observed??qt??Date.now(),last=points[points.length-1];
+
+  // A quote observation is a legitimate chart point even when the price has
+  // not changed. This lets the chart grow on quiet symbols instead of staying
+  // blank while waiting for a trade at a different price.
+  if(!last)points.push({time:sampleTime,price:q.price,live:true});
+  else if(sampleTime>last.time+4000)points.push({time:sampleTime,price:q.price,live:true});
+  else if(q.price!==last.price)points.push({time:Math.max(sampleTime,last.time+1),price:q.price,live:true});
+  else if(sampleTime>=last.time)points[points.length-1]={time:last.time,price:q.price,live:true};
  }
+
  points=chartCleanPoints(points);
  el._chartPoints=points.slice();
- let status=el.querySelector('.live-chart-status'),svg=el.querySelector('svg');
- if(!svg||!status)return;
 
- // Set the SVG viewport before handling the empty/one-point state. On narrow
- // mobile screens the old hard-coded x=500 empty-state text was outside the
- // visible SVG, which made the graph look completely black.
- let rect=svg.getBoundingClientRect(),w=Math.max(280,Math.round(rect.width||el.clientWidth||360)),h=Math.max(180,Math.round(rect.height||240));
- svg.setAttribute('viewBox','0 0 '+w+' '+h);
+ let status=el.querySelector('.live-chart-status'),canvas=el.querySelector('canvas');
+ if(!canvas||!status)return;
+ let ctx=canvas.getContext&&canvas.getContext('2d');
+ if(!ctx){
+  status.textContent='El navegador no permite dibujar el gráfico.';
+  return;
+ }
 
  let now=Date.now(),age=q?Math.max(0,now-(q.receivedAt||q.time||now)):null;
  if(q){
   let freshness=age<10000?'EN DIRECTO':age<60000?'ACTUALIZANDO':'DATO ANTIGUO';
-  let historyNote=el._chartHistoryUnavailable?' · historial cargándose desde cotizaciones en directo':'';
+  let historyNote=el._chartHistoryUnavailable?' · gráfico construido con cotizaciones en directo':'';
   status.innerHTML='<span><b>'+E(q.label)+'</b> · '+E(freshness)+E(historyNote)+'</span><span>'+E(chartFormatPrice(q.price,preferTr))+' · '+E(chartFormatTime(q.time))+(age!==null?' · hace '+Math.max(0,Math.round(age/1000))+' s':'')+'</span>';
   status.classList.toggle('stale',age>=60000);
  }else{
   status.innerHTML='<span><b>'+(preferTr?'Trade Republic':'Nasdaq')+'</b> · esperando cotización actual</span>';
   status.classList.add('stale');
  }
- if(points.length<2){
-  let msg=el._chartHistoryUnavailable
-   ?'Histórico no disponible · esperando la siguiente cotización'
-   :'Esperando suficientes datos para dibujar el gráfico';
-  svg.innerHTML=chartSvgText(w/2,h/2,msg,'chart-empty','middle');
+
+ let rect=canvas.getBoundingClientRect();
+ let w=Math.max(280,Math.round(rect.width||el.clientWidth||360));
+ let h=Math.max(180,Math.round(rect.height||240));
+ let dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+ let pw=Math.round(w*dpr),ph=Math.round(h*dpr);
+ if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph}
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.clearRect(0,0,w,h);
+ ctx.fillStyle='#05090c';
+ ctx.fillRect(0,0,w,h);
+
+ let compact=w<560,left=compact?12:18,right=compact?72:90,top=24,bottom=32;
+ let plotW=Math.max(80,w-left-right),plotH=Math.max(80,h-top-bottom);
+ let font=compact?'9px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif':'10px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif';
+
+ function line(x1,y1,x2,y2,color,width=1,dash=[]){
+  ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.stroke();ctx.restore();
+ }
+ function label(value,x,y,align='left',color='#6f8792'){
+  ctx.save();ctx.font=font;ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(String(value),x,y);ctx.restore();
+ }
+
+ if(!points.length){
+  label('Esperando datos de mercado…',w/2,h/2,'center','#829aa5');
   return;
  }
- let compact=w<560,left=compact?48:66,right=compact?68:88,top=18,bottom=34,plotW=w-left-right,plotH=h-top-bottom;
+
+ if(points.length===1){
+  let p=points[0],y=top+plotH/2,x=left+plotW*.68;
+  line(left,y,left+plotW,y,'#6e8791',1,[4,4]);
+  ctx.save();ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle='#55e2b6';ctx.fill();ctx.strokeStyle='#d9fff3';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+  label(chartFormatPrice(p.price,preferTr),left+plotW+8,y,'left','#829aa5');
+  label(chartFormatTime(p.time),x,h-12,'center','#6f8792');
+  label('Esperando más puntos para formar la curva',w/2,14,'center','#829aa5');
+  return;
+ }
+
  let prices=points.map(p=>p.price),min=Math.min(...prices),max=Math.max(...prices);
- let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);min-=pad;max+=pad;span=max-min||1;
- let minT=points[0].time,maxT=points[points.length-1].time;if(maxT<=minT)maxT=minT+60000;
+ let span=max-min,pad=span>0?span*.08:Math.max(Math.abs(max)*.005,.01);
+ min-=pad;max+=pad;span=max-min||1;
+ let minT=points[0].time,maxT=points[points.length-1].time;
+ if(maxT<=minT)maxT=minT+60000;
  let X=t=>left+(t-minT)/(maxT-minT)*plotW,Y=p=>top+(max-p)/span*plotH;
- let grid='',labels='';
+
  for(let i=0;i<5;i++){
   let f=i/4,y=top+f*plotH,val=max-f*span;
-  grid+='<line x1="'+left+'" y1="'+y.toFixed(1)+'" x2="'+(w-right)+'" y2="'+y.toFixed(1)+'" class="chart-grid-line"/>';
-  labels+=chartSvgText(w-right+8,y+4,chartFormatPrice(val,preferTr),'chart-axis-label');
+  line(left,y,left+plotW,y,'#182a33');
+  label(chartFormatPrice(val,preferTr),left+plotW+8,y);
  }
  for(let i=0;i<5;i++){
   let f=i/4,x=left+f*plotW,t=minT+f*(maxT-minT);
-  grid+='<line x1="'+x.toFixed(1)+'" y1="'+top+'" x2="'+x.toFixed(1)+'" y2="'+(h-bottom)+'" class="chart-grid-line vertical"/>';
-  labels+=chartSvgText(x,h-10,chartFormatTime(t),'chart-axis-label','middle');
+  line(x,top,x,top+plotH,'#11212a');
+  label(chartFormatTime(t),x,h-11,'center');
  }
- let path=points.map((p,i)=>(i?'L':'M')+X(p.time).toFixed(2)+' '+Y(p.price).toFixed(2)).join(' ');
+
  let first=points[0].price,last=points[points.length-1].price,up=last>=first;
- let area=path+' L '+X(points[points.length-1].time).toFixed(2)+' '+(h-bottom)+' L '+X(points[0].time).toFixed(2)+' '+(h-bottom)+' Z';
+ let stroke=up?'#55e2b6':'#ff7b82';
+
+ let gradient=ctx.createLinearGradient(0,top,0,top+plotH);
+ gradient.addColorStop(0,up?'rgba(85,226,182,.20)':'rgba(255,123,130,.18)');
+ gradient.addColorStop(1,'rgba(5,9,12,0)');
+ ctx.save();
+ ctx.beginPath();
+ points.forEach((p,i)=>{let x=X(p.time),y=Y(p.price);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
+ ctx.lineTo(X(points[points.length-1].time),top+plotH);
+ ctx.lineTo(X(points[0].time),top+plotH);
+ ctx.closePath();ctx.fillStyle=gradient;ctx.fill();ctx.restore();
+
+ ctx.save();ctx.beginPath();
+ points.forEach((p,i)=>{let x=X(p.time),y=Y(p.price);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
+ ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();ctx.restore();
+
  let lastX=X(points[points.length-1].time),lastY=Y(last);
+ line(left,lastY,left+plotW,lastY,'#6e8791',1,[4,4]);
+ ctx.save();ctx.beginPath();ctx.arc(lastX,lastY,5,0,Math.PI*2);ctx.fillStyle=stroke;ctx.fill();ctx.strokeStyle=up?'#d9fff3':'#ffd5d7';ctx.lineWidth=1.5;ctx.stroke();ctx.restore();
+
  let hi=Math.max(...prices),lo=Math.min(...prices);
- svg.innerHTML=
-  '<defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" class="chart-fill-start"/><stop offset="100%" class="chart-fill-end"/></linearGradient></defs>'+
-  grid+
-  '<path d="'+area+'" class="chart-area"/>'+
-  '<path d="'+path+'" class="chart-line '+(up?'up':'down')+'"/>'+
-  '<line x1="'+left+'" y1="'+lastY.toFixed(2)+'" x2="'+(w-right)+'" y2="'+lastY.toFixed(2)+'" class="chart-last-line"/>'+
-  '<circle cx="'+lastX.toFixed(2)+'" cy="'+lastY.toFixed(2)+'" r="5" class="chart-live-dot '+(up?'up':'down')+'"/>'+
-  labels+
-  chartSvgText(left,14,'Máx '+chartFormatPrice(hi,preferTr)+' · Mín '+chartFormatPrice(lo,preferTr),'chart-range-label');
+ label('Máx '+chartFormatPrice(hi,preferTr)+' · Mín '+chartFormatPrice(lo,preferTr),left,13,'left','#829aa5');
 }
 async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
  let key=el.dataset.stockKey,s=stockByKey(key);if(!s)return;
  let preferTr=el.dataset.preferTr==='1'&&!!s.tradeRepublicVerified;
  el.dataset.loaded='1';el._chartKey=key;el._chartPreferTr=preferTr;
- el.innerHTML='<div class="live-chart-status"><span>Cargando histórico…</span></div><svg class="live-chart-svg" preserveAspectRatio="none" role="img" aria-label="Gráfico intradía en tiempo real"></svg>';
+ el.innerHTML='<div class="live-chart-status"><span>Cargando histórico…</span></div><canvas class="live-chart-canvas" role="img" aria-label="Gráfico intradía en tiempo real"></canvas>';
  try{
   let url=preferTr
    ?'/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000'
