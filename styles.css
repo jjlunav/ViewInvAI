@@ -330,3 +330,16 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
 .relation-status.warn{color:#ff9ca2;border-color:#74434a;background:#2a171b}
 .relation-status.pending,.pill.isin-pending{color:#e2bf67;border-color:#6a5528;background:#2a2414}
 .pill.isin-ok,.pill.isin-pending{font-size:8px}
+
+.ticker-stack{display:grid;gap:1px;min-width:0;line-height:1.05}
+.ticker-stack>strong{font-size:inherit;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticker-us-ref{display:block;font-size:7px!important;font-weight:600;color:#a9bac2!important;letter-spacing:.15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+.ticker-us-ref.pending{color:#d4bd78!important}
+.leader-symbol .ticker-stack{min-width:0}
+.leader-symbol .ticker-us-ref{font-size:6px!important;max-width:78px}
+.favorite-main .ticker-stack{min-width:0}
+.favorite-main .ticker-us-ref{font-size:6px!important;max-width:95px}
+@media(max-width:680px){
+ .ticker-us-ref{font-size:6px!important;max-width:120px}
+ .leader-symbol .ticker-us-ref{max-width:62px}
+}
