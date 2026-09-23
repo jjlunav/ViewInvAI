@@ -659,6 +659,10 @@ function catalogMatchFilter(value,query,type){
    return op==='>'?v>n:op==='<'?v<n:op==='>='?v>=n:op==='<='?v<=n:Math.abs(v-n)<1e-9;
   }
  }
+ if(type==='date'){
+  let v=N(value);if(v===null)return false;if(v<1e12)v*=1000;
+  return new Date(v).toLocaleDateString('es-ES').toLowerCase().includes(query.toLowerCase());
+ }
  return String(value??'').toLowerCase().includes(query.toLowerCase());
 }
 function catalogSortRows(rows,mode,defs){
@@ -712,7 +716,7 @@ function renderCatalogMode(mode){
  let count=$(isTr?'#catalogCount':'#catalogUSCount');
  if(count)count.textContent=rows.length.toLocaleString('es-ES')+' / '+all.length.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU');
  let box=$(isTr?'#catalogResults':'#catalogUSResults');
- if(box)box.innerHTML=rows.length?catalogTableHtml(rows.slice(0,1500),mode):'<div class="empty-state">No hay valores que cumplan los filtros.</div>';
+ if(box)box.innerHTML=rows.length?catalogTableHtml(rows,mode):'<div class="empty-state">No hay valores que cumplan los filtros.</div>';
  requestAnimationFrame(()=>observeTrLivePrices(box||document));
 }
 
@@ -837,7 +841,7 @@ function renderCalendar(){
 }
 
 function status(){}
-function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();renderCatalog();renderCatalogUS();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderCalendar();if(state.currentView==='catalog')renderCatalog();if(state.currentView==='catalogUS')renderCatalogUS();status();requestAnimationFrame(()=>observeTrLivePrices(document))}
 async function load(force=false){
  if(loading)return;
  loading=true;
@@ -934,7 +938,7 @@ $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#f
 $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
 document.addEventListener('toggle',e=>{let d=e.target;if(d&&d.matches&&d.matches('details.stock-disclosure')&&d.open)d.querySelectorAll('.mini-chart').forEach(loadMiniChart)},true);
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry()}));
-['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#catalogSearch').addEventListener('input',renderCatalog);$('#catalogUSSearch').addEventListener('input',renderCatalogUS);
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));let catalogSearchTimer=null;$('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});$('#catalogUSSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,160)});
 ['refreshEntry','refreshFuture'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
 catalogLoadLayout();let catalogFilterTimer=null,catalogDrag=null;
 document.addEventListener('click',e=>{
