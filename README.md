@@ -1,6 +1,6 @@
-# EntryPointTrade
+# CatalystPulse
 
-EntryPointTrade es un radar de mercado orientado a localizar, ordenar y revisar acciones mediante datos de mercado, filtros técnicos y eventos próximos.
+CatalystPulse es un radar de mercado orientado a localizar, ordenar y revisar acciones mediante datos de mercado, filtros técnicos y eventos próximos.
 
 ## Cinta de movimiento EEUU
 
