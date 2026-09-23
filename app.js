@@ -102,7 +102,7 @@ function loadMiniChart(el){
  box.appendChild(script);
 }
 function metric(label,main,sub,help,mainClass='',subClass=''){
- return '<div class="metric-help" tabindex="0" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span><span class="metric-help-text">'+E(help)+'</span></div>';
+ return '<div class="metric-help" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span></div>';
 }
 function rankingWhy(s,next,se,q,pos){
  if(q.sort==='afterhours'){
