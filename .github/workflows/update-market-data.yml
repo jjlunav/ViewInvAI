@@ -29,7 +29,24 @@ jobs:
           if [ -z "$(git status --porcelain -- data/market.json)" ]; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          cp data/market.json /tmp/market.json
+          git fetch origin main
+          git reset --hard origin/main
+          cp /tmp/market.json data/market.json
+
+          if git diff --quiet -- data/market.json; then exit 0; fi
+
           git add data/market.json
           git commit -m "Update market data"
-          git pull --rebase origin main
-          git push
+
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push; then
+              exit 0
+            fi
+            echo "Push concurrente; reintentando ($attempt/3)..."
+            sleep 2
+          done
+
+          echo "No se pudo publicar data/market.json tras 3 intentos."
+          exit 1
