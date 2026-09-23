@@ -56,7 +56,7 @@ function restoreUiState(){
   if(label&&$('#presetLabel'))$('#presetLabel').textContent=label.textContent;
   document.querySelectorAll('.preset-option').forEach(el=>el.classList.toggle('active',el===presetOpt));
  }
- $('[data-tab-group="entryMarket"] .tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===state.entryMarket));
+ $$('[data-tab-group="entryMarket"] .tab').forEach(el=>el.classList.toggle('active',el.dataset.tab===state.entryMarket));
 
  let quick=$('#stockQuickDetail');
  if(state.profileKey){
@@ -1422,7 +1422,7 @@ $('#saveCustomFilters').addEventListener('click',()=>{
 });
 $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
 $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
-$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
 let catalogSearchTimer=null;
 $('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});
