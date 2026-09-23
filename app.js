@@ -106,7 +106,7 @@ function topGainers(kind,se){
 }
 function leaderItem(s,se,i){
  let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
- return '<a class="leader-item" target="_blank" rel="noopener" href="'+tvHref(s)+'" title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><strong>'+E(s.ticker)+'</strong><span class="'+C(ch)+'">'+PC(ch)+'</span></div><div class="leader-price">'+PR(p)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></a>';
+ return '<div class="leader-item" title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<a target="_blank" rel="noopener" href="'+tvHref(s)+'"><strong>'+E(s.ticker)+'</strong></a></div><span class="'+C(ch)+'">'+PC(ch)+'</span></div><a class="leader-body" target="_blank" rel="noopener" href="'+tvHref(s)+'"><div class="leader-price">'+PR(p)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></a></div>';
 }
 function renderMarketLeaders(){
  let se=currentMarketSession(),label=sessionStageLabel(se)+' · TOP 10 SUBIDAS';
@@ -128,12 +128,12 @@ function renderFavorites(){
  let se=currentMarketSession(),stocks=[...favorites].map(k=>db.stocks.find(s=>stockKey(s)===k)).filter(Boolean);
  count.textContent=stocks.length;
  if(!stocks.length){
-  box.innerHTML='<div class="favorites-empty">Marca una ☆ junto a una acción.</div>';
+  box.innerHTML='<div class="favorites-empty"><span aria-hidden="true">☆</span><p>Pulsa la estrella de cualquier acción para guardarla aquí.</p></div>';
   return;
  }
  box.innerHTML=stocks.map(s=>{
   let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  return '<div class="favorite-row"><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritas" aria-label="Quitar de favoritas">★</button><a target="_blank" rel="noopener" href="'+tvHref(s)+'" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><strong>'+E(s.ticker)+'</strong><span>'+PR(p)+'</span></div><div class="favorite-stats"><span class="'+C(ch)+'">'+PC(ch)+'</span><small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></a></div>';
+  return '<div class="favorite-row"><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><a target="_blank" rel="noopener" href="'+tvHref(s)+'" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><strong>'+E(s.ticker)+'</strong><span>'+PR(p)+'</span></div><div class="favorite-stats"><span class="'+C(ch)+'">'+PC(ch)+'</span><small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></a></div>';
  }).join('');
 }
 function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
