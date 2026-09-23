@@ -58,16 +58,31 @@
           <option value="postmarket">Postmarket · tras cierre EEUU</option>
           <option value="previous">Sesión anterior</option>
         </select>
-        <select id="presetSelect" class="select">
-          <option value="short">Corto plazo · 1–5 sesiones</option>
-          <option value="medium">Medio plazo · 2–6 semanas</option>
-          <option value="broad">Exploración amplia</option>
-          <option value="intraday" selected>Impulso intradía</option>
-          <option value="exploded">Explosión en la sesión</option>
-          <option value="afterhours">Más suben tras cierre EEUU</option>
-          <option value="saved">Personalizado guardado</option>
-          <option value="strict">Histórico y tendencia estrictos</option>
-        </select>
+        <div class="preset-picker" id="presetPicker">
+          <button type="button" class="select preset-trigger" id="presetTrigger" aria-haspopup="listbox" aria-expanded="false">
+            <span id="presetLabel">Impulso intradía</span><span class="preset-caret">⌄</span>
+          </button>
+          <div class="preset-menu" id="presetMenu" role="listbox" aria-label="Criterio de entrada">
+            <button type="button" class="preset-option" data-value="short"><span>Corto plazo · 1–5 sesiones</span><span class="preset-desc">Busca movimientos aprovechables a 1–5 sesiones combinando subida, volumen relativo, fuerza técnica y liquidez.</span></button>
+            <button type="button" class="preset-option" data-value="medium"><span>Medio plazo · 2–6 semanas</span><span class="preset-desc">Prioriza tendencias más sostenidas para 2–6 semanas y una estructura técnica más estable.</span></button>
+            <button type="button" class="preset-option" data-value="broad"><span>Exploración amplia</span><span class="preset-desc">Reduce restricciones para explorar más valores y detectar candidatos que otros filtros podrían dejar fuera.</span></button>
+            <button type="button" class="preset-option active" data-value="intraday"><span>Impulso intradía</span><span class="preset-desc">Busca acciones con impulso durante la sesión actual, subida, volumen relativo y fuerza técnica.</span></button>
+            <button type="button" class="preset-option" data-value="exploded"><span>Explosión en la sesión</span><span class="preset-desc">Localiza acciones que ya han subido con fuerza en la sesión; sirve para detectar explosiones ya en marcha.</span></button>
+            <button type="button" class="preset-option" data-value="afterhours"><span>Más suben tras cierre EEUU</span><span class="preset-desc">Ordena las acciones por mayor subida después del cierre regular de EEUU usando datos de postmarket.</span></button>
+            <button type="button" class="preset-option" data-value="saved"><span>Personalizado guardado</span><span class="preset-desc">Carga el último conjunto de filtros personalizados que hayas guardado en este navegador.</span></button>
+            <button type="button" class="preset-option" data-value="strict"><span>Histórico y tendencia estrictos</span><span class="preset-desc">Aplica condiciones más exigentes de tendencia, volumen y fuerza técnica para reducir candidatos débiles.</span></button>
+          </div>
+          <select id="presetSelect" class="preset-native" aria-hidden="true" tabindex="-1">
+            <option value="short">Corto plazo · 1–5 sesiones</option>
+            <option value="medium">Medio plazo · 2–6 semanas</option>
+            <option value="broad">Exploración amplia</option>
+            <option value="intraday" selected>Impulso intradía</option>
+            <option value="exploded">Explosión en la sesión</option>
+            <option value="afterhours">Más suben tras cierre EEUU</option>
+            <option value="saved">Personalizado guardado</option>
+            <option value="strict">Histórico y tendencia estrictos</option>
+          </select>
+        </div>
         <button class="btn secondary" id="applyFilters">Aplicar</button>
         <button class="btn" id="toggleFilters">Filtros</button>
       </div>
