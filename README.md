@@ -41,6 +41,7 @@ Cada acción aparece en una fila compacta con ticker, nombre, precio, variación
 - RSI y ADX.
 - EMA de 20 sesiones.
 - Rendimiento semanal y mensual.
+- Mini gráfico de TradingView de 1 mes, cargado solo al desplegar la acción.
 - Motivos objetivos por los que la acción aparece en el filtro.
 - Mercado, divisa, ISIN cuando está disponible y próxima fecha de resultados cuando existe.
 
