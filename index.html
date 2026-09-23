@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923g">
+  <link rel="stylesheet" href="styles.css?v=20260923h">
 </head>
 <body>
 <div class="app-shell">
@@ -22,6 +22,7 @@
       <button class="nav-item" data-view="radar"><span>◉</span>Radar de acciones</button>
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
+      <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
     </nav>
     <section class="favorites-panel" aria-label="Acciones favoritas">
       <div class="favorites-head">
@@ -203,12 +204,27 @@
     </section>
 
     <section class="view" id="view-catalog">
-      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Valores comprobados por ISIN contra el universo oficial disponible.</p></div></div>
-      <div class="control-strip">
-        <input id="catalogSearch" class="input grow" placeholder="Buscar ticker, empresa o ISIN">
-        <span id="catalogCount" class="count-pill">0</span>
+      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Instrumentos disponibles en Trade Republic, identificados por ISIN y relacionados con su cotización estadounidense cuando corresponde.</p></div></div>
+      <div id="catalogDetail" class="stock-profile is-hidden"></div>
+      <div id="catalogBrowse">
+        <div class="control-strip">
+          <input id="catalogSearch" class="input grow" placeholder="Buscar ticker TR/LSX, ticker EEUU, empresa o ISIN">
+          <span id="catalogCount" class="count-pill">0</span>
+        </div>
+        <div id="catalogResults" class="stock-list dense"></div>
       </div>
-      <div id="catalogResults" class="stock-list dense"></div>
+    </section>
+
+    <section class="view" id="view-catalogUS">
+      <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Acciones y ADR negociados en Nasdaq, NYSE, AMEX y NYSE Arca cargados en CatalystPulse.</p></div></div>
+      <div id="catalogUSDetail" class="stock-profile is-hidden"></div>
+      <div id="catalogUSBrowse">
+        <div class="control-strip">
+          <input id="catalogUSSearch" class="input grow" placeholder="Buscar ticker, empresa o ISIN">
+          <span id="catalogUSCount" class="count-pill">0</span>
+        </div>
+        <div id="catalogUSResults" class="stock-list dense"></div>
+      </div>
     </section>
 
     <div class="market-leaders market-leaders-dock" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
@@ -237,6 +253,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923g"></script>
+<script src="app.js?v=20260923h"></script>
 </body>
 </html>
