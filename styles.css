@@ -1459,3 +1459,13 @@ button.chart-market-toggle{cursor:pointer}
  .reco-exit-wait{text-align:left}
  .reco-event{grid-template-columns:1fr}.reco-event span{white-space:normal}
 }
+
+/* Detailed contextual help banner */
+.hover-help-banner{position:fixed;z-index:5000;display:grid;gap:5px;padding:10px 12px;border:1px solid #3c5d6c;border-radius:9px;background:#f4f7f8;color:#16242b;box-shadow:0 12px 34px rgba(0,0,0,.34);opacity:0;transform:translateY(4px);visibility:hidden;pointer-events:none;transition:opacity .12s ease,transform .12s ease,visibility .12s ease;font-size:11px;line-height:1.45}
+.hover-help-banner.visible{opacity:1;transform:translateY(0);visibility:visible}
+.hover-help-banner strong{font-size:11px;color:#0b5e4e}
+.hover-help-banner span{color:#24363e}
+[data-help],[data-help-key]{cursor:help}
+.preset-option[data-help-key]{cursor:pointer}
+.catalog-col-filter[data-help]{cursor:text}
+@media(max-width:680px){.hover-help-banner{font-size:10px;max-width:calc(100vw - 24px)}}

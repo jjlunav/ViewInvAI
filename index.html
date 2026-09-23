@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923r15">
+  <link rel="stylesheet" href="styles.css?v=20260923r16">
 </head>
 <body>
 <div class="app-shell">
@@ -60,8 +60,8 @@
     <section class="view active" id="view-entry">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Potencial de entrada <span class="tag amber" id="entryTag">SEGUIMIENTO</span></h1>
-          <p class="lead" id="entryLead">Señales técnicas y movimientos de mercado, sin precio mínimo.</p>
+          <h1>Potencial de entrada</h1>
+          <p class="lead">Explora acciones de Trade Republic o EEUU que cumplen el criterio seleccionado. Filtra por sesión, variación, volumen, RSI, ADX, tendencia y liquidez para localizar posibles entradas, sin precio mínimo.</p>
         </div>
         <button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button>
       </div>
@@ -172,8 +172,8 @@
     <section class="view" id="view-recommendation">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Recomendación actual <span class="tag teal">IA MULTI-FACTOR</span></h1>
-          <p class="lead">Una candidata de EEUU y otra de Trade Republic, mantenidas hasta que la tesis cambie y marques la salida.</p>
+          <h1>Recomendación actual</h1>
+          <p class="lead">Muestra una candidata actual de EEUU y otra de Trade Republic seleccionadas mediante análisis multifactor, con la señal vigente, los factores a favor y en contra, las noticias/eventos considerados y el seguimiento de la tesis hasta la salida.</p>
         </div>
         <button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button>
       </div>
@@ -187,7 +187,7 @@
 
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
-        <div><h1>Potencial futuro <span class="tag teal">ANTES DEL MOVIMIENTO</span></h1><p class="lead">Catalizadores, noticias y eventos que pueden provocar movimientos anormales.</p></div>
+        <div><h1>Potencial futuro</h1><p class="lead">Localiza acciones con catalizadores próximos o noticias recientes capaces de aumentar la volatilidad antes del movimiento. Puedes limitar por horizonte temporal, tipo de evento y disponibilidad confirmada en Trade Republic.</p></div>
         <button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button>
       </div>
       <div class="control-strip">
@@ -199,12 +199,12 @@
     </section>
 
     <section class="view" id="view-calendar">
-      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Eventos fechados, resultados y catalizadores asociados a los valores.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Consulta cronológicamente resultados, eventos clínicos, corporativos y regulatorios, además de noticias y catalizadores asociados a las acciones cargadas.</p></div></div>
       <div id="calendarResults" class="stock-list"></div>
     </section>
 
     <section class="view" id="view-catalog">
-      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Instrumentos disponibles en Trade Republic, identificados por ISIN y relacionados con su cotización estadounidense cuando corresponde.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Consulta únicamente instrumentos confirmados como negociables en Trade Republic/LSX, con ticker LSX resuelto, identificación por ISIN/WKN y su referencia estadounidense cuando existe.</p></div></div>
       <div id="catalogDetail" class="stock-profile is-hidden"></div>
       <div id="catalogBrowse">
         <div class="catalog-toolbar">
@@ -219,7 +219,7 @@
     </section>
 
     <section class="view" id="view-catalogUS">
-      <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Acciones y ADR negociados en Nasdaq, NYSE, AMEX y NYSE Arca cargados en CatalystPulse.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Consulta el universo de acciones y ADR de Nasdaq, NYSE, AMEX y NYSE Arca cargado en CatalystPulse, con búsqueda, ordenación, filtros y columnas configurables.</p></div></div>
       <div id="catalogUSDetail" class="stock-profile is-hidden"></div>
       <div id="catalogUSBrowse">
         <div class="catalog-toolbar">
@@ -258,9 +258,14 @@
     <div class="leaders-hotzone" id="leadersHotzone" aria-hidden="true"></div>
     
 
+    <div id="hoverHelpBanner" class="hover-help-banner" role="tooltip" aria-hidden="true">
+      <strong id="hoverHelpTitle">Ayuda</strong>
+      <span id="hoverHelpText"></span>
+    </div>
+
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923r15"></script>
+<script src="app.js?v=20260923r16"></script>
 </body>
 </html>

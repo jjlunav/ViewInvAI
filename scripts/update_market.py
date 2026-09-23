@@ -683,6 +683,7 @@ def build_news_events(stocks, now):
                     "urgency": urgency,
                     "impactScore": impact_score(category, urgency, item.get("title")),
                     "tradeRepublicVerified": bool(s.get("tradeRepublicVerified")),
+                    "tradeRepublicTradable": bool(s.get("tradeRepublicTradable")),
                     "isin": s.get("isin"),
                     "fact": item.get("title") or "Noticia relacionada con el valor.",
                     "hypothesis": hypothesis_for(category),
@@ -743,6 +744,7 @@ def main():
 
     tr_meta = fetch_tr_metadata(stocks, previous)
     tr_ticker_count = 0
+    tr_tradable_count = 0
     for s in stocks:
         meta = tr_meta.get(s.get("trIsin"))
         if meta:
@@ -751,6 +753,18 @@ def main():
                     s[key] = value
             if s.get("trTicker"):
                 tr_ticker_count += 1
+
+        # Only expose a value in Trade Republic surfaces after the exact LSX
+        # instrument metadata has resolved to an active exchange symbol.
+        s["tradeRepublicTradable"] = bool(
+            s.get("tradeRepublicVerified")
+            and s.get("trIsin")
+            and s.get("trTicker")
+            and s.get("trActive", True) is not False
+        )
+        if s["tradeRepublicTradable"]:
+            tr_tradable_count += 1
+
         for key in list(s):
             if s[key] is None or s[key] == "":
                 del s[key]
@@ -777,6 +791,7 @@ def main():
                 "timeCode": s.get("earningsTimeCode"),
                 "impactScore": 76,
                 "tradeRepublicVerified": s["tradeRepublicVerified"],
+                "tradeRepublicTradable": bool(s.get("tradeRepublicTradable")),
                 "fact": "Fecha de resultados indicada por el proveedor de mercado.",
                 "hypothesis": hypothesis_for("earnings"),
                 "isin": s.get("isin"),
@@ -801,6 +816,7 @@ def main():
             "trOfficialCount": tr_count,
             "trMatchedCount": matched,
             "trTickerCount": tr_ticker_count,
+            "trTradableCount": tr_tradable_count,
             "sameIsinCount": same_isin,
             "differentIsinCount": different_isin,
             "unresolvedIsinCount": unresolved_isin,
@@ -815,7 +831,7 @@ def main():
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
 
     # Diagnostic summary for the frontend "Impulso intradía" preset.
-    tr_rows = [s for s in stocks if s.get("tradeRepublicVerified")]
+    tr_rows = [s for s in stocks if s.get("tradeRepublicTradable")]
     stages = [("TR", tr_rows)]
     stages.append(("change>=2", [s for s in stages[-1][1] if s.get("changePct") is not None and float(s.get("changePct")) >= 2]))
     stages.append(("relvol>=1.5-or-missing", [s for s in stages[-1][1] if s.get("relVolume") is None or float(s.get("relVolume")) >= 1.5]))
@@ -825,7 +841,7 @@ def main():
     print("ENTRY FILTER DIAGNOSTICS:", " | ".join(f"{name}={len(rows)}" for name, rows in stages))
     sample = stages[-1][1][:12]
     print("ENTRY FILTER SAMPLE:", [(s.get("ticker"), s.get("changePct"), s.get("relVolume"), s.get("adx"), s.get("rsi"), s.get("volume")) for s in sample])
-    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", len(events), "events;", len(news_events), "news")
+    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news")
 
 if __name__ == "__main__":
     main()
