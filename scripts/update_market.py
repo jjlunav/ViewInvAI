@@ -803,6 +803,18 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+
+    # Diagnostic summary for the frontend "Impulso intradía" preset.
+    tr_rows = [s for s in stocks if s.get("tradeRepublicVerified")]
+    stages = [("TR", tr_rows)]
+    stages.append(("change>=2", [s for s in stages[-1][1] if s.get("changePct") is not None and float(s.get("changePct")) >= 2]))
+    stages.append(("relvol>=1.5-or-missing", [s for s in stages[-1][1] if s.get("relVolume") is None or float(s.get("relVolume")) >= 1.5]))
+    stages.append(("adx>=20-or-missing", [s for s in stages[-1][1] if s.get("adx") is None or float(s.get("adx")) >= 20]))
+    stages.append(("rsi40-70-or-missing", [s for s in stages[-1][1] if s.get("rsi") is None or 40 <= float(s.get("rsi")) <= 70]))
+    stages.append(("volume>=10000-or-missing", [s for s in stages[-1][1] if s.get("volume") is None or float(s.get("volume")) >= 10000]))
+    print("ENTRY FILTER DIAGNOSTICS:", " | ".join(f"{name}={len(rows)}" for name, rows in stages))
+    sample = stages[-1][1][:12]
+    print("ENTRY FILTER SAMPLE:", [(s.get("ticker"), s.get("changePct"), s.get("relVolume"), s.get("adx"), s.get("rsi"), s.get("volume")) for s in sample])
     print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", len(events), "events;", len(news_events), "news")
 
 if __name__ == "__main__":
