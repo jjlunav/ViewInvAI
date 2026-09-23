@@ -23,7 +23,7 @@ TMP = Path("/tmp/tr_universe.pdf")
 NEWS_SYMBOL_LIMIT = 60
 NEWS_DAYS = 7
 NEWS_PER_SYMBOL = 10
-TR_METADATA_LIMIT = 2200
+TR_METADATA_LIMIT = 2200  # enough to complete unresolved TR/LSX symbols in one pass
 TR_METADATA_BATCH = 75
 
 COLS = [
