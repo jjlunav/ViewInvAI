@@ -300,22 +300,130 @@ function groupFutureEvents(events){
   return {key,items,first:items[0],maxImpact:Math.max(...items.map(x=>N(x.impactScore)||0))};
  }).sort((a,b)=>new Date(a.first.date)-new Date(b.first.date)||b.maxImpact-a.maxImpact);
 }
+
+function catalogCard(s,i,mode){
+ let se=currentMarketSession(),p=SP(s,se),ch=SC(s,se);
+ let primary=mode==='tr'?(s.trTicker||'—'):s.ticker;
+ let secondary=mode==='tr'
+  ?(s.name+' · EEUU '+(s.exchange||'')+':'+(s.ticker||''))
+  :(s.name+(s.tradeRepublicVerified?' · TR '+(s.trTicker||'ticker LSX pendiente'):''));
+ let badge=mode==='tr'
+  ?'<span class="pill ok">'+E(s.trExchange||'LSX')+'</span>'
+  :(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'');
+ let pending=mode==='tr'&&!s.trTicker?'<span class="catalog-pending">ticker LSX pendiente</span>':'';
+ return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+'<small class="catalog-price-source">EEUU</small><b>'+PR(p)+'</b><span class="'+C(ch)+'">'+PC(ch)+'</span>'+badge+'<span class="open-arrow">→</span></div></div></article>';
+}
+function stockEvents(s){
+ return (db.events||[]).filter(e=>{
+  if(s.isin&&e.isin&&String(e.isin)===String(s.isin))return true;
+  return e.ticker===s.ticker&&(!e.exchange||String(e.exchange)===String(s.exchange));
+ });
+}
+function profileKpi(label,main,sub=''){
+ return '<div class="profile-kpi"><small>'+E(label)+'</small><strong>'+main+'</strong>'+(sub?'<span>'+sub+'</span>':'')+'</div>';
+}
+function profileIdentity(label,value,extra=''){
+ return '<div class="profile-identity"><small>'+E(label)+'</small><strong>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
+}
+function profileHtml(s,view){
+ let isTr=view==='catalog',se=currentMarketSession();
+ let title=isTr?(s.trTicker||'Ticker LSX pendiente'):s.ticker;
+ let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ let relatedUs=(s.exchange||'')+':'+(s.ticker||'');
+ let events=stockEvents(s),now=Date.now();
+ let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,20);
+ let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,30);
+ let trRelation=isTr
+  ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+(s.trTicker?E((s.trExchange||'LSX')+':'+s.trTicker):'Ticker LSX aún no resuelto')+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong></div>'
+  :(s.tradeRepublicVerified?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong></div>':'');
+ let trNote=isTr?'<div class="profile-data-note">El ticker principal de esta ficha es el utilizado por Trade Republic/LSX. Los precios, técnicos, premarket y postmarket que se muestran debajo proceden de la cotización estadounidense relacionada '+E(relatedUs)+'.</div>':'';
+ let identity=[
+  profileIdentity('Ticker Trade Republic / LSX',s.trTicker||'Pendiente',s.trExchange||'LSX'),
+  profileIdentity('Ticker EEUU',s.ticker||'—',s.exchange||''),
+  profileIdentity('ISIN',s.isin||'—'),
+  profileIdentity('WKN',s.trWkn||'—'),
+  profileIdentity('Nombre en TR / LSX',s.trNameAtExchange||s.name||'—'),
+  profileIdentity('Divisa EEUU',s.currency||'USD')
+ ].join('');
+ let kpis=[
+  profileKpi('Regular',PR(s.price),'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span> · Vol '+compactVol(s.volume)),
+  profileKpi('Premarket',PR(s.premarketPrice),'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span> · Vol '+compactVol(s.premarketVolume)),
+  profileKpi('Postmarket',PR(s.postmarketPrice),'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span> · Vol '+compactVol(s.postmarketVolume)),
+  profileKpi('Volumen medio',compactVol(s.avgVolume),N(s.relVolume)!==null?F(s.relVolume,2)+'× relativo':'—'),
+  profileKpi('RSI / ADX',F(s.rsi,1)+' / '+F(s.adx,1),'Momentum / fuerza tendencia'),
+  profileKpi('EMA20 / EMA50',PR(s.ema20)+' / '+PR(s.ema50),'Estructura técnica'),
+  profileKpi('1 semana',PC(s.perfWeek),'Rendimiento'),
+  profileKpi('1 mes',PC(s.perfMonth),'Rendimiento'),
+  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'')
+ ].join('');
+ let upHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos futuros fechados cargados para este valor.</div>';
+ let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
+ let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
+ return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Datos actualizados '+E(updated)+'</span></div>'+
+  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(SN(se))+' · EEUU</small><strong>'+PR(SP(s,se))+'</strong><span class="'+C(SC(s,se))+'">'+PC(SC(s,se))+'</span></div></div>'+
+  trRelation+trNote+
+  '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
+  '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Velas 1 minuto · horario extendido EEUU</span></div>'+miniChart(s)+'</section>'+
+  '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
+  '<section class="profile-section"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' recientes</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>'+
+  '<section class="profile-section"><h3>Fuentes externas</h3>'+links(s)+'</section>';
+}
+function renderProfileView(view){
+ let isTr=view==='catalog';
+ let detail=$(isTr?'#catalogDetail':'#catalogUSDetail');
+ let browse=$(isTr?'#catalogBrowse':'#catalogUSBrowse');
+ if(!detail||!browse)return false;
+ let s=state.profileKey?stockByKey(state.profileKey):null;
+ let valid=s&&(isTr?!!s.tradeRepublicVerified:market(s,'us'));
+ if(!valid){
+  detail.classList.add('is-hidden');
+  browse.classList.remove('is-hidden');
+  return false;
+ }
+ browse.classList.add('is-hidden');
+ detail.classList.remove('is-hidden');
+ detail.innerHTML=profileHtml(s,view);
+ requestAnimationFrame(()=>detail.querySelectorAll('.mini-chart').forEach(loadMiniChart));
+ return true;
+}
+function renderCatalog(){
+ if(renderProfileView('catalog'))return;
+ let q=$('#catalogSearch').value.trim().toLowerCase();
+ let all=db.stocks.filter(s=>s.tradeRepublicVerified);
+ let rows=all.filter(s=>!q||((s.trTicker||'')+' '+s.ticker+' '+s.name+' '+(s.isin||'')+' '+(s.trNameAtExchange||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.trTicker||x.ticker).localeCompare(String(y.trTicker||y.ticker)));
+ $('#catalogCount').textContent=rows.length.toLocaleString('es-ES')+' cotizando · '+Number(db.meta.trTickerCount||0).toLocaleString('es-ES')+' ticker LSX resueltos · '+Number(db.meta.trOfficialCount||0).toLocaleString('es-ES')+' universo oficial';
+ $('#catalogResults').innerHTML=rows.length?rows.slice(0,800).map((s,i)=>catalogCard(s,i,'tr')).join(''):'<div class="empty-state">No hay coincidencias verificadas cargadas.</div>';
+}
+function renderCatalogUS(){
+ if(renderProfileView('catalogUS'))return;
+ let q=$('#catalogUSSearch').value.trim().toLowerCase();
+ let all=db.stocks.filter(s=>market(s,'us'));
+ let rows=all.filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')+' '+(s.trTicker||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.ticker).localeCompare(String(y.ticker)));
+ $('#catalogUSCount').textContent=rows.length.toLocaleString('es-ES')+' valores EEUU';
+ $('#catalogUSResults').innerHTML=rows.length?rows.slice(0,1000).map((s,i)=>catalogCard(s,i,'us')).join(''):'<div class="empty-state">No hay coincidencias en el catálogo EEUU.</div>';
+}
 function renderFuture(){
  let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
  let filtered=(db.events||[]).filter(e=>futureWindowEvent(e,h,now)&&(t==='all'||e.type===t)&&(!tr||e.tradeRepublicVerified));
  let groups=groupFutureEvents(filtered);
  $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
-  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores');
-  let when=eventWhen(e);
-  return '<article class="stock-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="event-list">'+g.items.map(eventItem).join('')+'</div>'+miniChart(s)+links(s)+'</div></details></article>';
+  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
+  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 function renderRadar(){let q=$('#radarSearch').value.trim().toLowerCase(),rs=state.radarSession,se=rs==='all'?SES():rs,a=db.stocks.filter(s=>state.radarMarket==='all'||market(s,state.radarMarket)).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q));if(rs!=='all')a=a.filter(s=>SC(s,rs)!==null);if(state.radarDirection==='up')a=a.filter(s=>(SC(s,se)??0)>0);if(state.radarDirection==='down')a=a.filter(s=>(SC(s,se)??0)<0);a.sort((x,y)=>(SC(y,se)??-999)-(SC(x,se)??-999));let shown=a.slice(0,300);$('#radarResults').innerHTML=shown.length?shown.map((s,i)=>{let next=shown[i+1],txt='Radar ordenado por variación en '+SN(se)+': '+PC(SC(s,se))+(next?' frente a '+PC(SC(next,se))+' de #'+(i+2)+' '+E(next.ticker)+'.':'.');return card(s,i,se,true,txt)}).join(''):'<div class="empty-state">Sin valores con estos filtros.</div>'}
-function renderCalendar(){let a=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));$('#calendarResults').innerHTML=a.length?a.slice(0,400).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card dense-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="meta-line catalyst-meta">'+E(e.source||'')+'</div><div class="why-line">'+E(e.title||e.fact||'Catalizador')+'</div>'+miniChart(s)+EU(e)+links(s)+'</div></details></article>'}).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>'}
-function renderCatalog(){let q=$('#catalogSearch').value.trim().toLowerCase(),a=db.stocks.filter(s=>s.tradeRepublicVerified).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.ticker).localeCompare(String(y.ticker)));$('#catalogCount').textContent=a.length.toLocaleString('es-ES')+' cotizando · '+Number(db.meta.trOfficialCount||0).toLocaleString('es-ES')+' universo oficial';$('#catalogResults').innerHTML=a.length?a.slice(0,600).map((s,i)=>card(s,i,'regular',true)).join(''):'<div class="empty-state">No hay coincidencias verificadas cargadas.</div>'}
+function renderCalendar(){
+ let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
+ $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
+  let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
+  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+ }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
+}
+
 function status(){}
-function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();renderCatalogUS();status()}
 async function load(force=false){if(loading)return;loading=true;try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/900000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
 function show(v){if(!V[v])return;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');render()}
 let lastLeaderSession=null;
