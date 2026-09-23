@@ -237,3 +237,73 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
  .favorites-list{max-height:38vh}
  .stock-id .fav-star{width:19px;height:19px;font-size:14px}
 }
+
+
+/* Internal stock navigation + full catalog profile */
+.is-hidden{display:none!important}
+.stock-open-row{cursor:pointer;outline:none}
+.stock-open-row:hover{background:#10202a}
+.stock-open-row:focus-visible{box-shadow:inset 0 0 0 1px #4a7a8d;outline:none}
+.open-arrow{color:#698793;font-size:13px;font-weight:800}
+.catalog-pending{font-size:8px!important;color:#d0a84f!important;border:1px solid #5d4b22;border-radius:5px;padding:2px 4px}
+.catalog-price-source{font-size:7px;color:#607d89;letter-spacing:.35px}
+.favorite-link{min-width:0;color:inherit}
+.leader-symbol>strong{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+.stock-profile{display:grid;gap:10px;margin-top:8px}
+.profile-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#68828e;font-size:9px}
+.profile-back{width:auto!important}
+.profile-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px solid #29404d;border-radius:11px;background:#0c1922}
+.profile-title{display:flex;align-items:center;gap:10px;min-width:0}
+.profile-title>div{min-width:0}
+.profile-market{font-size:8px;color:#70909e;text-transform:uppercase;letter-spacing:.7px}
+.profile-title h2{font-size:28px;line-height:1;margin:3px 0 4px;color:#75e8c1}
+.profile-title p{margin:0;color:#a9bbc3;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-live{display:grid;justify-items:end;gap:2px;white-space:nowrap}
+.profile-live small{font-size:8px;color:#6d8792;text-transform:uppercase}
+.profile-live strong{font-size:24px;color:#eef6f8}
+.profile-live span{font-size:12px;font-weight:750}
+.profile-relation{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding:7px 10px;border:1px solid #24404c;border-radius:8px;background:#09151d;font-size:9px}
+.profile-relation>span:not(.relation-arrow){color:#6f8995}
+.profile-relation strong{color:#d9e6ea}
+.relation-arrow{color:#43e4b2;font-size:14px}
+.profile-data-note{padding:8px 10px;border-left:2px solid #3d806b;background:#0c191b;color:#8fa8a1;font-size:9px;line-height:1.4}
+.profile-section{border:1px solid #21343f;border-radius:10px;background:#0b161e;overflow:hidden}
+.profile-section>h3,.profile-section-head{margin:0;padding:9px 11px;border-bottom:1px solid #1d303a}
+.profile-section>h3,.profile-section-head h3{font-size:11px;color:#dce8ec}
+.profile-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.profile-section-head h3{margin:0}
+.profile-section-head span{font-size:8px;color:#647e8a}
+.profile-identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#1c2e38}
+.profile-identity{background:#09141c;padding:9px 10px;display:grid;gap:2px;min-width:0}
+.profile-identity small{font-size:8px;color:#68828e;text-transform:uppercase}
+.profile-identity strong{font-size:11px;color:#e1ebee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-identity span{font-size:8px;color:#78919c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#1c2e38}
+.profile-kpi{background:#09141c;padding:10px;display:grid;gap:3px;min-width:0}
+.profile-kpi small{font-size:8px;color:#68828e;text-transform:uppercase}
+.profile-kpi strong{font-size:14px;color:#e7f0f3}
+.profile-kpi>span{font-size:9px;color:#92a7b0}
+.profile-chart-section .mini-chart-block{padding:8px;background:#05090c}
+.profile-chart-section .mini-chart-title{display:none}
+.profile-chart-section .mini-chart{height:430px;border-radius:8px}
+.profile-events{border-top:0}
+.profile-empty{padding:14px 11px;color:#718994;font-size:9px}
+.profile-section>.external-links{border-top:0;padding:10px 11px 12px}
+.profile-section>.external-links a{font-size:10px}
+
+@media(max-width:900px){
+ .profile-identity-grid,.profile-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .profile-chart-section .mini-chart{height:360px}
+}
+@media(max-width:680px){
+ .profile-toolbar{align-items:flex-start;flex-direction:column}
+ .profile-hero{padding:10px;align-items:flex-start}
+ .profile-title h2{font-size:22px}
+ .profile-title p{font-size:10px;white-space:normal}
+ .profile-live strong{font-size:18px}
+ .profile-identity-grid,.profile-kpi-grid{grid-template-columns:1fr 1fr}
+ .profile-chart-section .mini-chart{height:280px}
+ .catalog-pending{display:none}
+ .catalog-price-source{display:none}
+}
