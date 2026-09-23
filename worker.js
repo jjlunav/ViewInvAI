@@ -66,6 +66,76 @@ function safeStockSymbol(symbol) {
   return /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(value) ? value : "";
 }
 
+const TRADINGVIEW_SYMBOL_SEARCH_URL = "https://symbol-search.tradingview.com/symbol_search/v3/";
+
+function cleanTradingViewText(value) {
+  return String(value || "").replace(/<\/?em>/gi, "").trim();
+}
+
+async function fetchTradingViewLsxSymbol(symbol, isin = "") {
+  const safe = safeStockSymbol(symbol);
+  const safeIsin = /^[A-Z]{2}[A-Z0-9]{10}$/.test(String(isin || "").trim().toUpperCase())
+    ? String(isin || "").trim().toUpperCase()
+    : "";
+  if (!safe) return { available: false, symbol: null };
+
+  const url = new URL(TRADINGVIEW_SYMBOL_SEARCH_URL);
+  url.searchParams.set("text", safe);
+  url.searchParams.set("hl", "0");
+  url.searchParams.set("exchange", "LSX");
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("search_type", "undefined");
+  url.searchParams.set("domain", "production");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      "Accept": "application/json, text/plain, */*",
+      "User-Agent": "Mozilla/5.0",
+      "Origin": "https://www.tradingview.com",
+      "Referer": "https://www.tradingview.com/"
+    },
+    cf: { cacheTtl: 21600, cacheEverything: true }
+  });
+  if (!response.ok) throw new Error("TradingView symbol search " + response.status);
+
+  const json = await response.json();
+  const items = json && Array.isArray(json.symbols) ? json.symbols : [];
+  const exactExchange = items.filter(item =>
+    cleanTradingViewText(item && item.exchange).toUpperCase().replace(/\s+/g, "") === "LSX"
+  );
+  let match = exactExchange.find(item =>
+    cleanTradingViewText(item && item.symbol).toUpperCase() === safe
+  );
+  if (!match && safeIsin) {
+    match = exactExchange.find(item =>
+      String(item && item.isin || "").trim().toUpperCase() === safeIsin
+    );
+  }
+  if (!match) return { available: false, symbol: null };
+
+  const tvTicker = safeStockSymbol(cleanTradingViewText(match.symbol));
+  if (!tvTicker) return { available: false, symbol: null };
+  return { available: true, symbol: "LSX:" + tvTicker };
+}
+
+async function tradingViewSymbolAvailability(request) {
+  const url = new URL(request.url);
+  const symbol = safeStockSymbol(url.searchParams.get("symbol"));
+  const isin = String(url.searchParams.get("isin") || "").trim().toUpperCase();
+  if (!symbol) return jsonResponse({ available: false, symbol: null, error: "No valid symbol" }, 400, { "Cache-Control": "no-store" });
+  try {
+    const result = await fetchTradingViewLsxSymbol(symbol, isin);
+    return jsonResponse(
+      { ...result, exchange: "LSX", checkedAt: new Date().toISOString() },
+      200,
+      { "Cache-Control": "public, max-age=21600" }
+    );
+  } catch (error) {
+    console.warn("TradingView symbol lookup error", String(error && error.message || error));
+    return jsonResponse({ available: false, symbol: null, error: "TradingView lookup unavailable" }, 502, { "Cache-Control": "no-store" });
+  }
+}
+
 async function fetchNasdaqChart(symbol) {
   const safe = safeStockSymbol(symbol);
   if (!safe) return null;
@@ -389,6 +459,10 @@ export default {
     if (url.pathname === "/api/tr-history") {
       const guard = requestGuard(request); if (guard) return guard;
       return tradeRepublicHistory(request);
+    }
+    if (url.pathname === "/api/tv-symbol") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return tradingViewSymbolAvailability(request);
     }
     return secureResponse(await env.ASSETS.fetch(request));
   }
