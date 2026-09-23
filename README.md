@@ -2,6 +2,12 @@
 
 EntryPointTrade es un radar de mercado orientado a localizar, ordenar y revisar acciones mediante datos de mercado, filtros técnicos y eventos próximos.
 
+## Cinta de movimiento EEUU
+
+En la parte superior de la aplicación aparece una cinta compacta con las acciones estadounidenses que presentan mayor movimiento en la sesión activa. La selección combina la magnitud de la variación con actividad de volumen, muestra ticker, precio y porcentaje, e incluye tanto subidas como bajadas.
+
+La cinta se desplaza automáticamente de forma horizontal cuando hay muchos valores. Al colocar el ratón encima se pausa, y al pulsar una acción se abre su gráfico en TradingView. La sesión utilizada cambia automáticamente entre premarket, sesión regular y postmarket.
+
 ## Potencial de entrada
 
 Esta pantalla muestra acciones que cumplen el criterio seleccionado. La lista puede limitarse a valores verificados en Trade Republic o ampliarse al resto del mercado estadounidense.
