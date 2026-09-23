@@ -1,6 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', KEY='catalystpulse:filters:v3';
+const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false;
+let favorites=readFavorites();
 let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday'};
 const V={entry:'01 Potencial de entrada',future:'02 Potencial futuro',radar:'03 Radar de acciones',calendar:'04 Calendario y noticias',catalog:'05 Catálogo Trade Republic'};
 const P={
@@ -47,36 +48,93 @@ function scoreParts(s,se=SES()){
 }
 function score(s,se=SES()){return scoreParts(s,se).total}
 
-function tapeSession(){
+function readFavorites(){
+ try{
+  let raw=JSON.parse(localStorage.getItem(FAV_KEY)||'[]');
+  return new Set(Array.isArray(raw)?raw:[]);
+ }catch(_){return new Set()}
+}
+function saveFavorites(){
+ try{localStorage.setItem(FAV_KEY,JSON.stringify([...favorites]))}catch(_){}
+}
+function stockKey(s){
+ return String((s&&s.tvSymbol)||(((s&&s.exchange)||'')+':'+((s&&s.ticker)||''))).toUpperCase();
+}
+function favButton(s){
+ let key=stockKey(s),on=favorites.has(key);
+ return '<button type="button" class="fav-star'+(on?' active':'')+'" data-fav-key="'+E(key)+'" title="'+(on?'Quitar de favoritas':'Añadir a favoritas')+'" aria-label="'+(on?'Quitar de favoritas':'Añadir a favoritas')+'">'+(on?'★':'☆')+'</button>';
+}
+function toggleFavorite(key){
+ if(!key)return;
+ if(favorites.has(key))favorites.delete(key);else favorites.add(key);
+ saveFavorites();
+ $$('.fav-star').forEach(b=>{
+  if(b.dataset.favKey!==key)return;
+  let on=favorites.has(key);
+  b.classList.toggle('active',on);
+  b.textContent=on?'★':'☆';
+  b.title=on?'Quitar de favoritas':'Añadir a favoritas';
+  b.setAttribute('aria-label',b.title);
+ });
+ renderFavorites();
+}
+function currentMarketSession(){
  let se=auto();
- return se==='previous'?'regular':se;
+ return se==='previous'?'postmarket':se;
 }
-function tapeSessionLabel(se){return se==='premarket'?'PREMARKET':se==='postmarket'?'POSTMARKET':'SESIÓN EEUU'}
-function moverRank(s,se){
- let ch=SC(s,se),vol=SV(s,se),rel=RV(s);
- if(ch===null)return -1;
- let liquidity=vol===null?0:Math.min(8,Math.log10(Math.max(1,vol)));
- let relBoost=rel===null?0:Math.min(8,rel)*0.12;
- return Math.abs(ch)+liquidity*.16+relBoost;
+function sessionStageLabel(se){
+ return se==='premarket'?'PREMARKET':se==='postmarket'?'POSTMARKET':'REGULAR';
 }
-function tapeItem(s,se){
- let ch=SC(s,se),p=SP(s,se),sym=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));
- return '<a class="market-tape-item" target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+sym+'/" title="'+E(s.name||s.ticker)+'"><strong>'+E(s.ticker)+'</strong><span class="market-tape-price">'+PR(p)+'</span><span class="'+C(ch)+'">'+PC(ch)+'</span></a>';
+function compactVol(v){
+ v=N(v);if(v===null)return'—';
+ let a=Math.abs(v);
+ if(a>=1e9)return F(v/1e9,1)+'B';
+ if(a>=1e6)return F(v/1e6,1)+'M';
+ if(a>=1e3)return F(v/1e3,1)+'K';
+ return I(v);
 }
-function renderMarketTape(){
- let track=$('#marketTapeTrack'),label=$('.market-tape-label');
- if(!track||!label)return;
- let se=tapeSession();
- label.textContent='EEUU · '+tapeSessionLabel(se);
- let movers=db.stocks
-  .filter(s=>SC(s,se)!==null&&Math.abs(SC(s,se))>=0.5)
-  .filter(s=>{let v=SV(s,se);return v===null||v>=1000})
-  .sort((a,b)=>moverRank(b,se)-moverRank(a,se))
-  .slice(0,24);
- if(!movers.length){track.innerHTML='<span class="market-tape-loading">Sin movimientos disponibles</span>';return}
- let items=movers.map(s=>tapeItem(s,se)).join('');
- track.innerHTML='<div class="market-tape-set">'+items+'</div><div class="market-tape-set" aria-hidden="true">'+items+'</div>';
- track.style.setProperty('--tape-duration',Math.max(28,movers.length*2.2)+'s');
+function tvHref(s){
+ let sym=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));
+ return 'https://www.tradingview.com/symbols/'+sym+'/';
+}
+function topGainers(kind,se){
+ return db.stocks
+  .filter(s=>kind==='tr'?!!s.tradeRepublicVerified:market(s,'us'))
+  .filter(s=>SC(s,se)!==null&&SC(s,se)>0)
+  .sort((a,b)=>(SC(b,se)??-999)-(SC(a,se)??-999))
+  .slice(0,10);
+}
+function leaderItem(s,se,i){
+ let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
+ return '<a class="leader-item" target="_blank" rel="noopener" href="'+tvHref(s)+'" title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><strong>'+E(s.ticker)+'</strong><span class="'+C(ch)+'">'+PC(ch)+'</span></div><div class="leader-price">'+PR(p)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></a>';
+}
+function renderMarketLeaders(){
+ let se=currentMarketSession(),label=sessionStageLabel(se)+' · TOP 10 SUBIDAS';
+ let us=$('#leadersUS'),tr=$('#leadersTR');
+ if($('#leadersSessionUS'))$('#leadersSessionUS').textContent=label;
+ if($('#leadersSessionTR'))$('#leadersSessionTR').textContent=label;
+ if(us){
+  let a=topGainers('us',se);
+  us.innerHTML=a.length?a.map((s,i)=>leaderItem(s,se,i)).join(''):'<span class="leader-loading">Sin subidas disponibles</span>';
+ }
+ if(tr){
+  let a=topGainers('tr',se);
+  tr.innerHTML=a.length?a.map((s,i)=>leaderItem(s,se,i)).join(''):'<span class="leader-loading">Sin subidas disponibles</span>';
+ }
+}
+function renderFavorites(){
+ let box=$('#favoritesList'),count=$('#favoritesCount');
+ if(!box||!count)return;
+ let se=currentMarketSession(),stocks=[...favorites].map(k=>db.stocks.find(s=>stockKey(s)===k)).filter(Boolean);
+ count.textContent=stocks.length;
+ if(!stocks.length){
+  box.innerHTML='<div class="favorites-empty">Marca una ☆ junto a una acción.</div>';
+  return;
+ }
+ box.innerHTML=stocks.map(s=>{
+  let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
+  return '<div class="favorite-row"><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritas" aria-label="Quitar de favoritas">★</button><a target="_blank" rel="noopener" href="'+tvHref(s)+'" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><strong>'+E(s.ticker)+'</strong><span>'+PR(p)+'</span></div><div class="favorite-stats"><span class="'+C(ch)+'">'+PC(ch)+'</span><small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></a></div>';
+ }).join('');
 }
 function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
 function miniChart(s){
@@ -133,7 +191,7 @@ function card(s,i,se=SES(),dense=false,rankText=''){
   metric('1 sem / 1 mes',PC(s.perfWeek),PC(s.perfMonth),'Rendimiento porcentual aproximado del precio durante la última semana y el último mes.')
  ].join('');
  let rankHelp=rankText?'<div class="ranking-line"><strong>Por qué está en el puesto #'+(i+1)+':</strong> '+rankText+'</div>':'';
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank" title="'+E(rankText||('Posición '+(i+1)+' en esta lista'))+'">'+(i+1)+'</span><div><strong>'+E(s.ticker)+'</strong><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick"><b title="Precio principal de la sesión seleccionada">'+PR(p)+'</b><span class="'+C(ch)+'" title="Variación de la sesión seleccionada">'+PC(ch)+'</span>'+(s.tradeRepublicVerified?'<span class="pill ok" title="Valor verificado como disponible en Trade Republic">TR</span>':'')+'<span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="detail-grid">'+metrics+'</div><div class="why-line" title="Resumen de las condiciones del filtro que cumple esta acción"><strong>Por qué aparece:</strong> '+E(why(s,se))+'</div>'+rankHelp+'<div class="meta-line" title="Mercado, divisa, ISIN y próxima fecha de resultados cuando el proveedor la publica">'+E(s.exchange||'')+' · '+E(s.currency||'USD')+(s.isin?' · ISIN '+E(s.isin):'')+(s.earningsDate?' · resultados '+DF(s.earningsDate):'')+'</div>'+miniChart(s)+links(s)+'</div></details></article>';
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank" title="'+E(rankText||('Posición '+(i+1)+' en esta lista'))+'">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(s.ticker)+'</strong><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick"><b title="Precio principal de la sesión seleccionada">'+PR(p)+'</b><span class="'+C(ch)+'" title="Variación de la sesión seleccionada">'+PC(ch)+'</span>'+(s.tradeRepublicVerified?'<span class="pill ok" title="Valor verificado como disponible en Trade Republic">TR</span>':'')+'<span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="detail-grid">'+metrics+'</div><div class="why-line" title="Resumen de las condiciones del filtro que cumple esta acción"><strong>Por qué aparece:</strong> '+E(why(s,se))+'</div>'+rankHelp+'<div class="meta-line" title="Mercado, divisa, ISIN y próxima fecha de resultados cuando el proveedor la publica">'+E(s.exchange||'')+' · '+E(s.currency||'USD')+(s.isin?' · ISIN '+E(s.isin):'')+(s.earningsDate?' · resultados '+DF(s.earningsDate):'')+'</div>'+miniChart(s)+links(s)+'</div></details></article>';
 }
 function market(s,m){return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA'].includes(String(s.exchange||'').toUpperCase()):true}
 function fromUI(){return{minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,minVolume:+$('#minVolume').value||0,trend:$('#requireTrend').checked,illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort}}
@@ -201,20 +259,39 @@ function renderFuture(){
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
   let count=g.items.length,label=count===1?EL(e):(count+' catalizadores');
   let when=eventWhen(e);
-  return '<article class="stock-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="event-list">'+g.items.map(eventItem).join('')+'</div>'+miniChart(s)+links(s)+'</div></details></article>';
+  return '<article class="stock-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(e.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="event-list">'+g.items.map(eventItem).join('')+'</div>'+miniChart(s)+links(s)+'</div></details></article>';
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 function renderRadar(){let q=$('#radarSearch').value.trim().toLowerCase(),rs=state.radarSession,se=rs==='all'?SES():rs,a=db.stocks.filter(s=>state.radarMarket==='all'||market(s,state.radarMarket)).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q));if(rs!=='all')a=a.filter(s=>SC(s,rs)!==null);if(state.radarDirection==='up')a=a.filter(s=>(SC(s,se)??0)>0);if(state.radarDirection==='down')a=a.filter(s=>(SC(s,se)??0)<0);a.sort((x,y)=>(SC(y,se)??-999)-(SC(x,se)??-999));let shown=a.slice(0,300);$('#radarResults').innerHTML=shown.length?shown.map((s,i)=>{let next=shown[i+1],txt='Radar ordenado por variación en '+SN(se)+': '+PC(SC(s,se))+(next?' frente a '+PC(SC(next,se))+' de #'+(i+2)+' '+E(next.ticker)+'.':'.');return card(s,i,se,true,txt)}).join(''):'<div class="empty-state">Sin valores con estos filtros.</div>'}
-function renderCalendar(){let a=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));$('#calendarResults').innerHTML=a.length?a.slice(0,400).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card dense-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="meta-line catalyst-meta">'+E(e.source||'')+'</div><div class="why-line">'+E(e.title||e.fact||'Catalizador')+'</div>'+miniChart(s)+EU(e)+links(s)+'</div></details></article>'}).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>'}
+function renderCalendar(){let a=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));$('#calendarResults').innerHTML=a.length?a.slice(0,400).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card dense-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="meta-line catalyst-meta">'+E(e.source||'')+'</div><div class="why-line">'+E(e.title||e.fact||'Catalizador')+'</div>'+miniChart(s)+EU(e)+links(s)+'</div></details></article>'}).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>'}
 function renderCatalog(){let q=$('#catalogSearch').value.trim().toLowerCase(),a=db.stocks.filter(s=>s.tradeRepublicVerified).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.ticker).localeCompare(String(y.ticker)));$('#catalogCount').textContent=a.length.toLocaleString('es-ES')+' cotizando · '+Number(db.meta.trOfficialCount||0).toLocaleString('es-ES')+' universo oficial';$('#catalogResults').innerHTML=a.length?a.slice(0,600).map((s,i)=>card(s,i,'regular',true)).join(''):'<div class="empty-state">No hay coincidencias verificadas cargadas.</div>'}
-function status(){let age=db.meta.updatedAt?Math.round((Date.now()-new Date(db.meta.updatedAt))/60000):null;$('#providerState').textContent=db.stocks.length?'TradingView · '+(age??'—')+' min':'Sin datos';$('#providerState').classList.toggle('stale',age!==null&&age>30)}
-function render(){renderMarketTape();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
-async function load(force=false){if(loading)return;loading=true;$('#providerState').textContent='Actualizando…';try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/900000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);$('#providerState').textContent='Datos no disponibles';if(!db.stocks.length)$$('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
-function show(v){if(!V[v])return;$$('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#breadcrumbView').textContent=V[v];$('#mobileView').value=v;$('#sidebar').classList.remove('open');render()}
-function clock(){let p=NY();$('#nyTime').textContent=p.hour+':'+p.minute+' · Nueva York'}
+function status(){}
+function render(){renderMarketLeaders();renderFavorites();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
+async function load(force=false){if(loading)return;loading=true;try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/900000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);if(!db.stocks.length)$('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
+function show(v){if(!V[v])return;$('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ $('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
 
-$$('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
-$('#mobileView').addEventListener('change',e=>show(e.target.value));$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+$('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(!b)return;
+ e.preventDefault();e.stopPropagation();
+ toggleFavorite(b.dataset.favKey);
+});
 $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry()});
 function setPreset(value){
  state.preset=value;

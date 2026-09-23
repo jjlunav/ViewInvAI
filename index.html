@@ -6,22 +6,30 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260923d">
 </head>
 <body>
-<div class="market-tape-bar" id="marketTapeBar" aria-label="Acciones con más movimiento del mercado de Estados Unidos">
-  <span class="market-tape-label">MOVIMIENTO EEUU</span>
-  <div class="market-tape-viewport">
-    <div class="market-tape-track" id="marketTapeTrack">
-      <span class="market-tape-loading">Cargando mercado…</span>
+<div class="market-leaders" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
+  <section class="leader-market" aria-label="Top 10 mercado de Estados Unidos">
+    <div class="leader-market-head">
+      <strong>EEUU</strong>
+      <span id="leadersSessionUS">SESIÓN</span>
     </div>
-  </div>
+    <div class="leader-grid" id="leadersUS"><span class="leader-loading">Cargando mercado…</span></div>
+  </section>
+  <section class="leader-market" aria-label="Top 10 acciones disponibles en Trade Republic">
+    <div class="leader-market-head">
+      <strong>TRADE REPUBLIC</strong>
+      <span id="leadersSessionTR">SESIÓN</span>
+    </div>
+    <div class="leader-grid" id="leadersTR"><span class="leader-loading">Cargando mercado…</span></div>
+  </section>
 </div>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark">⌁</div>
-      <div><div class="brand-name">CatalystPulse</div><div class="brand-subtitle">RADAR DE MERCADO</div></div>
+      <div><div class="brand-name">CatalystPulse</div><div class="brand-subtitle">CATALIZADORES · SEÑALES · MOMENTUM</div></div>
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
@@ -31,22 +39,35 @@
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
     </nav>
+    <section class="favorites-panel" aria-label="Acciones favoritas">
+      <div class="favorites-head">
+        <div><span class="favorites-star">★</span><strong>FAVORITAS</strong></div>
+        <span id="favoritesCount">0</span>
+      </div>
+      <div class="favorites-subtitle">Seguimiento especial</div>
+      <div class="favorites-list" id="favoritesList">
+        <div class="favorites-empty">Marca una ☆ junto a una acción.</div>
+      </div>
+    </section>
   </aside>
 
   <main class="main">
     <header class="topbar">
       <div class="topbar-left">
         <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menú">☰</button>
-        <select id="mobileView" class="mobile-view" aria-label="Sección">
-          <option value="entry">Potencial de entrada</option>
-          <option value="future">Potencial futuro</option>
-          <option value="radar">Radar de acciones</option>
-          <option value="calendar">Calendario y noticias</option>
-          <option value="catalog">Catálogo Trade Republic</option>
-        </select>
-        <div class="breadcrumb">CatalystPulse / <span id="breadcrumbView">01 Potencial de entrada</span></div>
       </div>
-      <div class="topbar-right"><span id="nyTime">--:-- NY</span><span id="providerState" class="provider-state">Cargando…</span></div>
+      <div class="topbar-right">
+        <div class="market-clocks" aria-label="Hora local de los mercados">
+          <span class="market-clock" data-tz="America/New_York"><b>EEUU</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Europe/Berlin"><b>ALEMANIA</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Europe/London"><b>REINO UNIDO</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Europe/Madrid"><b>ESPAÑA</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Europe/Paris"><b>FRANCIA</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Europe/Rome"><b>ITALIA</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Asia/Tokyo"><b>JAPÓN</b><time>--:--</time></span>
+          <span class="market-clock" data-tz="Asia/Hong_Kong"><b>HONG KONG</b><time>--:--</time></span>
+        </div>
+      </div>
     </header>
 
     <section class="view active" id="view-entry">
@@ -59,7 +80,7 @@
       </div>
 
       <div class="control-strip">
-        <select id="sessionSelect" class="select">
+        <select id="sessionSelect" class="select" title="Selecciona qué tramo del mercado usar para precio, variación y volumen; Automática cambia entre premarket, regular y postmarket según Nueva York.">
           <option value="auto">Sesión automática</option>
           <option value="premarket">Premarket</option>
           <option value="regular">Sesión regular</option>
@@ -101,34 +122,34 @@
       <details class="filter-panel compact-details" id="filterDetails">
         <summary>Configurar criterio</summary>
         <div class="filters-grid">
-          <div class="criterion-field">
-            <label for="minChange">Subida mín. %</label>
+          <div class="criterion-field" title="Variación mínima exigida en la sesión seleccionada; una acción debe subir al menos este porcentaje para aparecer.">
+            <label for="minChange">Subida mín. % <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minChange" type="number" step="0.1" value="2" readonly><button type="button" class="field-lock" data-target="minChange" aria-label="Desbloquear subida mínima" title="Desbloquear este parámetro">🔒</button></div>
           </div>
-          <div class="criterion-field">
-            <label for="maxChange">Subida máx. %</label>
+          <div class="criterion-field" title="Límite máximo de subida admitido; sirve para excluir acciones que ya se han disparado demasiado. Con 0 no hay límite.">
+            <label for="maxChange">Subida máx. % <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="maxChange" type="number" step="0.1" value="0" readonly><button type="button" class="field-lock" data-target="maxChange" aria-label="Desbloquear subida máxima" title="Desbloquear este parámetro">🔒</button></div>
             <small>0 = sin máximo</small>
           </div>
-          <div class="criterion-field">
-            <label for="minRelVolume">Vol. relativo mín.</label>
+          <div class="criterion-field" title="Compara el volumen actual con su volumen medio reciente; 1,5× significa un 50% más actividad de lo habitual.">
+            <label for="minRelVolume">Vol. relativo mín. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minRelVolume" type="number" step="0.1" value="1.5" readonly><button type="button" class="field-lock" data-target="minRelVolume" aria-label="Desbloquear volumen relativo" title="Desbloquear este parámetro">🔒</button></div>
           </div>
-          <div class="criterion-field">
-            <label for="minVolume">Volumen mín.</label>
+          <div class="criterion-field" title="Número mínimo de acciones negociadas en la sesión para filtrar valores con poca actividad o liquidez.">
+            <label for="minVolume">Volumen mín. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minVolume" type="number" step="1000" value="0" readonly><button type="button" class="field-lock" data-target="minVolume" aria-label="Desbloquear volumen mínimo" title="Desbloquear este parámetro">🔒</button></div>
             <small>0 = sin mínimo</small>
           </div>
-          <div class="criterion-field">
-            <label for="minAdx">ADX mín.</label>
+          <div class="criterion-field" title="ADX mide la fuerza de una tendencia, no su dirección; un valor mayor exige movimientos técnicamente más consistentes.">
+            <label for="minAdx">ADX mín. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minAdx" type="number" step="1" value="20" readonly><button type="button" class="field-lock" data-target="minAdx" aria-label="Desbloquear ADX mínimo" title="Desbloquear este parámetro">🔒</button></div>
           </div>
-          <div class="criterion-field">
-            <label for="minRsi">RSI mín.</label>
+          <div class="criterion-field" title="RSI mide momentum entre 0 y 100; este mínimo evita acciones con impulso demasiado débil.">
+            <label for="minRsi">RSI mín. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="minRsi" type="number" step="1" value="40" readonly><button type="button" class="field-lock" data-target="minRsi" aria-label="Desbloquear RSI mínimo" title="Desbloquear este parámetro">🔒</button></div>
           </div>
-          <div class="criterion-field">
-            <label for="maxRsi">RSI máx.</label>
+          <div class="criterion-field" title="RSI mide momentum entre 0 y 100; este máximo permite limitar acciones potencialmente sobreextendidas.">
+            <label for="maxRsi">RSI máx. <span class="param-info">ⓘ</span></label>
             <div class="criterion-control"><input id="maxRsi" type="number" step="1" value="65" readonly><button type="button" class="field-lock" data-target="maxRsi" aria-label="Desbloquear RSI máximo" title="Desbloquear este parámetro">🔒</button></div>
           </div>
         </div>
@@ -207,6 +228,6 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js"></script>
+<script src="app.js?v=20260923d"></script>
 </body>
 </html>
