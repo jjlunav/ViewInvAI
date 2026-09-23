@@ -17,7 +17,9 @@ const P={
  broad:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'score'},
  intraday:{minChange:2,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  exploded:{minChange:20,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'change'},
- afterhours:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'afterhours'},
+ postmarketExplosion:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'change'},
+ premarketExplosion:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'change'},
+ emerging:{minChange:0,maxChange:12,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'emerging'},
  strict:{minChange:1,maxChange:0,minRelVolume:1.3,minAdx:22,minRsi:42,maxRsi:68,minVolume:0,trend:true,illiquid:true,sort:'score'}
 };
 function restoreUiState(){
@@ -26,7 +28,8 @@ function restoreUiState(){
   if(x&&V[x.view])state.currentView=x.view;
   if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
   if(x&&['auto','premarket','regular','postmarket','previous'].includes(x.session))state.session=x.session;
-  if(x&&(P[x.preset]||x.preset==='custom'))state.preset=x.preset;
+  let restoredPreset=x&&x.preset==='afterhours'?'postmarketExplosion':x&&x.preset;
+  if(restoredPreset&&(P[restoredPreset]||restoredPreset==='custom'))state.preset=restoredPreset;
 
   if(x&&x.filters&&typeof x.filters==='object'){
    let base=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
@@ -34,7 +37,7 @@ function restoreUiState(){
    for(let k of numeric){let v=N(x.filters[k]);if(v!==null)base[k]=v}
    if(typeof x.filters.trend==='boolean')base.trend=x.filters.trend;
    if(typeof x.filters.illiquid==='boolean')base.illiquid=x.filters.illiquid;
-   if(['score','change','afterhours'].includes(x.filters.sort))base.sort=x.filters.sort;
+   if(['score','change','emerging'].includes(x.filters.sort))base.sort=x.filters.sort;
    state.filters=base;
   }
 
@@ -954,6 +957,14 @@ function metric(label,main,sub,help,mainClass='',subClass=''){
  return '<div class="metric-help" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span></div>';
 }
 function rankingWhy(s,next,se,q,pos){
+ if(state.preset==='emerging'){
+  let e=emergingSignal(s,se);
+  let reasons=['aceleración '+(e.acceleration>=0?'+':'')+F(e.acceleration,2)+' puntos en ~'+F(e.age,0)+' min'];
+  if(e.burstPct>=0.1)reasons.push('volumen nuevo '+F(e.burstPct,2)+'% del volumen medio');
+  if(e.rv>=1)reasons.push('volumen relativo '+F(e.rv,2)+'×');
+  if(e.news)reasons.push('noticia reciente');
+  return 'Puesto #'+pos+' por impulso naciente: '+reasons.join(' · ')+'. Variación actual '+PC(e.current)+'.';
+ }
  let a=FC(s,se),b=next?FC(next,se):null;
  return 'Puesto #'+pos+' por variación porcentual en '+SN(se)+': '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.')+' El orden se actualiza automáticamente con las cotizaciones.';
 }
@@ -985,8 +996,47 @@ function entryUniverseMatch(s){
  // “Resto EEUU” means US-listed stocks that are not already in the verified TR set.
  return market(s,'us')&&!trTradable(s);
 }
+function entrySessionForPreset(){
+ if(state.preset==='postmarketExplosion')return'postmarket';
+ if(state.preset==='premarketExplosion')return'premarket';
+ return SES();
+}
+function previousSessionChange(s,se){
+ if(se==='premarket')return N(s.previousPremarketChangePct);
+ if(se==='postmarket')return N(s.previousPostmarketChangePct);
+ return N(s.previousChangePct);
+}
+function previousSessionVolume(s,se){
+ if(se==='premarket')return N(s.previousPremarketVolume);
+ if(se==='postmarket')return N(s.previousPostmarketVolume);
+ return N(s.previousVolume);
+}
+function recentNewsSignal(s,minutes=45){
+ let now=Date.now(),windowMs=minutes*60000;
+ return stockEvents(s).some(e=>{
+  if(e.eventKind!=='news')return false;
+  let t=new Date(e.date).getTime();
+  return Number.isFinite(t)&&t<=now+60000&&t>=now-windowMs;
+ });
+}
+function emergingSignal(s,se){
+ let current=FC(s,se),previous=previousSessionChange(s,se),age=N(s.momentumSnapshotMinutes);
+ if(current===null||previous===null||age===null||age<1||age>20)return{eligible:false,score:-Infinity};
+ let acceleration=current-previous;
+ let volume=SV(s,se),previousVolume=previousSessionVolume(s,se),avg=N(s.avgVolume);
+ let volumeAdded=volume!==null&&previousVolume!==null?Math.max(0,volume-previousVolume):0;
+ let burstPct=avg&&avg>0?volumeAdded/avg*100:0;
+ let rv=RV(s,se)??0;
+ let news=recentNewsSignal(s,45);
+ let supportingActivity=burstPct>=0.8||rv>=1.5||news;
+ // This is deliberately an early detector, not a "most exploded" list:
+ // it requires positive acceleration now and rejects already very extended moves.
+ let eligible=current>0&&current<=12&&acceleration>=0.20&&supportingActivity;
+ let score=acceleration*22+Math.min(24,burstPct*3)+Math.min(16,Math.max(0,rv-1)*8)+(news?20:0)+Math.max(0,12-current)*0.35;
+ return{eligible,score,acceleration,burstPct,rv,news,age,current};
+}
 function entry(){
- let q=state.filters,se=q.sort==='afterhours'?'postmarket':SES(),preferTr=state.entryMarket==='tr';
+ let q=state.filters,se=entrySessionForPreset(),preferTr=state.entryMarket==='tr',emerging=state.preset==='emerging';
  let a=db.stocks.filter(entryUniverseMatch).filter(s=>{
   let ch=FC(s,se);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
 
@@ -1000,11 +1050,14 @@ function entry(){
 
   if(q.trend&&trendState(s)!==true)return false;
   if(q.illiquid&&lowLiquidity(s,se,preferTr))return false;
+  if(emerging&&!emergingSignal(s,se).eligible)return false;
   return true;
  });
- // Potencial de entrada is always ranked by the percentage currently shown
- // in the selected session. Technical criteria decide eligibility, never rank.
  a.sort((x,y)=>{
+  if(emerging){
+   let ax=emergingSignal(x,se),ay=emergingSignal(y,se);
+   if(ay.score!==ax.score)return ay.score-ax.score;
+  }
   let ax=FC(x,se),by=FC(y,se),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
   if(bv!==av)return bv-av;
   return String(x.ticker||'').localeCompare(String(y.ticker||''));
@@ -1542,15 +1595,19 @@ function markRecommendationSold(mode){
 }
 
 function presetHelpText(value){
- let p=value==='custom'?(savedCustomPreset()||P.broad):P[value];if(!p)return'';
- let parts=['variación mínima '+F(p.minChange,1)+'%',p.maxChange>0?'máxima '+F(p.maxChange,1)+'%':'sin variación máxima',
-  p.minRelVolume>0?'volumen relativo mínimo '+F(p.minRelVolume,2)+'×':'sin mínimo de volumen relativo',
-  p.minVolume>0?'volumen mínimo '+I(p.minVolume):'sin volumen mínimo',
-  p.minAdx>0?'ADX mínimo '+F(p.minAdx,0):'sin mínimo de ADX',
-  (p.minRsi>0||p.maxRsi<100)?'RSI entre '+F(p.minRsi,0)+' y '+F(p.maxRsi,0):'RSI sin restricción',
-  p.trend?'exige precio ≥ EMA20 ≥ EMA50':'no exige estructura EMA',
-  p.illiquid?'excluye volumen <10.000 o spread >8%':'no excluye por liquidez'];
- return (value==='afterhours'?'Este preset fuerza Postmarket. ':'')+'Configuración exacta: '+parts.join('; ')+'. Las acciones que pasan los filtros se ordenan por la variación porcentual de la sesión seleccionada.';
+ const help={
+  short:'Pensado para operaciones de pocos días. Busca acciones que ya muestran movimiento suficiente y que mantienen una liquidez razonable, pero sin exigir una tendencia técnica perfecta. Sirve para localizar movimientos que podrían tener continuidad durante las próximas 1–5 sesiones.',
+  medium:'Busca movimientos más sostenidos que un simple pico intradía. Da prioridad a acciones cuya estructura técnica mantiene una tendencia ordenada y suficiente liquidez, pensando en recorridos de varias semanas y no en perseguir una explosión puntual.',
+  broad:'Abre el abanico al máximo y aplica muy pocas restricciones. Es útil para explorar el mercado y no perder candidatos, a cambio de mostrar más ruido y valores de peor calidad. El listado se ordena por los que más están subiendo en la sesión elegida.',
+  intraday:'Busca acciones que están ganando fuerza durante la sesión actual. Exige que ya exista movimiento positivo y evita los valores con liquidez demasiado pobre. Es un filtro de impulso en curso, no una predicción previa al movimiento.',
+  exploded:'Busca acciones que ya han realizado una subida muy fuerte en la sesión seleccionada. Está pensado para localizar explosiones que ya se han producido, no para anticiparlas.',
+  postmarketExplosion:'Fuerza el análisis al Postmarket y muestra primero las acciones que más están subiendo después del cierre regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Postmarket.',
+  premarketExplosion:'Fuerza el análisis al Premarket y muestra primero las acciones que más están subiendo antes de la apertura regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Premarket.',
+  emerging:'Busca un movimiento que esté empezando ahora, no uno que ya haya explotado. Compara el último snapshot con el anterior y exige aceleración positiva reciente; además necesita una señal de actividad que la respalde, como entrada rápida de volumen, volumen relativo elevado o una noticia recién publicada. Descarta movimientos ya demasiado extendidos. Es un detector temprano de aceleración, no una garantía de subida.',
+  strict:'Busca señales con más confirmación técnica y menos ruido. Exige tendencia ordenada, fuerza de tendencia, volumen relativo y una zona de RSI razonable, además de evitar mala liquidez. Suele devolver menos acciones, pero con más condiciones técnicas cumplidas.',
+  custom:'Carga exactamente el criterio personalizado que guardaste en este navegador. Sirve para reutilizar tus propios umbrales sin modificar ninguno de los filtros predefinidos.'
+ };
+ return help[value]||'Selecciona este criterio para aplicar su lógica al mercado y ordenar las candidatas que la cumplen.';
 }
 function helpTextFor(el){
  if(!el)return null;
@@ -1558,7 +1615,7 @@ function helpTextFor(el){
  let key=el.dataset.helpKey||'',num=id=>N($('#'+id)?.value);
  if(key==='preset')return{title:el.textContent.trim(),text:presetHelpText(el.dataset.value)};
  if(key==='session')return{title:'Sesión usada por los filtros',text:'Selecciona qué tramo de EEUU alimenta variación y volumen: Premarket 04:00–09:30, Regular 09:30–16:00 y Postmarket 16:00–20:00, hora de Nueva York. Automática cambia según la hora. En la pestaña TR, técnicos y variación de sesión proceden del valor EEUU vinculado; precio, BID y ASK son LSX.'};
- if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige un conjunto de umbrales. Pasa el ratón por cada opción del desplegable para ver sus valores exactos antes de aplicarla.'};
+ if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige el tipo de búsqueda que quieres hacer. Al pasar por cada opción verás una explicación clara de qué intenta localizar, para qué horizonte sirve y cómo se comporta, sin limitarse a repetir sus valores internos.'};
  if(key==='apply')return{title:'Aplicar filtros',text:'Lee los valores actuales de Configurar criterio y vuelve a calcular el listado. Un candado sólo impide editar un campo: no desactiva ese filtro.'};
  if(key==='filters')return{title:'Configurar criterio',text:'Abre los umbrales que deciden qué acciones pueden aparecer: variación, volumen relativo, volumen mínimo, ADX, RSI, tendencia EMA y liquidez.'};
  if(key==='marketTr')return{title:'Trade Republic',text:'Muestra sólo instrumentos cuya negociación en Trade Republic/LSX está confirmada: ISIN TR conocido, ticker LSX resuelto y mercado activo. Los candidatos sin confirmación quedan en EEUU.'};
@@ -1627,6 +1684,12 @@ function initHelpSystem(){
  mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
  mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
  mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');
+ // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ $('[data-help],[data-help-key]').forEach(el=>{
+  if(!el.hasAttribute('title'))return;
+  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+  el.removeAttribute('title');
+ });
  document.addEventListener('pointerover',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t&&t!==activeHelpTarget)showHelpBanner(t)});
  document.addEventListener('pointerout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget)))hideHelpBanner(t)});
  document.addEventListener('focusin',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)showHelpBanner(t)});
@@ -1734,7 +1797,9 @@ function setPreset(value){
  let opt=$('.preset-option[data-value="'+value+'"]');
  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
  state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
- if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
+ else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
  toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
 }
 $('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
@@ -1747,7 +1812,7 @@ $('#resetFilters').addEventListener('click',()=>{
  toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
 });
 $('#saveCustomFilters').addEventListener('click',()=>{
- let q=fromUI();q.sort=state.filters.sort==='afterhours'||state.filters.sort==='change'?state.filters.sort:'score';
+ let q=fromUI();q.sort=state.filters.sort==='change'?'change':'score';
  if(saveCustomPreset(q)){
   state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
   let opt=$('.preset-option[data-value="custom"]');
