@@ -685,11 +685,11 @@ function renderFavorites(){
 function links(s){
  let raw=String(s.ticker||'').toUpperCase(),t=encodeURIComponent(raw),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+raw)).replace(':','-'));
  return '<div class="external-links"><span class="external-links-label">Contrastar / ampliar:</span>'+
-  '<a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a>'+
-  '<a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing ↗</a>'+
-  '<a target="_blank" rel="noopener" href="https://www.nasdaq.com/market-activity/stocks/'+encodeURIComponent(raw.toLowerCase())+'">Nasdaq ↗</a>'+
-  '<a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a>'+
-  '<a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>';
+  '<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a>'+
+  '<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="https://www.investing.com/search/?q='+t+'">Investing ↗</a>'+
+  '<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="https://www.nasdaq.com/market-activity/stocks/'+encodeURIComponent(raw.toLowerCase())+'">Nasdaq ↗</a>'+
+  '<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a>'+
+  '<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>';
 }
 let liveChartTimer=null;
 function miniChart(s,preferTr=false){
@@ -888,7 +888,13 @@ function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(st
  :'Orden automático por mayor variación porcentual de '+SN(se).toLowerCase()+'. Los filtros deciden qué acciones aparecen; el porcentaje decide siempre su posición.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>'}
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
-function EU(e){let u=String(e.url||'');return /^https?:\/\//i.test(u)?'<a class="event-link" target="_blank" rel="noopener" href="'+E(u)+'">Abrir noticia / fuente ↗</a>':''}
+function safeExternalUrl(value){
+ try{
+  let u=new URL(String(value||''));
+  return u.protocol==='https:'?u.href:'';
+ }catch(_){return''}
+}
+function EU(e){let u=safeExternalUrl(e.url);return u?'<a class="event-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">Abrir noticia / fuente ↗</a>':''}
 function eventTime(e){
  let d=e&&e.date?new Date(e.date):null;
  if(d&&!isNaN(d)){
@@ -908,7 +914,7 @@ function eventWhen(e){let t=eventTime(e);return DF(e.date)+(t?' · '+t:'')}
 function eventSources(e){
  let src=Array.isArray(e.sources)&&e.sources.length?e.sources:(e.source?[{name:e.source,url:e.url}]:[]);
  if(!src.length)return '';
- let linksHtml=src.map(s=>{let name=E(s.name||'Fuente'),u=String(s.url||'');return /^https?:\/\//i.test(u)?'<a target="_blank" rel="noopener" href="'+E(u)+'">'+name+' ↗</a>':'<span>'+name+'</span>'}).join('');
+ let linksHtml=src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url);return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">'+name+' ↗</a>':'<span>'+name+'</span>'}).join('');
  return '<div class="event-sources"><span class="verification">'+E(e.verification||'Fuente validada')+'</span>'+linksHtml+'</div>';
 }
 function eventItem(e){
