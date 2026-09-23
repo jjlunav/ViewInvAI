@@ -33,6 +33,38 @@ function SV(s,se=SES()){return se==='premarket'?N(s.premarketVolume):se==='postm
 function RV(s){return N(s.relVolume)??(N(s.volume)!==null&&N(s.avgVolume)>0?N(s.volume)/N(s.avgVolume):null)}
 function trend(s){let p=N(s.price),a=N(s.ema20),b=N(s.ema50);return p===null||a===null||b===null||p>=a&&a>=b}
 function score(s,se=SES()){let x=0,c=SC(s,se)??0,r=RV(s)??0,a=N(s.adx)??0,z=N(s.rsi);x+=Math.max(-20,Math.min(35,c*1.6))+Math.min(25,r*7)+Math.min(18,a*.55);if(z!==null)x+=z>=45&&z<=72?12:z>72?5:3;if(N(s.price)!==null&&N(s.ema20)!==null&&s.price>s.ema20)x+=5;if(N(s.ema20)!==null&&N(s.ema50)!==null&&s.ema20>s.ema50)x+=5;return Math.max(0,Math.min(100,x))}
+
+function tapeSession(){
+ let se=auto();
+ return se==='previous'?'regular':se;
+}
+function tapeSessionLabel(se){return se==='premarket'?'PREMARKET':se==='postmarket'?'POSTMARKET':'SESIÓN EEUU'}
+function moverRank(s,se){
+ let ch=SC(s,se),vol=SV(s,se),rel=RV(s);
+ if(ch===null)return -1;
+ let liquidity=vol===null?0:Math.min(8,Math.log10(Math.max(1,vol)));
+ let relBoost=rel===null?0:Math.min(8,rel)*0.12;
+ return Math.abs(ch)+liquidity*.16+relBoost;
+}
+function tapeItem(s,se){
+ let ch=SC(s,se),p=SP(s,se),sym=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));
+ return '<a class="market-tape-item" target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+sym+'/" title="'+E(s.name||s.ticker)+'"><strong>'+E(s.ticker)+'</strong><span class="market-tape-price">'+PR(p)+'</span><span class="'+C(ch)+'">'+PC(ch)+'</span></a>';
+}
+function renderMarketTape(){
+ let track=$('#marketTapeTrack'),label=$('.market-tape-label');
+ if(!track||!label)return;
+ let se=tapeSession();
+ label.textContent='EEUU · '+tapeSessionLabel(se);
+ let movers=db.stocks
+  .filter(s=>SC(s,se)!==null&&Math.abs(SC(s,se))>=0.5)
+  .filter(s=>{let v=SV(s,se);return v===null||v>=1000})
+  .sort((a,b)=>moverRank(b,se)-moverRank(a,se))
+  .slice(0,24);
+ if(!movers.length){track.innerHTML='<span class="market-tape-loading">Sin movimientos disponibles</span>';return}
+ let items=movers.map(s=>tapeItem(s,se)).join('');
+ track.innerHTML='<div class="market-tape-set">'+items+'</div><div class="market-tape-set" aria-hidden="true">'+items+'</div>';
+ track.style.setProperty('--tape-duration',Math.max(28,movers.length*2.2)+'s');
+}
 function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
 function miniChart(s){let symbol=String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||'')));return '<div class="mini-chart-block"><div class="mini-chart-title">Gráfico · 1 mes</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>'}
 function loadMiniChart(el){if(!el||el.dataset.loaded==='1')return;let symbol=el.dataset.symbol;if(!symbol)return;el.dataset.loaded='1';el.innerHTML='<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>';let box=el.querySelector('.tradingview-widget-container'),script=document.createElement('script');script.type='text/javascript';script.async=true;script.src='https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';script.textContent=JSON.stringify({symbol,width:'100%',height:'100%',locale:'es',dateRange:'1M',colorTheme:'dark',isTransparent:true,autosize:true,largeChartUrl:'',chartOnly:true,noTimeScale:true});box.appendChild(script)}
@@ -111,7 +143,7 @@ function renderRadar(){let q=$('#radarSearch').value.trim().toLowerCase(),rs=sta
 function renderCalendar(){let a=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));$('#calendarResults').innerHTML=a.length?a.slice(0,400).map((e,i)=>{let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;return '<article class="stock-card dense-card"><details class="stock-details stock-disclosure"><summary class="stock-main stock-toggle"><div class="stock-id"><span class="rank">'+(i+1)+'</span><div><strong>'+E(e.ticker)+'</strong><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="chevron">⌄</span></div></summary><div class="stock-detail-body"><div class="meta-line catalyst-meta">'+E(e.source||'')+'</div><div class="why-line">'+E(e.title||e.fact||'Catalizador')+'</div>'+miniChart(s)+EU(e)+links(s)+'</div></details></article>'}).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>'}
 function renderCatalog(){let q=$('#catalogSearch').value.trim().toLowerCase(),a=db.stocks.filter(s=>s.tradeRepublicVerified).filter(s=>!q||(s.ticker+' '+s.name+' '+(s.isin||'')).toLowerCase().includes(q)).sort((x,y)=>String(x.ticker).localeCompare(String(y.ticker)));$('#catalogCount').textContent=a.length.toLocaleString('es-ES')+' cotizando · '+Number(db.meta.trOfficialCount||0).toLocaleString('es-ES')+' universo oficial';$('#catalogResults').innerHTML=a.length?a.slice(0,600).map((s,i)=>card(s,i,'regular',true)).join(''):'<div class="empty-state">No hay coincidencias verificadas cargadas.</div>'}
 function status(){let age=db.meta.updatedAt?Math.round((Date.now()-new Date(db.meta.updatedAt))/60000):null;$('#providerState').textContent=db.stocks.length?'TradingView · '+(age??'—')+' min':'Sin datos';$('#providerState').classList.toggle('stale',age!==null&&age>30)}
-function render(){renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
+function render(){renderMarketTape();renderEntry();renderFuture();renderRadar();renderCalendar();renderCatalog();status()}
 async function load(force=false){if(loading)return;loading=true;$('#providerState').textContent='Actualizando…';try{let r=await fetch(DATA+'?v='+(force?Date.now():Math.floor(Date.now()/900000)),{cache:'no-store'});if(!r.ok)throw Error(r.status);let j=await r.json();if(!Array.isArray(j.stocks))throw Error('formato');db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};render()}catch(e){console.error(e);$('#providerState').textContent='Datos no disponibles';if(!db.stocks.length)$$('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')}finally{loading=false}}
 function show(v){if(!V[v])return;$$('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#breadcrumbView').textContent=V[v];$('#mobileView').value=v;$('#sidebar').classList.remove('open');render()}
 function clock(){let p=NY();$('#nyTime').textContent=p.hour+':'+p.minute+' · Nueva York'}
