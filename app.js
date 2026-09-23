@@ -296,7 +296,9 @@ function openStock(s,reason=''){
  if(!s)return;
  state.profileKey=stockKey(s);
  state.profileReason=reason||'';
- show(s.tradeRepublicVerified?'catalog':'catalogUS',true);
+ state.currentView=s.tradeRepublicVerified?'catalog':'catalogUS';
+ saveUiState();
+ show(state.currentView,true);
  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
 }
 
@@ -420,10 +422,18 @@ function renderFavorites(){
   return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div><div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }
-function links(s){let t=encodeURIComponent(String(s.ticker||'').toUpperCase()),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));return '<div class="external-links"><a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a><a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing.com ↗</a><a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a><a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>'}
+function links(s){
+ let raw=String(s.ticker||'').toUpperCase(),t=encodeURIComponent(raw),tv=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+raw)).replace(':','-'));
+ return '<div class="external-links"><span class="external-links-label">Contrastar / ampliar:</span>'+
+  '<a target="_blank" rel="noopener" href="https://www.tradingview.com/symbols/'+tv+'/">TradingView ↗</a>'+
+  '<a target="_blank" rel="noopener" href="https://www.investing.com/search/?q='+t+'">Investing ↗</a>'+
+  '<a target="_blank" rel="noopener" href="https://www.nasdaq.com/market-activity/stocks/'+encodeURIComponent(raw.toLowerCase())+'">Nasdaq ↗</a>'+
+  '<a target="_blank" rel="noopener" href="https://stockmarketwatch.com/stock/'+t+'">StockMarketWatch ↗</a>'+
+  '<a target="_blank" rel="noopener" href="https://stocktwits.com/symbol/'+t+'">StockTwits ↗</a></div>';
+}
 function miniChart(s){
  let symbol=String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||'')));
- return '<div class="mini-chart-block"><div class="mini-chart-title">Velas 1 min · volumen · PREMARKET + REGULAR + POSTMARKET · 04:00–20:00 NY</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>';
+ return '<div class="mini-chart-block"><div class="mini-chart-title">Velas 1 min · sesión 24H/24x5 cuando está disponible · overnight + premarket + regular + postmarket</div><div class="mini-chart" data-symbol="'+E(symbol)+'"><div class="chart-placeholder">Cargando gráfico…</div></div></div>';
 }
 function profileWidget(kind,s){
  let symbol=String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||'')));
@@ -455,9 +465,9 @@ function loadMiniChart(el){
  script.textContent=JSON.stringify({
   autosize:true,symbol,interval:'1',timezone:'America/New_York',theme:'dark',
   backgroundColor:'#000000',gridColor:'rgba(255,255,255,0.06)',style:'1',locale:'es',
-  hide_side_toolbar:true,hide_top_toolbar:true,hide_legend:false,hide_volume:false,
-  allow_symbol_change:false,save_image:false,withdateranges:false,
-  extended_hours:true,session:'extended',details:false,hotlist:false,calendar:false,
+  hide_side_toolbar:true,hide_top_toolbar:false,hide_legend:false,hide_volume:false,
+  allow_symbol_change:false,save_image:false,withdateranges:true,
+  extended_hours:true,session:'24h',details:false,hotlist:false,calendar:false,
   support_host:'https://www.tradingview.com'
  });
  box.appendChild(script);
@@ -619,16 +629,14 @@ function profileHtml(s,view){
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
  let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Datos actualizados '+E(updated)+'</span></div>'+
-  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(SN(se))+(isTr?' · TR/EEUU':' · EEUU')+'</small>'+pricePair(s,SP(s,se),isTr)+'<span class="'+C(SC(s,se))+'">'+PC(SC(s,se))+'</span></div></div>'+
+  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(SN(se))+(isTr?' · TR/EEUU':' · EEUU')+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+'<span class="'+C(SC(s,se))+'">'+PC(SC(s,se))+'</span></div></div>'+
   trRelation+trNote+context+
   '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Premarket · Regular · Postmarket · 04:00–20:00 NY</span></div>'+miniChart(s)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
-  '<div class="profile-widget-grid"><section class="profile-section"><div class="profile-section-head"><h3>Empresa</h3><span>Perfil y sector</span></div>'+profileWidget('company',s)+'</section><section class="profile-section"><div class="profile-section-head"><h3>Fundamentales</h3><span>Datos financieros</span></div>'+profileWidget('fundamentals',s)+'</section></div>'+
-  '<section class="profile-section"><div class="profile-section-head"><h3>Noticias en directo</h3><span>Feed del símbolo</span></div>'+profileWidget('news',s)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' recientes</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>'+
-  '<section class="profile-section"><h3>Fuentes externas</h3>'+links(s)+'</section>';
+  '<section class="profile-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Verificación externa del mismo valor</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Gráfico y técnicos: TradingView. Noticias y eventos: fuentes enlazadas en cada elemento. Los botones permiten contrastar el valor en los portales de referencia.</div>'+links(s)+'</section>';
 }
 function renderProfileView(view){
  let isTr=view==='catalog';
@@ -647,7 +655,6 @@ function renderProfileView(view){
  detail.innerHTML=profileHtml(s,view);
  requestAnimationFrame(()=>{
   detail.querySelectorAll('.mini-chart').forEach(loadMiniChart);
-  detail.querySelectorAll('.profile-tv-widget').forEach(loadProfileWidget);
  });
  return true;
 }
@@ -699,8 +706,14 @@ async function load(force=false){
   let stamp=String((j.meta&&j.meta.updatedAt)||'');
   if(!force&&stamp&&stamp===lastDataStamp)return;
   lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveDirection','trLiveDirectionAt'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   render();
+  if(!uiRestoredScroll){uiRestoredScroll=true;requestAnimationFrame(()=>window.scrollTo(0,state.savedScrollY||0))}
  }catch(e){
   console.error(e);
   if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
@@ -708,14 +721,14 @@ async function load(force=false){
   loading=false
  }
 }
-function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){state.profileKey=null;state.profileReason='';}document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');render()}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){state.profileKey=null;state.profileReason='';}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
 let lastLeaderSession=null;
 function clock(){
  let now=new Date();
  document.querySelectorAll('.market-clock').forEach(x=>{
   let tz=x.dataset.tz,time=x.querySelector('time');
   if(!time||!tz)return;
-  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',hour12:false}).format(now);
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
  });
  let se=currentMarketSession();
  if(se!==lastLeaderSession){
@@ -737,9 +750,10 @@ document.addEventListener('click',e=>{
  if(back){
   e.preventDefault();e.stopPropagation();
   state.profileKey=null;
-  state.profileReason='';
-  render();
-  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
+   state.profileReason='';
+   saveUiState();
+   render();
+   requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
   return;
  }
  let row=e.target.closest&&e.target.closest('[data-stock-key]');
@@ -781,4 +795,4 @@ $$('[data-tab-group="radarMarket"] .tab').forEach(b=>b.addEventListener('click',
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));$('#radarSearch').addEventListener('input',renderRadar);
 $('#radarSession').addEventListener('change',e=>{state.radarSession=e.target.value;renderRadar()});$('#radarDirection').addEventListener('change',e=>{state.radarDirection=e.target.value;renderRadar()});$('#catalogSearch').addEventListener('input',renderCatalog);$('#catalogUSSearch').addEventListener('input',renderCatalogUS);
 ['refreshEntry','refreshFuture','refreshRadar'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
-toUI(state.filters);lockAllCriteria();initLeadersDock();initTrLive();clock();setInterval(clock,30000);setInterval(()=>load(false),1000);load(true);
+restoreUiState();toUI(state.filters);lockAllCriteria();initLeadersDock();initTrLive();clock();window.addEventListener('scroll',queueUiSave,{passive:true});window.addEventListener('beforeunload',saveUiState);setInterval(clock,1000);setInterval(()=>load(false),15000);load(true);
