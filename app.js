@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
+const DATA='data/market.json', CUSTOM_FILTER_KEY='catalystpulse:customFilter:v1', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
@@ -37,6 +37,16 @@ function saveUiState(){
 let saveUiTimer=null;
 function queueUiSave(){clearTimeout(saveUiTimer);saveUiTimer=setTimeout(saveUiState,120)}
 function preset(n){return Object.assign({},P[n]||P.intraday)}
+function savedCustomPreset(){
+ try{
+  let x=JSON.parse(localStorage.getItem(CUSTOM_FILTER_KEY)||'null');
+  if(!x||typeof x!=='object')return null;
+  return Object.assign({},P.broad,x,{sort:x.sort||'score'});
+ }catch(_){return null}
+}
+function saveCustomPreset(x){
+ try{localStorage.setItem(CUSTOM_FILTER_KEY,JSON.stringify(x));return true}catch(_){return false}
+}
 state.filters=preset('intraday');
 
 function N(v){v=Number(v);return Number.isFinite(v)?v:null}
@@ -993,8 +1003,8 @@ $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;r
 function setPreset(value){
  state.preset=value;$('#presetSelect').value=value;
  let opt=$('.preset-option[data-value="'+value+'"]');
- if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
- state.filters=preset(state.preset);
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
  if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
  toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
 }
@@ -1002,8 +1012,26 @@ $('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
 $('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
 $$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
 document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
-$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
-$('#resetFilters').addEventListener('click',()=>{state.filters=preset(state.preset);toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0)});
+$('#applyFilters').addEventListener('click',()=>{
+ state.filters=fromUI();
+ state.preset='custom';$('#presetSelect').value='custom';
+ let opt=$('.preset-option[data-value="custom"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ renderEntry();setTimeout(pollUsLive,0);
+});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='afterhours'||state.filters.sort==='change'?state.filters.sort:'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
 $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
 $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry();setTimeout(pollUsLive,0)}));
