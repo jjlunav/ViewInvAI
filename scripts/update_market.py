@@ -14,6 +14,7 @@ import websocket
 from pypdf import PdfReader
 
 TV_URL = "https://scanner.tradingview.com/america/scan"
+TV_FOREX_URL = "https://scanner.tradingview.com/forex/scan"
 TV_SEARCH_URL = "https://symbol-search.tradingview.com/symbol_search/v3/"
 NEWS_URL = "https://news-headlines.tradingview.com/v2/headlines"
 TR_WS_URL = "wss://api.traderepublic.com"
@@ -414,6 +415,33 @@ def fetch_tr_metadata(stocks, previous):
                 pass
     return cache
 
+def fetch_eur_usd(previous):
+    """Latest EUR/USD reference used only for secondary currency display."""
+    payload = {
+        "symbols": {"tickers": ["FX_IDC:EURUSD"], "query": {"types": []}},
+        "columns": ["close"],
+    }
+    headers = dict(HEADERS)
+    headers["Content-Type"] = "application/json"
+    try:
+        r = requests.post(TV_FOREX_URL, json=payload, headers=headers, timeout=20)
+        r.raise_for_status()
+        rows = (r.json() or {}).get("data") or []
+        if rows and rows[0].get("d"):
+            rate = float(rows[0]["d"][0])
+            if rate > 0:
+                return rate, "TradingView FX_IDC:EURUSD"
+    except Exception as exc:
+        print("fx warning", str(exc))
+    prev = (previous.get("meta") or {}).get("eurUsd")
+    try:
+        prev = float(prev)
+        if prev > 0:
+            return prev, (previous.get("meta") or {}).get("eurUsdSource") or "previous snapshot"
+    except Exception:
+        pass
+    return None, None
+
 def event_date(v):
     if v in (None, ""):
         return None
@@ -681,6 +709,7 @@ def main():
             pass
 
     idx, tr_count, tr_source = tr_universe()
+    eur_usd, eur_usd_source = fetch_eur_usd(previous)
 
     try:
         stocks, total = tv()
@@ -754,6 +783,8 @@ def main():
         "meta": {
             "updatedAt": now.isoformat(),
             "source": "TradingView screener + TradingView News",
+            "eurUsd": eur_usd,
+            "eurUsdSource": eur_usd_source,
             "totalProvider": total,
             "trOfficialCount": tr_count,
             "trMatchedCount": matched,
