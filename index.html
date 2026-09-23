@@ -104,8 +104,22 @@
           <label>RSI máx.<input id="maxRsi" type="number" step="1" value="65"></label>
         </div>
         <div class="checks-grid">
-          <label class="check"><input id="requireTrend" type="checkbox"> Exigir histórico/tendencia</label>
-          <label class="check"><input id="excludeIlliquid" type="checkbox" checked> Penalizar liquidez baja</label>
+          <label class="filter-toggle">
+            <input id="requireTrend" type="checkbox">
+            <span class="toggle-switch" aria-hidden="true"></span>
+            <span class="toggle-copy">
+              <span class="toggle-title">Exigir histórico/tendencia</span>
+              <span class="toggle-desc">Solo deja pasar acciones con una estructura técnica de tendencia compatible: precio, EMA20 y EMA50 alineadas cuando esos datos están disponibles.</span>
+            </span>
+          </label>
+          <label class="filter-toggle">
+            <input id="excludeIlliquid" type="checkbox" checked>
+            <span class="toggle-switch" aria-hidden="true"></span>
+            <span class="toggle-copy">
+              <span class="toggle-title">Penalizar liquidez baja</span>
+              <span class="toggle-desc">Descarta valores con volumen demasiado bajo para reducir señales poco fiables y movimientos difíciles de negociar.</span>
+            </span>
+          </label>
         </div>
         <div class="filter-actions">
           <button class="btn ghost" id="resetFilters">Restablecer</button>
