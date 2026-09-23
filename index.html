@@ -6,25 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
-  <link rel="stylesheet" href="styles.css?v=20260923d">
+  <link rel="stylesheet" href="styles.css?v=20260923e">
 </head>
 <body>
-<div class="market-leaders" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
-  <section class="leader-market" aria-label="Top 10 mercado de Estados Unidos">
-    <div class="leader-market-head">
-      <strong>EEUU</strong>
-      <span id="leadersSessionUS">SESIÓN</span>
-    </div>
-    <div class="leader-grid" id="leadersUS"><span class="leader-loading">Cargando mercado…</span></div>
-  </section>
-  <section class="leader-market" aria-label="Top 10 acciones disponibles en Trade Republic">
-    <div class="leader-market-head">
-      <strong>TRADE REPUBLIC</strong>
-      <span id="leadersSessionTR">SESIÓN</span>
-    </div>
-    <div class="leader-grid" id="leadersTR"><span class="leader-loading">Cargando mercado…</span></div>
-  </section>
-</div>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
@@ -227,9 +211,27 @@
       <div id="catalogResults" class="stock-list dense"></div>
     </section>
 
+    <div class="market-leaders market-leaders-bottom" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
+      <section class="leader-market" aria-label="Top 10 mercado de Estados Unidos">
+        <div class="leader-market-head">
+          <strong>EEUU</strong>
+          <span id="leadersSessionUS">SESIÓN</span>
+        </div>
+        <div class="leader-grid" id="leadersUS"><span class="leader-loading">Cargando mercado…</span></div>
+      </section>
+      <section class="leader-market" aria-label="Top 10 acciones disponibles en Trade Republic">
+        <div class="leader-market-head">
+          <strong>TRADE REPUBLIC</strong>
+          <span id="leadersSessionTR">SESIÓN</span>
+        </div>
+        <div class="leader-grid" id="leadersTR"><span class="leader-loading">Cargando mercado…</span></div>
+      </section>
+    </div>
+    
+
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260923d"></script>
+<script src="app.js?v=20260923e"></script>
 </body>
 </html>
