@@ -172,16 +172,23 @@ function FC(s,se=SES()){
  return se==='regular'?(usLiveChange(s)??SC(s,se)):SC(s,se);
 }
 function RV(s,se=SES()){
- // TradingView only supplies relative_volume_10d_calc for regular trading.
- // For extended hours use that session's volume divided by average daily volume rather than silently passing N/D.
+ // In regular trading prefer TradingView's own relative-volume field so the preset
+ // keeps the same semantics as the screener that produced the universe.
  if(se==='regular'){
+  let provider=N(s.relVolume);if(provider!==null)return provider;
   let v=SV(s,se),avg=N(s.avgVolume);
-  return v!==null&&avg>0?v/avg:N(s.relVolume);
+  return v!==null&&avg>0?v/avg:null;
  }
+ // Extended hours do not expose the same provider metric; use session volume / daily average.
  let v=SV(s,se),avg=N(s.avgVolume);
  return v!==null&&avg>0?v/avg:null;
 }
-function trend(s){let p=N(s.price),a=N(s.ema20),b=N(s.ema50);return p!==null&&a!==null&&b!==null&&p>=a&&a>=b}
+function trendState(s){
+ let p=N(s.price),a=N(s.ema20),b=N(s.ema50);
+ if(p===null||a===null||b===null)return null;
+ return p>=a&&a>=b;
+}
+function trend(s){return trendState(s)===true}
 function validQuoteNumber(v){v=N(v);return v!==null&&v>0?v:null}
 function spreadPct(s,preferTr=false){
  let bid=validQuoteNumber(preferTr?s&&s.trLiveBid:usLiveBid(s)),ask=validQuoteNumber(preferTr?s&&s.trLiveAsk:usLiveAsk(s));
@@ -644,13 +651,31 @@ function entryUniverseMatch(s){
 }
 function entry(){
  let q=state.filters,se=q.sort==='afterhours'?'postmarket':SES(),preferTr=state.entryMarket==='tr';
+ let requireComplete=state.preset==='strict';
  let a=db.stocks.filter(entryUniverseMatch).filter(s=>{
+  // Price change is the primary criterion: if it is unavailable, the candidate cannot be verified.
   let ch=FC(s,se);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
-  let rv=RV(s,se);if(q.minRelVolume>0&&(rv===null||rv<q.minRelVolume))return false;
-  let adx=N(s.adx);if(q.minAdx>0&&(adx===null||adx<q.minAdx))return false;
-  let rsi=N(s.rsi);if((q.minRsi>0||q.maxRsi<100)&&(rsi===null||rsi<q.minRsi||rsi>q.maxRsi))return false;
-  let v=SV(s,se);if(q.minVolume>0&&(v===null||v<q.minVolume))return false;
-  if(q.trend&&!trend(s))return false;
+
+  // Secondary technical fields may be absent for some valid instruments. Normal presets
+  // evaluate them when present; only the explicit strict preset rejects missing data.
+  let rv=RV(s,se);
+  if(q.minRelVolume>0&&((rv!==null&&rv<q.minRelVolume)||(requireComplete&&rv===null)))return false;
+
+  let adx=N(s.adx);
+  if(q.minAdx>0&&((adx!==null&&adx<q.minAdx)||(requireComplete&&adx===null)))return false;
+
+  let rsi=N(s.rsi);
+  if(q.minRsi>0||q.maxRsi<100){
+   if((rsi!==null&&(rsi<q.minRsi||rsi>q.maxRsi))||(requireComplete&&rsi===null))return false;
+  }
+
+  let v=SV(s,se);
+  if(q.minVolume>0&&((v!==null&&v<q.minVolume)||(requireComplete&&v===null)))return false;
+
+  if(q.trend){
+   let t=trendState(s);
+   if(t===false||(requireComplete&&t===null))return false;
+  }
   if(q.illiquid&&lowLiquidity(s,se,preferTr))return false;
   return true;
  });
@@ -659,7 +684,7 @@ function entry(){
  else a.sort((x,y)=>score(y,se)-score(x,se));
  return[a,se];
 }
-function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);$('#entryCount').textContent=a.length+' candidatas';$('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';$('#entryTag').textContent=state.filters.sort==='afterhours'?'SUBIDAS POSTMARKET':state.filters.sort==='change'?'EXPLOSIÓN EN SESIÓN':se==='premarket'?'IMPULSO PREMARKET':'SEGUIMIENTO';$('#entryLead').textContent=state.filters.sort==='afterhours'?'Acciones ordenadas por mayor subida después del cierre regular de EEUU.':'Señales técnicas y movimientos de mercado, sin precio mínimo.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión.</div>'}
+function renderEntry(){let [a,se]=entry();$('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);$('#entryCount').textContent=a.length+' candidatas';$('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';$('#entryTag').textContent=state.filters.sort==='afterhours'?'SUBIDAS POSTMARKET':state.filters.sort==='change'?'EXPLOSIÓN EN SESIÓN':se==='premarket'?'IMPULSO PREMARKET':'SEGUIMIENTO';$('#entryLead').textContent=state.filters.sort==='afterhours'?'Acciones ordenadas por mayor subida después del cierre regular de EEUU.':'Señales técnicas y movimientos de mercado, sin precio mínimo.';let shown=a.slice(0,150);$('#entryResults').innerHTML=shown.length?shown.map((s,i)=>card(s,i,se,false,rankingWhy(s,shown[i+1],se,state.filters,i+1),state.entryMarket==='tr')).join(''):'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>'}
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
 function EU(e){let u=String(e.url||'');return /^https?:\/\//i.test(u)?'<a class="event-link" target="_blank" rel="noopener" href="'+E(u)+'">Abrir noticia / fuente ↗</a>':''}
