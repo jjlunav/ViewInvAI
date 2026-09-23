@@ -71,13 +71,13 @@
             <span id="presetLabel">Impulso intradía</span><span class="preset-caret">⌄</span>
           </button>
           <div class="preset-menu" id="presetMenu" role="listbox" aria-label="Criterio de entrada">
-            <button type="button" class="preset-option" data-value="short"><span>Corto plazo · 1–5 sesiones</span><span class="preset-desc">Busca movimientos aprovechables a 1–5 sesiones combinando subida, volumen relativo, fuerza técnica y liquidez.</span></button>
-            <button type="button" class="preset-option" data-value="medium"><span>Medio plazo · 2–6 semanas</span><span class="preset-desc">Prioriza tendencias más sostenidas para 2–6 semanas y una estructura técnica más estable.</span></button>
-            <button type="button" class="preset-option" data-value="broad"><span>Exploración amplia</span><span class="preset-desc">Reduce restricciones para explorar más valores y detectar candidatos que otros filtros podrían dejar fuera.</span></button>
-            <button type="button" class="preset-option active" data-value="intraday"><span>Impulso intradía</span><span class="preset-desc">Busca acciones con impulso durante la sesión actual, subida, volumen relativo y fuerza técnica.</span></button>
-            <button type="button" class="preset-option" data-value="exploded"><span>Explosión en la sesión</span><span class="preset-desc">Localiza acciones que ya han subido con fuerza en la sesión; sirve para detectar explosiones ya en marcha.</span></button>
-            <button type="button" class="preset-option" data-value="afterhours"><span>Más suben tras cierre EEUU</span><span class="preset-desc">Ordena las acciones por mayor subida después del cierre regular de EEUU usando datos de postmarket.</span></button>
-            <button type="button" class="preset-option" data-value="strict"><span>Histórico y tendencia estrictos</span><span class="preset-desc">Aplica condiciones más exigentes de tendencia, volumen y fuerza técnica para reducir candidatos débiles.</span></button>
+            <button type="button" class="preset-option" data-value="short" title="Busca movimientos aprovechables a 1–5 sesiones con impulso, volumen y fuerza técnica."><span>Corto plazo · 1–5 sesiones</span></button>
+            <button type="button" class="preset-option" data-value="medium" title="Prioriza tendencias sostenidas y una estructura técnica más estable a 2–6 semanas."><span>Medio plazo · 2–6 semanas</span></button>
+            <button type="button" class="preset-option" data-value="broad" title="Reduce restricciones para explorar más valores y detectar candidatos adicionales."><span>Exploración amplia</span></button>
+            <button type="button" class="preset-option active" data-value="intraday" title="Busca impulso en la sesión actual con subida, volumen relativo y fuerza técnica."><span>Impulso intradía</span></button>
+            <button type="button" class="preset-option" data-value="exploded" title="Localiza acciones que ya han subido con fuerza durante la sesión actual."><span>Explosión en la sesión</span></button>
+            <button type="button" class="preset-option" data-value="afterhours" title="Ordena por mayor subida en postmarket después del cierre regular de EEUU."><span>Más suben tras cierre EEUU</span></button>
+            <button type="button" class="preset-option" data-value="strict" title="Exige tendencia, volumen y fuerza técnica más estrictos para reducir señales débiles."><span>Histórico y tendencia estrictos</span></button>
           </div>
           <select id="presetSelect" class="preset-native" aria-hidden="true" tabindex="-1">
             <option value="short">Corto plazo · 1–5 sesiones</option>
@@ -133,21 +133,15 @@
           </div>
         </div>
         <div class="checks-grid">
-          <label class="filter-toggle">
+          <label class="filter-toggle" title="Exige una estructura de tendencia compatible usando precio, EMA20 y EMA50 cuando están disponibles.">
             <input id="requireTrend" type="checkbox">
             <span class="toggle-switch" aria-hidden="true"></span>
-            <span class="toggle-copy">
-              <span class="toggle-title">Exigir histórico/tendencia</span>
-              <span class="toggle-desc">Solo deja pasar acciones con una estructura técnica de tendencia compatible: precio, EMA20 y EMA50 alineadas cuando esos datos están disponibles.</span>
-            </span>
+            <span class="toggle-copy"><span class="toggle-title">Exigir histórico/tendencia</span></span>
           </label>
-          <label class="filter-toggle">
+          <label class="filter-toggle" title="Descarta valores con volumen demasiado bajo para reducir señales poco fiables.">
             <input id="excludeIlliquid" type="checkbox" checked>
             <span class="toggle-switch" aria-hidden="true"></span>
-            <span class="toggle-copy">
-              <span class="toggle-title">Penalizar liquidez baja</span>
-              <span class="toggle-desc">Descarta valores con volumen demasiado bajo para reducir señales poco fiables y movimientos difíciles de negociar.</span>
-            </span>
+            <span class="toggle-copy"><span class="toggle-title">Penalizar liquidez baja</span></span>
           </label>
         </div>
         <div class="filter-actions">
