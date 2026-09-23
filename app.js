@@ -2,6 +2,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const DATA='data/market.json', CUSTOM_FILTER_KEY='catalystpulse:customFilter:v1', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
+if('scrollRestoration' in history)history.scrollRestoration='manual';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 let usLive={busy:false,lastFetchAt:0};
@@ -1343,7 +1344,12 @@ async function load(force=false){
   }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   render();
-  if(!uiRestoredScroll){uiRestoredScroll=true;requestAnimationFrame(()=>window.scrollTo(0,state.savedScrollY||0))}
+  if(!uiRestoredScroll){
+   uiRestoredScroll=true;
+   let y=state.savedScrollY||0;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+   setTimeout(()=>window.scrollTo(0,y),250);
+  }
  }catch(e){
   console.error(e);
   if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
@@ -1387,14 +1393,14 @@ document.addEventListener('keydown',e=>{
  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
  e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
 });
-$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;renderEntry();setTimeout(pollUsLive,0)});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;saveUiState();renderEntry();setTimeout(pollUsLive,0)});
 function setPreset(value){
  state.preset=value;$('#presetSelect').value=value;
  let opt=$('.preset-option[data-value="'+value+'"]');
  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
  state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
  if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
- toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+ toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
 }
 $('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
 $('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
@@ -1416,7 +1422,7 @@ $('#saveCustomFilters').addEventListener('click',()=>{
 });
 $('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
 $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
-$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry();setTimeout(pollUsLive,0)}));
+$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
 let catalogSearchTimer=null;
 $('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});
@@ -1468,7 +1474,9 @@ initTrLive();
 initUsLive();
 clock();
 window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('pagehide',saveUiState);
 window.addEventListener('beforeunload',saveUiState);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveUiState()});
 setInterval(clock,1000);
 setInterval(()=>load(false),15000);
 load(true);
