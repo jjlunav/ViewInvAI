@@ -1685,7 +1685,7 @@ function initHelpSystem(){
  mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
  mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');
  // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
- $('[data-help],[data-help-key]').forEach(el=>{
+ $$('[data-help],[data-help-key]').forEach(el=>{
   if(!el.hasAttribute('title'))return;
   if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
   el.removeAttribute('title');
