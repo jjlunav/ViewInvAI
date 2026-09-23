@@ -978,3 +978,105 @@ th.dragging{opacity:.45;background:#17332d!important}
 .price-pair>small{display:block}
 .price-pair>small{margin-top:2px}
 .quote-spread .quote-side{width:100%;box-sizing:border-box}
+
+
+/* Mobile stock cards: keep company identity visible and move market data to its own row */
+@media(max-width:680px){
+ .stock-card,.stock-list{width:100%;min-width:0}
+ .stock-main{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  align-items:stretch!important;
+  gap:7px!important;
+  padding:8px!important
+ }
+ .stock-id{
+  width:100%;
+  min-width:0;
+  align-items:flex-start
+ }
+ .stock-id>div{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr);
+  gap:2px!important;
+  width:100%;
+  min-width:0
+ }
+ .stock-id .stock-name{
+  display:block;
+  width:100%;
+  max-width:none!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere;
+  line-height:1.25;
+  font-size:10px!important;
+  color:#a8b7be
+ }
+ .ticker-stack{
+  width:100%;
+  max-width:100%;
+  min-width:0
+ }
+ .ticker-stack>strong{
+  max-width:100%
+ }
+ .stock-quick{
+  width:100%;
+  min-width:0;
+  display:grid!important;
+  grid-template-columns:minmax(84px,1.05fr) minmax(72px,.9fr) auto auto auto;
+  align-items:center;
+  justify-content:stretch!important;
+  gap:4px!important;
+  white-space:nowrap
+ }
+ .stock-quick .quote-spread{
+  display:grid!important;
+  width:100%;
+  min-width:0!important;
+  gap:2px!important;
+  padding:0!important
+ }
+ .stock-quick .quote-side{
+  width:100%;
+  min-width:0!important;
+  padding:3px 5px!important
+ }
+ .stock-quick .quote-side small{font-size:7px}
+ .stock-quick .quote-side strong{font-size:10px}
+ .stock-quick .price-pair{
+  width:100%;
+  min-width:0!important;
+  padding:2px 3px;
+  justify-items:end
+ }
+ .stock-quick .price-pair>strong{font-size:14px!important}
+ .stock-quick .price-pair>small{font-size:7px!important}
+ .stock-quick>span.positive,
+ .stock-quick>span.negative{
+  justify-self:end;
+  font-size:11px!important;
+  font-weight:750
+ }
+ .stock-quick .pill,
+ .stock-quick .open-arrow{justify-self:end}
+ .status-line{overflow-wrap:anywhere}
+}
+
+@media(max-width:380px){
+ .stock-id .stock-name{
+  max-width:none!important;
+  font-size:9px!important
+ }
+ .stock-quick{
+  grid-template-columns:minmax(76px,1fr) minmax(64px,.9fr) auto auto auto;
+  gap:3px!important
+ }
+ .stock-quick .quote-side{padding:3px 4px!important}
+ .stock-quick .quote-side strong{font-size:9px}
+ .stock-quick .price-pair>strong{font-size:13px!important}
+ .stock-quick>span.positive,
+ .stock-quick>span.negative{font-size:10px!important}
+}
