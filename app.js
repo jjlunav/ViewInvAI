@@ -10,7 +10,8 @@ let tvChartAvailability=new Map();
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
-const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',future:'03 Potencial futuro',calendar:'04 Calendario y noticias',catalog:'05 Catálogo Trade Republic',catalogUS:'06 Catálogo EEUU'};
+let heatmapState={market:'tr',session:'auto',limit:250};
+const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',calendar:'05 Calendario y noticias',catalog:'06 Catálogo Trade Republic',catalogUS:'07 Catálogo EEUU'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -1584,6 +1585,1435 @@ function renderRecommendation(){
  let stamp=$('#recommendationUpdated');
  if(stamp)stamp.textContent='Recalculado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
+}
+function heatmapSession(){
+ let se=heatmapState.session==='auto'?auto():heatmapState.session;
+ return se==='previous'?'postmarket':se;
+}
+function heatmapUniverse(){
+ return db.stocks.filter(s=>heatmapState.market==='tr'?trTradable(s):market(s,'us'));
+}
+function heatmapWeight(s){
+ let cap=N(s.marketCap);
+ if(cap!==null&&cap>0)return cap;
+ let avg=N(s.avgVolume),p=N(s.price);
+ return avg!==null&&p!==null&&avg>0&&p>0?avg*p:1;
+}
+function heatmapChange(s,se){return SC(s,se)}
+function heatmapChangeClass(v){
+ v=N(v);if(v===null)return'heat-na';
+ if(v<=-5)return'heat-loss-strong';
+ if(v<=-2)return'heat-loss';
+ if(v<-.5)return'heat-loss-soft';
+ if(v<=.5)return'heat-flat';
+ if(v<2)return'heat-gain-soft';
+ if(v<5)return'heat-gain';
+ return'heat-gain-strong';
+}
+function heatmapTileSize(s,maxWeight){
+ let w=heatmapWeight(s),r=maxWeight>0?w/maxWeight:0;
+ if(r>=.32)return'heat-xl';
+ if(r>=.12)return'heat-lg';
+ if(r>=.04)return'heat-md';
+ return'heat-sm';
+}
+function heatmapSectorAverage(stocks,se){
+ let num=0,den=0,fallback=0,count=0;
+ for(let s of stocks){
+  let ch=heatmapChange(s,se);if(ch===null)continue;
+  let cap=N(s.marketCap);
+  if(cap!==null&&cap>0){num+=ch*cap;den+=cap}
+  fallback+=ch;count++;
+ }
+ return den>0?num/den:(count?fallback/count:null);
+}
+function heatmapSectorSpan(weight,maxWeight){
+ let r=maxWeight>0?weight/maxWeight:0;
+ if(r>=.70)return 12;
+ if(r>=.42)return 9;
+ if(r>=.24)return 7;
+ if(r>=.12)return 6;
+ return 4;
+}
+function heatmapTile(s,se,maxWeight){
+ let ch=heatmapChange(s,se),preferTr=heatmapState.market==='tr',ticker=preferTr&&trTradable(s)?s.trTicker:s.ticker;
+ let cap=N(s.marketCap),capText=cap!==null?compactMoney(cap):'Cap. no disponible';
+ let reason='Mapa de calor · '+SN(se)+' · '+PC(ch)+' · '+String(s.sector||'Sin sector');
+ return '<button type="button" class="heat-stock '+heatmapChangeClass(ch)+' '+heatmapTileSize(s,maxWeight)+'"'+stockOpenAttrs(s,reason,preferTr)+' aria-label="'+E((ticker||'Acción')+' '+PC(ch)+' '+(s.name||''))+'">'+
+  '<strong>'+E(ticker||'—')+'</strong>'+
+  '<span>'+PC(ch)+'</span>'+
+  '<small>'+E(capText)+'</small>'+
+  '</button>';
+}
+function compactMoney(v){
+ v=N(v);if(v===null)return'—';
+ let a=Math.abs(v);
+ if(a>=1e12)return '
+ if(!['us','tr'].includes(mode))return;
+ let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
+ recommendationState.sold[mode][key]=Date.now();
+ bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
+ saveRecommendationState();
+ renderRecommendation();
+}
+
+function presetHelpText(value){
+ const help={
+  short:'Pensado para operaciones de pocos días. Busca acciones que ya muestran movimiento suficiente y que mantienen una liquidez razonable, pero sin exigir una tendencia técnica perfecta. Sirve para localizar movimientos que podrían tener continuidad durante las próximas 1–5 sesiones.',
+  medium:'Busca movimientos más sostenidos que un simple pico intradía. Da prioridad a acciones cuya estructura técnica mantiene una tendencia ordenada y suficiente liquidez, pensando en recorridos de varias semanas y no en perseguir una explosión puntual.',
+  broad:'Abre el abanico al máximo y aplica muy pocas restricciones. Es útil para explorar el mercado y no perder candidatos, a cambio de mostrar más ruido y valores de peor calidad. El listado se ordena por los que más están subiendo en la sesión elegida.',
+  intraday:'Busca acciones que están ganando fuerza durante la sesión actual. Exige que ya exista movimiento positivo y evita los valores con liquidez demasiado pobre. Es un filtro de impulso en curso, no una predicción previa al movimiento.',
+  exploded:'Busca acciones que ya han realizado una subida muy fuerte en la sesión seleccionada. Está pensado para localizar explosiones que ya se han producido, no para anticiparlas.',
+  postmarketExplosion:'Fuerza el análisis al Postmarket y muestra primero las acciones que más están subiendo después del cierre regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Postmarket.',
+  premarketExplosion:'Fuerza el análisis al Premarket y muestra primero las acciones que más están subiendo antes de la apertura regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Premarket.',
+  emerging:'Busca un movimiento que esté empezando ahora, no uno que ya haya explotado. Compara el último snapshot con el anterior y exige aceleración positiva reciente; además necesita una señal de actividad que la respalde, como entrada rápida de volumen, volumen relativo elevado o una noticia recién publicada. Descarta movimientos ya demasiado extendidos. Es un detector temprano de aceleración, no una garantía de subida.',
+  strict:'Busca señales con más confirmación técnica y menos ruido. Exige tendencia ordenada, fuerza de tendencia, volumen relativo y una zona de RSI razonable, además de evitar mala liquidez. Suele devolver menos acciones, pero con más condiciones técnicas cumplidas.',
+  custom:'Carga exactamente el criterio personalizado que guardaste en este navegador. Sirve para reutilizar tus propios umbrales sin modificar ninguno de los filtros predefinidos.'
+ };
+ return help[value]||'Selecciona este criterio para aplicar su lógica al mercado y ordenar las candidatas que la cumplen.';
+}
+function helpTextFor(el){
+ if(!el)return null;
+ if(el.dataset.help)return{title:el.dataset.helpTitle||'Qué hace',text:el.dataset.help};
+ let key=el.dataset.helpKey||'',num=id=>N($('#'+id)?.value);
+ if(key==='preset')return{title:el.textContent.trim(),text:presetHelpText(el.dataset.value)};
+ if(key==='session')return{title:'Sesión usada por los filtros',text:'Selecciona qué tramo de EEUU alimenta variación y volumen: Premarket 04:00–09:30, Regular 09:30–16:00 y Postmarket 16:00–20:00, hora de Nueva York. Automática cambia según la hora. En la pestaña TR, técnicos y variación de sesión proceden del valor EEUU vinculado; precio, BID y ASK son LSX.'};
+ if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige el tipo de búsqueda que quieres hacer. Al pasar por cada opción verás una explicación clara de qué intenta localizar, para qué horizonte sirve y cómo se comporta, sin limitarse a repetir sus valores internos.'};
+ if(key==='apply')return{title:'Aplicar filtros',text:'Lee los valores actuales de Configurar criterio y vuelve a calcular el listado. Un candado sólo impide editar un campo: no desactiva ese filtro.'};
+ if(key==='filters')return{title:'Configurar criterio',text:'Abre los umbrales que deciden qué acciones pueden aparecer: variación, volumen relativo, volumen mínimo, ADX, RSI, tendencia EMA y liquidez.'};
+ if(key==='marketTr')return{title:'Trade Republic',text:'Muestra sólo instrumentos cuya negociación en Trade Republic/LSX está confirmada: ISIN TR conocido, ticker LSX resuelto y mercado activo. Los candidatos sin confirmación quedan en EEUU.'};
+ if(key==='marketUs')return{title:'Resto EEUU',text:'Muestra acciones de Nasdaq/NYSE/AMEX/NYSE Arca que no están confirmadas como negociables en Trade Republic/LSX. Aquí quedan también los candidatos TR aún sin ticker LSX resuelto.'};
+ if(key==='minChange'){let v=num('minChange')??0;return{title:'Variación mínima',text:'Sólo aparecen acciones con variación ≥ '+F(v,1)+'% en la sesión elegida. Regular prioriza la variación actual Nasdaq; Pre/Post usan la de ese tramo. En TR se evalúa la referencia EEUU vinculada.'}}
+ if(key==='maxChange'){let v=num('maxChange')??0;return{title:'Variación máxima',text:v>0?'Excluye acciones con variación superior a '+F(v,1)+'% para evitar movimientos ya demasiado extendidos.':'Vale 0, por tanto está desactivado: no hay límite superior de variación.'}}
+ if(key==='minRelVolume'){let v=num('minRelVolume')??0;return{title:'Volumen relativo mínimo',text:v>0?'Exige ≥ '+F(v,2)+'× el volumen medio. 1,50× significa un 50% más actividad que la referencia. Si falta el dato, la acción se excluye mientras este filtro esté activo.':'Vale 0, por tanto no se exige volumen relativo mínimo.'}}
+ if(key==='minVolume'){let v=num('minVolume')??0;return{title:'Volumen mínimo',text:v>0?'Exige al menos '+I(v)+' títulos negociados en la sesión seleccionada. Si falta el dato, la acción no supera este filtro.':'Vale 0, por tanto no se exige un número mínimo de títulos.'}}
+ if(key==='minAdx'){let v=num('minAdx')??0;return{title:'ADX mínimo',text:v>0?'Exige ADX ≥ '+F(v,0)+'. ADX mide fuerza de tendencia, no dirección. Si falta ADX, la acción se excluye.':'Vale 0, por tanto no se exige fuerza mínima de tendencia por ADX.'}}
+ if(key==='minRsi'){let v=num('minRsi')??0;return{title:'RSI mínimo',text:'Exige RSI ≥ '+F(v,0)+'. El RSI va de 0 a 100 y este límite evita momentum inferior al umbral. Se combina con el RSI máximo.'}}
+ if(key==='maxRsi'){let v=num('maxRsi')??100;return{title:'RSI máximo',text:'Exige RSI ≤ '+F(v,0)+'. Permite evitar acciones sobreextendidas. Si el rango está restringido y falta RSI, la acción se excluye.'}}
+ if(key==='trend')return{title:'Exigir tendencia EMA20/EMA50',text:'Sólo pasan acciones con precio ≥ EMA20 ≥ EMA50. Si falta precio, EMA20 o EMA50, la acción no supera este criterio.'};
+ if(key==='illiquid')return{title:'Excluir liquidez baja',text:'Descarta valores con menos de 10.000 títulos en la sesión o spread BID/ASK >8% cuando hay spread. En TR el spread se toma de LSX; en EEUU, de Nasdaq.'};
+ if(key==='lock')return{title:'Candado del parámetro',text:'Bloquea o desbloquea únicamente la edición del número. El criterio sigue activo aunque el candado esté cerrado.'};
+ if(key==='reset')return{title:'Restablecer',text:'Recupera exactamente los valores originales del preset seleccionado y vuelve a bloquear los campos numéricos.'};
+ if(key==='saveCustom')return{title:'Guardar personalizado',text:'Guarda en este navegador los valores actuales como “Personalizado guardado”. No modifica los presets originales.'};
+ if(key==='futureHorizon')return{title:'Horizonte del catalizador',text:'Limita los eventos previstos a los próximos N días. Las noticias recientes del día pueden acompañar el análisis aunque no sean eventos futuros.'};
+ if(key==='futureType')return{title:'Tipo de catalizador',text:'Restringe a resultados, clínico/FDA, contratos, operaciones corporativas, financiación/dilución, analistas, eventos o regulatorio/legal.'};
+ if(key==='futureTrOnly')return{title:'Sólo Trade Republic',text:'Sólo deja eventos de acciones confirmadas como negociables y activas en Trade Republic/LSX. No incluye candidatos pendientes.'};
+ if(key==='catalogSearchTr')return{title:'Buscar en Catálogo TR',text:'Busca por ticker LSX, ticker EEUU relacionado, empresa, ISIN, WKN o mercado dentro de los instrumentos confirmados como negociables en Trade Republic.'};
+ if(key==='catalogSearchUs')return{title:'Buscar en Catálogo EEUU',text:'Busca por ticker, empresa, ISIN, mercado y demás campos del universo EEUU cargado.'};
+ if(key==='catalogReset')return{title:'Restablecer columnas',text:'Devuelve las columnas a su orden original, borra filtros de columna y restablece el orden inicial.'};
+ if(key==='catalogClear')return{title:'Limpiar filtros de columnas',text:'Borra todos los filtros de la segunda fila sin cambiar el orden de las columnas.'};
+ if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
+ return null;
+}
+let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
+const HELP_HOVER_DELAY_MS=1800;
+function cancelPendingHelp(target=null){
+ if(target&&pendingHelpTarget!==target)return;
+ if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
+ pendingHelpTarget=null;
+}
+function scheduleHelpBanner(target){
+ if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
+ cancelPendingHelp();
+ pendingHelpTarget=target;
+ helpHoverTimer=setTimeout(()=>{
+  helpHoverTimer=null;
+  let t=pendingHelpTarget;
+  pendingHelpTarget=null;
+  if(t&&t.matches(':hover'))showHelpBanner(t);
+ },HELP_HOVER_DELAY_MS);
+}
+function positionHelpBanner(target){
+ let banner=$('#hoverHelpBanner');if(!banner||!target)return;
+ let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
+ banner.style.width=w+'px';
+ banner.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+'px';
+ banner.style.top='0px';
+ let h=banner.offsetHeight||80,below=r.bottom+pad,above=r.top-h-pad;
+ banner.style.top=(below+h<window.innerHeight?below:Math.max(12,above))+'px';
+}
+function showHelpBanner(target){
+ let info=helpTextFor(target),banner=$('#hoverHelpBanner');if(!info||!banner)return;
+ activeHelpTarget=target;$('#hoverHelpTitle').textContent=info.title;$('#hoverHelpText').textContent=info.text;
+ banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
+}
+function hideHelpBanner(target=null){
+ if(target)cancelPendingHelp(target);else cancelPendingHelp();
+ if(target&&activeHelpTarget!==target)return;
+ let banner=$('#hoverHelpBanner');if(!banner)return;
+ banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
+}
+function initHelpSystem(){
+ const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
+ const navHelp={
+  entry:'Busca candidatas de entrada por sesión, variación, volumen, RSI, ADX, tendencia y liquidez, separando Trade Republic confirmado de Resto EEUU.',
+  recommendation:'Selecciona una candidata de EEUU y otra de Trade Republic mediante análisis multifactor y explica la señal vigente y sus factores.',
+  heatmap:'Mapa visual del mercado por sectores: el tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión.',
+  future:'Busca catalizadores próximos y noticias recientes capaces de aumentar la volatilidad antes del movimiento.',
+  calendar:'Ordena cronológicamente resultados, eventos corporativos, clínicos, regulatorios y noticias.',
+  catalog:'Tabla de instrumentos confirmados como negociables en Trade Republic/LSX, con búsqueda, orden y filtros por columna.',
+  catalogUS:'Tabla del universo EEUU cargado, con búsqueda, orden, movimiento de columnas y filtros por campo.'
+ };
+ $$('.nav-item[data-view]').forEach(el=>{el.dataset.help=navHelp[el.dataset.view]||'';el.dataset.helpTitle=el.textContent.trim()});
+ mark('#sessionSelect','session');mark('#presetTrigger','presetTrigger');mark('#applyFilters','apply');mark('#toggleFilters','filters');
+ $$('.preset-option').forEach(el=>el.dataset.helpKey='preset');
+ let trTab=$('[data-tab-group="entryMarket"] .tab[data-tab="tr"]');if(trTab)trTab.dataset.helpKey='marketTr';
+ let usTab=$('[data-tab-group="entryMarket"] .tab[data-tab="us"]');if(usTab)usTab.dataset.helpKey='marketUs';
+ $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
+ let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';
+ let liqLabel=$('#excludeIlliquid')?.closest('.filter-toggle');if(liqLabel)liqLabel.dataset.helpKey='illiquid';
+ markAll('.field-lock','lock');mark('#resetFilters','reset');mark('#saveCustomFilters','saveCustom');
+ mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
+ mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
+ mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');mark('#refreshHeatmap','refresh');
+ // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ $$('[data-help],[data-help-key]').forEach(el=>{
+  if(!el.hasAttribute('title'))return;
+  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+  el.removeAttribute('title');
+ });
+ document.addEventListener('pointerover',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(!t||t===activeHelpTarget)return;
+  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
+  scheduleHelpBanner(t);
+ });
+ document.addEventListener('pointerout',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
+   cancelPendingHelp(t);
+   hideHelpBanner(t);
+  }
+ });
+ document.addEventListener('focusin',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t){cancelPendingHelp();showHelpBanner(t)}
+ });
+ document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
+ window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
+ window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
+}
+
+function status(){}
+function renderCurrentView(){
+ if(state.currentView==='entry')renderEntry();
+ else if(state.currentView==='recommendation')renderRecommendation();
+ else if(state.currentView==='heatmap')renderHeatmap();
+ else if(state.currentView==='future')renderFuture();
+ else if(state.currentView==='calendar')renderCalendar();
+ else if(state.currentView==='catalog')renderCatalog();
+ else if(state.currentView==='catalogUS')renderCatalogUS();
+}
+function render(){
+ renderMarketLeaders();
+ renderFavorites();
+ if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
+  let box=$('#stockQuickDetail');
+  if(box&&!box.querySelector('.profile-hero'))renderQuickProfile();
+ }else renderCurrentView();
+ status();
+ requestAnimationFrame(()=>observeActiveTrLivePrices());
+}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let url=force?DATA+'?v='+Date.now():DATA;
+  let r=await fetch(url,{cache:force?'reload':'no-cache'});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){
+   uiRestoredScroll=true;
+   let y=state.savedScrollY||0;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+   setTimeout(()=>window.scrollTo(0,y),250);
+  }
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
+ if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
+ let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
+ if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
+ let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
+ if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;saveUiState();renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
+ else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
+ toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='change'?'change':'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+$('[data-tab-group="heatmapMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
+ heatmapState.market=b.dataset.tab==='us'?'us':'tr';
+ $('[data-tab-group="heatmapMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
+ renderHeatmap();
+}));
+$('#heatmapSession').addEventListener('change',e=>{heatmapState.session=e.target.value;renderHeatmap()});
+$('#heatmapLimit').addEventListener('change',e=>{heatmapState.limit=N(e.target.value)||250;renderHeatmap()});
+
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{catalogState.tr.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,220)});
+$('#catalogUSSearch').addEventListener('input',()=>{catalogState.us.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,220)});
+['refreshEntry','refreshFuture','refreshRecommendation','refreshHeatmap'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;catalogState[mode].limit=CATALOG_PAGE_SIZE;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};catalogState[mode].limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let more=e.target.closest&&e.target.closest('.catalog-load-more');
+ if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||CATALOG_PAGE_SIZE)+CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}st.limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+initHelpSystem();
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('pagehide',saveUiState);
+window.addEventListener('beforeunload',saveUiState);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveUiState()});
+setInterval(clock,1000);
+setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},15000);
+setInterval(()=>load(false),DATA_REFRESH_MS);
+load(true);
++F(v/1e12,1)+'T';
+ if(a>=1e9)return '
+ if(!['us','tr'].includes(mode))return;
+ let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
+ recommendationState.sold[mode][key]=Date.now();
+ bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
+ saveRecommendationState();
+ renderRecommendation();
+}
+
+function presetHelpText(value){
+ const help={
+  short:'Pensado para operaciones de pocos días. Busca acciones que ya muestran movimiento suficiente y que mantienen una liquidez razonable, pero sin exigir una tendencia técnica perfecta. Sirve para localizar movimientos que podrían tener continuidad durante las próximas 1–5 sesiones.',
+  medium:'Busca movimientos más sostenidos que un simple pico intradía. Da prioridad a acciones cuya estructura técnica mantiene una tendencia ordenada y suficiente liquidez, pensando en recorridos de varias semanas y no en perseguir una explosión puntual.',
+  broad:'Abre el abanico al máximo y aplica muy pocas restricciones. Es útil para explorar el mercado y no perder candidatos, a cambio de mostrar más ruido y valores de peor calidad. El listado se ordena por los que más están subiendo en la sesión elegida.',
+  intraday:'Busca acciones que están ganando fuerza durante la sesión actual. Exige que ya exista movimiento positivo y evita los valores con liquidez demasiado pobre. Es un filtro de impulso en curso, no una predicción previa al movimiento.',
+  exploded:'Busca acciones que ya han realizado una subida muy fuerte en la sesión seleccionada. Está pensado para localizar explosiones que ya se han producido, no para anticiparlas.',
+  postmarketExplosion:'Fuerza el análisis al Postmarket y muestra primero las acciones que más están subiendo después del cierre regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Postmarket.',
+  premarketExplosion:'Fuerza el análisis al Premarket y muestra primero las acciones que más están subiendo antes de la apertura regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Premarket.',
+  emerging:'Busca un movimiento que esté empezando ahora, no uno que ya haya explotado. Compara el último snapshot con el anterior y exige aceleración positiva reciente; además necesita una señal de actividad que la respalde, como entrada rápida de volumen, volumen relativo elevado o una noticia recién publicada. Descarta movimientos ya demasiado extendidos. Es un detector temprano de aceleración, no una garantía de subida.',
+  strict:'Busca señales con más confirmación técnica y menos ruido. Exige tendencia ordenada, fuerza de tendencia, volumen relativo y una zona de RSI razonable, además de evitar mala liquidez. Suele devolver menos acciones, pero con más condiciones técnicas cumplidas.',
+  custom:'Carga exactamente el criterio personalizado que guardaste en este navegador. Sirve para reutilizar tus propios umbrales sin modificar ninguno de los filtros predefinidos.'
+ };
+ return help[value]||'Selecciona este criterio para aplicar su lógica al mercado y ordenar las candidatas que la cumplen.';
+}
+function helpTextFor(el){
+ if(!el)return null;
+ if(el.dataset.help)return{title:el.dataset.helpTitle||'Qué hace',text:el.dataset.help};
+ let key=el.dataset.helpKey||'',num=id=>N($('#'+id)?.value);
+ if(key==='preset')return{title:el.textContent.trim(),text:presetHelpText(el.dataset.value)};
+ if(key==='session')return{title:'Sesión usada por los filtros',text:'Selecciona qué tramo de EEUU alimenta variación y volumen: Premarket 04:00–09:30, Regular 09:30–16:00 y Postmarket 16:00–20:00, hora de Nueva York. Automática cambia según la hora. En la pestaña TR, técnicos y variación de sesión proceden del valor EEUU vinculado; precio, BID y ASK son LSX.'};
+ if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige el tipo de búsqueda que quieres hacer. Al pasar por cada opción verás una explicación clara de qué intenta localizar, para qué horizonte sirve y cómo se comporta, sin limitarse a repetir sus valores internos.'};
+ if(key==='apply')return{title:'Aplicar filtros',text:'Lee los valores actuales de Configurar criterio y vuelve a calcular el listado. Un candado sólo impide editar un campo: no desactiva ese filtro.'};
+ if(key==='filters')return{title:'Configurar criterio',text:'Abre los umbrales que deciden qué acciones pueden aparecer: variación, volumen relativo, volumen mínimo, ADX, RSI, tendencia EMA y liquidez.'};
+ if(key==='marketTr')return{title:'Trade Republic',text:'Muestra sólo instrumentos cuya negociación en Trade Republic/LSX está confirmada: ISIN TR conocido, ticker LSX resuelto y mercado activo. Los candidatos sin confirmación quedan en EEUU.'};
+ if(key==='marketUs')return{title:'Resto EEUU',text:'Muestra acciones de Nasdaq/NYSE/AMEX/NYSE Arca que no están confirmadas como negociables en Trade Republic/LSX. Aquí quedan también los candidatos TR aún sin ticker LSX resuelto.'};
+ if(key==='minChange'){let v=num('minChange')??0;return{title:'Variación mínima',text:'Sólo aparecen acciones con variación ≥ '+F(v,1)+'% en la sesión elegida. Regular prioriza la variación actual Nasdaq; Pre/Post usan la de ese tramo. En TR se evalúa la referencia EEUU vinculada.'}}
+ if(key==='maxChange'){let v=num('maxChange')??0;return{title:'Variación máxima',text:v>0?'Excluye acciones con variación superior a '+F(v,1)+'% para evitar movimientos ya demasiado extendidos.':'Vale 0, por tanto está desactivado: no hay límite superior de variación.'}}
+ if(key==='minRelVolume'){let v=num('minRelVolume')??0;return{title:'Volumen relativo mínimo',text:v>0?'Exige ≥ '+F(v,2)+'× el volumen medio. 1,50× significa un 50% más actividad que la referencia. Si falta el dato, la acción se excluye mientras este filtro esté activo.':'Vale 0, por tanto no se exige volumen relativo mínimo.'}}
+ if(key==='minVolume'){let v=num('minVolume')??0;return{title:'Volumen mínimo',text:v>0?'Exige al menos '+I(v)+' títulos negociados en la sesión seleccionada. Si falta el dato, la acción no supera este filtro.':'Vale 0, por tanto no se exige un número mínimo de títulos.'}}
+ if(key==='minAdx'){let v=num('minAdx')??0;return{title:'ADX mínimo',text:v>0?'Exige ADX ≥ '+F(v,0)+'. ADX mide fuerza de tendencia, no dirección. Si falta ADX, la acción se excluye.':'Vale 0, por tanto no se exige fuerza mínima de tendencia por ADX.'}}
+ if(key==='minRsi'){let v=num('minRsi')??0;return{title:'RSI mínimo',text:'Exige RSI ≥ '+F(v,0)+'. El RSI va de 0 a 100 y este límite evita momentum inferior al umbral. Se combina con el RSI máximo.'}}
+ if(key==='maxRsi'){let v=num('maxRsi')??100;return{title:'RSI máximo',text:'Exige RSI ≤ '+F(v,0)+'. Permite evitar acciones sobreextendidas. Si el rango está restringido y falta RSI, la acción se excluye.'}}
+ if(key==='trend')return{title:'Exigir tendencia EMA20/EMA50',text:'Sólo pasan acciones con precio ≥ EMA20 ≥ EMA50. Si falta precio, EMA20 o EMA50, la acción no supera este criterio.'};
+ if(key==='illiquid')return{title:'Excluir liquidez baja',text:'Descarta valores con menos de 10.000 títulos en la sesión o spread BID/ASK >8% cuando hay spread. En TR el spread se toma de LSX; en EEUU, de Nasdaq.'};
+ if(key==='lock')return{title:'Candado del parámetro',text:'Bloquea o desbloquea únicamente la edición del número. El criterio sigue activo aunque el candado esté cerrado.'};
+ if(key==='reset')return{title:'Restablecer',text:'Recupera exactamente los valores originales del preset seleccionado y vuelve a bloquear los campos numéricos.'};
+ if(key==='saveCustom')return{title:'Guardar personalizado',text:'Guarda en este navegador los valores actuales como “Personalizado guardado”. No modifica los presets originales.'};
+ if(key==='futureHorizon')return{title:'Horizonte del catalizador',text:'Limita los eventos previstos a los próximos N días. Las noticias recientes del día pueden acompañar el análisis aunque no sean eventos futuros.'};
+ if(key==='futureType')return{title:'Tipo de catalizador',text:'Restringe a resultados, clínico/FDA, contratos, operaciones corporativas, financiación/dilución, analistas, eventos o regulatorio/legal.'};
+ if(key==='futureTrOnly')return{title:'Sólo Trade Republic',text:'Sólo deja eventos de acciones confirmadas como negociables y activas en Trade Republic/LSX. No incluye candidatos pendientes.'};
+ if(key==='catalogSearchTr')return{title:'Buscar en Catálogo TR',text:'Busca por ticker LSX, ticker EEUU relacionado, empresa, ISIN, WKN o mercado dentro de los instrumentos confirmados como negociables en Trade Republic.'};
+ if(key==='catalogSearchUs')return{title:'Buscar en Catálogo EEUU',text:'Busca por ticker, empresa, ISIN, mercado y demás campos del universo EEUU cargado.'};
+ if(key==='catalogReset')return{title:'Restablecer columnas',text:'Devuelve las columnas a su orden original, borra filtros de columna y restablece el orden inicial.'};
+ if(key==='catalogClear')return{title:'Limpiar filtros de columnas',text:'Borra todos los filtros de la segunda fila sin cambiar el orden de las columnas.'};
+ if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
+ return null;
+}
+let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
+const HELP_HOVER_DELAY_MS=1800;
+function cancelPendingHelp(target=null){
+ if(target&&pendingHelpTarget!==target)return;
+ if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
+ pendingHelpTarget=null;
+}
+function scheduleHelpBanner(target){
+ if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
+ cancelPendingHelp();
+ pendingHelpTarget=target;
+ helpHoverTimer=setTimeout(()=>{
+  helpHoverTimer=null;
+  let t=pendingHelpTarget;
+  pendingHelpTarget=null;
+  if(t&&t.matches(':hover'))showHelpBanner(t);
+ },HELP_HOVER_DELAY_MS);
+}
+function positionHelpBanner(target){
+ let banner=$('#hoverHelpBanner');if(!banner||!target)return;
+ let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
+ banner.style.width=w+'px';
+ banner.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+'px';
+ banner.style.top='0px';
+ let h=banner.offsetHeight||80,below=r.bottom+pad,above=r.top-h-pad;
+ banner.style.top=(below+h<window.innerHeight?below:Math.max(12,above))+'px';
+}
+function showHelpBanner(target){
+ let info=helpTextFor(target),banner=$('#hoverHelpBanner');if(!info||!banner)return;
+ activeHelpTarget=target;$('#hoverHelpTitle').textContent=info.title;$('#hoverHelpText').textContent=info.text;
+ banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
+}
+function hideHelpBanner(target=null){
+ if(target)cancelPendingHelp(target);else cancelPendingHelp();
+ if(target&&activeHelpTarget!==target)return;
+ let banner=$('#hoverHelpBanner');if(!banner)return;
+ banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
+}
+function initHelpSystem(){
+ const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
+ const navHelp={
+  entry:'Busca candidatas de entrada por sesión, variación, volumen, RSI, ADX, tendencia y liquidez, separando Trade Republic confirmado de Resto EEUU.',
+  recommendation:'Selecciona una candidata de EEUU y otra de Trade Republic mediante análisis multifactor y explica la señal vigente y sus factores.',
+  future:'Busca catalizadores próximos y noticias recientes capaces de aumentar la volatilidad antes del movimiento.',
+  calendar:'Ordena cronológicamente resultados, eventos corporativos, clínicos, regulatorios y noticias.',
+  catalog:'Tabla de instrumentos confirmados como negociables en Trade Republic/LSX, con búsqueda, orden y filtros por columna.',
+  catalogUS:'Tabla del universo EEUU cargado, con búsqueda, orden, movimiento de columnas y filtros por campo.'
+ };
+ $$('.nav-item[data-view]').forEach(el=>{el.dataset.help=navHelp[el.dataset.view]||'';el.dataset.helpTitle=el.textContent.trim()});
+ mark('#sessionSelect','session');mark('#presetTrigger','presetTrigger');mark('#applyFilters','apply');mark('#toggleFilters','filters');
+ $$('.preset-option').forEach(el=>el.dataset.helpKey='preset');
+ let trTab=$('[data-tab-group="entryMarket"] .tab[data-tab="tr"]');if(trTab)trTab.dataset.helpKey='marketTr';
+ let usTab=$('[data-tab-group="entryMarket"] .tab[data-tab="us"]');if(usTab)usTab.dataset.helpKey='marketUs';
+ $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
+ let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';
+ let liqLabel=$('#excludeIlliquid')?.closest('.filter-toggle');if(liqLabel)liqLabel.dataset.helpKey='illiquid';
+ markAll('.field-lock','lock');mark('#resetFilters','reset');mark('#saveCustomFilters','saveCustom');
+ mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
+ mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
+ mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');
+ // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ $$('[data-help],[data-help-key]').forEach(el=>{
+  if(!el.hasAttribute('title'))return;
+  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+  el.removeAttribute('title');
+ });
+ document.addEventListener('pointerover',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(!t||t===activeHelpTarget)return;
+  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
+  scheduleHelpBanner(t);
+ });
+ document.addEventListener('pointerout',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
+   cancelPendingHelp(t);
+   hideHelpBanner(t);
+  }
+ });
+ document.addEventListener('focusin',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t){cancelPendingHelp();showHelpBanner(t)}
+ });
+ document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
+ window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
+ window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
+}
+
+function status(){}
+function renderCurrentView(){
+ if(state.currentView==='entry')renderEntry();
+ else if(state.currentView==='recommendation')renderRecommendation();
+ else if(state.currentView==='future')renderFuture();
+ else if(state.currentView==='calendar')renderCalendar();
+ else if(state.currentView==='catalog')renderCatalog();
+ else if(state.currentView==='catalogUS')renderCatalogUS();
+}
+function render(){
+ renderMarketLeaders();
+ renderFavorites();
+ if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
+  let box=$('#stockQuickDetail');
+  if(box&&!box.querySelector('.profile-hero'))renderQuickProfile();
+ }else renderCurrentView();
+ status();
+ requestAnimationFrame(()=>observeActiveTrLivePrices());
+}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let url=force?DATA+'?v='+Date.now():DATA;
+  let r=await fetch(url,{cache:force?'reload':'no-cache'});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){
+   uiRestoredScroll=true;
+   let y=state.savedScrollY||0;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+   setTimeout(()=>window.scrollTo(0,y),250);
+  }
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
+ if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
+ let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
+ if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
+ let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
+ if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;saveUiState();renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
+ else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
+ toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='change'?'change':'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{catalogState.tr.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,220)});
+$('#catalogUSSearch').addEventListener('input',()=>{catalogState.us.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,220)});
+['refreshEntry','refreshFuture','refreshRecommendation'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;catalogState[mode].limit=CATALOG_PAGE_SIZE;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};catalogState[mode].limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let more=e.target.closest&&e.target.closest('.catalog-load-more');
+ if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||CATALOG_PAGE_SIZE)+CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}st.limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+initHelpSystem();
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('pagehide',saveUiState);
+window.addEventListener('beforeunload',saveUiState);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveUiState()});
+setInterval(clock,1000);
+setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},15000);
+setInterval(()=>load(false),DATA_REFRESH_MS);
+load(true);
++F(v/1e9,1)+'B';
+ if(a>=1e6)return '
+ if(!['us','tr'].includes(mode))return;
+ let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
+ recommendationState.sold[mode][key]=Date.now();
+ bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
+ saveRecommendationState();
+ renderRecommendation();
+}
+
+function presetHelpText(value){
+ const help={
+  short:'Pensado para operaciones de pocos días. Busca acciones que ya muestran movimiento suficiente y que mantienen una liquidez razonable, pero sin exigir una tendencia técnica perfecta. Sirve para localizar movimientos que podrían tener continuidad durante las próximas 1–5 sesiones.',
+  medium:'Busca movimientos más sostenidos que un simple pico intradía. Da prioridad a acciones cuya estructura técnica mantiene una tendencia ordenada y suficiente liquidez, pensando en recorridos de varias semanas y no en perseguir una explosión puntual.',
+  broad:'Abre el abanico al máximo y aplica muy pocas restricciones. Es útil para explorar el mercado y no perder candidatos, a cambio de mostrar más ruido y valores de peor calidad. El listado se ordena por los que más están subiendo en la sesión elegida.',
+  intraday:'Busca acciones que están ganando fuerza durante la sesión actual. Exige que ya exista movimiento positivo y evita los valores con liquidez demasiado pobre. Es un filtro de impulso en curso, no una predicción previa al movimiento.',
+  exploded:'Busca acciones que ya han realizado una subida muy fuerte en la sesión seleccionada. Está pensado para localizar explosiones que ya se han producido, no para anticiparlas.',
+  postmarketExplosion:'Fuerza el análisis al Postmarket y muestra primero las acciones que más están subiendo después del cierre regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Postmarket.',
+  premarketExplosion:'Fuerza el análisis al Premarket y muestra primero las acciones que más están subiendo antes de la apertura regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Premarket.',
+  emerging:'Busca un movimiento que esté empezando ahora, no uno que ya haya explotado. Compara el último snapshot con el anterior y exige aceleración positiva reciente; además necesita una señal de actividad que la respalde, como entrada rápida de volumen, volumen relativo elevado o una noticia recién publicada. Descarta movimientos ya demasiado extendidos. Es un detector temprano de aceleración, no una garantía de subida.',
+  strict:'Busca señales con más confirmación técnica y menos ruido. Exige tendencia ordenada, fuerza de tendencia, volumen relativo y una zona de RSI razonable, además de evitar mala liquidez. Suele devolver menos acciones, pero con más condiciones técnicas cumplidas.',
+  custom:'Carga exactamente el criterio personalizado que guardaste en este navegador. Sirve para reutilizar tus propios umbrales sin modificar ninguno de los filtros predefinidos.'
+ };
+ return help[value]||'Selecciona este criterio para aplicar su lógica al mercado y ordenar las candidatas que la cumplen.';
+}
+function helpTextFor(el){
+ if(!el)return null;
+ if(el.dataset.help)return{title:el.dataset.helpTitle||'Qué hace',text:el.dataset.help};
+ let key=el.dataset.helpKey||'',num=id=>N($('#'+id)?.value);
+ if(key==='preset')return{title:el.textContent.trim(),text:presetHelpText(el.dataset.value)};
+ if(key==='session')return{title:'Sesión usada por los filtros',text:'Selecciona qué tramo de EEUU alimenta variación y volumen: Premarket 04:00–09:30, Regular 09:30–16:00 y Postmarket 16:00–20:00, hora de Nueva York. Automática cambia según la hora. En la pestaña TR, técnicos y variación de sesión proceden del valor EEUU vinculado; precio, BID y ASK son LSX.'};
+ if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige el tipo de búsqueda que quieres hacer. Al pasar por cada opción verás una explicación clara de qué intenta localizar, para qué horizonte sirve y cómo se comporta, sin limitarse a repetir sus valores internos.'};
+ if(key==='apply')return{title:'Aplicar filtros',text:'Lee los valores actuales de Configurar criterio y vuelve a calcular el listado. Un candado sólo impide editar un campo: no desactiva ese filtro.'};
+ if(key==='filters')return{title:'Configurar criterio',text:'Abre los umbrales que deciden qué acciones pueden aparecer: variación, volumen relativo, volumen mínimo, ADX, RSI, tendencia EMA y liquidez.'};
+ if(key==='marketTr')return{title:'Trade Republic',text:'Muestra sólo instrumentos cuya negociación en Trade Republic/LSX está confirmada: ISIN TR conocido, ticker LSX resuelto y mercado activo. Los candidatos sin confirmación quedan en EEUU.'};
+ if(key==='marketUs')return{title:'Resto EEUU',text:'Muestra acciones de Nasdaq/NYSE/AMEX/NYSE Arca que no están confirmadas como negociables en Trade Republic/LSX. Aquí quedan también los candidatos TR aún sin ticker LSX resuelto.'};
+ if(key==='minChange'){let v=num('minChange')??0;return{title:'Variación mínima',text:'Sólo aparecen acciones con variación ≥ '+F(v,1)+'% en la sesión elegida. Regular prioriza la variación actual Nasdaq; Pre/Post usan la de ese tramo. En TR se evalúa la referencia EEUU vinculada.'}}
+ if(key==='maxChange'){let v=num('maxChange')??0;return{title:'Variación máxima',text:v>0?'Excluye acciones con variación superior a '+F(v,1)+'% para evitar movimientos ya demasiado extendidos.':'Vale 0, por tanto está desactivado: no hay límite superior de variación.'}}
+ if(key==='minRelVolume'){let v=num('minRelVolume')??0;return{title:'Volumen relativo mínimo',text:v>0?'Exige ≥ '+F(v,2)+'× el volumen medio. 1,50× significa un 50% más actividad que la referencia. Si falta el dato, la acción se excluye mientras este filtro esté activo.':'Vale 0, por tanto no se exige volumen relativo mínimo.'}}
+ if(key==='minVolume'){let v=num('minVolume')??0;return{title:'Volumen mínimo',text:v>0?'Exige al menos '+I(v)+' títulos negociados en la sesión seleccionada. Si falta el dato, la acción no supera este filtro.':'Vale 0, por tanto no se exige un número mínimo de títulos.'}}
+ if(key==='minAdx'){let v=num('minAdx')??0;return{title:'ADX mínimo',text:v>0?'Exige ADX ≥ '+F(v,0)+'. ADX mide fuerza de tendencia, no dirección. Si falta ADX, la acción se excluye.':'Vale 0, por tanto no se exige fuerza mínima de tendencia por ADX.'}}
+ if(key==='minRsi'){let v=num('minRsi')??0;return{title:'RSI mínimo',text:'Exige RSI ≥ '+F(v,0)+'. El RSI va de 0 a 100 y este límite evita momentum inferior al umbral. Se combina con el RSI máximo.'}}
+ if(key==='maxRsi'){let v=num('maxRsi')??100;return{title:'RSI máximo',text:'Exige RSI ≤ '+F(v,0)+'. Permite evitar acciones sobreextendidas. Si el rango está restringido y falta RSI, la acción se excluye.'}}
+ if(key==='trend')return{title:'Exigir tendencia EMA20/EMA50',text:'Sólo pasan acciones con precio ≥ EMA20 ≥ EMA50. Si falta precio, EMA20 o EMA50, la acción no supera este criterio.'};
+ if(key==='illiquid')return{title:'Excluir liquidez baja',text:'Descarta valores con menos de 10.000 títulos en la sesión o spread BID/ASK >8% cuando hay spread. En TR el spread se toma de LSX; en EEUU, de Nasdaq.'};
+ if(key==='lock')return{title:'Candado del parámetro',text:'Bloquea o desbloquea únicamente la edición del número. El criterio sigue activo aunque el candado esté cerrado.'};
+ if(key==='reset')return{title:'Restablecer',text:'Recupera exactamente los valores originales del preset seleccionado y vuelve a bloquear los campos numéricos.'};
+ if(key==='saveCustom')return{title:'Guardar personalizado',text:'Guarda en este navegador los valores actuales como “Personalizado guardado”. No modifica los presets originales.'};
+ if(key==='futureHorizon')return{title:'Horizonte del catalizador',text:'Limita los eventos previstos a los próximos N días. Las noticias recientes del día pueden acompañar el análisis aunque no sean eventos futuros.'};
+ if(key==='futureType')return{title:'Tipo de catalizador',text:'Restringe a resultados, clínico/FDA, contratos, operaciones corporativas, financiación/dilución, analistas, eventos o regulatorio/legal.'};
+ if(key==='futureTrOnly')return{title:'Sólo Trade Republic',text:'Sólo deja eventos de acciones confirmadas como negociables y activas en Trade Republic/LSX. No incluye candidatos pendientes.'};
+ if(key==='catalogSearchTr')return{title:'Buscar en Catálogo TR',text:'Busca por ticker LSX, ticker EEUU relacionado, empresa, ISIN, WKN o mercado dentro de los instrumentos confirmados como negociables en Trade Republic.'};
+ if(key==='catalogSearchUs')return{title:'Buscar en Catálogo EEUU',text:'Busca por ticker, empresa, ISIN, mercado y demás campos del universo EEUU cargado.'};
+ if(key==='catalogReset')return{title:'Restablecer columnas',text:'Devuelve las columnas a su orden original, borra filtros de columna y restablece el orden inicial.'};
+ if(key==='catalogClear')return{title:'Limpiar filtros de columnas',text:'Borra todos los filtros de la segunda fila sin cambiar el orden de las columnas.'};
+ if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
+ return null;
+}
+let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
+const HELP_HOVER_DELAY_MS=1800;
+function cancelPendingHelp(target=null){
+ if(target&&pendingHelpTarget!==target)return;
+ if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
+ pendingHelpTarget=null;
+}
+function scheduleHelpBanner(target){
+ if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
+ cancelPendingHelp();
+ pendingHelpTarget=target;
+ helpHoverTimer=setTimeout(()=>{
+  helpHoverTimer=null;
+  let t=pendingHelpTarget;
+  pendingHelpTarget=null;
+  if(t&&t.matches(':hover'))showHelpBanner(t);
+ },HELP_HOVER_DELAY_MS);
+}
+function positionHelpBanner(target){
+ let banner=$('#hoverHelpBanner');if(!banner||!target)return;
+ let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
+ banner.style.width=w+'px';
+ banner.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+'px';
+ banner.style.top='0px';
+ let h=banner.offsetHeight||80,below=r.bottom+pad,above=r.top-h-pad;
+ banner.style.top=(below+h<window.innerHeight?below:Math.max(12,above))+'px';
+}
+function showHelpBanner(target){
+ let info=helpTextFor(target),banner=$('#hoverHelpBanner');if(!info||!banner)return;
+ activeHelpTarget=target;$('#hoverHelpTitle').textContent=info.title;$('#hoverHelpText').textContent=info.text;
+ banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
+}
+function hideHelpBanner(target=null){
+ if(target)cancelPendingHelp(target);else cancelPendingHelp();
+ if(target&&activeHelpTarget!==target)return;
+ let banner=$('#hoverHelpBanner');if(!banner)return;
+ banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
+}
+function initHelpSystem(){
+ const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
+ const navHelp={
+  entry:'Busca candidatas de entrada por sesión, variación, volumen, RSI, ADX, tendencia y liquidez, separando Trade Republic confirmado de Resto EEUU.',
+  recommendation:'Selecciona una candidata de EEUU y otra de Trade Republic mediante análisis multifactor y explica la señal vigente y sus factores.',
+  future:'Busca catalizadores próximos y noticias recientes capaces de aumentar la volatilidad antes del movimiento.',
+  calendar:'Ordena cronológicamente resultados, eventos corporativos, clínicos, regulatorios y noticias.',
+  catalog:'Tabla de instrumentos confirmados como negociables en Trade Republic/LSX, con búsqueda, orden y filtros por columna.',
+  catalogUS:'Tabla del universo EEUU cargado, con búsqueda, orden, movimiento de columnas y filtros por campo.'
+ };
+ $$('.nav-item[data-view]').forEach(el=>{el.dataset.help=navHelp[el.dataset.view]||'';el.dataset.helpTitle=el.textContent.trim()});
+ mark('#sessionSelect','session');mark('#presetTrigger','presetTrigger');mark('#applyFilters','apply');mark('#toggleFilters','filters');
+ $$('.preset-option').forEach(el=>el.dataset.helpKey='preset');
+ let trTab=$('[data-tab-group="entryMarket"] .tab[data-tab="tr"]');if(trTab)trTab.dataset.helpKey='marketTr';
+ let usTab=$('[data-tab-group="entryMarket"] .tab[data-tab="us"]');if(usTab)usTab.dataset.helpKey='marketUs';
+ $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
+ let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';
+ let liqLabel=$('#excludeIlliquid')?.closest('.filter-toggle');if(liqLabel)liqLabel.dataset.helpKey='illiquid';
+ markAll('.field-lock','lock');mark('#resetFilters','reset');mark('#saveCustomFilters','saveCustom');
+ mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
+ mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
+ mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');
+ // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ $$('[data-help],[data-help-key]').forEach(el=>{
+  if(!el.hasAttribute('title'))return;
+  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+  el.removeAttribute('title');
+ });
+ document.addEventListener('pointerover',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(!t||t===activeHelpTarget)return;
+  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
+  scheduleHelpBanner(t);
+ });
+ document.addEventListener('pointerout',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
+   cancelPendingHelp(t);
+   hideHelpBanner(t);
+  }
+ });
+ document.addEventListener('focusin',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t){cancelPendingHelp();showHelpBanner(t)}
+ });
+ document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
+ window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
+ window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
+}
+
+function status(){}
+function renderCurrentView(){
+ if(state.currentView==='entry')renderEntry();
+ else if(state.currentView==='recommendation')renderRecommendation();
+ else if(state.currentView==='future')renderFuture();
+ else if(state.currentView==='calendar')renderCalendar();
+ else if(state.currentView==='catalog')renderCatalog();
+ else if(state.currentView==='catalogUS')renderCatalogUS();
+}
+function render(){
+ renderMarketLeaders();
+ renderFavorites();
+ if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
+  let box=$('#stockQuickDetail');
+  if(box&&!box.querySelector('.profile-hero'))renderQuickProfile();
+ }else renderCurrentView();
+ status();
+ requestAnimationFrame(()=>observeActiveTrLivePrices());
+}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let url=force?DATA+'?v='+Date.now():DATA;
+  let r=await fetch(url,{cache:force?'reload':'no-cache'});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){
+   uiRestoredScroll=true;
+   let y=state.savedScrollY||0;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+   setTimeout(()=>window.scrollTo(0,y),250);
+  }
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
+ if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
+ let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
+ if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
+ let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
+ if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;saveUiState();renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
+ else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
+ toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='change'?'change':'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{catalogState.tr.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,220)});
+$('#catalogUSSearch').addEventListener('input',()=>{catalogState.us.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,220)});
+['refreshEntry','refreshFuture','refreshRecommendation'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;catalogState[mode].limit=CATALOG_PAGE_SIZE;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};catalogState[mode].limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let more=e.target.closest&&e.target.closest('.catalog-load-more');
+ if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||CATALOG_PAGE_SIZE)+CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}st.limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+initHelpSystem();
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('pagehide',saveUiState);
+window.addEventListener('beforeunload',saveUiState);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveUiState()});
+setInterval(clock,1000);
+setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},15000);
+setInterval(()=>load(false),DATA_REFRESH_MS);
+load(true);
++F(v/1e6,1)+'M';
+ return '
+ if(!['us','tr'].includes(mode))return;
+ let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
+ recommendationState.sold[mode][key]=Date.now();
+ bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
+ saveRecommendationState();
+ renderRecommendation();
+}
+
+function presetHelpText(value){
+ const help={
+  short:'Pensado para operaciones de pocos días. Busca acciones que ya muestran movimiento suficiente y que mantienen una liquidez razonable, pero sin exigir una tendencia técnica perfecta. Sirve para localizar movimientos que podrían tener continuidad durante las próximas 1–5 sesiones.',
+  medium:'Busca movimientos más sostenidos que un simple pico intradía. Da prioridad a acciones cuya estructura técnica mantiene una tendencia ordenada y suficiente liquidez, pensando en recorridos de varias semanas y no en perseguir una explosión puntual.',
+  broad:'Abre el abanico al máximo y aplica muy pocas restricciones. Es útil para explorar el mercado y no perder candidatos, a cambio de mostrar más ruido y valores de peor calidad. El listado se ordena por los que más están subiendo en la sesión elegida.',
+  intraday:'Busca acciones que están ganando fuerza durante la sesión actual. Exige que ya exista movimiento positivo y evita los valores con liquidez demasiado pobre. Es un filtro de impulso en curso, no una predicción previa al movimiento.',
+  exploded:'Busca acciones que ya han realizado una subida muy fuerte en la sesión seleccionada. Está pensado para localizar explosiones que ya se han producido, no para anticiparlas.',
+  postmarketExplosion:'Fuerza el análisis al Postmarket y muestra primero las acciones que más están subiendo después del cierre regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Postmarket.',
+  premarketExplosion:'Fuerza el análisis al Premarket y muestra primero las acciones que más están subiendo antes de la apertura regular de EEUU. No exige una subida mínima artificial: ordena el mercado por la variación real de Premarket.',
+  emerging:'Busca un movimiento que esté empezando ahora, no uno que ya haya explotado. Compara el último snapshot con el anterior y exige aceleración positiva reciente; además necesita una señal de actividad que la respalde, como entrada rápida de volumen, volumen relativo elevado o una noticia recién publicada. Descarta movimientos ya demasiado extendidos. Es un detector temprano de aceleración, no una garantía de subida.',
+  strict:'Busca señales con más confirmación técnica y menos ruido. Exige tendencia ordenada, fuerza de tendencia, volumen relativo y una zona de RSI razonable, además de evitar mala liquidez. Suele devolver menos acciones, pero con más condiciones técnicas cumplidas.',
+  custom:'Carga exactamente el criterio personalizado que guardaste en este navegador. Sirve para reutilizar tus propios umbrales sin modificar ninguno de los filtros predefinidos.'
+ };
+ return help[value]||'Selecciona este criterio para aplicar su lógica al mercado y ordenar las candidatas que la cumplen.';
+}
+function helpTextFor(el){
+ if(!el)return null;
+ if(el.dataset.help)return{title:el.dataset.helpTitle||'Qué hace',text:el.dataset.help};
+ let key=el.dataset.helpKey||'',num=id=>N($('#'+id)?.value);
+ if(key==='preset')return{title:el.textContent.trim(),text:presetHelpText(el.dataset.value)};
+ if(key==='session')return{title:'Sesión usada por los filtros',text:'Selecciona qué tramo de EEUU alimenta variación y volumen: Premarket 04:00–09:30, Regular 09:30–16:00 y Postmarket 16:00–20:00, hora de Nueva York. Automática cambia según la hora. En la pestaña TR, técnicos y variación de sesión proceden del valor EEUU vinculado; precio, BID y ASK son LSX.'};
+ if(key==='presetTrigger')return{title:'Criterio preconfigurado',text:'Elige el tipo de búsqueda que quieres hacer. Al pasar por cada opción verás una explicación clara de qué intenta localizar, para qué horizonte sirve y cómo se comporta, sin limitarse a repetir sus valores internos.'};
+ if(key==='apply')return{title:'Aplicar filtros',text:'Lee los valores actuales de Configurar criterio y vuelve a calcular el listado. Un candado sólo impide editar un campo: no desactiva ese filtro.'};
+ if(key==='filters')return{title:'Configurar criterio',text:'Abre los umbrales que deciden qué acciones pueden aparecer: variación, volumen relativo, volumen mínimo, ADX, RSI, tendencia EMA y liquidez.'};
+ if(key==='marketTr')return{title:'Trade Republic',text:'Muestra sólo instrumentos cuya negociación en Trade Republic/LSX está confirmada: ISIN TR conocido, ticker LSX resuelto y mercado activo. Los candidatos sin confirmación quedan en EEUU.'};
+ if(key==='marketUs')return{title:'Resto EEUU',text:'Muestra acciones de Nasdaq/NYSE/AMEX/NYSE Arca que no están confirmadas como negociables en Trade Republic/LSX. Aquí quedan también los candidatos TR aún sin ticker LSX resuelto.'};
+ if(key==='minChange'){let v=num('minChange')??0;return{title:'Variación mínima',text:'Sólo aparecen acciones con variación ≥ '+F(v,1)+'% en la sesión elegida. Regular prioriza la variación actual Nasdaq; Pre/Post usan la de ese tramo. En TR se evalúa la referencia EEUU vinculada.'}}
+ if(key==='maxChange'){let v=num('maxChange')??0;return{title:'Variación máxima',text:v>0?'Excluye acciones con variación superior a '+F(v,1)+'% para evitar movimientos ya demasiado extendidos.':'Vale 0, por tanto está desactivado: no hay límite superior de variación.'}}
+ if(key==='minRelVolume'){let v=num('minRelVolume')??0;return{title:'Volumen relativo mínimo',text:v>0?'Exige ≥ '+F(v,2)+'× el volumen medio. 1,50× significa un 50% más actividad que la referencia. Si falta el dato, la acción se excluye mientras este filtro esté activo.':'Vale 0, por tanto no se exige volumen relativo mínimo.'}}
+ if(key==='minVolume'){let v=num('minVolume')??0;return{title:'Volumen mínimo',text:v>0?'Exige al menos '+I(v)+' títulos negociados en la sesión seleccionada. Si falta el dato, la acción no supera este filtro.':'Vale 0, por tanto no se exige un número mínimo de títulos.'}}
+ if(key==='minAdx'){let v=num('minAdx')??0;return{title:'ADX mínimo',text:v>0?'Exige ADX ≥ '+F(v,0)+'. ADX mide fuerza de tendencia, no dirección. Si falta ADX, la acción se excluye.':'Vale 0, por tanto no se exige fuerza mínima de tendencia por ADX.'}}
+ if(key==='minRsi'){let v=num('minRsi')??0;return{title:'RSI mínimo',text:'Exige RSI ≥ '+F(v,0)+'. El RSI va de 0 a 100 y este límite evita momentum inferior al umbral. Se combina con el RSI máximo.'}}
+ if(key==='maxRsi'){let v=num('maxRsi')??100;return{title:'RSI máximo',text:'Exige RSI ≤ '+F(v,0)+'. Permite evitar acciones sobreextendidas. Si el rango está restringido y falta RSI, la acción se excluye.'}}
+ if(key==='trend')return{title:'Exigir tendencia EMA20/EMA50',text:'Sólo pasan acciones con precio ≥ EMA20 ≥ EMA50. Si falta precio, EMA20 o EMA50, la acción no supera este criterio.'};
+ if(key==='illiquid')return{title:'Excluir liquidez baja',text:'Descarta valores con menos de 10.000 títulos en la sesión o spread BID/ASK >8% cuando hay spread. En TR el spread se toma de LSX; en EEUU, de Nasdaq.'};
+ if(key==='lock')return{title:'Candado del parámetro',text:'Bloquea o desbloquea únicamente la edición del número. El criterio sigue activo aunque el candado esté cerrado.'};
+ if(key==='reset')return{title:'Restablecer',text:'Recupera exactamente los valores originales del preset seleccionado y vuelve a bloquear los campos numéricos.'};
+ if(key==='saveCustom')return{title:'Guardar personalizado',text:'Guarda en este navegador los valores actuales como “Personalizado guardado”. No modifica los presets originales.'};
+ if(key==='futureHorizon')return{title:'Horizonte del catalizador',text:'Limita los eventos previstos a los próximos N días. Las noticias recientes del día pueden acompañar el análisis aunque no sean eventos futuros.'};
+ if(key==='futureType')return{title:'Tipo de catalizador',text:'Restringe a resultados, clínico/FDA, contratos, operaciones corporativas, financiación/dilución, analistas, eventos o regulatorio/legal.'};
+ if(key==='futureTrOnly')return{title:'Sólo Trade Republic',text:'Sólo deja eventos de acciones confirmadas como negociables y activas en Trade Republic/LSX. No incluye candidatos pendientes.'};
+ if(key==='catalogSearchTr')return{title:'Buscar en Catálogo TR',text:'Busca por ticker LSX, ticker EEUU relacionado, empresa, ISIN, WKN o mercado dentro de los instrumentos confirmados como negociables en Trade Republic.'};
+ if(key==='catalogSearchUs')return{title:'Buscar en Catálogo EEUU',text:'Busca por ticker, empresa, ISIN, mercado y demás campos del universo EEUU cargado.'};
+ if(key==='catalogReset')return{title:'Restablecer columnas',text:'Devuelve las columnas a su orden original, borra filtros de columna y restablece el orden inicial.'};
+ if(key==='catalogClear')return{title:'Limpiar filtros de columnas',text:'Borra todos los filtros de la segunda fila sin cambiar el orden de las columnas.'};
+ if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
+ return null;
+}
+let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
+const HELP_HOVER_DELAY_MS=1800;
+function cancelPendingHelp(target=null){
+ if(target&&pendingHelpTarget!==target)return;
+ if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
+ pendingHelpTarget=null;
+}
+function scheduleHelpBanner(target){
+ if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
+ cancelPendingHelp();
+ pendingHelpTarget=target;
+ helpHoverTimer=setTimeout(()=>{
+  helpHoverTimer=null;
+  let t=pendingHelpTarget;
+  pendingHelpTarget=null;
+  if(t&&t.matches(':hover'))showHelpBanner(t);
+ },HELP_HOVER_DELAY_MS);
+}
+function positionHelpBanner(target){
+ let banner=$('#hoverHelpBanner');if(!banner||!target)return;
+ let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
+ banner.style.width=w+'px';
+ banner.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+'px';
+ banner.style.top='0px';
+ let h=banner.offsetHeight||80,below=r.bottom+pad,above=r.top-h-pad;
+ banner.style.top=(below+h<window.innerHeight?below:Math.max(12,above))+'px';
+}
+function showHelpBanner(target){
+ let info=helpTextFor(target),banner=$('#hoverHelpBanner');if(!info||!banner)return;
+ activeHelpTarget=target;$('#hoverHelpTitle').textContent=info.title;$('#hoverHelpText').textContent=info.text;
+ banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
+}
+function hideHelpBanner(target=null){
+ if(target)cancelPendingHelp(target);else cancelPendingHelp();
+ if(target&&activeHelpTarget!==target)return;
+ let banner=$('#hoverHelpBanner');if(!banner)return;
+ banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
+}
+function initHelpSystem(){
+ const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
+ const navHelp={
+  entry:'Busca candidatas de entrada por sesión, variación, volumen, RSI, ADX, tendencia y liquidez, separando Trade Republic confirmado de Resto EEUU.',
+  recommendation:'Selecciona una candidata de EEUU y otra de Trade Republic mediante análisis multifactor y explica la señal vigente y sus factores.',
+  future:'Busca catalizadores próximos y noticias recientes capaces de aumentar la volatilidad antes del movimiento.',
+  calendar:'Ordena cronológicamente resultados, eventos corporativos, clínicos, regulatorios y noticias.',
+  catalog:'Tabla de instrumentos confirmados como negociables en Trade Republic/LSX, con búsqueda, orden y filtros por columna.',
+  catalogUS:'Tabla del universo EEUU cargado, con búsqueda, orden, movimiento de columnas y filtros por campo.'
+ };
+ $$('.nav-item[data-view]').forEach(el=>{el.dataset.help=navHelp[el.dataset.view]||'';el.dataset.helpTitle=el.textContent.trim()});
+ mark('#sessionSelect','session');mark('#presetTrigger','presetTrigger');mark('#applyFilters','apply');mark('#toggleFilters','filters');
+ $$('.preset-option').forEach(el=>el.dataset.helpKey='preset');
+ let trTab=$('[data-tab-group="entryMarket"] .tab[data-tab="tr"]');if(trTab)trTab.dataset.helpKey='marketTr';
+ let usTab=$('[data-tab-group="entryMarket"] .tab[data-tab="us"]');if(usTab)usTab.dataset.helpKey='marketUs';
+ $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
+ let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';
+ let liqLabel=$('#excludeIlliquid')?.closest('.filter-toggle');if(liqLabel)liqLabel.dataset.helpKey='illiquid';
+ markAll('.field-lock','lock');mark('#resetFilters','reset');mark('#saveCustomFilters','saveCustom');
+ mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
+ mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
+ mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');
+ // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ $$('[data-help],[data-help-key]').forEach(el=>{
+  if(!el.hasAttribute('title'))return;
+  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+  el.removeAttribute('title');
+ });
+ document.addEventListener('pointerover',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(!t||t===activeHelpTarget)return;
+  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
+  scheduleHelpBanner(t);
+ });
+ document.addEventListener('pointerout',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
+   cancelPendingHelp(t);
+   hideHelpBanner(t);
+  }
+ });
+ document.addEventListener('focusin',e=>{
+  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
+  if(t){cancelPendingHelp();showHelpBanner(t)}
+ });
+ document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
+ window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
+ window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
+}
+
+function status(){}
+function renderCurrentView(){
+ if(state.currentView==='entry')renderEntry();
+ else if(state.currentView==='recommendation')renderRecommendation();
+ else if(state.currentView==='future')renderFuture();
+ else if(state.currentView==='calendar')renderCalendar();
+ else if(state.currentView==='catalog')renderCatalog();
+ else if(state.currentView==='catalogUS')renderCatalogUS();
+}
+function render(){
+ renderMarketLeaders();
+ renderFavorites();
+ if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
+  let box=$('#stockQuickDetail');
+  if(box&&!box.querySelector('.profile-hero'))renderQuickProfile();
+ }else renderCurrentView();
+ status();
+ requestAnimationFrame(()=>observeActiveTrLivePrices());
+}
+async function load(force=false){
+ if(loading)return;
+ loading=true;
+ try{
+  let url=force?DATA+'?v='+Date.now():DATA;
+  let r=await fetch(url,{cache:force?'reload':'no-cache'});
+  if(!r.ok)throw Error(r.status);
+  let j=await r.json();
+  if(!Array.isArray(j.stocks))throw Error('formato');
+  let stamp=String((j.meta&&j.meta.updatedAt)||'');
+  if(!force&&stamp&&stamp===lastDataStamp)return;
+  lastDataStamp=stamp;
+  let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
+  for(let s of j.stocks){
+   let old=previous.get(stockKey(s));if(!old)continue;
+   ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
+  }
+  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  render();
+  if(!uiRestoredScroll){
+   uiRestoredScroll=true;
+   let y=state.savedScrollY||0;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+   setTimeout(()=>window.scrollTo(0,y),250);
+  }
+ }catch(e){
+  console.error(e);
+  if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+ }finally{
+  loading=false
+ }
+}
+function show(v,preserveProfile=false){if(!V[v])return;if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('#sidebar').classList.remove('open');saveUiState();render()}
+let lastLeaderSession=null;
+function clock(){
+ let now=new Date();
+ document.querySelectorAll('.market-clock').forEach(x=>{
+  let tz=x.dataset.tz,time=x.querySelector('time');
+  if(!time||!tz)return;
+  time.textContent=new Intl.DateTimeFormat('es-ES',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);
+ });
+ let se=currentMarketSession();
+ if(se!==lastLeaderSession){
+  lastLeaderSession=se;
+  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+ }
+}
+
+document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+document.addEventListener('click',e=>{
+ let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
+ if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
+ let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
+ if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
+ let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
+ if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
+ let b=e.target.closest&&e.target.closest('.fav-star');
+ if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
+ if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let back=e.target.closest&&e.target.closest('[data-profile-back]');
+ if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(row){
+  if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+  e.preventDefault();e.stopPropagation();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ }
+});
+document.addEventListener('keydown',e=>{
+ let row=e.target.closest&&e.target.closest('[data-stock-key]');
+ if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+ e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+});
+$('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;saveUiState();renderEntry();setTimeout(pollUsLive,0)});
+function setPreset(value){
+ state.preset=value;$('#presetSelect').value=value;
+ let opt=$('.preset-option[data-value="'+value+'"]');
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
+ if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
+ else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
+ else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
+ toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
+}
+$('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
+$('#presetTrigger').addEventListener('click',e=>{e.stopPropagation();let open=$('#presetPicker').classList.toggle('open');$('#presetTrigger').setAttribute('aria-expanded',open?'true':'false')});
+$$('.preset-option').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();setPreset(b.dataset.value);$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}));
+document.addEventListener('click',e=>{if(!$('#presetPicker').contains(e.target)){$('#presetPicker').classList.remove('open');$('#presetTrigger').setAttribute('aria-expanded','false')}});
+$('#applyFilters').addEventListener('click',()=>{state.filters=fromUI();renderEntry();setTimeout(pollUsLive,0)});
+$('#resetFilters').addEventListener('click',()=>{
+ state.filters=state.preset==='custom'?(savedCustomPreset()||preset('broad')):preset(state.preset);
+ toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
+});
+$('#saveCustomFilters').addEventListener('click',()=>{
+ let q=fromUI();q.sort=state.filters.sort==='change'?'change':'score';
+ if(saveCustomPreset(q)){
+  state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
+  let opt=$('.preset-option[data-value="custom"]');
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  renderEntry();setTimeout(pollUsLive,0);
+ }
+});
+$('#toggleFilters').addEventListener('click',()=>$('#filterDetails').open=!$('#filterDetails').open);
+$$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
+$$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));
+let catalogSearchTimer=null;
+$('#catalogSearch').addEventListener('input',()=>{catalogState.tr.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,220)});
+$('#catalogUSSearch').addEventListener('input',()=>{catalogState.us.limit=CATALOG_PAGE_SIZE;clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,220)});
+['refreshEntry','refreshFuture','refreshRecommendation'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+
+let catalogFilterTimer=null;
+document.addEventListener('input',e=>{
+ let f=e.target.closest&&e.target.closest('.catalog-col-filter');if(!f)return;
+ let mode=f.dataset.mode,col=f.dataset.col;if(!catalogState[mode]||!col)return;
+ catalogState[mode].filters[col]=f.value;catalogState[mode].limit=CATALOG_PAGE_SIZE;clearTimeout(catalogFilterTimer);
+ catalogFilterTimer=setTimeout(()=>{
+  renderCatalogTable(mode);
+  let next=document.querySelector('.catalog-col-filter[data-mode="'+mode+'"][data-col="'+col+'"]');
+  if(next){next.focus();next.setSelectionRange(next.value.length,next.value.length)}
+ },160);
+});
+document.addEventListener('click',e=>{
+ let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+ if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
+ if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};catalogState[mode].limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let more=e.target.closest&&e.target.closest('.catalog-load-more');
+ if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||CATALOG_PAGE_SIZE)+CATALOG_PAGE_SIZE;renderCatalogTable(mode)}return}
+ let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
+ if(!th)return;
+ let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}st.limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode);
+});
+let draggedCatalogCol=null;
+document.addEventListener('dragstart',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+ draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
+});
+document.addEventListener('dragend',()=>{document.querySelectorAll('.catalog-table th.dragging,.catalog-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedCatalogCol=null});
+document.addEventListener('dragover',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();th.classList.add('drag-over')});
+document.addEventListener('dragleave',e=>{let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(th)th.classList.remove('drag-over')});
+document.addEventListener('drop',e=>{
+ let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
+ let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
+ if(from<0||to<0||from===to)return;
+ order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+});
+
+restoreUiState();
+toUI(state.filters);
+initHelpSystem();
+lockAllCriteria();
+initLeadersDock();
+initTrLive();
+initUsLive();
+clock();
+window.addEventListener('scroll',queueUiSave,{passive:true});
+window.addEventListener('pagehide',saveUiState);
+window.addEventListener('beforeunload',saveUiState);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)saveUiState()});
+setInterval(clock,1000);
+setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},15000);
+setInterval(()=>load(false),DATA_REFRESH_MS);
+load(true);
++I(v);
+}
+function renderHeatmap(){
+ let box=$('#heatmapResults');if(!box)return;
+ let se=heatmapSession(),limit=Math.max(25,Math.min(500,N(heatmapState.limit)||250));
+ let universe=heatmapUniverse().filter(s=>heatmapChange(s,se)!==null);
+ universe.sort((a,b)=>heatmapWeight(b)-heatmapWeight(a));
+ let selected=universe.slice(0,limit),groups=new Map();
+ for(let s of selected){
+  let sector=String(s.sector||'Sin sector').trim()||'Sin sector';
+  if(!groups.has(sector))groups.set(sector,[]);
+  groups.get(sector).push(s);
+ }
+ let sectors=[...groups.entries()].map(([name,stocks])=>({
+  name,stocks,weight:stocks.reduce((sum,s)=>sum+heatmapWeight(s),0),avg:heatmapSectorAverage(stocks,se)
+ })).sort((a,b)=>b.weight-a.weight);
+ let maxSector=sectors.length?sectors[0].weight:1;
+ box.innerHTML=sectors.length?sectors.map(sec=>{
+  let maxStock=Math.max(1,...sec.stocks.map(heatmapWeight));
+  let span=heatmapSectorSpan(sec.weight,maxSector);
+  return '<section class="heat-sector '+heatmapChangeClass(sec.avg)+'" style="--sector-span:'+span+'">'+
+   '<div class="heat-sector-head"><div><strong>'+E(sec.name)+'</strong><small>'+sec.stocks.length+' acciones</small></div><b class="'+C(sec.avg)+'">'+PC(sec.avg)+'</b></div>'+
+   '<div class="heat-sector-grid">'+sec.stocks.map(s=>heatmapTile(s,se,maxStock)).join('')+'</div>'+
+   '</section>';
+ }).join(''):'<div class="empty-state">No hay datos suficientes para construir el mapa de calor en esta sesión.</div>';
+ let marketLabel=heatmapState.market==='tr'?'Trade Republic':'EEUU';
+ let ses=$('#heatmapSessionText');if(ses)ses.textContent=marketLabel+' · '+SN(se);
+ let count=$('#heatmapCount');if(count)count.textContent=selected.length+' de '+universe.length+' acciones';
+ let upd=$('#heatmapUpdated');if(upd)upd.textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';
 }
 function markRecommendationSold(mode){
  if(!['us','tr'].includes(mode))return;
