@@ -101,13 +101,16 @@ function snapshotPricePair(s,p,preferTr=false){
  let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
  return '<span class="price-pair snapshot-price"><strong>'+primary+'</strong><small>/ '+secondary+'</small></span>';
 }
-function bidAskInner(s){
- let bid=N(s&&s.trLiveBid),ask=N(s&&s.trLiveAsk);
- return '<span class="quote-side bid"><small>BID</small><strong>'+money(bid,'€')+'</strong></span><span class="quote-side ask"><small>ASK</small><strong>'+money(ask,'€')+'</strong></span>';
+function bidAskInner(s,preferTr=false){
+ let bid=preferTr?N(s&&s.trLiveBid):N(s&&s.usBid),ask=preferTr?N(s&&s.trLiveAsk):N(s&&s.usAsk),sym=preferTr?'€':'\u0024';
+ return '<span class="quote-side bid"><small>BID</small><strong>'+money(bid,sym)+'</strong></span><span class="quote-side ask"><small>ASK</small><strong>'+money(ask,sym)+'</strong></span>';
 }
 function bidAskHtml(s,preferTr=false){
- if(!preferTr||!s||!s.tradeRepublicVerified)return '';
- return '<span class="quote-spread" data-tr-spread-key="'+E(stockKey(s))+'" title="Bid y Ask en tiempo real de LSX">'+bidAskInner(s)+'</span>';
+ if(!s)return '';
+ if(preferTr&&s.tradeRepublicVerified){
+  return '<span class="quote-spread quote-spread-tr" data-tr-spread-key="'+E(stockKey(s))+'" title="Bid y Ask de LSX / Trade Republic">'+bidAskInner(s,true)+'</span>';
+ }
+ return '<span class="quote-spread quote-spread-us'+(String(s.updateMode||'').includes('delayed')?' delayed':'')+'" title="Bid y Ask del feed EEUU disponible'+(String(s.updateMode||'').includes('delayed')?' · dato diferido':'')+'">'+bidAskInner(s,false)+'</span>';
 }
 function flashQuote(el,dir){
  if(!el||!dir)return;
@@ -117,6 +120,14 @@ function flashQuote(el,dir){
  setTimeout(()=>el.classList.remove('quote-flash-up','quote-flash-down'),1500);
 }
 
+function trPriceCell(s,which,se){
+ let x=trPriceValues(s,SP(s,se)),value=which==='eur'?x.eur:x.usd,sym=which==='eur'?'€':'\u0024';
+ return '<span class="table-price-cell" data-tr-price-'+which+'-key="'+E(stockKey(s))+'">'+money(value,sym)+'</span>';
+}
+function usPriceCell(s,which,se){
+ let x=priceCurrencies(s,SP(s,se)),value=which==='usd'?x.usd:x.eur,sym=which==='usd'?'\u0024':'€';
+ return '<span class="table-price-cell">'+money(value,sym)+'</span>';
+}
 function liveChangeHtml(s,fallback,preferTr=false){
  let value=preferTr&&s&&s.tradeRepublicVerified?(trLiveChange(s)??N(fallback)):N(fallback);
  let attrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-change-key="'+E(stockKey(s))+'"':'';
@@ -244,9 +255,11 @@ function refreshTrLiveDom(){
    if(seen!==(s.trLiveDirectionAt||0)){el.dataset.flashAt=String(s.trLiveDirectionAt||0);flashQuote(el,s.trLiveDirection)}
   }
  });
- document.querySelectorAll('[data-tr-spread-key]').forEach(el=>{let s=trStockByKey(el.dataset.trSpreadKey);if(s)el.innerHTML=bidAskInner(s)});
+ document.querySelectorAll('[data-tr-spread-key]').forEach(el=>{let s=trStockByKey(el.dataset.trSpreadKey);if(s)el.innerHTML=bidAskInner(s,true)});
  document.querySelectorAll('[data-tr-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trBidKey);if(s)el.textContent=money(s.trLiveBid,'€')});
  document.querySelectorAll('[data-tr-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trAskKey);if(s)el.textContent=money(s.trLiveAsk,'€')});
+ document.querySelectorAll('[data-tr-price-eur-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceEurKey);if(s)el.textContent=money(trPriceValues(s,SP(s,currentMarketSession())).eur,'€')});
+ document.querySelectorAll('[data-tr-price-usd-key]').forEach(el=>{let s=trStockByKey(el.dataset.trPriceUsdKey);if(s)el.textContent=money(trPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024')});
  document.querySelectorAll('[data-tr-live-bid-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveBidKey);if(s)el.textContent=money(s.trLiveBid,'€')});
  document.querySelectorAll('[data-tr-live-ask-key]').forEach(el=>{let s=trStockByKey(el.dataset.trLiveAskKey);if(s)el.textContent=money(s.trLiveAsk,'€')});
  document.querySelectorAll('[data-tr-live-change-key]').forEach(el=>{
@@ -352,7 +365,7 @@ function topGainers(kind,se){
 }
 function leaderItem(s,se,i,preferTr=false){
  let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
- return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body"><div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
+ return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
 }
 function leadersPinned(){
  try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
@@ -423,7 +436,7 @@ function renderFavorites(){
  }
  box.innerHTML=stocks.map(s=>{
   let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div><div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
+  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div>'+pricePair(s,p,!!s.tradeRepublicVerified)+'</div>'+bidAskHtml(s,!!s.tradeRepublicVerified)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,!!s.tradeRepublicVerified)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }
 function links(s){
@@ -560,193 +573,38 @@ function groupFutureEvents(events){
  }).sort((a,b)=>new Date(a.first.date)-new Date(b.first.date)||b.maxImpact-a.maxImpact);
 }
 
-const CATALOG_LAYOUT_KEY='catalystpulse:catalog-layout:v2';
-let catalogUi={
- tr:{sort:{key:'ticker',dir:'asc'},filters:{},order:null},
- us:{sort:{key:'ticker',dir:'asc'},filters:{},order:null}
-};
-function catalogLoadLayout(){
- try{
-  let saved=JSON.parse(localStorage.getItem(CATALOG_LAYOUT_KEY)||'{}');
-  for(let mode of ['tr','us']){
-   if(Array.isArray(saved[mode+'Order']))catalogUi[mode].order=saved[mode+'Order'];
-   if(saved[mode+'Sort']&&saved[mode+'Sort'].key)catalogUi[mode].sort=saved[mode+'Sort'];
-  }
- }catch(_){}
-}
-function catalogSaveLayout(){
- try{
-  localStorage.setItem(CATALOG_LAYOUT_KEY,JSON.stringify({
-   trOrder:catalogUi.tr.order,usOrder:catalogUi.us.order,
-   trSort:catalogUi.tr.sort,usSort:catalogUi.us.sort
-  }));
- }catch(_){}
-}
-function catalogPriceValue(s,mode){
- if(mode==='tr'){
-  let live=trLivePrice(s);if(live!==null)return live;
-  return priceCurrencies(s,SP(s,currentMarketSession())).eur;
- }
- return SP(s,currentMarketSession());
-}
-function catalogChangeValue(s,mode){
- return mode==='tr'?(trLiveChange(s)??SC(s,currentMarketSession())):SC(s,currentMarketSession());
-}
-function catalogLiveCell(s,kind){
- if(kind==='bid')return '<span class="catalog-live-number" data-tr-live-bid-key="'+E(stockKey(s))+'">'+money(s.trLiveBid,'€')+'</span>';
- if(kind==='ask')return '<span class="catalog-live-number" data-tr-live-ask-key="'+E(stockKey(s))+'">'+money(s.trLiveAsk,'€')+'</span>';
- return '—';
-}
-function catalogColumns(mode){
- let tr=mode==='tr';
- return [
-  {key:'fav',label:'★',type:'text',value:s=>favorites.has(stockKey(s))?'1':'0',html:s=>favButton(s),filter:false,sort:false},
-  {key:'ticker',label:tr?'Ticker TR':'Ticker EEUU',type:'text',value:s=>tr?(s.trTicker||''):s.ticker,html:s=>'<div class="catalog-ticker">'+tickerDisplay(s,tr)+'</div>'},
-  ...(tr?[{key:'usTicker',label:'Ticker EEUU',type:'text',value:s=>s.ticker,html:s=>'<strong>'+E(s.ticker||'—')+'</strong><small>'+E(s.exchange||'')+'</small>'}]:[]),
-  {key:'name',label:'Empresa',type:'text',value:s=>s.name||'',html:s=>'<span class="catalog-company">'+E(s.name||'—')+'</span>'},
-  {key:'exchange',label:'Mercado',type:'text',value:s=>tr?(s.trExchange||'LSX'):(s.exchange||''),html:s=>E(tr?(s.trExchange||'LSX'):(s.exchange||'—'))},
-  {key:'price',label:tr?'Precio € / $':'Precio $ / €',type:'number',value:s=>catalogPriceValue(s,mode),html:s=>pricePair(s,SP(s,currentMarketSession()),tr)},
-  ...(tr?[
-   {key:'bid',label:'BID €',type:'number',value:s=>s.trLiveBid,html:s=>catalogLiveCell(s,'bid')},
-   {key:'ask',label:'ASK €',type:'number',value:s=>s.trLiveAsk,html:s=>catalogLiveCell(s,'ask')}
-  ]:[]),
-  {key:'change',label:'% sesión',type:'number',value:s=>catalogChangeValue(s,mode),html:s=>liveChangeHtml(s,catalogChangeValue(s,mode),tr)},
-  {key:'volume',label:'Vol. actual',type:'number',value:s=>SV(s,currentMarketSession()),html:s=>I(SV(s,currentMarketSession()))},
-  {key:'avgVolume',label:'Vol. medio',type:'number',value:s=>s.avgVolume,html:s=>I(s.avgVolume)},
-  {key:'relVolume',label:'Vol. rel.',type:'number',value:s=>RV(s,currentMarketSession()),html:s=>RV(s,currentMarketSession())===null?'—':F(RV(s,currentMarketSession()),2)+'×'},
-  {key:'regularPrice',label:'Regular',type:'number',value:s=>s.price,html:s=>snapshotPricePair(s,s.price,tr)},
-  {key:'regularChange',label:'% regular',type:'number',value:s=>s.changePct,html:s=>'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span>'},
-  {key:'premarketPrice',label:'Premarket',type:'number',value:s=>s.premarketPrice,html:s=>snapshotPricePair(s,s.premarketPrice,tr)},
-  {key:'premarketChange',label:'% pre',type:'number',value:s=>s.premarketChangePct,html:s=>'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span>'},
-  {key:'premarketVolume',label:'Vol. pre',type:'number',value:s=>s.premarketVolume,html:s=>I(s.premarketVolume)},
-  {key:'postmarketPrice',label:'Postmarket',type:'number',value:s=>s.postmarketPrice,html:s=>snapshotPricePair(s,s.postmarketPrice,tr)},
-  {key:'postmarketChange',label:'% post',type:'number',value:s=>s.postmarketChangePct,html:s=>'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span>'},
-  {key:'postmarketVolume',label:'Vol. post',type:'number',value:s=>s.postmarketVolume,html:s=>I(s.postmarketVolume)},
-  {key:'rsi',label:'RSI',type:'number',value:s=>s.rsi,html:s=>F(s.rsi,1)},
-  {key:'adx',label:'ADX',type:'number',value:s=>s.adx,html:s=>F(s.adx,1)},
-  {key:'ema20',label:'EMA20',type:'number',value:s=>s.ema20,html:s=>PR(s.ema20)},
-  {key:'ema50',label:'EMA50',type:'number',value:s=>s.ema50,html:s=>PR(s.ema50)},
-  {key:'week',label:'1 semana',type:'number',value:s=>s.perfWeek,html:s=>'<span class="'+C(s.perfWeek)+'">'+PC(s.perfWeek)+'</span>'},
-  {key:'month',label:'1 mes',type:'number',value:s=>s.perfMonth,html:s=>'<span class="'+C(s.perfMonth)+'">'+PC(s.perfMonth)+'</span>'},
-  {key:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,html:s=>s.earningsDate?DF(s.earningsDate):'—'},
-  {key:'isin',label:'ISIN',type:'text',value:s=>tr?(s.trIsin||s.isin||''):(s.usIsin||s.isin||''),html:s=>'<span class="catalog-code">'+E(tr?(s.trIsin||s.isin||'—'):(s.usIsin||s.isin||'—'))+'</span>'},
-  ...(tr?[{key:'wkn',label:'WKN',type:'text',value:s=>s.trWkn||'',html:s=>'<span class="catalog-code">'+E(s.trWkn||'—')+'</span>'}]:[]),
-  {key:'type',label:'Tipo',type:'text',value:s=>s.instrumentType||'',html:s=>E(s.instrumentType||'—')},
-  {key:'feed',label:'Feed',type:'text',value:s=>tr?(s.trLiveQuality||'LSX'):(s.updateMode||''),html:s=>'<span class="catalog-feed">'+E(tr?(s.trLiveQuality||'LSX'):(s.updateMode||'—'))+'</span>'},
-  {key:'updated',label:'Último dato',type:'date',value:s=>N(s.trLiveUpdatedAt)||N(s.lastBarUpdateTime),html:s=>{let x=N(s.trLiveUpdatedAt)||N(s.lastBarUpdateTime);if(x===null)return'—';if(x<1e12)x*=1000;return new Date(x).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}}
- ];
-}
-function catalogOrderedColumns(mode){
- let defs=catalogColumns(mode),keys=defs.map(x=>x.key),saved=catalogUi[mode].order;
- if(!Array.isArray(saved))return defs;
- let valid=saved.filter(k=>keys.includes(k)),missing=keys.filter(k=>!valid.includes(k));
- let order=[...valid,...missing];catalogUi[mode].order=order;
- let by=new Map(defs.map(x=>[x.key,x]));return order.map(k=>by.get(k)).filter(Boolean);
-}
-function catalogSearchBlob(s,mode){
- return [mode==='tr'?s.trTicker:'',s.ticker,s.name,s.exchange,s.trExchange,s.isin,s.trIsin,s.usIsin,s.trWkn,s.instrumentType,s.updateMode,s.trNameAtExchange].filter(Boolean).join(' ').toLowerCase();
-}
-function catalogMatchFilter(value,query,type){
- query=String(query||'').trim();if(!query)return true;
- if(type==='number'){
-  let v=N(value);if(v===null)return false;
-  let q=query.replace(',','.').replace(/\s+/g,'');
-  let range=q.match(/^(-?\d+(?:\.\d+)?)\.\.(-?\d+(?:\.\d+)?)$/);
-  if(range)return v>=Number(range[1])&&v<=Number(range[2]);
-  let cmp=q.match(/^(>=|<=|>|<|=)?(-?\d+(?:\.\d+)?)$/);
-  if(cmp){
-   let n=Number(cmp[2]),op=cmp[1]||'=';
-   return op==='>'?v>n:op==='<'?v<n:op==='>='?v>=n:op==='<='?v<=n:Math.abs(v-n)<1e-9;
-  }
- }
- if(type==='date'){
-  let v=N(value);if(v===null)return false;if(v<1e12)v*=1000;
-  return new Date(v).toLocaleDateString('es-ES').toLowerCase().includes(query.toLowerCase());
- }
- return String(value??'').toLowerCase().includes(query.toLowerCase());
-}
-function catalogSortRows(rows,mode,defs){
- let sort=catalogUi[mode].sort,col=defs.find(x=>x.key===sort.key);
- if(!col||col.sort===false)return rows;
- let dir=sort.dir==='desc'?-1:1;
- return rows.sort((a,b)=>{
-  let av=col.value(a),bv=col.value(b);
-  if(col.type==='number'||col.type==='date'){
-   let an=N(av),bn=N(bv);
-   if(an===null&&bn===null)return 0;if(an===null)return 1;if(bn===null)return-1;return(an-bn)*dir;
-  }
-  return String(av??'').localeCompare(String(bv??''),'es',{numeric:true,sensitivity:'base'})*dir;
- });
-}
-function catalogFilterRows(rows,mode,defs,globalQuery){
- let filters=catalogUi[mode].filters||{};
- return rows.filter(s=>{
-  if(globalQuery&&!catalogSearchBlob(s,mode).includes(globalQuery))return false;
-  for(let col of defs){
-   let q=filters[col.key];if(!q||col.filter===false)continue;
-   if(!catalogMatchFilter(col.value(s),q,col.type))return false;
-  }
-  return true;
- });
-}
-function catalogFilterPlaceholder(col){return col.type==='number'?'>20 / 10..30':'filtrar'}
-function catalogTableHtml(rows,mode){
- let defs=catalogOrderedColumns(mode),sort=catalogUi[mode].sort,filters=catalogUi[mode].filters||{},tr=mode==='tr';
- let head=defs.map(col=>{
-  let arrow=sort.key===col.key?(sort.dir==='asc'?'▲':'▼'):'';
-  let button=col.sort===false?'<span>'+E(col.label)+'</span>':'<button type="button" class="catalog-sort-btn" data-catalog-sort="'+E(col.key)+'" data-catalog-mode="'+mode+'">'+E(col.label)+' <b>'+arrow+'</b></button>';
-  return '<th draggable="true" data-catalog-col="'+E(col.key)+'" data-catalog-mode="'+mode+'"><span class="col-drag" title="Arrastrar columna">⋮⋮</span>'+button+'</th>';
- }).join('');
- let filterRow=defs.map(col=>'<th>'+(col.filter===false?'':'<input class="catalog-col-filter" data-catalog-filter="'+E(col.key)+'" data-catalog-mode="'+mode+'" value="'+E(filters[col.key]||'')+'" placeholder="'+E(catalogFilterPlaceholder(col))+'">')+'</th>').join('');
- let body=rows.map(s=>{
-  let subscribe=tr?' data-tr-subscribe-key="'+E(stockKey(s))+'"':'';
-  let cells=defs.map(col=>'<td data-col="'+E(col.key)+'">'+col.html(s)+'</td>').join('');
-  return '<tr class="catalog-row stock-open-row" data-stock-key="'+E(stockKey(s))+'" role="button" tabindex="0"'+subscribe+'>'+cells+'</tr>';
- }).join('');
- return '<div class="catalog-sheet-scroll"><table class="catalog-sheet"><thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filterRow+'</tr></thead><tbody>'+body+'</tbody></table></div>';
-}
-function renderCatalogMode(mode){
- let isTr=mode==='tr',view=isTr?'catalog':'catalogUS';
- if(renderProfileView(view))return;
- let input=$(isTr?'#catalogSearch':'#catalogUSSearch'),globalQuery=String(input&&input.value||'').trim().toLowerCase();
- let all=db.stocks.filter(s=>isTr?s.tradeRepublicVerified:market(s,'us'));
- let defs=catalogColumns(mode);
- let rows=catalogFilterRows(all,mode,defs,globalQuery);
- catalogSortRows(rows,mode,defs);
- let count=$(isTr?'#catalogCount':'#catalogUSCount');
- if(count)count.textContent=rows.length.toLocaleString('es-ES')+' / '+all.length.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU');
- let box=$(isTr?'#catalogResults':'#catalogUSResults');
- if(box)box.innerHTML=rows.length?catalogTableHtml(rows,mode):'<div class="empty-state">No hay valores que cumplan los filtros.</div>';
- requestAnimationFrame(()=>observeTrLivePrices(box||document));
-}
-
 const CATALOG_COLUMNS={
  tr:[
   {id:'fav',label:'★',type:'html',value:s=>favorites.has(stockKey(s))?1:0,cell:s=>favButton(s)},
   {id:'tickerTr',label:'Ticker TR',type:'text',value:s=>s.trTicker||'',cell:s=>'<strong class="table-ticker">'+E(s.trTicker||'—')+'</strong>'},
   {id:'tickerUs',label:'Ticker EEUU',type:'text',value:s=>s.ticker||'',cell:s=>'<span class="table-us-ticker">'+E(s.ticker||'—')+'</span>'},
   {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>E(s.name||'—')},
-  {id:'exchange',label:'Mercado',type:'text',value:s=>s.exchange||'',cell:s=>E(s.exchange||'—')},
-  {id:'price',label:'Precio € / $',type:'number',value:(s,se)=>trLivePrice(s)??SP(s,se),cell:(s,se)=>pricePair(s,SP(s,se),true)},
+  {id:'exchange',label:'Mercado',type:'text',value:s=>s.trExchange||'LSX',cell:s=>E(s.trExchange||'LSX')},
+  {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).eur,cell:(s,se)=>trPriceCell(s,'eur',se)},
+  {id:'priceUsd',label:'Precio $',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).usd,cell:(s,se)=>trPriceCell(s,'usd',se)},
   {id:'change',label:'%',type:'number',value:(s,se)=>trLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),true)},
-  {id:'bid',label:'Bid',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number" data-tr-bid-key="'+E(stockKey(s))+'">'+money(s.trLiveBid,'€')+'</span>'},
-  {id:'ask',label:'Ask',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number" data-tr-ask-key="'+E(stockKey(s))+'">'+money(s.trLiveAsk,'€')+'</span>'},
+  {id:'bid',label:'Bid €',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number" data-tr-bid-key="'+E(stockKey(s))+'">'+money(s.trLiveBid,'€')+'</span>'},
+  {id:'ask',label:'Ask €',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number" data-tr-ask-key="'+E(stockKey(s))+'">'+money(s.trLiveAsk,'€')+'</span>'},
   {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>SV(s,se),cell:(s,se)=>compactVol(SV(s,se))},
   {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
   {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
   {id:'premarketPrice',label:'Pre $',type:'number',value:s=>N(s.premarketPrice),cell:s=>PR(s.premarketPrice)},
   {id:'premarketChange',label:'Pre %',type:'number',value:s=>N(s.premarketChangePct),cell:s=>PC(s.premarketChangePct)},
+  {id:'premarketVolume',label:'Vol. pre',type:'number',value:s=>N(s.premarketVolume),cell:s=>compactVol(s.premarketVolume)},
   {id:'regularPrice',label:'Regular $',type:'number',value:s=>N(s.price),cell:s=>PR(s.price)},
   {id:'regularChange',label:'Regular %',type:'number',value:s=>N(s.changePct),cell:s=>PC(s.changePct)},
   {id:'postmarketPrice',label:'Post $',type:'number',value:s=>N(s.postmarketPrice),cell:s=>PR(s.postmarketPrice)},
   {id:'postmarketChange',label:'Post %',type:'number',value:s=>N(s.postmarketChangePct),cell:s=>PC(s.postmarketChangePct)},
+  {id:'postmarketVolume',label:'Vol. post',type:'number',value:s=>N(s.postmarketVolume),cell:s=>compactVol(s.postmarketVolume)},
   {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
   {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
   {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
   {id:'ema50',label:'EMA50',type:'number',value:s=>N(s.ema50),cell:s=>PR(s.ema50)},
   {id:'week',label:'1 sem.',type:'number',value:s=>N(s.perfWeek),cell:s=>PC(s.perfWeek)},
   {id:'month',label:'1 mes',type:'number',value:s=>N(s.perfMonth),cell:s=>PC(s.perfMonth)},
+  {id:'wkn',label:'WKN',type:'text',value:s=>s.trWkn||'',cell:s=>E(s.trWkn||'—')},
   {id:'isin',label:'ISIN',type:'text',value:s=>s.trIsin||s.isin||'',cell:s=>E(s.trIsin||s.isin||'—')},
+  {id:'feed',label:'Feed',type:'text',value:s=>s.trLiveQuality||'LSX',cell:s=>E(s.trLiveQuality||'LSX')},
   {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
  ],
  us:[
@@ -754,17 +612,22 @@ const CATALOG_COLUMNS={
   {id:'ticker',label:'Ticker',type:'text',value:s=>s.ticker||'',cell:s=>'<strong class="table-ticker">'+E(s.ticker||'—')+'</strong>'},
   {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>E(s.name||'—')},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.exchange||'',cell:s=>E(s.exchange||'—')},
-  {id:'price',label:'Precio $ / €',type:'number',value:(s,se)=>SP(s,se),cell:(s,se)=>pricePair(s,SP(s,se),false)},
+  {id:'priceUsd',label:'Precio $',type:'number',value:(s,se)=>SP(s,se),cell:(s,se)=>usPriceCell(s,'usd',se)},
+  {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>priceCurrencies(s,SP(s,se)).eur,cell:(s,se)=>usPriceCell(s,'eur',se)},
   {id:'change',label:'%',type:'number',value:(s,se)=>SC(s,se),cell:(s,se)=>'<span class="'+C(SC(s,se))+'">'+PC(SC(s,se))+'</span>'},
+  {id:'bid',label:'Bid $',type:'number',value:s=>N(s.usBid),cell:s=>money(s.usBid,'\\u0024')},
+  {id:'ask',label:'Ask $',type:'number',value:s=>N(s.usAsk),cell:s=>money(s.usAsk,'\\u0024')},
   {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>SV(s,se),cell:(s,se)=>compactVol(SV(s,se))},
   {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
   {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
   {id:'premarketPrice',label:'Pre $',type:'number',value:s=>N(s.premarketPrice),cell:s=>PR(s.premarketPrice)},
   {id:'premarketChange',label:'Pre %',type:'number',value:s=>N(s.premarketChangePct),cell:s=>'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span>'},
+  {id:'premarketVolume',label:'Vol. pre',type:'number',value:s=>N(s.premarketVolume),cell:s=>compactVol(s.premarketVolume)},
   {id:'regularPrice',label:'Regular $',type:'number',value:s=>N(s.price),cell:s=>PR(s.price)},
   {id:'regularChange',label:'Regular %',type:'number',value:s=>N(s.changePct),cell:s=>'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span>'},
   {id:'postmarketPrice',label:'Post $',type:'number',value:s=>N(s.postmarketPrice),cell:s=>PR(s.postmarketPrice)},
   {id:'postmarketChange',label:'Post %',type:'number',value:s=>N(s.postmarketChangePct),cell:s=>'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span>'},
+  {id:'postmarketVolume',label:'Vol. post',type:'number',value:s=>N(s.postmarketVolume),cell:s=>compactVol(s.postmarketVolume)},
   {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
   {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
   {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
@@ -773,6 +636,8 @@ const CATALOG_COLUMNS={
   {id:'month',label:'1 mes',type:'number',value:s=>N(s.perfMonth),cell:s=>'<span class="'+C(s.perfMonth)+'">'+PC(s.perfMonth)+'</span>'},
   {id:'tr',label:'Trade Republic',type:'text',value:s=>s.tradeRepublicVerified?'sí':'no',cell:s=>s.tradeRepublicVerified?'<span class="pill ok">'+E(s.trTicker||'TR')+'</span>':'—'},
   {id:'isin',label:'ISIN',type:'text',value:s=>s.usIsin||s.isin||'',cell:s=>E(s.usIsin||s.isin||'—')},
+  {id:'feed',label:'Feed',type:'text',value:s=>s.updateMode||'',cell:s=>'<span class="'+(String(s.updateMode||'').includes('delayed')?'feed-delayed':'')+'">'+E(s.updateMode||'—')+'</span>'},
+  {id:'updated',label:'Último dato',type:'date',value:s=>N(s.lastBarUpdateTime),cell:s=>{let x=N(s.lastBarUpdateTime);if(x===null)return'—';if(x<1e12)x*=1000;return new Date(x).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}},
   {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
  ]
 };
@@ -940,20 +805,6 @@ document.addEventListener('toggle',e=>{let d=e.target;if(d&&d.matches&&d.matches
 $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));renderEntry()}));
 ['futureHorizon','futureType','futureTrOnly'].forEach(id=>$('#'+id).addEventListener('change',renderFuture));let catalogSearchTimer=null;$('#catalogSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,160)});$('#catalogUSSearch').addEventListener('input',()=>{clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,160)});
 ['refreshEntry','refreshFuture'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
-catalogLoadLayout();let catalogFilterTimer=null,catalogDrag=null;
-document.addEventListener('click',e=>{
- let sort=e.target.closest&&e.target.closest('[data-catalog-sort]');
- if(sort){
-  e.preventDefault();e.stopPropagation();
-  let mode=sort.dataset.catalogMode,key=sort.dataset.catalogSort,cur=catalogUi[mode].sort;
-  catalogUi[mode].sort={key,dir:cur.key===key&&cur.dir==='asc'?'desc':'asc'};
-  catalogSaveLayout();renderCatalogMode(mode);return;
- }
- let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
- if(reset){e.preventDefault();catalogResetColumns(reset.dataset.catalogMode);return}
- let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
- if(clear){e.preventDefault();catalogClearFilters(clear.dataset.catalogMode);return}
-});
 document.addEventListener('input',e=>{
  let input=e.target.closest&&e.target.closest('.catalog-col-filter');if(!input)return;
  let mode=input.dataset.catalogMode,key=input.dataset.catalogFilter;
@@ -983,6 +834,7 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('click',e=>{
  let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');if(reset){resetCatalogColumns(reset.dataset.catalogMode);return}
+ let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');if(clear){catalogState[clear.dataset.catalogMode].filters={};renderCatalogTable(clear.dataset.catalogMode);return}
  let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');if(!th)return;
  let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}renderCatalogTable(mode);
 });
