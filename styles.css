@@ -523,3 +523,217 @@ html,body{font-size:15px}
  .profile-live .price-pair>strong{font-size:21px!important}
  .profile-live .quote-spread{display:inline-flex}
 }
+
+
+/* CatalystPulse subtitle pills */
+.brand-subtitle{
+ margin-top:5px;
+ display:flex;
+ align-items:center;
+ gap:4px;
+ color:#9fb3ba;
+ letter-spacing:.45px;
+ font-size:6.8px;
+ line-height:1;
+ white-space:nowrap
+}
+.brand-subtitle span{
+ display:inline-flex;
+ align-items:center;
+ min-height:16px;
+ padding:3px 5px;
+ border:1px solid rgba(67,228,178,.16);
+ border-radius:999px;
+ background:linear-gradient(180deg,rgba(67,228,178,.075),rgba(67,228,178,.025));
+ color:#a9c2c4;
+ box-shadow:inset 0 0 10px rgba(67,228,178,.025)
+}
+.brand-subtitle i{
+ width:4px;
+ height:4px;
+ flex:0 0 4px;
+ border-radius:50%;
+ background:var(--teal);
+ box-shadow:0 0 7px rgba(67,228,178,.75);
+ opacity:.9
+}
+
+/* Spreadsheet-style catalogs */
+#catalogBrowse,#catalogUSBrowse{max-width:1450px!important;margin-left:auto;margin-right:auto}
+.catalog-toolbar{
+ display:flex;
+ align-items:center;
+ gap:8px;
+ flex-wrap:wrap;
+ margin:10px 0 6px
+}
+.catalog-toolbar .grow{flex:1;min-width:280px}
+.catalog-toolbar .btn{width:auto}
+.catalog-help{
+ margin:0 0 7px;
+ padding:6px 9px;
+ border:1px solid #1f3540;
+ border-radius:7px;
+ background:#09151d;
+ color:#78919c;
+ font-size:10px
+}
+.catalog-sheet-wrap{
+ border:1px solid #213743;
+ border-radius:9px;
+ background:#08131b;
+ overflow:hidden
+}
+.catalog-sheet-scroll{
+ width:100%;
+ max-height:calc(100vh - 230px);
+ overflow:auto;
+ scrollbar-color:#31505e #0a151d;
+ scrollbar-width:thin
+}
+.catalog-sheet{
+ width:max-content;
+ min-width:100%;
+ border-collapse:separate;
+ border-spacing:0;
+ table-layout:auto;
+ font-size:11px;
+ font-variant-numeric:tabular-nums
+}
+.catalog-sheet th,
+.catalog-sheet td{
+ height:34px;
+ padding:6px 9px;
+ border-right:1px solid #162934;
+ border-bottom:1px solid #162934;
+ white-space:nowrap;
+ text-align:right;
+ background:#0b161e
+}
+.catalog-sheet th{
+ position:sticky;
+ top:0;
+ z-index:6;
+ height:38px;
+ padding:0 7px;
+ background:#101f29;
+ color:#9db1ba;
+ font-size:10px;
+ font-weight:700;
+ user-select:none
+}
+.catalog-sheet thead tr.catalog-filter-row th{
+ top:38px;
+ z-index:5;
+ height:34px;
+ padding:4px 5px;
+ background:#0b1922
+}
+.catalog-sheet th:first-child,
+.catalog-sheet td:first-child{text-align:center}
+.catalog-sheet th[data-catalog-col="ticker"],
+.catalog-sheet td[data-col="ticker"],
+.catalog-sheet th[data-catalog-col="usTicker"],
+.catalog-sheet td[data-col="usTicker"],
+.catalog-sheet th[data-catalog-col="name"],
+.catalog-sheet td[data-col="name"],
+.catalog-sheet th[data-catalog-col="exchange"],
+.catalog-sheet td[data-col="exchange"],
+.catalog-sheet th[data-catalog-col="isin"],
+.catalog-sheet td[data-col="isin"],
+.catalog-sheet th[data-catalog-col="wkn"],
+.catalog-sheet td[data-col="wkn"],
+.catalog-sheet th[data-catalog-col="type"],
+.catalog-sheet td[data-col="type"],
+.catalog-sheet th[data-catalog-col="feed"],
+.catalog-sheet td[data-col="feed"]{text-align:left}
+.catalog-sheet tbody tr:hover td{background:#10242d}
+.catalog-sheet tbody tr:focus-visible td{background:#112a31;outline:none}
+.catalog-sheet .price-pair>strong{font-size:14px!important}
+.catalog-sheet .price-pair>small{font-size:8px!important}
+.catalog-sheet .positive,.catalog-sheet .negative{font-weight:800;font-size:11px}
+.catalog-sheet .fav-star{width:22px;height:22px;font-size:14px}
+.catalog-ticker{min-width:112px}
+.catalog-ticker .ticker-stack>strong{font-size:13px;color:#73e8c2}
+.catalog-ticker .ticker-us-ref{font-size:7px!important;max-width:115px}
+.catalog-company{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;color:#c5d3d9}
+.catalog-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:9px;color:#9eb1b9}
+.catalog-feed{font-size:9px;color:#7894a0}
+.catalog-live-number{font-weight:750;color:#dfe9ec}
+.catalog-sort-btn{
+ display:inline-flex;
+ align-items:center;
+ justify-content:flex-end;
+ gap:4px;
+ width:auto;
+ min-height:30px;
+ padding:0;
+ border:0;
+ background:transparent;
+ color:inherit;
+ cursor:pointer;
+ font:inherit;
+ font-weight:750
+}
+.catalog-sort-btn:hover{color:#e9f6f2}
+.catalog-sort-btn b{font-size:7px;color:var(--teal)}
+.col-drag{
+ display:inline-block;
+ margin-right:5px;
+ color:#496672;
+ font-size:10px;
+ cursor:grab;
+ letter-spacing:-2px
+}
+th.dragging{opacity:.45;background:#17332d!important}
+.catalog-col-filter{
+ width:100%;
+ min-width:72px;
+ height:25px;
+ padding:3px 5px;
+ border:1px solid #263d49;
+ border-radius:5px;
+ background:#07131a;
+ color:#dce7eb;
+ font-size:9px;
+ outline:none
+}
+.catalog-col-filter:focus{border-color:#3e806d;box-shadow:0 0 0 1px rgba(67,228,178,.15)}
+.catalog-col-filter::placeholder{color:#506d78}
+.catalog-sheet th[data-catalog-col="name"],
+.catalog-sheet td[data-col="name"]{min-width:250px}
+.catalog-sheet th[data-catalog-col="ticker"],
+.catalog-sheet td[data-col="ticker"]{min-width:125px}
+.catalog-sheet th[data-catalog-col="price"],
+.catalog-sheet td[data-col="price"]{min-width:135px}
+.catalog-sheet th[data-catalog-col="bid"],
+.catalog-sheet td[data-col="bid"],
+.catalog-sheet th[data-catalog-col="ask"],
+.catalog-sheet td[data-col="ask"]{min-width:86px}
+.catalog-sheet th[data-catalog-col="volume"],
+.catalog-sheet td[data-col="volume"],
+.catalog-sheet th[data-catalog-col="avgVolume"],
+.catalog-sheet td[data-col="avgVolume"]{min-width:105px}
+
+/* Keep quote highlight visible long enough to notice without changing text color */
+@keyframes quoteFlashUp{
+ 0%,58%{background:rgba(53,213,151,.30);box-shadow:0 0 0 1px rgba(83,231,174,.42),0 0 22px rgba(53,213,151,.25)}
+ 100%{background:transparent;box-shadow:none}
+}
+@keyframes quoteFlashDown{
+ 0%,58%{background:rgba(255,91,102,.28);box-shadow:0 0 0 1px rgba(255,123,130,.40),0 0 22px rgba(255,91,102,.23)}
+ 100%{background:transparent;box-shadow:none}
+}
+.quote-flash-up{animation:quoteFlashUp 1.5s ease-out!important}
+.quote-flash-down{animation:quoteFlashDown 1.5s ease-out!important}
+
+@media(max-width:680px){
+ .brand-subtitle{gap:3px;font-size:6.2px}
+ .brand-subtitle span{padding:3px 4px}
+ .brand-subtitle i{width:3px;height:3px;flex-basis:3px}
+ .catalog-toolbar{display:grid;grid-template-columns:1fr 1fr}
+ .catalog-toolbar .grow,.catalog-toolbar .count-pill{grid-column:1/-1}
+ .catalog-help{font-size:9px}
+ .catalog-sheet-scroll{max-height:calc(100vh - 190px)}
+ .catalog-sheet{font-size:10px}
+}
