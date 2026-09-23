@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
@@ -100,6 +101,17 @@ jobs:
           for label, pattern in secrets.items():
               if re.search(pattern, all_text):
                   raise SystemExit("Posible secreto embebido: " + label)
+
+          # Revisa tambien el historial de codigo, excluyendo market.json porque
+          # se actualiza continuamente y no contiene credenciales.
+          import subprocess
+          history = subprocess.run(
+              ["git", "log", "--all", "-p", "--no-color", "--", ".", ":(exclude)data/market.json"],
+              check=True, capture_output=True, text=True
+          ).stdout
+          for label, pattern in secrets.items():
+              if re.search(pattern, history):
+                  raise SystemExit("Posible secreto historico: " + label)
 
           for path, text in texts.items():
               if not path.endswith((".yml", ".yaml")):
