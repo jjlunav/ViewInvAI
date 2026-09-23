@@ -962,3 +962,19 @@ th.dragging{opacity:.45;background:#17332d!important}
  .stock-quick .quote-side{min-width:80px}
  .stock-quick .price-pair{min-width:80px}
 }
+
+
+.profile-feed-warning.live{
+ border-color:#2d6d59;
+ border-left-color:#62dfb4;
+ background:#10251f;
+ color:#9ddbc5
+}
+.quote-spread-us.realtime .quote-side{border-color:#2d6556}
+.quote-spread-us.realtime:after{display:none}
+
+/* Price and quote values are deliberately stacked, never crammed inline */
+.price-pair>strong,
+.price-pair>small{display:block}
+.price-pair>small{margin-top:2px}
+.quote-spread .quote-side{width:100%;box-sizing:border-box}
