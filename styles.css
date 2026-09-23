@@ -1471,324 +1471,345 @@ button.chart-market-toggle{cursor:pointer}
 @media(max-width:680px){.hover-help-banner{font-size:10px;max-width:calc(100vw - 24px)}}
 
 
-/* Readability and recommendation layout overhaul - 2026-09-24 */
+/* Readability and responsive layout overhaul - 2026-09-24 */
 @media (min-width:1100px){
- :root{--sidebar:250px}
- .sidebar{padding:18px 14px}
- .brand{gap:11px;padding:0 7px 24px}
- .brand-mark{width:36px;height:36px;border-radius:10px}
- .brand-name{font-size:18px}
- .brand-subtitle{font-size:10px;letter-spacing:1.7px}
- .workspace-label{font-size:11px;padding:0 10px 10px}
- .nav{gap:5px}
- .nav-item{padding:12px 11px;border-radius:9px;font-size:15px;gap:10px}
- .nav-item span{width:18px}
- .topbar{height:58px;padding:0 26px}
- .breadcrumb{font-size:13px}
- .provider-state{padding:6px 9px;font-size:11px}
- .view{max-width:1720px;padding:28px 34px 52px}
- .page-heading h1{font-size:34px;line-height:1.1}
- .lead{font-size:14.5px;line-height:1.5}
- .btn,.select,.input{font-size:13px}
- .status-line{font-size:11.5px}
- footer{font-size:10.5px}
+ .view{
+  width:100%;
+  max-width:1680px;
+  padding:clamp(16px,1.8vw,26px) clamp(20px,2.2vw,34px) 38px;
+ }
+ .sidebar{padding:14px 11px}
+ .brand{padding-bottom:20px}
+ .brand-name{font-size:16px}
+ .workspace-label{font-size:10px}
+ .nav-item{font-size:13.5px;padding:10px 9px}
+ .topbar{height:52px;padding:0 22px}
+ .breadcrumb{font-size:11.5px}
+ .provider-state{font-size:10px}
 }
 
-/* Recommendation page: centered hierarchy, larger typography and better use of wide screens */
-#view-recommendation{max-width:1720px}
-#view-recommendation .page-heading{
+/* Same centered page heading on every main menu. */
+.view>.page-heading{
  position:relative;
  display:block;
  text-align:center;
- padding:8px 72px 18px;
- margin-bottom:14px;
+ padding:3px 52px 12px;
+ margin:0 auto 8px;
 }
-#view-recommendation .page-heading>div{
- max-width:1180px;
- margin:0 auto;
-}
-#view-recommendation .page-heading h1{
- margin:0 0 10px;
- font-size:clamp(36px,3vw,48px);
- line-height:1.05;
- letter-spacing:-1.1px;
-}
-#view-recommendation .page-heading .lead{
+.view>.page-heading>div{
  max-width:1120px;
  margin:0 auto;
- color:#a7bac2;
- font-size:clamp(15px,1.2vw,19px);
- line-height:1.55;
 }
-#view-recommendation .page-heading .icon-btn{
+.view>.page-heading h1{
+ margin:0 0 6px;
+ font-size:clamp(27px,2.15vw,35px);
+ line-height:1.08;
+ letter-spacing:-.7px;
+}
+.view>.page-heading .lead{
+ max-width:1080px;
+ margin:0 auto;
+ color:#93a9b3;
+ font-size:clamp(12px,.9vw,14.5px);
+ line-height:1.45;
+}
+.view>.page-heading>.icon-btn{
  position:absolute;
- top:8px;
+ top:2px;
  right:0;
- width:46px;
- min-width:46px;
- height:46px;
+ width:40px;
+ min-width:40px;
+ height:38px;
  padding:0;
- font-size:20px;
+ font-size:17px;
 }
+
+/* Current recommendation: dense enough to fit normal desktop heights without wasting space. */
+#view-recommendation{max-width:1680px}
 #view-recommendation .recommendation-intro{
- max-width:1440px;
- margin:0 auto 16px;
- padding:16px 20px;
+ max-width:1320px;
+ margin:0 auto 9px;
+ padding:9px 13px;
  align-items:center;
  justify-content:center;
- gap:14px;
- border-radius:13px;
+ gap:9px;
+ border-radius:9px;
  text-align:center;
- font-size:14px;
- line-height:1.55;
- color:#9eb2bb;
+ font-size:11.5px;
+ line-height:1.4;
+ color:#91a7b0;
 }
 #view-recommendation .recommendation-intro strong{
- color:#eef6f8;
- font-size:15px;
- letter-spacing:.1px;
+ color:#dce8ec;
+ font-size:12px;
+ white-space:nowrap;
 }
 #view-recommendation .status-line{
  justify-content:center;
- margin:10px 0 16px;
- font-size:12px;
- color:#819aa5;
+ margin:6px 0 10px;
+ font-size:10px;
 }
 
 .recommendation-grid{
  grid-template-columns:repeat(2,minmax(0,1fr));
- gap:22px;
- align-items:stretch;
+ gap:12px;
+ align-items:start;
 }
 .recommendation-card{
- border-radius:16px;
- box-shadow:0 12px 34px rgba(0,0,0,.24);
+ border-radius:11px;
+ box-shadow:0 7px 22px rgba(0,0,0,.18);
 }
 .reco-card-head{
- padding:21px 22px;
- gap:18px;
+ padding:12px 13px;
+ gap:10px;
 }
 .reco-card-head small{
- font-size:11px;
- letter-spacing:.8px;
+ font-size:8px;
+ letter-spacing:.55px;
 }
 .reco-title{
- gap:10px;
- margin-top:7px;
+ gap:7px;
+ margin-top:4px;
 }
 .reco-title strong{
- font-size:38px;
+ font-size:28px;
  line-height:1;
- letter-spacing:-.7px;
+ letter-spacing:-.45px;
 }
 .reco-title span{
- font-size:14px;
- line-height:1.35;
+ font-size:10.5px;
+ line-height:1.25;
 }
 .reco-signal{
- min-width:112px;
- gap:4px;
- padding:10px 14px;
- border-radius:12px;
+ min-width:82px;
+ gap:2px;
+ padding:6px 8px;
+ border-radius:8px;
 }
-.reco-signal b{
- font-size:17px;
- letter-spacing:.4px;
-}
-.reco-signal span{
- font-size:11px;
-}
+.reco-signal b{font-size:11.5px}
+.reco-signal span{font-size:8px}
 
 .reco-live{
- gap:14px;
- padding:17px 22px;
+ gap:8px;
+ padding:8px 13px;
  justify-content:flex-end;
 }
 .reco-live .quote-spread{
  display:flex;
- gap:8px;
+ gap:5px;
  width:auto!important;
  min-width:0!important;
  max-width:none!important;
 }
 .reco-live .quote-side{
  width:auto!important;
- min-width:100px!important;
+ min-width:76px!important;
  max-width:none!important;
- padding:7px 10px;
+ padding:4px 6px;
  border:1px solid #203844;
- border-radius:9px;
+ border-radius:6px;
  background:#0b1921;
 }
 .reco-live .quote-side small{
- font-size:10px!important;
- letter-spacing:.5px;
+ font-size:7.5px!important;
+ letter-spacing:.35px;
 }
 .reco-live .quote-side strong{
- font-size:16px!important;
- line-height:1.25;
+ font-size:10.5px!important;
+ line-height:1.15;
 }
 .reco-live .price-pair{
  width:auto!important;
- min-width:150px!important;
+ min-width:105px!important;
  max-width:none!important;
  justify-items:end;
- gap:2px;
+ gap:1px;
 }
 .reco-live .price-pair>strong{
- font-size:30px!important;
+ font-size:20px!important;
  line-height:1;
- letter-spacing:-.6px;
+ letter-spacing:-.3px;
 }
-.reco-live .price-pair>small{
- font-size:13px!important;
-}
+.reco-live .price-pair>small{font-size:8.5px!important}
 .reco-live .quote-change{
  width:auto!important;
- min-width:86px!important;
+ min-width:58px!important;
  max-width:none!important;
- font-size:20px!important;
+ font-size:13px!important;
  font-weight:800;
  text-align:right;
 }
 
 .reco-thesis{
- padding:17px 22px 18px;
+ padding:9px 13px 10px;
 }
 .reco-thesis strong{
- font-size:15px;
- line-height:1.4;
+ font-size:10px;
+ line-height:1.3;
 }
 .reco-thesis p{
- margin:8px 0 0;
- font-size:13px;
- line-height:1.55;
- color:#9db0b8;
+ margin:4px 0 0;
+ font-size:8.7px;
+ line-height:1.38;
+ color:#899fa8;
 }
 
 .reco-factors{
  grid-template-columns:repeat(2,minmax(0,1fr));
- gap:10px;
- padding:16px 18px;
- background:#07121a;
+ gap:1px;
+ padding:0;
+ background:#1b2d36;
 }
 .reco-factor{
- min-height:74px;
- padding:12px 13px;
- gap:12px;
- border:1px solid #1f3540;
- border-radius:10px;
- background:#0b1820;
+ min-height:0;
+ padding:7px 8px;
+ gap:7px;
+ border:0;
+ border-radius:0;
+ background:#08141c;
 }
-.reco-factor>div{gap:4px}
+.reco-factor>div{gap:1px}
 .reco-factor span{
- font-size:13px;
- font-weight:700;
- color:#d1dfe4;
+ font-size:8px;
+ font-weight:650;
+ color:#b9cbd1;
 }
 .reco-factor small{
- font-size:11.5px;
- line-height:1.4;
- color:#8097a1;
+ font-size:7.2px;
+ line-height:1.25;
+ color:#667f8a;
 }
-.reco-factor b{
- font-size:15px;
-}
+.reco-factor b{font-size:9.5px}
 
 .reco-events{
- padding:16px 22px 18px;
+ padding:8px 13px 9px;
 }
 .reco-events h4{
- margin:0 0 10px;
- font-size:13px;
+ margin:0 0 5px;
+ font-size:8.5px;
 }
 .reco-event{
- gap:10px;
- padding:9px 0;
- font-size:11.5px;
+ gap:6px;
+ padding:4px 0;
+ font-size:7.5px;
 }
-.reco-event strong{font-size:12px}
-.reco-event span{font-size:12px}
-.reco-event small{font-size:10.5px}
+.reco-event strong{font-size:7.8px}
+.reco-event span{font-size:7.5px}
+.reco-event small{font-size:7px}
 
 .reco-actions{
- gap:12px;
- padding:15px 22px;
+ gap:7px;
+ padding:8px 13px;
 }
 .reco-actions .btn{
- min-height:44px;
- padding:10px 16px;
- font-size:14px;
- font-weight:700;
+ min-height:31px;
+ padding:6px 9px;
+ font-size:9.5px;
+ font-weight:650;
 }
 .reco-exit-wait{
- max-width:52%;
- font-size:10.5px;
- line-height:1.4;
+ max-width:54%;
+ font-size:7px;
+ line-height:1.25;
 }
 .reco-foot{
- padding:11px 22px 13px;
- font-size:10.5px;
- line-height:1.5;
- color:#718995;
+ padding:6px 13px 7px;
+ font-size:6.9px;
+ line-height:1.3;
+ color:#5f7883;
 }
 
-@media(max-width:1200px){
+/* Moderate desktop / laptop widths: one card per row only when two really stop fitting. */
+@media(max-width:1120px){
  .recommendation-grid{grid-template-columns:1fr}
  .reco-live{justify-content:flex-start}
 }
+
+/* Short laptop screens get an extra-compact recommendation layout. */
+@media (min-width:1001px) and (max-height:800px){
+ .view{padding-top:12px;padding-bottom:24px}
+ .view>.page-heading{padding-top:0;padding-bottom:7px;margin-bottom:5px}
+ .view>.page-heading h1{font-size:26px;margin-bottom:4px}
+ .view>.page-heading .lead{font-size:11.5px;line-height:1.35}
+ #view-recommendation .recommendation-intro{
+  margin-bottom:6px;
+  padding:6px 10px;
+  font-size:10px;
+ }
+ #view-recommendation .recommendation-intro strong{font-size:10.5px}
+ #view-recommendation .status-line{margin:4px 0 7px;font-size:9px}
+ .recommendation-grid{gap:9px}
+ .reco-card-head{padding:9px 11px}
+ .reco-title strong{font-size:24px}
+ .reco-title span{font-size:9px}
+ .reco-signal{padding:5px 7px}
+ .reco-signal b{font-size:10px}
+ .reco-live{padding:6px 11px}
+ .reco-live .quote-side{min-width:70px!important;padding:3px 5px}
+ .reco-live .quote-side strong{font-size:9.5px!important}
+ .reco-live .price-pair{min-width:94px!important}
+ .reco-live .price-pair>strong{font-size:18px!important}
+ .reco-live .quote-change{font-size:11.5px!important}
+ .reco-thesis{padding:7px 11px}
+ .reco-thesis strong{font-size:9px}
+ .reco-thesis p{font-size:7.8px;line-height:1.3}
+ .reco-factor{padding:5px 7px}
+ .reco-factor span{font-size:7.5px}
+ .reco-factor small{font-size:6.7px}
+ .reco-events{padding:6px 11px}
+ .reco-event{padding:3px 0}
+ .reco-actions{padding:6px 11px}
+ .reco-foot{padding:5px 11px;font-size:6.5px}
+}
+
+/* Mobile keeps the same hierarchy but does not sacrifice usable width. */
 @media(max-width:680px){
- #view-recommendation .page-heading{
-  padding:4px 46px 12px;
+ .view>.page-heading{
+  padding:2px 42px 9px;
+  margin-bottom:5px;
  }
- #view-recommendation .page-heading h1{
-  font-size:29px;
+ .view>.page-heading h1{
+  font-size:22px;
+  margin-bottom:4px;
  }
- #view-recommendation .page-heading .lead{
-  font-size:12px;
-  line-height:1.45;
+ .view>.page-heading .lead{
+  font-size:10px;
+  line-height:1.35;
  }
- #view-recommendation .page-heading .icon-btn{
-  top:3px;
+ .view>.page-heading>.icon-btn{
+  top:0;
   right:0;
-  width:38px;
-  min-width:38px;
-  height:38px;
-  font-size:17px;
+  width:34px;
+  min-width:34px;
+  height:34px;
+  font-size:15px;
  }
  #view-recommendation .recommendation-intro{
-  align-items:center;
-  padding:12px 13px;
-  gap:6px;
-  font-size:11.5px;
+  flex-direction:column;
+  gap:3px;
+  padding:8px 9px;
+  font-size:9.5px;
  }
  #view-recommendation .recommendation-intro strong{
-  font-size:12.5px;
   white-space:normal;
+  font-size:10px;
  }
- .recommendation-grid{gap:12px}
- .reco-card-head{padding:14px 13px}
- .reco-title strong{font-size:29px}
- .reco-title span{font-size:11px}
- .reco-signal{min-width:88px;padding:8px 9px}
- .reco-signal b{font-size:13px}
- .reco-live{padding:12px 13px;gap:8px}
- .reco-live .quote-side{min-width:82px!important;padding:6px 7px}
- .reco-live .quote-side strong{font-size:13px!important}
- .reco-live .price-pair{min-width:112px!important}
- .reco-live .price-pair>strong{font-size:23px!important}
- .reco-live .price-pair>small{font-size:10px!important}
- .reco-live .quote-change{min-width:68px!important;font-size:16px!important}
- .reco-thesis{padding:13px}
- .reco-thesis strong{font-size:13px}
- .reco-thesis p{font-size:11px}
- .reco-factors{grid-template-columns:1fr;padding:10px;gap:7px}
- .reco-factor{min-height:0;padding:10px}
- .reco-factor span{font-size:12px}
- .reco-factor small{font-size:10.5px}
- .reco-events{padding:12px 13px}
- .reco-event{grid-template-columns:1fr;gap:3px}
- .reco-actions{padding:12px 13px}
+ .recommendation-grid{grid-template-columns:1fr;gap:8px}
+ .reco-card-head{padding:10px}
+ .reco-title strong{font-size:24px}
+ .reco-title span{font-size:9px}
+ .reco-live{padding:8px 10px;gap:6px;justify-content:flex-start}
+ .reco-live .quote-side{min-width:68px!important}
+ .reco-live .price-pair{min-width:92px!important}
+ .reco-live .price-pair>strong{font-size:18px!important}
+ .reco-live .quote-change{min-width:52px!important;font-size:11.5px!important}
+ .reco-thesis{padding:8px 10px}
+ .reco-factors{grid-template-columns:1fr}
+ .reco-factor{padding:7px 8px}
+ .reco-events{padding:8px 10px}
+ .reco-event{grid-template-columns:1fr;gap:2px}
+ .reco-event span{white-space:normal}
+ .reco-actions{padding:8px 10px;align-items:stretch;flex-direction:column}
  .reco-exit-wait{max-width:none;text-align:left}
- .reco-foot{padding:10px 13px;font-size:9.5px}
+ .reco-foot{padding:6px 10px}
 }
