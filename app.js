@@ -75,6 +75,13 @@ function levelPair(s,p,preferTr=false){
  let x=priceCurrencies(s,p);
  return money(x.usd,d)+' / '+money(x.eur,'€');
 }
+function snapshotPricePair(s,p,preferTr=false){
+ let x=priceCurrencies(s,p),d='\u0024';
+ let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
+ let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
+ return '<span class="price-pair snapshot-price"><strong>'+primary+'</strong><small>/ '+secondary+'</small></span>';
+}
+
 function liveChangeHtml(s,fallback,preferTr=false){
  let value=preferTr&&s&&s.tradeRepublicVerified?(trLiveChange(s)??N(fallback)):N(fallback);
  let attrs=preferTr&&s&&s.tradeRepublicVerified?' data-tr-live-change-key="'+E(stockKey(s))+'"':'';
@@ -212,6 +219,12 @@ function refreshTrLiveDom(){
 function initTrLive(){
  connectTrLive();
  setInterval(refreshTrLiveDom,1000);
+ let queued=false;
+ let mo=new MutationObserver(()=>{
+  if(queued)return;queued=true;
+  requestAnimationFrame(()=>{queued=false;observeTrLivePrices(document)});
+ });
+ mo.observe(document.body,{childList:true,subtree:true});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)connectTrLive()});
 }
 function readFavorites(){
@@ -555,9 +568,10 @@ function profileHtml(s,view){
   profileIdentity('Divisa EEUU',s.currency||'USD')
  ].join('');
  let kpis=[
-  profileKpi('Regular',pricePair(s,s.price,isTr),'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span> · Vol '+compactVol(s.volume)),
-  profileKpi('Premarket',pricePair(s,s.premarketPrice,isTr),'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span> · Vol '+compactVol(s.premarketVolume)),
-  profileKpi('Postmarket',pricePair(s,s.postmarketPrice,isTr),'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span> · Vol '+compactVol(s.postmarketVolume)),
+  ...(isTr?[profileKpi('LSX · tiempo real',pricePair(s,SP(s,se),true),liveChangeHtml(s,SC(s,se),true)+' · '+(s.trLiveQuality?E(s.trLiveQuality):'stream TR'))]:[]),
+  profileKpi('EEUU regular',snapshotPricePair(s,s.price,isTr),'<span class="'+C(s.changePct)+'">'+PC(s.changePct)+'</span> · Vol '+compactVol(s.volume)),
+  profileKpi('EEUU premarket',snapshotPricePair(s,s.premarketPrice,isTr),'<span class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</span> · Vol '+compactVol(s.premarketVolume)),
+  profileKpi('EEUU postmarket',snapshotPricePair(s,s.postmarketPrice,isTr),'<span class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</span> · Vol '+compactVol(s.postmarketVolume)),
   profileKpi('Volumen medio',compactVol(s.avgVolume),N(s.relVolume)!==null?F(s.relVolume,2)+'× relativo':'—'),
   profileKpi('RSI / ADX',F(s.rsi,1)+' / '+F(s.adx,1),'Momentum / fuerza tendencia'),
   profileKpi('EMA20 / EMA50',levelPair(s,s.ema20,isTr)+' · '+levelPair(s,s.ema50,isTr),'Estructura técnica'),
