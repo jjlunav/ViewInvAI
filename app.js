@@ -328,7 +328,7 @@ function catalogCard(s,i,mode){
   ?(s.name+' · EEUU '+(s.exchange||'')+':'+(s.ticker||''))
   :(s.name+(s.tradeRepublicVerified?' · TR '+(s.trTicker||'ticker LSX pendiente'):''));
  let badge=mode==='tr'
-  ?'<span class="pill ok">'+E(s.trExchange||'LSX')+'</span>'
+  ?'<span class="pill ok">'+E(s.trExchange||'LSX')+'</span>'+(s.instrumentLinkStatus==='same_isin'?'<span class="pill isin-ok">ISIN ✓</span>':s.instrumentLinkStatus==='unverified'?'<span class="pill isin-pending">ISIN ?</span>':'')
   :(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'');
  let pending=mode==='tr'&&!s.trTicker?'<span class="catalog-pending">ticker LSX pendiente</span>':'';
  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+'<small class="catalog-price-source">EEUU</small><b>'+PR(p)+'</b><span class="'+C(ch)+'">'+PC(ch)+'</span>'+badge+'<span class="open-arrow">→</span></div></div></article>';
@@ -353,15 +353,27 @@ function profileHtml(s,view){
  let events=stockEvents(s),now=Date.now();
  let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,20);
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,30);
+ let relationBadge=s.instrumentLinkStatus==='same_isin'
+  ?'<span class="relation-status ok">ISIN coincidente</span>'
+  :s.instrumentLinkStatus==='different_isin'
+   ?'<span class="relation-status warn">ISIN diferente</span>'
+   :'<span class="relation-status pending">ISIN pendiente</span>';
  let trRelation=isTr
-  ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+(s.trTicker?E((s.trExchange||'LSX')+':'+s.trTicker):'Ticker LSX aún no resuelto')+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong></div>'
-  :(s.tradeRepublicVerified?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong></div>':'');
+  ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+(s.trTicker?E((s.trExchange||'LSX')+':'+s.trTicker):'Ticker LSX aún no resuelto')+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong>'+relationBadge+'</div>'
+  :(s.tradeRepublicCandidate?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong>'+relationBadge+'</div>':'');
  let trNote=isTr?'<div class="profile-data-note">El ticker principal de esta ficha es el utilizado por Trade Republic/LSX. Los precios, técnicos, premarket y postmarket que se muestran debajo proceden de la cotización estadounidense relacionada '+E(relatedUs)+'.</div>':'';
  let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
+ let linkStatus=s.instrumentLinkStatus==='same_isin'
+  ?'Misma acción · ISIN coincidente'
+  :s.instrumentLinkStatus==='different_isin'
+   ?'Instrumento distinto · ISIN diferente'
+   :'Relación pendiente de verificar por ISIN';
  let identity=[
   profileIdentity('Ticker Trade Republic / LSX',s.trTicker||'Pendiente',s.trExchange||'LSX'),
   profileIdentity('Ticker EEUU',s.ticker||'—',s.exchange||''),
-  profileIdentity('ISIN',s.isin||'—'),
+  profileIdentity('ISIN Trade Republic',s.trIsin||'—'),
+  profileIdentity('ISIN cotización EEUU',s.usIsin||s.isin||'—'),
+  profileIdentity('Relación entre mercados',linkStatus),
   profileIdentity('WKN',s.trWkn||'—'),
   profileIdentity('Nombre en TR / LSX',s.trNameAtExchange||s.name||'—'),
   profileIdentity('Divisa EEUU',s.currency||'USD')
