@@ -1,10 +1,12 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1';
+const DATA='data/market.json', KEY='catalystpulse:filters:v3', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1';
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
-const TR_LIVE_URL='wss://api.traderepublic.com';
-let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null};
+const TR_LIVE_DIRECT='wss://api.traderepublic.com';
+function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
+let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0};
+let uiRestoredScroll=false;
 let favorites=readFavorites();
-let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday',profileKey:null,profileReason:''};
+let state={entryMarket:'tr',radarMarket:'tr',session:'auto',radarSession:'all',radarDirection:'all',preset:'intraday',profileKey:null,profileReason:'',currentView:'entry',savedScrollY:0};
 const V={entry:'01 Potencial de entrada',future:'02 Potencial futuro',radar:'03 Radar de acciones',calendar:'04 Calendario y noticias',catalog:'05 Catálogo Trade Republic',catalogUS:'06 Catálogo EEUU'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:1.2,minAdx:18,minRsi:38,maxRsi:72,minVolume:0,trend:false,illiquid:true,sort:'score'},
@@ -15,6 +17,24 @@ const P={
  afterhours:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:false,sort:'afterhours'},
  strict:{minChange:1,maxChange:0,minRelVolume:1.3,minAdx:22,minRsi:42,maxRsi:68,minVolume:0,trend:true,illiquid:true,sort:'score'}
 };
+function restoreUiState(){
+ try{
+  let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
+  if(x&&V[x.view])state.currentView=x.view;
+  if(x&&x.profileKey)state.profileKey=x.profileKey;
+  if(x&&x.profileReason)state.profileReason=x.profileReason;
+  state.savedScrollY=N(x&&x.scrollY)??0;
+ }catch(_){}
+ document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+state.currentView));
+ document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===state.currentView));
+}
+function saveUiState(){
+ try{
+  localStorage.setItem(UI_KEY,JSON.stringify({view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',scrollY:Math.max(0,Math.round(window.scrollY||0))}));
+ }catch(_){}
+}
+let saveUiTimer=null;
+function queueUiSave(){clearTimeout(saveUiTimer);saveUiTimer=setTimeout(saveUiState,120)}
 function preset(n){return Object.assign({},P[n]||P.intraday)}
 state.filters=preset('intraday');
 
@@ -81,6 +101,21 @@ function snapshotPricePair(s,p,preferTr=false){
  let secondary=preferTr?money(x.usd,d):money(x.eur,'€');
  return '<span class="price-pair snapshot-price"><strong>'+primary+'</strong><small>/ '+secondary+'</small></span>';
 }
+function bidAskInner(s){
+ let bid=N(s&&s.trLiveBid),ask=N(s&&s.trLiveAsk);
+ return '<span class="quote-side bid"><small>BID</small><strong>'+money(bid,'€')+'</strong></span><span class="quote-side ask"><small>ASK</small><strong>'+money(ask,'€')+'</strong></span>';
+}
+function bidAskHtml(s,preferTr=false){
+ if(!preferTr||!s||!s.tradeRepublicVerified)return '';
+ return '<span class="quote-spread" data-tr-spread-key="'+E(stockKey(s))+'" title="Bid y Ask en tiempo real de LSX">'+bidAskInner(s)+'</span>';
+}
+function flashQuote(el,dir){
+ if(!el||!dir)return;
+ el.classList.remove('quote-flash-up','quote-flash-down');
+ void el.offsetWidth;
+ el.classList.add(dir==='up'?'quote-flash-up':'quote-flash-down');
+ setTimeout(()=>el.classList.remove('quote-flash-up','quote-flash-down'),760);
+}
 
 function liveChangeHtml(s,fallback,preferTr=false){
  let value=preferTr&&s&&s.tradeRepublicVerified?(trLiveChange(s)??N(fallback)):N(fallback);
@@ -124,8 +159,11 @@ function trApplyTickerPayload(s,payload){
  let ask=N(payload.ask&&payload.ask.price);
  let pre=N(payload.pre&&payload.pre.price);
  let open=N(payload.open&&payload.open.price);
- let px=last??bid??ask;
- if(px!==null)s.trLivePrice=px;
+ let px=last??bid??ask,old=N(s.trLivePrice);
+ if(px!==null){
+  if(old!==null&&px!==old){s.trLiveDirection=px>old?'up':'down';s.trLiveDirectionAt=Date.now()}
+  s.trLivePrice=px;
+ }
  if(bid!==null)s.trLiveBid=bid;
  if(ask!==null)s.trLiveAsk=ask;
  if(pre!==null)s.trLivePre=pre;
@@ -155,14 +193,14 @@ function connectTrLive(){
  if(trLive.connected||trLive.connecting)return;
  if(typeof WebSocket==='undefined')return;
  trLive.connecting=true;
- let ws;
- try{ws=new WebSocket(TR_LIVE_URL)}catch(_){trLive.connecting=false;trScheduleReconnect();return}
+ let ws,url=trLive.usingDirect?TR_LIVE_DIRECT:trProxyUrl();
+ try{ws=new WebSocket(url)}catch(_){trLive.connecting=false;trScheduleReconnect();return}
  trLive.ws=ws;
  ws.onopen=()=>{try{ws.send('connect 30')}catch(_){}};
  ws.onmessage=e=>{
   let msg=String(e.data||'');
   if(msg==='connected'||msg.startsWith('connected')){
-   trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.subByKey.clear();trLive.keyBySub.clear();trSendSubscriptions();return;
+   trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.proxyFailures=0;trLive.subByKey.clear();trLive.keyBySub.clear();trSendSubscriptions();return;
   }
   let m=msg.match(/^(\d+)\s+([A-Z])(?:\s+([\s\S]+))?$/);
   if(!m||!m[3])return;
@@ -172,7 +210,9 @@ function connectTrLive(){
  };
  ws.onerror=()=>{};
  ws.onclose=()=>{
-  trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();trScheduleReconnect();
+  trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();
+  if(!trLive.usingDirect&&++trLive.proxyFailures>=2)trLive.usingDirect=true;
+  trScheduleReconnect();
  };
 }
 function ensureTrLiveKey(key){
@@ -195,26 +235,22 @@ function observeTrLivePrices(root=document){
 function refreshTrLiveDom(){
  document.querySelectorAll('[data-tr-live-key]').forEach(el=>{
   let s=trStockByKey(el.dataset.trLiveKey);if(!s)return;
-  let fallback=SP(s,currentMarketSession());
-  let direct=trLivePrice(s)!==null;
+  let fallback=SP(s,currentMarketSession()),direct=trLivePrice(s)!==null;
   el.innerHTML=pricePairInner(s,fallback,true);
   el.classList.toggle('live-quote',direct);
   el.title=direct?'Cotización LSX en tiempo real · Trade Republic'+(s.trLiveQuality?' · '+s.trLiveQuality:''):'Esperando cotización LSX en tiempo real';
+  if(s.trLiveDirection&&Date.now()-(s.trLiveDirectionAt||0)<1200){
+   let seen=Number(el.dataset.flashAt||0);
+   if(seen!==(s.trLiveDirectionAt||0)){el.dataset.flashAt=String(s.trLiveDirectionAt||0);flashQuote(el,s.trLiveDirection)}
+  }
  });
+ document.querySelectorAll('[data-tr-spread-key]').forEach(el=>{let s=trStockByKey(el.dataset.trSpreadKey);if(s)el.innerHTML=bidAskInner(s)});
  document.querySelectorAll('[data-tr-live-change-key]').forEach(el=>{
   let s=trStockByKey(el.dataset.trLiveChangeKey);if(!s)return;
   let v=trLiveChange(s);if(v===null)return;
   el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0);
  });
- let liveProfile=document.querySelector('[data-tr-profile-live-key]');
- if(liveProfile){
-  let s=trStockByKey(liveProfile.dataset.trProfileLiveKey);
-  if(s&&trLivePrice(s)!==null){
-   let strong=liveProfile.querySelector('strong'),chg=liveProfile.querySelector('span');
-   if(strong)strong.innerHTML=pricePairInner(s,SP(s,currentMarketSession()),true);
-   let v=trLiveChange(s);if(chg&&v!==null){chg.textContent=PC(v);chg.className=C(v)}
-  }
- }
+ if(state.entryMarket==='tr'&&$('#entryUpdated'))$('#entryUpdated').textContent='LSX LIVE · '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 function initTrLive(){
  connectTrLive();
@@ -449,7 +485,7 @@ function rankingWhy(s,next,se,q,pos){
 function why(s,se){let b=[],c=SC(s,se),r=RV(s,se);if(c!==null)b.push(SN(se)+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
  let ch=SC(s,se),p=SP(s,se),hint=rankText||why(s,se);
- return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+pricePair(s,p,preferTr)+liveChangeHtml(s,ch,preferTr)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card '+(dense?'dense-card':'')+'"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,hint)+' title="'+E(hint)+'"><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div><span>'+E(s.name||'')+'</span></div></div><div class="stock-quick">'+bidAskHtml(s,preferTr)+pricePair(s,p,preferTr)+liveChangeHtml(s,ch,preferTr)+(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?!!s.tradeRepublicVerified:m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
 function fromUI(){return{minChange:+$('#minChange').value||0,maxChange:+$('#maxChange').value||0,minRelVolume:+$('#minRelVolume').value||0,minAdx:+$('#minAdx').value||0,minRsi:+$('#minRsi').value||0,maxRsi:+$('#maxRsi').value||100,minVolume:+$('#minVolume').value||0,trend:$('#requireTrend').checked,illiquid:$('#excludeIlliquid').checked,sort:state.filters.sort}}
@@ -520,7 +556,7 @@ function catalogCard(s,i,mode){
   ?'<span class="pill ok">'+E(s.trExchange||'LSX')+'</span>'+(s.instrumentLinkStatus==='same_isin'?'<span class="pill isin-ok">ISIN ✓</span>':s.instrumentLinkStatus==='unverified'?'<span class="pill isin-pending">ISIN ?</span>':'')
   :(s.tradeRepublicVerified?'<span class="pill ok">TR</span>':'');
  let pending=mode==='tr'&&!s.trTicker?'<span class="catalog-pending">ticker LSX pendiente</span>':'';
- return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+pricePair(s,p,mode==='tr')+liveChangeHtml(s,ch,mode==='tr')+badge+'<span class="open-arrow">→</span></div></div></article>';
+ return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s)+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><strong>'+E(primary)+'</strong><span>'+E(secondary)+'</span></div></div><div class="stock-quick">'+pending+bidAskHtml(s,mode==='tr')+pricePair(s,p,mode==='tr')+liveChangeHtml(s,ch,mode==='tr')+badge+'<span class="open-arrow">→</span></div></div></article>';
 }
 function stockEvents(s){
  return (db.events||[]).filter(e=>{
