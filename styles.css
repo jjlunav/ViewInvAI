@@ -343,3 +343,27 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:112px}
  .ticker-us-ref{font-size:6px!important;max-width:120px}
  .leader-symbol .ticker-us-ref{max-width:62px}
 }
+
+.price-pair{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap;min-width:0}
+.price-pair>strong{font-size:inherit;color:inherit;font-weight:800}
+.price-pair>small{font-size:8px!important;color:#9eb0b9!important;font-weight:600}
+.leader-price .price-pair{gap:3px}
+.leader-price .price-pair>strong{font-size:11px}
+.leader-price .price-pair>small{font-size:7px!important}
+.favorite-main .price-pair>strong{font-size:9px}
+.favorite-main .price-pair>small{font-size:6px!important}
+.stock-quick .price-pair>strong{font-size:13px;color:#e7eff2}
+.stock-quick .price-pair>small{font-size:8px!important}
+.profile-live .price-pair{justify-content:flex-end}
+.profile-live .price-pair>strong{font-size:24px;color:#eef6f8}
+.profile-live .price-pair>small{font-size:10px!important}
+.profile-kpi .price-pair{display:flex;flex-wrap:wrap}
+.profile-kpi .price-pair>strong{font-size:14px;color:#e7f0f3}
+.profile-kpi .price-pair>small{font-size:9px!important}
+@media(max-width:680px){
+ .stock-quick .price-pair{display:grid;gap:0;justify-items:end}
+ .stock-quick .price-pair>strong{font-size:11px}
+ .stock-quick .price-pair>small{font-size:7px!important}
+ .profile-live .price-pair>strong{font-size:18px}
+ .profile-live .price-pair>small{font-size:8px!important}
+}
