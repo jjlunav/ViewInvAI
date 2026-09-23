@@ -31,7 +31,7 @@ TR_METADATA_LIMIT = 2200  # enough to complete unresolved TR/LSX symbols in one 
 TR_METADATA_BATCH = 75
 
 COLS = [
-    "name","description","type","exchange","currency","close","change","volume",
+    "name","description","type","exchange","currency","close","change","bid","ask","volume",
     "average_volume_10d_calc","relative_volume_10d_calc",
     "premarket_close","premarket_change","premarket_volume","premarket_time",
     "postmarket_close","postmarket_change","postmarket_volume","postmarket_time",
@@ -177,6 +177,8 @@ def tv():
             "currency": d.get("currency") or "USD",
             "price": d.get("close"),
             "changePct": d.get("change"),
+            "usBid": d.get("bid"),
+            "usAsk": d.get("ask"),
             "volume": d.get("volume"),
             "avgVolume": d.get("average_volume_10d_calc"),
             "relVolume": d.get("relative_volume_10d_calc"),
