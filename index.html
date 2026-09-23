@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>EntryPointTrade</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">E</div>
+        <div>
+          <div class="brand-name">EntryPointTrade</div>
+          <div class="brand-subtitle">RADAR DE MERCADO</div>
+        </div>
+      </div>
+
+      <div class="workspace-label">ESPACIO DE TRABAJO</div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
+        <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
+        <button class="nav-item" data-view="radar"><span>◉</span>Radar de acciones</button>
+        <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
+        <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
+        <button class="nav-item" data-view="sources"><span>⇄</span>Fuentes y cobertura</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="version-pill">Primera versión local</div>
+        <div class="sidebar-note">Precios reales cuando conectes una fuente. Sin simulaciones automáticas.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menú">☰</button>
+        <div class="breadcrumb">EntryPointTrade / <span id="breadcrumbView">01 Potencial de entrada</span></div>
+        <div class="topbar-right">
+          <span class="ny-time" id="nyTime">--:-- · Nueva York</span>
+          <span class="provider-state" id="providerState">Datos locales</span>
+        </div>
+      </header>
+
+      <section class="view active" id="view-entry">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">CRITERIO TÉCNICO</div>
+            <h1>Potencial de entrada <span class="tag amber">SEGUIMIENTO DESDE APERTURA</span></h1>
+            <p class="lead">Candidatas ordenadas por puntuación. El precio nunca se usa como filtro mínimo.</p>
+          </div>
+          <div class="heading-actions">
+            <select id="sessionSelect" class="select compact">
+              <option value="regular">Sesión regular</option>
+              <option value="premarket">Premarket</option>
+              <option value="previous">Sesión anterior</option>
+            </select>
+            <button class="btn" id="refreshEntry">Actualizar</button>
+            <button class="btn secondary" id="toggleFilters">Criterios</button>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <span id="entrySessionText">Trade Republic · Sesión regular publicada</span>
+          <span class="dot-sep">•</span>
+          <span id="entryCount">0 candidatas</span>
+        </div>
+
+        <div class="market-tabs" data-tab-group="entryMarket">
+          <button class="tab active" data-tab="tr">Trade Republic</button>
+          <button class="tab" data-tab="us">Resto del mercado · EEUU</button>
+        </div>
+
+        <section class="filter-panel" id="filterPanel">
+          <div class="filter-head">
+            <div>
+              <label for="presetSelect">Criterio</label>
+              <select id="presetSelect" class="select">
+                <option value="short">Corto plazo · 1–5 sesiones</option>
+                <option value="medium">Medio plazo · 2–6 semanas</option>
+                <option value="broad">Exploración amplia</option>
+                <option value="intraday" selected>Impulso intradía</option>
+                <option value="exploded">Explosión en la sesión</option>
+                <option value="saved">Personalizado guardado</option>
+                <option value="strict">Histórico y tendencia estrictos</option>
+              </select>
+            </div>
+            <div class="filter-actions">
+              <button class="btn ghost" id="resetFilters">Restablecer</button>
+              <button class="btn" id="applyFilters">Aplicar</button>
+              <button class="btn secondary" id="saveFilters">Guardar personalizado</button>
+            </div>
+          </div>
+
+          <div class="notice success">
+            <strong>Sin precio mínimo.</strong> No existe ningún campo ni condición interna de precio mínimo: una acción puede pasar aunque cotice a 0,0000001.
+          </div>
+
+          <details open>
+            <summary>Valores del preajuste</summary>
+            <div class="filters-grid">
+              <label>Subida mínima (%)<input id="minChange" type="number" step="0.1" value="2" /></label>
+              <label>Subida máxima (%)<input id="maxChange" type="number" step="0.1" value="0" /><small>0 = sin máximo</small></label>
+              <label>Volumen relativo mínimo<input id="minRelVolume" type="number" step="0.1" value="1.5" /></label>
+              <label>ADX mínimo<input id="minAdx" type="number" step="1" value="20" /></label>
+              <label>RSI mínimo<input id="minRsi" type="number" step="1" value="40" /></label>
+              <label>RSI máximo<input id="maxRsi" type="number" step="1" value="65" /></label>
+              <label>Explosión intradía desde (%)<input id="explosionThreshold" type="number" step="1" value="20" /></label>
+              <label>Volumen mínimo<input id="minVolume" type="number" step="1000" value="0" /><small>0 = sin mínimo</small></label>
+            </div>
+          </details>
+
+          <details>
+            <summary>Ajustar filtros</summary>
+            <div class="checks-grid">
+              <label class="check"><input id="prioritizeCatalysts" type="checkbox" checked /> Dar prioridad a catalizadores y riesgos</label>
+              <label class="check"><input id="adjustFromOpen" type="checkbox" checked /> Ajustar volumen desde apertura</label>
+              <label class="check"><input id="requireTrend" type="checkbox" /> Exigir histórico y tendencia</label>
+              <label class="check"><input id="excludeIlliquid" type="checkbox" checked /> Penalizar liquidez deficiente</label>
+            </div>
+          </details>
+        </section>
+
+        <div class="section-title-row">
+          <h2>Resultados</h2>
+          <div class="mini-stats"><span>Analizadas · <b id="analyzedCount">0</b></span><span>Pendientes · <b id="pendingCount">0</b></span></div>
+        </div>
+        <div id="entryResults" class="cards-list"></div>
+      </section>
+
+      <section class="view" id="view-future">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">EVENTOS PRÓXIMOS</div>
+            <h1>Potencial futuro <span class="tag teal">ANTES DEL MOVIMIENTO</span></h1>
+            <p class="lead">Busca valores con un evento próximo que pueda provocar un movimiento fuera de lo normal antes de que ocurra.</p>
+          </div>
+          <div class="heading-actions">
+            <button class="btn" id="refreshFuture">Actualizar</button>
+          </div>
+        </div>
+
+        <div class="notice info">
+          El listado distingue el <strong>hecho confirmado</strong> de la <strong>hipótesis de impacto</strong>. Un evento próximo no implica que el precio vaya a subir.
+        </div>
+
+        <div class="future-controls">
+          <label>Horizonte<select id="futureHorizon" class="select"><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select></label>
+          <label>Tipo de evento<select id="futureType" class="select"><option value="all">Todos</option><option value="medical">Médico / regulatorio</option><option value="earnings">Resultados</option><option value="contract">Contrato / adjudicación</option><option value="corporate">Operación corporativa</option><option value="other">Otro</option></select></label>
+          <label class="check standalone"><input id="futureTrOnly" type="checkbox" checked /> Solo verificadas en Trade Republic</label>
+        </div>
+        <div id="futureResults" class="cards-list"></div>
+      </section>
+
+      <section class="view" id="view-radar">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">OBSERVA EL MOVIMIENTO</div>
+            <h1>Radar de acciones</h1>
+            <p class="lead">Tabla de seguimiento para datos de mercado importados o conectados.</p>
+          </div>
+          <div class="heading-actions"><button class="btn" id="refreshRadar">Actualizar datos</button></div>
+        </div>
+        <div class="notice success"><strong>Tabla de mercado.</strong> La versión local no inventa precios: muestra únicamente los datos que importes o conectes.</div>
+        <div class="market-tabs" data-tab-group="radarMarket">
+          <button class="tab active" data-tab="tr">Trade Republic</button>
+          <button class="tab" data-tab="all">Catálogo completo</button>
+          <button class="tab" data-tab="us">Resto del mercado</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Nombre</th><th>Precio</th><th>Sesión</th><th>Variación</th><th>Volumen rel.</th><th>TR</th></tr></thead><tbody id="radarBody"></tbody></table></div>
+      </section>
+
+      <section class="view" id="view-calendar">
+        <div class="page-heading"><div><div class="eyebrow">CATALIZADORES</div><h1>Calendario y noticias</h1><p class="lead">Eventos fechados, comunicados y noticias asociados a los valores cargados.</p></div></div>
+        <div id="calendarResults" class="cards-list"></div>
+      </section>
+
+      <section class="view" id="view-catalog">
+        <div class="page-heading"><div><div class="eyebrow">COBERTURA</div><h1>Catálogo Trade Republic</h1><p class="lead">La vista Trade Republic solo incluye valores marcados como disponibles y verificados.</p></div></div>
+        <div class="toolbar-line"><input id="catalogSearch" class="input" placeholder="Buscar ticker, nombre o ISIN" /><span id="catalogCount">0 valores</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Nombre</th><th>ISIN</th><th>Mercado</th><th>Verificación</th></tr></thead><tbody id="catalogBody"></tbody></table></div>
+      </section>
+
+      <section class="view" id="view-sources">
+        <div class="page-heading"><div><div class="eyebrow">DATOS</div><h1>Fuentes y cobertura</h1><p class="lead">Importa tus datos sin depender de Work. Más adelante podemos conectar APIs reales aquí.</p></div></div>
+        <div class="source-grid">
+          <article class="source-card">
+            <h3>Importar JSON</h3>
+            <p>Carga un fichero con acciones y eventos. Los datos quedan solo en tu navegador.</p>
+            <input type="file" id="jsonImport" accept="application/json,.json" />
+          </article>
+          <article class="source-card">
+            <h3>Datos actuales</h3>
+            <p id="sourceSummary">0 acciones · 0 eventos cargados.</p>
+            <button class="btn ghost" id="clearData">Vaciar datos locales</button>
+          </article>
+          <article class="source-card">
+            <h3>Formato</h3>
+            <p>Incluyo un ejemplo y el esquema esperado dentro del ZIP para poder conectar una fuente real posteriormente.</p>
+          </article>
+        </div>
+      </section>
+
+      <footer>ⓘ EntryPointTrade / Radar de mercado · Sin órdenes de compra ni recomendaciones automáticas.</footer>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

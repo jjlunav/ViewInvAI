@@ -1,0 +1,40 @@
+{
+  "stocks": [
+    {
+      "ticker": "DEMO",
+      "name": "Valor de demostración",
+      "isin": "XX0000000000",
+      "market": "NASDAQ",
+      "tradeRepublicVerified": true,
+      "price": 0.0000001,
+      "session": "regular",
+      "changePct": 24.5,
+      "volume": 1500000,
+      "avgVolume": 420000,
+      "relVolume": 3.57,
+      "adx": 28,
+      "rsi": 61,
+      "score": 78.4,
+      "trendOk": true,
+      "liquidityRisk": false,
+      "catalyst": "Ejemplo de catalizador; sustituir por una fuente real.",
+      "catalystConfirmed": false,
+      "why": "Ejemplo para comprobar que un precio extremadamente bajo no queda excluido.",
+      "risk": "Datos de demostración; no utilizar para operar."
+    }
+  ],
+  "events": [
+    {
+      "ticker": "DEMO",
+      "name": "Valor de demostración",
+      "date": "2099-10-05T13:00:00Z",
+      "type": "medical",
+      "tradeRepublicVerified": true,
+      "confirmed": true,
+      "potentialScore": 80,
+      "source": "Fuente de ejemplo",
+      "fact": "Evento ficticio para documentar el formato del JSON.",
+      "hypothesis": "Ejemplo de cómo separar el hecho confirmado de una posible reacción de mercado."
+    }
+  ]
+}
