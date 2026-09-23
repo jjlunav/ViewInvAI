@@ -1004,7 +1004,7 @@ $('#sessionSelect').addEventListener('change',e=>{state.session=e.target.value;r
 function setPreset(value){
  state.preset=value;$('#presetSelect').value=value;
  let opt=$('.preset-option[data-value="'+value+'"]');
- if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+ if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
  state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
  if(state.preset==='afterhours'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
  toUI(state.filters);lockAllCriteria();renderEntry();setTimeout(pollUsLive,0);
@@ -1023,7 +1023,7 @@ $('#saveCustomFilters').addEventListener('click',()=>{
  if(saveCustomPreset(q)){
   state.filters=q;state.preset='custom';$('#presetSelect').value='custom';
   let opt=$('.preset-option[data-value="custom"]');
-  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;$('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
+  if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
   renderEntry();setTimeout(pollUsLive,0);
  }
 });
