@@ -4379,3 +4379,13 @@ html[data-theme="light"] .home-stock-row{border-color:#dce7eb}
 html[data-theme="light"] .home-market-panel>header h2,
 html[data-theme="light"] .home-stock-id strong{color:#17303b}
 html[data-theme="light"] .home-stock-row:hover{background:#f4f8f9}
+
+
+/* Position save feedback */
+.portfolio-form-status{
+ min-height:0;margin:-3px 2px -3px;color:#7f9b91;font-size:9px;font-weight:700;
+ opacity:0;transition:opacity .12s ease
+}
+.portfolio-form-status.visible{min-height:14px;opacity:1}
+.portfolio-form-status.error{color:#ff9da5}
+.portfolio-form [data-save-position]:disabled{opacity:.72;cursor:wait}
