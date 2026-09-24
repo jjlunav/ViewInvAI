@@ -79,7 +79,7 @@ function syncScreenWakeLock(){
  else releaseScreenWakeLock();
 }
 
-const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',alerts:'05 Avisos',calendar:'06 Calendario y noticias',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',settings:'09 Settings'};
+const V={entry:'01 Mercado',recommendation:'02 Ideas IA',portfolios:'03 Carteras',alerts:'04 Avisos',heatmap:'05 Mapa de calor',future:'06 Potencial futuro',calendar:'07 Calendario y noticias',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',settings:'10 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -800,6 +800,7 @@ function toggleFavorite(key){
  if(!key)return;
  if(favorites.has(key))favorites.delete(key);else favorites.add(key);
  saveFavorites();
+ window.dispatchEvent(new CustomEvent('viewinvai:favorite-changed',{detail:{key,active:favorites.has(key),stock:stockByKey(key)||null}}));
  $$('.fav-star').forEach(b=>{
   if(b.dataset.favKey!==key)return;
   let on=favorites.has(key);
@@ -1297,7 +1298,7 @@ function quickProfileHtml(s){
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  let relation=isTr?'<div class="profile-data-note">Precio, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+'. El gráfico y los técnicos usan la referencia de '+E((s.exchange||'EEUU')+':'+(s.ticker||''))+'.</div>':'';
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
-  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
+  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p><div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
   '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · velas 1 min · mercado sincronizado con la ficha</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
@@ -2052,7 +2053,8 @@ function initHelpSystem(){
  const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
  const sectionHelp={
   entry:{title:'Potencial de entrada',text:'Escanea acciones que cumplen el criterio seleccionado. Puedes cambiar sesión, mercado y filtros técnicos. La lista se recalcula con los datos disponibles y no aplica ningún precio mínimo.'},
-  recommendation:{title:'Recomendación actual',text:'Selecciona una candidata de EEUU y otra de Trade Republic mediante un análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores. La señal es orientativa y se recalcula continuamente.'},
+  recommendation:{title:'Ideas IA',text:'Selecciona oportunidades mediante análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores.'},
+  portfolios:{title:'Carteras',text:'Organiza posiciones por bróker. Cada posición y cada favorito sincronizado puede analizarse de forma recurrente para detectar mantenimiento, revisión o posible salida.'},
   heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
   future:{title:'Potencial futuro',text:'Busca noticias y eventos próximos que pueden aumentar la volatilidad antes de que ocurra el movimiento: resultados, FDA, contratos, financiación, operaciones corporativas y otros catalizadores.'},
   alerts:{title:'Avisos',text:'Solo avisa cuando una recomendación alcanza un nivel de convicción alto. Exige confirmación de gráfico, tendencia, volumen, RSI/ADX, liquidez y ausencia de señales negativas relevantes en noticias o eventos.'},
@@ -2093,6 +2095,7 @@ function status(){}
 function renderCurrentView(){
  if(state.currentView==='entry')renderEntry();
  else if(state.currentView==='recommendation')renderRecommendation();
+ else if(state.currentView==='portfolios'){if(window.ViewInvAIPortfolios)window.ViewInvAIPortfolios.render()}
  else if(state.currentView==='heatmap')renderHeatmap();
  else if(state.currentView==='future')renderFuture();
  else if(state.currentView==='alerts'){if(window.AppAlerts)window.AppAlerts.renderSettings()}
@@ -2145,8 +2148,9 @@ async function load(force=false){
  }
 }
 const NAV_META={
- entry:{icon:'◈',short:'Entrada',base:4},
- recommendation:{icon:'◎',short:'Recom.',base:3.5},
+ entry:{icon:'◈',short:'Mercado',base:4},
+ recommendation:{icon:'◎',short:'Ideas IA',base:3.5},
+ portfolios:{icon:'★',short:'Carteras',base:3.25},
  alerts:{icon:'●',short:'Avisos',base:3},
  catalog:{icon:'▤',short:'TR',base:2.5},
  heatmap:{icon:'▦',short:'Mapa',base:2},
@@ -2174,10 +2178,14 @@ function recordNavigationUse(v){
 function renderAdaptiveNavigation(){
  let order=navigationOrder(),side=$('#sidebar .nav');
  if(side){
+  let fixedSide=['entry','recommendation','portfolios','alerts'];
+  let sideOrder=[...fixedSide,...order.filter(v=>!fixedSide.includes(v))];
   let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
-  order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
+  sideOrder.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
- let direct=order.slice(0,4),rest=order.slice(4),bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
+ const direct=['entry','recommendation','portfolios','alerts'];
+ const rest=order.filter(v=>!direct.includes(v));
+ let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
   bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><small>'+E(NAV_META[v].short)+'</small></button>').join('')+
    '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
@@ -2474,6 +2482,16 @@ setInterval(clock,1000);
 setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},5000);
 window.ViewInvAI={
  openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
+ getStockByKey:key=>stockByKey(key),
+ getStockKey:s=>stockKey(s),
+ getCurrentStockKey:()=>state.profileKey||null,
+ getFavoriteKeys:()=>[...favorites],
+ mergeFavoriteKeys:keys=>{
+  let changed=false;
+  for(let key of (Array.isArray(keys)?keys:[])){if(key&&!favorites.has(key)){favorites.add(key);changed=true}}
+  if(changed){saveFavorites();renderFavorites()}
+  return changed;
+ },
  highConvictionRecommendation
 };
 setInterval(()=>load(false),DATA_REFRESH_MS);
