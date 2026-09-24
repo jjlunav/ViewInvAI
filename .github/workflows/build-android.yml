@@ -11,6 +11,7 @@ on:
       - "mobile-shell/**"
       - ".github/workflows/build-android.yml"
       - "scripts/apply_android_branding.py"
+      - "firebase/**"
   push:
     branches:
       - main
@@ -73,6 +74,12 @@ jobs:
 
       - name: Generate Android project
         run: npx cap add android
+
+      - name: Add Firebase Android configuration
+        run: |
+          set -euo pipefail
+          cp firebase/google-services.json android/app/google-services.json
+          test -s android/app/google-services.json
 
       - name: Apply ViewInvAI Android icon
         run: python3 scripts/apply_android_branding.py
