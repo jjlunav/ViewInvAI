@@ -2058,7 +2058,7 @@ async function load(force=false){
 }
 let appHistoryReady=false,appHistoryRestoring=false,appHistoryRoot=null;
 function syncMobileNavigation(){
- $('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
+ $$('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
  let direct=['entry','recommendation','alerts','catalog'];
  let more=$('.mobile-nav-item[data-mobile-more]');
  if(more)more.classList.toggle('active',!direct.includes(state.currentView));
@@ -2154,7 +2154,7 @@ function clock(){
 }
 
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
-$('[data-mobile-view]').forEach(x=>x.addEventListener('click',()=>{let v=x.dataset.mobileView;if(v)show(v)}));
+$$('[data-mobile-view]').forEach(x=>x.addEventListener('click',()=>{let v=x.dataset.mobileView;if(v)show(v)}));
 $('.mobile-nav-item[data-mobile-more]')?.addEventListener('click',()=>toggleMobileMore());
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
