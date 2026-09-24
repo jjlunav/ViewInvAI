@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r46">
+  <link rel="stylesheet" href="styles.css?v=20260924r48">
 </head>
 <body>
 <div class="app-shell">
@@ -19,29 +19,18 @@
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
       <button class="nav-item active" data-view="home"><span>⌂</span>Inicio</button>
-      <button class="nav-item" data-view="entry"><span>◈</span>Potencial de entrada</button>
-      <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
       <button class="nav-item" data-view="portfolios"><span>★</span>Carteras</button>
-      <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
-      <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
+      <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
+      <button class="nav-item" data-view="entry"><span>◈</span>Potencial de entrada</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
-      <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
+      <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
+      <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
+      <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
     </nav>
-    <section class="favorites-panel" aria-label="Acciones favoritas">
-      <div class="favorites-head">
-        <div class="favorites-title">
-          <span class="favorites-star" aria-hidden="true">★</span>
-          <div><strong>FAVORITOS</strong><span>Mi seguimiento</span></div>
-        </div>
-        <span class="favorites-count" id="favoritesCount">0</span>
-      </div>
-      <div class="favorites-list" id="favoritesList">
-        <div class="favorites-empty"><span aria-hidden="true">☆</span><p>Pulsa la estrella de cualquier acción para guardarla aquí.</p></div>
-      </div>
-    </section>
+
   </aside>
 
   <main class="main">
@@ -424,6 +413,31 @@
       <span aria-hidden="true">●</span><span id="notificationBadge" class="notification-badge is-hidden">0</span>
     </button>
 
+
+    <div id="aiChatBackdrop" class="ai-chat-backdrop" aria-hidden="true"></div>
+    <aside id="aiChatPanel" class="ai-chat-panel" aria-hidden="true" aria-label="Asistente ViewInvAI">
+      <div class="ai-chat-head">
+        <div>
+          <strong id="aiChatTitle">ViewInvAI</strong>
+          <span id="aiChatSubtitle">Asistente de mercado</span>
+        </div>
+        <button type="button" id="aiChatClose" aria-label="Cerrar asistente">×</button>
+      </div>
+      <div class="ai-chat-quick">
+        <button type="button" data-ai-quick="¿Cómo está el momentum ahora mismo y qué lo confirma?">Momentum</button>
+        <button type="button" data-ai-quick="¿Hay riesgo de FOMO si entro ahora? Explícame por qué.">FOMO</button>
+        <button type="button" data-ai-quick="Resume noticias, eventos y catalizadores relevantes y su posible impacto.">Noticias</button>
+        <button type="button" data-ai-quick="Analiza tendencia, volumen, RSI, ADX y niveles técnicos relevantes.">Técnico</button>
+        <button type="button" data-ai-quick="Con los datos disponibles, ¿qué tendría que confirmarse antes de plantear una entrada?">Entrada</button>
+      </div>
+      <div id="aiChatMessages" class="ai-chat-messages" aria-live="polite"></div>
+      <form id="aiChatForm" class="ai-chat-form">
+        <textarea id="aiChatInput" rows="2" maxlength="1200" placeholder="Pregunta cualquier cosa sobre esta acción…"></textarea>
+        <button type="submit" id="aiChatSend">Enviar</button>
+      </form>
+      <div class="ai-chat-foot">La IA analiza datos disponibles y puede equivocarse. Contrasta la información antes de invertir.</div>
+    </aside>
+
     <div id="hoverHelpBanner" class="hover-help-banner" role="tooltip" aria-hidden="true">
       <strong id="hoverHelpTitle">Ayuda</strong>
       <span id="hoverHelpText"></span>
@@ -446,18 +460,18 @@
 
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌂</span><small>Inicio</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Mercado</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Ideas IA</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>★</span><small>Carteras</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Ideas IA</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Mercado</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r40"></script>
+<script src="app.js?v=20260924r42"></script>
 <script src="alerts.js?v=20260924r3"></script>
 <script type="module" src="auth.js?v=20260924r5"></script>
-<script type="module" src="portfolio.js?v=20260924r3"></script>
+<script type="module" src="portfolio.js?v=20260924r4"></script>
 </body>
 </html>
