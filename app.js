@@ -918,7 +918,8 @@ function closeQuickProfile(restoreScroll=true){
 
 function favButton(s,preferTr=null){
  let key=stockKey(s),on=favorites.has(key);
- let pref=preferTr===true?'1':preferTr===false?'0':'';
+ if(preferTr!==true&&preferTr!==false)preferTr=inferProfilePreferTr(s);
+ let pref=preferTr===true?'1':'0';
  let title=on?'Gestionar carteras':'Añadir a una cartera';
  return '<button type="button" class="fav-star'+(on?' active':'')+'" data-fav-key="'+E(key)+'" data-fav-prefer-tr="'+pref+'" title="'+title+'" aria-label="'+title+'">'+(on?'★':'☆')+'</button>';
 }
