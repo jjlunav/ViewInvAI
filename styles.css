@@ -2813,3 +2813,35 @@ html[data-theme="light"] .exit-back-banner{background:#fff;color:#17303b;border-
  .mobile-more-item>small{display:none!important}
  .exit-back-banner{bottom:calc(var(--mobile-nav-h) + 12px + env(safe-area-inset-bottom));font-size:10px;padding:8px 12px;max-width:calc(100vw - 28px)}
 }
+
+
+/* Account / Google authentication */
+.account-area{position:relative;flex:0 0 auto}
+.account-button{display:flex;align-items:center;gap:8px;min-height:38px;padding:4px 8px 4px 5px;border:1px solid #29424e;border-radius:999px;background:#0b1a23;color:#dce9ed;cursor:pointer}
+.account-button:hover{border-color:#3d6675;background:#10242e}
+.account-avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#173541;color:#76e1bd;font-size:12px;font-weight:850;overflow:hidden}
+.account-avatar img{width:100%;height:100%;object-fit:cover}
+.account-copy{display:grid;gap:1px;text-align:left;min-width:0;max-width:150px}
+.account-copy strong{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account-copy small{font-size:8px;color:#78919c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account-menu{position:absolute;right:0;top:calc(100% + 7px);z-index:6500;width:230px;padding:10px;border:1px solid #2a4551;border-radius:12px;background:#0a1820;box-shadow:0 18px 46px rgba(0,0,0,.38);opacity:0;visibility:hidden;transform:translateY(-4px);transition:.12s}
+.account-menu.open{opacity:1;visibility:visible;transform:translateY(0)}
+.account-menu-user{padding:5px 5px 9px;color:#a9bdc5;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.account-signout{width:100%;min-height:38px;border:1px solid #304b57;border-radius:8px;background:#10242e;color:#d9e6ea;font-size:10px;font-weight:750;cursor:pointer}
+.account-signout[hidden]{display:none}
+.auth-toast{position:fixed;left:50%;bottom:90px;z-index:8000;transform:translate(-50%,10px);opacity:0;visibility:hidden;max-width:calc(100vw - 28px);padding:9px 13px;border:1px solid #3b5965;border-radius:999px;background:#10212a;color:#e6f2f5;font-size:10px;font-weight:700;box-shadow:0 12px 34px rgba(0,0,0,.36);transition:.15s}
+.auth-toast.visible{opacity:1;visibility:visible;transform:translate(-50%,0)}
+.auth-toast.error{border-color:#8f4e55;background:#2b171b}
+@media(max-width:720px){
+ .topbar-right{display:flex!important;align-items:center;gap:6px}
+ .market-clocks{flex:1 1 auto;min-width:0}
+ .account-copy{display:none}
+ .account-button{width:38px;height:38px;min-width:38px;padding:4px;border-radius:50%}
+ .account-avatar{width:28px;height:28px}
+ .account-menu{position:fixed;right:10px;top:58px;width:min(280px,calc(100vw - 20px))}
+ .auth-toast{bottom:calc(var(--mobile-nav-h) + 14px + env(safe-area-inset-bottom))}
+}
+html[data-theme="light"] .account-button{background:#fff;border-color:#cbdce3;color:#17303b}
+html[data-theme="light"] .account-menu{background:#fff;border-color:#cbdde3}
+html[data-theme="light"] .account-menu-user{color:#617984}
+html[data-theme="light"] .account-signout{background:#f3f7f8;border-color:#d0dfe4;color:#17303b}
