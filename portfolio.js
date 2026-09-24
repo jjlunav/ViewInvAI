@@ -270,7 +270,14 @@ async function addPosition(payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "No se pudo guardar la posición.");
-  await loadAll({ syncFavorites: false });
+
+  // Do not block the modal waiting for a full portfolio reload. Update the
+  // current state immediately and refresh the rest in the background.
+  if (data.position) {
+    const index = state.positions.findIndex(item => item.id === data.position.id);
+    if (index >= 0) state.positions[index] = data.position;
+    else state.positions.unshift(data.position);
+  }
   return data.position;
 }
 
@@ -393,7 +400,8 @@ function openAddPositionModal(stockKey) {
       '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option' + (preferTr ? ' selected' : '') + '>EUR</option><option' + (!preferTr ? ' selected' : '') + '>USD</option><option>GBP</option></select></label>' +
       '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
-      '<button type="submit" class="btn">Guardar posición</button>' +
+      '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>' +
+      '<button type="submit" class="btn" data-save-position>Guardar posición</button>' +
     '</form>'
   );
 }
@@ -447,6 +455,67 @@ async function syncLocalFavorites() {
     }
   } finally {
     state.syncingFavorites = false;
+  }
+}
+
+async function savePositionForm(form) {
+  if (!form || form.dataset.saving === "1") return;
+
+  const stock = stockByKey(form.dataset.stockKey);
+  if (!stock) {
+    toast("La acción ya no está disponible.", true);
+    return;
+  }
+
+  const button = form.querySelector("[data-save-position],button[type=\"submit\"]");
+  const status = form.querySelector("[data-position-status]");
+  const oldText = button ? button.textContent : "";
+
+  const setStatus = (message, error = false) => {
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.toggle("error", !!error);
+    status.classList.toggle("visible", !!message);
+  };
+
+  try {
+    if (!form.reportValidity()) {
+      setStatus("Revisa los campos marcados.", true);
+      return;
+    }
+
+    const payload = stockFormPayload(stock, form);
+    if (!payload.openedAt || !/^\d{4}-\d{2}-\d{2}$/.test(payload.openedAt)) {
+      throw new Error("Selecciona una fecha de entrada válida.");
+    }
+
+    form.dataset.saving = "1";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Guardando…";
+    }
+    setStatus("Guardando posición…");
+
+    await addPosition(payload);
+
+    setStatus("Posición guardada");
+    closeModal();
+    toast("Posición guardada · análisis continuo activado");
+
+    // Refresh server state after the modal has closed; saving no longer appears
+    // frozen while portfolios/watchlist are reloaded.
+    setTimeout(() => loadAll({ syncFavorites: false }), 0);
+  } catch (error) {
+    console.warn("Position save failed", error);
+    const message = error && error.message ? error.message : "No se pudo guardar la posición.";
+    setStatus(message, true);
+    toast(message, true);
+  } finally {
+    delete form.dataset.saving;
+    if (button && button.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText || "Guardar posición";
+    }
   }
 }
 
@@ -507,6 +576,14 @@ function bind() {
       return;
     }
 
+    const savePosition = event.target.closest?.("[data-save-position]");
+    if (savePosition) {
+      event.preventDefault();
+      event.stopPropagation();
+      savePositionForm(savePosition.closest("form"));
+      return;
+    }
+
     const analyzeButton = event.target.closest?.("[data-analyze-type][data-analyze-id]");
     if (analyzeButton) {
       event.preventDefault();
@@ -547,25 +624,7 @@ function bind() {
 
     if (event.target.id === "addPositionForm") {
       event.preventDefault();
-      const form = event.target;
-      const stock = stockByKey(form.dataset.stockKey);
-      if (!stock) return toast("La acción ya no está disponible.", true);
-      const button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
-      try {
-        if (!form.reportValidity()) return;
-        const payload = stockFormPayload(stock, form);
-        if (!payload.openedAt || !/^\d{4}-\d{2}-\d{2}$/.test(payload.openedAt)) {
-          throw new Error("Selecciona una fecha de entrada válida.");
-        }
-        await addPosition(payload);
-        closeModal();
-        toast("Posición guardada · análisis continuo activado");
-      } catch (error) {
-        toast(error.message || "No se pudo guardar la posición.", true);
-      } finally {
-        if (button.isConnected) button.disabled = false;
-      }
+      await savePositionForm(event.target);
     }
   });
 
