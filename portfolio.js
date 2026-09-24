@@ -290,7 +290,7 @@ function renderApp() {
     '<div id="portfolioContext" class="portfolio-context">' +
       (selected
         ? '<section class="portfolio-block integrated portfolio-positions-only">' +
-            '<div class="portfolio-position-list stock-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
+            '<div class="portfolio-position-list stock-list portfolio-card-grid">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
           '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
     '</div>';
@@ -300,7 +300,7 @@ function renderApp() {
     const p = state.positions.find(x => x.stock_key === state.detailStockKey && Number(x.active) !== 0 && (!selected || x.portfolio_id === selected.id));
     const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
     if (context && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
-      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← Atrás</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
+      context.innerHTML = '<div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
       window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), state.detailStockKey, "Cartera · " + (selected ? selected.name : "posición"), preferTr);
     }
   }
