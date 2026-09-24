@@ -3,10 +3,10 @@
   "appName": "ViewInvAI",
   "webDir": "mobile-shell",
   "server": {
-    "url": "https://catalystpulse.sonarlab.workers.dev/",
+    "url": "https://viewinvai.sonarlab.workers.dev/",
     "cleartext": false,
     "allowNavigation": [
-      "catalystpulse.sonarlab.workers.dev"
+      "viewinvai.sonarlab.workers.dev"
     ]
   },
   "android": {
