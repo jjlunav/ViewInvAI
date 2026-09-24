@@ -11,7 +11,7 @@ let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
 let heatmapState={market:'tr',session:'auto',limit:250};
-const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',calendar:'05 Calendario y noticias',catalog:'06 Catálogo Trade Republic',catalogUS:'07 Catálogo EEUU'};
+const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',alerts:'05 Avisos',calendar:'06 Calendario y noticias',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -1801,27 +1801,10 @@ function helpTextFor(el){
  if(key==='refresh')return{title:'Actualizar datos',text:'Solicita de nuevo el snapshot de mercado y recalcula la vista con los datos disponibles más recientes.'};
  return null;
 }
-let activeHelpTarget=null,helpHoverTimer=null,pendingHelpTarget=null;
-const HELP_HOVER_DELAY_MS=1800;
-function cancelPendingHelp(target=null){
- if(target&&pendingHelpTarget!==target)return;
- if(helpHoverTimer){clearTimeout(helpHoverTimer);helpHoverTimer=null}
- pendingHelpTarget=null;
-}
-function scheduleHelpBanner(target){
- if(!target||target===activeHelpTarget||target===pendingHelpTarget)return;
- cancelPendingHelp();
- pendingHelpTarget=target;
- helpHoverTimer=setTimeout(()=>{
-  helpHoverTimer=null;
-  let t=pendingHelpTarget;
-  pendingHelpTarget=null;
-  if(t&&t.matches(':hover'))showHelpBanner(t);
- },HELP_HOVER_DELAY_MS);
-}
+let activeHelpTarget=null,helpDismissTimer=null;
 function positionHelpBanner(target){
  let banner=$('#hoverHelpBanner');if(!banner||!target)return;
- let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(300,window.innerWidth-24));
+ let r=target.getBoundingClientRect(),pad=10,w=Math.min(520,Math.max(280,window.innerWidth-24));
  banner.style.width=w+'px';
  banner.style.left=Math.max(12,Math.min(r.left,window.innerWidth-w-12))+'px';
  banner.style.top='0px';
@@ -1830,63 +1813,53 @@ function positionHelpBanner(target){
 }
 function showHelpBanner(target){
  let info=helpTextFor(target),banner=$('#hoverHelpBanner');if(!info||!banner)return;
+ if(helpDismissTimer)clearTimeout(helpDismissTimer);
  activeHelpTarget=target;$('#hoverHelpTitle').textContent=info.title;$('#hoverHelpText').textContent=info.text;
  banner.classList.add('visible');banner.setAttribute('aria-hidden','false');requestAnimationFrame(()=>positionHelpBanner(target));
+ helpDismissTimer=setTimeout(()=>hideHelpBanner(),12000);
 }
-function hideHelpBanner(target=null){
- if(target)cancelPendingHelp(target);else cancelPendingHelp();
- if(target&&activeHelpTarget!==target)return;
+function hideHelpBanner(){
+ if(helpDismissTimer){clearTimeout(helpDismissTimer);helpDismissTimer=null}
  let banner=$('#hoverHelpBanner');if(!banner)return;
  banner.classList.remove('visible');banner.setAttribute('aria-hidden','true');activeHelpTarget=null;
 }
 function initHelpSystem(){
  const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
- const navHelp={
-  entry:'Busca candidatas de entrada por sesión, variación, volumen, RSI, ADX, tendencia y liquidez, separando Trade Republic confirmado de Resto EEUU.',
-  recommendation:'Selecciona una candidata de EEUU y otra de Trade Republic mediante análisis multifactor y explica la señal vigente y sus factores.',
-  heatmap:'Mapa visual del mercado por sectores: el tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión.',
-  future:'Busca catalizadores próximos y noticias recientes capaces de aumentar la volatilidad antes del movimiento.',
-  calendar:'Ordena cronológicamente resultados, eventos corporativos, clínicos, regulatorios y noticias.',
-  catalog:'Tabla de instrumentos confirmados como negociables en Trade Republic/LSX, con búsqueda, orden y filtros por columna.',
-  catalogUS:'Tabla del universo EEUU cargado, con búsqueda, orden, movimiento de columnas y filtros por campo.'
+ const sectionHelp={
+  entry:{title:'Potencial de entrada',text:'Escanea acciones que cumplen el criterio seleccionado. Puedes cambiar sesión, mercado y filtros técnicos. La lista se recalcula con los datos disponibles y no aplica ningún precio mínimo.'},
+  recommendation:{title:'Recomendación actual',text:'Selecciona una candidata de EEUU y otra de Trade Republic mediante un análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores. La señal es orientativa y se recalcula continuamente.'},
+  heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
+  future:{title:'Potencial futuro',text:'Busca noticias y eventos próximos que pueden aumentar la volatilidad antes de que ocurra el movimiento: resultados, FDA, contratos, financiación, operaciones corporativas y otros catalizadores.'},
+  alerts:{title:'Avisos',text:'Crea reglas propias combinando variación, volumen, RSI, ADX, tendencia, liquidez, mercado y sesión. También puedes activar avisos automáticos de recomendación, potencial de entrada y potencial futuro.'},
+  calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
+  catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
+  catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'}
  };
- $$('.nav-item[data-view]').forEach(el=>{el.dataset.help=navHelp[el.dataset.view]||'';el.dataset.helpTitle=el.textContent.trim()});
- mark('#sessionSelect','session');mark('#presetTrigger','presetTrigger');mark('#applyFilters','apply');mark('#toggleFilters','filters');
- $$('.preset-option').forEach(el=>el.dataset.helpKey='preset');
- let trTab=$('[data-tab-group="entryMarket"] .tab[data-tab="tr"]');if(trTab)trTab.dataset.helpKey='marketTr';
- let usTab=$('[data-tab-group="entryMarket"] .tab[data-tab="us"]');if(usTab)usTab.dataset.helpKey='marketUs';
+ $$('.section-help').forEach(el=>{let x=sectionHelp[el.dataset.helpSection];if(x){el.dataset.help=x.text;el.dataset.helpTitle=x.title}});
  $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
  let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';
  let liqLabel=$('#excludeIlliquid')?.closest('.filter-toggle');if(liqLabel)liqLabel.dataset.helpKey='illiquid';
- markAll('.field-lock','lock');mark('#resetFilters','reset');mark('#saveCustomFilters','saveCustom');
- mark('#futureHorizon','futureHorizon');mark('#futureType','futureType');let ft=$('#futureTrOnly')?.closest('label');if(ft)ft.dataset.helpKey='futureTrOnly';
- mark('#catalogSearch','catalogSearchTr');mark('#catalogUSSearch','catalogSearchUs');markAll('.catalog-reset-columns','catalogReset');markAll('.catalog-clear-filters','catalogClear');
- mark('#refreshEntry','refresh');mark('#refreshFuture','refresh');mark('#refreshRecommendation','refresh');mark('#refreshHeatmap','refresh');
- // Use one help system only. Native title bubbles caused the duplicated tooltip seen in the UI.
+ markAll('.field-lock','lock');
+ // El panel detallado sólo se abre mediante un icono de ayuda. Nunca por hover, focus o al cargar la página.
  $$('[data-help],[data-help-key]').forEach(el=>{
-  if(!el.hasAttribute('title'))return;
-  if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
-  el.removeAttribute('title');
- });
- document.addEventListener('pointerover',e=>{
-  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
-  if(!t||t===activeHelpTarget)return;
-  if(activeHelpTarget)hideHelpBanner(activeHelpTarget);
-  scheduleHelpBanner(t);
- });
- document.addEventListener('pointerout',e=>{
-  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
-  if(t&&(!e.relatedTarget||!t.contains(e.relatedTarget))){
-   cancelPendingHelp(t);
-   hideHelpBanner(t);
+  if(el.hasAttribute('title')){
+   if(!el.hasAttribute('aria-label'))el.setAttribute('aria-label',el.getAttribute('title')||'Ayuda');
+   el.removeAttribute('title');
   }
  });
- document.addEventListener('focusin',e=>{
-  let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');
-  if(t){cancelPendingHelp();showHelpBanner(t)}
- });
- document.addEventListener('focusout',e=>{let t=e.target.closest&&e.target.closest('[data-help],[data-help-key]');if(t)hideHelpBanner(t)});
- window.addEventListener('scroll',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)},{passive:true});
+ document.addEventListener('click',e=>{
+  let trigger=e.target.closest&&e.target.closest('.section-help,.param-info');
+  if(trigger){
+   let target=trigger.matches('.section-help')?trigger:trigger.closest('[data-help],[data-help-key]');
+   if(target){
+    e.preventDefault();e.stopPropagation();
+    if(activeHelpTarget===target)hideHelpBanner();else{hideHelpBanner();showHelpBanner(target)}
+    return;
+   }
+  }
+  if(activeHelpTarget&&!e.target.closest('#hoverHelpBanner'))hideHelpBanner();
+ },true);
+ window.addEventListener('scroll',()=>{if(activeHelpTarget)hideHelpBanner()},{passive:true});
  window.addEventListener('resize',()=>{if(activeHelpTarget)positionHelpBanner(activeHelpTarget)});
 }
 
@@ -1896,6 +1869,7 @@ function renderCurrentView(){
  else if(state.currentView==='recommendation')renderRecommendation();
  else if(state.currentView==='heatmap')renderHeatmap();
  else if(state.currentView==='future')renderFuture();
+ else if(state.currentView==='alerts'){if(window.AppAlerts)window.AppAlerts.renderSettings()}
  else if(state.currentView==='calendar')renderCalendar();
  else if(state.currentView==='catalog')renderCatalog();
  else if(state.currentView==='catalogUS')renderCatalogUS();
@@ -1929,6 +1903,7 @@ async function load(force=false){
   }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   render();
+  if(window.AppAlerts)window.AppAlerts.evaluate('snapshot');
   if(!uiRestoredScroll){
    uiRestoredScroll=true;
    let y=state.savedScrollY||0;

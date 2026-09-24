@@ -7,7 +7,7 @@
   <meta name="description" content="CatalystPulse - radar de mercado, movimientos y catalizadores.">
   <title>CatalystPulse</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r27">
+  <link rel="stylesheet" href="styles.css?v=20260924r28">
 </head>
 <body>
 <div class="app-shell">
@@ -22,6 +22,7 @@
       <button class="nav-item" data-view="recommendation"><span>◎</span>Recomendación actual</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
+      <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
@@ -65,7 +66,7 @@
           <h1>Potencial de entrada</h1>
           <p class="lead">Explora acciones de Trade Republic o EEUU que cumplen el criterio seleccionado. Filtra por sesión, variación, volumen, RSI, ADX, tendencia y liquidez para localizar posibles entradas, sin precio mínimo.</p>
         </div>
-        <button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="entry" aria-label="Ayuda sobre Potencial de entrada">?</button><button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button></div>
       </div>
 
       <div class="control-strip">
@@ -181,7 +182,7 @@
           <h1>Recomendación actual</h1>
           <p class="lead">Muestra una candidata actual de EEUU y otra de Trade Republic seleccionadas mediante análisis multifactor, con la señal vigente, los factores a favor y en contra, las noticias/eventos considerados y el seguimiento de la tesis hasta la salida.</p>
         </div>
-        <button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="recommendation" aria-label="Ayuda sobre Recomendación actual">?</button><button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button></div>
       </div>
       <div class="recommendation-intro">
         <strong>Análisis adaptativo y explicable</strong>
@@ -197,7 +198,7 @@
           <h1>Mapa de calor</h1>
           <p class="lead">Vista visual del mercado agrupada por sectores. El tamaño de cada acción representa su capitalización bursátil cuando está disponible y el color refleja la variación de la sesión seleccionada.</p>
         </div>
-        <button class="btn icon-btn" id="refreshHeatmap" title="Actualizar">↻</button>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="heatmap" aria-label="Ayuda sobre Mapa de calor">?</button><button class="btn icon-btn" id="refreshHeatmap" title="Actualizar">↻</button></div>
       </div>
       <div class="heatmap-toolbar">
         <div class="market-tabs compact-tabs heatmap-market-tabs" data-tab-group="heatmapMarket">
@@ -236,7 +237,7 @@
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
         <div><h1>Potencial futuro</h1><p class="lead">Localiza acciones con catalizadores próximos o noticias recientes capaces de aumentar la volatilidad antes del movimiento. Puedes limitar por horizonte temporal, tipo de evento y disponibilidad confirmada en Trade Republic.</p></div>
-        <button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="future" aria-label="Ayuda sobre Potencial futuro">?</button><button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button></div>
       </div>
       <div class="control-strip">
         <select id="futureHorizon" class="select"><option value="1">1 día</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
@@ -246,13 +247,56 @@
       <div id="futureResults" class="stock-list"></div>
     </section>
 
+
+    <section class="view" id="view-alerts">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Avisos</h1>
+          <p class="lead">Configura alertas propias con criterios de mercado y controla los avisos automáticos de recomendación, potencial de entrada y catalizadores futuros.</p>
+        </div>
+        <button type="button" class="section-help" data-help-section="alerts" aria-label="Ayuda sobre Avisos">?</button>
+      </div>
+
+      <div class="alerts-settings-grid">
+        <article class="alert-settings-card">
+          <div class="alert-card-head"><div><h2>Avisos automáticos</h2><p>Se generan cuando CatalystPulse detecta una señal nueva o un cambio relevante.</p></div></div>
+          <label class="alert-switch"><input type="checkbox" id="autoAlertRecommendation" checked><span><strong>Recomendación actual</strong><small>Nueva acción recomendada o cambio entre VIGILAR y COMPRA.</small></span></label>
+          <label class="alert-switch"><input type="checkbox" id="autoAlertEntry" checked><span><strong>Potencial de entrada</strong><small>Nueva candidata principal según los criterios activos.</small></span></label>
+          <label class="alert-switch"><input type="checkbox" id="autoAlertFuture" checked><span><strong>Potencial futuro</strong><small>Cambio en la candidata destacada por catalizador próximo.</small></span></label>
+          <p class="alert-note">En la web se muestran en el centro flotante de avisos. El envío push con la app completamente cerrada se conectará al backend/FCM en el siguiente paso.</p>
+        </article>
+
+        <article class="alert-settings-card">
+          <div class="alert-card-head"><div><h2>Crear aviso manual</h2><p>Todos los campos son opcionales. No existe filtro de precio mínimo.</p></div><button type="button" class="btn ghost" id="alertUseCurrent">Usar criterio actual</button></div>
+          <form id="manualAlertForm" class="manual-alert-form">
+            <label class="alert-wide">Nombre<input id="alertName" class="input" maxlength="70" placeholder="Ej. Impulso con volumen"></label>
+            <label>Mercado<select id="alertMarket" class="select"><option value="tr">Trade Republic</option><option value="us">EEUU</option><option value="all">Todos</option></select></label>
+            <label>Sesión<select id="alertSession" class="select"><option value="auto">Automática</option><option value="premarket">Premarket</option><option value="regular">Regular</option><option value="postmarket">Postmarket</option></select></label>
+            <label>Variación mín. %<input id="alertMinChange" class="input" type="number" step="0.1" value="0"></label>
+            <label>Variación máx. %<input id="alertMaxChange" class="input" type="number" step="0.1" value="0"><small>0 = sin máximo</small></label>
+            <label>Vol. relativo mín.<input id="alertMinRelVolume" class="input" type="number" step="0.1" value="0"></label>
+            <label>Volumen mín.<input id="alertMinVolume" class="input" type="number" step="1000" value="0"></label>
+            <label>ADX mín.<input id="alertMinAdx" class="input" type="number" step="1" value="0"></label>
+            <label>RSI mín.<input id="alertMinRsi" class="input" type="number" step="1" value="0"></label>
+            <label>RSI máx.<input id="alertMaxRsi" class="input" type="number" step="1" value="100"></label>
+            <label>Rearme mínimo<select id="alertCooldown" class="select"><option value="5">5 min</option><option value="15" selected>15 min</option><option value="30">30 min</option><option value="60">1 h</option><option value="240">4 h</option><option value="1440">24 h</option></select></label>
+            <label class="alert-check"><input id="alertTrend" type="checkbox"> Exigir precio ≥ EMA20 ≥ EMA50</label>
+            <label class="alert-check"><input id="alertLiquid" type="checkbox"> Excluir liquidez baja</label>
+            <div class="alert-form-actions"><button type="submit" class="btn secondary">Guardar aviso</button><button type="button" class="btn ghost" id="alertTest">Probar aviso</button></div>
+          </form>
+        </article>
+      </div>
+      <div class="alert-rules-head"><div><h2>Mis avisos manuales</h2><p>Se activan cuando una acción entra por primera vez en las condiciones configuradas.</p></div><span id="manualAlertCount" class="count-pill">0</span></div>
+      <div id="manualAlertList" class="manual-alert-list"></div>
+    </section>
+
     <section class="view" id="view-calendar">
-      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Consulta cronológicamente resultados, eventos clínicos, corporativos y regulatorios, además de noticias y catalizadores asociados a las acciones cargadas.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Consulta cronológicamente resultados, eventos clínicos, corporativos y regulatorios, además de noticias y catalizadores asociados a las acciones cargadas.</p></div><button type="button" class="section-help" data-help-section="calendar" aria-label="Ayuda sobre Calendario y noticias">?</button></div>
       <div id="calendarResults" class="stock-list"></div>
     </section>
 
     <section class="view" id="view-catalog">
-      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Consulta únicamente instrumentos confirmados como negociables en Trade Republic/LSX, con ticker LSX resuelto, identificación por ISIN/WKN y su referencia estadounidense cuando existe.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Consulta únicamente instrumentos confirmados como negociables en Trade Republic/LSX, con ticker LSX resuelto, identificación por ISIN/WKN y su referencia estadounidense cuando existe.</p></div><button type="button" class="section-help" data-help-section="catalog" aria-label="Ayuda sobre Catálogo Trade Republic">?</button></div>
       <div id="catalogDetail" class="stock-profile is-hidden"></div>
       <div id="catalogBrowse">
         <div class="catalog-toolbar">
@@ -267,7 +311,7 @@
     </section>
 
     <section class="view" id="view-catalogUS">
-      <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Consulta el universo de acciones y ADR de Nasdaq, NYSE, AMEX y NYSE Arca cargado en CatalystPulse, con búsqueda, ordenación, filtros y columnas configurables.</p></div></div>
+      <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Consulta el universo de acciones y ADR de Nasdaq, NYSE, AMEX y NYSE Arca cargado en CatalystPulse, con búsqueda, ordenación, filtros y columnas configurables.</p></div><button type="button" class="section-help" data-help-section="catalogUS" aria-label="Ayuda sobre Catálogo EEUU">?</button></div>
       <div id="catalogUSDetail" class="stock-profile is-hidden"></div>
       <div id="catalogUSBrowse">
         <div class="catalog-toolbar">
@@ -306,6 +350,18 @@
     <div class="leaders-hotzone" id="leadersHotzone" aria-hidden="true"></div>
     
 
+
+    <aside id="notificationCenter" class="notification-center" aria-label="Centro de avisos" aria-live="polite">
+      <div class="notification-head">
+        <div><strong>Avisos</strong><span id="notificationStatus">Sin avisos nuevos</span></div>
+        <div class="notification-head-actions"><button type="button" id="notificationClear" aria-label="Borrar historial">Limpiar</button><button type="button" id="notificationClose" aria-label="Cerrar avisos">×</button></div>
+      </div>
+      <div id="notificationList" class="notification-list"><div class="notification-empty">Todavía no hay avisos.</div></div>
+    </aside>
+    <button type="button" id="notificationBell" class="notification-bell" aria-label="Abrir centro de avisos" aria-expanded="false">
+      <span aria-hidden="true">●</span><span id="notificationBadge" class="notification-badge is-hidden">0</span>
+    </button>
+
     <div id="hoverHelpBanner" class="hover-help-banner" role="tooltip" aria-hidden="true">
       <strong id="hoverHelpTitle">Ayuda</strong>
       <span id="hoverHelpText"></span>
@@ -319,6 +375,7 @@
     <footer>CatalystPulse · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r26"></script>
+<script src="app.js?v=20260924r27"></script>
+<script src="alerts.js?v=20260924r1"></script>
 </body>
 </html>
