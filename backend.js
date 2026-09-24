@@ -177,7 +177,7 @@ async function handleMe(request, env, user, json) {
 }
 
 async function handlePortfolios(request, env, user, json, parts) {
-  const id = parts[2] || "";
+  const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const rows = await env.DB.prepare(
       "SELECT p.*, (SELECT COUNT(*) FROM positions x WHERE x.portfolio_id=p.id AND x.active=1) AS position_count " +
@@ -363,7 +363,7 @@ async function handleAnalysisList(request, env, user, json, url) {
 }
 
 async function handleAlerts(request, env, user, json, parts) {
-  const action = parts[2] || "";
+  const action = parts[1] || "";
   if (request.method === "GET" && !action) {
     const rows = await env.DB.prepare(
       "SELECT * FROM alert_events WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
@@ -743,6 +743,65 @@ async function subjectForUser(env, userId, subjectType, subjectId) {
   return null;
 }
 
+async function handleSettings(request, env, user, json) {
+  const existing = await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(user.id).first();
+
+  if (request.method === "GET") return json({ settings: existing || null });
+  if (request.method !== "PATCH") return json({ error: "Method not allowed" }, 405);
+
+  const body = await readJson(request);
+  const next = {
+    positions: Math.max(5, Math.min(240, Math.round(finiteNumber(body.analysisPositionsMinutes) ?? finiteNumber(existing && existing.analysis_positions_minutes) ?? 10))),
+    watchlist: Math.max(10, Math.min(1440, Math.round(finiteNumber(body.analysisWatchlistMinutes) ?? finiteNumber(existing && existing.analysis_watchlist_minutes) ?? 30))),
+    buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(existing && existing.min_buy_confidence) ?? 85))),
+    sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(existing && existing.min_sell_confidence) ?? 80))),
+    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(existing && existing.notify_score_change) ?? 20)))
+  };
+  const now = nowIso();
+  await env.DB.prepare(
+    "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
+  ).bind(user.id, next.positions, next.watchlist, next.buy, next.sell, next.change, now, now).run();
+  return json({ settings: await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(user.id).first() });
+}
+
+async function handleDevices(request, env, user, json, parts) {
+  const id = parts[1] || "";
+  if (request.method === "GET" && !id) {
+    const rows = await env.DB.prepare(
+      "SELECT id,platform,app_version,enabled,last_seen_at,created_at,updated_at FROM devices WHERE user_id=? ORDER BY last_seen_at DESC"
+    ).bind(user.id).all();
+    return json({ devices: rows.results || [] });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const token = trimText(body.pushToken, 2048);
+    const platform = trimText(body.platform || "android", 32).toLowerCase();
+    const appVersion = trimText(body.appVersion, 40);
+    if (!token) return json({ error: "pushToken is required" }, 400);
+    const existing = await env.DB.prepare("SELECT id FROM devices WHERE push_token=?").bind(token).first();
+    const deviceId = existing && existing.id ? existing.id : uid("dev_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO devices (id,user_id,platform,push_token,app_version,enabled,last_seen_at,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?,?) " +
+      "ON CONFLICT(push_token) DO UPDATE SET user_id=excluded.user_id,platform=excluded.platform,app_version=excluded.app_version,enabled=1,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at"
+    ).bind(deviceId, user.id, platform, token, appVersion, now, now, now).run();
+    return json({ device: { id: deviceId, platform, appVersion, enabled: true, lastSeenAt: now } }, existing ? 200 : 201);
+  }
+
+  if (!id) return json({ error: "Device id required" }, 400);
+  if (request.method === "DELETE") {
+    await env.DB.prepare("UPDATE devices SET enabled=0,updated_at=? WHERE id=? AND user_id=?").bind(nowIso(), id, user.id).run();
+    return json({ deleted: true });
+  }
+  return json({ error: "Method not allowed" }, 405);
+}
+
 async function handleManualAnalysis(request, env, user, json, services) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await readJson(request);
@@ -799,6 +858,8 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
+    if (root === "settings") return handleSettings(request, env, user, json);
+    if (root === "devices") return handleDevices(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);
   } catch (error) {
     console.error("Backend API error", String(error && error.stack || error));
