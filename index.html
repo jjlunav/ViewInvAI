@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r29">
+  <link rel="stylesheet" href="styles.css?v=20260924r30">
 </head>
 <body>
 <div class="app-shell">
@@ -26,6 +26,7 @@
       <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
+      <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
     </nav>
     <section class="favorites-panel" aria-label="Acciones favoritas">
       <div class="favorites-head">
@@ -325,6 +326,38 @@
       </div>
     </section>
 
+
+    <section class="view" id="view-settings">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Settings</h1>
+          <p class="lead">Preferencias de dispositivo y funcionamiento de ViewInvAI. Estas opciones se guardan localmente hasta que activemos la sincronización por cuenta.</p>
+        </div>
+        <button type="button" class="section-help" data-help-section="settings" aria-label="Ayuda sobre Settings">?</button>
+      </div>
+
+      <div class="settings-grid">
+        <article class="settings-card">
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">PANTALLA Y DISPOSITIVO</span>
+              <h2>Mantener pantalla activa</h2>
+              <p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p>
+            </div>
+            <label class="settings-switch" aria-label="Mantener pantalla activa">
+              <input id="keepScreenAwake" type="checkbox">
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row">
+            <span>Estado</span>
+            <strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong>
+          </div>
+          <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
+        </article>
+      </div>
+    </section>
+
     <section id="stockQuickDetail" class="stock-profile stock-profile-page is-hidden" aria-label="Detalle rápido de la acción"></section>
 
     <div class="market-leaders market-leaders-dock" id="marketLeaders" aria-label="Top 10 de subidas por mercado">
@@ -375,7 +408,7 @@
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r28"></script>
+<script src="app.js?v=20260924r29"></script>
 <script src="alerts.js?v=20260924r2"></script>
 </body>
 </html>
