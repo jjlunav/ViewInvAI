@@ -2827,7 +2827,12 @@ document.addEventListener('click',e=>{
  let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
  if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
  let b=e.target.closest&&e.target.closest('.fav-star');
- if(b){e.preventDefault();e.stopPropagation();toggleFavorite(b.dataset.favKey);return}
+ if(b){
+  e.preventDefault();e.stopPropagation();
+  let pref=b.dataset.favPreferTr;
+  toggleFavorite(b.dataset.favKey,pref==='1'?true:pref==='0'?false:null);
+  return;
+ }
  let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
  if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
  let back=e.target.closest&&e.target.closest('[data-profile-back]');
