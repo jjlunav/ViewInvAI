@@ -1,0 +1,16 @@
+{
+  "appId": "com.catalystpulse.mobile",
+  "appName": "CatalystPulse",
+  "webDir": "mobile-shell",
+  "server": {
+    "url": "https://catalystpulse.sonarlab.workers.dev/",
+    "cleartext": false,
+    "allowNavigation": [
+      "catalystpulse.sonarlab.workers.dev"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#071018"
+  }
+}
