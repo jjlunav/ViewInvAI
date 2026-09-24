@@ -5315,3 +5315,10 @@ html[data-theme="light"] #view-heatmap .heatmap-hover-card{
  #view-heatmap .heat-sector{grid-column:span 4!important;grid-row:span 2!important}
  #view-heatmap .heat-sector.active{grid-column:1/-1!important;grid-row:span 4!important}
 }
+
+/* Keep the floating account from covering the sticky quote */
+@media(min-width:721px){
+ .stock-profile-page .investing-profile-header{
+  padding-right:205px!important
+ }
+}
