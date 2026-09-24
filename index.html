@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r50">
+  <link rel="stylesheet" href="styles.css?v=20260925r1">
 </head>
 <body>
 <div class="app-shell">
@@ -212,9 +212,12 @@
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="heatmap" aria-label="Ayuda sobre Mapa de calor">?</button><button class="btn icon-btn" id="refreshHeatmap" title="Actualizar">↻</button></div>
       </div>
       <div class="heatmap-toolbar">
-        <div class="market-tabs compact-tabs heatmap-market-tabs" data-tab-group="heatmapMarket">
-          <button class="tab active" data-tab="tr">Trade Republic</button>
-          <button class="tab" data-tab="us">EEUU</button>
+        <div class="heatmap-market-stack">
+          <div class="market-tabs compact-tabs heatmap-market-tabs" data-tab-group="heatmapMarket">
+            <button class="tab active" data-tab="tr">Trade Republic</button>
+            <button class="tab" data-tab="us">EEUU</button>
+          </div>
+          <div id="heatmapSectorTabs" class="heatmap-sector-tabs" aria-label="Sectores del mapa"></div>
         </div>
         <select id="heatmapSession" class="select">
           <option value="auto">Sesión automática</option>
@@ -468,9 +471,9 @@
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r46"></script>
+<script src="app.js?v=20260925r1"></script>
 <script src="alerts.js?v=20260924r3"></script>
 <script type="module" src="auth.js?v=20260924r5"></script>
-<script type="module" src="portfolio.js?v=20260924r5"></script>
+<script type="module" src="portfolio.js?v=20260925r1"></script>
 </body>
 </html>
