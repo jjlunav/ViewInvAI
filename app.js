@@ -92,6 +92,15 @@ const P={
  emerging:{minChange:0,maxChange:12,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'emerging'},
  strict:{minChange:1,maxChange:0,minRelVolume:1.3,minAdx:22,minRsi:42,maxRsi:68,minVolume:0,trend:true,illiquid:true,sort:'score'}
 };
+function currentRouteState(){
+ try{
+  let m=String(location.hash||'').match(/^#app\/([^/]+)(?:\/stock\/(.+))?$/);
+  if(!m)return null;
+  let view=decodeURIComponent(m[1]||'');
+  if(!V[view])return null;
+  return {view,profileKey:m[2]?decodeURIComponent(m[2]):null};
+ }catch(_){return null}
+}
 function restoreUiState(){
  try{
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
@@ -159,7 +168,17 @@ function saveUiState(){
  }catch(_){}
 }
 let saveUiTimer=null;
-function queueUiSave(){clearTimeout(saveUiTimer);saveUiTimer=setTimeout(saveUiState,120)}
+function syncCurrentHistorySnapshot(){
+ if(!appHistoryReady||appHistoryRestoring)return;
+ try{
+  let snap=appHistorySnapshot(appHistoryDepth());
+  history.replaceState(snap,'',appHistoryUrl(snap));
+ }catch(_){}
+}
+function queueUiSave(){
+ clearTimeout(saveUiTimer);
+ saveUiTimer=setTimeout(()=>{saveUiState();syncCurrentHistorySnapshot()},120);
+}
 function preset(n){return Object.assign({},P[n]||P.intraday)}
 function savedCustomPreset(){
  try{
@@ -2903,8 +2922,8 @@ window.addEventListener('resize',()=>{
  let next=catalogIsMobile();
  if(next!==lastCatalogMobile){lastCatalogMobile=next;if(['catalog','catalogUS'].includes(state.currentView)){catalogResetLimit(state.currentView==='catalog'?'tr':'us');renderCurrentView()}}
 },{passive:true});
-window.addEventListener('pagehide',()=>{saveUiState();releaseScreenWakeLock()});
-window.addEventListener('beforeunload',saveUiState);
+window.addEventListener('pagehide',()=>{saveUiState();syncCurrentHistorySnapshot();releaseScreenWakeLock()});
+window.addEventListener('beforeunload',()=>{saveUiState();syncCurrentHistorySnapshot()});
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){saveUiState();releaseScreenWakeLock()}
  else{syncScreenWakeLock();load(false);pollUsLive();scheduleLiveViewRefresh(0)}
@@ -2914,6 +2933,7 @@ setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classLi
 window.ViewInvAI={
  openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
  getStockByKey:key=>stockByKey(key),
+ getAllStocks:()=>db.stocks.slice(),
  getStockKey:s=>stockKey(s),
  getCurrentStockKey:()=>state.profileKey||null,
  getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),
