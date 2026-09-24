@@ -3051,50 +3051,33 @@ html[data-theme="light"] .portfolio-date-picker{
 }
 
 
-/* Native realtime Trade Republic chart */
-.native-chart-block{overflow:hidden}
-.native-chart-live-badge{
- display:inline-flex;align-items:center;justify-content:center;
- min-width:62px;height:24px;padding:0 9px;
- border:1px solid rgba(84,226,177,.45);
- border-radius:999px;background:rgba(38,111,87,.16);
- color:#63e8bb;font-size:8px;font-weight:850;letter-spacing:.55px
+/* Headerless layout: keep account access without reserving a top bar */
+.main{position:relative}
+.floating-account{
+ position:fixed;
+ top:8px;
+ right:12px;
+ z-index:2200;
+ margin:0!important;
 }
-.native-chart-toolbar{
- display:flex;align-items:center;justify-content:space-between;gap:12px;
- min-height:28px;padding:5px 10px;
- border-top:1px solid #1d313b;border-bottom:1px solid #1d313b;
- background:#09141b
-}
-.native-chart-source{font-size:8px;font-weight:750;color:#7f9aa5;letter-spacing:.25px}
-.native-chart-status{font-size:8px;font-weight:700;color:#62dcb4;font-variant-numeric:tabular-nums}
-.native-tr-chart{
- position:relative;
- width:100%;
- height:390px;
- min-height:300px;
- background:#05090c;
- overflow:hidden
-}
-.native-tr-chart canvas{display:block;width:100%;height:100%}
-.native-chart-empty{
- position:absolute;inset:0;display:grid;place-items:center;
- padding:20px;color:#78919c;font-size:11px;text-align:center;pointer-events:none
-}
-.native-chart-empty[hidden]{display:none}
-.native-chart-foot{
- display:flex;align-items:center;justify-content:space-between;gap:12px;
- min-height:30px;padding:5px 10px;
- border-top:1px solid #1d313b;
- background:#081219;color:#6f8792;font-size:8px
+.view{padding-top:10px}
+.stock-profile-page{margin-top:10px}
+@media(min-width:721px){
+ .view>.page-heading{padding-right:210px}
+ .stock-profile-page .profile-toolbar{padding-right:190px}
 }
 @media(max-width:720px){
- .native-tr-chart{height:310px;min-height:280px}
- .native-chart-toolbar,.native-chart-foot{align-items:flex-start;flex-direction:column;gap:3px}
- .native-chart-live-badge{min-width:54px;height:22px;padding:0 7px}
+ .floating-account{
+  top:auto;
+  right:12px;
+  bottom:calc(var(--mobile-nav-h) + 12px + env(safe-area-inset-bottom));
+ }
+ .floating-account .account-menu{
+  position:fixed;
+  top:auto;
+  right:10px;
+  bottom:calc(var(--mobile-nav-h) + 60px + env(safe-area-inset-bottom));
+ }
+ .view{padding-top:9px!important}
+ .stock-profile-page{margin-top:8px}
 }
-html[data-theme="light"] .native-chart-toolbar,
-html[data-theme="light"] .native-chart-foot{background:#f6fafb;border-color:#d9e5e9}
-html[data-theme="light"] .native-chart-source,
-html[data-theme="light"] .native-chart-foot{color:#6b818a}
-html[data-theme="light"] .native-tr-chart{background:#fff}
