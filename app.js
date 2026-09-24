@@ -2391,7 +2391,7 @@ if(keepScreenAwakeToggle)keepScreenAwakeToggle.addEventListener('change',e=>{
  saveDeviceSettings();
  syncScreenWakeLock();
 });
-$('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
+$('#mobileMenu')?.addEventListener('click',()=>$('#sidebar')?.classList.toggle('open'));
 document.addEventListener('click',e=>{
  let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
  if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
