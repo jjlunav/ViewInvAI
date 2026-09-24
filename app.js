@@ -182,13 +182,12 @@ function readTheme(){
 }
 function currentTheme(){return document.documentElement.dataset.theme==='light'?'light':'dark'}
 function updateThemeButton(){
- let b=$('#themeToggle');if(!b)return;
- let light=currentTheme()==='light';
- b.setAttribute('aria-label',light?'Cambiar a tema oscuro':'Cambiar a tema claro');
- b.setAttribute('title',light?'Cambiar a tema oscuro':'Cambiar a tema claro');
- let icon=b.querySelector('.theme-toggle-icon'),label=b.querySelector('.theme-toggle-label');
- if(icon)icon.textContent=light?'☾':'☀';
- if(label)label.textContent=light?'Oscuro':'Claro';
+ let theme=currentTheme();
+ document.querySelectorAll('[data-theme-setting]').forEach(button=>{
+  let active=button.dataset.themeSetting===theme;
+  button.classList.toggle('active',active);
+  button.setAttribute('aria-pressed',active?'true':'false');
+ });
 }
 function refreshVisibleChartThemes(){
  document.querySelectorAll('.tv-advanced-chart').forEach(el=>{
@@ -2680,7 +2679,9 @@ syncDeviceSettingsUi();
 syncScreenWakeLock();
 toUI(state.filters);
 initHelpSystem();
-let themeButton=$('#themeToggle');if(themeButton)themeButton.addEventListener('click',toggleTheme);
+document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
+ applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
+}));
 lockAllCriteria();
 initLeadersDock();
 initTrLive();
