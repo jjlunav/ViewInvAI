@@ -27,6 +27,9 @@ function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+loc
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 let usLive={busy:false,lastFetchAt:0};
 let tvChartAvailability=new Map();
+const nativeTrChartState=new WeakMap();
+const nativeChartTimeFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+const nativeChartShortTimeFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',hour12:false});
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
@@ -191,6 +194,7 @@ function updateThemeButton(){
  if(label)label.textContent=light?'Oscuro':'Claro';
 }
 function refreshVisibleChartThemes(){
+ document.querySelectorAll('.native-tr-chart').forEach(el=>renderNativeTrChart(el));
  document.querySelectorAll('.tv-advanced-chart').forEach(el=>{
   if(el.dataset.loaded==='1'||el.querySelector('.tradingview-widget-container')){
    renderTradingViewChart(el,el.dataset.chartMarket||'us');
@@ -1051,7 +1055,15 @@ function setChartMarketUi(block,s,usAvailable,trAvailable,active,preferTr=false)
  }
  caption.innerHTML='Mostrando <b>'+E(chartMarketName(s,active==='tr'))+'</b>. Es el único mercado disponible en TradingView para este valor.';
 }
+function nativeTrChartMarkup(s){
+ return '<div class="mini-chart-block native-chart-block" data-stock-key="'+E(stockKey(s))+'">'+
+  '<div class="mini-chart-title"><div><strong>ViewInvAI LIVE · LSX · velas 1 min</strong><span>Datos Trade Republic · hora España · sin el retraso del widget embebido.</span></div><div class="native-chart-live-badge">EN VIVO</div></div>'+
+  '<div class="native-chart-toolbar"><span class="native-chart-source">Trade Republic / LSX</span><span class="native-chart-status">Cargando histórico…</span></div>'+
+  '<div class="mini-chart native-tr-chart" data-stock-key="'+E(stockKey(s))+'"><canvas aria-label="Gráfico LSX en tiempo real"></canvas><div class="native-chart-empty">Cargando gráfico en tiempo real…</div></div>'+
+  '<div class="native-chart-foot"><span>1 minuto · sesión LSX</span><span>El último precio conserva la hora real de la última operación.</span></div></div>';
+}
 function miniChart(s,preferTr=false){
+ if(preferTr&&trTradable(s)&&trIsin(s))return nativeTrChartMarkup(s);
  let checkTr=!!trTradingViewCandidate(s);
  let controls=checkTr
   ?'<div class="chart-market-single chart-market-checking">Comprobando mercados de TradingView…</div>'
@@ -1060,7 +1072,7 @@ function miniChart(s,preferTr=false){
   ?'Comprobando qué mercados están realmente disponibles en TradingView…'
   :'Mostrando <b>'+E(chartMarketName(s,false))+'</b>.';
  return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+
-  '<div class="mini-chart-title"><div><strong>TradingView · velas 1 min</strong><span>Hora España · el gráfico puede llevar retraso frente a la cotización en vivo.</span></div>'+controls+'</div>'+
+  '<div class="mini-chart-title"><div><strong>TradingView · velas 1 min</strong><span>Hora España · este widget puede mostrar datos menos recientes que la cotización.</span></div>'+controls+'</div>'+
   '<div class="chart-market-caption">'+caption+'</div>'+
   '<div class="mini-chart tv-advanced-chart" data-stock-key="'+E(stockKey(s))+'" data-chart-market="us"><div class="chart-placeholder">'+(checkTr?'Comprobando disponibilidad en TradingView…':'Cargando TradingView…')+'</div></div></div>';
 }
@@ -1108,8 +1120,146 @@ function renderTradingViewChart(el,market){
  wrap.appendChild(script);
  el.appendChild(wrap);
 }
-async function loadMiniChart(el){
+function normalizeChartTime(value){
+ let n=N(value);if(n===null)return null;
+ return n>0&&n<1e12?n*1000:n;
+}
+function nativeTrPoints(raw){
+ let out=[];
+ for(let p of (Array.isArray(raw)?raw:[])){
+  let time=normalizeChartTime(p&&p.time),close=N(p&&p.close);
+  if(time===null||close===null)continue;
+  let open=N(p.open)??close,high=N(p.high)??Math.max(open,close),low=N(p.low)??Math.min(open,close),volume=N(p.volume)??0;
+  out.push({time,open,high,low,close,volume});
+ }
+ out.sort((a,b)=>a.time-b.time);
+ return out;
+}
+function nativeTrPointsWithLive(points,s){
+ let out=points.slice(),price=trLivePrice(s),lastAt=normalizeChartTime(s&&s.trLiveLastAt);
+ if(price===null)return out;
+ let time=lastAt??Date.now(),bucket=Math.floor(time/60000)*60000,last=out[out.length-1];
+ if(last&&Math.floor(last.time/60000)*60000===bucket){
+  last=Object.assign({},last,{high:Math.max(last.high,price),low:Math.min(last.low,price),close:price,time:bucket});
+  out[out.length-1]=last;
+ }else{
+  let open=last?last.close:price;
+  out.push({time:bucket,open,high:Math.max(open,price),low:Math.min(open,price),close:price,volume:0,live:true});
+ }
+ return out;
+}
+function nativeTrChartColors(){
+ let light=currentTheme()==='light';
+ return light
+  ?{bg:'#ffffff',grid:'rgba(26,58,71,.10)',text:'#617985',up:'#138f68',down:'#d1434b',muted:'#8aa0aa',line:'#16333f'}
+  :{bg:'#05090c',grid:'rgba(255,255,255,.065)',text:'#94a9b2',up:'#54e2b1',down:'#f04f5a',muted:'#607984',line:'#d7e5ea'};
+}
+function drawNativeTrCanvas(el,points,s){
+ let canvas=el&&el.querySelector('canvas');if(!canvas)return;
+ let rect=el.getBoundingClientRect(),cssW=Math.max(320,Math.floor(rect.width)),cssH=Math.max(260,Math.floor(rect.height||390));
+ let dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+ canvas.width=Math.round(cssW*dpr);canvas.height=Math.round(cssH*dpr);canvas.style.width=cssW+'px';canvas.style.height=cssH+'px';
+ let ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+ let c=nativeTrChartColors();ctx.fillStyle=c.bg;ctx.fillRect(0,0,cssW,cssH);
+ let now=Date.now(),span=8*3600e3,tMax=now,tMin=tMax-span;
+ let visible=points.filter(p=>p.time>=tMin-60000&&p.time<=tMax+60000);
+ if(!visible.length&&points.length){
+  visible=points.slice(-240);
+  tMin=visible[0].time;tMax=Math.max(now,visible[visible.length-1].time);
+ }
+ let empty=el.querySelector('.native-chart-empty');
+ if(!visible.length){
+  if(empty){empty.hidden=false;empty.textContent='Sin velas LSX disponibles en este momento.'}
+  return;
+ }
+ if(empty)empty.hidden=true;
+ let left=12,right=58,top=14,bottom=34,volH=Math.min(62,cssH*.18),priceBottom=cssH-bottom-volH-8;
+ let plotW=cssW-left-right,priceH=Math.max(120,priceBottom-top);
+ let lo=Math.min(...visible.map(p=>p.low)),hi=Math.max(...visible.map(p=>p.high));
+ let pad=Math.max((hi-lo)*.08,Math.abs(hi||1)*.004,0.002);lo-=pad;hi+=pad;
+ let x=t=>left+(t-tMin)/(tMax-tMin)*plotW;
+ let y=v=>top+(hi-v)/(hi-lo)*priceH;
+ ctx.lineWidth=1;ctx.strokeStyle=c.grid;ctx.fillStyle=c.text;ctx.font='11px system-ui,-apple-system,Segoe UI,sans-serif';
+ ctx.textAlign='right';ctx.textBaseline='middle';
+ for(let i=0;i<=4;i++){
+  let yy=top+priceH*i/4,val=hi-(hi-lo)*i/4;
+  ctx.beginPath();ctx.moveTo(left,yy+.5);ctx.lineTo(left+plotW,yy+.5);ctx.stroke();
+  ctx.fillText(val.toLocaleString('es-ES',{maximumFractionDigits:4}),cssW-5,yy);
+ }
+ ctx.textAlign='center';ctx.textBaseline='top';
+ for(let i=0;i<=6;i++){
+  let tt=tMin+(tMax-tMin)*i/6,xx=x(tt);
+  ctx.beginPath();ctx.moveTo(xx+.5,top);ctx.lineTo(xx+.5,priceBottom+volH);ctx.stroke();
+  ctx.fillText(nativeChartShortTimeFormat.format(new Date(tt)),xx,cssH-bottom+7);
+ }
+ let maxVol=Math.max(1,...visible.map(p=>Math.max(0,N(p.volume)||0)));
+ let width=Math.max(1,Math.min(8,plotW/Math.max(visible.length,1)*.72));
+ for(let p of visible){
+  let xx=x(p.time);if(xx<left-10||xx>left+plotW+10)continue;
+  let up=p.close>=p.open,clr=up?c.up:c.down;
+  ctx.strokeStyle=clr;ctx.fillStyle=clr;
+  ctx.beginPath();ctx.moveTo(xx,y(p.high));ctx.lineTo(xx,y(p.low));ctx.stroke();
+  let yo=y(Math.max(p.open,p.close)),yc=y(Math.min(p.open,p.close)),hh=Math.max(1,yc-yo);
+  ctx.fillRect(xx-width/2,yo,width,hh);
+  let vh=(Math.max(0,N(p.volume)||0)/maxVol)*volH;
+  ctx.globalAlpha=.45;ctx.fillRect(xx-width/2,priceBottom+volH-vh,width,Math.max(1,vh));ctx.globalAlpha=1;
+ }
+ let live=trLivePrice(s)??visible[visible.length-1].close;
+ if(live!==null&&live>=lo&&live<=hi){
+  let yy=y(live);ctx.save();ctx.setLineDash([4,4]);ctx.strokeStyle=c.up;ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+plotW,yy);ctx.stroke();ctx.restore();
+  ctx.fillStyle=c.up;ctx.textAlign='right';ctx.textBaseline='bottom';ctx.font='700 11px system-ui,-apple-system,Segoe UI,sans-serif';
+  ctx.fillText('€'+live.toLocaleString('es-ES',{maximumFractionDigits:6}),cssW-5,Math.max(12,yy-3));
+ }
+}
+function renderNativeTrChart(el){
+ let state=nativeTrChartState.get(el);if(!state)return;
+ let s=stockByKey(el.dataset.stockKey);if(!s)return;
+ let points=nativeTrPointsWithLive(state.points||[],s);
+ drawNativeTrCanvas(el,points,s);
+ let status=el.closest('.native-chart-block')?.querySelector('.native-chart-status');
+ let lastAt=normalizeChartTime(s.trLiveLastAt)||(points.length?points[points.length-1].time:null);
+ if(status)status.textContent=(trLive.connected?'LIVE':'Reconectando')+' · último trade '+(lastAt?nativeChartTimeFormat.format(new Date(lastAt)):'--:--:--')+' ES';
+}
+async function refreshNativeTrHistory(el){
+ if(!el||!el.isConnected)return;
+ let s=stockByKey(el.dataset.stockKey);if(!s||!trIsin(s))return;
+ let status=el.closest('.native-chart-block')?.querySelector('.native-chart-status');
+ try{
+  let url='/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange=LSX&range=1d&resolution=60000';
+  let response=await fetch(url,{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  let data=await response.json(),points=nativeTrPoints(data&&data.points);
+  nativeTrChartState.set(el,{points,at:Date.now()});
+  renderNativeTrChart(el);
+ }catch(error){
+  console.warn('Native TR chart warning',error);
+  if(status)status.textContent='Histórico LSX no disponible · mostrando último precio en vivo';
+  let old=nativeTrChartState.get(el)||{points:[]};nativeTrChartState.set(el,old);renderNativeTrChart(el);
+ }
+}
+function startNativeTrChart(el){
  if(!el||el.dataset.loaded==='1')return;
+ el.dataset.loaded='1';
+ let s=stockByKey(el.dataset.stockKey);if(!s)return;
+ ensureTrLiveKey(stockKey(s));
+ nativeTrChartState.set(el,{points:[],at:0});
+ refreshNativeTrHistory(el);
+ let tick=()=>{
+  if(!el.isConnected)return;
+  renderNativeTrChart(el);
+  if(Date.now()-(nativeTrChartState.get(el)?.at||0)>30000)refreshNativeTrHistory(el);
+  setTimeout(tick,1000);
+ };
+ setTimeout(tick,1000);
+ if(typeof ResizeObserver!=='undefined'){
+  let ro=new ResizeObserver(()=>renderNativeTrChart(el));ro.observe(el);
+  el._nativeResizeObserver=ro;
+ }
+}
+async function loadMiniChart(el){
+ if(!el)return;
+ if(el.classList.contains('native-tr-chart')){startNativeTrChart(el);return}
+ if(el.dataset.loaded==='1')return;
  el.dataset.loaded='1';
  let block=el.closest('.tv-chart-block'),s=stockByKey(el.dataset.stockKey);
  if(!block||!s)return;
@@ -1357,7 +1507,7 @@ function quickProfileHtml(s){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p><div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Hora España · TradingView puede diferir del último precio recibido</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>'+(isTr&&trTradable(s)?'LSX · tiempo real · hora España':'Hora España · TradingView puede diferir del último precio recibido')+'</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
@@ -1422,7 +1572,7 @@ function profileHtml(s,view){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot base '+E(updated)+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   trRelation+trNote+feedWarning+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · hora España · TradingView puede ir retrasado frente al precio en vivo</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>'+(isTr&&trTradable(s)?'1 minuto · LSX en vivo · hora España':'1 minuto · hora España · TradingView puede ir retrasado frente al precio en vivo')+'</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
