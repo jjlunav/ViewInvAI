@@ -20,20 +20,20 @@ CLI equivalent:
 npx wrangler d1 create viewinvai-db
 ```
 
-Cloudflare returns a database UUID. Add it to `wrangler.jsonc`:
+Cloudflare database `viewinvai-db` is already connected to the Worker through the `DB` binding:
 
 ```json
 "d1_databases": [
   {
     "binding": "DB",
     "database_name": "viewinvai-db",
-    "database_id": "<D1_DATABASE_UUID>",
+    "database_id": "36134c26-075e-4602-9fde-da449187892d",
     "migrations_dir": "migrations"
   }
 ]
 ```
 
-Apply the schema:
+Apply the schema after the binding is deployed:
 
 ```bash
 npx wrangler d1 migrations apply viewinvai-db --remote
