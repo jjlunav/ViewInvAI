@@ -31,7 +31,7 @@ let tvChartAvailability=new Map();
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-let heatmapState={market:'tr',session:'auto',limit:250,selectedSector:null,selectedStockKey:null};
+let heatmapState={market:'tr',session:'auto',limit:250,sectorByMarket:{tr:null,us:null},selectedStockKey:null};
 const SETTINGS_KEY='viewinvai:settings:v1';
 let deviceSettings=readDeviceSettings(),screenWakeLock=null,wakeLockBusy=false;
 function readDeviceSettings(){
@@ -1280,21 +1280,30 @@ function listSessionQuote(s,se,preferTr=false){
  if(price===null)return '';
  return '<div class="stock-session-quote"><span class="session-icon">'+icon+'</span><small>'+label+'</small><strong>'+snapshotPricePair(s,price,preferTr)+'</strong><span class="'+C(change)+'">'+PC(change)+'</span></div>';
 }
-function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
- let hint=rankText||why(s,se),rv=RV(s,se),vol=SV(s,se),ticker=preferTr?(s.trTicker||s.ticker):s.ticker;
- return '<article class="stock-card investing-stock-card '+(dense?'dense-card':'')+'">'+
-  '<div class="stock-open-row investing-stock-row"'+stockOpenAttrs(s,hint,preferTr)+' title="'+E(hint)+'">'+
+function standardStockCard(s,i=0,opts={}){
+ let se=opts.se||SES(),dense=opts.dense===true,preferTr=opts.preferTr===true;
+ let hint=opts.hint||why(s,se),rv=RV(s,se),vol=SV(s,se),ticker=preferTr?(s.trTicker||s.ticker):s.ticker;
+ let attrs=opts.openAttrs!==undefined?String(opts.openAttrs||''):stockOpenAttrs(s,hint,preferTr);
+ let rank=opts.rankLabel!==undefined?String(opts.rankLabel):'#'+(i+1);
+ let insight=opts.insight||listInsightLabel(s,se);
+ let context=opts.contextHtml?'<div class="stock-context-line">'+opts.contextHtml+'</div>':'';
+ return '<article class="stock-card investing-stock-card '+(dense?'dense-card':'')+(opts.className?' '+E(opts.className):'')+'">'+
+  '<div class="stock-open-row investing-stock-row"'+attrs+' title="'+E(hint)+'">'+
    '<div class="investing-stock-left">'+
-    '<div class="investing-stock-name-row">'+favButton(s)+'<div class="investing-stock-copy"><strong class="stock-name">'+E(s.name||ticker||'—')+'</strong>'+
-     '<div class="investing-stock-meta"><span class="rank">#'+(i+1)+'</span><span class="meta-clock">◷</span><span>'+E(ticker||'—')+'</span><span>·</span><span>'+E(preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU'))+'</span>'+(trTradable(s)?'<span class="pill ok">TR</span>':'')+'</div>'+
+    '<div class="investing-stock-name-row">'+favButton(s,preferTr)+'<div class="investing-stock-copy"><strong class="stock-name">'+E(s.name||ticker||'—')+'</strong>'+
+     '<div class="investing-stock-meta"><span class="rank">'+E(rank)+'</span><span class="meta-clock">◷</span><span>'+E(ticker||'—')+'</span><span>·</span><span>'+E(preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU'))+'</span>'+(trTradable(s)?'<span class="pill ok">TR</span>':'')+'</div>'+
     '</div></div>'+
-    '<div class="stock-ai-chip">'+E(listInsightLabel(s,se))+'</div>'+
+    '<div class="stock-ai-chip">'+E(insight)+'</div>'+
    '</div>'+
    '<div class="investing-stock-right"><div class="stock-list-price">'+pricePair(s,SP(s,se),preferTr)+'</div>'+entryChangeHtml(s,se)+listSessionQuote(s,se,preferTr)+'</div>'+
    '<span class="open-arrow">›</span>'+
   '</div>'+
   '<div class="stock-market-line">'+bidAskHtml(s,preferTr)+'<div class="stock-list-metrics"><span>Vol <b>'+compactVol(vol)+'</b></span><span>RV <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div></div>'+
+  context+
  '</article>';
+}
+function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
+ return standardStockCard(s,i,{se,dense,preferTr,hint:rankText||why(s,se)});
 }
 function market(s,m){let ex=String(s.exchange||'').toUpperCase();return m==='tr'?trTradable(s):m==='us'?['NASDAQ','NYSE','AMEX','NYSE ARCA','NYSEARCA'].includes(ex):true}
 function numInput(id,fallback,min=-Infinity,max=Infinity){let v=N($('#'+id).value);if(v===null)v=fallback;return Math.max(min,Math.min(max,v))}
@@ -1997,8 +2006,9 @@ function renderFuture(){
  let groups=groupFutureEvents(filtered);
  $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
-  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
-  return '<article class="stock-card future-stock-card"><div class="stock-main stock-open-row future-stock-row"'+stockOpenAttrs(s,label+' · '+when,trTradable(s))+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s,trTradable(s))+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="future-event-meta"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(trTradable(s)?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=trTradable(s);
+  let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');
+  return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'});
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
@@ -2006,7 +2016,8 @@ function renderCalendar(){
  let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
  $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
   let s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
-  return '<article class="stock-card dense-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,EL(e)+' · '+DF(e.date),trTradable(s))+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+DF(e.date)+'</b><span class="event-type">'+E(EL(e))+'</span><span class="open-arrow">→</span></div></div></article>';
+  let label=EL(e),when=DF(e.date),preferTr=trTradable(s);
+  return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'});
  }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
 }
 
@@ -2349,7 +2360,7 @@ function compactMoney(v){
  return prefix+I(v);
 }
 function renderHeatmap(){
- let box=$('#heatmapResults');if(!box)return;
+ let box=$('#heatmapResults'),tabs=$('#heatmapSectorTabs');if(!box)return;
  let se=heatmapSession(),limit=Math.max(25,Math.min(500,N(heatmapState.limit)||250));
  let universe=heatmapUniverse().filter(s=>heatmapChange(s,se)!==null);
  universe.sort((a,b)=>heatmapWeight(b)-heatmapWeight(a));
@@ -2360,23 +2371,32 @@ function renderHeatmap(){
   groups.get(sector).push(s);
  }
  let sectors=[...groups.entries()].map(([name,stocks])=>({
-  name,
-  stocks,
+  name,stocks,
   weight:stocks.reduce((sum,s)=>sum+heatmapWeight(s),0),
   avg:heatmapSectorAverage(stocks,se)
  })).sort((a,b)=>b.weight-a.weight);
- let maxSector=sectors.length?sectors[0].weight:1;
- box.innerHTML=sectors.length?sectors.map(sec=>{
-  let maxStock=Math.max(1,...sec.stocks.map(heatmapWeight));
-  let span=heatmapSectorSpan(sec.weight,maxSector);
-  return '<section class="heat-sector '+heatmapChangeClass(sec.avg)+'" style="--sector-span:'+span+'">'+
-   '<div class="heat-sector-head"><div><strong>'+E(sec.name)+'</strong><small>'+sec.stocks.length+' acciones</small></div><b class="'+C(sec.avg)+'">'+PC(sec.avg)+'</b></div>'+
-   '<div class="heat-sector-grid">'+sec.stocks.map(s=>heatmapTile(s,se,maxStock)).join('')+'</div>'+
-   '</section>';
- }).join(''):'<div class="empty-state">No hay datos suficientes para construir el mapa de calor en esta sesión.</div>';
+
+ let remembered=heatmapState.sectorByMarket&&heatmapState.sectorByMarket[heatmapState.market];
+ let active=sectors.find(x=>x.name===remembered)||sectors[0]||null;
+ if(active){
+  heatmapState.sectorByMarket[heatmapState.market]=active.name;
+  if(tabs)tabs.innerHTML=sectors.map(sec=>
+   '<button type="button" class="heatmap-sector-tab'+(sec.name===active.name?' active':'')+'" data-heatmap-sector-tab="'+E(sec.name)+'">'+
+    '<strong>'+E(sec.name)+'</strong><span>'+sec.stocks.length+'</span><b class="'+C(sec.avg)+'">'+PC(sec.avg)+'</b>'+
+   '</button>'
+  ).join('');
+  let maxStock=Math.max(1,...active.stocks.map(heatmapWeight));
+  box.innerHTML='<section class="heat-sector heat-sector-single '+heatmapChangeClass(active.avg)+'">'+
+   '<div class="heat-sector-head"><div><strong>'+E(active.name)+'</strong><small>'+active.stocks.length+' acciones · '+(heatmapState.market==='tr'?'Trade Republic / LSX':'EEUU')+'</small></div><b class="'+C(active.avg)+'">'+PC(active.avg)+'</b></div>'+
+   '<div class="heat-sector-grid">'+active.stocks.map(s=>heatmapTile(s,se,maxStock)).join('')+'</div>'+
+  '</section><div id="heatmapHoverCard" class="heatmap-hover-card" aria-hidden="true"></div>';
+ }else{
+  if(tabs)tabs.innerHTML='';
+  box.innerHTML='<div class="empty-state">No hay datos suficientes para construir el mapa de calor en esta sesión.</div>';
+ }
  let marketLabel=heatmapState.market==='tr'?'Trade Republic':'EEUU';
- let ses=$('#heatmapSessionText');if(ses)ses.textContent=marketLabel+' · '+SN(se);
- let count=$('#heatmapCount');if(count)count.textContent=selected.length+' de '+universe.length+' acciones';
+ let ses=$('#heatmapSessionText');if(ses)ses.textContent=marketLabel+' · '+SN(se)+(active?' · '+active.name:'');
+ let count=$('#heatmapCount');if(count)count.textContent=(active?active.stocks.length:0)+' visibles · '+selected.length+' analizadas';
  let upd=$('#heatmapUpdated');
  if(upd){
   if(se==='regular'&&usLive.lastFetchAt)upd.textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -2510,11 +2530,18 @@ $('#heatmapResults')?.addEventListener('dblclick',e=>{
 });
 
 document.addEventListener('click',e=>{
+ let sectorTab=e.target.closest&&e.target.closest('[data-heatmap-sector-tab]');
+ if(sectorTab){
+  e.preventDefault();e.stopPropagation();
+  heatmapState.sectorByMarket[heatmapState.market]=sectorTab.dataset.heatmapSectorTab||null;
+  heatmapState.selectedStockKey=null;
+  renderHeatmap();return;
+ }
  let sectorButton=e.target.closest&&e.target.closest('[data-heat-sector-select]');
  if(sectorButton){
   e.preventDefault();e.stopPropagation();
   let name=sectorButton.dataset.heatSectorSelect;
-  heatmapState.selectedSector=heatmapState.selectedSector===name?null:name;
+  heatmapState.sectorByMarket[heatmapState.market]=name||null;
   heatmapState.selectedStockKey=null;
   renderHeatmap();return;
  }
@@ -2952,6 +2979,7 @@ window.ViewInvAI={
  getCurrentStockKey:()=>state.profileKey||null,
  getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),
  getCanonicalQuote:(stock,preferTr=false)=>canonicalQuote(stock,preferTr),
+ renderStandardStockCard:(stock,options={})=>standardStockCard(stock,Number(options.index)||0,options||{}),
  renderPricePair:(stock,preferTr=false)=>pricePair(stock,SP(stock,currentMarketSession()),preferTr),
  renderLiveChange:(stock,preferTr=false)=>liveChangeHtml(stock,SC(stock,currentMarketSession()),preferTr),
  renderEmbeddedStockDetail,
