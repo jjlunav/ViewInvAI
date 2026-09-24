@@ -126,6 +126,20 @@ function restoreUiState(){
   state.profileOriginScroll=N(x&&x.profileOriginScroll)??0;
   state.profilePreferTr=x&&x.profilePreferTr===true?true:x&&x.profilePreferTr===false?false:null;
   state.savedScrollY=N(x&&x.scrollY)??0;
+
+  let route=currentRouteState();
+  let hs=history.state&&history.state.__viewinvai===1?history.state:null;
+  if(route){
+   state.currentView=route.view;
+   state.profileKey=route.profileKey||null;
+   if(hs&&hs.view===route.view){
+    state.profileReason=hs.profileReason||state.profileReason||'';
+    state.profileOriginView=V[hs.profileOriginView]?hs.profileOriginView:state.profileOriginView;
+    state.profileOriginScroll=N(hs.profileOriginScroll)??state.profileOriginScroll;
+    state.profilePreferTr=hs.profilePreferTr===true?true:hs.profilePreferTr===false?false:state.profilePreferTr;
+    state.savedScrollY=N(hs.scrollY)??state.savedScrollY;
+   }
+  }
  }catch(_){}
 
  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+state.currentView));
@@ -153,7 +167,7 @@ function restoreUiState(){
 function saveUiState(){
  try{
   localStorage.setItem(UI_KEY,JSON.stringify({
-   view:state.currentView||'entry',
+   view:state.currentView||'home',
    entryMarket:state.entryMarket,
    session:state.session,
    preset:state.preset,
