@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r30">
+  <link rel="stylesheet" href="styles.css?v=20260924r31">
 </head>
 <body>
 <div class="app-shell">
@@ -405,10 +405,32 @@
       <span class="theme-toggle-label">Claro</span>
     </button>
 
+
+    <div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div>
+    <aside class="mobile-more-sheet" id="mobileMoreSheet" aria-label="Más secciones" aria-hidden="true">
+      <div class="mobile-more-handle" aria-hidden="true"></div>
+      <div class="mobile-more-head"><strong>Más secciones</strong><button type="button" id="mobileMoreClose" aria-label="Cerrar">×</button></div>
+      <div class="mobile-more-grid">
+        <button type="button" class="mobile-more-item" data-mobile-view="heatmap"><span>▦</span><b>Mapa de calor</b><small>Visión rápida por sectores</small></button>
+        <button type="button" class="mobile-more-item" data-mobile-view="future"><span>✦</span><b>Potencial futuro</b><small>Catalizadores próximos</small></button>
+        <button type="button" class="mobile-more-item" data-mobile-view="calendar"><span>▣</span><b>Calendario</b><small>Noticias y eventos</small></button>
+        <button type="button" class="mobile-more-item" data-mobile-view="catalogUS"><span>▥</span><b>Catálogo EEUU</b><small>Nasdaq, NYSE y AMEX</small></button>
+        <button type="button" class="mobile-more-item" data-mobile-view="settings"><span>⚙</span><b>Ajustes</b><small>Preferencias del dispositivo</small></button>
+      </div>
+    </aside>
+
+    <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
+      <button type="button" class="mobile-nav-item active" data-mobile-view="entry"><span>◈</span><small>Entrada</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Recom.</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="alerts"><span>●</span><small>Avisos</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="catalog"><span>▤</span><small>TR</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
+    </nav>
+
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r29"></script>
+<script src="app.js?v=20260924r30"></script>
 <script src="alerts.js?v=20260924r2"></script>
 </body>
 </html>
