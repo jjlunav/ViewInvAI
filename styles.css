@@ -3655,3 +3655,566 @@ html[data-theme="light"] .portfolio-form textarea{
 html[data-theme="light"] .mobile-bottom-nav{
  background:rgba(255,255,255,.95)!important;border-color:#cfdee4!important
 }
+
+
+/* Investing-reference information architecture v3 */
+
+/* Lists: fewer boxes, clearer hierarchy like a real market watchlist */
+.stock-list{
+ border:1px solid #1c303a!important;
+ border-radius:16px!important;
+ overflow:hidden!important;
+ background:#081219!important;
+ gap:0!important;
+ box-shadow:0 12px 30px rgba(0,0,0,.12)!important
+}
+.investing-stock-card{
+ border:0!important;
+ border-bottom:1px solid #182b34!important;
+ border-radius:0!important;
+ background:#081219!important;
+ box-shadow:none!important
+}
+.investing-stock-card:last-child{border-bottom:0!important}
+.investing-stock-card:hover{transform:none!important;background:#0a171f!important}
+.investing-stock-row{
+ position:relative;
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto 18px;
+ align-items:center;
+ gap:14px;
+ padding:14px 16px!important;
+ min-height:92px;
+ cursor:pointer
+}
+.investing-stock-left{min-width:0;display:grid;gap:8px}
+.investing-stock-name-row{display:flex;align-items:flex-start;gap:9px;min-width:0}
+.investing-stock-copy{min-width:0;display:grid;gap:4px}
+.investing-stock-copy .stock-name{
+ display:block;
+ font-size:16px!important;
+ line-height:1.15;
+ color:#edf4f6!important;
+ font-weight:760;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis
+}
+.investing-stock-meta{
+ display:flex;align-items:center;gap:5px;min-width:0;
+ color:#6f8691;font-size:9px;white-space:nowrap
+}
+.investing-stock-meta .rank{
+ width:auto!important;height:auto!important;
+ padding:2px 5px!important;border-radius:999px!important;
+ background:#10232b!important;color:#8ba0aa!important;
+ font-size:7px!important
+}
+.meta-clock{font-size:11px;color:#d05b67}
+.stock-ai-chip{
+ justify-self:start;
+ max-width:100%;
+ padding:4px 9px;
+ border-radius:999px;
+ background:rgba(115,167,255,.10);
+ border:1px solid rgba(115,167,255,.18);
+ color:#aebfff;
+ font-size:8px;
+ font-weight:760;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis
+}
+.investing-stock-right{
+ min-width:150px;
+ display:grid;
+ justify-items:end;
+ align-content:center;
+ gap:3px;
+ text-align:right
+}
+.stock-list-price .price-pair{justify-content:flex-end!important}
+.stock-list-price .price-pair>strong{
+ font-size:20px!important;
+ line-height:1!important;
+ color:#f3f7f8!important
+}
+.stock-list-price .price-pair>small:not(.quote-updated){
+ font-size:9px!important;color:#758c96!important
+}
+.investing-stock-right>.quote-change{
+ font-size:12px!important;font-weight:780!important
+}
+.stock-session-quote{
+ display:flex;align-items:center;justify-content:flex-end;gap:5px;
+ min-height:20px;color:#748a94;font-size:9px
+}
+.stock-session-quote .session-icon{font-size:13px;color:#f0bb42}
+.stock-session-quote small{font-size:7px;font-weight:800;letter-spacing:.4px;color:#758b95}
+.stock-session-quote strong{font-size:10px;color:#94a8b0;font-weight:650}
+.stock-session-quote>span:last-child{font-size:10px;font-weight:760}
+.investing-stock-row>.open-arrow{font-size:24px;color:#46606b;line-height:1}
+.stock-market-line{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ min-height:31px;padding:6px 16px;
+ border-top:1px solid rgba(57,83,94,.20);
+ background:#071017
+}
+.stock-market-line .quote-spread{margin:0!important}
+.stock-list-metrics{display:flex;align-items:center;justify-content:flex-end;gap:12px;color:#617984;font-size:8px}
+.stock-list-metrics b{color:#9cb0b8;font-weight:720}
+
+/* Stock detail header: price/identity first, not a large decorative card */
+.stock-profile-page{
+ width:min(1320px,calc(100% - 34px))!important;
+ margin:8px auto 34px!important
+}
+.investing-profile-header{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto auto!important;
+ align-items:center!important;
+ gap:18px!important;
+ padding:16px 4px 18px!important;
+ border:0!important;
+ border-bottom:1px solid #20323b!important;
+ border-radius:0!important;
+ background:transparent!important;
+ box-shadow:none!important;
+ overflow:visible!important
+}
+.investing-profile-header::after{display:none!important}
+.investing-profile-header .profile-title{
+ display:flex!important;align-items:center!important;gap:11px!important;min-width:0
+}
+.investing-profile-header .profile-title>div{min-width:0}
+.investing-profile-header .profile-market{
+ margin-bottom:5px!important;
+ color:#647e89!important;font-size:8px!important;font-weight:780!important;letter-spacing:.7px!important
+}
+.investing-profile-header .profile-title h2{
+ display:inline-block;
+ margin:0 9px 0 0!important;
+ font-size:25px!important;line-height:1!important;letter-spacing:-.65px!important;
+ color:#f0f6f7!important
+}
+.investing-profile-header .profile-title p{
+ display:inline!important;
+ font-size:13px!important;color:#9cb0b8!important
+}
+.investing-profile-header .profile-live{
+ min-width:220px!important;
+ display:grid!important;
+ grid-template-columns:auto auto;
+ grid-template-areas:
+   "label label"
+   "price change"
+   "updated updated"
+   "spread spread";
+ justify-items:end!important;
+ align-items:end!important;
+ gap:3px 10px!important;
+ padding:0!important;
+ border:0!important;
+ background:transparent!important
+}
+.investing-profile-header .profile-live>small:first-child{
+ grid-area:label;color:#6e8792!important;font-size:8px!important;letter-spacing:.35px
+}
+.investing-profile-header .profile-live>.price-pair{grid-area:price}
+.investing-profile-header .profile-live>.price-pair>strong{
+ font-size:30px!important;color:#f5f9fa!important;letter-spacing:-.9px!important
+}
+.investing-profile-header .profile-live>.price-pair>small:not(.quote-updated){font-size:9px!important}
+.investing-profile-header .profile-live>.price-pair>.quote-updated{
+ grid-area:updated!important;
+ border:0!important;padding:0!important;margin-top:2px!important
+}
+.investing-profile-header .profile-live>.positive,
+.investing-profile-header .profile-live>.negative{
+ grid-area:change;font-size:14px!important;font-weight:800!important;align-self:center
+}
+.investing-profile-header .profile-live>.quote-spread{
+ grid-area:spread;justify-self:stretch!important;justify-content:flex-end!important
+}
+.investing-profile-header .profile-primary-actions{
+ margin:0!important;align-self:center
+}
+.investing-profile-header .profile-primary-actions .btn{
+ min-height:38px!important;border-radius:9px!important
+}
+
+/* Investing-like section tabs */
+.profile-tabs{
+ position:relative;
+ display:flex;align-items:center;gap:4px;
+ min-height:48px;
+ padding:0 2px;
+ border-bottom:1px solid #20323b;
+ overflow-x:auto;scrollbar-width:none
+}
+.profile-tabs::-webkit-scrollbar{display:none}
+.profile-tabs button{
+ flex:0 0 auto;
+ min-height:47px;
+ padding:0 13px;
+ border:0;border-bottom:3px solid transparent;
+ background:transparent;color:#7f949d;
+ font-size:11px;font-weight:700;cursor:pointer
+}
+.profile-tabs button:hover{color:#dbe8ec}
+.profile-tabs button.active{
+ color:#eef5f7;border-bottom-color:#e7edf0
+}
+.profile-tabs .profile-tab-ai{
+ color:#9eb7ff;
+ border-radius:9px 9px 0 0
+}
+.profile-tabs .profile-tab-ai::after{
+ content:"IA";margin-left:5px;padding:2px 4px;border-radius:999px;
+ background:rgba(115,167,255,.11);border:1px solid rgba(115,167,255,.18);
+ font-size:6px;letter-spacing:.45px
+}
+
+/* Session strip replaces hidden/duplicated values with a clear 3-column block */
+.profile-session-strip{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ margin:10px 0 12px;
+ border:1px solid #1d313b;
+ border-radius:12px;
+ overflow:hidden;
+ background:#071119
+}
+.profile-session-cell{
+ min-width:0;
+ display:grid;
+ grid-template-columns:minmax(0,1fr) auto;
+ gap:3px 10px;
+ padding:10px 12px;
+ border-right:1px solid #1d313b
+}
+.profile-session-cell:last-child{border-right:0}
+.profile-session-cell>span{
+ grid-column:1/-1;
+ color:#6c828c;font-size:8px;font-weight:800;letter-spacing:.45px;text-transform:uppercase
+}
+.profile-session-cell>strong{font-size:12px;color:#dbe7ea;overflow:hidden;text-overflow:ellipsis}
+.profile-session-cell>b{font-size:11px;text-align:right}
+.profile-session-cell>small{grid-column:1/-1;color:#5f7782;font-size:8px}
+
+/* Main data area: chart + ViewInvAI AI on desktop */
+.profile-main-grid{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) 310px;
+ align-items:start;
+ gap:12px;
+ margin:12px 0
+}
+.profile-main-grid .profile-chart-section{margin:0!important;min-width:0}
+.profile-ai-panel{
+ position:sticky;
+ top:10px;
+ border:1px solid rgba(115,167,255,.25);
+ border-radius:14px;
+ background:
+  radial-gradient(circle at 90% 4%,rgba(115,167,255,.13),transparent 34%),
+  linear-gradient(180deg,#0c1722,#09131c);
+ box-shadow:0 12px 32px rgba(0,0,0,.18);
+ overflow:hidden
+}
+.profile-ai-head{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:13px 14px 10px;
+ border-bottom:1px solid rgba(115,167,255,.13)
+}
+.profile-ai-head small{display:block;color:#839fff;font-size:7px;font-weight:850;letter-spacing:.8px}
+.profile-ai-head h3{margin:3px 0 0;color:#e9efff;font-size:13px}
+.profile-ai-score{
+ width:56px;height:56px;border-radius:50%;
+ display:grid;place-content:center;text-align:center;
+ border:4px solid rgba(120,158,242,.18);
+ background:#0b1522
+}
+.profile-ai-score strong{font-size:18px;line-height:1;color:#c8d6ff}
+.profile-ai-score span{font-size:7px;color:#6e84b0}
+.profile-ai-score.high{border-color:rgba(77,227,177,.35)}
+.profile-ai-score.high strong{color:#63e6ba}
+.profile-ai-score.watch{border-color:rgba(244,201,93,.35)}
+.profile-ai-score.watch strong{color:#f0cf72}
+.profile-ai-state{
+ display:grid;gap:5px;padding:11px 14px;
+ background:rgba(115,167,255,.045)
+}
+.profile-ai-state b{font-size:11px;color:#c5d3ff}
+.profile-ai-state span{font-size:9px;line-height:1.45;color:#7f93a3}
+.profile-ai-state.high b{color:#68e7bd}
+.profile-ai-state.watch b{color:#f0ce70}
+.profile-ai-columns{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:11px 14px}
+.profile-ai-columns h4{margin:0 0 6px;font-size:8px;color:#718894;text-transform:uppercase;letter-spacing:.45px}
+.profile-ai-columns ul{list-style:none;padding:0;margin:0;display:grid;gap:5px}
+.profile-ai-columns li{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:8px;color:#94a7af}
+.profile-ai-columns li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profile-ai-columns li b{font-size:8px}
+.profile-ai-catalyst{
+ display:grid;gap:3px;
+ margin:0 14px 14px;padding:10px;
+ border:1px solid rgba(115,167,255,.13);
+ border-radius:10px;background:rgba(115,167,255,.035)
+}
+.profile-ai-catalyst small{font-size:7px;color:#6f85a9;text-transform:uppercase;letter-spacing:.4px}
+.profile-ai-catalyst strong{font-size:10px;color:#c8d4f6}
+.profile-ai-catalyst span{font-size:8px;line-height:1.4;color:#758a96}
+
+/* Key data as label/value rows, not a wall of tiles */
+.profile-stats-section{margin:12px 0!important}
+.profile-stat-list{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ column-gap:28px;
+ padding:2px 14px 8px
+}
+.profile-stat-row{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) auto;
+ align-items:center;
+ gap:14px;
+ min-height:48px;
+ padding:8px 0;
+ border-bottom:1px solid rgba(76,100,111,.19)
+}
+.profile-stat-row:nth-last-child(-n+2){border-bottom-color:transparent}
+.profile-stat-row>div{min-width:0;display:grid;gap:2px}
+.profile-stat-row>div>span{font-size:10px;color:#9db0b8}
+.profile-stat-row>div>small{font-size:8px;color:#5f7782;line-height:1.3}
+.profile-stat-row>strong{
+ text-align:right;
+ color:#e7eef1;
+ font-size:11px;
+ font-weight:720;
+ min-width:0
+}
+.profile-stat-row>strong .quote-spread{justify-content:flex-end}
+.profile-stat-row>strong .price-pair{justify-content:flex-end}
+.profile-stat-row>strong .price-pair>strong{font-size:12px!important}
+.profile-stat-row>strong .price-pair>small{font-size:7px!important}
+
+/* News / catalysts side by side on desktop */
+.profile-news-grid{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:0;
+ padding:0 12px 12px
+}
+.profile-news-grid>div{min-width:0;padding:10px}
+.profile-news-grid>div+div{border-left:1px solid #1d3039}
+.profile-news-grid h4{
+ margin:0 0 8px;
+ color:#7f949f;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.45px
+}
+.profile-identity-section .profile-identity-grid{padding:12px!important}
+
+/* The chart gets the visual dominance seen in the references */
+.profile-main-grid .profile-section{
+ border-radius:12px!important;
+ box-shadow:none!important
+}
+.profile-main-grid .profile-section-head{
+ min-height:40px!important;padding:8px 10px!important
+}
+.profile-main-grid .mini-chart-title{
+ padding:8px 9px!important
+}
+.profile-main-grid .mini-chart{
+ min-height:520px!important;
+ height:clamp(520px,61vh,720px)!important
+}
+
+/* Desktop catalog rows remain dense; full detail is where data expands */
+.catalog-sheet-wrap{background:#081219!important}
+
+/* Mobile/APK: close to Investing's visual logic - flat rows, fixed nav, chart then key stats */
+@media(max-width:720px){
+ .stock-list{
+  margin-left:-12px!important;
+  margin-right:-12px!important;
+  border-left:0!important;border-right:0!important;
+  border-radius:0!important;
+  box-shadow:none!important
+ }
+ .investing-stock-row{
+  grid-template-columns:minmax(0,1fr) minmax(116px,auto);
+  gap:9px;
+  padding:13px 14px!important;
+  min-height:94px
+ }
+ .investing-stock-row>.open-arrow{display:none}
+ .investing-stock-copy .stock-name{
+  font-size:17px!important;
+  white-space:normal;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical
+ }
+ .investing-stock-meta{font-size:9px}
+ .stock-ai-chip{font-size:8px;padding:4px 8px}
+ .investing-stock-right{min-width:112px;gap:3px}
+ .stock-list-price .price-pair>strong{font-size:19px!important}
+ .stock-list-price .price-pair>small:not(.quote-updated){display:none}
+ .investing-stock-right .quote-updated{display:none!important}
+ .investing-stock-right>.quote-change{font-size:12px!important}
+ .stock-session-quote{gap:4px}
+ .stock-session-quote strong{font-size:10px}
+ .stock-market-line{
+  padding:6px 14px!important;
+  min-height:29px;
+  gap:6px
+ }
+ .stock-market-line .quote-spread{transform:scale(.92);transform-origin:left center}
+ .stock-list-metrics{gap:8px;font-size:7px}
+ .stock-list-metrics span:nth-child(n+3){display:none}
+
+ .stock-profile-page{
+  width:100%!important;
+  margin:0!important;
+  padding:0 12px 22px!important
+ }
+ .stock-profile-page .profile-toolbar{
+  margin:0 -12px!important;
+  padding:8px 12px!important;
+  min-height:44px!important;
+  border-bottom:1px solid #20323b;
+  background:#071119
+ }
+ .investing-profile-header{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:10px!important;
+  padding:12px 0 10px!important
+ }
+ .investing-profile-header .profile-title{
+  align-items:flex-start!important;gap:8px!important
+ }
+ .investing-profile-header .profile-title h2{
+  display:block!important;font-size:18px!important;margin:0 0 3px!important
+ }
+ .investing-profile-header .profile-title p{
+  display:block!important;font-size:11px!important;
+  max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+ }
+ .investing-profile-header .profile-market{font-size:7px!important;margin-bottom:4px!important}
+ .investing-profile-header .profile-live{
+  min-width:126px!important;
+  grid-template-columns:1fr!important;
+  grid-template-areas:"price" "change" "updated" "spread"!important;
+  justify-items:end!important;gap:2px!important
+ }
+ .investing-profile-header .profile-live>small:first-child{display:none}
+ .investing-profile-header .profile-live>.price-pair>strong{font-size:22px!important}
+ .investing-profile-header .profile-live>.positive,
+ .investing-profile-header .profile-live>.negative{font-size:12px!important}
+ .investing-profile-header .profile-live>.quote-spread{display:none!important}
+ .investing-profile-header .profile-primary-actions{
+  grid-column:1/-1!important;
+  width:100%!important
+ }
+ .investing-profile-header .profile-primary-actions .btn{width:100%!important}
+
+ .profile-tabs{
+  margin:0 -12px!important;
+  padding:0 7px!important;
+  min-height:47px;
+  background:#071119
+ }
+ .profile-tabs button{min-height:47px;padding:0 11px;font-size:10px}
+ .profile-tabs button.active{border-bottom-color:#f0f4f5}
+
+ .profile-session-strip{
+  margin:10px -1px 9px!important;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  border-radius:10px!important
+ }
+ .profile-session-cell{
+  display:block!important;
+  padding:8px!important;text-align:center!important
+ }
+ .profile-session-cell>span{display:block;margin-bottom:4px;font-size:6px!important}
+ .profile-session-cell>strong{display:block;font-size:9px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .profile-session-cell>b{display:block;margin-top:2px;font-size:9px!important}
+ .profile-session-cell>small{display:none!important}
+
+ .profile-data-note,.profile-feed-warning,.profile-context,.profile-relation{
+  margin:7px 0!important;border-radius:9px!important;font-size:8px!important
+ }
+
+ .profile-main-grid{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:9px!important;
+  margin:9px 0!important
+ }
+ .profile-main-grid .profile-chart-section{order:1;width:100%}
+ .profile-main-grid .profile-ai-panel{order:2;width:100%;position:static!important}
+ .profile-main-grid .mini-chart{
+  height:390px!important;
+  min-height:390px!important
+ }
+ .profile-ai-head{padding:11px 12px 9px}
+ .profile-ai-score{width:50px;height:50px}
+ .profile-ai-columns{padding:10px 12px}
+ .profile-ai-catalyst{margin:0 12px 12px}
+
+ .profile-stats-section{
+  margin:9px 0!important;
+  border-left:0!important;border-right:0!important;
+  border-radius:0!important
+ }
+ .profile-stat-list{
+  grid-template-columns:1fr!important;
+  padding:0 12px 4px!important
+ }
+ .profile-stat-row{
+  min-height:49px!important;
+  padding:8px 0!important
+ }
+ .profile-stat-row:nth-last-child(-n+2){border-bottom:1px solid rgba(76,100,111,.19)}
+ .profile-stat-row:last-child{border-bottom:0!important}
+ .profile-stat-row>div>span{font-size:11px!important}
+ .profile-stat-row>strong{font-size:12px!important}
+ .profile-stat-row>div>small{font-size:8px!important}
+
+ .profile-news-grid{grid-template-columns:1fr!important;padding:0 4px 8px!important}
+ .profile-news-grid>div{padding:9px 8px!important}
+ .profile-news-grid>div+div{border-left:0!important;border-top:1px solid #1d3039}
+ .profile-identity-section,.profile-source-section{border-radius:10px!important}
+
+ .event-item{border-radius:9px!important}
+}
+
+/* Light theme equivalents for the new architecture */
+html[data-theme="light"] .stock-list,
+html[data-theme="light"] .investing-stock-card,
+html[data-theme="light"] .stock-market-line,
+html[data-theme="light"] .profile-session-strip,
+html[data-theme="light"] .profile-tabs{
+ background:#fff!important;border-color:#d7e2e6!important
+}
+html[data-theme="light"] .investing-stock-card{border-bottom-color:#e2eaed!important}
+html[data-theme="light"] .investing-stock-card:hover{background:#f8fbfc!important}
+html[data-theme="light"] .investing-stock-copy .stock-name,
+html[data-theme="light"] .stock-list-price .price-pair>strong,
+html[data-theme="light"] .investing-profile-header .profile-title h2,
+html[data-theme="light"] .investing-profile-header .profile-live>.price-pair>strong,
+html[data-theme="light"] .profile-stat-row>strong{color:#172d36!important}
+html[data-theme="light"] .investing-profile-header{border-bottom-color:#d7e2e6!important}
+html[data-theme="light"] .profile-tabs{border-bottom-color:#d7e2e6!important}
+html[data-theme="light"] .profile-tabs button.active{color:#182e37;border-bottom-color:#1d313a}
+html[data-theme="light"] .profile-session-cell{border-color:#d7e2e6!important}
+html[data-theme="light"] .profile-ai-panel{
+ background:linear-gradient(180deg,#f8faff,#f3f6fd)!important;
+ border-color:#cbd7f4!important
+}
+html[data-theme="light"] .profile-ai-head{border-color:#dce4f5!important}
+html[data-theme="light"] .profile-ai-head h3{color:#24365d!important}
+html[data-theme="light"] .profile-ai-state{background:rgba(91,126,204,.06)!important}
+html[data-theme="light"] .profile-stat-row{border-color:#e4ebee!important}
+html[data-theme="light"] .profile-stat-row>div>span{color:#536d78!important}
+html[data-theme="light"] .profile-news-grid>div+div{border-color:#e0e8eb!important}
