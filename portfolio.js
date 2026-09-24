@@ -362,6 +362,13 @@ function stockFormPayload(stock, form) {
   };
 }
 
+function localDateValue(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + d;
+}
+
 function openAddPositionModal(stockKey) {
   if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
   if (!state.portfolios.length) {
@@ -384,7 +391,7 @@ function openAddPositionModal(stockKey) {
       '<div class="portfolio-form-grid"><label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>' +
       '<label><span>Precio medio</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" placeholder="' + esc(current.price || "") + '"></label></div>' +
       '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option' + (preferTr ? ' selected' : '') + '>EUR</option><option' + (!preferTr ? ' selected' : '') + '>USD</option><option>GBP</option></select></label>' +
-      '<label><span>Fecha de entrada</span><input name="openedAt" type="date"></label></div>' +
+      '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
       '<button type="submit" class="btn">Guardar posición</button>' +
     '</form>'
@@ -483,6 +490,23 @@ function bind() {
       return;
     }
 
+    const datePicker = event.target.closest?.("[data-open-date-picker]");
+    if (datePicker) {
+      event.preventDefault();
+      event.stopPropagation();
+      const input = datePicker.closest(".portfolio-date-field")?.querySelector('input[type="date"]');
+      if (input) {
+        input.focus();
+        try {
+          if (typeof input.showPicker === "function") input.showPicker();
+          else input.click();
+        } catch (_) {
+          input.click();
+        }
+      }
+      return;
+    }
+
     const analyzeButton = event.target.closest?.("[data-analyze-type][data-analyze-id]");
     if (analyzeButton) {
       event.preventDefault();
@@ -529,7 +553,11 @@ function bind() {
       const button = form.querySelector('button[type="submit"]');
       button.disabled = true;
       try {
+        if (!form.reportValidity()) return;
         const payload = stockFormPayload(stock, form);
+        if (!payload.openedAt || !/^\d{4}-\d{2}-\d{2}$/.test(payload.openedAt)) {
+          throw new Error("Selecciona una fecha de entrada válida.");
+        }
         await addPosition(payload);
         closeModal();
         toast("Posición guardada · análisis continuo activado");
