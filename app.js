@@ -31,7 +31,7 @@ let tvChartAvailability=new Map();
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-let heatmapState={market:'tr',session:'auto',limit:250};
+let heatmapState={market:'tr',session:'auto',limit:250,selectedSector:null,selectedStockKey:null};
 const SETTINGS_KEY='viewinvai:settings:v1';
 let deviceSettings=readDeviceSettings(),screenWakeLock=null,wakeLockBusy=false;
 function readDeviceSettings(){
@@ -2296,13 +2296,15 @@ function heatmapSectorSpan(weight,maxWeight){
  return 4;
 }
 function heatmapTile(s,se,maxWeight){
- let ch=heatmapChange(s,se),preferTr=heatmapState.market==='tr',ticker=preferTr&&trTradable(s)?s.trTicker:s.ticker;
+ let ch=heatmapChange(s,se),preferTr=heatmapState.market==='tr',ticker=preferTr&&trTradable(s)?s.trTicker:s.ticker,key=stockKey(s);
  let cap=N(s.marketCap),capText=cap!==null?compactMoney(cap):'Cap. no disponible';
+ let quote=canonicalQuote(s,preferTr),price=quote.price!==null?quoteMoney(quote.price,preferTr?'€':'\u0024',quotePrecision(s,preferTr,quote.price)):'—';
  let reason='Mapa de calor · '+SN(se)+' · '+PC(ch)+' · '+String(s.sector||'Sin sector');
- return '<button type="button" class="heat-stock '+heatmapChangeClass(ch)+' '+heatmapTileSize(s,maxWeight)+'"'+stockOpenAttrs(s,reason,preferTr)+' data-us-heat-key="'+E(stockKey(s))+'" aria-label="'+E((ticker||'Acción')+' '+PC(ch)+' '+(s.name||''))+'">'+
+ let selected=heatmapState.selectedStockKey===key?' selected':'';
+ return '<button type="button" class="heat-stock '+heatmapChangeClass(ch)+' '+heatmapTileSize(s,maxWeight)+selected+'"'+stockOpenAttrs(s,reason,preferTr)+' data-heat-select="'+E(key)+'" data-heat-ticker="'+E(ticker||'—')+'" data-heat-name="'+E(s.name||'')+'" data-heat-price="'+E(price)+'" data-heat-change="'+E(PC(ch))+'" data-us-heat-key="'+E(key)+'" aria-label="'+E((ticker||'Acción')+' '+price+' '+PC(ch)+' '+(s.name||''))+'">'+
   '<strong>'+E(ticker||'—')+'</strong>'+
   '<span>'+PC(ch)+'</span>'+
-  '<small>'+E(capText)+'</small>'+
+  '<small>'+E(price)+'</small>'+
   '</button>';
 }
 function compactMoney(v){
@@ -2453,7 +2455,44 @@ function initHelpSystem(){
    el.removeAttribute('title');
   }
  });
- document.addEventListener('click',e=>{
+ function heatmapHoverCardFor(el){
+ let card=$('#heatmapHoverCard');if(!card||!el)return;
+ card.innerHTML='<strong>'+E(el.dataset.heatTicker||'—')+'</strong><span>'+E(el.dataset.heatName||'')+'</span><b>'+E(el.dataset.heatPrice||'—')+'</b><em>'+E(el.dataset.heatChange||'—')+'</em>';
+ let r=el.getBoundingClientRect(),board=$('#heatmapResults')?.getBoundingClientRect();
+ if(board){
+  card.style.left=Math.max(6,Math.min(board.width-190,r.left-board.left+r.width/2-90))+'px';
+  card.style.top=Math.max(6,r.top-board.top-64)+'px';
+ }
+ card.classList.add('show');card.setAttribute('aria-hidden','false');
+}
+function heatmapHideHover(){
+ let card=$('#heatmapHoverCard');if(card){card.classList.remove('show');card.setAttribute('aria-hidden','true')}
+}
+$('#heatmapResults')?.addEventListener('mouseover',e=>{let el=e.target.closest?.('[data-heat-select]');if(el)heatmapHoverCardFor(el)});
+$('#heatmapResults')?.addEventListener('mouseout',e=>{if(e.target.closest?.('[data-heat-select]'))heatmapHideHover()});
+$('#heatmapResults')?.addEventListener('dblclick',e=>{
+ let el=e.target.closest?.('[data-heat-select]');if(!el)return;
+ e.preventDefault();e.stopPropagation();
+ let stock=stockByKey(el.dataset.heatSelect);if(stock)openStock(stock,'Mapa de calor',heatmapState.market==='tr');
+});
+
+document.addEventListener('click',e=>{
+ let sectorButton=e.target.closest&&e.target.closest('[data-heat-sector-select]');
+ if(sectorButton){
+  e.preventDefault();e.stopPropagation();
+  let name=sectorButton.dataset.heatSectorSelect;
+  heatmapState.selectedSector=heatmapState.selectedSector===name?null:name;
+  heatmapState.selectedStockKey=null;
+  renderHeatmap();return;
+ }
+ let heatTile=e.target.closest&&e.target.closest('[data-heat-select]');
+ if(heatTile){
+  e.preventDefault();e.stopPropagation();
+  heatmapState.selectedStockKey=heatTile.dataset.heatSelect||null;
+  $('#heatmapResults .heat-stock').forEach(x=>x.classList.toggle('selected',x.dataset.heatSelect===heatmapState.selectedStockKey));
+  heatmapHoverCardFor(heatTile);
+  return;
+ }
   let trigger=e.target.closest&&e.target.closest('.section-help,.param-info');
   if(trigger){
    let target=trigger.matches('.section-help')?trigger:trigger.closest('[data-help],[data-help-key]');
