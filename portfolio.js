@@ -401,9 +401,21 @@ function openAddPositionModal(stockKey) {
       '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
       '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>' +
-      '<button type="submit" class="btn" data-save-position>Guardar posición</button>' +
+      '<button type="button" class="btn" data-save-position>Guardar posición</button>' +
     '</form>'
   );
+
+  // Bind directly to the button created inside the dynamic modal. This avoids
+  // relying on delegated form-submit behaviour in Android System WebView.
+  const form = $("#addPositionForm");
+  const saveButton = form?.querySelector("[data-save-position]");
+  if (form && saveButton) {
+    saveButton.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      savePositionForm(form);
+    });
+  }
 }
 
 async function syncFavorite(active, key) {
