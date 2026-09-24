@@ -1590,10 +1590,10 @@ function profileHeroHtml(s,isTr=false,opts={}){
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
     '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+'</div>'+
-    '<div class="profile-primary-actions">'+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+
      '<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>'+
      '<button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button>'+
-    '</div>'+
+    '</div>')+
    '</div>'+
   '</header>';
 }
@@ -1606,7 +1606,7 @@ function quickProfileHtml(s,opts={}){
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  let backKind=opts.embedded?'portfolio':'quick';
- return profileHeroHtml(s,isTr,{backKind})+
+ return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
   '<div class="unified-profile-body">'+
    profileTabs()+profileSessionStrip(s,isTr)+
    '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
