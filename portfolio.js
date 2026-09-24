@@ -4,8 +4,9 @@ const state = {
   positions: [],
   watchlist: [],
   selectedPortfolioId: null,
-  loading: false,
-  syncingFavorites: false
+  detailStockKey: null,
+  detailPreferTr: null,
+  loading: false
 };
 
 const $ = selector => document.querySelector(selector);
@@ -65,23 +66,22 @@ function stockByKey(key) {
     : null;
 }
 
-function localFavoriteKeys() {
-  return window.ViewInvAI && typeof window.ViewInvAI.getFavoriteKeys === "function"
-    ? window.ViewInvAI.getFavoriteKeys()
-    : [];
+function portfolioStockKeys() {
+  return [...new Set(state.positions.filter(p => Number(p.active) !== 0).map(p => p.stock_key).filter(Boolean))];
 }
 
-function mergeFavoriteKeys(keys) {
-  if (window.ViewInvAI && typeof window.ViewInvAI.mergeFavoriteKeys === "function") {
-    window.ViewInvAI.mergeFavoriteKeys(keys);
+function syncPortfolioStars() {
+  if (window.ViewInvAI && typeof window.ViewInvAI.replaceFavoriteKeys === "function") {
+    window.ViewInvAI.replaceFavoriteKeys(portfolioStockKeys());
   }
 }
 
-function openStock(key, reason = "Cartera") {
-  if (window.ViewInvAI && typeof window.ViewInvAI.openStockByKey === "function") {
-    return window.ViewInvAI.openStockByKey(key, reason, null);
-  }
-  return false;
+function openStockInline(key, preferTr = null) {
+  if (!key) return false;
+  state.detailStockKey = key;
+  state.detailPreferTr = preferTr === true ? true : preferTr === false ? false : null;
+  renderApp();
+  return true;
 }
 
 function signalInfo(signal) {
@@ -97,17 +97,42 @@ function signalInfo(signal) {
   return map[key] || ["SIN ANALIZAR", "neutral"];
 }
 
-function currentMarket(stock) {
-  if (!stock) return { price: null, change: null, currency: "USD" };
-  const preferTr = !!(stock.tradeRepublicVerified || stock.tradeRepublicCandidate);
-  if (preferTr && num(stock.trLivePrice) !== null) {
-    return { price: num(stock.trLivePrice), change: num(stock.trLiveChangePct), currency: "EUR" };
+function currentMarket(stock, preferTr = false) {
+  if (!stock) return { price: null, change: null, currency: preferTr ? "EUR" : "USD", eur: null, usd: null, source: "", updatedAt: null };
+  if (window.ViewInvAI && typeof window.ViewInvAI.getCanonicalQuote === "function") {
+    const quote = window.ViewInvAI.getCanonicalQuote(stock, !!preferTr) || {};
+    return {
+      price: num(quote.price),
+      change: num(quote.change),
+      currency: quote.nativeCurrency || (preferTr ? "EUR" : "USD"),
+      eur: num(quote.eur),
+      usd: num(quote.usd),
+      source: quote.source || "",
+      updatedAt: quote.updatedAt || null,
+      live: quote.live === true
+    };
   }
-  return {
-    price: num(stock.usLivePrice) ?? num(stock.price),
-    change: num(stock.usLiveChangePct) ?? num(stock.changePct),
-    currency: stock.currency || "USD"
-  };
+  if (preferTr) {
+    const eur = num(stock.trLivePrice);
+    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, source: "Trade Republic / LSX" };
+  }
+  const usd = num(stock.usLivePrice) ?? num(stock.price);
+  return { price: usd, change: num(stock.usLiveChangePct) ?? num(stock.changePct), currency: "USD", eur: null, usd, source: "EEUU" };
+}
+
+function marketValueInCurrency(market, currency) {
+  const c = String(currency || "").toUpperCase();
+  if (c === "EUR") return num(market && market.eur);
+  if (c === "USD") return num(market && market.usd);
+  return num(market && market.price);
+}
+
+function quotePairHtml(stock, preferTr) {
+  if (window.ViewInvAI && typeof window.ViewInvAI.renderPricePair === "function") {
+    return window.ViewInvAI.renderPricePair(stock, !!preferTr);
+  }
+  const market = currentMarket(stock, preferTr);
+  return '<strong>' + formatMoney(market.price, market.currency) + '</strong>';
 }
 
 function changeHtml(value) {
@@ -148,29 +173,32 @@ function renderLoading(box) {
 function renderPortfolioCard(p) {
   const count = portfolioPositions(p.id).length;
   const selected = state.selectedPortfolioId === p.id;
-  return '<button type="button" class="portfolio-card' + (selected ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
-    '<span class="portfolio-card-icon">▣</span>' +
-    '<span class="portfolio-card-copy"><strong>' + esc(p.name) + '</strong><small>' + esc(p.broker || "Sin bróker") + '</small></span>' +
-    '<span class="portfolio-card-count">' + count + '</span>' +
+  return '<button type="button" class="portfolio-tab' + (selected ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
+    '<strong>' + esc(p.name) + '</strong>' +
+    '<span>' + count + '</span>' +
   '</button>';
 }
 
 function renderPositionRow(p) {
   const stock = stockByKey(p.stock_key);
-  const market = currentMarket(stock);
+  const preferTr = Number(p.prefer_tr) === 1;
+  const market = currentMarket(stock, preferTr);
   const qty = num(p.quantity);
   const avg = num(p.avg_price);
-  const currentValue = qty !== null && market.price !== null ? qty * market.price : null;
-  const pnlPct = avg !== null && avg > 0 && market.price !== null ? (market.price / avg - 1) * 100 : null;
-  return '<article class="portfolio-position" data-open-stock="' + esc(p.stock_key) + '">' +
+  const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
+  const currentEntryPrice = marketValueInCurrency(market, entryCurrency);
+  const currentValue = qty !== null && currentEntryPrice !== null ? qty * currentEntryPrice : null;
+  const pnlPct = avg !== null && avg > 0 && currentEntryPrice !== null ? (currentEntryPrice / avg - 1) * 100 : null;
+  const sourceLabel = preferTr ? "LSX" : (stock && stock.exchange || "EEUU");
+  return '<article class="portfolio-position" data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
     '<div class="portfolio-position-main">' +
-      '<div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || (stock && stock.name) || "") + '</span></div>' +
-      '<div class="portfolio-position-quote"><strong>' + formatMoney(market.price, market.currency) + '</strong>' + changeHtml(market.change) + '</div>' +
+      '<div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || (stock && stock.name) || "") + '</span><small>' + esc(sourceLabel) + '</small></div>' +
+      '<div class="portfolio-position-quote">' + quotePairHtml(stock, preferTr) + changeHtml(market.change) + '</div>' +
     '</div>' +
     '<div class="portfolio-position-meta">' +
       '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-      '<span>Media ' + formatMoney(avg, p.currency || "EUR") + '</span>' +
-      '<span>Valor ' + formatMoney(currentValue, market.currency) + '</span>' +
+      '<span>Media ' + formatMoney(avg, entryCurrency) + '</span>' +
+      '<span>Valor ' + formatMoney(currentValue, entryCurrency) + '</span>' +
       (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '">' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '% desde entrada</span>') +
     '</div>' +
     '<div class="portfolio-position-ai">' +
@@ -206,20 +234,28 @@ function renderApp() {
   const positions = selected ? portfolioPositions(selected.id) : [];
 
   box.innerHTML =
-    '<div class="portfolio-account-strip"><div><strong>' + esc(state.user.displayName || state.user.email || "Mi cuenta") + '</strong><span>' + state.portfolios.length + ' carteras · ' + state.positions.filter(p => Number(p.active) !== 0).length + ' posiciones · ' + state.watchlist.length + ' seguidas</span></div><button type="button" class="portfolio-refresh" aria-label="Actualizar">↻</button></div>' +
-    '<div class="portfolio-selector">' +
+    '<div class="portfolio-tabs" role="tablist" aria-label="Mis carteras">' +
       state.portfolios.map(renderPortfolioCard).join('') +
-      '<button type="button" class="portfolio-card add" data-new-portfolio="1"><span>＋</span><strong>Nueva cartera</strong></button>' +
+      '<button type="button" class="portfolio-tab portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera">＋</button>' +
+      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras">↻</button>' +
     '</div>' +
-    (selected
-      ? '<section class="portfolio-block"><div class="portfolio-block-head"><div><h2>' + esc(selected.name) + '</h2><span>' + esc(selected.broker || "") + '</span></div><button type="button" class="btn small portfolio-add-current">＋ Añadir posición</button></div>' +
-        '<div class="portfolio-position-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Abre una acción y pulsa “Añadir a cartera”.</div>') + '</div></section>'
-      : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><p>Por ejemplo: Trade Republic, IBKR, Trade activo o Largo plazo.</p><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
-    '<section class="portfolio-block watchlist-block"><div class="portfolio-block-head"><div><h2>Seguimiento IA</h2><span>Favoritos sincronizados</span></div><span class="portfolio-count-pill">' + state.watchlist.length + '</span></div>' +
-      '<div class="portfolio-watch-list">' + (state.watchlist.length ? state.watchlist.map(renderWatchRow).join('') : '<div class="portfolio-empty-state compact">Marca una acción con ★ para añadirla al seguimiento continuo.</div>') + '</div>' +
-    '</section>';
-}
+    '<div id="portfolioContext" class="portfolio-context">' +
+      (selected
+        ? '<section class="portfolio-block integrated"><div class="portfolio-block-head"><div><h2>' + esc(selected.name) + '</h2><span>' + esc(selected.broker || "") + '</span></div><button type="button" class="btn small portfolio-add-current">＋ Añadir posición</button></div>' +
+          '<div class="portfolio-position-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones.</div>') + '</div></section>'
+        : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
+    '</div>';
 
+  if (state.detailStockKey) {
+    const context = $("#portfolioContext");
+    const p = state.positions.find(x => x.stock_key === state.detailStockKey && Number(x.active) !== 0 && (!selected || x.portfolio_id === selected.id));
+    const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
+    if (context && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
+      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← ' + esc(selected ? selected.name : "Carteras") + '</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
+      window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), state.detailStockKey, "Cartera · " + (selected ? selected.name : "posición"), preferTr);
+    }
+  }
+}
 async function fetchJson(path) {
   const response = await api(path);
   const data = await response.json().catch(() => ({}));
@@ -227,7 +263,7 @@ async function fetchJson(path) {
   return data;
 }
 
-async function loadAll({ syncFavorites = true } = {}) {
+async function loadAll({ syncFavorites = false } = {}) {
   if (!state.user || state.loading) return;
   state.loading = true;
   renderApp();
@@ -240,8 +276,7 @@ async function loadAll({ syncFavorites = true } = {}) {
     state.portfolios = portfolios.portfolios || [];
     state.positions = positions.positions || [];
     state.watchlist = watchlist.watchlist || [];
-    if (syncFavorites) await syncLocalFavorites();
-    mergeFavoriteKeys(state.watchlist.map(x => x.stock_key));
+    syncPortfolioStars();
   } catch (error) {
     console.warn("Portfolio loading failed", error);
     toast(error.message || "No se pudieron cargar las carteras.", true);
@@ -259,7 +294,7 @@ async function createPortfolio(payload) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "No se pudo crear la cartera.");
   state.selectedPortfolioId = data.portfolio && data.portfolio.id || state.selectedPortfolioId;
-  await loadAll({ syncFavorites: false });
+  await loadAll();
   return data.portfolio;
 }
 
@@ -296,7 +331,7 @@ async function analyze(subjectType, subjectId, button) {
     if (!response.ok) throw new Error(data.error || "No se pudo completar el análisis.");
     const analysis = data.analysis || {};
     toast((signalInfo(analysis.signal)[0] || "Análisis") + " · " + Math.round(num(analysis.confidence) || 0) + "% confianza");
-    await loadAll({ syncFavorites: false });
+    await loadAll();
   } catch (error) {
     toast(error.message || "Error durante el análisis.", true);
   } finally {
@@ -351,7 +386,7 @@ function openNewPortfolioModal() {
 
 function stockFormPayload(stock, form) {
   const fd = new FormData(form);
-  const preferTr = !!(stock && (stock.tradeRepublicVerified || stock.tradeRepublicCandidate));
+  const preferTr = form.dataset.preferTr === "1";
   const ticker = preferTr && stock.trTicker ? stock.trTicker : stock.ticker;
   return {
     portfolioId: String(fd.get("portfolioId") || ""),
@@ -376,7 +411,7 @@ function localDateValue(date = new Date()) {
   return y + "-" + m + "-" + d;
 }
 
-function openAddPositionModal(stockKey) {
+function openAddPositionModal(stockKey, preferTrOverride = null) {
   if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
   if (!state.portfolios.length) {
     toast("Primero crea una cartera.", true);
@@ -388,11 +423,11 @@ function openAddPositionModal(stockKey) {
     toast("Abre primero una acción para añadirla.", true);
     return;
   }
-  const preferTr = !!(stock.tradeRepublicVerified || stock.tradeRepublicCandidate);
-  const current = currentMarket(stock);
+  const preferTr = preferTrOverride === true ? true : preferTrOverride === false ? false : !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+  const current = currentMarket(stock, preferTr);
   const options = state.portfolios.map(p => '<option value="' + esc(p.id) + '"' + (p.id === state.selectedPortfolioId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
   openModal("Añadir " + (stock.trTicker || stock.ticker || "acción"),
-    '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '">' +
+    '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '" data-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
       '<div class="position-form-stock"><strong>' + esc(stock.trTicker || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span><b>' + formatMoney(current.price, current.currency) + '</b></div>' +
       '<label><span>Cartera</span><select name="portfolioId" required>' + options + '</select></label>' +
       '<div class="portfolio-form-grid"><label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>' +
@@ -416,6 +451,32 @@ function openAddPositionModal(stockKey) {
       savePositionForm(form);
     });
   }
+}
+
+
+function openStarMenu(stockKey, preferTr = null) {
+  if (!state.user) return window.ViewInvAIAuth?.signIn?.();
+  const stock = stockByKey(stockKey);
+  if (!stock) return;
+  const memberships = new Set(state.positions.filter(p => p.stock_key === stockKey && Number(p.active) !== 0).map(p => p.portfolio_id));
+  const rows = state.portfolios.map(p =>
+    '<button type="button" class="star-portfolio-choice' + (memberships.has(p.id) ? ' selected' : '') + '" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
+      '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + (memberships.has(p.id) ? 'Ya está en esta cartera' : 'Añadir a esta cartera') + '</small>' +
+    '</button>'
+  ).join('');
+  openModal("Añadir a cartera",
+    '<div class="star-portfolio-menu">' +
+      '<div class="star-stock-summary"><strong>' + esc((preferTr && stock.trTicker) || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
+      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras.</div>') +
+      '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Crear nueva cartera</button>' +
+    '</div>'
+  );
+}
+
+function openAddToSpecificPortfolio(stockKey, portfolioId, preferTr) {
+  state.selectedPortfolioId = portfolioId || state.selectedPortfolioId;
+  closeModal();
+  setTimeout(() => openAddPositionModal(stockKey, preferTr), 30);
 }
 
 async function syncFavorite(active, key) {
@@ -453,22 +514,7 @@ async function syncFavorite(active, key) {
   }
 }
 
-async function syncLocalFavorites() {
-  if (state.syncingFavorites || !state.user) return;
-  state.syncingFavorites = true;
-  try {
-    const remote = new Set(state.watchlist.map(x => x.stock_key));
-    for (const key of localFavoriteKeys()) {
-      if (remote.has(key)) continue;
-      const stock = stockByKey(key);
-      if (!stock) continue;
-      await syncFavorite(true, key);
-      remote.add(key);
-    }
-  } finally {
-    state.syncingFavorites = false;
-  }
-}
+async function syncLocalFavorites(){ syncPortfolioStars(); }
 
 async function savePositionForm(form) {
   if (!form || form.dataset.saving === "1") return;
@@ -516,7 +562,7 @@ async function savePositionForm(form) {
 
     // Refresh server state after the modal has closed; saving no longer appears
     // frozen while portfolios/watchlist are reloaded.
-    setTimeout(() => loadAll({ syncFavorites: false }), 0);
+    setTimeout(() => loadAll(), 0);
   } catch (error) {
     console.warn("Position save failed", error);
     const message = error && error.message ? error.message : "No se pudo guardar la posición.";
@@ -547,12 +593,47 @@ function bind() {
     const selector = event.target.closest?.("[data-portfolio-select]");
     if (selector) {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
+      state.detailStockKey = null;
+      state.detailPreferTr = null;
       renderApp();
       return;
     }
 
+    if (event.target.closest?.("[data-portfolio-detail-close]")) {
+      state.detailStockKey = null;
+      state.detailPreferTr = null;
+      renderApp();
+      return;
+    }
+
+    const starChoice = event.target.closest?.("[data-star-add-portfolio]");
+    if (starChoice) {
+      if (starChoice.classList.contains("selected")) {
+        closeModal();
+        toast("La acción ya está en esa cartera.");
+        return;
+      }
+      const pref = starChoice.dataset.starPreferTr;
+      openAddToSpecificPortfolio(starChoice.dataset.starStock, starChoice.dataset.starAddPortfolio, pref === "1" ? true : pref === "0" ? false : null);
+      return;
+    }
+
+    const starCreate = event.target.closest?.("[data-star-create-stock]");
+    if (starCreate) {
+      const key = starCreate.dataset.starCreateStock;
+      const pref = starCreate.dataset.starPreferTr;
+      closeModal();
+      openNewPortfolioModal();
+      const form = $("#newPortfolioForm");
+      if (form) {
+        form.dataset.pendingStockKey = key;
+        form.dataset.pendingPreferTr = pref;
+      }
+      return;
+    }
+
     if (event.target.closest?.(".portfolio-refresh")) {
-      loadAll({ syncFavorites: true });
+      loadAll();
       return;
     }
 
@@ -560,7 +641,8 @@ function bind() {
     if (add) {
       event.preventDefault();
       event.stopPropagation();
-      openAddPositionModal(add.dataset.addPortfolioStock);
+      const pref = add.dataset.addPortfolioPreferTr;
+      openAddPositionModal(add.dataset.addPortfolioStock, pref === "1" ? true : pref === "0" ? false : null);
       return;
     }
 
@@ -606,7 +688,8 @@ function bind() {
 
     const row = event.target.closest?.("[data-open-stock]");
     if (row && !event.target.closest("button")) {
-      openStock(row.dataset.openStock, "Carteras · seguimiento IA");
+      const pref = row.dataset.positionPreferTr;
+      openStockInline(row.dataset.openStock, pref === "1" ? true : pref === "0" ? false : null);
       return;
     }
   });
@@ -619,13 +702,18 @@ function bind() {
       const button = form.querySelector('button[type="submit"]');
       button.disabled = true;
       try {
-        await createPortfolio({
+        const created = await createPortfolio({
           name: String(fd.get("name") || ""),
           broker: String(fd.get("broker") || ""),
           baseCurrency: String(fd.get("baseCurrency") || "EUR")
         });
+        const pendingKey = form.dataset.pendingStockKey;
+        const pendingPref = form.dataset.pendingPreferTr;
         closeModal();
         toast("Cartera creada");
+        if (pendingKey && created && created.id) {
+          setTimeout(() => openAddPositionModal(pendingKey, pendingPref === "1" ? true : pendingPref === "0" ? false : null), 40);
+        }
       } catch (error) {
         toast(error.message || "No se pudo crear la cartera.", true);
       } finally {
@@ -655,19 +743,28 @@ function bind() {
       state.selectedPortfolioId = null;
       renderApp();
     } else {
-      loadAll({ syncFavorites: true });
+      loadAll();
     }
   });
 
   window.addEventListener("viewinvai:account-ready", event => {
     const detail = event.detail || {};
     state.user = detail.user || window.ViewInvAIAuth?.getUser() || state.user;
-    if (state.user) loadAll({ syncFavorites: true });
+    if (state.user) loadAll();
   });
 
-  window.addEventListener("viewinvai:favorite-changed", event => {
-    const detail = event.detail || {};
-    syncFavorite(!!detail.active, detail.key);
+  window.addEventListener("viewinvai:favorite-changed", () => {
+    syncPortfolioStars();
+  });
+
+  window.addEventListener("viewinvai:quote-updated", event => {
+    if (!event.detail || !state.positions.some(p => p.stock_key === event.detail.key)) return;
+    clearTimeout(renderApp.quoteTimer);
+    renderApp.quoteTimer = setTimeout(renderApp, 180);
+  });
+  window.addEventListener("viewinvai:fx-updated", () => {
+    clearTimeout(renderApp.quoteTimer);
+    renderApp.quoteTimer = setTimeout(renderApp, 180);
   });
 }
 
@@ -675,14 +772,15 @@ function init() {
   bind();
   state.user = window.ViewInvAIAuth?.getUser() || null;
   renderApp();
-  if (state.user) loadAll({ syncFavorites: true });
+  if (state.user) loadAll();
 }
 
 window.ViewInvAIPortfolios = {
   render: renderApp,
-  reload: () => loadAll({ syncFavorites: true }),
+  reload: () => loadAll(),
   openNewPortfolio: openNewPortfolioModal,
   openAddPosition: openAddPositionModal,
+  openStarMenu,
   getState: () => state
 };
 
