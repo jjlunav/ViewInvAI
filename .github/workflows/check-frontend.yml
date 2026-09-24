@@ -46,7 +46,7 @@ jobs:
 
           required = [
               "view-entry","view-recommendation","recommendationResults","view-future","view-calendar",
-              "view-catalog","view-catalogUS","catalogDetail","catalogUSDetail",
+              "view-catalog","view-catalogUS","view-settings","catalogDetail","catalogUSDetail",
               "catalogSearch","catalogUSSearch","marketLeaders"
           ]
           missing = [x for x in required if f'id="{x}"' not in html]
