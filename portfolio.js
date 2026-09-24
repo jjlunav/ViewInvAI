@@ -300,7 +300,7 @@ function renderApp() {
     const p = state.positions.find(x => x.stock_key === state.detailStockKey && Number(x.active) !== 0 && (!selected || x.portfolio_id === selected.id));
     const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
     if (context && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
-      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← Posiciones</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
+      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← Atrás</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
       window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), state.detailStockKey, "Cartera · " + (selected ? selected.name : "posición"), preferTr);
     }
   }
