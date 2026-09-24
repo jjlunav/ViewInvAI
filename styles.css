@@ -2539,3 +2539,33 @@ html[data-theme="light"] .notification-bell{background:#fff;color:#087f68;border
  .manual-alert-rule{grid-template-columns:1fr}.manual-alert-actions{justify-content:flex-end}
  .notification-bell{right:58px;bottom:10px;width:38px;height:38px}.notification-center{right:10px;bottom:58px;width:calc(100vw - 20px);max-height:64vh}
 }
+
+
+/* Settings */
+.settings-grid{display:grid;grid-template-columns:minmax(0,720px);gap:12px;margin:12px 0 24px}
+.settings-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px}
+.settings-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.settings-kicker{display:block;margin-bottom:5px;color:#6f8792;font-size:8px;font-weight:800;letter-spacing:.12em}
+.settings-card h2{margin:0 0 5px;font-size:15px;color:#dce8ec}
+.settings-card p{margin:0;color:#8398a4;font-size:10px;line-height:1.5}
+.settings-switch{display:inline-flex;align-items:center;cursor:pointer;flex:0 0 auto}
+.settings-switch input{position:absolute;opacity:0;pointer-events:none}
+.settings-switch-track{width:46px;height:25px;border:1px solid #355360;border-radius:999px;background:#0b1720;padding:2px;transition:.18s ease}
+.settings-switch-track span{display:block;width:19px;height:19px;border-radius:50%;background:#78909a;transition:.18s ease}
+.settings-switch input:checked+.settings-switch-track{background:#123c32;border-color:#2e9477}
+.settings-switch input:checked+.settings-switch-track span{transform:translateX(20px);background:#72e7c4}
+.settings-switch input:focus-visible+.settings-switch-track{outline:2px solid #62a1b5;outline-offset:2px}
+.settings-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid #1c2d37;color:#758b96;font-size:9px}
+.settings-status{font-size:10px;color:#91a6af}.settings-status.active{color:#72e7c4}.settings-status.error{color:#ff8490}
+.settings-note{margin-top:10px!important;padding:9px 10px;border-radius:8px;background:#09151d;color:#6f8792!important;font-size:9px!important}
+html[data-theme="light"] .settings-card{background:#fff;border-color:#c8d9e0}
+html[data-theme="light"] .settings-card h2{color:#17303b}
+html[data-theme="light"] .settings-switch-track{background:#e8f0f3;border-color:#b9ced7}
+html[data-theme="light"] .settings-status-row{border-color:#d8e4e8}
+html[data-theme="light"] .settings-note{background:#eef5f7;color:#59717c!important}
+@media(max-width:680px){
+ .settings-grid{grid-template-columns:1fr}
+ .settings-card{padding:13px}
+ .settings-card-head{gap:12px}
+ .settings-card h2{font-size:14px}
+}

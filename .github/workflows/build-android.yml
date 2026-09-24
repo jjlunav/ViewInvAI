@@ -2,6 +2,15 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "package.json"
+      - "capacitor.config.json"
+      - "mobile-shell/**"
+      - ".github/workflows/build-android.yml"
+      - "scripts/apply_android_branding.py"
   push:
     branches:
       - main
@@ -10,6 +19,7 @@ on:
       - "capacitor.config.json"
       - "mobile-shell/**"
       - ".github/workflows/build-android.yml"
+      - "scripts/apply_android_branding.py"
 
 permissions:
   contents: read
@@ -39,6 +49,9 @@ jobs:
 
       - name: Generate Android project
         run: npx cap add android
+
+      - name: Apply ViewInvAI Android icon
+        run: python3 scripts/apply_android_branding.py
 
       - name: Build debug APK
         working-directory: android

@@ -31,7 +31,55 @@ let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'entry',savedScrollY:0};
 let heatmapState={market:'tr',session:'auto',limit:250};
-const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',alerts:'05 Avisos',calendar:'06 Calendario y noticias',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU'};
+const SETTINGS_KEY='viewinvai:settings:v1';
+let deviceSettings=readDeviceSettings(),screenWakeLock=null,wakeLockBusy=false;
+function readDeviceSettings(){
+ let base={keepScreenAwake:false};
+ try{
+  let raw=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');
+  if(raw&&typeof raw==='object'&&typeof raw.keepScreenAwake==='boolean')base.keepScreenAwake=raw.keepScreenAwake;
+ }catch(_){}
+ return base;
+}
+function saveDeviceSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(deviceSettings))}catch(_){}}
+function setWakeLockStatus(text,mode=''){
+ let el=$('#keepScreenAwakeStatus');if(!el)return;
+ el.textContent=text;el.classList.toggle('active',mode==='active');el.classList.toggle('error',mode==='error');
+}
+function syncDeviceSettingsUi(){
+ let toggle=$('#keepScreenAwake');if(toggle)toggle.checked=!!deviceSettings.keepScreenAwake;
+ if(!deviceSettings.keepScreenAwake){setWakeLockStatus('Desactivado');return}
+ if(!('wakeLock' in navigator)||!navigator.wakeLock||typeof navigator.wakeLock.request!=='function'){setWakeLockStatus('No compatible','error');return}
+ if(screenWakeLock&&!screenWakeLock.released)setWakeLockStatus('Activo','active');
+ else if(document.visibilityState!=='visible')setWakeLockStatus('En pausa');
+ else setWakeLockStatus('Pendiente de activar');
+}
+async function acquireScreenWakeLock(){
+ if(wakeLockBusy||!deviceSettings.keepScreenAwake||document.visibilityState!=='visible')return;
+ if(screenWakeLock&&!screenWakeLock.released){syncDeviceSettingsUi();return}
+ if(!('wakeLock' in navigator)||!navigator.wakeLock||typeof navigator.wakeLock.request!=='function'){syncDeviceSettingsUi();return}
+ wakeLockBusy=true;
+ try{
+  screenWakeLock=await navigator.wakeLock.request('screen');
+  screenWakeLock.addEventListener('release',()=>{screenWakeLock=null;syncDeviceSettingsUi()},{once:true});
+  setWakeLockStatus('Activo','active');
+ }catch(e){
+  console.warn('Screen wake lock warning',e);
+  screenWakeLock=null;setWakeLockStatus('No se pudo activar','error');
+ }finally{wakeLockBusy=false}
+}
+async function releaseScreenWakeLock(){
+ let lock=screenWakeLock;screenWakeLock=null;
+ if(lock&&!lock.released){try{await lock.release()}catch(_){}}
+ syncDeviceSettingsUi();
+}
+function syncScreenWakeLock(){
+ syncDeviceSettingsUi();
+ if(deviceSettings.keepScreenAwake&&document.visibilityState==='visible')acquireScreenWakeLock();
+ else releaseScreenWakeLock();
+}
+
+const V={entry:'01 Potencial de entrada',recommendation:'02 Recomendación actual',heatmap:'03 Mapa de calor',future:'04 Potencial futuro',alerts:'05 Avisos',calendar:'06 Calendario y noticias',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',settings:'09 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -1853,7 +1901,8 @@ function initHelpSystem(){
   alerts:{title:'Avisos',text:'Crea reglas propias combinando variación, volumen, RSI, ADX, tendencia, liquidez, mercado y sesión. También puedes activar avisos automáticos de recomendación, potencial de entrada y potencial futuro.'},
   calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
-  catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'}
+  catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
+  settings:{title:'Settings',text:'Preferencias de la aplicación y del dispositivo. Por ahora permite mantener la pantalla del móvil activa mientras ViewInvAI está abierta; más adelante incorporará cuenta, sincronización, notificaciones y otras opciones.'}
  };
  $$('.section-help').forEach(el=>{let x=sectionHelp[el.dataset.helpSection];if(x){el.dataset.help=x.text;el.dataset.helpTitle=x.title}});
  $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
@@ -1893,6 +1942,7 @@ function renderCurrentView(){
  else if(state.currentView==='calendar')renderCalendar();
  else if(state.currentView==='catalog')renderCatalog();
  else if(state.currentView==='catalogUS')renderCatalogUS();
+ else if(state.currentView==='settings')syncDeviceSettingsUi();
 }
 function render(){
  renderMarketLeaders();
@@ -1954,6 +2004,12 @@ function clock(){
 }
 
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+let keepScreenAwakeToggle=$('#keepScreenAwake');
+if(keepScreenAwakeToggle)keepScreenAwakeToggle.addEventListener('change',e=>{
+ deviceSettings.keepScreenAwake=!!e.target.checked;
+ saveDeviceSettings();
+ syncScreenWakeLock();
+});
 $('#mobileMenu').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 document.addEventListener('click',e=>{
  let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
@@ -2066,6 +2122,8 @@ document.addEventListener('drop',e=>{
 
 applyTheme(readTheme(),false);
 restoreUiState();
+syncDeviceSettingsUi();
+syncScreenWakeLock();
 toUI(state.filters);
 initHelpSystem();
 let themeButton=$('#themeToggle');if(themeButton)themeButton.addEventListener('click',toggleTheme);
@@ -2075,11 +2133,11 @@ initTrLive();
 initUsLive();
 clock();
 window.addEventListener('scroll',queueUiSave,{passive:true});
-window.addEventListener('pagehide',saveUiState);
+window.addEventListener('pagehide',()=>{saveUiState();releaseScreenWakeLock()});
 window.addEventListener('beforeunload',saveUiState);
 document.addEventListener('visibilitychange',()=>{
- if(document.hidden)saveUiState();
- else{load(false);pollUsLive();scheduleLiveViewRefresh(0)}
+ if(document.hidden){saveUiState();releaseScreenWakeLock()}
+ else{syncScreenWakeLock();load(false);pollUsLive();scheduleLiveViewRefresh(0)}
 });
 setInterval(clock,1000);
 setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},5000);
