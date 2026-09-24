@@ -4389,3 +4389,63 @@ html[data-theme="light"] .home-stock-row:hover{background:#f4f8f9}
 .portfolio-form-status.visible{min-height:14px;opacity:1}
 .portfolio-form-status.error{color:#ff9da5}
 .portfolio-form [data-save-position]:disabled{opacity:.72;cursor:wait}
+
+
+/* Mobile stock detail spacing fix - 2026-09-24 */
+@media(max-width:720px){
+  /* The old flex-basis:220px became vertical when the title switched to
+     flex-direction:column, creating the huge empty block above the chart. */
+  .stock-profile-page .tv-chart-block .mini-chart-title{
+    min-height:0!important;
+    height:auto!important;
+    align-items:flex-start!important;
+    gap:7px!important;
+  }
+  .stock-profile-page .tv-chart-block .mini-chart-title>div:first-child{
+    flex:0 0 auto!important;
+    width:100%!important;
+    min-height:0!important;
+  }
+  .stock-profile-page .tv-chart-block .chart-market-switch,
+  .stock-profile-page .tv-chart-block .chart-market-single{
+    flex:0 0 auto!important;
+    align-self:flex-start!important;
+  }
+
+  /* The wide sticky back strip was covering content. Keep only a small,
+     accessible back button and let Android's system Back work as usual. */
+  .stock-profile-page .profile-toolbar{
+    position:relative!important;
+    top:auto!important;
+    z-index:auto!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    min-height:34px!important;
+    margin:4px 0 2px!important;
+    padding:0!important;
+    border:0!important;
+    background:transparent!important;
+  }
+  .stock-profile-page .profile-toolbar>span{
+    display:none!important;
+  }
+  .stock-profile-page .quick-profile-back{
+    width:34px!important;
+    height:34px!important;
+    min-width:34px!important;
+    min-height:34px!important;
+    padding:0!important;
+    border-radius:50%!important;
+    font-size:0!important;
+    text-align:center!important;
+    display:grid!important;
+    place-items:center!important;
+  }
+  .stock-profile-page .quick-profile-back::before{
+    content:"←";
+    font-size:17px;
+    line-height:1;
+  }
+}
