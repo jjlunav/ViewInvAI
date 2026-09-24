@@ -453,11 +453,14 @@ function chartFeatures(chart) {
 function deterministicAssessment(target, stock, chart, events) {
   let score = 0;
   const reasons = [];
-  const change = finiteNumber(stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct);
+  const preferTr = Number(target.prefer_tr) === 1;
+  const change = preferTr && chart && chart.available
+    ? finiteNumber(chart.return20)
+    : finiteNumber(stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct);
   const relVolume = finiteNumber(stock.relVolume);
   const adx = finiteNumber(stock.adx);
   const rsi = finiteNumber(stock.rsi);
-  const price = finiteNumber(stock.price);
+  const price = preferTr && chart && chart.available ? finiteNumber(chart.last) : finiteNumber(stock.price);
   const ema20 = finiteNumber(stock.ema20);
   const ema50 = finiteNumber(stock.ema50);
 
@@ -563,11 +566,13 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       },
       stock: {
         stockKey: target.stock_key,
-        ticker: stock.ticker,
+        ticker: Number(target.prefer_tr) === 1 ? (stock.trTicker || stock.ticker) : stock.ticker,
         name: stock.name,
-        exchange: stock.exchange,
-        price: stock.price,
-        changePct: stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct,
+        exchange: Number(target.prefer_tr) === 1 ? (stock.trExchange || "LSX") : stock.exchange,
+        market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
+        currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
+        price: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.last : stock.price,
+        changePct: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.return20 : (stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct),
         relVolume: stock.relVolume,
         volume: stock.usLiveVolume ?? stock.volume,
         avgVolume: stock.avgVolume,
@@ -689,8 +694,10 @@ async function analyzeTarget(env, target, services) {
     current.signal, current.confidence, current.score, previous ? previous.score : null, current.horizon,
     current.thesis, current.riskSummary, JSON.stringify(current.reasons || []), JSON.stringify(current.catalysts || []),
     JSON.stringify(chart || {}), JSON.stringify({
-      price: stock.price ?? null,
-      changePct: stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct ?? null,
+      market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
+      currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
+      price: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.last : (stock.price ?? null),
+      changePct: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.return20 : (stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct ?? null),
       relVolume: stock.relVolume ?? null,
       volume: stock.usLiveVolume ?? stock.volume ?? null,
       rsi: stock.rsi ?? null,
