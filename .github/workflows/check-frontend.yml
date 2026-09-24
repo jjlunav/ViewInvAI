@@ -47,7 +47,7 @@ jobs:
           required = [
               "view-entry","view-recommendation","recommendationResults","view-future","view-calendar",
               "view-catalog","view-catalogUS","view-settings","catalogDetail","catalogUSDetail",
-              "catalogSearch","catalogUSSearch","marketLeaders"
+              "catalogSearch","catalogUSSearch","marketLeaders","mobileBottomNav","mobileMoreSheet"
           ]
           missing = [x for x in required if f'id="{x}"' not in html]
           if missing:
@@ -213,3 +213,181 @@ jobs:
           fi
 
           echo "Smoke test navegador: OK"
+
+      - name: Smoke test movil, filtros y navegacion atras
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::Chrome/Chromium no está disponible en el runner"
+            exit 1
+          fi
+
+          rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
+          mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
+          cp index.html app.js alerts.js styles.css /tmp/viewinvai-mobile/
+          cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
+          JSON
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/viewinvai-mobile/index.html")
+          html = p.read_text(encoding="utf-8")
+          pre = r'''<script>
+          window.addEventListener('error', (e) => {
+            document.documentElement.dataset.runtimeError = String((e && (e.message || (e.error && e.error.message))) || 'runtime error');
+          });
+          window.addEventListener('unhandledrejection', (e) => {
+            document.documentElement.dataset.runtimeError = String((e && e.reason && (e.reason.message || e.reason)) || 'unhandled rejection');
+          });
+          </script>
+          '''
+          html = html.replace('<script src="app.js', pre + '<script src="app.js', 1)
+          inject = r'''
+          <script>
+          (() => {
+            const started = Date.now();
+            const fail = (message) => {
+              document.body.dataset.mobileSmokeError = String(message);
+              console.error('MOBILE_SMOKE_FAIL', message);
+            };
+            const wait = (fn, message, timeout = 7000) => {
+              if (fn()) return;
+              if (Date.now() - started < timeout) return setTimeout(() => wait(fn, message, timeout), 100);
+              fail(message);
+            };
+            const inputValue = (selector, value) => {
+              const el = document.querySelector(selector);
+              if (!el) return false;
+              el.value = value;
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              return true;
+            };
+
+            wait(() => {
+              const row = document.querySelector('#entryResults [data-stock-key]');
+              if (!row) return false;
+
+              const nav = document.querySelector('#mobileBottomNav');
+              if (!nav || getComputedStyle(nav).display === 'none' || nav.getBoundingClientRect().height < 50) {
+                fail('fixed mobile navigation is not visible');
+                return true;
+              }
+              document.body.dataset.mobileNav = 'ok';
+
+              const catalog = document.querySelector('.mobile-nav-item[data-mobile-view="catalog"]');
+              if (!catalog) {
+                fail('catalog mobile navigation item missing');
+                return true;
+              }
+              catalog.click();
+
+              setTimeout(() => {
+                const card = document.querySelector('#catalogResults .catalog-mobile-card');
+                if (!card) {
+                  fail('mobile catalog card did not render');
+                  return;
+                }
+                document.body.dataset.mobileCatalog = 'ok';
+
+                if (typeof catalogFilterMatch !== 'function' ||
+                    !catalogFilterMatch(5, '4..6', 'number') ||
+                    catalogFilterMatch(5, '6..7', 'number') ||
+                    !catalogFilterMatch(250000, '200k..300k', 'number')) {
+                  fail('catalog numeric range parser failed');
+                  return;
+                }
+                document.body.dataset.mobileRange = 'ok';
+
+                if (!inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', 'TES')) {
+                  fail('mobile column filter input missing');
+                  return;
+                }
+                setTimeout(() => {
+                  if (!document.querySelector('#catalogResults .catalog-mobile-card')) {
+                    fail('matching mobile text filter removed expected result');
+                    return;
+                  }
+                  if (!inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', 'NOPE')) {
+                    fail('mobile filter disappeared after rerender');
+                    return;
+                  }
+                  setTimeout(() => {
+                    if (document.querySelector('#catalogResults .catalog-mobile-card')) {
+                      fail('non-matching mobile text filter did not remove result');
+                      return;
+                    }
+                    document.body.dataset.mobileFilter = 'ok';
+
+                    inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', '');
+                    setTimeout(() => {
+                      const restored = document.querySelector('#catalogResults .catalog-mobile-card');
+                      if (!restored) {
+                        fail('catalog result did not return after clearing filter');
+                        return;
+                      }
+                      restored.click();
+                      setTimeout(() => {
+                        if (!document.body.classList.contains('stock-detail-open')) {
+                          fail('mobile stock profile did not open');
+                          return;
+                        }
+                        history.back();
+                        setTimeout(() => {
+                          if (document.body.classList.contains('stock-detail-open') ||
+                              !document.querySelector('#view-catalog.active')) {
+                            fail('browser back did not return from profile to catalog');
+                            return;
+                          }
+                          document.body.dataset.mobileBack = 'ok';
+                        }, 350);
+                      }, 250);
+                    }, 350);
+                  }, 350);
+                }, 350);
+              }, 250);
+              return true;
+            }, 'application data did not render');
+          })();
+          </script>
+          '''
+          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          PY
+
+          cd /tmp/viewinvai-mobile
+          python -m http.server 4174 --bind 127.0.0.1 >/tmp/viewinvai-mobile-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 1
+
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --window-size=390,844 \
+            --force-device-scale-factor=1 \
+            --user-data-dir=/tmp/viewinvai-mobile-profile \
+            --virtual-time-budget=10000 \
+            --dump-dom \
+            http://127.0.0.1:4174/ \
+            > /tmp/viewinvai-mobile-dom.html 2> /tmp/viewinvai-mobile-chrome.log
+
+          for marker in mobile-nav mobile-catalog mobile-range mobile-filter mobile-back; do
+            attr="data-$marker=\"ok\""
+            if ! grep -q "$attr" /tmp/viewinvai-mobile-dom.html; then
+              echo "::error::Fallo smoke móvil: $marker"
+              grep -o 'data-mobile-[^ >]*' /tmp/viewinvai-mobile-dom.html || true
+              grep -o 'data-runtime-error="[^"]*"' /tmp/viewinvai-mobile-dom.html || true
+              tail -100 /tmp/viewinvai-mobile-chrome.log || true
+              exit 1
+            fi
+          done
+
+          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|MOBILE_SMOKE_FAIL' /tmp/viewinvai-mobile-chrome.log; then
+            cat /tmp/viewinvai-mobile-chrome.log
+            exit 1
+          fi
+
+          echo "Smoke test móvil, filtros y navegación: OK"
