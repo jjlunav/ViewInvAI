@@ -150,7 +150,15 @@ jobs:
               document.body.dataset.smokeProfile = 'fail';
             }
 
+            let entryOpened = false;
             function waitForRow() {
+              if (!entryOpened) {
+                const entryNav = document.querySelector('.nav-item[data-view="entry"]');
+                if (entryNav) {
+                  entryOpened = true;
+                  entryNav.click();
+                }
+              }
               const row = document.querySelector('#entryResults [data-stock-key]');
               if (row) {
                 document.body.dataset.smokeApp = 'ok';
@@ -273,6 +281,11 @@ jobs:
             };
 
             wait(() => {
+              const entryButton = document.querySelector('.mobile-nav-item[data-mobile-view="entry"]');
+              if (entryButton && !document.querySelector('#view-entry.active')) {
+                entryButton.click();
+                return false;
+              }
               const row = document.querySelector('#entryResults [data-stock-key]');
               if (!row) return false;
 
@@ -284,7 +297,7 @@ jobs:
               document.body.dataset.mobileNav = 'ok';
 
               const fixedViews = [...document.querySelectorAll('.mobile-nav-item[data-mobile-view]')].map(x => x.dataset.mobileView);
-              if (fixedViews.join(',') !== 'entry,recommendation,portfolios,alerts') {
+              if (fixedViews.join(',') !== 'home,portfolios,recommendation,entry') {
                 fail('fixed mobile navigation order is incorrect: ' + fixedViews.join(','));
                 return true;
               }
