@@ -1365,6 +1365,7 @@ function profileTabs(){
   '<button type="button" data-profile-jump="profile-chart">Gráfico</button>'+
   '<button type="button" data-profile-jump="profile-news">Noticias</button>'+
   '<button type="button" class="profile-tab-ai" data-profile-jump="profile-ai">✦ IA ViewInvAI</button>'+
+  '<button type="button" data-profile-jump="profile-fundamental">Fundamental</button>'+
   '<button type="button" data-profile-jump="profile-technical">Técnico</button>'+
  '</nav>';
 }
@@ -1391,16 +1392,31 @@ function profileAiPanel(s,mode='us'){
  '</aside>';
 }
 function profileGeneralStats(s,isTr,se){
+ let range=N(s.dayLow)!==null&&N(s.dayHigh)!==null?PR(s.dayLow)+' - '+PR(s.dayHigh):'—';
  let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
  return [
   profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
+  profileKpi('Rango día',range,'Mínimo - máximo'),
   profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
   profileKpi('Volumen actual',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
+  profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones'),
   profileKpi('Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
-  profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),'USD'),
-  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada'),
-  profileKpi('Sector',E(s.sector||'—'),E(s.industry||'')),
-  profileKpi('Sesión activa',E(SN(se)),E(isTr?'Cotización principal LSX':'Referencia EEUU'))
+  profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),(s.fundamentalCurrency||'USD')),
+  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
+ ].join('');
+}
+function profileFundamentalStats(s){
+ let cur=E(s.fundamentalCurrency||'USD');
+ return [
+  profileKpi('PER',N(s.peRatio)===null?'—':F(s.peRatio,2)+'×','Precio / beneficio'),
+  profileKpi('BPA diluido TTM',N(s.epsDilutedTtm)===null?'—':F(s.epsDilutedTtm,3),cur),
+  profileKpi('Rentabilidad dividendo',N(s.dividendYield)===null?'—':F(s.dividendYield,2)+'%','Actual'),
+  profileKpi('Beta 1 año',N(s.beta1Y)===null?'—':F(s.beta1Y,2),'Volatilidad relativa'),
+  profileKpi('Acciones en circulación',N(s.sharesOutstanding)===null?'—':compactVol(s.sharesOutstanding),''),
+  profileKpi('Valor empresa',N(s.enterpriseValue)===null?'—':compactVol(s.enterpriseValue),cur),
+  profileKpi('Ingresos',N(s.revenueTtm)===null?'—':compactVol(s.revenueTtm),cur+' · TTM'),
+  profileKpi('Ingresos netos',N(s.netIncomeTtm)===null?'—':compactVol(s.netIncomeTtm),cur+' · TTM'),
+  profileKpi('Precio / valor libro',N(s.priceBook)===null?'—':F(s.priceBook,2)+'×','P/B')
  ].join('');
 }
 function profileTechnicalStats(s){
@@ -1409,11 +1425,20 @@ function profileTechnicalStats(s){
   profileKpi('ADX',F(s.adx,1),'Fuerza de tendencia'),
   profileKpi('EMA 20',PR(s.ema20),'Media corta'),
   profileKpi('EMA 50',PR(s.ema50),'Media larga'),
-  profileKpi('1 semana',PC(s.perfWeek),'Rendimiento'),
-  profileKpi('1 mes',PC(s.perfMonth),'Rendimiento'),
   profileKpi('Tendencia',trendState(s)===true?'Favorable':trendState(s)===false?'Débil / bajista':'Sin dato','EMA y precio'),
   profileKpi('Liquidez',lowLiquidity(s,SES(),false)?'Vigilar':'Normal','Según volumen y spread disponibles')
  ].join('');
+}
+function profilePerformanceStrip(s){
+ let rows=[
+  ['1 semana',s.perfWeek],
+  ['1 mes',s.perfMonth],
+  ['3 meses',s.perf3M],
+  ['6 meses',s.perf6M],
+  ['YTD',s.perfYtd],
+  ['1 año',s.perf1Y]
+ ];
+ return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
 function quickProfileHtml(s){
  let isTr=state.profilePreferTr===true&&trTradable(s),se=currentMarketSession();
@@ -1434,8 +1459,9 @@ function quickProfileHtml(s){
    '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
    '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></header>'+
   profileTabs()+profileSessionStrip(s,isTr)+relation+context+
-  '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · hora España</span></div>'+miniChart(s,isTr)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+  '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · hora España</span></div>'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
+  '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
   '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>';
 }
@@ -1489,9 +1515,10 @@ function profileHtml(s,view){
    '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
    '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></header>'+
   profileTabs()+profileSessionStrip(s,isTr)+trRelation+trNote+feedWarning+context+
-  '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · 1 min · hora España</span></div>'+miniChart(s,isTr)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+  '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · 1 min · hora España</span></div>'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-  '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico y rendimiento</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
+  '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
+  '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
   '<section class="profile-section profile-identity-section"><div class="profile-section-head"><h3>Identificación y mercados</h3><span>Equivalencias del instrumento</span></div><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos eventos</h4><div class="event-list profile-events">'+upHtml+'</div></div></div></section>'+
   '<section class="profile-section profile-source-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Origen de cada dato</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico: TradingView. Noticias y eventos: fuentes enlazadas. ViewInvAI cruza estos datos con su motor multifactor de IA.</div>'+links(s)+'</section>';
