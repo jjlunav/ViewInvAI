@@ -69,6 +69,33 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Set Android app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+
+          version = json.load(open("package.json", encoding="utf-8"))["version"]
+          m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+          if not m:
+              raise SystemExit(f"Unsupported version format: {version}")
+          major, minor, patch = map(int, m.groups())
+          version_code = major * 10000 + minor * 100 + patch
+          if version_code <= 0:
+              raise SystemExit("Android versionCode must be positive")
+
+          path = Path("android/app/build.gradle")
+          text = path.read_text(encoding="utf-8")
+          text, n1 = re.subn(r"versionCode\s+\d+", f"versionCode {version_code}", text, count=1)
+          text, n2 = re.subn(r'versionName\s+"[^"]+"', f'versionName "{version}"', text, count=1)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit("Could not patch Android versionCode/versionName")
+          path.write_text(text, encoding="utf-8")
+          print(f"Android versionName={version} versionCode={version_code}")
+          PY
+
       - name: Add Firebase Android configuration
         run: |
           set -euo pipefail
