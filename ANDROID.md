@@ -1,12 +1,12 @@
-# CatalystPulse Android
+# ViewInvAI Android
 
-Esta rama contiene una primera versión Android de CatalystPulse basada en Capacitor.
+Esta rama contiene una primera versión Android de ViewInvAI basada en Capacitor.
 
 ## Arquitectura
 
 - App nativa Android: Capacitor 8.
 - Interfaz y lógica de mercado: la misma instancia web de producción.
-- Backend/datos: https://catalystpulse.sonarlab.workers.dev/
+- Backend/datos actual durante la transición: https://catalystpulse.sonarlab.workers.dev/\n- Endpoint definitivo previsto tras el corte de Cloudflare: `https://viewinvai.sonarlab.workers.dev/`.
 - El APK carga la aplicación publicada para que los cambios del frontend y del backend estén disponibles sin duplicar lógica.
 
 ## Compilación local
@@ -46,6 +46,6 @@ La app Android comparte inmediatamente con la web:
 - APIs y WebSocket de mercado;
 - noticias, eventos y catalizadores;
 - mapas, gráficos y vistas;
-- cualquier cambio que se despliegue en la instancia de CatalystPulse.
+- cualquier cambio que se despliegue en la instancia de ViewInvAI.
 
 Actualmente los favoritos, filtros personalizados, tema y algunos estados de interfaz se guardan en `localStorage` del dispositivo/navegador. Para que se sincronicen entre web y Android hará falta mover esos datos a la cuenta de usuario/backend.
