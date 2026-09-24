@@ -5980,3 +5980,19 @@ html[data-theme="light"] .heatmap-sector-tab.active{
  border-color:#61a98f
 }
 html[data-theme="light"] .heatmap-sector-tab.active strong{color:#124c3f}
+
+
+/* Heatmap viewport lock */
+@media(min-width:721px){
+ body:has(#view-heatmap.active){
+  overflow:hidden!important
+ }
+ .main:has(#view-heatmap.active){
+  height:100vh!important;
+  max-height:100vh!important;
+  overflow:hidden!important
+ }
+ #view-heatmap.active ~ footer{
+  display:none!important
+ }
+}
