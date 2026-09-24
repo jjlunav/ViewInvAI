@@ -1,6 +1,8 @@
-# CatalystPulse
+# ViewInvAI
 
-CatalystPulse es un radar de mercado orientado a localizar, ordenar y revisar acciones mediante datos de mercado, filtros técnicos y eventos próximos.
+**AI-powered stock scanner, market insights & opportunities.**
+
+ViewInvAI es una plataforma de observación y análisis de acciones orientada a localizar, ordenar y revisar oportunidades mediante datos de mercado, filtros técnicos, señales y eventos próximos. No ejecuta operaciones ni actúa como bróker.
 
 ## Cinta de movimiento EEUU
 
