@@ -1,7 +1,8 @@
 (function(){
  'use strict';
 
- const STORAGE_KEY='catalystpulse:alerts:v1';
+ const STORAGE_KEY='viewinvai:alerts:v1';
+ const LEGACY_STORAGE_KEY='catalystpulse:alerts:v1';
  const MAX_HISTORY=120;
  const AUTO_HIDE_MS=6500;
 
@@ -26,7 +27,12 @@
    lastFired:{}
   };
   try{
-   let raw=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');
+   let rawText=localStorage.getItem(STORAGE_KEY);
+   if(rawText===null){
+    rawText=localStorage.getItem(LEGACY_STORAGE_KEY);
+    if(rawText!==null)localStorage.setItem(STORAGE_KEY,rawText);
+   }
+   let raw=JSON.parse(rawText||'null');
    if(!raw||typeof raw!=='object')return base;
    if(Array.isArray(raw.rules))base.rules=raw.rules;
    if(raw.auto&&typeof raw.auto==='object')base.auto=Object.assign(base.auto,raw.auto);
