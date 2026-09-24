@@ -6391,3 +6391,280 @@ html[data-theme="light"] #view-portfolios .portfolio-investing-card{
   background:#fff!important;
   border-color:#c7d6dc!important
 }
+
+
+/* Universal integrated stock detail header - 2026-09-25 */
+/* One detail language everywhere: compact, centered, sticky and readable. */
+.stock-profile .unified-stock-header,
+.stock-profile-page .unified-stock-header,
+.portfolio-inline-stock .unified-stock-header{
+  position:sticky!important;
+  top:0!important;
+  z-index:1450!important;
+  width:min(1040px,100%)!important;
+  margin:0 auto!important;
+  display:grid!important;
+  grid-template-columns:minmax(270px,390px) minmax(255px,325px) auto!important;
+  justify-content:center!important;
+  align-items:center!important;
+  column-gap:18px!important;
+  row-gap:8px!important;
+  min-height:78px!important;
+  padding:10px 13px!important;
+  border:1px solid #213842!important;
+  border-radius:12px!important;
+  background:rgba(7,18,25,.97)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.22)!important;
+  backdrop-filter:blur(14px)
+}
+.stock-profile .unified-stock-header .profile-title,
+.stock-profile-page .unified-stock-header .profile-title,
+.portfolio-inline-stock .unified-stock-header .profile-title{
+  min-width:0!important;
+  gap:8px!important
+}
+.stock-profile .unified-stock-header .profile-market,
+.stock-profile-page .unified-stock-header .profile-market,
+.portfolio-inline-stock .unified-stock-header .profile-market{
+  margin-bottom:2px!important;
+  font-size:7px!important;
+  letter-spacing:.55px!important
+}
+.stock-profile .unified-stock-header .profile-title h2,
+.stock-profile-page .unified-stock-header .profile-title h2,
+.portfolio-inline-stock .unified-stock-header .profile-title h2{
+  font-size:24px!important;
+  margin-right:7px!important
+}
+.stock-profile .unified-stock-header .profile-title p,
+.stock-profile-page .unified-stock-header .profile-title p,
+.portfolio-inline-stock .unified-stock-header .profile-title p{
+  font-size:11px!important;
+  line-height:1.15!important
+}
+.stock-profile .unified-stock-header .profile-live,
+.stock-profile-page .unified-stock-header .profile-live,
+.portfolio-inline-stock .unified-stock-header .profile-live{
+  min-width:0!important;
+  width:100%!important;
+  grid-template-columns:auto auto!important;
+  justify-content:end!important;
+  gap:2px 8px!important
+}
+.stock-profile .unified-stock-header .profile-live>.price-pair>strong,
+.stock-profile-page .unified-stock-header .profile-live>.price-pair>strong,
+.portfolio-inline-stock .unified-stock-header .profile-live>.price-pair>strong{
+  font-size:25px!important
+}
+.stock-profile .unified-stock-header .profile-live>.price-pair>small:not(.quote-updated),
+.stock-profile-page .unified-stock-header .profile-live>.price-pair>small:not(.quote-updated),
+.portfolio-inline-stock .unified-stock-header .profile-live>.price-pair>small:not(.quote-updated){
+  font-size:8px!important
+}
+.stock-profile .unified-stock-header .profile-live>.positive,
+.stock-profile .unified-stock-header .profile-live>.negative,
+.stock-profile-page .unified-stock-header .profile-live>.positive,
+.stock-profile-page .unified-stock-header .profile-live>.negative,
+.portfolio-inline-stock .unified-stock-header .profile-live>.positive,
+.portfolio-inline-stock .unified-stock-header .profile-live>.negative{
+  font-size:12px!important
+}
+.stock-profile .unified-stock-header .quote-spread,
+.stock-profile-page .unified-stock-header .quote-spread,
+.portfolio-inline-stock .unified-stock-header .quote-spread{
+  transform:scale(.9)!important;
+  transform-origin:right center!important
+}
+.stock-profile .unified-stock-header .profile-primary-actions,
+.stock-profile-page .unified-stock-header .profile-primary-actions,
+.portfolio-inline-stock .unified-stock-header .profile-primary-actions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:6px!important;
+  white-space:nowrap!important
+}
+.stock-profile .unified-stock-header .profile-primary-actions .btn,
+.stock-profile-page .unified-stock-header .profile-primary-actions .btn,
+.portfolio-inline-stock .unified-stock-header .profile-primary-actions .btn{
+  min-height:33px!important;
+  padding:5px 8px!important;
+  font-size:8px!important
+}
+
+/* The navigation immediately below follows the same sticky geometry everywhere. */
+.stock-profile .profile-tabs,
+.stock-profile-page .profile-tabs,
+.portfolio-inline-stock .profile-tabs{
+  position:sticky!important;
+  top:80px!important;
+  z-index:1440!important;
+  background:rgba(7,17,24,.97)!important;
+  backdrop-filter:blur(12px)
+}
+
+/* Back is always the same compact control; never a full-width band. */
+.stock-profile .profile-toolbar,
+.stock-profile-page .profile-toolbar,
+.portfolio-inline-detail-head{
+  width:min(1040px,100%)!important;
+  margin:4px auto 5px!important;
+  padding:0!important;
+  min-height:34px!important;
+  background:transparent!important;
+  border:0!important
+}
+.stock-profile .profile-back,
+.stock-profile-page .quick-profile-back,
+.portfolio-inline-detail-head button{
+  width:auto!important;
+  min-width:0!important;
+  min-height:33px!important;
+  padding:5px 10px!important;
+  border-radius:9px!important;
+  font-size:9px!important
+}
+
+/* Chart area: no explanatory chrome. A selector appears only when both tickers exist. */
+.stock-profile .profile-chart-clean,
+.stock-profile-page .profile-chart-clean,
+.portfolio-inline-stock .profile-chart-clean{
+  padding:0!important
+}
+.stock-profile .profile-chart-clean>.profile-section-head,
+.stock-profile-page .profile-chart-clean>.profile-section-head,
+.portfolio-inline-stock .profile-chart-clean>.profile-section-head,
+.stock-profile .tv-chart-block .mini-chart-title,
+.stock-profile-page .tv-chart-block .mini-chart-title,
+.portfolio-inline-stock .tv-chart-block .mini-chart-title,
+.stock-profile .tv-chart-block .chart-market-caption,
+.stock-profile-page .tv-chart-block .chart-market-caption,
+.portfolio-inline-stock .tv-chart-block .chart-market-caption,
+.stock-profile .tv-chart-block .chart-market-single,
+.stock-profile-page .tv-chart-block .chart-market-single,
+.portfolio-inline-stock .tv-chart-block .chart-market-single{
+  display:none!important
+}
+.stock-profile .chart-market-control-slot:not(:empty),
+.stock-profile-page .chart-market-control-slot:not(:empty),
+.portfolio-inline-stock .chart-market-control-slot:not(:empty){
+  justify-content:flex-start!important;
+  padding:5px 7px!important;
+  min-height:36px!important
+}
+
+/* Portfolio cards: compact tiles, left aligned, then grow rightwards/new rows. */
+#view-portfolios .portfolio-position-list.stock-list{
+  grid-template-columns:repeat(auto-fill,minmax(320px,390px))!important;
+  justify-content:start!important;
+  align-items:start!important;
+  gap:9px!important
+}
+#view-portfolios .portfolio-investing-card{
+  max-width:390px!important;
+  min-height:0!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-row{
+  min-height:0!important;
+  padding:10px 11px!important;
+  grid-template-columns:minmax(0,1fr) minmax(108px,auto) 12px!important
+}
+#view-portfolios .portfolio-investing-card .stock-market-line{
+  padding:5px 11px!important
+}
+#view-portfolios .portfolio-investing-card .stock-context-line{
+  padding:6px 11px!important
+}
+
+/* Light mode equivalents. */
+html[data-theme="light"] .stock-profile .unified-stock-header,
+html[data-theme="light"] .stock-profile-page .unified-stock-header,
+html[data-theme="light"] .portfolio-inline-stock .unified-stock-header{
+  background:rgba(255,255,255,.98)!important;
+  border-color:#bccfd7!important;
+  box-shadow:0 7px 20px rgba(34,59,69,.10)!important
+}
+html[data-theme="light"] .stock-profile .profile-tabs,
+html[data-theme="light"] .stock-profile-page .profile-tabs,
+html[data-theme="light"] .portfolio-inline-stock .profile-tabs{
+  background:rgba(255,255,255,.98)!important
+}
+
+@media(max-width:980px){
+ .stock-profile .unified-stock-header,
+ .stock-profile-page .unified-stock-header,
+ .portfolio-inline-stock .unified-stock-header{
+   grid-template-columns:minmax(0,1fr) minmax(210px,270px)!important;
+   width:100%!important
+ }
+ .stock-profile .unified-stock-header .profile-primary-actions,
+ .stock-profile-page .unified-stock-header .profile-primary-actions,
+ .portfolio-inline-stock .unified-stock-header .profile-primary-actions{
+   grid-column:1/-1!important;
+   justify-content:flex-end!important
+ }
+}
+
+@media(max-width:720px){
+ .stock-profile .unified-stock-header,
+ .stock-profile-page .unified-stock-header,
+ .portfolio-inline-stock .unified-stock-header{
+   grid-template-columns:minmax(0,1fr) minmax(118px,auto)!important;
+   min-height:66px!important;
+   padding:7px 8px!important;
+   gap:6px!important;
+   border-radius:10px!important
+ }
+ .stock-profile .unified-stock-header .profile-title h2,
+ .stock-profile-page .unified-stock-header .profile-title h2,
+ .portfolio-inline-stock .unified-stock-header .profile-title h2{
+   font-size:20px!important
+ }
+ .stock-profile .unified-stock-header .profile-title p,
+ .stock-profile-page .unified-stock-header .profile-title p,
+ .portfolio-inline-stock .unified-stock-header .profile-title p{
+   display:block!important;
+   max-width:160px!important;
+   font-size:9px!important;
+   white-space:nowrap!important;
+   overflow:hidden!important;
+   text-overflow:ellipsis!important
+ }
+ .stock-profile .unified-stock-header .profile-live>small:first-child,
+ .stock-profile-page .unified-stock-header .profile-live>small:first-child,
+ .portfolio-inline-stock .unified-stock-header .profile-live>small:first-child,
+ .stock-profile .unified-stock-header .quote-spread,
+ .stock-profile-page .unified-stock-header .quote-spread,
+ .portfolio-inline-stock .unified-stock-header .quote-spread{
+   display:none!important
+ }
+ .stock-profile .unified-stock-header .profile-live>.price-pair>strong,
+ .stock-profile-page .unified-stock-header .profile-live>.price-pair>strong,
+ .portfolio-inline-stock .unified-stock-header .profile-live>.price-pair>strong{
+   font-size:20px!important
+ }
+ .stock-profile .unified-stock-header .profile-primary-actions,
+ .stock-profile-page .unified-stock-header .profile-primary-actions,
+ .portfolio-inline-stock .unified-stock-header .profile-primary-actions{
+   grid-column:1/-1!important;
+   display:flex!important;
+   justify-content:flex-end!important
+ }
+ .stock-profile .profile-tabs,
+ .stock-profile-page .profile-tabs,
+ .portfolio-inline-stock .profile-tabs{
+   top:98px!important
+ }
+ #view-portfolios .portfolio-position-list.stock-list{
+   grid-template-columns:1fr!important
+ }
+ #view-portfolios .portfolio-investing-card{
+   max-width:none!important
+ }
+}
+
+#view-portfolios .portfolio-inline-stock.stock-profile-page{
+  width:100%!important;
+  max-width:none!important;
+  margin:0 auto 24px!important
+}
