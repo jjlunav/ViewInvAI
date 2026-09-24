@@ -6237,3 +6237,157 @@ html[data-theme="light"] .chart-market-control-slot:not(:empty){
   padding:5px 8px!important
  }
 }
+
+
+/* Portfolio-only compact card grid - 2026-09-25 */
+/* IMPORTANT: scoped exclusively to Carteras. Other stock lists keep their full Investing-style layout. */
+#view-portfolios .portfolio-positions-only{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  overflow:visible!important
+}
+#view-portfolios .portfolio-position-list.stock-list{
+  display:grid!important;
+  grid-template-columns:repeat(auto-fill,minmax(360px,430px))!important;
+  justify-content:start!important;
+  align-items:start!important;
+  gap:10px!important;
+  width:100%!important;
+  overflow:visible!important;
+  border-radius:0!important
+}
+#view-portfolios .portfolio-investing-card{
+  width:100%!important;
+  max-width:430px!important;
+  border:1px solid #213842!important;
+  border-radius:12px!important;
+  overflow:hidden!important;
+  background:#08151d!important;
+  box-shadow:none!important
+}
+#view-portfolios .portfolio-investing-card:last-child{
+  border-bottom:1px solid #213842!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-row{
+  min-height:0!important;
+  padding:11px 12px!important;
+  grid-template-columns:minmax(0,1fr) minmax(118px,auto) 14px!important;
+  gap:9px!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-left{
+  gap:6px!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-copy{
+  gap:3px!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-copy .stock-name{
+  font-size:15px!important;
+  line-height:1.15!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-meta{
+  font-size:8px!important;
+  gap:4px!important
+}
+#view-portfolios .portfolio-investing-card .stock-ai-chip{
+  font-size:7.5px!important;
+  padding:3px 7px!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-right{
+  min-width:112px!important;
+  gap:2px!important
+}
+#view-portfolios .portfolio-investing-card .stock-list-price .price-pair>strong{
+  font-size:18px!important
+}
+#view-portfolios .portfolio-investing-card .stock-list-price .price-pair>small:not(.quote-updated){
+  font-size:8px!important
+}
+#view-portfolios .portfolio-investing-card .quote-updated{
+  font-size:6.5px!important
+}
+#view-portfolios .portfolio-investing-card .investing-stock-right>.quote-change{
+  font-size:11px!important
+}
+#view-portfolios .portfolio-investing-card .stock-session-quote{
+  min-height:17px!important;
+  gap:4px!important
+}
+#view-portfolios .portfolio-investing-card .stock-market-line{
+  min-height:29px!important;
+  padding:5px 12px!important;
+  gap:6px!important
+}
+#view-portfolios .portfolio-investing-card .stock-list-metrics{
+  gap:7px!important;
+  font-size:7px!important
+}
+#view-portfolios .portfolio-investing-card .stock-context-line{
+  min-height:0!important;
+  padding:7px 12px!important;
+  gap:8px!important
+}
+#view-portfolios .portfolio-position-context{
+  display:grid!important;
+  gap:7px!important;
+  align-items:start!important
+}
+#view-portfolios .portfolio-position-numbers{
+  gap:5px 9px!important
+}
+#view-portfolios .portfolio-position-numbers span{
+  font-size:7.5px!important
+}
+#view-portfolios .portfolio-position-actions{
+  width:100%!important;
+  margin-left:0!important;
+  justify-content:space-between!important;
+  gap:8px!important
+}
+#view-portfolios .portfolio-position-signal{
+  font-size:8px!important
+}
+#view-portfolios .portfolio-investing-card .portfolio-analyze{
+  min-height:29px!important;
+  padding:4px 8px!important;
+  font-size:8px!important
+}
+
+/* Keep cards left-aligned; fill rightwards, then start a new row. */
+@media(min-width:1450px){
+  #view-portfolios .portfolio-position-list.stock-list{
+    grid-template-columns:repeat(auto-fill,minmax(370px,430px))!important
+  }
+}
+@media(max-width:980px){
+  #view-portfolios .portfolio-position-list.stock-list{
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr))!important
+  }
+  #view-portfolios .portfolio-investing-card{
+    max-width:none!important
+  }
+}
+@media(max-width:680px){
+  #view-portfolios .portfolio-position-list.stock-list{
+    grid-template-columns:1fr!important;
+    gap:7px!important
+  }
+  #view-portfolios .portfolio-investing-card{
+    max-width:none!important;
+    border-left:1px solid #213842!important;
+    border-right:1px solid #213842!important;
+    border-radius:11px!important
+  }
+  #view-portfolios .portfolio-investing-card .investing-stock-row{
+    padding:10px!important;
+    grid-template-columns:minmax(0,1fr) minmax(104px,auto)!important
+  }
+  #view-portfolios .portfolio-investing-card .investing-stock-row>.open-arrow{
+    display:none!important
+  }
+}
+
+html[data-theme="light"] #view-portfolios .portfolio-investing-card{
+  background:#fff!important;
+  border-color:#c7d6dc!important
+}
