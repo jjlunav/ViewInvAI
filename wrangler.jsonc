@@ -17,5 +17,13 @@
     "crons": [
       "*/5 * * * *"
     ]
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "viewinvai-db",
+      "database_id": "36134c26-075e-4602-9fde-da449187892d",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
