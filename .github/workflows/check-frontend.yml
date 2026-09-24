@@ -283,9 +283,20 @@ jobs:
               }
               document.body.dataset.mobileNav = 'ok';
 
-              const catalog = document.querySelector('.mobile-nav-item[data-mobile-view="catalog"]');
+              const fixedViews = [...document.querySelectorAll('.mobile-nav-item[data-mobile-view]')].map(x => x.dataset.mobileView);
+              if (fixedViews.join(',') !== 'entry,recommendation,portfolios,alerts') {
+                fail('fixed mobile navigation order is incorrect: ' + fixedViews.join(','));
+                return true;
+              }
+              const more = document.querySelector('.mobile-nav-item[data-mobile-more]');
+              if (!more) {
+                fail('mobile More navigation item missing');
+                return true;
+              }
+              more.click();
+              const catalog = document.querySelector('.mobile-more-item[data-mobile-view="catalog"]');
               if (!catalog) {
-                fail('catalog mobile navigation item missing');
+                fail('catalog item missing from More menu');
                 return true;
               }
               catalog.click();
