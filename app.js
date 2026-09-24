@@ -1136,7 +1136,10 @@ function chartMarketControls(s,usAvailable,trAvailable,active){
 function setChartMarketUi(block,s,usAvailable,trAvailable,active){
  if(!block||!s)return;
  let slot=block.querySelector('[data-chart-market-controls]');
- if(slot)slot.innerHTML=chartMarketControls(s,usAvailable,trAvailable,active);
+ if(slot){
+  slot.innerHTML=chartMarketControls(s,usAvailable,trAvailable,active);
+  slot.hidden=!(usAvailable&&trAvailable);
+ }
 }
 function miniChart(s,preferTr=false){
  return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+
@@ -1572,42 +1575,46 @@ function profilePerformanceStrip(s){
  ];
  return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
-function profileHeroHtml(s,isTr=false){
+function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
  let currentChange=liveChangeHtml(s,SC(s,se),isTr);
  let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
+ let back='';
+ if(opts.backKind==='portfolio')back='<button type="button" class="profile-back-inline" data-portfolio-detail-close>← Atrás</button>';
+ else if(opts.backKind==='profile')back='<button type="button" class="profile-back-inline" data-profile-back="'+E(opts.backView||state.currentView)+'">← Atrás</button>';
+ else if(opts.backKind==='quick')back='<button type="button" class="profile-back-inline" data-stock-detail-back="1">← Atrás</button>';
  return '<header class="profile-hero investing-profile-header unified-stock-header">'+
-   '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-   '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
-   '<div class="profile-primary-actions">'+
-    '<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>'+
-    '<button type="button" class="btn small profile-ai-open" data-profile-jump="profile-ai">✦ Consultar IA</button>'+
+   '<div class="unified-stock-header-inner">'+
+    (back?'<div class="profile-back-cell">'+back+'</div>':'')+
+    '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
+    '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+'</div>'+
+    '<div class="profile-primary-actions">'+
+     '<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>'+
+     '<button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button>'+
+    '</div>'+
    '</div>'+
   '</header>';
 }
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
  let isTr=requested&&trTradable(s),se=currentMarketSession();
- let title=isTr?(s.trTicker||s.ticker):s.ticker;
- let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let origin=state.profileOriginView||state.currentView,back='← Atrás';
- let currentChange=liveChangeHtml(s,SC(s,se),isTr);
- let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
  let events=stockEvents(s),now=Date.now();
  let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
- let toolbar=opts.embedded?'':'<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button></div>';
- return toolbar+profileHeroHtml(s,isTr)+
-  profileTabs()+profileSessionStrip(s,isTr)+
-  '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
-  '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-  '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
-  '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
-  '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>';
+ let backKind=opts.embedded?'portfolio':'quick';
+ return profileHeroHtml(s,isTr,{backKind})+
+  '<div class="unified-profile-body">'+
+   profileTabs()+profileSessionStrip(s,isTr)+
+   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
+   '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
+   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
+   '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>'+
+  '</div>';
 }
 function renderQuickProfile(){
  let box=$('#stockQuickDetail');if(!box)return;
@@ -1662,18 +1669,17 @@ function profileHtml(s,view){
  let upHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos futuros fechados cargados para este valor.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
  let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
- return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Atrás</button></div>'+
-  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-   '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
-   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button><button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Consultar IA</button></div></header>'+
-  profileTabs()+profileSessionStrip(s,isTr)+
-  '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
-  '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-  '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
-  '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
-  '<section class="profile-section profile-identity-section"><div class="profile-section-head"><h3>Identificación y mercados</h3><span>Equivalencias del instrumento</span></div><div class="profile-identity-grid">'+identity+'</div></section>'+
-  '<section class="profile-section" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos eventos</h4><div class="event-list profile-events">'+upHtml+'</div></div></div></section>'+
-  '<section class="profile-section profile-source-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Origen de cada dato</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico: TradingView. Noticias y eventos: fuentes enlazadas. ViewInvAI cruza estos datos con su motor multifactor de IA.</div>'+links(s)+'</section>';
+ return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+
+  '<div class="unified-profile-body">'+
+   profileTabs()+profileSessionStrip(s,isTr)+
+   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
+   '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
+   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
+   '<section class="profile-section profile-identity-section"><div class="profile-section-head"><h3>Identificación y mercados</h3><span>Equivalencias del instrumento</span></div><div class="profile-identity-grid">'+identity+'</div></section>'+
+   '<section class="profile-section" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos eventos</h4><div class="event-list profile-events">'+upHtml+'</div></div></div></section>'+
+   '<section class="profile-section profile-source-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Origen de cada dato</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico: TradingView. Noticias y eventos: fuentes enlazadas. ViewInvAI cruza estos datos con su motor multifactor de IA.</div>'+links(s)+'</section>'+
+  '</div>';
 }
 function renderProfileView(view){
  let isTr=view==='catalog',detail=$(isTr?'#catalogDetail':'#catalogUSDetail'),browse=$(isTr?'#catalogBrowse':'#catalogUSBrowse');
@@ -1681,7 +1687,7 @@ function renderProfileView(view){
  let s=state.profileKey?stockByKey(state.profileKey):null;
  let valid=s&&(isTr?trTradable(s):market(s,'us'));
  if(!valid){detail.classList.add('is-hidden');browse.classList.remove('is-hidden');return false}
- browse.classList.add('is-hidden');detail.classList.remove('is-hidden');detail.innerHTML=profileHtml(s,view);
+ browse.classList.add('is-hidden');detail.classList.remove('is-hidden');detail.classList.add('stock-profile-page');detail.innerHTML=profileHtml(s,view);
  requestAnimationFrame(()=>{detail.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(detail);pollUsLive()});
  return true;
 }
