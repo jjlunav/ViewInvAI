@@ -168,21 +168,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VALUES="android/app/build/generated/res/google-services/debug/values/values.xml"
-          test -s "$VALUES"
-          EXPECTED_WEB_CLIENT="$(python3 - <<'PY'
-          import json
+          VALUES="$(grep -R -l 'default_web_client_id' android/app/build/generated/res 2>/dev/null | head -n 1 || true)"
+          if [ -z "$VALUES" ] || [ ! -s "$VALUES" ]; then
+            echo "::error::Could not find generated Google services values.xml"
+            find android/app/build/generated/res -maxdepth 5 -type f -name '*.xml' -print || true
+            exit 1
+          fi
+          python3 - "$VALUES" <<'PY'
+          import json, sys, xml.etree.ElementTree as ET
+          values = sys.argv[1]
           data=json.load(open("firebase/google-services.json", encoding="utf-8"))
+          expected_web=""
+          expected_app="1:638735053048:android:beb0c00ef0f50a90820b0d"
           for client in data.get("client", []):
               for oauth in client.get("oauth_client", []):
                   if oauth.get("client_type") == 3:
-                      print(oauth.get("client_id", ""))
-                      raise SystemExit
+                      expected_web = oauth.get("client_id", "")
+                      break
+              if expected_web:
+                  break
+          root=ET.parse(values).getroot()
+          strings={x.attrib.get("name"): (x.text or "").strip() for x in root.findall("string")}
+          actual_web=strings.get("default_web_client_id","")
+          actual_app=strings.get("google_app_id","")
+          if actual_web != expected_web:
+              raise SystemExit(f"default_web_client_id mismatch: {actual_web!r} != {expected_web!r}")
+          if actual_app != expected_app:
+              raise SystemExit(f"google_app_id mismatch: {actual_app!r} != {expected_app!r}")
+          print("Generated Firebase OAuth resources match google-services.json.")
           PY
-          )"
-          grep -F "<string name=\"default_web_client_id\" translatable=\"false\">$EXPECTED_WEB_CLIENT</string>" "$VALUES"
-          grep -F '<string name="google_app_id" translatable="false">1:638735053048:android:beb0c00ef0f50a90820b0d</string>' "$VALUES"
-          echo "Generated Firebase OAuth resources match google-services.json."
 
       - name: Verify APK signer
         shell: bash
