@@ -2263,7 +2263,7 @@ document.addEventListener('click',e=>{
  let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
  if(!th)return;
  let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
- if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}st.limit=CATALOG_PAGE_SIZE;renderCatalogTable(mode);
+ if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}catalogResetLimit(mode);renderCatalogTable(mode);
 });
 let draggedCatalogCol=null;
 document.addEventListener('dragstart',e=>{
