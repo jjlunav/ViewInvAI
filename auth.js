@@ -182,7 +182,10 @@ async function syncBackendUser() {
 async function signInNative() {
   const plugin = nativeAuthPlugin();
   if (!plugin) throw new Error("Esta APK todavía no incluye el módulo de autenticación nativa.");
-  const result = await plugin.signInWithGoogle({ useCredentialManager: true });
+  // The Android Credential Manager has caused sign-in failures on some devices.
+  // Use the legacy Google Sign-In path for the APK; Firebase native auth still
+  // returns the same Firebase user and ID token.
+  const result = await plugin.signInWithGoogle({ useCredentialManager: false });
   let user = result && result.user ? result.user : null;
   if (!user) {
     const current = await plugin.getCurrentUser();
@@ -214,10 +217,12 @@ async function signIn() {
   } catch (error) {
     console.warn("Google sign-in failed", error);
     const code = String(error && error.code || "");
+    const native = isNativePlatform();
     if (code.includes("unauthorized-domain")) {
       showToast("Falta autorizar este dominio en Firebase Authentication.", true);
     } else if (!code.includes("popup-closed-by-user") && !code.includes("cancel")) {
-      showToast(error && error.message ? error.message : "No se pudo iniciar sesión con Google.", true);
+      const message = error && error.message ? error.message : "No se pudo iniciar sesión con Google.";
+      showToast(native && code ? "Google Android · " + code + " · " + message : message, true);
     }
   } finally {
     busy = false;
