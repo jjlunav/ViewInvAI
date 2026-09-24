@@ -58,6 +58,16 @@
           <span class="market-clock" data-tz="Asia/Tokyo"><b>JAPÓN</b><time>--:--</time></span>
           <span class="market-clock" data-tz="Asia/Hong_Kong"><b>HONG KONG</b><time>--:--</time></span>
         </div>
+        <div class="account-area" id="accountArea">
+          <button type="button" id="accountButton" class="account-button" aria-haspopup="true" aria-expanded="false">
+            <span id="accountAvatar" class="account-avatar">G</span>
+            <span class="account-copy"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
+          </button>
+          <div id="accountMenu" class="account-menu" aria-hidden="true">
+            <div id="accountMenuUser" class="account-menu-user">Sin sesión iniciada</div>
+            <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -415,5 +425,6 @@
 </div>
 <script src="app.js?v=20260924r31"></script>
 <script src="alerts.js?v=20260924r3"></script>
+<script type="module" src="auth.js?v=20260924r1"></script>
 </body>
 </html>
