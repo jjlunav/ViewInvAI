@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "auth.js"
       - "worker.js"
       - "backend.js"
       - "package.json"
@@ -58,6 +59,7 @@ jobs:
       - name: Validar JavaScript
         run: |
           node --check app.js
+          node --check auth.js
           node --check backend.js
           node --check worker.js
       - name: Buscar patrones peligrosos, secretos y acciones sin fijar
@@ -68,7 +70,7 @@ jobs:
           from collections import Counter
 
           files = [
-              Path("app.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
+              Path("app.js"), Path("auth.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
               Path("scripts/update_market.py"),
               Path(".github/workflows/check-frontend.yml"),
               Path(".github/workflows/update-market-data.yml"),
@@ -94,6 +96,7 @@ jobs:
           }
           code_combined = "\n".join([
               texts["app.js"],
+              texts["auth.js"],
               texts["backend.js"],
               texts["worker.js"],
               texts["scripts/update_market.py"],
