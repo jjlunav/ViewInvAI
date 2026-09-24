@@ -5996,3 +5996,244 @@ html[data-theme="light"] .heatmap-sector-tab.active strong{color:#124c3f}
   display:none!important
  }
 }
+
+
+/* Unified stock detail cleanup - 2026-09-25 */
+/* All stock detail contexts share the same readable header, back control and clean chart. */
+.stock-profile-page .profile-toolbar{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:flex-start!important;
+ min-height:40px!important;
+ margin:0!important;
+ padding:5px 0!important;
+ border:0!important;
+ background:transparent!important
+}
+.stock-profile-page .profile-toolbar>span{display:none!important}
+.stock-profile-page .profile-back,
+.stock-profile-page .quick-profile-back,
+.portfolio-inline-detail-head button{
+ min-height:38px!important;
+ padding:7px 13px!important;
+ border-radius:10px!important;
+ font-size:11px!important;
+ line-height:1!important;
+ white-space:nowrap!important
+}
+
+.stock-profile-page .investing-profile-header{
+ grid-template-columns:minmax(300px,520px) minmax(260px,360px) auto!important;
+ justify-content:space-between!important;
+ align-items:center!important;
+ column-gap:22px!important;
+ row-gap:8px!important;
+ min-height:78px!important;
+ padding:10px 14px!important
+}
+.stock-profile-page .investing-profile-header .profile-title{
+ gap:12px!important
+}
+.stock-profile-page .investing-profile-header .profile-market{
+ margin-bottom:3px!important;
+ font-size:8px!important
+}
+.stock-profile-page .investing-profile-header .profile-title h2{
+ display:block!important;
+ margin:0 0 4px!important;
+ font-size:30px!important;
+ line-height:.96!important;
+ letter-spacing:-.7px!important
+}
+.stock-profile-page .investing-profile-header .profile-title p{
+ display:block!important;
+ max-width:420px!important;
+ font-size:12px!important;
+ line-height:1.15!important
+}
+.stock-profile-page .investing-profile-header .profile-live{
+ min-width:260px!important;
+ padding:3px 0!important;
+ gap:3px 8px!important
+}
+.stock-profile-page .investing-profile-header .profile-live>small:first-child{
+ font-size:7px!important;
+ letter-spacing:.45px!important
+}
+.stock-profile-page .investing-profile-header .profile-live .price-pair>strong{
+ font-size:29px!important;
+ line-height:1!important
+}
+.stock-profile-page .investing-profile-header .profile-live .price-pair>small{
+ font-size:9px!important
+}
+.stock-profile-page .investing-profile-header .profile-live>.positive,
+.stock-profile-page .investing-profile-header .profile-live>.negative{
+ font-size:14px!important
+}
+.stock-profile-page .investing-profile-header .quote-spread{
+ transform:none!important;
+ margin-top:2px!important
+}
+.stock-profile-page .investing-profile-header .quote-side{
+ min-width:92px!important
+}
+.stock-profile-page .investing-profile-header .quote-side small{
+ font-size:7px!important
+}
+.stock-profile-page .investing-profile-header .quote-side strong{
+ font-size:10px!important
+}
+.stock-profile-page .investing-profile-header .profile-primary-actions{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:flex-end!important;
+ gap:7px!important;
+ width:auto!important
+}
+.stock-profile-page .investing-profile-header .profile-primary-actions .btn{
+ width:auto!important;
+ min-height:38px!important;
+ padding:8px 11px!important;
+ font-size:10px!important
+}
+
+/* Explanatory market/context bars are intentionally not part of the live-detail flow. */
+.stock-profile-page>.profile-data-note,
+.stock-profile-page>.profile-feed-warning,
+.stock-profile-page>.profile-context,
+.stock-profile-page>.profile-relation{
+ display:none!important
+}
+
+/* The chart gets no explanatory banner. Only a market switch appears when two markets exist. */
+.profile-chart-clean{
+ padding:0!important;
+ overflow:hidden!important
+}
+.profile-chart-clean>.profile-section-head,
+.tv-chart-block .mini-chart-title,
+.tv-chart-block .chart-market-caption,
+.tv-chart-block .chart-market-single{
+ display:none!important
+}
+.tv-chart-block{
+ position:relative;
+ padding:0!important;
+ background:transparent!important
+}
+.chart-market-control-slot{
+ min-height:0;
+ padding:0!important;
+ background:transparent!important
+}
+.chart-market-control-slot:empty{display:none!important}
+.chart-market-control-slot:not(:empty){
+ display:flex!important;
+ justify-content:flex-end!important;
+ padding:7px 8px!important;
+ border-bottom:1px solid #1d303a!important;
+ background:#09151d!important
+}
+.chart-market-control-slot .chart-market-switch{
+ margin:0!important;
+ display:inline-flex!important;
+ width:auto!important;
+ gap:3px!important
+}
+.chart-market-control-slot .chart-market-toggle{
+ min-height:30px!important;
+ padding:5px 9px!important;
+ font-size:8px!important
+}
+.profile-chart-clean .mini-chart{
+ border:0!important;
+ border-radius:0!important
+}
+
+/* Sticky top remains useful without consuming half the screen. */
+.stock-profile-page .investing-profile-header{
+ top:0!important
+}
+.stock-profile-page .profile-tabs{
+ top:78px!important
+}
+
+html[data-theme="light"] .chart-market-control-slot:not(:empty){
+ background:#f6f9fa!important;
+ border-color:#d6e1e5!important
+}
+
+@media(max-width:980px){
+ .stock-profile-page .investing-profile-header{
+  grid-template-columns:minmax(0,1fr) minmax(220px,300px)!important
+ }
+ .stock-profile-page .investing-profile-header .profile-primary-actions{
+  grid-column:1/-1!important;
+  justify-content:flex-end!important
+ }
+}
+@media(max-width:720px){
+ .stock-profile-page .profile-toolbar{
+  min-height:36px!important;
+  padding:4px 0!important
+ }
+ .stock-profile-page .profile-back,
+ .stock-profile-page .quick-profile-back,
+ .portfolio-inline-detail-head button{
+  width:auto!important;
+  height:auto!important;
+  min-width:0!important;
+  min-height:34px!important;
+  padding:6px 10px!important;
+  border-radius:9px!important;
+  font-size:10px!important
+ }
+ .stock-profile-page .quick-profile-back::before{content:none!important}
+ .stock-profile-page .investing-profile-header{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  min-height:64px!important;
+  padding:8px 8px!important;
+  gap:7px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-title h2{
+  font-size:22px!important;
+  margin-bottom:2px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-title p{
+  max-width:180px!important;
+  font-size:10px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-live{
+  min-width:132px!important;
+  gap:1px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-live>small:first-child,
+ .stock-profile-page .investing-profile-header .quote-spread{
+  display:none!important
+ }
+ .stock-profile-page .investing-profile-header .profile-live .price-pair>strong{
+  font-size:22px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-live .price-pair>small{
+  font-size:7px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-live>.positive,
+ .stock-profile-page .investing-profile-header .profile-live>.negative{
+  font-size:11px!important
+ }
+ .stock-profile-page .investing-profile-header .profile-primary-actions{
+  display:none!important
+ }
+ .stock-profile-page .profile-tabs{
+  top:64px!important
+ }
+ .chart-market-control-slot:not(:empty){
+  justify-content:center!important;
+  padding:5px!important
+ }
+ .chart-market-control-slot .chart-market-toggle{
+  min-height:29px!important;
+  padding:5px 8px!important
+ }
+}
