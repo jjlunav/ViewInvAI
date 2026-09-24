@@ -33,6 +33,8 @@ jobs:
         run: node --check alerts.js
       - name: Validar sintaxis de autenticación
         run: node --check auth.js
+      - name: Validar sintaxis de carteras
+        run: node --check portfolio.js
       - name: Validar sintaxis backend
         run: node --check backend.js
       - name: Validar sintaxis Worker
@@ -104,7 +106,7 @@ jobs:
 
           rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html app.js alerts.js auth.js styles.css /tmp/catalyst-smoke/
+          cp index.html app.js alerts.js auth.js portfolio.js styles.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -230,7 +232,7 @@ jobs:
 
           rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
           mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html app.js alerts.js auth.js styles.css /tmp/viewinvai-mobile/
+          cp index.html app.js alerts.js auth.js portfolio.js styles.css /tmp/viewinvai-mobile/
           cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
