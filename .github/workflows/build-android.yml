@@ -11,6 +11,7 @@ on:
       - "mobile-shell/**"
       - ".github/workflows/build-android.yml"
       - "scripts/apply_android_branding.py"
+      - "firebase/**"
   push:
     branches:
       - main
@@ -20,6 +21,7 @@ on:
       - "mobile-shell/**"
       - ".github/workflows/build-android.yml"
       - "scripts/apply_android_branding.py"
+      - "firebase/**"
 
 permissions:
   contents: read
@@ -73,6 +75,43 @@ jobs:
 
       - name: Generate Android project
         run: npx cap add android
+
+      - name: Add Firebase Android configuration
+        run: |
+          set -euo pipefail
+          cp firebase/google-services.json android/app/google-services.json
+          test -s android/app/google-services.json
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("android/build.gradle")
+          text = root.read_text(encoding="utf-8")
+          dep = "classpath 'com.google.gms:google-services:4.5.0'"
+          if dep not in text:
+              marker = "classpath 'com.android.tools.build:gradle:"
+              pos = text.find(marker)
+              if pos < 0:
+                  raise SystemExit("Android Gradle classpath anchor not found")
+              line_end = text.find("\n", pos)
+              text = text[:line_end+1] + "        " + dep + "\n" + text[line_end+1:]
+              root.write_text(text, encoding="utf-8")
+
+          app = Path("android/app/build.gradle")
+          text = app.read_text(encoding="utf-8")
+          apply = "apply plugin: 'com.google.gms.google-services'"
+          if apply not in text:
+              text = text.rstrip() + "\n\n" + apply + "\n"
+              app.write_text(text, encoding="utf-8")
+
+          variables = Path("android/variables.gradle")
+          text = variables.read_text(encoding="utf-8")
+          if "rgcfaIncludeGoogle" not in text:
+              marker = "ext {"
+              if marker not in text:
+                  raise SystemExit("variables.gradle ext block not found")
+              text = text.replace(marker, marker + "\n    rgcfaIncludeGoogle = true\n    androidxCredentialsVersion = '1.3.0'", 1)
+              variables.write_text(text, encoding="utf-8")
+          PY
 
       - name: Apply ViewInvAI Android icon
         run: python3 scripts/apply_android_branding.py

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "638735053048",
+    "project_id": "viewinvai",
+    "storage_bucket": "viewinvai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:638735053048:android:beb0c00ef0f50a90820b0d",
+        "android_client_info": {
+          "package_name": "com.viewinvai.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "638735053048-9bi5256h6pobglfpptk0q7g4qiiqjs2q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.viewinvai.mobile",
+            "certificate_hash": "a1598523374da7b327e881f94ed77dd8b96f7d79"
+          }
+        },
+        {
+          "client_id": "638735053048-3ssovor5nq1tjr0g5pci1eavna5qvla8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCokOo-e8dYXIP9hZXzQn-xmMKHezm9QDM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "638735053048-3ssovor5nq1tjr0g5pci1eavna5qvla8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
