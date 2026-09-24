@@ -6,7 +6,8 @@ Esta rama contiene una primera versión Android de ViewInvAI basada en Capacitor
 
 - App nativa Android: Capacitor 8.
 - Interfaz y lógica de mercado: la misma instancia web de producción.
-- Backend/datos actual durante la transición: https://catalystpulse.sonarlab.workers.dev/\n- Endpoint definitivo previsto tras el corte de Cloudflare: `https://viewinvai.sonarlab.workers.dev/`.
+- Backend/datos actual durante la transición: https://catalystpulse.sonarlab.workers.dev/
+- Endpoint definitivo previsto tras el corte de Cloudflare: `https://viewinvai.sonarlab.workers.dev/`.
 - El APK carga la aplicación publicada para que los cambios del frontend y del backend estén disponibles sin duplicar lógica.
 
 ## Compilación local
