@@ -1572,6 +1572,21 @@ function profilePerformanceStrip(s){
  ];
  return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
+function profileHeroHtml(s,isTr=false){
+ let se=currentMarketSession();
+ let title=isTr?(s.trTicker||s.ticker):s.ticker;
+ let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ let currentChange=liveChangeHtml(s,SC(s,se),isTr);
+ let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
+ return '<header class="profile-hero investing-profile-header unified-stock-header">'+
+   '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
+   '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
+   '<div class="profile-primary-actions">'+
+    '<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>'+
+    '<button type="button" class="btn small profile-ai-open" data-profile-jump="profile-ai">✦ Consultar IA</button>'+
+   '</div>'+
+  '</header>';
+}
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
  let isTr=requested&&trTradable(s),se=currentMarketSession();
@@ -1586,10 +1601,7 @@ function quickProfileHtml(s,opts={}){
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  let toolbar=opts.embedded?'':'<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button></div>';
- return toolbar+
-  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-   '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
-   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button><button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Consultar IA</button></div></header>'+
+ return toolbar+profileHeroHtml(s,isTr)+
   profileTabs()+profileSessionStrip(s,isTr)+
   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
@@ -1607,6 +1619,7 @@ function renderQuickProfile(){
 function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
  let s=stockByKey(key);if(!container||!s)return false;
  let useTr=preferTr===true&&trTradable(s);
+ container.classList.add('stock-profile-page','embedded-stock-profile');
  container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
  requestAnimationFrame(()=>{container.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(container);pollUsLive();loadAiBrief(container,s,useTr)});
  return true;
@@ -2786,7 +2799,8 @@ document.addEventListener('click',e=>{
  if(profileJump){
   e.preventDefault();e.stopPropagation();
   let id=profileJump.dataset.profileJump,target=id&&document.getElementById(id);
-  profileJump.closest('.profile-tabs')?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===profileJump));
+  let tabs=profileJump.closest('.profile-tabs')||document.querySelector('.stock-profile-page:not(.is-hidden) .profile-tabs, .stock-profile:not(.is-hidden) .profile-tabs, .portfolio-inline-stock .profile-tabs');
+  tabs?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.profileJump===id));
   if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
   return;
  }
