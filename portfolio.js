@@ -198,8 +198,9 @@ function renderPortfolioCard(p) {
   '</button>';
 }
 
-function renderPositionRow(p) {
+function renderPositionRow(p, index = 0) {
   const stock = stockByKey(p.stock_key);
+  if (!stock) return "";
   const preferTr = Number(p.prefer_tr) === 1;
   const market = currentMarket(stock, preferTr);
   const qty = num(p.quantity);
@@ -208,25 +209,39 @@ function renderPositionRow(p) {
   const currentEntryPrice = marketValueInCurrency(market, entryCurrency);
   const currentValue = qty !== null && currentEntryPrice !== null ? qty * currentEntryPrice : null;
   const pnlPct = avg !== null && avg > 0 && currentEntryPrice !== null ? (currentEntryPrice / avg - 1) * 100 : null;
-  const sourceLabel = preferTr ? "LSX" : (stock && stock.exchange || "EEUU");
-  return '<article class="portfolio-position" data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
-    '<div class="portfolio-position-main">' +
-      '<div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || (stock && stock.name) || "") + '</span><small>' + esc(sourceLabel) + '</small></div>' +
-      '<div class="portfolio-position-quote">' + quotePairHtml(stock, preferTr) + changeHtml(market.change) + '</div>' +
-    '</div>' +
-    '<div class="portfolio-position-meta">' +
-      '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-      '<span>Media ' + formatMoney(avg, entryCurrency) + '</span>' +
-      '<span>Valor ' + formatMoney(currentValue, entryCurrency) + '</span>' +
-      (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '">' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '% desde entrada</span>') +
-    '</div>' +
-    '<div class="portfolio-position-ai">' +
-      analysisBadge(p) +
-      '<button type="button" class="portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">Analizar IA</button>' +
-    '</div>' +
-  '</article>';
-}
+  const [signalLabel] = signalInfo(p.last_signal);
 
+  const context =
+    '<div class="portfolio-position-context">' +
+      '<div class="portfolio-position-numbers">' +
+        '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
+        '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
+        '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
+        (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%</b> desde entrada</span>') +
+      '</div>' +
+      '<div class="portfolio-position-actions">' +
+        '<span class="portfolio-position-signal">' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span>' +
+        '<button type="button" class="portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">Analizar IA</button>' +
+      '</div>' +
+    '</div>';
+
+  if (window.ViewInvAI && typeof window.ViewInvAI.renderStandardStockCard === "function") {
+    return window.ViewInvAI.renderStandardStockCard(stock, {
+      index,
+      preferTr,
+      hint: "Cartera · posición activa",
+      insight: "IA · " + signalLabel.toLowerCase(),
+      rankLabel: "#" + (index + 1),
+      className: "portfolio-investing-card",
+      openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
+      contextHtml: context
+    });
+  }
+
+  return '<article class="portfolio-position" data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
+    '<div class="portfolio-position-main"><div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || stock.name || "") + '</span></div>' +
+    '<div class="portfolio-position-quote">' + quotePairHtml(stock, preferTr) + changeHtml(market.change) + '</div></div>' + context + '</article>';
+}
 function renderWatchRow(w) {
   const stock = stockByKey(w.stock_key);
   const market = currentMarket(stock);
@@ -243,6 +258,11 @@ function renderApp() {
   if (!box) return;
   if (!state.user) return renderLoggedOut(box);
   if (state.loading) return renderLoading(box);
+
+  state.portfolios.sort((a, b) => {
+    const ao = num(a.sort_order) ?? 0, bo = num(b.sort_order) ?? 0;
+    return ao - bo || String(a.created_at || "").localeCompare(String(b.created_at || ""));
+  });
 
   if (!state.selectedPortfolioId && state.portfolios.length) state.selectedPortfolioId = state.portfolios[0].id;
   if (state.selectedPortfolioId && !state.portfolios.some(p => p.id === state.selectedPortfolioId)) {
@@ -261,6 +281,7 @@ function renderApp() {
         '</div>' +
         '<button type="button" class="portfolio-tab portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>' +
         '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>' +
+        '<button type="button" class="portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar orden de carteras" title="Editar orden">✎</button>' +
         '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>' +
       '</div>' +
       '<button type="button" class="btn small portfolio-add-current"' + (selected ? '' : ' disabled') + '>＋ Añadir posición</button>' +
@@ -269,7 +290,7 @@ function renderApp() {
     '<div id="portfolioContext" class="portfolio-context">' +
       (selected
         ? '<section class="portfolio-block integrated portfolio-positions-only">' +
-            '<div class="portfolio-position-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
+            '<div class="portfolio-position-list stock-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
           '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
     '</div>';
@@ -346,6 +367,58 @@ function updatePortfolioTabOverflow() {
   });
 }
 
+function portfolioOrderRows() {
+  return state.portfolios.map((p, index) =>
+    '<div class="portfolio-order-row" data-portfolio-order-id="' + esc(p.id) + '">' +
+      '<span class="portfolio-order-handle">≡</span>' +
+      '<strong>' + esc(p.name) + '</strong>' +
+      '<div>' +
+        '<button type="button" data-portfolio-order-move="-1" aria-label="Subir cartera"' + (index === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button type="button" data-portfolio-order-move="1" aria-label="Bajar cartera"' + (index === state.portfolios.length - 1 ? ' disabled' : '') + '>↓</button>' +
+      '</div>' +
+    '</div>'
+  ).join("");
+}
+
+function refreshPortfolioOrderModal() {
+  const list = $("#portfolioOrderList");
+  if (list) list.innerHTML = portfolioOrderRows();
+}
+
+function openPortfolioOrderModal() {
+  if (!state.portfolios.length) return;
+  openModal("Ordenar carteras",
+    '<div class="portfolio-order-editor">' +
+      '<p>Ordena las carteras como quieres que aparezcan en la barra.</p>' +
+      '<div id="portfolioOrderList" class="portfolio-order-list">' + portfolioOrderRows() + '</div>' +
+      '<button type="button" class="btn" data-portfolio-order-save>Guardar orden</button>' +
+    '</div>'
+  );
+}
+
+async function savePortfolioOrder() {
+  const button = document.querySelector("[data-portfolio-order-save]");
+  if (button) { button.disabled = true; button.textContent = "Guardando…"; }
+  try {
+    await Promise.all(state.portfolios.map((p, index) =>
+      api("/api/portfolios/" + encodeURIComponent(p.id), {
+        method: "PATCH",
+        body: JSON.stringify({ sortOrder: index })
+      }).then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "No se pudo guardar el orden.");
+        p.sort_order = index;
+      })
+    ));
+    closeModal();
+    renderApp();
+    toast("Orden de carteras guardado");
+  } catch (error) {
+    toast(error.message || "No se pudo guardar el orden.", true);
+    if (button && button.isConnected) { button.disabled = false; button.textContent = "Guardar orden"; }
+  }
+}
+
 function portfolioPickerStocks(query = "") {
   const all = window.ViewInvAI && typeof window.ViewInvAI.getAllStocks === "function" ? window.ViewInvAI.getAllStocks() : [];
   const q = String(query || "").trim().toUpperCase();
@@ -419,9 +492,12 @@ async function loadAll({ syncFavorites = false } = {}) {
 }
 
 async function createPortfolio(payload) {
+  const nextOrder = state.portfolios.length
+    ? Math.max(...state.portfolios.map(p => num(p.sort_order) ?? 0)) + 1
+    : 0;
   const response = await api("/api/portfolios", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(Object.assign({}, payload, { sortOrder: nextOrder }))
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "No se pudo crear la cartera.");
@@ -735,6 +811,31 @@ function bind() {
       return;
     }
 
+    if (event.target.closest?.("[data-portfolio-order-edit]")) {
+      openPortfolioOrderModal();
+      return;
+    }
+
+    const moveOrder = event.target.closest?.("[data-portfolio-order-move]");
+    if (moveOrder) {
+      const row = moveOrder.closest("[data-portfolio-order-id]");
+      const id = row && row.dataset.portfolioOrderId;
+      const from = state.portfolios.findIndex(p => String(p.id) === String(id));
+      const delta = Number(moveOrder.dataset.portfolioOrderMove) || 0;
+      const to = from + delta;
+      if (from >= 0 && to >= 0 && to < state.portfolios.length) {
+        const [item] = state.portfolios.splice(from, 1);
+        state.portfolios.splice(to, 0, item);
+        refreshPortfolioOrderModal();
+      }
+      return;
+    }
+
+    if (event.target.closest?.("[data-portfolio-order-save]")) {
+      savePortfolioOrder();
+      return;
+    }
+
     const selector = event.target.closest?.("[data-portfolio-select]");
     if (selector) {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
@@ -906,7 +1007,13 @@ function bind() {
   $("#portfolioModalClose")?.addEventListener("click", closeModal);
   $("#portfolioModalBackdrop")?.addEventListener("click", closeModal);
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape") closeModal();
+    if (event.key === "Escape") { closePortfolioTabOverflow(); closeModal(); return; }
+    const row = event.target.closest?.("[data-open-stock]");
+    if (row && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      const pref = row.dataset.positionPreferTr;
+      openStockInline(row.dataset.openStock, pref === "1" ? true : pref === "0" ? false : null);
+    }
   });
 
   window.addEventListener("viewinvai:auth-changed", event => {
