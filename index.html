@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r35">
+  <link rel="stylesheet" href="styles.css?v=20260924r36">
 </head>
 <body>
 <div class="app-shell">
@@ -44,23 +44,16 @@
   </aside>
 
   <main class="main">
-    <header class="topbar">
-      <div class="topbar-left">
-        <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menú">☰</button>
+    <div class="account-area floating-account" id="accountArea">
+      <button type="button" id="accountButton" class="account-button" aria-haspopup="true" aria-expanded="false">
+        <span id="accountAvatar" class="account-avatar">G</span>
+        <span class="account-copy"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
+      </button>
+      <div id="accountMenu" class="account-menu" aria-hidden="true">
+        <div id="accountMenuUser" class="account-menu-user">Sin sesión iniciada</div>
+        <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
       </div>
-      <div class="topbar-right">
-        <div class="account-area" id="accountArea">
-          <button type="button" id="accountButton" class="account-button" aria-haspopup="true" aria-expanded="false">
-            <span id="accountAvatar" class="account-avatar">G</span>
-            <span class="account-copy"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
-          </button>
-          <div id="accountMenu" class="account-menu" aria-hidden="true">
-            <div id="accountMenuUser" class="account-menu-user">Sin sesión iniciada</div>
-            <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
-          </div>
-        </div>
-      </div>
-    </header>
+    </div>
 
     <section class="view active" id="view-entry">
       <div class="page-heading compact-heading">
@@ -433,7 +426,7 @@
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r34"></script>
+<script src="app.js?v=20260924r35"></script>
 <script src="alerts.js?v=20260924r3"></script>
 <script type="module" src="auth.js?v=20260924r2"></script>
 <script type="module" src="portfolio.js?v=20260924r1"></script>
