@@ -7,7 +7,7 @@
 
  let centerTimer=null;
  let seededAuto=false;
- let state=readState();
+ let alertState=readState();
 
  function q(s){return document.querySelector(s)}
  function qa(s){return Array.from(document.querySelectorAll(s))}
@@ -39,8 +39,8 @@
  }
  function saveState(){
   try{
-   state.history=state.history.slice(0,MAX_HISTORY);
-   localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+   alertState.history=alertState.history.slice(0,MAX_HISTORY);
+   localStorage.setItem(STORAGE_KEY,JSON.stringify(alertState));
   }catch(_){}
  }
 
@@ -52,10 +52,10 @@
  function renderCenter(){
   let list=q('#notificationList'),badge=q('#notificationBadge'),status=q('#notificationStatus');
   if(!list||!badge||!status)return;
-  badge.textContent=String(Math.min(99,state.unread||0));
-  badge.classList.toggle('is-hidden',!(state.unread>0));
-  status.textContent=state.unread>0?(state.unread+' sin leer'):(state.history.length?state.history.length+' guardados':'Sin avisos nuevos');
-  list.innerHTML=state.history.length?state.history.map(item=>{
+  badge.textContent=String(Math.min(99,alertState.unread||0));
+  badge.classList.toggle('is-hidden',!(alertState.unread>0));
+  status.textContent=alertState.unread>0?(alertState.unread+' sin leer'):(alertState.history.length?alertState.history.length+' guardados':'Sin avisos nuevos');
+  list.innerHTML=alertState.history.length?alertState.history.map(item=>{
    let ticker=item.ticker?'<small>'+esc(item.ticker)+(item.market?' · '+esc(item.market):'')+'</small>':'';
    return '<article class="notification-item '+esc(item.kind||'manual')+'">'+
     '<div class="notification-item-head"><strong>'+esc(item.title||'Aviso')+'</strong><time>'+esc(formatTime(item.createdAt))+'</time></div>'+
@@ -71,7 +71,7 @@
   center.classList.toggle('open',!!open);
   bell.setAttribute('aria-expanded',open?'true':'false');
   if(open&&!auto){
-   state.unread=0;saveState();renderCenter();
+   alertState.unread=0;saveState();renderCenter();
   }
   if(open&&auto){
    centerTimer=setTimeout(()=>setCenterOpen(false),AUTO_HIDE_MS);
@@ -79,9 +79,9 @@
  }
 
  function pushNotice({kind='manual',title='Aviso',message='',ticker='',market='',fingerprint=''},{autoOpen=true}={}){
-  if(fingerprint&&state.history.some(x=>x.fingerprint===fingerprint&&Date.now()-new Date(x.createdAt).getTime()<15000))return;
-  state.history.unshift({id:uid(),kind,title,message,ticker,market,fingerprint,createdAt:nowIso()});
-  state.unread=(state.unread||0)+1;
+  if(fingerprint&&alertState.history.some(x=>x.fingerprint===fingerprint&&Date.now()-new Date(x.createdAt).getTime()<15000))return;
+  alertState.history.unshift({id:uid(),kind,title,message,ticker,market,fingerprint,createdAt:nowIso()});
+  alertState.unread=(alertState.unread||0)+1;
   saveState();renderCenter();
   if(autoOpen)setCenterOpen(true,{auto:true});
  }
@@ -106,8 +106,8 @@
  function renderRules(){
   let box=q('#manualAlertList'),count=q('#manualAlertCount');
   if(!box||!count)return;
-  count.textContent=state.rules.length+' aviso'+(state.rules.length===1?'':'s');
-  box.innerHTML=state.rules.length?state.rules.map(rule=>
+  count.textContent=alertState.rules.length+' aviso'+(alertState.rules.length===1?'':'s');
+  box.innerHTML=alertState.rules.length?alertState.rules.map(rule=>
    '<article class="manual-alert-rule '+(rule.enabled===false?'is-disabled':'')+'" data-alert-rule="'+esc(rule.id)+'">'+
     '<div><h3>'+esc(rule.name||'Aviso manual')+'</h3><p>'+esc(ruleSummary(rule))+'</p></div>'+
     '<div class="manual-alert-actions">'+
@@ -120,7 +120,7 @@
 
  function syncAutoUi(){
   let map={autoAlertRecommendation:'recommendation',autoAlertEntry:'entry',autoAlertFuture:'future'};
-  for(let [id,key] of Object.entries(map)){let el=q('#'+id);if(el)el.checked=state.auto[key]!==false}
+  for(let [id,key] of Object.entries(map)){let el=q('#'+id);if(el)el.checked=alertState.auto[key]!==false}
  }
 
  function renderSettings(){
@@ -236,7 +236,7 @@
  function evaluateManual(){
   if(!db||!Array.isArray(db.stocks)||!db.stocks.length)return;
   let changed=false;
-  for(let rule of state.rules){
+  for(let rule of alertState.rules){
    if(rule.enabled===false)continue;
    let previous=new Set(Array.isArray(rule.active)?rule.active:[]);
    let matches=db.stocks.filter(s=>matchesRule(s,rule));
@@ -249,9 +249,9 @@
    let current=new Set(matches.map(stockKey));
    let newMatches=matches.filter(s=>!previous.has(stockKey(s)));
    for(let s of newMatches.slice(0,3)){
-    let key=rule.id+':'+stockKey(s),last=Number(state.lastFired[key]||0),cooldown=rule.cooldown*60000;
+    let key=rule.id+':'+stockKey(s),last=Number(alertState.lastFired[key]||0),cooldown=rule.cooldown*60000;
     if(last&&Date.now()-last<cooldown)continue;
-    state.lastFired[key]=Date.now();
+    alertState.lastFired[key]=Date.now();
     pushNotice({
      kind:'manual',
      title:rule.name||'Aviso manual',
@@ -306,8 +306,8 @@
  }
 
  function maybeAuto(kind,key,payload,{force=false}={}){
-  let old=state.autoSeen[kind];
-  state.autoSeen[kind]=key||'';
+  let old=alertState.autoSeen[kind];
+  alertState.autoSeen[kind]=key||'';
   if(!key){saveState();return}
   if(!force&&!seededAuto&&old==null){saveState();return}
   if(force||old!==key)pushNotice(payload);
@@ -317,7 +317,7 @@
  function evaluateAuto(forceKind=null){
   if(!db||!Array.isArray(db.stocks)||!db.stocks.length)return;
 
-  if(state.auto.recommendation!==false){
+  if(alertState.auto.recommendation!==false){
    for(let mode of ['tr','us']){
     let s=pickRecommendation(mode);if(!s)continue;
     let a=recommendationAnalysis(s,mode),label=a.score>=72?'COMPRA':a.score>=60?'VIGILAR':'ESPERAR';
@@ -333,7 +333,7 @@
    }
   }
 
-  if(state.auto.entry!==false){
+  if(alertState.auto.entry!==false){
    for(let mode of ['tr','us']){
     let s=entryTopForMarket(mode);if(!s)continue;
     let se;try{se=entrySessionForPreset()}catch(_){se=currentMarketSession()}
@@ -350,7 +350,7 @@
    }
   }
 
-  if(state.auto.future!==false){
+  if(alertState.auto.future!==false){
    for(let mode of ['tr','us']){
     let hit=futureTopForMarket(mode);if(!hit)continue;
     let key=stockKey(hit.s)+':'+String(hit.e.date||'')+':'+String(hit.e.type||'');
@@ -375,14 +375,14 @@
   let bell=q('#notificationBell'),close=q('#notificationClose'),clear=q('#notificationClear');
   if(bell)bell.addEventListener('click',()=>setCenterOpen(!q('#notificationCenter')?.classList.contains('open')));
   if(close)close.addEventListener('click',()=>setCenterOpen(false));
-  if(clear)clear.addEventListener('click',()=>{state.history=[];state.unread=0;saveState();renderCenter()});
+  if(clear)clear.addEventListener('click',()=>{alertState.history=[];alertState.unread=0;saveState();renderCenter()});
 
   let form=q('#manualAlertForm');
   if(form)form.addEventListener('submit',e=>{
    e.preventDefault();
    let rule=readRuleForm();
    if(rule.maxRsi==null)rule.maxRsi=100;
-   state.rules.unshift(rule);saveState();renderRules();resetRuleForm();evaluateManual();
+   alertState.rules.unshift(rule);saveState();renderRules();resetRuleForm();evaluateManual();
   });
   q('#alertUseCurrent')?.addEventListener('click',fillFromCurrentCriteria);
   q('#alertTest')?.addEventListener('click',()=>pushNotice({kind:'manual',title:'Aviso de prueba',message:'El centro flotante de avisos funciona correctamente.',ticker:'TEST',market:'Web',fingerprint:'test:'+Date.now()}));
@@ -390,9 +390,9 @@
   let autoMap={autoAlertRecommendation:'recommendation',autoAlertEntry:'entry',autoAlertFuture:'future'};
   for(let [id,key] of Object.entries(autoMap)){
    q('#'+id)?.addEventListener('change',e=>{
-    state.auto[key]=!!e.target.checked;
-    if(state.auto[key]){
-     for(let seenKey of Object.keys(state.autoSeen))if(seenKey.startsWith(key+':'))delete state.autoSeen[seenKey];
+    alertState.auto[key]=!!e.target.checked;
+    if(alertState.auto[key]){
+     for(let seenKey of Object.keys(alertState.autoSeen))if(seenKey.startsWith(key+':'))delete alertState.autoSeen[seenKey];
      saveState();evaluateAuto(key);
     }else saveState();
    });
@@ -400,12 +400,12 @@
 
   document.addEventListener('change',e=>{
    let t=e.target.closest&&e.target.closest('[data-alert-toggle]');if(!t)return;
-   let rule=state.rules.find(r=>r.id===t.dataset.alertToggle);if(!rule)return;
+   let rule=alertState.rules.find(r=>r.id===t.dataset.alertToggle);if(!rule)return;
    rule.enabled=!!t.checked;if(rule.enabled)rule.active=[];saveState();renderRules();if(rule.enabled)evaluateManual();
   });
   document.addEventListener('click',e=>{
    let b=e.target.closest&&e.target.closest('[data-alert-delete]');if(!b)return;
-   state.rules=state.rules.filter(r=>r.id!==b.dataset.alertDelete);saveState();renderRules();
+   alertState.rules=alertState.rules.filter(r=>r.id!==b.dataset.alertDelete);saveState();renderRules();
   });
  }
 
