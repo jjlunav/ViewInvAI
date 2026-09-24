@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r45">
+  <link rel="stylesheet" href="styles.css?v=20260924r46">
 </head>
 <body>
 <div class="app-shell">
@@ -340,6 +340,26 @@
       </div>
 
       <div class="settings-grid">
+        <article class="settings-card appearance-settings-card">
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">APARIENCIA</span>
+              <h2>Tema de la aplicación</h2>
+              <p>Elige cómo quieres ver ViewInvAI en este dispositivo.</p>
+            </div>
+          </div>
+          <div class="theme-setting-options" role="group" aria-label="Tema de la aplicación">
+            <button type="button" class="theme-setting-option" data-theme-setting="dark" aria-pressed="true">
+              <span class="theme-setting-icon">☾</span>
+              <span><strong>Oscuro</strong><small>Mayor contraste en mercados</small></span>
+            </button>
+            <button type="button" class="theme-setting-option" data-theme-setting="light" aria-pressed="false">
+              <span class="theme-setting-icon">☀</span>
+              <span><strong>Claro</strong><small>Fondos claros y alto contraste</small></span>
+            </button>
+          </div>
+        </article>
+
         <article class="settings-card">
           <div class="settings-card-head">
             <div>
@@ -411,12 +431,6 @@
 
     <div id="exitBackBanner" class="exit-back-banner" role="status" aria-live="polite" aria-hidden="true">Pulsa atrás de nuevo para salir</div>
 
-    <button type="button" id="themeToggle" class="theme-toggle" aria-label="Cambiar a tema claro" title="Cambiar a tema claro">
-      <span class="theme-toggle-icon" aria-hidden="true">☀</span>
-      <span class="theme-toggle-label">Claro</span>
-    </button>
-
-
     <div class="mobile-more-backdrop" id="mobileMoreBackdrop" aria-hidden="true"></div>
     <aside class="mobile-more-sheet" id="mobileMoreSheet" aria-label="Más secciones" aria-hidden="true">
       <div class="mobile-more-handle" aria-hidden="true"></div>
@@ -441,7 +455,7 @@
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r39"></script>
+<script src="app.js?v=20260924r40"></script>
 <script src="alerts.js?v=20260924r3"></script>
 <script type="module" src="auth.js?v=20260924r5"></script>
 <script type="module" src="portfolio.js?v=20260924r3"></script>
