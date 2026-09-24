@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', RECO_COOLDOWN_MS=86400000;
+const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', RECO_COOLDOWN_MS=86400000;
 function migrateLegacyBrandStorage(){
  const pairs=[
   ['viewinvai:customFilter:v1','catalystpulse:customFilter:v1'],
@@ -1725,6 +1725,94 @@ function recommendationAnalysis(s,mode){
  a.score=Math.max(0,Math.min(100,Math.round((a.score+cat.delta)*10)/10));
  return a;
 }
+
+const recommendationChartCache=new Map();
+function avgNumbers(values){
+ let rows=values.map(N).filter(v=>v!==null);
+ return rows.length?rows.reduce((a,b)=>a+b,0)/rows.length:null;
+}
+async function recommendationChartAnalysis(s,mode){
+ let key=mode+':'+stockKey(s),cached=recommendationChartCache.get(key);
+ if(cached&&Date.now()-cached.at<90000)return cached.value;
+ let result={available:false,confirmed:false,delta:-6,points:0,note:'Histórico intradía no disponible'};
+ try{
+  let url='';
+  if(mode==='tr'&&trTradable(s)&&trIsin(s)){
+   url='/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000';
+  }else if(s&&s.ticker){
+   url='/api/us-chart?symbol='+encodeURIComponent(s.ticker);
+  }
+  if(!url)throw Error('no chart source');
+  let r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  let data=await r.json(),raw=Array.isArray(data&&data.points)?data.points:[];
+  let pts=raw.map(p=>({close:N(p&&((p.close!==undefined)?p.close:p.price)),volume:N(p&&p.volume)})).filter(p=>p.close!==null);
+  if(pts.length<35)throw Error('insufficient chart');
+  pts=pts.slice(-180);
+  let closes=pts.map(p=>p.close),last=closes[closes.length-1];
+  let sma10=avgNumbers(closes.slice(-10)),sma30=avgNumbers(closes.slice(-30));
+  let base20=closes[Math.max(0,closes.length-21)],ret20=base20>0?(last/base20-1)*100:null;
+  let hi30=Math.max(...closes.slice(-30)),lo30=Math.min(...closes.slice(-30));
+  let drawdown=hi30>0?(last/hi30-1)*100:null;
+  let rangePos=hi30>lo30?(last-lo30)/(hi30-lo30):.5;
+  let recentVol=avgNumbers(pts.slice(-8).map(p=>p.volume)),priorVol=avgNumbers(pts.slice(-28,-8).map(p=>p.volume));
+  let volExpansion=recentVol!==null&&priorVol>0?recentVol/priorVol:null;
+  let delta=0,notes=[];
+  let trendUp=last>sma10&&sma10>sma30;
+  if(trendUp){delta+=8;notes.push('precio > media corta > media larga')}else{delta-=8;notes.push('gráfico sin estructura alcista clara')}
+  if(ret20!==null){
+   if(ret20>=.4&&ret20<=8){delta+=5;notes.push('impulso intradía '+PC(ret20))}
+   else if(ret20>8&&ret20<=15){delta+=2;notes.push('impulso fuerte '+PC(ret20))}
+   else if(ret20<0){delta-=5;notes.push('impulso reciente negativo')}
+   else if(ret20>20){delta-=7;notes.push('movimiento demasiado extendido')}
+  }
+  if(drawdown!==null){
+   if(drawdown>=-4){delta+=3;notes.push('cerca de máximos recientes')}
+   else if(drawdown<-10){delta-=4;notes.push('retroceso profundo desde máximos')}
+  }
+  if(rangePos>=.7)delta+=2;
+  if(volExpansion!==null){
+   if(volExpansion>=1.35){delta+=3;notes.push('volumen acelerando '+F(volExpansion,2)+'×')}
+   else if(volExpansion<.7){delta-=2;notes.push('volumen intradía perdiendo fuerza')}
+  }
+  delta=Math.max(-18,Math.min(18,Math.round(delta*10)/10));
+  let confirmed=trendUp&&ret20!==null&&ret20>.3&&ret20<=15&&drawdown!==null&&drawdown>=-8;
+  result={available:true,confirmed,delta,points:pts.length,last,sma10,sma30,ret20,drawdown,volExpansion,note:notes.join(' · ')};
+ }catch(_){}
+ recommendationChartCache.set(key,{at:Date.now(),value:result});
+ return result;
+}
+async function highConvictionRecommendation(mode){
+ let s=pickRecommendation(mode);
+ if(!s)return null;
+ let a=recommendationAnalysis(s,mode),chart=await recommendationChartAnalysis(s,mode);
+ let se=a.se,vol=SV(s,se),price=N(s.price),ema20=N(s.ema20),ema50=N(s.ema50);
+ let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
+ let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
+ let quality=[a.change,a.rv,a.adx,a.rsi,price,ema20,ema50,vol].filter(v=>N(v)!==null).length;
+ let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
+ let gates={
+  score:a.score>=82,
+  combined:combined>=88,
+  chart:chart.available&&chart.confirmed,
+  trend:trendOk,
+  volume:vol!==null&&vol>=75000,
+  relVolume:a.rv!==null&&a.rv>=1.25,
+  adx:a.adx!==null&&a.adx>=25,
+  rsi:a.rsi!==null&&a.rsi>=42&&a.rsi<=72,
+  spread:a.spread===null||a.spread<=3.5,
+  momentum:a.change!==null&&a.change>=.5&&a.change<=20,
+  catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
+  quality:quality>=7
+ };
+ let eligible=Object.values(gates).every(Boolean);
+ let reasons=[];
+ if(chart.confirmed)reasons.push('gráfico confirmado');
+ if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');
+ if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
+ if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
+ if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
+ return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons};
+}
 function recommendationSignal(score,bucket){
  if(score>=72){bucket.armed=true;return{key:'buy',label:'COMPRA',text:'Convicción suficiente para entrada según el motor actual.'}}
  if(bucket.armed&&score<=50)return{key:'sell',label:'VENTA',text:'La tesis ha perdido suficiente fuerza para activar salida.'};
@@ -1967,7 +2055,7 @@ function initHelpSystem(){
   recommendation:{title:'Recomendación actual',text:'Selecciona una candidata de EEUU y otra de Trade Republic mediante un análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores. La señal es orientativa y se recalcula continuamente.'},
   heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
   future:{title:'Potencial futuro',text:'Busca noticias y eventos próximos que pueden aumentar la volatilidad antes de que ocurra el movimiento: resultados, FDA, contratos, financiación, operaciones corporativas y otros catalizadores.'},
-  alerts:{title:'Avisos',text:'Crea reglas propias combinando variación, volumen, RSI, ADX, tendencia, liquidez, mercado y sesión. También puedes activar avisos automáticos de recomendación, potencial de entrada y potencial futuro.'},
+  alerts:{title:'Avisos',text:'Solo avisa cuando una recomendación alcanza un nivel de convicción alto. Exige confirmación de gráfico, tendencia, volumen, RSI/ADX, liquidez y ausencia de señales negativas relevantes en noticias o eventos.'},
   calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
   catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
@@ -2056,10 +2144,52 @@ async function load(force=false){
   loading=false
  }
 }
-let appHistoryReady=false,appHistoryRestoring=false,appHistoryRoot=null;
+const NAV_META={
+ entry:{icon:'◈',short:'Entrada',base:4},
+ recommendation:{icon:'◎',short:'Recom.',base:3.5},
+ alerts:{icon:'●',short:'Avisos',base:3},
+ catalog:{icon:'▤',short:'TR',base:2.5},
+ heatmap:{icon:'▦',short:'Mapa',base:2},
+ future:{icon:'✦',short:'Futuro',base:1.5},
+ calendar:{icon:'▣',short:'Calendario',base:1},
+ catalogUS:{icon:'▥',short:'EEUU',base:.5},
+ settings:{icon:'⚙',short:'Ajustes',base:.25}
+};
+let navUsage=readNavigationUsage();
+function readNavigationUsage(){
+ try{let x=JSON.parse(localStorage.getItem(NAV_USAGE_KEY)||'{}');return x&&typeof x==='object'?x:{}}catch(_){return{}}
+}
+function saveNavigationUsage(){try{localStorage.setItem(NAV_USAGE_KEY,JSON.stringify(navUsage))}catch(_){}}
+function navigationScore(v){
+ let x=navUsage[v]||{},count=Math.max(0,N(x.count)??0),last=Math.max(0,N(x.lastUsed)??0),recent=last?Math.max(0,1-(Date.now()-last)/(14*86400000))*.35:0;
+ return (NAV_META[v]?.base||0)+count+recent;
+}
+function navigationOrder(){
+ return Object.keys(NAV_META).sort((a,b)=>navigationScore(b)-navigationScore(a)||(NAV_META[b].base-NAV_META[a].base));
+}
+function recordNavigationUse(v){
+ if(!NAV_META[v])return;
+ let x=navUsage[v]||{count:0,lastUsed:0};x.count=(N(x.count)??0)+1;x.lastUsed=Date.now();navUsage[v]=x;saveNavigationUsage();
+}
+function renderAdaptiveNavigation(){
+ let order=navigationOrder(),side=$('#sidebar .nav');
+ if(side){
+  let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
+  order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
+ }
+ let direct=order.slice(0,4),rest=order.slice(4),bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
+ if(bottom){
+  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><small>'+E(NAV_META[v].short)+'</small></button>').join('')+
+   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
+ }
+ if(grid){
+  grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b></button>').join('');
+ }
+ syncMobileNavigation();
+}
 function syncMobileNavigation(){
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
- let direct=['entry','recommendation','alerts','catalog'];
+ let direct=$$('.mobile-nav-item[data-mobile-view]').map(x=>x.dataset.mobileView);
  let more=$('.mobile-nav-item[data-mobile-more]');
  if(more)more.classList.toggle('active',!direct.includes(state.currentView));
 }
@@ -2077,17 +2207,20 @@ function toggleMobileMore(force){
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
  document.body.classList.toggle('mobile-more-open',open);
 }
-function appHistorySnapshot(){
- return {__viewinvai:1,view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',profileOriginView:state.profileOriginView||null,profileOriginScroll:Math.max(0,Math.round(state.profileOriginScroll||0)),profilePreferTr:state.profilePreferTr,scrollY:Math.max(0,Math.round(window.scrollY||0))};
+
+let appHistoryReady=false,appHistoryRestoring=false;
+function appHistoryDepth(){let d=N(history.state&&history.state.__viewinvaiDepth);return d===null?0:Math.max(0,Math.round(d))}
+function appHistorySnapshot(depth=appHistoryDepth()){
+ return {__viewinvai:1,__viewinvaiDepth:depth,view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',profileOriginView:state.profileOriginView||null,profileOriginScroll:Math.max(0,Math.round(state.profileOriginScroll||0)),profilePreferTr:state.profilePreferTr,scrollY:Math.max(0,Math.round(window.scrollY||0))};
 }
 function appHistoryUrl(snap){return location.pathname+location.search+'#app/'+encodeURIComponent(snap.view||'entry')+(snap.profileKey?'/stock/'+encodeURIComponent(snap.profileKey):'')}
 function replaceCurrentAppHistory(){
  if(!appHistoryReady||appHistoryRestoring)return;
- let snap=appHistorySnapshot();history.replaceState(snap,'',appHistoryUrl(snap));
+ let snap=appHistorySnapshot(appHistoryDepth());history.replaceState(snap,'',appHistoryUrl(snap));
 }
 function pushCurrentAppHistory(){
  if(!appHistoryReady||appHistoryRestoring)return;
- let snap=appHistorySnapshot(),cur=history.state;
+ let cur=history.state,snap=appHistorySnapshot(appHistoryDepth()+1);
  if(cur&&cur.__viewinvai===1&&cur.view===snap.view&&cur.profileKey===snap.profileKey)return;
  history.pushState(snap,'',appHistoryUrl(snap));
 }
@@ -2101,7 +2234,7 @@ function applyAppHistorySnapshot(snap){
  state.profilePreferTr=snap.profilePreferTr===true?true:snap.profilePreferTr===false?false:null;
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+state.currentView));
  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===state.currentView));
- syncMobileNavigation();$('#sidebar')?.classList.remove('open');
+ renderAdaptiveNavigation();$('#sidebar')?.classList.remove('open');
  let box=$('#stockQuickDetail');
  if(state.profileKey){document.body.classList.add('stock-detail-open');if(box)box.classList.remove('is-hidden');if(db.stocks.length)renderQuickProfile()}
  else{document.body.classList.remove('stock-detail-open');if(box){box.classList.add('is-hidden');box.innerHTML=''}renderCurrentView()}
@@ -2110,31 +2243,54 @@ function applyAppHistorySnapshot(snap){
  appHistoryRestoring=false;
 }
 function initAppHistory(){
- let current=appHistorySnapshot(),root=Object.assign({},current,{profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,scrollY:0,root:true});
- appHistoryRoot=root;
- history.replaceState(root,'',appHistoryUrl(root));
- if(current.profileKey)history.pushState(current,'',appHistoryUrl(current));
- else history.pushState(Object.assign({},root,{root:false,guard:true}),'',appHistoryUrl(root));
- appHistoryReady=true;
- window.addEventListener('popstate',e=>{
-  closeMobileMore();
-  let snap=e.state;
-  if(!snap||snap.__viewinvai!==1){
-   history.pushState(Object.assign({},appHistoryRoot,{root:false,guard:true}),'',appHistoryUrl(appHistoryRoot));
-   applyAppHistorySnapshot(appHistoryRoot);return;
+ let current=appHistorySnapshot(0);
+ let rootView=current.profileOriginView&&V[current.profileOriginView]?current.profileOriginView:current.view;
+ let root=Object.assign({},current,{__viewinvaiDepth:0,view:rootView,profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,scrollY:0});
+ history.replaceState(root,'',appHistoryUrl(root));appHistoryReady=true;
+ if(current.profileKey){
+  current.__viewinvaiDepth=1;
+  history.pushState(current,'',appHistoryUrl(current));
+ }
+ window.addEventListener('popstate',e=>{if(e.state&&e.state.__viewinvai===1)applyAppHistorySnapshot(e.state)});
+}
+let exitBackTimer=null,lastNativeBackAt=0;
+function showExitBackBanner(){
+ let el=$('#exitBackBanner');if(!el)return;
+ if(exitBackTimer)clearTimeout(exitBackTimer);
+ el.classList.add('visible');el.setAttribute('aria-hidden','false');
+ exitBackTimer=setTimeout(()=>{el.classList.remove('visible');el.setAttribute('aria-hidden','true')},1050);
+}
+function closeTransientUiForBack(){
+ let more=$('#mobileMoreSheet');if(more&&more.classList.contains('open')){closeMobileMore();return true}
+ let notification=$('#notificationCenter');if(notification&&notification.classList.contains('open')){$('#notificationClose')?.click();return true}
+ let help=$('#hoverHelpBanner');if(help&&help.classList.contains('visible')){hideHelpBanner();return true}
+ let picker=$('#presetPicker');if(picker&&picker.classList.contains('open')){picker.classList.remove('open');$('#presetTrigger')?.setAttribute('aria-expanded','false');return true}
+ return false;
+}
+function initNativeBackHandling(){
+ let cap=window.Capacitor,app=cap&&cap.Plugins&&cap.Plugins.App;
+ if(!app||typeof app.addListener!=='function')return;
+ app.addListener('backButton',async()=>{
+  if(closeTransientUiForBack())return;
+  if(appHistoryDepth()>0){history.back();return}
+  let now=Date.now();
+  if(lastNativeBackAt&&now-lastNativeBackAt<=1600){
+   lastNativeBackAt=0;
+   if(exitBackTimer){clearTimeout(exitBackTimer);exitBackTimer=null}
+   let el=$('#exitBackBanner');if(el){el.classList.remove('visible');el.setAttribute('aria-hidden','true')}
+   if(typeof app.exitApp==='function')await app.exitApp();
+   return;
   }
-  applyAppHistorySnapshot(snap);
-  if(snap.root){
-   setTimeout(()=>history.pushState(Object.assign({},appHistoryRoot,{root:false,guard:true}),'',appHistoryUrl(appHistoryRoot)),0);
-  }
+  lastNativeBackAt=now;showExitBackBanner();
  });
 }
-function show(v,preserveProfile=false,recordHistory=true){
+function show(v,preserveProfile=false,recordHistory=true,trackUsage=true){
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
+ if(trackUsage)recordNavigationUse(v);
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
  state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');
- document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));syncMobileNavigation();
+ document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAdaptiveNavigation();
  $('#sidebar').classList.remove('open');closeMobileMore();saveUiState();render();window.scrollTo({top:0,behavior:'auto'});
  if(recordHistory)pushCurrentAppHistory();
 }
@@ -2154,8 +2310,14 @@ function clock(){
 }
 
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
-$$('[data-mobile-view]').forEach(x=>x.addEventListener('click',()=>{let v=x.dataset.mobileView;if(v)show(v)}));
-$('.mobile-nav-item[data-mobile-more]')?.addEventListener('click',()=>toggleMobileMore());
+document.addEventListener('click',e=>{
+ let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
+ if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
+  e.preventDefault();let v=mobileView.dataset.mobileView;if(v)show(v);return;
+ }
+ let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
+ if(mobileMore){e.preventDefault();toggleMobileMore();return}
+});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 let keepScreenAwakeToggle=$('#keepScreenAwake');
@@ -2283,8 +2445,9 @@ document.addEventListener('drop',e=>{
 
 applyTheme(readTheme(),false);
 restoreUiState();
-syncMobileNavigation();
+renderAdaptiveNavigation();
 initAppHistory();
+initNativeBackHandling();
 syncDeviceSettingsUi();
 syncScreenWakeLock();
 toUI(state.filters);
@@ -2309,5 +2472,9 @@ document.addEventListener('visibilitychange',()=>{
 });
 setInterval(clock,1000);
 setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},5000);
+window.ViewInvAI={
+ openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
+ highConvictionRecommendation
+};
 setInterval(()=>load(false),DATA_REFRESH_MS);
 load(true);
