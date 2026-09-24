@@ -223,7 +223,8 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/apk-signature.txt
-          grep -qi 'a1:59:85:23:37:4d:a7:b3:27:e8:81:f9:4e:d7:7d:d8:b9:6f:7d:79' /tmp/apk-signature.txt
+          grep -qi 'a1598523374da7b327e881f94ed77dd8b96f7d79' /tmp/apk-signature.txt
+          echo "APK signer SHA-1 matches Firebase."
 
       - name: Prepare named APK
         id: apk
