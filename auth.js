@@ -179,22 +179,55 @@ async function syncBackendUser() {
   return data;
 }
 
-async function signInNative() {
-  const plugin = nativeAuthPlugin();
-  if (!plugin) throw new Error("Esta APK todavía no incluye el módulo de autenticación nativa.");
-  // The Android Credential Manager has caused sign-in failures on some devices.
-  // Use the legacy Google Sign-In path for the APK; Firebase native auth still
-  // returns the same Firebase user and ID token.
-  const result = await plugin.signInWithGoogle({ useCredentialManager: false });
+function nativeGoogleAuthCancelled(error) {
+  const raw = String((error && (error.code || error.message)) || "").toLowerCase();
+  return raw.includes("cancel") || raw.includes("12501") || raw.includes("popup-closed");
+}
+
+async function nativeGoogleAttempt(plugin, useCredentialManager) {
+  const result = await plugin.signInWithGoogle({ useCredentialManager });
   let user = result && result.user ? result.user : null;
   if (!user) {
     const current = await plugin.getCurrentUser();
     user = current && current.user;
   }
-  if (!user) throw new Error("Google no devolvió una sesión válida.");
-  setUser(user, { sync: false });
-  await syncBackendUser();
-  return currentUser;
+  return user || null;
+}
+
+async function signInNative() {
+  const plugin = nativeAuthPlugin();
+  if (!plugin) throw new Error("Esta APK todavía no incluye el módulo de autenticación nativa.");
+
+  // Prefer Android Credential Manager on current devices. If the device/Google
+  // Play Services rejects that path, retry with the legacy Google Sign-In API.
+  // This also covers the native ApiException/DEVELOPER_ERROR that often reaches
+  // Capacitor only as the terse message "10:".
+  let lastError = null;
+  for (const useCredentialManager of [true, false]) {
+    try {
+      const user = await nativeGoogleAttempt(plugin, useCredentialManager);
+      if (!user) throw new Error("Google no devolvió una sesión válida.");
+      setUser(user, { sync: false });
+      await syncBackendUser();
+      return currentUser;
+    } catch (error) {
+      if (nativeGoogleAuthCancelled(error)) throw error;
+      lastError = error;
+      console.warn(
+        "Google Android sign-in path failed",
+        useCredentialManager ? "credential-manager" : "legacy",
+        error
+      );
+    }
+  }
+
+  const raw = String(lastError && lastError.message || "");
+  if (/^10\s*:/.test(raw) || String(lastError && lastError.code || "") === "10") {
+    const error = new Error("Google Android no aceptó la configuración OAuth de esta instalación (error 10).");
+    error.code = "10";
+    throw error;
+  }
+  throw lastError || new Error("No se pudo iniciar sesión con Google.");
 }
 
 async function signInWeb() {
