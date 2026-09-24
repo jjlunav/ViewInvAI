@@ -4449,3 +4449,189 @@ html[data-theme="light"] .home-stock-row:hover{background:#f4f8f9}
     line-height:1;
   }
 }
+
+
+/* Light theme contrast pass - 2026-09-24 */
+html[data-theme="light"]{
+  --bg:#edf3f5;
+  --panel:#ffffff;
+  --line:#b9cbd3;
+  --text:#10242d;
+  --muted:#4d6772;
+  --teal:#08735f;
+  --green:#087f58;
+  --red:#b93645;
+}
+html[data-theme="light"] body,
+html[data-theme="light"] .main{
+  background:#edf3f5!important;
+  color:#10242d!important;
+}
+
+/* Stronger card separation and readable secondary text */
+html[data-theme="light"] .profile-section,
+html[data-theme="light"] .portfolio-card,
+html[data-theme="light"] .home-market-panel,
+html[data-theme="light"] .recommendation-card,
+html[data-theme="light"] .profile-context,
+html[data-theme="light"] .profile-data-note,
+html[data-theme="light"] .profile-feed-warning{
+  background:#ffffff!important;
+  border-color:#b9cbd3!important;
+  color:#263e49!important;
+  box-shadow:0 5px 18px rgba(34,59,69,.08)!important;
+}
+html[data-theme="light"] .profile-section-head,
+html[data-theme="light"] .mini-chart-title,
+html[data-theme="light"] .chart-market-caption{
+  background:#f4f8fa!important;
+  border-color:#bfd0d7!important;
+}
+html[data-theme="light"] .profile-section-head h3,
+html[data-theme="light"] .mini-chart-title strong,
+html[data-theme="light"] .profile-title h2{
+  color:#10242d!important;
+}
+html[data-theme="light"] .profile-section-head span,
+html[data-theme="light"] .mini-chart-title span,
+html[data-theme="light"] .chart-market-caption,
+html[data-theme="light"] .profile-context,
+html[data-theme="light"] .profile-data-note,
+html[data-theme="light"] .profile-feed-warning{
+  color:#4b6671!important;
+}
+
+/* Profile header and tabs */
+html[data-theme="light"] .investing-profile-header{
+  background:#ffffff!important;
+  border-color:#bfd0d7!important;
+  box-shadow:none!important;
+}
+html[data-theme="light"] .profile-market,
+html[data-theme="light"] .profile-title p,
+html[data-theme="light"] .profile-live small{
+  color:#526d78!important;
+}
+html[data-theme="light"] .profile-tabs{
+  background:#ffffff!important;
+  border-color:#bdcfd6!important;
+}
+html[data-theme="light"] .profile-tabs button{
+  color:#526b76!important;
+}
+html[data-theme="light"] .profile-tabs button.active{
+  color:#10242d!important;
+  border-bottom-color:#08735f!important;
+}
+html[data-theme="light"] .profile-tabs .profile-tab-ai{
+  color:#415f9b!important;
+}
+
+/* Session values need much stronger contrast */
+html[data-theme="light"] .profile-session-strip{
+  background:#ffffff!important;
+  border-color:#b9cbd3!important;
+}
+html[data-theme="light"] .profile-session-cell{
+  background:#ffffff!important;
+  border-color:#c3d2d8!important;
+}
+html[data-theme="light"] .profile-session-cell>span,
+html[data-theme="light"] .profile-session-cell>small{
+  color:#526d78!important;
+}
+html[data-theme="light"] .profile-session-cell strong,
+html[data-theme="light"] .profile-session-cell b{
+  color:#17313c!important;
+}
+html[data-theme="light"] .positive{color:#087f58!important}
+html[data-theme="light"] .negative{color:#b93645!important}
+
+/* Chart shell */
+html[data-theme="light"] .tv-chart-block,
+html[data-theme="light"] .tv-advanced-chart,
+html[data-theme="light"] .mini-chart{
+  background:#ffffff!important;
+  border-color:#bdcfd6!important;
+}
+html[data-theme="light"] .chart-placeholder{
+  background:#ffffff!important;
+  color:#4f6974!important;
+}
+html[data-theme="light"] .chart-market-toggle,
+html[data-theme="light"] .chart-market-single{
+  background:#ffffff!important;
+  color:#31505d!important;
+  border-color:#aebfc7!important;
+}
+html[data-theme="light"] .chart-market-toggle.active{
+  background:#d9efe8!important;
+  color:#0d5647!important;
+  border-color:#5fae96!important;
+}
+
+/* Buttons and controls */
+html[data-theme="light"] .btn,
+html[data-theme="light"] .select,
+html[data-theme="light"] .input,
+html[data-theme="light"] .preset-trigger{
+  background:#ffffff!important;
+  color:#17313c!important;
+  border-color:#aebfc7!important;
+}
+html[data-theme="light"] .btn:hover{
+  background:#f2f7f8!important;
+  border-color:#7f9ca8!important;
+}
+html[data-theme="light"] .profile-primary-actions .btn{
+  background:#ffffff!important;
+  color:#17313c!important;
+  border-color:#aebfc7!important;
+}
+
+/* Bottom mobile navigation */
+html[data-theme="light"] .mobile-bottom-nav{
+  background:rgba(255,255,255,.98)!important;
+  border-color:#adc1ca!important;
+  box-shadow:0 10px 28px rgba(40,63,73,.18)!important;
+}
+html[data-theme="light"] .mobile-nav-item{
+  color:#526b76!important;
+}
+html[data-theme="light"] .mobile-nav-item small{
+  color:#526b76!important;
+}
+html[data-theme="light"] .mobile-nav-item.active{
+  background:#d9efe8!important;
+  color:#08735f!important;
+}
+html[data-theme="light"] .mobile-nav-item.active small{
+  color:#08735f!important;
+  font-weight:800!important;
+}
+
+/* Floating controls */
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .notification-bell{
+  background:#ffffff!important;
+  color:#17313c!important;
+  border-color:#9fb7c2!important;
+  box-shadow:0 5px 16px rgba(38,61,71,.14)!important;
+}
+
+/* Fix the remaining dark mobile stock toolbar in light mode */
+@media(max-width:720px){
+  html[data-theme="light"] .stock-profile-page .profile-toolbar{
+    background:transparent!important;
+    border:0!important;
+  }
+  html[data-theme="light"] .stock-profile-page .quick-profile-back{
+    background:#ffffff!important;
+    color:#17313c!important;
+    border-color:#9fb7c2!important;
+    box-shadow:0 3px 10px rgba(38,61,71,.12)!important;
+  }
+  html[data-theme="light"] .stock-profile-page .profile-section{
+    background:#ffffff!important;
+  }
+}
