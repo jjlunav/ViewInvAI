@@ -470,7 +470,9 @@ function isBackendApiPath(pathname) {
     pathname === "/api/positions" || pathname.startsWith("/api/positions/") ||
     pathname === "/api/watchlist" || pathname.startsWith("/api/watchlist/") ||
     pathname === "/api/analysis" || pathname.startsWith("/api/analysis/") ||
-    pathname === "/api/alerts" || pathname.startsWith("/api/alerts/");
+    pathname === "/api/alerts" || pathname.startsWith("/api/alerts/") ||
+    pathname === "/api/settings" ||
+    pathname === "/api/devices" || pathname.startsWith("/api/devices/");
 }
 
 export default {
