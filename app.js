@@ -26,6 +26,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 function trProxyUrl(){return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live'}
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 let usLive={busy:false,lastFetchAt:0};
+let fxLive={rate:null,updatedAt:0,busy:false};
 let tvChartAvailability=new Map();
 let uiRestoredScroll=false;
 let favorites=readFavorites();
@@ -214,7 +215,7 @@ function money(v,symbol){
  v=N(v);if(v===null)return symbol+'—';
  return symbol+v.toLocaleString('es-ES',{maximumFractionDigits:v<1?6:4});
 }
-function eurUsd(){let r=N(db.meta&&db.meta.eurUsd);return r&&r>0?r:null}
+function eurUsd(){let r=N(fxLive.rate)??N(db.meta&&db.meta.eurUsd);return r&&r>0?r:null}
 function priceCurrencies(s,p){
  p=N(p);if(p===null)return{usd:null,eur:null};
  let fx=eurUsd(),cur=String((s&&s.currency)||'USD').toUpperCase();
@@ -279,6 +280,39 @@ function setQuoteDirection(el,dir){
 function usPriceValues(s,fallback){
  let usd=usLivePrice(s)??N(fallback),fx=eurUsd();
  return{usd,eur:usd!==null&&fx?usd/fx:null,direct:usLivePrice(s)!==null};
+}
+function canonicalQuote(s,preferTr=false){
+ let fx=eurUsd();
+ if(preferTr&&trTradable(s)){
+  let eur=trLivePrice(s);
+  return{
+   market:'tr',
+   source:'Trade Republic / '+String(s&&s.trExchange||'LSX'),
+   nativeCurrency:'EUR',
+   price:eur,
+   eur,
+   usd:eur!==null&&fx?eur*fx:null,
+   change:trLiveChange(s),
+   updatedAt:quoteTimestampMs(s,true),
+   fx,
+   fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
+   live:eur!==null
+  };
+ }
+ let usd=usLivePrice(s)??N(s&&s.price);
+ return{
+  market:'us',
+  source:usLivePrice(s)!==null?String(s&&s.usLiveSource||'Nasdaq'):'Snapshot EEUU',
+  nativeCurrency:'USD',
+  price:usd,
+  usd,
+  eur:usd!==null&&fx?usd/fx:null,
+  change:usLiveChange(s)??N(s&&s.changePct),
+  updatedAt:quoteTimestampMs(s,false),
+  fx,
+  fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
+  live:usLivePrice(s)!==null
+ };
 }
 
 const quoteClockFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
@@ -768,6 +802,27 @@ async function pollUsLive(){
  }catch(e){console.warn('US live quote warning',e)}
  finally{usLive.busy=false}
 }
+async function pollFxLive(){
+ if(fxLive.busy||document.hidden)return;
+ fxLive.busy=true;
+ try{
+  let r=await fetch('/api/fx-live',{cache:'no-store'});
+  if(!r.ok)throw Error(r.status);
+  let data=await r.json(),rate=N(data&&data.rate);
+  if(rate&&rate>0){
+   let changed=N(fxLive.rate)!==rate;
+   fxLive.rate=rate;
+   fxLive.updatedAt=parseMarketTimestamp(data.updatedAt,'Europe/Madrid')||Date.now();
+   if(db.meta){db.meta.eurUsd=rate;db.meta.eurUsdSource=data.source||'TradingView FX live';}
+   if(changed){
+    refreshTrLiveDom();
+    refreshUsLiveDom();
+    window.dispatchEvent(new CustomEvent('viewinvai:fx-updated',{detail:{rate,updatedAt:fxLive.updatedAt}}));
+   }
+  }
+ }catch(e){console.warn('FX live warning',e)}
+ finally{fxLive.busy=false}
+}
 let entryAutoSortTimer=null;
 function entryDomOrder(){
  return [...document.querySelectorAll('#entryResults .stock-card')].map(card=>{
@@ -861,21 +916,26 @@ function closeQuickProfile(restoreScroll=true){
  if(restoreScroll)requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'smooth'}));
 }
 
-function favButton(s){
+function favButton(s,preferTr=null){
  let key=stockKey(s),on=favorites.has(key);
- return '<button type="button" class="fav-star'+(on?' active':'')+'" data-fav-key="'+E(key)+'" title="'+(on?'Quitar de favoritas':'Añadir a favoritas')+'" aria-label="'+(on?'Quitar de favoritas':'Añadir a favoritas')+'">'+(on?'★':'☆')+'</button>';
+ let pref=preferTr===true?'1':preferTr===false?'0':'';
+ let title=on?'Gestionar carteras':'Añadir a una cartera';
+ return '<button type="button" class="fav-star'+(on?' active':'')+'" data-fav-key="'+E(key)+'" data-fav-prefer-tr="'+pref+'" title="'+title+'" aria-label="'+title+'">'+(on?'★':'☆')+'</button>';
 }
-function toggleFavorite(key){
+function toggleFavorite(key,preferTr=null){
  if(!key)return;
+ if(window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.openStarMenu==='function'){
+  window.ViewInvAIPortfolios.openStarMenu(key,preferTr);
+  return;
+ }
  if(favorites.has(key))favorites.delete(key);else favorites.add(key);
  saveFavorites();
- window.dispatchEvent(new CustomEvent('viewinvai:favorite-changed',{detail:{key,active:favorites.has(key),stock:stockByKey(key)||null}}));
- $$('.fav-star').forEach(b=>{
+ $('.fav-star').forEach(b=>{
   if(b.dataset.favKey!==key)return;
   let on=favorites.has(key);
   b.classList.toggle('active',on);
   b.textContent=on?'★':'☆';
-  b.title=on?'Quitar de favoritas':'Añadir a favoritas';
+  b.title=on?'Gestionar carteras':'Añadir a una cartera';
   b.setAttribute('aria-label',b.title);
  });
  renderFavorites();
@@ -1428,9 +1488,12 @@ function profileTabs(){
  '</nav>';
 }
 function profileSessionStrip(s,isTr=false){
- let regular='<div class="profile-session-cell"><span>Regular</span><strong>'+snapshotPricePair(s,s.price,isTr)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Vol '+compactVol(s.volume)+'</small></div>';
- let pre='<div class="profile-session-cell"><span>Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,isTr)+'</strong><b class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</b><small>Vol '+compactVol(s.premarketVolume)+'</small></div>';
- let post='<div class="profile-session-cell"><span>Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,isTr)+'</strong><b class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</b><small>Vol '+compactVol(s.postmarketVolume)+'</small></div>';
+ let prefix=isTr?'EEUU · ':'';
+ // These three session fields come from the US exchange feed. Even on an LSX
+ // profile they stay USD-native and EUR is only the current FX conversion.
+ let regular='<div class="profile-session-cell"><span>'+prefix+'Regular</span><strong>'+snapshotPricePair(s,s.price,false)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Vol '+compactVol(s.volume)+'</small></div>';
+ let pre='<div class="profile-session-cell"><span>'+prefix+'Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</b><small>Vol '+compactVol(s.premarketVolume)+'</small></div>';
+ let post='<div class="profile-session-cell"><span>'+prefix+'Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</b><small>Vol '+compactVol(s.postmarketVolume)+'</small></div>';
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
 }
 function profileAiPanel(s,mode='us'){
@@ -1447,6 +1510,8 @@ function profileAiPanel(s,mode='us'){
   '<div class="profile-ai-state '+tone+'"><b>'+label+'</b><span>'+E(recommendationNarrative(a))+'</span></div>'+
   '<div class="profile-ai-columns"><div><h4>A favor</h4><ul>'+posHtml+'</ul></div><div><h4>En contra</h4><ul>'+negHtml+'</ul></div></div>'+
   '<div class="profile-ai-catalyst"><small>Catalizador relevante</small><strong>'+E(cat?EL(cat):'Sin catalizador direccional fuerte')+'</strong><span>'+E(cat?(cat.title||cat.fact||''):'La IA sigue precio, volumen, tendencia, liquidez, técnicos, noticias y eventos.')+'</span></div>'+
+  '<div class="profile-ai-live" data-ai-auto-key="'+E(stockKey(s))+'" data-ai-auto-prefer-tr="'+(mode==='tr'?'1':'0')+'"><span class="ai-live-dot"></span><span>IA avanzada preparada para analizar datos en vivo.</span></div>'+ 
+  '<button type="button" class="btn profile-ai-chat" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(mode==='tr'?'1':'0')+'">✦ Preguntar a ViewInvAI</button>'+ 
  '</aside>';
 }
 function profileGeneralStats(s,isTr,se){
@@ -1498,8 +1563,9 @@ function profilePerformanceStrip(s){
  ];
  return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
-function quickProfileHtml(s){
- let isTr=state.profilePreferTr===true&&trTradable(s),se=currentMarketSession();
+function quickProfileHtml(s,opts={}){
+ let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
+ let isTr=requested&&trTradable(s),se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
  let origin=state.profileOriginView||state.currentView,back='← '+viewLabel(origin);
@@ -1508,14 +1574,16 @@ function quickProfileHtml(s){
  let events=stockEvents(s),now=Date.now();
  let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
- let context=state.profileReason?'<div class="profile-context"><strong>Por qué aparece:</strong> '+E(state.profileReason)+'</div>':'';
+ let reason=typeof opts.reason==='string'?opts.reason:state.profileReason;
+ let context=reason?'<div class="profile-context"><strong>Por qué aparece:</strong> '+E(reason)+'</div>':'';
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
- let relation=isTr?'<div class="profile-data-note">Precio, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+'. Gráfico y técnicos: '+E((s.exchange||'EEUU')+':'+(s.ticker||''))+'.</div>':'';
- return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>'+E(marketTitle)+'</span></div>'+
-  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
+ let relation=isTr?'<div class="profile-data-note">Precio principal, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+' en EUR. El valor en USD es una conversión con EUR/USD vigente. Las sesiones pre/regular/post corresponden al mercado EEUU.</div>':'';
+ let toolbar=opts.embedded?'':'<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>'+E(marketTitle)+'</span></div>';
+ return toolbar+
+  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
    '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
-   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></header>'+
+   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button><button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button></div></header>'+
   profileTabs()+profileSessionStrip(s,isTr)+relation+context+
   '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · hora España</span></div>'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
@@ -1528,7 +1596,14 @@ function renderQuickProfile(){
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(!s){closeQuickProfile(false);return}
  box.innerHTML=quickProfileHtml(s);
- requestAnimationFrame(()=>{box.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(box);pollUsLive()});
+ requestAnimationFrame(()=>{box.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(box);pollUsLive();loadAiBrief(box,s,state.profilePreferTr===true)});
+}
+function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
+ let s=stockByKey(key);if(!container||!s)return false;
+ let useTr=preferTr===true&&trTradable(s);
+ container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
+ requestAnimationFrame(()=>{container.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(container);pollUsLive();loadAiBrief(container,s,useTr)});
+ return true;
 }
 function profileHtml(s,view){
  let isTr=view==='catalog',se=currentMarketSession();
@@ -1569,9 +1644,9 @@ function profileHtml(s,view){
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
  let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot '+E(updated)+'</span></div>'+
-  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
+  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
    '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
-   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></header>'+
+   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button><button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button></div></header>'+
   profileTabs()+profileSessionStrip(s,isTr)+trRelation+trNote+feedWarning+context+
   '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · 1 min · hora España</span></div>'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
@@ -1591,6 +1666,99 @@ function renderProfileView(view){
  requestAnimationFrame(()=>{detail.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(detail);pollUsLive()});
  return true;
 }
+
+const aiBriefCache=new Map();
+let aiChatState={key:null,preferTr:false,history:[],busy:false};
+
+function aiLivePayload(s,preferTr){
+ let q=canonicalQuote(s,preferTr);
+ return {
+  market:q.market,source:q.source,nativeCurrency:q.nativeCurrency,
+  price:q.price,eur:q.eur,usd:q.usd,changePct:q.change,
+  quoteUpdatedAt:q.updatedAt?new Date(q.updatedAt).toISOString():null,
+  eurUsd:q.fx,fxUpdatedAt:q.fxUpdatedAt?new Date(q.fxUpdatedAt).toISOString():null,
+  bid:preferTr?N(s&&s.trLiveBid):usLiveBid(s),
+  ask:preferTr?N(s&&s.trLiveAsk):usLiveAsk(s)
+ };
+}
+async function aiApiAsk(s,preferTr,question,history=[]){
+ if(!window.ViewInvAIAuth||typeof window.ViewInvAIAuth.apiFetch!=='function')throw Error('Inicia sesión para usar la IA avanzada.');
+ let user=window.ViewInvAIAuth.getUser&&window.ViewInvAIAuth.getUser();
+ if(!user)throw Error('Inicia sesión con Google para usar la IA avanzada.');
+ let response=await window.ViewInvAIAuth.apiFetch('/api/ai/chat',{
+  method:'POST',
+  body:JSON.stringify({
+   stockKey:stockKey(s),ticker:s.ticker||'',preferTr:!!preferTr,
+   question:String(question||'').slice(0,1200),
+   history:(history||[]).slice(-6),
+   live:aiLivePayload(s,preferTr)
+  })
+ });
+ let data=await response.json().catch(()=>({}));
+ if(!response.ok)throw Error(data.error||'No se pudo consultar la IA.');
+ return data;
+}
+function aiChatAdd(role,html){
+ let box=$('#aiChatMessages');if(!box)return;
+ let div=document.createElement('div');div.className='ai-chat-message '+role;div.innerHTML=html;box.appendChild(div);box.scrollTop=box.scrollHeight;
+}
+function aiReplyHtml(data){
+ let badges=[];
+ if(data.signal)badges.push('<span>'+E(data.signal)+'</span>');
+ if(N(data.confidence)!==null)badges.push('<span>'+Math.round(N(data.confidence))+'% confianza</span>');
+ if(data.momentum)badges.push('<span>Momentum '+E(data.momentum)+'</span>');
+ if(data.fomoRisk)badges.push('<span>FOMO '+E(data.fomoRisk)+'</span>');
+ return '<div class="ai-chat-badges">'+badges.join('')+'</div><p>'+E(data.answer||data.summary||'Sin respuesta disponible.').replace(/\n/g,'<br>')+'</p>'+
+  (Array.isArray(data.keyPoints)&&data.keyPoints.length?'<ul>'+data.keyPoints.slice(0,5).map(x=>'<li>'+E(x)+'</li>').join('')+'</ul>':'');
+}
+async function askAiChat(question){
+ question=String(question||'').trim();if(!question||aiChatState.busy)return;
+ let s=stockByKey(aiChatState.key);if(!s)return;
+ aiChatState.busy=true;
+ aiChatAdd('user','<p>'+E(question)+'</p>');
+ aiChatState.history.push({role:'user',content:question});
+ let input=$('#aiChatInput'),send=$('#aiChatSend');
+ if(input){input.value='';input.disabled=true}if(send){send.disabled=true;send.textContent='Analizando…'}
+ let pending=document.createElement('div');pending.className='ai-chat-message assistant pending';pending.textContent='ViewInvAI está cruzando precio, momentum, técnicos, noticias y catalizadores…';$('#aiChatMessages')?.appendChild(pending);
+ try{
+  let data=await aiApiAsk(s,aiChatState.preferTr,question,aiChatState.history);
+  pending.remove();aiChatAdd('assistant',aiReplyHtml(data));
+  aiChatState.history.push({role:'assistant',content:String(data.answer||data.summary||'').slice(0,1800)});
+ }catch(e){pending.remove();aiChatAdd('assistant error','<p>'+E(e.message||'No se pudo consultar la IA.')+'</p>')}
+ finally{aiChatState.busy=false;if(input){input.disabled=false;input.focus()}if(send){send.disabled=false;send.textContent='Enviar'}}
+}
+function openAiChat(key,preferTr=false){
+ let s=stockByKey(key);if(!s)return;
+ if(!window.ViewInvAIAuth?.getUser?.()){window.ViewInvAIAuth?.signIn?.();return}
+ aiChatState={key:stockKey(s),preferTr:preferTr===true&&trTradable(s),history:[],busy:false};
+ let panel=$('#aiChatPanel'),backdrop=$('#aiChatBackdrop');
+ if(!panel||!backdrop)return;
+ let ticker=aiChatState.preferTr?(s.trTicker||s.ticker):s.ticker;
+ $('#aiChatTitle').textContent='ViewInvAI · '+String(ticker||'');
+ $('#aiChatSubtitle').textContent=s.name||'';
+ $('#aiChatMessages').innerHTML='';
+ aiChatAdd('assistant','<p>Estoy conectado a los datos de esta acción. Puedes preguntarme por entrada, momentum, FOMO, tendencia, noticias, resultados, riesgos o catalizadores.</p>');
+ panel.classList.add('open');panel.setAttribute('aria-hidden','false');backdrop.classList.add('open');backdrop.setAttribute('aria-hidden','false');document.body.classList.add('ai-chat-open');
+ setTimeout(()=>$('#aiChatInput')?.focus(),30);
+}
+function closeAiChat(){
+ $('#aiChatPanel')?.classList.remove('open');$('#aiChatPanel')?.setAttribute('aria-hidden','true');
+ $('#aiChatBackdrop')?.classList.remove('open');$('#aiChatBackdrop')?.setAttribute('aria-hidden','true');
+ document.body.classList.remove('ai-chat-open');
+}
+async function loadAiBrief(root,s,preferTr=false){
+ let slot=root&&root.querySelector('[data-ai-auto-key="'+CSS.escape(stockKey(s))+'"]');if(!slot)return;
+ if(!window.ViewInvAIAuth?.getUser?.()){slot.innerHTML='<span class="ai-live-dot"></span><span>Inicia sesión para activar el análisis IA automático.</span>';return}
+ let cacheKey=stockKey(s)+'|'+(preferTr?'tr':'us'),cached=aiBriefCache.get(cacheKey);
+ if(cached&&Date.now()-cached.at<120000){slot.innerHTML=cached.html;return}
+ slot.innerHTML='<span class="ai-live-dot thinking"></span><span>IA analizando mercado, tendencia y catalizadores…</span>';
+ try{
+  let data=await aiApiAsk(s,preferTr,'Genera una lectura rápida y accionable del estado actual: momentum, tendencia, riesgo FOMO, noticia/catalizador principal y qué confirmación faltaría antes de tomar una decisión.',[]);
+  let html='<span class="ai-live-dot active"></span><span><b>'+E(data.signal||'LECTURA IA')+(N(data.confidence)!==null?' · '+Math.round(N(data.confidence))+'%':'')+'</b> · '+E(data.summary||data.answer||'Análisis completado.')+'</span>';
+  aiBriefCache.set(cacheKey,{at:Date.now(),html});slot.innerHTML=html;
+ }catch(e){slot.innerHTML='<span class="ai-live-dot"></span><span>IA avanzada no disponible ahora.</span>'}
+}
+
 const CATALOG_COLUMNS={
  tr:[
   {id:'fav',label:'★',type:'html',value:s=>favorites.has(stockKey(s))?1:0,cell:s=>favButton(s)},
@@ -1796,7 +1964,7 @@ function renderFuture(){
  $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
   let e=g.first,s=db.stocks.find(x=>x.ticker===e.ticker&&(!e.exchange||x.exchange===e.exchange))||e;
   let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);
-  return '<article class="stock-card"><div class="stock-main stock-open-row"'+stockOpenAttrs(s,label+' · '+when,trTradable(s))+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s)+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="stock-quick event-quick"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(trTradable(s)?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
+  return '<article class="stock-card future-stock-card"><div class="stock-main stock-open-row future-stock-row"'+stockOpenAttrs(s,label+' · '+when,trTradable(s))+'><div class="stock-id"><span class="rank">'+(i+1)+'</span>'+favButton(s,trTradable(s))+'<div><div class="ticker-stack">'+tickerDisplay(s,!!s.tradeRepublicVerified)+'</div><span>'+E(e.name||'')+'</span></div></div><div class="future-event-meta"><b>'+E(when)+'</b><span class="event-type">'+E(label)+'</span>'+(trTradable(s)?'<span class="pill ok">TR</span>':'')+'<span class="open-arrow">→</span></div></div></article>';
  }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
@@ -2357,6 +2525,7 @@ async function load(force=false){
   loading=false
  }
 }
+const NAV_ORDER=['home','portfolios','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
  home:{icon:'⌂',short:'Inicio',base:10},
  entry:{icon:'◈',short:'Mercado',base:4},
@@ -2379,9 +2548,7 @@ function navigationScore(v){
  let x=navUsage[v]||{},count=Math.max(0,N(x.count)??0),last=Math.max(0,N(x.lastUsed)??0),recent=last?Math.max(0,1-(Date.now()-last)/(14*86400000))*.35:0;
  return (NAV_META[v]?.base||0)+count+recent;
 }
-function navigationOrder(){
- return Object.keys(NAV_META).sort((a,b)=>navigationScore(b)-navigationScore(a)||(NAV_META[b].base-NAV_META[a].base));
-}
+function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
 function recordNavigationUse(v){
  if(!NAV_META[v])return;
  let x=navUsage[v]||{count:0,lastUsed:0};x.count=(N(x.count)??0)+1;x.lastUsed=Date.now();navUsage[v]=x;saveNavigationUsage();
@@ -2389,12 +2556,10 @@ function recordNavigationUse(v){
 function renderAdaptiveNavigation(){
  let order=navigationOrder(),side=$('#sidebar .nav');
  if(side){
-  let fixedSide=['entry','recommendation','portfolios','alerts'];
-  let sideOrder=[...fixedSide,...order.filter(v=>!fixedSide.includes(v))];
-  let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
-  sideOrder.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
+  let nodes=new Map($('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
+  order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
- const direct=['entry','recommendation','portfolios','alerts'];
+ const direct=['home','portfolios','recommendation','entry'];
  const rest=order.filter(v=>!direct.includes(v));
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
@@ -2539,6 +2704,9 @@ document.addEventListener('click',e=>{
 });
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
+$('#aiChatClose')?.addEventListener('click',closeAiChat);
+$('#aiChatBackdrop')?.addEventListener('click',closeAiChat);
+$('#aiChatForm')?.addEventListener('submit',e=>{e.preventDefault();askAiChat($('#aiChatInput')?.value||'')});
 let keepScreenAwakeToggle=$('#keepScreenAwake');
 if(keepScreenAwakeToggle)keepScreenAwakeToggle.addEventListener('change',e=>{
  deviceSettings.keepScreenAwake=!!e.target.checked;
@@ -2686,6 +2854,8 @@ lockAllCriteria();
 initLeadersDock();
 initTrLive();
 initUsLive();
+pollFxLive();
+setInterval(()=>{if(!document.hidden)pollFxLive()},15000);
 clock();
 window.addEventListener('scroll',queueUiSave,{passive:true});
 let lastCatalogMobile=catalogIsMobile();
@@ -2707,7 +2877,13 @@ window.ViewInvAI={
  getStockKey:s=>stockKey(s),
  getCurrentStockKey:()=>state.profileKey||null,
  getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),
+ getCanonicalQuote:(stock,preferTr=false)=>canonicalQuote(stock,preferTr),
+ renderPricePair:(stock,preferTr=false)=>pricePair(stock,SP(stock,currentMarketSession()),preferTr),
+ renderLiveChange:(stock,preferTr=false)=>liveChangeHtml(stock,SC(stock,currentMarketSession()),preferTr),
+ renderEmbeddedStockDetail,
+ getEurUsd:()=>eurUsd(),
  getFavoriteKeys:()=>[...favorites],
+ replaceFavoriteKeys:keys=>{favorites=new Set((Array.isArray(keys)?keys:[]).filter(Boolean));saveFavorites();renderFavorites();$('.fav-star').forEach(b=>{let on=favorites.has(b.dataset.favKey);b.classList.toggle('active',on);b.textContent=on?'★':'☆'});return true;},
  mergeFavoriteKeys:keys=>{
   let changed=false;
   for(let key of (Array.isArray(keys)?keys:[])){if(key&&!favorites.has(key)){favorites.add(key);changed=true}}
