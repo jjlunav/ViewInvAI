@@ -92,8 +92,25 @@ jobs:
           text, n2 = re.subn(r'versionName\s+"[^"]+"', f'versionName "{version}"', text, count=1)
           if n1 != 1 or n2 != 1:
               raise SystemExit("Could not patch Android versionCode/versionName")
+
+          # Force the APK to use the stable cached key that is registered in Firebase.
+          # Android's implicit debug signing was using a different runner key.
+          if "viewinvaiDebug" not in text:
+              signing = """
+              signingConfigs {
+                  viewinvaiDebug {
+                      storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }
+          """
+              text = text.replace("    buildTypes {", signing + "\n    buildTypes {", 1)
+              text = text.replace("    buildTypes {\n", "    buildTypes {\n        debug {\n            signingConfig signingConfigs.viewinvaiDebug\n        }\n", 1)
+
           path.write_text(text, encoding="utf-8")
-          print(f"Android versionName={version} versionCode={version_code}")
+          print(f"Android versionName={version} versionCode={version_code} with stable ViewInvAI signing")
           PY
 
       - name: Add Firebase Android configuration
