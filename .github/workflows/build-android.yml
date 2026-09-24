@@ -21,6 +21,7 @@ on:
       - "mobile-shell/**"
       - ".github/workflows/build-android.yml"
       - "scripts/apply_android_branding.py"
+      - "firebase/**"
 
 permissions:
   contents: read
