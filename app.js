@@ -1,5 +1,25 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='catalystpulse:customFilter:v1', FAV_KEY='catalystpulse:favorites:v1', LEADERS_PIN_KEY='catalystpulse:leadersPinned:v1', UI_KEY='catalystpulse:ui:v1', RECO_KEY='catalystpulse:recommendation:v1', THEME_KEY='catalystpulse:theme:v1', RECO_COOLDOWN_MS=86400000;
+const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', RECO_COOLDOWN_MS=86400000;
+function migrateLegacyBrandStorage(){
+ const pairs=[
+  ['viewinvai:customFilter:v1','catalystpulse:customFilter:v1'],
+  ['viewinvai:favorites:v1','catalystpulse:favorites:v1'],
+  ['viewinvai:leadersPinned:v1','catalystpulse:leadersPinned:v1'],
+  ['viewinvai:ui:v1','catalystpulse:ui:v1'],
+  ['viewinvai:recommendation:v1','catalystpulse:recommendation:v1'],
+  ['viewinvai:theme:v1','catalystpulse:theme:v1'],
+  ['viewinvai:catalogColumns:tr:v1','catalystpulse:catalogColumns:tr:v1'],
+  ['viewinvai:catalogColumns:us:v1','catalystpulse:catalogColumns:us:v1']
+ ];
+ try{
+  for(let [next,legacy] of pairs){
+   if(localStorage.getItem(next)!==null)continue;
+   let value=localStorage.getItem(legacy);
+   if(value!==null)localStorage.setItem(next,value);
+  }
+ }catch(_){}
+}
+migrateLegacyBrandStorage();
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
 if('scrollRestoration' in history)history.scrollRestoration='manual';
@@ -1264,7 +1284,7 @@ function profileHtml(s,view){
  let feedWarning=!isTr
   ?'<div class="profile-feed-warning '+(s.usLiveIsRealTime?'live':'')+'">'+(s.usLiveIsRealTime
     ?'Precio, BID y ASK actuales: Nasdaq.com. El gráfico TradingView se abre por defecto en el mismo valor de EEUU; puede haber pequeñas diferencias entre proveedores.'
-    :'El snapshot del screener EEUU está diferido ('+E(s.updateMode||'sin modo')+'). CatalystPulse intenta sustituir precio, BID y ASK por la cotización actual de Nasdaq.com para los valores visibles. Para igualdad exacta entre cabecera y gráfico ambos deben usar el mismo feed SIP.')+'</div>'
+    :'El snapshot del screener EEUU está diferido ('+E(s.updateMode||'sin modo')+'). ViewInvAI intenta sustituir precio, BID y ASK por la cotización actual de Nasdaq.com para los valores visibles. Para igualdad exacta entre cabecera y gráfico ambos deben usar el mismo feed SIP.')+'</div>'
   :'';
  let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
  let identity=[
@@ -1381,7 +1401,7 @@ const CATALOG_COLUMNS={
  ]
 };
 const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:CATALOG_PAGE_SIZE},us:{sort:'ticker',dir:1,filters:{},order:null,limit:CATALOG_PAGE_SIZE}};
-function catalogStorageKey(mode){return 'catalystpulse:catalogColumns:'+mode+':v1'}
+function catalogStorageKey(mode){return 'viewinvai:catalogColumns:'+mode+':v1'}
 function catalogLoadOrder(mode){
  if(catalogState[mode].order)return catalogState[mode].order;
  let ids=CATALOG_COLUMNS[mode].map(c=>c.id),saved=[];

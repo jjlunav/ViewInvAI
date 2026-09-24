@@ -1,8 +1,8 @@
 {
-  "name": "catalystpulse-android",
-  "version": "0.1.0",
+  "name": "viewinvai-android",
+  "version": "0.2.0",
   "private": true,
-  "description": "Android wrapper for CatalystPulse using Capacitor.",
+  "description": "Android wrapper for ViewInvAI using Capacitor.",
   "scripts": {
     "android:add": "cap add android",
     "android:sync": "cap sync android",
