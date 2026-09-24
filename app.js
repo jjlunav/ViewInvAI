@@ -2462,6 +2462,14 @@ $('#mobileMenu')?.addEventListener('click',()=>$('#sidebar')?.classList.toggle('
 document.addEventListener('click',e=>{
  let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
  if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
+ let profileJump=e.target.closest&&e.target.closest('[data-profile-jump]');
+ if(profileJump){
+  e.preventDefault();e.stopPropagation();
+  let id=profileJump.dataset.profileJump,target=id&&document.getElementById(id);
+  profileJump.closest('.profile-tabs')?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===profileJump));
+  if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+  return;
+ }
  let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
  if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
  let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
