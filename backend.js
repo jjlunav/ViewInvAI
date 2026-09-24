@@ -829,6 +829,145 @@ async function handleManualAnalysis(request, env, user, json, services) {
   }
 }
 
+
+async function handleAiChat(request, env, user, json, services) {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!env.AI || typeof env.AI.run !== "function") return json({ error: "AI temporarily unavailable" }, 503);
+
+  const body = await readJson(request);
+  const stockKey = trimText(body.stockKey, 120);
+  const ticker = trimText(body.ticker, 24).toUpperCase();
+  const preferTr = body.preferTr === true;
+  const question = trimText(body.question, 1200);
+  const history = Array.isArray(body.history) ? body.history.slice(-6).map(item => ({
+    role: item && item.role === "assistant" ? "assistant" : "user",
+    content: trimText(item && item.content, 1600)
+  })).filter(x => x.content) : [];
+  const live = body.live && typeof body.live === "object" && !Array.isArray(body.live) ? body.live : {};
+  if (!stockKey && !ticker) return json({ error: "Stock is required" }, 400);
+  if (!question) return json({ error: "Question is required" }, 400);
+
+  const snapshot = await services.loadMarketSnapshot(env);
+  const target = {
+    stock_key: stockKey,
+    ticker,
+    prefer_tr: preferTr ? 1 : 0,
+    isin: trimText(body.isin, 32)
+  };
+  const stock = findStock(snapshot, target);
+  if (!stock) return json({ error: "Stock not found" }, 404);
+
+  let chartRaw = null;
+  try { chartRaw = await services.loadChart(stock, target); } catch (error) {
+    console.warn("AI chat chart unavailable", String(error && error.message || error));
+  }
+  const chart = chartFeatures(chartRaw);
+  const events = recentEvents(snapshot, stock, 16);
+  const fallbackTarget = { subject_type: "watchlist", ...target };
+  const deterministic = deterministicAssessment(fallbackTarget, stock, chart, events);
+
+  const livePrice = finiteNumber(live.price);
+  const liveEur = finiteNumber(live.eur);
+  const liveUsd = finiteNumber(live.usd);
+  const liveChange = finiteNumber(live.changePct);
+  const fx = finiteNumber(live.eurUsd);
+  const model = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+
+  const prompt = [
+    "Eres ViewInvAI, un asistente de análisis bursátil integrado en una app de inversión.",
+    "Responde SIEMPRE en español claro y concreto.",
+    "Usa SOLO los datos estructurados suministrados. No inventes noticias, precios, fechas ni eventos.",
+    "Distingue entre hechos del feed, cálculos derivados y valoración analítica.",
+    "El precio principal debe corresponder al mercado elegido: si preferTr=true, LSX/Trade Republic en EUR; si es false, mercado EEUU en USD.",
+    "La segunda divisa es únicamente una conversión con EUR/USD y no un segundo precio independiente.",
+    "Evalúa momentum, tendencia, riesgo de FOMO, liquidez, técnicos, noticias/eventos y riesgos.",
+    "No presentes una recomendación como certeza. Si faltan datos, dilo y baja la confianza.",
+    "Devuelve JSON únicamente con las claves: answer, summary, signal, confidence, momentum, fomoRisk, trend, keyPoints.",
+    "signal debe ser una de: COMPRAR, VIGILAR, ESPERAR, EVITAR.",
+    "momentum, fomoRisk y trend deben ser textos cortos.",
+    "",
+    JSON.stringify({
+      userQuestion: question,
+      conversation: history,
+      selectedMarket: preferTr ? "Trade Republic / LSX" : "EEUU",
+      liveQuote: {
+        source: trimText(live.source, 120),
+        nativeCurrency: trimText(live.nativeCurrency, 8),
+        price: livePrice,
+        eur: liveEur,
+        usd: liveUsd,
+        changePct: liveChange,
+        quoteUpdatedAt: trimText(live.quoteUpdatedAt, 80),
+        eurUsd: fx,
+        fxUpdatedAt: trimText(live.fxUpdatedAt, 80),
+        bid: finiteNumber(live.bid),
+        ask: finiteNumber(live.ask)
+      },
+      stock: {
+        ticker: stock.ticker,
+        name: stock.name,
+        exchange: stock.exchange,
+        trTicker: stock.trTicker || null,
+        trExchange: stock.trExchange || null,
+        isin: stock.isin || stock.trIsin || null,
+        volume: stock.usLiveVolume ?? stock.volume ?? null,
+        avgVolume: stock.avgVolume ?? null,
+        relVolume: stock.relVolume ?? null,
+        rsi: stock.rsi ?? null,
+        adx: stock.adx ?? null,
+        ema20: stock.ema20 ?? null,
+        ema50: stock.ema50 ?? null,
+        marketCap: stock.marketCap ?? null,
+        earningsDate: stock.earningsDate || null
+      },
+      chart,
+      recentEvents: events,
+      deterministicReference: {
+        signal: deterministic.signal,
+        score: deterministic.score,
+        reasons: deterministic.reasons
+      },
+      snapshotUpdatedAt: snapshot && snapshot.meta && snapshot.meta.updatedAt || null
+    })
+  ].join("\n");
+
+  try {
+    const result = await env.AI.run(model, { prompt, max_tokens: 900, temperature: 0.12 });
+    const parsed = extractAiJson(result);
+    if (!parsed) throw new Error("AI response is not valid JSON");
+    const allowed = new Set(["COMPRAR","VIGILAR","ESPERAR","EVITAR"]);
+    const signal = String(parsed.signal || "VIGILAR").toUpperCase();
+    return json({
+      answer: trimText(parsed.answer || parsed.summary || "", 4000),
+      summary: trimText(parsed.summary || parsed.answer || "", 900),
+      signal: allowed.has(signal) ? signal : "VIGILAR",
+      confidence: Math.max(0, Math.min(100, Math.round(finiteNumber(parsed.confidence) ?? 55))),
+      momentum: trimText(parsed.momentum || "Sin clasificación", 80),
+      fomoRisk: trimText(parsed.fomoRisk || "No determinado", 80),
+      trend: trimText(parsed.trend || "No determinada", 80),
+      keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(x => trimText(x, 240)).filter(Boolean).slice(0, 6) : [],
+      model,
+      dataTimestamp: snapshot && snapshot.meta && snapshot.meta.updatedAt || null
+    });
+  } catch (error) {
+    console.warn("AI chat failed", String(error && error.message || error));
+    const signalMap = deterministic.score >= 45 ? "COMPRAR" : deterministic.score < -20 ? "EVITAR" : deterministic.score >= 15 ? "VIGILAR" : "ESPERAR";
+    return json({
+      answer: deterministic.thesis + " " + deterministic.riskSummary,
+      summary: deterministic.thesis,
+      signal: signalMap,
+      confidence: deterministic.confidence,
+      momentum: chart && chart.available ? (chart.trendUp ? "Positivo" : "Débil / mixto") : "Datos insuficientes",
+      fomoRisk: finiteNumber(stock.rsi) !== null && finiteNumber(stock.rsi) > 75 ? "Elevado" : "Moderado",
+      trend: chart && chart.available ? (chart.trendUp ? "Alcista" : "No confirmada") : "Sin datos suficientes",
+      keyPoints: deterministic.reasons || [],
+      model: "",
+      dataTimestamp: snapshot && snapshot.meta && snapshot.meta.updatedAt || null,
+      fallback: true
+    });
+  }
+}
+
 export async function handleBackendApi(request, env, services = {}) {
   const json = services.jsonResponse || defaultJson;
   const guard = apiGuard(request);
@@ -857,6 +996,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
+    if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
