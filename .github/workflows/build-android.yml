@@ -137,6 +137,36 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
+      - name: Verify generated Google OAuth resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          VALUES="android/app/build/generated/res/google-services/debug/values/values.xml"
+          test -s "$VALUES"
+          EXPECTED_WEB_CLIENT="$(python3 - <<'PY'
+          import json
+          data=json.load(open("firebase/google-services.json", encoding="utf-8"))
+          for client in data.get("client", []):
+              for oauth in client.get("oauth_client", []):
+                  if oauth.get("client_type") == 3:
+                      print(oauth.get("client_id", ""))
+                      raise SystemExit
+          PY
+          )"
+          grep -F "<string name=\"default_web_client_id\" translatable=\"false\">$EXPECTED_WEB_CLIENT</string>" "$VALUES"
+          grep -F '<string name="google_app_id" translatable="false">1:638735053048:android:beb0c00ef0f50a90820b0d</string>' "$VALUES"
+          echo "Generated Firebase OAuth resources match google-services.json."
+
+      - name: Verify APK signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/apk-signature.txt
+          grep -qi 'a1:59:85:23:37:4d:a7:b3:27:e8:81:f9:4e:d7:7d:d8:b9:6f:7d:79' /tmp/apk-signature.txt
+
       - name: Prepare named APK
         id: apk
         shell: bash
