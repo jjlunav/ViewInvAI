@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', RECO_COOLDOWN_MS=86400000;
+const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', RECO_COOLDOWN_MS=86400000;
 function migrateLegacyBrandStorage(){
  const pairs=[
   ['viewinvai:customFilter:v1','catalystpulse:customFilter:v1'],
@@ -1725,6 +1725,94 @@ function recommendationAnalysis(s,mode){
  a.score=Math.max(0,Math.min(100,Math.round((a.score+cat.delta)*10)/10));
  return a;
 }
+
+const recommendationChartCache=new Map();
+function avgNumbers(values){
+ let rows=values.map(N).filter(v=>v!==null);
+ return rows.length?rows.reduce((a,b)=>a+b,0)/rows.length:null;
+}
+async function recommendationChartAnalysis(s,mode){
+ let key=mode+':'+stockKey(s),cached=recommendationChartCache.get(key);
+ if(cached&&Date.now()-cached.at<90000)return cached.value;
+ let result={available:false,confirmed:false,delta:-6,points:0,note:'Histórico intradía no disponible'};
+ try{
+  let url='';
+  if(mode==='tr'&&trTradable(s)&&trIsin(s)){
+   url='/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000';
+  }else if(s&&s.ticker){
+   url='/api/us-chart?symbol='+encodeURIComponent(s.ticker);
+  }
+  if(!url)throw Error('no chart source');
+  let r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  let data=await r.json(),raw=Array.isArray(data&&data.points)?data.points:[];
+  let pts=raw.map(p=>({close:N(p&&((p.close!==undefined)?p.close:p.price)),volume:N(p&&p.volume)})).filter(p=>p.close!==null);
+  if(pts.length<35)throw Error('insufficient chart');
+  pts=pts.slice(-180);
+  let closes=pts.map(p=>p.close),last=closes[closes.length-1];
+  let sma10=avgNumbers(closes.slice(-10)),sma30=avgNumbers(closes.slice(-30));
+  let base20=closes[Math.max(0,closes.length-21)],ret20=base20>0?(last/base20-1)*100:null;
+  let hi30=Math.max(...closes.slice(-30)),lo30=Math.min(...closes.slice(-30));
+  let drawdown=hi30>0?(last/hi30-1)*100:null;
+  let rangePos=hi30>lo30?(last-lo30)/(hi30-lo30):.5;
+  let recentVol=avgNumbers(pts.slice(-8).map(p=>p.volume)),priorVol=avgNumbers(pts.slice(-28,-8).map(p=>p.volume));
+  let volExpansion=recentVol!==null&&priorVol>0?recentVol/priorVol:null;
+  let delta=0,notes=[];
+  let trendUp=last>sma10&&sma10>sma30;
+  if(trendUp){delta+=8;notes.push('precio > media corta > media larga')}else{delta-=8;notes.push('gráfico sin estructura alcista clara')}
+  if(ret20!==null){
+   if(ret20>=.4&&ret20<=8){delta+=5;notes.push('impulso intradía '+PC(ret20))}
+   else if(ret20>8&&ret20<=15){delta+=2;notes.push('impulso fuerte '+PC(ret20))}
+   else if(ret20<0){delta-=5;notes.push('impulso reciente negativo')}
+   else if(ret20>20){delta-=7;notes.push('movimiento demasiado extendido')}
+  }
+  if(drawdown!==null){
+   if(drawdown>=-4){delta+=3;notes.push('cerca de máximos recientes')}
+   else if(drawdown<-10){delta-=4;notes.push('retroceso profundo desde máximos')}
+  }
+  if(rangePos>=.7)delta+=2;
+  if(volExpansion!==null){
+   if(volExpansion>=1.35){delta+=3;notes.push('volumen acelerando '+F(volExpansion,2)+'×')}
+   else if(volExpansion<.7){delta-=2;notes.push('volumen intradía perdiendo fuerza')}
+  }
+  delta=Math.max(-18,Math.min(18,Math.round(delta*10)/10));
+  let confirmed=trendUp&&ret20!==null&&ret20>.3&&ret20<=15&&drawdown!==null&&drawdown>=-8;
+  result={available:true,confirmed,delta,points:pts.length,last,sma10,sma30,ret20,drawdown,volExpansion,note:notes.join(' · ')};
+ }catch(_){}
+ recommendationChartCache.set(key,{at:Date.now(),value:result});
+ return result;
+}
+async function highConvictionRecommendation(mode){
+ let s=pickRecommendation(mode);
+ if(!s)return null;
+ let a=recommendationAnalysis(s,mode),chart=await recommendationChartAnalysis(s,mode);
+ let se=a.se,vol=SV(s,se),price=N(s.price),ema20=N(s.ema20),ema50=N(s.ema50);
+ let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
+ let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
+ let quality=[a.change,a.rv,a.adx,a.rsi,price,ema20,ema50,vol].filter(v=>N(v)!==null).length;
+ let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
+ let gates={
+  score:a.score>=82,
+  combined:combined>=88,
+  chart:chart.available&&chart.confirmed,
+  trend:trendOk,
+  volume:vol!==null&&vol>=75000,
+  relVolume:a.rv!==null&&a.rv>=1.25,
+  adx:a.adx!==null&&a.adx>=25,
+  rsi:a.rsi!==null&&a.rsi>=42&&a.rsi<=72,
+  spread:a.spread===null||a.spread<=3.5,
+  momentum:a.change!==null&&a.change>=.5&&a.change<=20,
+  catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
+  quality:quality>=7
+ };
+ let eligible=Object.values(gates).every(Boolean);
+ let reasons=[];
+ if(chart.confirmed)reasons.push('gráfico confirmado');
+ if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');
+ if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
+ if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
+ if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
+ return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons};
+}
 function recommendationSignal(score,bucket){
  if(score>=72){bucket.armed=true;return{key:'buy',label:'COMPRA',text:'Convicción suficiente para entrada según el motor actual.'}}
  if(bucket.armed&&score<=50)return{key:'sell',label:'VENTA',text:'La tesis ha perdido suficiente fuerza para activar salida.'};
@@ -1967,7 +2055,7 @@ function initHelpSystem(){
   recommendation:{title:'Recomendación actual',text:'Selecciona una candidata de EEUU y otra de Trade Republic mediante un análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores. La señal es orientativa y se recalcula continuamente.'},
   heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
   future:{title:'Potencial futuro',text:'Busca noticias y eventos próximos que pueden aumentar la volatilidad antes de que ocurra el movimiento: resultados, FDA, contratos, financiación, operaciones corporativas y otros catalizadores.'},
-  alerts:{title:'Avisos',text:'Crea reglas propias combinando variación, volumen, RSI, ADX, tendencia, liquidez, mercado y sesión. También puedes activar avisos automáticos de recomendación, potencial de entrada y potencial futuro.'},
+  alerts:{title:'Avisos',text:'Solo avisa cuando una recomendación alcanza un nivel de convicción alto. Exige confirmación de gráfico, tendencia, volumen, RSI/ADX, liquidez y ausencia de señales negativas relevantes en noticias o eventos.'},
   calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
   catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
