@@ -282,14 +282,71 @@ function usPriceValues(s,fallback){
  return{usd,eur:usd!==null&&fx?usd/fx:null,direct:usLivePrice(s)!==null};
 }
 
+const quoteClockFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+const quoteZoneParts=new Map();
+function zonedWallTimeToEpoch(y,mo,d,h,mi,se,tz='America/New_York'){
+ let guess=Date.UTC(y,mo-1,d,h,mi,se||0),fmt=quoteZoneParts.get(tz);
+ if(!fmt){
+  fmt=new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,hourCycle:'h23'});
+  quoteZoneParts.set(tz,fmt);
+ }
+ const wanted=Date.UTC(y,mo-1,d,h,mi,se||0);
+ for(let i=0;i<2;i++){
+  let p=Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));
+  let got=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);
+  guess+=wanted-got;
+ }
+ return guess;
+}
+function parseMarketTimestamp(value,tz='America/New_York'){
+ if(value===null||value===undefined||value==='')return null;
+ if(typeof value==='number'){
+  let n=value>0&&value<1e12?value*1000:value;
+  return Number.isFinite(n)?n:null;
+ }
+ let raw=String(value).trim();
+ if(/^\d+$/.test(raw)){
+  let n=Number(raw);if(Number.isFinite(n))return n>0&&n<1e12?n*1000:n;
+ }
+ if(/(?:Z|[+-]\d{2}:?\d{2}|\bUTC\b|\bGMT\b)/i.test(raw)){
+  let direct=Date.parse(raw);if(Number.isFinite(direct))return direct;
+ }
+ let m=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})[^\d]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+ if(m){
+  let h=+m[4];if(m[7]){if(h===12)h=0;if(m[7].toUpperCase()==='PM')h+=12}
+  return zonedWallTimeToEpoch(+m[3],+m[1],+m[2],h,+m[5],+(m[6]||0),tz);
+ }
+ const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+ m=raw.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})[^\d]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+ if(m){
+  let h=+m[4];if(m[7]){if(h===12)h=0;if(m[7].toUpperCase()==='PM')h+=12}
+  return zonedWallTimeToEpoch(+m[3],months[m[1].slice(0,3).toLowerCase()],+m[2],h,+m[5],+(m[6]||0),tz);
+ }
+ let direct=Date.parse(raw);
+ return Number.isFinite(direct)?direct:null;
+}
+function quoteTimestampMs(s,preferTr=false){
+ if(preferTr&&trTradable(s)){
+  return parseMarketTimestamp(s&&s.trLiveLastAt,'Europe/Berlin')||
+   parseMarketTimestamp(s&&s.trLiveUpdatedAt,'Europe/Berlin')||
+   parseMarketTimestamp(s&&s.trLiveReceivedAt,'Europe/Berlin')||null;
+ }
+ return parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York')||
+  parseMarketTimestamp(s&&s.usLiveReceivedAt,'Europe/Madrid')||
+  parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null;
+}
+function quoteUpdatedLabel(s,preferTr=false){
+ let ms=quoteTimestampMs(s,preferTr);
+ return ms?'ES '+quoteClockFormat.format(new Date(ms)):'ES --:--:--';
+}
 function pricePairInner(s,p,preferTr=false){
- let d='\u0024',dec=quotePrecision(s,preferTr,p);
+ let d='\u0024',dec=quotePrecision(s,preferTr,p),updated='<small class="quote-updated">'+quoteUpdatedLabel(s,preferTr)+'</small>';
  if(preferTr&&trTradable(s)){
   let x=trPriceValues(s,p);
-  return '<strong>'+quoteMoney(x.eur,'€',dec)+'</strong><small>/ '+quoteMoney(x.usd,d,dec)+'</small>';
+  return '<strong>'+quoteMoney(x.eur,'€',dec)+'</strong><small>/ '+quoteMoney(x.usd,d,dec)+'</small>'+updated;
  }
  let x=usPriceValues(s,p);
- return '<strong>'+quoteMoney(x.usd,d,dec)+'</strong><small>'+quoteMoney(x.eur,'€',dec)+'</small>';
+ return '<strong>'+quoteMoney(x.usd,d,dec)+'</strong><small>'+quoteMoney(x.eur,'€',dec)+'</small>'+updated;
 }
 function pricePair(s,p,preferTr=false){
  let liveAttrs=preferTr&&trTradable(s)?' data-tr-live-key="'+E(stockKey(s))+'"':' data-us-live-key="'+E(stockKey(s))+'"';
@@ -1003,7 +1060,7 @@ function miniChart(s,preferTr=false){
   ?'Comprobando qué mercados están realmente disponibles en TradingView…'
   :'Mostrando <b>'+E(chartMarketName(s,false))+'</b>.';
  return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+
-  '<div class="mini-chart-title"><div><strong>TradingView · velas 1 min</strong><span>Horario extendido cuando TradingView lo ofrece para ese mercado.</span></div>'+controls+'</div>'+
+  '<div class="mini-chart-title"><div><strong>TradingView · velas 1 min</strong><span>Hora España · el gráfico puede llevar retraso frente a la cotización en vivo.</span></div>'+controls+'</div>'+
   '<div class="chart-market-caption">'+caption+'</div>'+
   '<div class="mini-chart tv-advanced-chart" data-stock-key="'+E(stockKey(s))+'" data-chart-market="us"><div class="chart-placeholder">'+(checkTr?'Comprobando disponibilidad en TradingView…':'Cargando TradingView…')+'</div></div></div>';
 }
@@ -1030,7 +1087,7 @@ function renderTradingViewChart(el,market){
   autosize:true,
   symbol,
   interval:'1',
-  timezone:useTr?'Europe/Berlin':'America/New_York',
+  timezone:'Europe/Madrid',
   theme:currentTheme()==='light'?'light':'dark',
   style:'1',
   locale:'es',
@@ -1300,7 +1357,7 @@ function quickProfileHtml(s){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p><div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · velas 1 min · mercado sincronizado con la ficha</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Hora España · TradingView puede diferir del último precio recibido</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
   '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
@@ -1365,7 +1422,7 @@ function profileHtml(s,view){
  return '<div class="profile-toolbar"><button type="button" class="btn ghost profile-back" data-profile-back="'+E(view)+'">← Volver al catálogo</button><span>Snapshot base '+E(updated)+'</span></div>'+
   '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title)+'</h2><p>'+E(s.name||'')+'</p></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
   trRelation+trNote+feedWarning+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · mismo feed que el precio mostrado</span></div>'+miniChart(s,isTr)+'</section>'+
+  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>1 minuto · hora España · TradingView puede ir retrasado frente al precio en vivo</span></div>'+miniChart(s,isTr)+'</section>'+
   '<section class="profile-section"><h3>Identificación y mercados</h3><div class="profile-identity-grid">'+identity+'</div></section>'+
   '<section class="profile-section"><h3>Mercado y técnicos</h3><div class="profile-kpi-grid">'+kpis+'</div></section>'+
   '<section class="profile-section"><div class="profile-section-head"><h3>Próximos eventos</h3><span>'+upcoming.length+' cargados</span></div><div class="event-list profile-events">'+upHtml+'</div></section>'+
@@ -2485,6 +2542,7 @@ window.ViewInvAI={
  getStockByKey:key=>stockByKey(key),
  getStockKey:s=>stockKey(s),
  getCurrentStockKey:()=>state.profileKey||null,
+ getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),
  getFavoriteKeys:()=>[...favorites],
  mergeFavoriteKeys:keys=>{
   let changed=false;
