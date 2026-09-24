@@ -2144,10 +2144,52 @@ async function load(force=false){
   loading=false
  }
 }
-let appHistoryReady=false,appHistoryRestoring=false,appHistoryRoot=null;
+const NAV_META={
+ entry:{icon:'◈',short:'Entrada',base:4},
+ recommendation:{icon:'◎',short:'Recom.',base:3.5},
+ alerts:{icon:'●',short:'Avisos',base:3},
+ catalog:{icon:'▤',short:'TR',base:2.5},
+ heatmap:{icon:'▦',short:'Mapa',base:2},
+ future:{icon:'✦',short:'Futuro',base:1.5},
+ calendar:{icon:'▣',short:'Calendario',base:1},
+ catalogUS:{icon:'▥',short:'EEUU',base:.5},
+ settings:{icon:'⚙',short:'Ajustes',base:.25}
+};
+let navUsage=readNavigationUsage();
+function readNavigationUsage(){
+ try{let x=JSON.parse(localStorage.getItem(NAV_USAGE_KEY)||'{}');return x&&typeof x==='object'?x:{}}catch(_){return{}}
+}
+function saveNavigationUsage(){try{localStorage.setItem(NAV_USAGE_KEY,JSON.stringify(navUsage))}catch(_){}}
+function navigationScore(v){
+ let x=navUsage[v]||{},count=Math.max(0,N(x.count)??0),last=Math.max(0,N(x.lastUsed)??0),recent=last?Math.max(0,1-(Date.now()-last)/(14*86400000))*.35:0;
+ return (NAV_META[v]?.base||0)+count+recent;
+}
+function navigationOrder(){
+ return Object.keys(NAV_META).sort((a,b)=>navigationScore(b)-navigationScore(a)||(NAV_META[b].base-NAV_META[a].base));
+}
+function recordNavigationUse(v){
+ if(!NAV_META[v])return;
+ let x=navUsage[v]||{count:0,lastUsed:0};x.count=(N(x.count)??0)+1;x.lastUsed=Date.now();navUsage[v]=x;saveNavigationUsage();
+}
+function renderAdaptiveNavigation(){
+ let order=navigationOrder(),side=$('#sidebar .nav');
+ if(side){
+  let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
+  order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
+ }
+ let direct=order.slice(0,4),rest=order.slice(4),bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
+ if(bottom){
+  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><small>'+E(NAV_META[v].short)+'</small></button>').join('')+
+   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
+ }
+ if(grid){
+  grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b></button>').join('');
+ }
+ syncMobileNavigation();
+}
 function syncMobileNavigation(){
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
- let direct=['entry','recommendation','alerts','catalog'];
+ let direct=$$('.mobile-nav-item[data-mobile-view]').map(x=>x.dataset.mobileView);
  let more=$('.mobile-nav-item[data-mobile-more]');
  if(more)more.classList.toggle('active',!direct.includes(state.currentView));
 }
@@ -2165,17 +2207,20 @@ function toggleMobileMore(force){
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
  document.body.classList.toggle('mobile-more-open',open);
 }
-function appHistorySnapshot(){
- return {__viewinvai:1,view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',profileOriginView:state.profileOriginView||null,profileOriginScroll:Math.max(0,Math.round(state.profileOriginScroll||0)),profilePreferTr:state.profilePreferTr,scrollY:Math.max(0,Math.round(window.scrollY||0))};
+
+let appHistoryReady=false,appHistoryRestoring=false;
+function appHistoryDepth(){let d=N(history.state&&history.state.__viewinvaiDepth);return d===null?0:Math.max(0,Math.round(d))}
+function appHistorySnapshot(depth=appHistoryDepth()){
+ return {__viewinvai:1,__viewinvaiDepth:depth,view:state.currentView||'entry',profileKey:state.profileKey||null,profileReason:state.profileReason||'',profileOriginView:state.profileOriginView||null,profileOriginScroll:Math.max(0,Math.round(state.profileOriginScroll||0)),profilePreferTr:state.profilePreferTr,scrollY:Math.max(0,Math.round(window.scrollY||0))};
 }
 function appHistoryUrl(snap){return location.pathname+location.search+'#app/'+encodeURIComponent(snap.view||'entry')+(snap.profileKey?'/stock/'+encodeURIComponent(snap.profileKey):'')}
 function replaceCurrentAppHistory(){
  if(!appHistoryReady||appHistoryRestoring)return;
- let snap=appHistorySnapshot();history.replaceState(snap,'',appHistoryUrl(snap));
+ let snap=appHistorySnapshot(appHistoryDepth());history.replaceState(snap,'',appHistoryUrl(snap));
 }
 function pushCurrentAppHistory(){
  if(!appHistoryReady||appHistoryRestoring)return;
- let snap=appHistorySnapshot(),cur=history.state;
+ let cur=history.state,snap=appHistorySnapshot(appHistoryDepth()+1);
  if(cur&&cur.__viewinvai===1&&cur.view===snap.view&&cur.profileKey===snap.profileKey)return;
  history.pushState(snap,'',appHistoryUrl(snap));
 }
@@ -2189,7 +2234,7 @@ function applyAppHistorySnapshot(snap){
  state.profilePreferTr=snap.profilePreferTr===true?true:snap.profilePreferTr===false?false:null;
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+state.currentView));
  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===state.currentView));
- syncMobileNavigation();$('#sidebar')?.classList.remove('open');
+ renderAdaptiveNavigation();$('#sidebar')?.classList.remove('open');
  let box=$('#stockQuickDetail');
  if(state.profileKey){document.body.classList.add('stock-detail-open');if(box)box.classList.remove('is-hidden');if(db.stocks.length)renderQuickProfile()}
  else{document.body.classList.remove('stock-detail-open');if(box){box.classList.add('is-hidden');box.innerHTML=''}renderCurrentView()}
@@ -2198,31 +2243,54 @@ function applyAppHistorySnapshot(snap){
  appHistoryRestoring=false;
 }
 function initAppHistory(){
- let current=appHistorySnapshot(),root=Object.assign({},current,{profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,scrollY:0,root:true});
- appHistoryRoot=root;
- history.replaceState(root,'',appHistoryUrl(root));
- if(current.profileKey)history.pushState(current,'',appHistoryUrl(current));
- else history.pushState(Object.assign({},root,{root:false,guard:true}),'',appHistoryUrl(root));
- appHistoryReady=true;
- window.addEventListener('popstate',e=>{
-  closeMobileMore();
-  let snap=e.state;
-  if(!snap||snap.__viewinvai!==1){
-   history.pushState(Object.assign({},appHistoryRoot,{root:false,guard:true}),'',appHistoryUrl(appHistoryRoot));
-   applyAppHistorySnapshot(appHistoryRoot);return;
+ let current=appHistorySnapshot(0);
+ let rootView=current.profileOriginView&&V[current.profileOriginView]?current.profileOriginView:current.view;
+ let root=Object.assign({},current,{__viewinvaiDepth:0,view:rootView,profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,scrollY:0});
+ history.replaceState(root,'',appHistoryUrl(root));appHistoryReady=true;
+ if(current.profileKey){
+  current.__viewinvaiDepth=1;
+  history.pushState(current,'',appHistoryUrl(current));
+ }
+ window.addEventListener('popstate',e=>{if(e.state&&e.state.__viewinvai===1)applyAppHistorySnapshot(e.state)});
+}
+let exitBackTimer=null,lastNativeBackAt=0;
+function showExitBackBanner(){
+ let el=$('#exitBackBanner');if(!el)return;
+ if(exitBackTimer)clearTimeout(exitBackTimer);
+ el.classList.add('visible');el.setAttribute('aria-hidden','false');
+ exitBackTimer=setTimeout(()=>{el.classList.remove('visible');el.setAttribute('aria-hidden','true')},1050);
+}
+function closeTransientUiForBack(){
+ let more=$('#mobileMoreSheet');if(more&&more.classList.contains('open')){closeMobileMore();return true}
+ let notification=$('#notificationCenter');if(notification&&notification.classList.contains('open')){$('#notificationClose')?.click();return true}
+ let help=$('#hoverHelpBanner');if(help&&help.classList.contains('visible')){hideHelpBanner();return true}
+ let picker=$('#presetPicker');if(picker&&picker.classList.contains('open')){picker.classList.remove('open');$('#presetTrigger')?.setAttribute('aria-expanded','false');return true}
+ return false;
+}
+function initNativeBackHandling(){
+ let cap=window.Capacitor,app=cap&&cap.Plugins&&cap.Plugins.App;
+ if(!app||typeof app.addListener!=='function')return;
+ app.addListener('backButton',async()=>{
+  if(closeTransientUiForBack())return;
+  if(appHistoryDepth()>0){history.back();return}
+  let now=Date.now();
+  if(lastNativeBackAt&&now-lastNativeBackAt<=1600){
+   lastNativeBackAt=0;
+   if(exitBackTimer){clearTimeout(exitBackTimer);exitBackTimer=null}
+   let el=$('#exitBackBanner');if(el){el.classList.remove('visible');el.setAttribute('aria-hidden','true')}
+   if(typeof app.exitApp==='function')await app.exitApp();
+   return;
   }
-  applyAppHistorySnapshot(snap);
-  if(snap.root){
-   setTimeout(()=>history.pushState(Object.assign({},appHistoryRoot,{root:false,guard:true}),'',appHistoryUrl(appHistoryRoot)),0);
-  }
+  lastNativeBackAt=now;showExitBackBanner();
  });
 }
-function show(v,preserveProfile=false,recordHistory=true){
+function show(v,preserveProfile=false,recordHistory=true,trackUsage=true){
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
+ if(trackUsage)recordNavigationUse(v);
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
  state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');
- document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));syncMobileNavigation();
+ document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAdaptiveNavigation();
  $('#sidebar').classList.remove('open');closeMobileMore();saveUiState();render();window.scrollTo({top:0,behavior:'auto'});
  if(recordHistory)pushCurrentAppHistory();
 }
@@ -2242,8 +2310,14 @@ function clock(){
 }
 
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
-$$('[data-mobile-view]').forEach(x=>x.addEventListener('click',()=>{let v=x.dataset.mobileView;if(v)show(v)}));
-$('.mobile-nav-item[data-mobile-more]')?.addEventListener('click',()=>toggleMobileMore());
+document.addEventListener('click',e=>{
+ let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
+ if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
+  e.preventDefault();let v=mobileView.dataset.mobileView;if(v)show(v);return;
+ }
+ let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
+ if(mobileMore){e.preventDefault();toggleMobileMore();return}
+});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 let keepScreenAwakeToggle=$('#keepScreenAwake');
@@ -2371,8 +2445,9 @@ document.addEventListener('drop',e=>{
 
 applyTheme(readTheme(),false);
 restoreUiState();
-syncMobileNavigation();
+renderAdaptiveNavigation();
 initAppHistory();
+initNativeBackHandling();
 syncDeviceSettingsUi();
 syncScreenWakeLock();
 toUI(state.filters);
@@ -2397,5 +2472,9 @@ document.addEventListener('visibilitychange',()=>{
 });
 setInterval(clock,1000);
 setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},5000);
+window.ViewInvAI={
+ openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
+ highConvictionRecommendation
+};
 setInterval(()=>load(false),DATA_REFRESH_MS);
 load(true);
