@@ -950,7 +950,7 @@ function toggleFavorite(key,preferTr=null){
  }
  if(favorites.has(key))favorites.delete(key);else favorites.add(key);
  saveFavorites();
- $('.fav-star').forEach(b=>{
+ $$('.fav-star').forEach(b=>{
   if(b.dataset.favKey!==key)return;
   let on=favorites.has(key);
   b.classList.toggle('active',on);
@@ -2508,7 +2508,7 @@ document.addEventListener('click',e=>{
  if(heatTile){
   e.preventDefault();e.stopPropagation();
   heatmapState.selectedStockKey=heatTile.dataset.heatSelect||null;
-  $('#heatmapResults .heat-stock').forEach(x=>x.classList.toggle('selected',x.dataset.heatSelect===heatmapState.selectedStockKey));
+  $$('#heatmapResults .heat-stock').forEach(x=>x.classList.toggle('selected',x.dataset.heatSelect===heatmapState.selectedStockKey));
   heatmapHoverCardFor(heatTile);
   return;
  }
@@ -2615,7 +2615,7 @@ function recordNavigationUse(v){
 function renderAdaptiveNavigation(){
  let order=navigationOrder(),side=$('#sidebar .nav');
  if(side){
-  let nodes=new Map($('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
+  let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
  const direct=['home','portfolios','recommendation','entry'];
@@ -2943,7 +2943,7 @@ window.ViewInvAI={
  renderEmbeddedStockDetail,
  getEurUsd:()=>eurUsd(),
  getFavoriteKeys:()=>[...favorites],
- replaceFavoriteKeys:keys=>{favorites=new Set((Array.isArray(keys)?keys:[]).filter(Boolean));saveFavorites();renderFavorites();$('.fav-star').forEach(b=>{let on=favorites.has(b.dataset.favKey);b.classList.toggle('active',on);b.textContent=on?'★':'☆'});return true;},
+ replaceFavoriteKeys:keys=>{favorites=new Set((Array.isArray(keys)?keys:[]).filter(Boolean));saveFavorites();renderFavorites();$$('.fav-star').forEach(b=>{let on=favorites.has(b.dataset.favKey);b.classList.toggle('active',on);b.textContent=on?'★':'☆'});return true;},
  mergeFavoriteKeys:keys=>{
   let changed=false;
   for(let key of (Array.isArray(keys)?keys:[])){if(key&&!favorites.has(key)){favorites.add(key);changed=true}}
