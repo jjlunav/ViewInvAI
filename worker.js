@@ -371,6 +371,34 @@ async function nasdaqQuotes(request) {
   );
 }
 
+
+async function liveEurUsd() {
+  const response = await fetch("https://scanner.tradingview.com/forex/scan", {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0"
+    },
+    body: JSON.stringify({
+      symbols: { tickers: ["FX_IDC:EURUSD"], query: { types: [] } },
+      columns: ["close"]
+    }),
+    cf: { cacheTtl: 0, cacheEverything: false }
+  });
+  if (!response.ok) throw new Error("TradingView FX " + response.status);
+  const payload = await response.json();
+  const rows = payload && Array.isArray(payload.data) ? payload.data : [];
+  const rate = rows.length && Array.isArray(rows[0].d) ? Number(rows[0].d[0]) : NaN;
+  if (!Number.isFinite(rate) || rate <= 0) throw new Error("Invalid EUR/USD");
+  return jsonResponse({
+    pair: "EURUSD",
+    rate,
+    source: "TradingView FX_IDC:EURUSD",
+    updatedAt: new Date().toISOString()
+  }, 200, { "Cache-Control": "no-store, no-cache, must-revalidate" });
+}
+
 function validTrClientMessage(data, state) {
   if (typeof data !== "string" || data.length > 512) return false;
   if (data === "connect 30") {
@@ -478,6 +506,7 @@ function isBackendApiPath(pathname) {
     pathname === "/api/positions" || pathname.startsWith("/api/positions/") ||
     pathname === "/api/watchlist" || pathname.startsWith("/api/watchlist/") ||
     pathname === "/api/analysis" || pathname.startsWith("/api/analysis/") ||
+    pathname === "/api/ai" || pathname.startsWith("/api/ai/") ||
     pathname === "/api/alerts" || pathname.startsWith("/api/alerts/") ||
     pathname === "/api/settings" ||
     pathname === "/api/devices" || pathname.startsWith("/api/devices/");
@@ -499,6 +528,14 @@ export default {
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
       return nasdaqQuotes(request);
+    }
+    if (url.pathname === "/api/fx-live") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return await liveEurUsd(); }
+      catch (error) {
+        console.warn("FX live upstream error", String(error && error.message || error));
+        return jsonResponse({ error: "FX unavailable" }, 502, { "Cache-Control": "no-store" });
+      }
     }
     if (url.pathname === "/api/us-chart") {
       const guard = requestGuard(request); if (guard) return guard;
