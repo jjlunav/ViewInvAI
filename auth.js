@@ -19,6 +19,7 @@ const $ = selector => document.querySelector(selector);
 
 function isNativePlatform() {
   try {
+    if (nativeAuthPlugin()) return true;
     return !!(window.Capacitor && typeof window.Capacitor.getPlatform === "function" && window.Capacitor.getPlatform() !== "web");
   } catch (_) {
     return false;
@@ -255,7 +256,9 @@ async function signIn() {
       showToast("Falta autorizar este dominio en Firebase Authentication.", true);
     } else if (!code.includes("popup-closed-by-user") && !code.includes("cancel")) {
       const message = error && error.message ? error.message : "No se pudo iniciar sesión con Google.";
-      showToast(native && code ? "Google Android · " + code + " · " + message : message, true);
+      const detail = native ? "Google Android" + (code ? " · " + code : "") + " · " + message : message;
+      window.__viewInvAIAuthLastError = { code, message, native, at: new Date().toISOString() };
+      showToast(detail, true);
     }
   } finally {
     busy = false;
