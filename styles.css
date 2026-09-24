@@ -5579,3 +5579,404 @@ html[data-theme="light"] .portfolio-stock-picker-markets button{
   min-height:34px
  }
 }
+
+
+/* Unified stock cards + sector-tab heatmap + portfolio order editor - 2026-09-25 */
+
+/* Shared contextual line used by Carteras, Potencial futuro and Calendario. */
+.stock-context-line{
+ display:flex;
+ align-items:center;
+ gap:12px;
+ flex-wrap:wrap;
+ min-height:34px;
+ padding:7px 16px;
+ border-top:1px solid rgba(57,83,94,.20);
+ background:#09151c;
+ color:#77909a;
+ font-size:9px
+}
+.stock-context-line strong{color:#dbe8ec;font-size:10px}
+.stock-context-line span{color:#849ca6}
+
+/* Keep the Investing-style action card readable in every list. */
+#view-portfolios .stock-list,
+#view-future .stock-list,
+#view-calendar .stock-list,
+#view-home .home-stock-list{
+ border-radius:14px!important;
+ overflow:hidden
+}
+#view-portfolios .investing-stock-row,
+#view-future .investing-stock-row,
+#view-calendar .investing-stock-row,
+#view-home .investing-stock-row{
+ min-height:104px!important;
+ padding:16px 18px!important
+}
+#view-portfolios .investing-stock-copy .stock-name,
+#view-future .investing-stock-copy .stock-name,
+#view-calendar .investing-stock-copy .stock-name,
+#view-home .investing-stock-copy .stock-name{
+ font-size:17px!important
+}
+#view-portfolios .stock-list-price .price-pair>strong,
+#view-future .stock-list-price .price-pair>strong,
+#view-calendar .stock-list-price .price-pair>strong,
+#view-home .stock-list-price .price-pair>strong{
+ font-size:22px!important
+}
+#view-portfolios .stock-market-line,
+#view-future .stock-market-line,
+#view-calendar .stock-market-line,
+#view-home .stock-market-line{
+ min-height:36px!important;
+ padding:7px 18px!important
+}
+.home-stock-list{display:grid;gap:0!important}
+.home-investing-card{width:100%}
+
+/* Carteras workbar: tabs, +, overflow, pencil, add-position, refresh. */
+.portfolio-workbar{
+ grid-template-columns:minmax(0,1fr) auto auto!important;
+ gap:7px!important
+}
+.portfolio-tabs-wrap{
+ width:auto!important;
+ max-width:100%;
+ justify-content:flex-start!important
+}
+.portfolio-tabs-track{
+ flex:0 1 auto!important;
+ width:max-content!important;
+ max-width:calc(100% - 126px)!important;
+ overflow:hidden!important
+}
+.portfolio-tab-add{
+ flex:0 0 36px!important;
+ margin-left:0!important
+}
+.portfolio-tabs-edit{
+ flex:0 0 36px;
+ width:36px;
+ height:36px;
+ min-width:36px;
+ min-height:36px;
+ display:grid;
+ place-items:center;
+ border:1px solid #2b4652;
+ border-radius:9px;
+ background:#0a1921;
+ color:#8fa8b2;
+ cursor:pointer;
+ font-size:15px
+}
+.portfolio-tabs-edit:hover{
+ background:#112a33;
+ color:#c4d3d8;
+ border-color:#4d6f7b
+}
+.portfolio-workbar>.portfolio-add-current{
+ margin-left:2px!important
+}
+
+/* Portfolio position context beneath the shared market card. */
+.portfolio-position-context{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:14px;
+ width:100%
+}
+.portfolio-position-numbers{
+ display:flex;
+ align-items:center;
+ gap:12px;
+ flex-wrap:wrap
+}
+.portfolio-position-numbers span{
+ color:#77909a;
+ font-size:9px
+}
+.portfolio-position-numbers b{
+ color:#c9d8dd;
+ font-weight:760
+}
+.portfolio-position-actions{
+ margin-left:auto;
+ display:flex;
+ align-items:center;
+ gap:10px
+}
+.portfolio-position-signal{
+ color:#6fddbb;
+ font-size:9px;
+ font-weight:800;
+ text-transform:uppercase;
+ letter-spacing:.25px
+}
+.portfolio-investing-card .portfolio-analyze{
+ min-height:32px!important;
+ padding:5px 10px!important
+}
+
+/* Portfolio order editor opened by the pencil. */
+.portfolio-order-editor{display:grid;gap:10px}
+.portfolio-order-editor>p{
+ margin:0;
+ color:#78909a;
+ font-size:9px
+}
+.portfolio-order-list{display:grid;gap:5px}
+.portfolio-order-row{
+ display:grid;
+ grid-template-columns:24px minmax(0,1fr) auto;
+ align-items:center;
+ gap:8px;
+ padding:8px 9px;
+ border:1px solid #263f4a;
+ border-radius:9px;
+ background:#091820
+}
+.portfolio-order-handle{
+ color:#68838d;
+ font-size:16px;
+ text-align:center
+}
+.portfolio-order-row strong{
+ min-width:0;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ color:#dce8ec;
+ font-size:10px
+}
+.portfolio-order-row>div{display:flex;gap:4px}
+.portfolio-order-row button{
+ width:31px;height:31px;
+ border:1px solid #2b4a55;
+ border-radius:7px;
+ background:#0e212a;
+ color:#a9bec6;
+ cursor:pointer
+}
+.portfolio-order-row button:disabled{opacity:.25;cursor:default}
+
+/* Heatmap: market row, then market-specific sector tabs, then ONE sector at a time. */
+#view-heatmap .heatmap-toolbar{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto auto auto!important;
+ align-items:end!important;
+ gap:8px!important
+}
+.heatmap-market-stack{
+ min-width:0;
+ display:grid;
+ gap:5px
+}
+#view-heatmap .heatmap-market-tabs{
+ width:max-content!important;
+ min-width:0!important
+}
+.heatmap-sector-tabs{
+ min-width:0;
+ display:flex;
+ align-items:center;
+ gap:4px;
+ overflow-x:auto;
+ overflow-y:hidden;
+ padding:1px 0 2px;
+ scrollbar-width:thin
+}
+.heatmap-sector-tab{
+ flex:0 0 auto;
+ min-height:27px;
+ display:flex;
+ align-items:center;
+ gap:6px;
+ padding:4px 8px;
+ border:1px solid #263f49;
+ border-radius:7px;
+ background:#091820;
+ color:#78909a;
+ cursor:pointer
+}
+.heatmap-sector-tab strong{
+ color:#a9bbc2;
+ font-size:8px;
+ font-weight:760;
+ white-space:nowrap
+}
+.heatmap-sector-tab span{
+ min-width:17px;height:17px;
+ display:grid;place-items:center;
+ padding:0 4px;
+ border-radius:999px;
+ background:#10252e;
+ color:#78919b;
+ font-size:6.5px
+}
+.heatmap-sector-tab b{
+ font-size:7px;
+ font-weight:800
+}
+.heatmap-sector-tab.active{
+ background:#12342b;
+ border-color:#438f77;
+ color:#e9fff8
+}
+.heatmap-sector-tab.active strong{color:#e9fff8}
+.heatmap-sector-tab.active span{background:#1d5142;color:#9ef0d4}
+
+/* The page itself does not scroll on desktop; selected sector owns the canvas. */
+@media(min-width:721px){
+ #view-heatmap{
+  height:calc(100vh - 4px)!important;
+  min-height:0!important;
+  overflow:hidden!important
+ }
+ #view-heatmap .heatmap-board{
+  display:block!important;
+  height:calc(100vh - 142px)!important;
+  min-height:420px!important;
+  overflow:hidden!important
+ }
+ #view-heatmap .heat-sector-single{
+  width:100%!important;
+  height:100%!important;
+  display:grid!important;
+  grid-template-rows:34px minmax(0,1fr)!important;
+  grid-column:auto!important;
+  grid-row:auto!important;
+  border-radius:7px!important
+ }
+ #view-heatmap .heat-sector-single .heat-sector-head{
+  min-height:34px!important;
+  padding:5px 9px!important
+ }
+ #view-heatmap .heat-sector-single .heat-sector-head strong{font-size:11px!important}
+ #view-heatmap .heat-sector-single .heat-sector-head small{font-size:7px!important}
+ #view-heatmap .heat-sector-single .heat-sector-head b{font-size:10px!important}
+
+ #view-heatmap .heat-sector-single .heat-sector-grid{
+  display:grid!important;
+  grid-template-columns:repeat(var(--heat-cols),minmax(0,1fr))!important;
+  grid-template-rows:repeat(var(--heat-rows),minmax(0,1fr))!important;
+  grid-auto-flow:row!important;
+  gap:2px!important;
+  padding:2px!important;
+  height:100%!important;
+  overflow:hidden!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock{
+  grid-column:span 1!important;
+  grid-row:span 1!important;
+  min-width:0!important;
+  min-height:0!important;
+  padding:5px!important;
+  display:grid!important;
+  place-content:center!important;
+  text-align:center!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock strong{
+  font-size:clamp(9px,1vw,15px)!important;
+  line-height:1.05!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock span{
+  font-size:clamp(8px,.72vw,11px)!important;
+  line-height:1.05!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock small{
+  display:block!important;
+  font-size:clamp(6px,.55vw,9px)!important;
+  line-height:1.1!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock:hover,
+ #view-heatmap .heat-sector-single .heat-stock:focus-visible{
+  transform:scale(1.075)!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock.selected{
+  transform:scale(1.055)!important
+ }
+}
+
+/* Mobile: same sector-tab model; tiles remain readable and the page may scroll if required. */
+@media(max-width:720px){
+ #view-heatmap .heatmap-toolbar{
+  grid-template-columns:1fr 1fr!important;
+  align-items:start!important
+ }
+ .heatmap-market-stack{grid-column:1/-1}
+ .heatmap-sector-tabs{max-width:100vw}
+ #view-heatmap .heatmap-board{
+  height:auto!important;
+  min-height:520px!important;
+  display:block!important
+ }
+ #view-heatmap .heat-sector-single{
+  display:grid!important;
+  grid-template-rows:34px auto!important;
+  height:auto!important
+ }
+ #view-heatmap .heat-sector-single .heat-sector-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  grid-auto-rows:92px!important;
+  gap:2px!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock{
+  grid-column:span 1!important;
+  grid-row:span 1!important
+ }
+ #view-heatmap .heat-sector-single .heat-stock strong{font-size:12px!important}
+ #view-heatmap .heat-sector-single .heat-stock span{font-size:10px!important}
+ #view-heatmap .heat-sector-single .heat-stock small{display:block!important;font-size:8px!important}
+
+ .portfolio-position-context{
+  align-items:flex-start;
+  flex-direction:column
+ }
+ .portfolio-position-actions{
+  width:100%;
+  margin-left:0;
+  justify-content:space-between
+ }
+ .portfolio-workbar{
+  grid-template-columns:minmax(0,1fr) auto!important
+ }
+ .portfolio-tabs-track{
+  max-width:calc(100% - 116px)!important
+ }
+}
+
+/* Light theme */
+html[data-theme="light"] .stock-context-line{
+ background:#f7fafb;
+ border-color:#d7e2e6;
+ color:#5c7480
+}
+html[data-theme="light"] .stock-context-line strong{color:#18323c}
+html[data-theme="light"] .portfolio-tabs-edit{
+ background:#fff;
+ border-color:#adc1ca;
+ color:#47616c
+}
+html[data-theme="light"] .portfolio-order-row{
+ background:#fff;
+ border-color:#c4d4da
+}
+html[data-theme="light"] .portfolio-order-row strong{color:#17313c}
+html[data-theme="light"] .portfolio-order-row button{
+ background:#f3f7f8;
+ color:#35515d;
+ border-color:#b3c6ce
+}
+html[data-theme="light"] .heatmap-sector-tab{
+ background:#fff;
+ border-color:#bdcfd6
+}
+html[data-theme="light"] .heatmap-sector-tab strong{color:#405b66}
+html[data-theme="light"] .heatmap-sector-tab.active{
+ background:#dff2eb;
+ border-color:#61a98f
+}
+html[data-theme="light"] .heatmap-sector-tab.active strong{color:#124c3f}
