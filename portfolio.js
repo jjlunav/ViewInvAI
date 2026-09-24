@@ -312,6 +312,18 @@ async function addPosition(payload) {
     const index = state.positions.findIndex(item => item.id === data.position.id);
     if (index >= 0) state.positions[index] = data.position;
     else state.positions.unshift(data.position);
+    syncPortfolioStars();
+    setTimeout(async () => {
+      try {
+        await api("/api/analysis/run", {
+          method: "POST",
+          body: JSON.stringify({ subjectType: "position", subjectId: data.position.id })
+        });
+        await loadAll();
+      } catch (error) {
+        console.warn("Automatic position AI analysis failed", error);
+      }
+    }, 50);
   }
   return data.position;
 }
