@@ -2978,3 +2978,48 @@ html[data-theme="light"] .portfolio-empty-state{background:#fafcfc;border-color:
  .portfolio-toast{bottom:calc(var(--mobile-nav-h) + 15px + env(safe-area-inset-bottom))}
  .profile-primary-actions .btn{min-height:32px;font-size:8px;padding:5px 8px}
 }
+
+
+/* Quote timestamps and simplified top bar */
+.topbar-right{justify-content:flex-end}
+.quote-updated{
+ display:block;
+ flex:0 0 100%;
+ width:100%;
+ margin-top:1px;
+ font-size:7px!important;
+ line-height:1.1;
+ color:#6f8792!important;
+ font-weight:650!important;
+ text-align:right;
+ letter-spacing:.15px;
+ font-variant-numeric:tabular-nums;
+ white-space:nowrap;
+}
+.price-pair{
+ flex-wrap:wrap;
+ justify-content:flex-end;
+}
+.table-price-wrap{
+ display:inline-grid;
+ justify-items:end;
+ gap:2px;
+ line-height:1.05;
+}
+.table-quote-updated{
+ width:auto;
+ margin-top:0;
+ font-size:6.5px!important;
+}
+.leader-price .quote-updated,
+.favorite-main .quote-updated{font-size:6px!important}
+.profile-live .quote-updated{font-size:8px!important}
+.catalog-mobile-quote .quote-updated,
+.stock-quick .quote-updated{font-size:7px!important}
+@media(max-width:720px){
+ .topbar-right{justify-content:flex-end!important}
+ .account-area{margin-left:auto}
+ .quote-updated{font-size:7px!important}
+ .profile-live .quote-updated{font-size:7.5px!important}
+}
+html[data-theme="light"] .quote-updated{color:#6e8189!important}
