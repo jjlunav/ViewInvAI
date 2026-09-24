@@ -66,7 +66,7 @@ jobs:
               -keysize 2048 \
               -validity 10000
           fi
-          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|Valid from:"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA1:|SHA256:|Valid from:"
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund

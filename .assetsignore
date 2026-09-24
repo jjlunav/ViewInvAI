@@ -7,3 +7,9 @@ worker.js
 .git/
 requirements.txt
 requirements-security.txt
+backend.js
+migrations/
+docs/
+package.json
+ANDROID.md
+google-services.json

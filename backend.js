@@ -1,0 +1,907 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const FIREBASE_JWKS = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
+  { cooldownDuration: 30000, cacheMaxAge: 3600000, timeoutDuration: 5000 }
+);
+
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const MAX_BODY_BYTES = 32768;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function uid(prefix = "") {
+  return prefix + crypto.randomUUID();
+}
+
+function trimText(value, max = 240) {
+  return String(value == null ? "" : value).trim().slice(0, max);
+}
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function booleanInt(value) {
+  return value === true || value === 1 || value === "1" ? 1 : 0;
+}
+
+function defaultJson(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff"
+    }
+  });
+}
+
+function apiGuard(request) {
+  const allowed = new Set(["GET", "POST", "PATCH", "DELETE"]);
+  if (!allowed.has(request.method)) return { status: 405, error: "Method not allowed" };
+  const url = new URL(request.url);
+  const origin = request.headers.get("Origin");
+  if (origin && origin !== url.origin) return { status: 403, error: "Forbidden" };
+  const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
+  if (site && !["same-origin", "none"].includes(site)) return { status: 403, error: "Forbidden" };
+  if (["POST", "PATCH", "DELETE"].includes(request.method)) {
+    const type = String(request.headers.get("Content-Type") || "").toLowerCase();
+    if (request.method !== "DELETE" && type && !type.startsWith("application/json")) {
+      return { status: 415, error: "Content-Type must be application/json" };
+    }
+  }
+  return null;
+}
+
+async function readJson(request) {
+  const len = Number(request.headers.get("Content-Length") || 0);
+  if (Number.isFinite(len) && len > MAX_BODY_BYTES) throw new Error("Payload too large");
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) throw new Error("Payload too large");
+  if (!text) return {};
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid JSON object");
+  return parsed;
+}
+
+async function verifyFirebaseUser(request, env) {
+  if (!env.DB) return { error: "D1 backend not configured", status: 503 };
+  const projectId = String(env.FIREBASE_PROJECT_ID || "").trim();
+  if (!projectId) return { error: "Firebase authentication not configured", status: 503 };
+
+  const auth = String(request.headers.get("Authorization") || "");
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) return { error: "Authentication required", status: 401 };
+
+  try {
+    const { payload } = await jwtVerify(match[1], FIREBASE_JWKS, {
+      algorithms: ["RS256"],
+      issuer: "https://securetoken.google.com/" + projectId,
+      audience: projectId,
+      clockTolerance: 10
+    });
+
+    const userId = trimText(payload.sub, 128);
+    const email = trimText(payload.email, 320).toLowerCase();
+    if (!userId || !email || payload.email_verified !== true) {
+      return { error: "Verified Google/Firebase account required", status: 401 };
+    }
+
+    const displayName = trimText(payload.name || payload.display_name || email.split("@")[0], 120);
+    const avatarUrl = trimText(payload.picture, 600);
+    const now = nowIso();
+
+    await env.DB.prepare(
+      "INSERT INTO users (id,email,display_name,avatar_url,auth_provider,created_at,updated_at) VALUES (?,?,?,?,?,?,?) " +
+      "ON CONFLICT(id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name,avatar_url=excluded.avatar_url,updated_at=excluded.updated_at"
+    ).bind(userId, email, displayName, avatarUrl, "firebase-google", now, now).run();
+
+    await env.DB.prepare(
+      "INSERT INTO user_settings (user_id,created_at,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO NOTHING"
+    ).bind(userId, now, now).run();
+
+    return {
+      user: {
+        id: userId,
+        email,
+        displayName,
+        avatarUrl
+      }
+    };
+  } catch (error) {
+    console.warn("Firebase token verification failed", String(error && error.message || error));
+    return { error: "Invalid or expired authentication token", status: 401 };
+  }
+}
+
+async function onePortfolio(env, userId, portfolioId) {
+  return env.DB.prepare(
+    "SELECT id,user_id,name,broker,base_currency,sort_order,created_at,updated_at FROM portfolios WHERE id=? AND user_id=?"
+  ).bind(portfolioId, userId).first();
+}
+
+function portfolioPayload(body) {
+  return {
+    name: trimText(body.name, 80),
+    broker: trimText(body.broker, 80),
+    baseCurrency: /^[A-Z]{3}$/.test(String(body.baseCurrency || "EUR").toUpperCase())
+      ? String(body.baseCurrency || "EUR").toUpperCase()
+      : "EUR",
+    sortOrder: Math.max(-1000, Math.min(1000, Math.round(finiteNumber(body.sortOrder) || 0)))
+  };
+}
+
+function positionPayload(body) {
+  const stockKey = trimText(body.stockKey, 80).toUpperCase();
+  const ticker = trimText(body.ticker, 20).toUpperCase();
+  return {
+    portfolioId: trimText(body.portfolioId, 80),
+    stockKey,
+    ticker,
+    name: trimText(body.name, 160),
+    exchange: trimText(body.exchange, 40).toUpperCase(),
+    isin: trimText(body.isin, 24).toUpperCase(),
+    preferTr: booleanInt(body.preferTr),
+    quantity: finiteNumber(body.quantity),
+    avgPrice: finiteNumber(body.avgPrice),
+    currency: /^[A-Z]{3}$/.test(String(body.currency || "EUR").toUpperCase())
+      ? String(body.currency || "EUR").toUpperCase()
+      : "EUR",
+    openedAt: trimText(body.openedAt, 40) || null,
+    notes: trimText(body.notes, 1000)
+  };
+}
+
+function watchPayload(body) {
+  return {
+    stockKey: trimText(body.stockKey, 80).toUpperCase(),
+    ticker: trimText(body.ticker, 20).toUpperCase(),
+    name: trimText(body.name, 160),
+    exchange: trimText(body.exchange, 40).toUpperCase(),
+    isin: trimText(body.isin, 24).toUpperCase(),
+    preferTr: booleanInt(body.preferTr),
+    notes: trimText(body.notes, 1000)
+  };
+}
+
+async function handleMe(request, env, user, json) {
+  if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+  const settings = await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(user.id).first();
+  return json({ user, settings: settings || null }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handlePortfolios(request, env, user, json, parts) {
+  const id = parts[1] || "";
+  if (request.method === "GET" && !id) {
+    const rows = await env.DB.prepare(
+      "SELECT p.*, (SELECT COUNT(*) FROM positions x WHERE x.portfolio_id=p.id AND x.active=1) AS position_count " +
+      "FROM portfolios p WHERE p.user_id=? ORDER BY p.sort_order ASC,p.created_at ASC"
+    ).bind(user.id).all();
+    return json({ portfolios: rows.results || [] });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = portfolioPayload(body);
+    if (!data.name) return json({ error: "Portfolio name is required" }, 400);
+    const idNew = uid("pf_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO portfolios (id,user_id,name,broker,base_currency,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)"
+    ).bind(idNew, user.id, data.name, data.broker, data.baseCurrency, data.sortOrder, now, now).run();
+    return json({ portfolio: await onePortfolio(env, user.id, idNew) }, 201);
+  }
+
+  if (!id) return json({ error: "Portfolio id required" }, 400);
+  const existing = await onePortfolio(env, user.id, id);
+  if (!existing) return json({ error: "Portfolio not found" }, 404);
+
+  if (request.method === "PATCH") {
+    const body = await readJson(request);
+    const data = portfolioPayload({
+      name: body.name !== undefined ? body.name : existing.name,
+      broker: body.broker !== undefined ? body.broker : existing.broker,
+      baseCurrency: body.baseCurrency !== undefined ? body.baseCurrency : existing.base_currency,
+      sortOrder: body.sortOrder !== undefined ? body.sortOrder : existing.sort_order
+    });
+    if (!data.name) return json({ error: "Portfolio name is required" }, 400);
+    await env.DB.prepare(
+      "UPDATE portfolios SET name=?,broker=?,base_currency=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(data.name, data.broker, data.baseCurrency, data.sortOrder, nowIso(), id, user.id).run();
+    return json({ portfolio: await onePortfolio(env, user.id, id) });
+  }
+
+  if (request.method === "DELETE") {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM positions WHERE portfolio_id=? AND user_id=?").bind(id, user.id),
+      env.DB.prepare("DELETE FROM portfolios WHERE id=? AND user_id=?").bind(id, user.id)
+    ]);
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
+async function handlePositions(request, env, user, json, parts, url) {
+  const id = parts[2] || "";
+  if (request.method === "GET" && !id) {
+    const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
+    let stmt = portfolioId
+      ? env.DB.prepare("SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at DESC").bind(user.id, portfolioId)
+      : env.DB.prepare("SELECT * FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id);
+    const rows = await stmt.all();
+    return json({ positions: rows.results || [] });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = positionPayload(body);
+    if (!data.portfolioId || !data.stockKey || !data.ticker) {
+      return json({ error: "portfolioId, stockKey and ticker are required" }, 400);
+    }
+    if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
+    const existing = await env.DB.prepare(
+      "SELECT id FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
+    ).bind(user.id, data.portfolioId, data.stockKey).first();
+    const idNew = existing && existing.id ? existing.id : uid("pos_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,opened_at,notes,active,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) " +
+      "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,exchange=excluded.exchange,isin=excluded.isin,prefer_tr=excluded.prefer_tr,quantity=excluded.quantity,avg_price=excluded.avg_price,currency=excluded.currency,opened_at=excluded.opened_at,notes=excluded.notes,active=1,updated_at=excluded.updated_at"
+    ).bind(
+      idNew, data.portfolioId, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin,
+      data.preferTr, data.quantity, data.avgPrice, data.currency, data.openedAt, data.notes, now, now
+    ).run();
+    const row = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew, user.id).first();
+    return json({ position: row }, existing ? 200 : 201);
+  }
+
+  if (!id) return json({ error: "Position id required" }, 400);
+  const existing = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first();
+  if (!existing) return json({ error: "Position not found" }, 404);
+
+  if (request.method === "PATCH") {
+    const body = await readJson(request);
+    const portfolioId = trimText(body.portfolioId !== undefined ? body.portfolioId : existing.portfolio_id, 80);
+    if (!(await onePortfolio(env, user.id, portfolioId))) return json({ error: "Portfolio not found" }, 404);
+    const data = positionPayload({
+      portfolioId,
+      stockKey: existing.stock_key,
+      ticker: body.ticker !== undefined ? body.ticker : existing.ticker,
+      name: body.name !== undefined ? body.name : existing.name,
+      exchange: body.exchange !== undefined ? body.exchange : existing.exchange,
+      isin: body.isin !== undefined ? body.isin : existing.isin,
+      preferTr: body.preferTr !== undefined ? body.preferTr : existing.prefer_tr,
+      quantity: body.quantity !== undefined ? body.quantity : existing.quantity,
+      avgPrice: body.avgPrice !== undefined ? body.avgPrice : existing.avg_price,
+      currency: body.currency !== undefined ? body.currency : existing.currency,
+      openedAt: body.openedAt !== undefined ? body.openedAt : existing.opened_at,
+      notes: body.notes !== undefined ? body.notes : existing.notes
+    });
+    await env.DB.prepare(
+      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,opened_at=?,notes=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(
+      data.portfolioId, data.ticker, data.name, data.exchange, data.isin, data.preferTr, data.quantity,
+      data.avgPrice, data.currency, data.openedAt, data.notes, nowIso(), id, user.id
+    ).run();
+    return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
+  }
+
+  if (request.method === "DELETE") {
+    await env.DB.prepare("UPDATE positions SET active=0,updated_at=? WHERE id=? AND user_id=?").bind(nowIso(), id, user.id).run();
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
+async function handleWatchlist(request, env, user, json, parts) {
+  const id = parts[2] || "";
+  if (request.method === "GET" && !id) {
+    const rows = await env.DB.prepare("SELECT * FROM watchlist WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all();
+    return json({ watchlist: rows.results || [] });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = watchPayload(body);
+    if (!data.stockKey || !data.ticker) return json({ error: "stockKey and ticker are required" }, 400);
+    const existing = await env.DB.prepare("SELECT id FROM watchlist WHERE user_id=? AND stock_key=?").bind(user.id, data.stockKey).first();
+    const idNew = existing && existing.id ? existing.id : uid("wl_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO watchlist (id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id,stock_key) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,exchange=excluded.exchange,isin=excluded.isin,prefer_tr=excluded.prefer_tr,notes=excluded.notes,updated_at=excluded.updated_at"
+    ).bind(idNew, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin, data.preferTr, data.notes, now, now).run();
+    return json({ item: await env.DB.prepare("SELECT * FROM watchlist WHERE id=? AND user_id=?").bind(idNew, user.id).first() }, existing ? 200 : 201);
+  }
+
+  if (!id) return json({ error: "Watchlist id required" }, 400);
+  const existing = await env.DB.prepare("SELECT * FROM watchlist WHERE id=? AND user_id=?").bind(id, user.id).first();
+  if (!existing) return json({ error: "Watchlist item not found" }, 404);
+
+  if (request.method === "PATCH") {
+    const body = await readJson(request);
+    const data = watchPayload({
+      stockKey: existing.stock_key,
+      ticker: body.ticker !== undefined ? body.ticker : existing.ticker,
+      name: body.name !== undefined ? body.name : existing.name,
+      exchange: body.exchange !== undefined ? body.exchange : existing.exchange,
+      isin: body.isin !== undefined ? body.isin : existing.isin,
+      preferTr: body.preferTr !== undefined ? body.preferTr : existing.prefer_tr,
+      notes: body.notes !== undefined ? body.notes : existing.notes
+    });
+    await env.DB.prepare(
+      "UPDATE watchlist SET ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,notes=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(data.ticker, data.name, data.exchange, data.isin, data.preferTr, data.notes, nowIso(), id, user.id).run();
+    return json({ item: await env.DB.prepare("SELECT * FROM watchlist WHERE id=? AND user_id=?").bind(id, user.id).first() });
+  }
+
+  if (request.method === "DELETE") {
+    await env.DB.prepare("DELETE FROM watchlist WHERE id=? AND user_id=?").bind(id, user.id).run();
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
+async function handleAnalysisList(request, env, user, json, url) {
+  if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+  const stockKey = trimText(url.searchParams.get("stockKey"), 80).toUpperCase();
+  const limit = Math.max(1, Math.min(100, Math.round(finiteNumber(url.searchParams.get("limit")) || 30)));
+  const rows = stockKey
+    ? await env.DB.prepare("SELECT * FROM analysis_snapshots WHERE user_id=? AND stock_key=? ORDER BY created_at DESC LIMIT ?").bind(user.id, stockKey, limit).all()
+    : await env.DB.prepare("SELECT * FROM analysis_snapshots WHERE user_id=? ORDER BY created_at DESC LIMIT ?").bind(user.id, limit).all();
+  return json({ analysis: rows.results || [] });
+}
+
+async function handleAlerts(request, env, user, json, parts) {
+  const action = parts[1] || "";
+  if (request.method === "GET" && !action) {
+    const rows = await env.DB.prepare(
+      "SELECT * FROM alert_events WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+    ).bind(user.id).all();
+    return json({ alerts: rows.results || [] });
+  }
+
+  if (request.method === "POST" && action === "read") {
+    const body = await readJson(request);
+    const ids = Array.isArray(body.ids) ? body.ids.map(x => trimText(x, 80)).filter(Boolean).slice(0, 100) : [];
+    if (!ids.length) return json({ updated: 0 });
+    const stamp = nowIso();
+    await env.DB.batch(ids.map(id => env.DB.prepare("UPDATE alert_events SET read_at=? WHERE id=? AND user_id=?").bind(stamp, id, user.id)));
+    return json({ updated: ids.length });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
+function findStock(snapshot, target) {
+  const stocks = snapshot && Array.isArray(snapshot.stocks) ? snapshot.stocks : [];
+  const wanted = String(target.stock_key || "").toUpperCase();
+  if (wanted) {
+    const exact = stocks.find(s => String(s.tvSymbol || ((s.exchange || "") + ":" + (s.ticker || ""))).toUpperCase() === wanted);
+    if (exact) return exact;
+  }
+  const ticker = String(target.ticker || "").toUpperCase();
+  return stocks.find(s => String(s.ticker || "").toUpperCase() === ticker) || null;
+}
+
+function recentEvents(snapshot, stock, limit = 12) {
+  const ticker = String(stock && stock.ticker || "").toUpperCase();
+  const events = snapshot && Array.isArray(snapshot.events) ? snapshot.events : [];
+  return events.filter(e => String(e.ticker || "").toUpperCase() === ticker)
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, limit)
+    .map(e => ({
+      date: e.date || null,
+      type: e.type || e.eventKind || "event",
+      title: trimText(e.title || e.fact || "", 240),
+      impact: trimText(e.impact || e.context || "", 260),
+      url: trimText(e.url || e.sourceUrl || "", 500)
+    }));
+}
+
+function average(values) {
+  const a = values.map(finiteNumber).filter(v => v !== null);
+  return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+}
+
+function chartFeatures(chart) {
+  const raw = chart && Array.isArray(chart.points) ? chart.points : [];
+  const points = raw.map(p => ({
+    price: finiteNumber(p.close !== undefined ? p.close : p.price),
+    volume: finiteNumber(p.volume)
+  })).filter(p => p.price !== null).slice(-240);
+  if (points.length < 20) return { available: false, points: points.length };
+
+  const closes = points.map(p => p.price);
+  const last = closes[closes.length - 1];
+  const sma10 = average(closes.slice(-10));
+  const sma30 = average(closes.slice(-30));
+  const base20 = closes[Math.max(0, closes.length - 21)];
+  const return20 = base20 > 0 ? (last / base20 - 1) * 100 : null;
+  const hi30 = Math.max(...closes.slice(-30));
+  const lo30 = Math.min(...closes.slice(-30));
+  const drawdown30 = hi30 > 0 ? (last / hi30 - 1) * 100 : null;
+  const rangePosition = hi30 > lo30 ? (last - lo30) / (hi30 - lo30) : 0.5;
+  const recentVol = average(points.slice(-8).map(p => p.volume));
+  const priorVol = average(points.slice(-28, -8).map(p => p.volume));
+  const volumeExpansion = recentVol !== null && priorVol > 0 ? recentVol / priorVol : null;
+
+  return {
+    available: true,
+    points: points.length,
+    last,
+    sma10,
+    sma30,
+    trendUp: last > sma10 && sma10 > sma30,
+    return20,
+    drawdown30,
+    rangePosition,
+    volumeExpansion
+  };
+}
+
+function deterministicAssessment(target, stock, chart, events) {
+  let score = 0;
+  const reasons = [];
+  const change = finiteNumber(stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct);
+  const relVolume = finiteNumber(stock.relVolume);
+  const adx = finiteNumber(stock.adx);
+  const rsi = finiteNumber(stock.rsi);
+  const price = finiteNumber(stock.price);
+  const ema20 = finiteNumber(stock.ema20);
+  const ema50 = finiteNumber(stock.ema50);
+
+  if (change !== null) {
+    score += Math.max(-20, Math.min(22, change * 1.4));
+    reasons.push("Movimiento " + change.toFixed(2) + "%");
+  }
+  if (relVolume !== null) {
+    score += Math.min(18, Math.max(-4, (relVolume - 1) * 10));
+    if (relVolume >= 1.5) reasons.push("Volumen relativo " + relVolume.toFixed(2) + "x");
+  }
+  if (adx !== null) score += Math.max(-4, Math.min(12, (adx - 18) * 0.45));
+  if (rsi !== null) {
+    if (rsi >= 45 && rsi <= 70) score += 8;
+    else if (rsi > 78) score -= 8;
+    else if (rsi < 35) score -= 5;
+  }
+  if (price !== null && ema20 !== null && ema50 !== null) {
+    if (price >= ema20 && ema20 >= ema50) {
+      score += 12;
+      reasons.push("Tendencia EMA favorable");
+    } else if (price < ema20 && ema20 < ema50) {
+      score -= 12;
+      reasons.push("Tendencia EMA deteriorada");
+    }
+  }
+  if (chart && chart.available) {
+    if (chart.trendUp) score += 10;
+    else score -= 7;
+    if (chart.return20 !== null && chart.return20 > 0 && chart.return20 <= 12) score += 5;
+    if (chart.return20 !== null && chart.return20 > 20) score -= 8;
+    if (chart.drawdown30 !== null && chart.drawdown30 < -10) score -= 8;
+    if (chart.volumeExpansion !== null && chart.volumeExpansion >= 1.3) score += 5;
+  }
+
+  const text = events.map(e => (e.title + " " + e.impact).toLowerCase()).join(" ");
+  if (/offering|dilution|bankruptcy|delist|halt|clinical hold|failed|missed|downgrade/.test(text)) {
+    score -= 12;
+    reasons.push("Riesgo reciente en noticias/eventos");
+  }
+  if (/approval|approved|contract|award|beat|raises guidance|partnership|positive topline/.test(text)) {
+    score += 8;
+    reasons.push("Catalizador positivo reciente");
+  }
+
+  score = Math.max(-100, Math.min(100, Math.round(score)));
+  const isPosition = target.subject_type === "position";
+  let signal;
+  if (isPosition) {
+    signal = score <= -30 ? "SELL" : score < 0 ? "REVIEW" : "HOLD";
+  } else {
+    signal = score >= 45 ? "BUY" : score < -20 ? "AVOID" : "WATCH";
+  }
+  const confidence = Math.max(55, Math.min(95, 58 + Math.round(Math.abs(score) * 0.35)));
+
+  return {
+    signal,
+    confidence,
+    score,
+    horizon: "1-2d",
+    thesis: isPosition
+      ? (signal === "SELL" ? "La tesis técnica y/o de catalizadores se ha deteriorado; conviene revisar la salida." : "La posición mantiene una estructura compatible con seguimiento activo.")
+      : (signal === "BUY" ? "La acción presenta una combinación favorable de tendencia, actividad y catalizadores." : "Aún no hay confirmación suficiente para una entrada de alta convicción."),
+    riskSummary: score < 0 ? "El balance de riesgo se ha deteriorado." : "Persisten riesgos de volatilidad y cambios rápidos de momentum.",
+    reasons: reasons.slice(0, 4),
+    catalysts: events.slice(0, 4).map(e => e.title).filter(Boolean),
+    engine: "rules-fallback",
+    model: ""
+  };
+}
+
+function extractAiJson(result) {
+  let text = "";
+  if (typeof result === "string") text = result;
+  else if (result && typeof result.response === "string") text = result.response;
+  else if (result && typeof result.result === "string") text = result.result;
+  else if (result && result.response && typeof result.response.response === "string") text = result.response.response;
+  if (!text) return null;
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first < 0 || last <= first) return null;
+  try { return JSON.parse(text.slice(first, last + 1)); } catch (_) { return null; }
+}
+
+async function aiAssessment(env, target, stock, chart, events, fallback) {
+  if (!env.AI || typeof env.AI.run !== "function") return fallback;
+  const model = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+
+  const prompt = [
+    "You are ViewInvAI, a risk-aware market monitoring assistant.",
+    "Use ONLY the supplied structured data. Do not invent facts or news.",
+    "The user may own the stock (position) or only follow it (watchlist).",
+    "For a position, signal must be HOLD, REVIEW, or SELL. For watchlist, signal must be BUY, WATCH, or AVOID.",
+    "BUY and SELL require strong evidence. If data is incomplete, lower confidence.",
+    "Return JSON only with keys: signal, confidence (0-100), score (-100 to 100), horizon, thesis, riskSummary, reasons (max 4 strings), catalysts (max 4 strings).",
+    "",
+    JSON.stringify({
+      subject: {
+        type: target.subject_type,
+        quantity: finiteNumber(target.quantity),
+        avgPrice: finiteNumber(target.avg_price),
+        currency: target.currency || null
+      },
+      stock: {
+        stockKey: target.stock_key,
+        ticker: stock.ticker,
+        name: stock.name,
+        exchange: stock.exchange,
+        price: stock.price,
+        changePct: stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct,
+        relVolume: stock.relVolume,
+        volume: stock.usLiveVolume ?? stock.volume,
+        avgVolume: stock.avgVolume,
+        rsi: stock.rsi,
+        adx: stock.adx,
+        ema20: stock.ema20,
+        ema50: stock.ema50,
+        marketCap: stock.marketCap
+      },
+      chart,
+      recentEvents: events,
+      deterministicReference: {
+        score: fallback.score,
+        signal: fallback.signal
+      }
+    })
+  ].join("\n");
+
+  try {
+    const result = await env.AI.run(model, {
+      prompt,
+      max_tokens: 520,
+      temperature: 0.1
+    });
+    const parsed = extractAiJson(result);
+    if (!parsed) return fallback;
+
+    const isPosition = target.subject_type === "position";
+    const allowed = new Set(isPosition ? ["HOLD", "REVIEW", "SELL"] : ["BUY", "WATCH", "AVOID"]);
+    const signal = String(parsed.signal || "").toUpperCase();
+    if (!allowed.has(signal)) return fallback;
+
+    return {
+      signal,
+      confidence: Math.max(0, Math.min(100, Math.round(finiteNumber(parsed.confidence) ?? fallback.confidence))),
+      score: Math.max(-100, Math.min(100, Math.round(finiteNumber(parsed.score) ?? fallback.score))),
+      horizon: trimText(parsed.horizon || "1-2d", 24) || "1-2d",
+      thesis: trimText(parsed.thesis || fallback.thesis, 500),
+      riskSummary: trimText(parsed.riskSummary || fallback.riskSummary, 500),
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
+      catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
+      engine: "workers-ai",
+      model
+    };
+  } catch (error) {
+    console.warn("Workers AI analysis failed", String(error && error.message || error));
+    return fallback;
+  }
+}
+
+async function maybeCreateAlert(env, target, stock, current, previous) {
+  const previousScore = previous ? finiteNumber(previous.score) : null;
+  const delta = previousScore === null ? 0 : current.score - previousScore;
+  let should = false;
+  let type = "analysis-change";
+  let severity = "info";
+
+  if (target.subject_type === "position") {
+    if (current.signal === "SELL" && current.confidence >= 80 && (!previous || previous.signal !== "SELL")) {
+      should = true; type = "position-sell"; severity = "critical";
+    } else if (current.signal === "REVIEW" && current.confidence >= 78 && (!previous || previous.signal === "HOLD")) {
+      should = true; type = "position-review"; severity = "warning";
+    } else if (previousScore !== null && delta <= -20) {
+      should = true; type = "position-deterioration"; severity = "warning";
+    }
+  } else {
+    if (current.signal === "BUY" && current.confidence >= 85 && (!previous || previous.signal !== "BUY")) {
+      should = true; type = "watchlist-buy"; severity = "high";
+    } else if (previousScore !== null && delta >= 25 && current.score > 20) {
+      should = true; type = "watchlist-improving"; severity = "info";
+    }
+  }
+
+  if (!should) return null;
+
+  const id = uid("al_");
+  const now = nowIso();
+  const title = target.subject_type === "position"
+    ? (current.signal === "SELL" ? "Revisar salida · " : "Cambio en cartera · ") + target.ticker
+    : (current.signal === "BUY" ? "Compra de alta convicción · " : "Mejora relevante · ") + target.ticker;
+  const message = current.thesis || current.riskSummary || "Cambio relevante detectado en el análisis.";
+
+  await env.DB.prepare(
+    "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(
+    id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "",
+    type, severity, title, message, current.snapshotId, now
+  ).run();
+  return id;
+}
+
+async function analyzeTarget(env, target, services) {
+  const snapshot = await services.loadMarketSnapshot(env);
+  const stock = findStock(snapshot, target);
+  if (!stock) throw new Error("Stock not found in market snapshot: " + target.stock_key);
+
+  let chartRaw = null;
+  try { chartRaw = await services.loadChart(stock, target); } catch (error) {
+    console.warn("Chart analysis unavailable", String(error && error.message || error));
+  }
+  const chart = chartFeatures(chartRaw);
+  const events = recentEvents(snapshot, stock);
+  const fallback = deterministicAssessment(target, stock, chart, events);
+  const current = await aiAssessment(env, target, stock, chart, events, fallback);
+
+  const previous = await env.DB.prepare(
+    "SELECT signal,confidence,score,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
+  ).bind(target.user_id, target.subject_type, target.subject_id).first();
+
+  const snapshotId = uid("an_");
+  const now = nowIso();
+  current.snapshotId = snapshotId;
+
+  await env.DB.prepare(
+    "INSERT INTO analysis_snapshots (id,user_id,subject_type,subject_id,stock_key,ticker,signal,confidence,score,previous_score,horizon,thesis,risk_summary,reasons_json,catalysts_json,technical_json,market_json,ai_model,engine,data_timestamp,created_at) " +
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(
+    snapshotId, target.user_id, target.subject_type, target.subject_id, target.stock_key, target.ticker,
+    current.signal, current.confidence, current.score, previous ? previous.score : null, current.horizon,
+    current.thesis, current.riskSummary, JSON.stringify(current.reasons || []), JSON.stringify(current.catalysts || []),
+    JSON.stringify(chart || {}), JSON.stringify({
+      price: stock.price ?? null,
+      changePct: stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct ?? null,
+      relVolume: stock.relVolume ?? null,
+      volume: stock.usLiveVolume ?? stock.volume ?? null,
+      rsi: stock.rsi ?? null,
+      adx: stock.adx ?? null,
+      ema20: stock.ema20 ?? null,
+      ema50: stock.ema50 ?? null
+    }), current.model || "", current.engine || "", snapshot && snapshot.meta && snapshot.meta.updatedAt || null, now
+  ).run();
+
+  const table = target.subject_type === "position" ? "positions" : "watchlist";
+  await env.DB.prepare(
+    "UPDATE " + table + " SET last_analysis_at=?,last_signal=?,last_confidence=?,last_score=?,last_snapshot_id=?,updated_at=? WHERE id=? AND user_id=?"
+  ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
+
+  await maybeCreateAlert(env, target, stock, current, previous);
+
+  return {
+    id: snapshotId,
+    stockKey: target.stock_key,
+    ticker: target.ticker,
+    name: stock.name || target.name || "",
+    subjectType: target.subject_type,
+    subjectId: target.subject_id,
+    signal: current.signal,
+    confidence: current.confidence,
+    score: current.score,
+    previousScore: previous ? previous.score : null,
+    horizon: current.horizon,
+    thesis: current.thesis,
+    riskSummary: current.riskSummary,
+    reasons: current.reasons || [],
+    catalysts: current.catalysts || [],
+    engine: current.engine,
+    model: current.model,
+    createdAt: now
+  };
+}
+
+async function subjectForUser(env, userId, subjectType, subjectId) {
+  if (subjectType === "position") {
+    return env.DB.prepare(
+      "SELECT 'position' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,last_analysis_at FROM positions WHERE id=? AND user_id=? AND active=1"
+    ).bind(subjectId, userId).first();
+  }
+  if (subjectType === "watchlist") {
+    return env.DB.prepare(
+      "SELECT 'watchlist' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,last_analysis_at FROM watchlist WHERE id=? AND user_id=?"
+    ).bind(subjectId, userId).first();
+  }
+  return null;
+}
+
+async function handleSettings(request, env, user, json) {
+  const existing = await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(user.id).first();
+
+  if (request.method === "GET") return json({ settings: existing || null });
+  if (request.method !== "PATCH") return json({ error: "Method not allowed" }, 405);
+
+  const body = await readJson(request);
+  const next = {
+    positions: Math.max(5, Math.min(240, Math.round(finiteNumber(body.analysisPositionsMinutes) ?? finiteNumber(existing && existing.analysis_positions_minutes) ?? 10))),
+    watchlist: Math.max(10, Math.min(1440, Math.round(finiteNumber(body.analysisWatchlistMinutes) ?? finiteNumber(existing && existing.analysis_watchlist_minutes) ?? 30))),
+    buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(existing && existing.min_buy_confidence) ?? 85))),
+    sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(existing && existing.min_sell_confidence) ?? 80))),
+    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(existing && existing.notify_score_change) ?? 20)))
+  };
+  const now = nowIso();
+  await env.DB.prepare(
+    "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
+  ).bind(user.id, next.positions, next.watchlist, next.buy, next.sell, next.change, now, now).run();
+  return json({ settings: await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(user.id).first() });
+}
+
+async function handleDevices(request, env, user, json, parts) {
+  const id = parts[1] || "";
+  if (request.method === "GET" && !id) {
+    const rows = await env.DB.prepare(
+      "SELECT id,platform,app_version,enabled,last_seen_at,created_at,updated_at FROM devices WHERE user_id=? ORDER BY last_seen_at DESC"
+    ).bind(user.id).all();
+    return json({ devices: rows.results || [] });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const token = trimText(body.pushToken, 2048);
+    const platform = trimText(body.platform || "android", 32).toLowerCase();
+    const appVersion = trimText(body.appVersion, 40);
+    if (!token) return json({ error: "pushToken is required" }, 400);
+    const existing = await env.DB.prepare("SELECT id FROM devices WHERE push_token=?").bind(token).first();
+    const deviceId = existing && existing.id ? existing.id : uid("dev_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO devices (id,user_id,platform,push_token,app_version,enabled,last_seen_at,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?,?) " +
+      "ON CONFLICT(push_token) DO UPDATE SET user_id=excluded.user_id,platform=excluded.platform,app_version=excluded.app_version,enabled=1,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at"
+    ).bind(deviceId, user.id, platform, token, appVersion, now, now, now).run();
+    return json({ device: { id: deviceId, platform, appVersion, enabled: true, lastSeenAt: now } }, existing ? 200 : 201);
+  }
+
+  if (!id) return json({ error: "Device id required" }, 400);
+  if (request.method === "DELETE") {
+    await env.DB.prepare("UPDATE devices SET enabled=0,updated_at=? WHERE id=? AND user_id=?").bind(nowIso(), id, user.id).run();
+    return json({ deleted: true });
+  }
+  return json({ error: "Method not allowed" }, 405);
+}
+
+async function handleManualAnalysis(request, env, user, json, services) {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const body = await readJson(request);
+  const subjectType = trimText(body.subjectType, 20);
+  const subjectId = trimText(body.subjectId, 80);
+  const target = await subjectForUser(env, user.id, subjectType, subjectId);
+  if (!target) return json({ error: "Tracked asset not found" }, 404);
+
+  if (target.last_analysis_at) {
+    const age = Date.now() - new Date(target.last_analysis_at).getTime();
+    if (Number.isFinite(age) && age < 120000) {
+      const latest = await env.DB.prepare(
+        "SELECT * FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
+      ).bind(user.id, subjectType, subjectId).first();
+      return json({ analysis: latest, reused: true });
+    }
+  }
+
+  try {
+    const result = await analyzeTarget(env, target, services);
+    return json({ analysis: result, reused: false });
+  } catch (error) {
+    console.warn("Manual analysis failed", String(error && error.message || error));
+    return json({ error: "Analysis temporarily unavailable" }, 503);
+  }
+}
+
+export async function handleBackendApi(request, env, services = {}) {
+  const json = services.jsonResponse || defaultJson;
+  const guard = apiGuard(request);
+  if (guard) return json({ error: guard.error }, guard.status);
+
+  const url = new URL(request.url);
+  if (url.pathname === "/api/backend/status") {
+    return json({
+      d1: !!env.DB,
+      ai: !!env.AI,
+      firebase: !!String(env.FIREBASE_PROJECT_ID || "").trim(),
+      model: String(env.AI_MODEL || DEFAULT_AI_MODEL)
+    });
+  }
+
+  const auth = await verifyFirebaseUser(request, env);
+  if (auth.error) return json({ error: auth.error }, auth.status || 401);
+  const user = auth.user;
+  const parts = url.pathname.split("/").filter(Boolean).slice(1); // remove leading "api"
+  const root = parts[0] || "";
+
+  try {
+    if (root === "me") return handleMe(request, env, user, json);
+    if (root === "portfolios") return handlePortfolios(request, env, user, json, parts);
+    if (root === "positions") return handlePositions(request, env, user, json, parts, url);
+    if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
+    if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
+    if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
+    if (root === "alerts") return handleAlerts(request, env, user, json, parts);
+    if (root === "settings") return handleSettings(request, env, user, json);
+    if (root === "devices") return handleDevices(request, env, user, json, parts);
+    return json({ error: "Unknown backend endpoint" }, 404);
+  } catch (error) {
+    console.error("Backend API error", String(error && error.stack || error));
+    if (String(error && error.message || "").includes("Payload too large")) return json({ error: "Payload too large" }, 413);
+    if (error instanceof SyntaxError) return json({ error: "Invalid JSON" }, 400);
+    return json({ error: "Backend request failed" }, 500);
+  }
+}
+
+export async function runScheduledPortfolioAnalysis(env, services = {}) {
+  if (!env.DB || !services.loadMarketSnapshot || !services.loadChart) {
+    return { skipped: true, reason: "backend-not-configured" };
+  }
+
+  const positionCutoff = new Date(Date.now() - 10 * 60000).toISOString();
+  const watchCutoff = new Date(Date.now() - 30 * 60000).toISOString();
+
+  const [positionRows, watchRows] = await Promise.all([
+    env.DB.prepare(
+      "SELECT 'position' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,last_analysis_at " +
+      "FROM positions WHERE active=1 AND (last_analysis_at IS NULL OR last_analysis_at<=?) ORDER BY COALESCE(last_analysis_at,'') ASC LIMIT 12"
+    ).bind(positionCutoff).all(),
+    env.DB.prepare(
+      "SELECT 'watchlist' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,last_analysis_at " +
+      "FROM watchlist WHERE last_analysis_at IS NULL OR last_analysis_at<=? ORDER BY COALESCE(last_analysis_at,'') ASC LIMIT 12"
+    ).bind(watchCutoff).all()
+  ]);
+
+  const positions = positionRows.results || [];
+  const watchlist = watchRows.results || [];
+  const queue = [...positions, ...watchlist].slice(0, 8);
+  const results = [];
+
+  for (const target of queue) {
+    try {
+      const analysis = await analyzeTarget(env, target, services);
+      results.push({ ok: true, subjectId: target.subject_id, signal: analysis.signal, confidence: analysis.confidence });
+    } catch (error) {
+      console.warn("Scheduled analysis target failed", target.subject_id, String(error && error.message || error));
+      results.push({ ok: false, subjectId: target.subject_id });
+    }
+  }
+
+  return { processed: results.length, results };
+}

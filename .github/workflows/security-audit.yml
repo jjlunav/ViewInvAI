@@ -6,6 +6,9 @@ on:
     paths:
       - "app.js"
       - "worker.js"
+      - "backend.js"
+      - "package.json"
+      - "migrations/**"
       - "scripts/**"
       - "requirements*.txt"
       - ".github/workflows/**"
@@ -35,12 +38,19 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-security.txt
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - name: Instalar herramientas y dependencias
         run: |
           python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-security.txt
           python -m pip check
       - name: CVEs de dependencias Python
         run: python -m pip_audit -r requirements.txt --strict
+      - name: CVEs de dependencias JavaScript
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=high
       - name: Analisis estatico Python
         run: bandit -q -r scripts -ll
       - name: Compilar Python
@@ -48,6 +58,7 @@ jobs:
       - name: Validar JavaScript
         run: |
           node --check app.js
+          node --check backend.js
           node --check worker.js
       - name: Buscar patrones peligrosos, secretos y acciones sin fijar
         run: |
@@ -57,7 +68,7 @@ jobs:
           from collections import Counter
 
           files = [
-              Path("app.js"), Path("worker.js"), Path("index.html"),
+              Path("app.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
               Path("scripts/update_market.py"),
               Path(".github/workflows/check-frontend.yml"),
               Path(".github/workflows/update-market-data.yml"),
@@ -83,6 +94,7 @@ jobs:
           }
           code_combined = "\n".join([
               texts["app.js"],
+              texts["backend.js"],
               texts["worker.js"],
               texts["scripts/update_market.py"],
           ])
@@ -128,7 +140,7 @@ jobs:
                       raise SystemExit(f"Action no fijada a SHA en {path}: {ref}")
 
           assetsignore = Path(".assetsignore").read_text(encoding="utf-8")
-          for required in [".github/", "scripts/", "wrangler.jsonc", "worker.js"]:
+          for required in [".github/", "scripts/", "wrangler.jsonc", "worker.js", "backend.js", "migrations/"]:
               if required not in assetsignore:
                   raise SystemExit("Falta proteger en .assetsignore: " + required)
 

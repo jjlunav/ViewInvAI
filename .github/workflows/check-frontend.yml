@@ -30,6 +30,8 @@ jobs:
         run: node --check app.js
       - name: Validar sintaxis de avisos
         run: node --check alerts.js
+      - name: Validar sintaxis backend
+        run: node --check backend.js
       - name: Validar sintaxis Worker
         run: node --check worker.js
       - name: Comprobar estructura y seguridad basica
