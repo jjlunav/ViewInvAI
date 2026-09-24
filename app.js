@@ -1413,15 +1413,10 @@ function homeMoveStocks(desc=true,limit=5){
  return homeUniverse().map(s=>({s,ch:homeDailyChange(s)})).filter(x=>x.ch!==null).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
 function homeStockRow(s,i,kind){
- let preferTr=trTradable(s),ch=homeDailyChange(s),views=stockViewCount(s),ticker=preferTr?(s.trTicker||s.ticker):s.ticker;
- let extra=kind==='views'?(views?views+' '+(views===1?'vista':'vistas'):'Popular por volumen'):(preferTr?'Trade Republic · '+E(s.trExchange||'LSX'):E(s.exchange||'EEUU'));
- return '<article class="home-stock-row stock-open-row"'+stockOpenAttrs(s,'',preferTr)+'>'+
-  '<span class="home-rank">'+(i+1)+'</span>'+
-  '<div class="home-stock-id"><strong>'+E(ticker||'—')+'</strong><span>'+E(s.name||'')+'</span><small>'+extra+'</small></div>'+
-  '<div class="home-stock-price">'+pricePair(s,N(s.price),preferTr)+'</div>'+
-  '<div class="home-stock-change '+C(ch)+'">'+PC(ch)+'</div>'+
-  '<span class="home-open-arrow">›</span>'+
- '</article>';
+ let preferTr=trTradable(s),views=stockViewCount(s);
+ let hint=kind==='views'?(views?views+' '+(views===1?'vista':'vistas'):'Más vista'):(kind==='gainers'?'Mejor rendimiento diario':'Peor rendimiento diario');
+ let insight=kind==='views'?'IA · interés de usuarios':kind==='gainers'?'IA · momentum positivo':'IA · presión vendedora';
+ return standardStockCard(s,i,{se:'regular',preferTr,hint,insight,className:'home-investing-card'});
 }
 function homePanel(title,subtitle,stocks,kind,tone){
  return '<section class="home-market-panel '+tone+'"><header><div><h2>'+E(title)+'</h2><p>'+E(subtitle)+'</p></div><span>'+stocks.length+'</span></header>'+
@@ -2386,7 +2381,9 @@ function renderHeatmap(){
    '</button>'
   ).join('');
   let maxStock=Math.max(1,...active.stocks.map(heatmapWeight));
-  box.innerHTML='<section class="heat-sector heat-sector-single '+heatmapChangeClass(active.avg)+'">'+
+  let cols=Math.max(2,Math.min(8,Math.ceil(Math.sqrt(Math.max(1,active.stocks.length)*1.55))));
+  let rows=Math.max(1,Math.ceil(active.stocks.length/cols));
+  box.innerHTML='<section class="heat-sector heat-sector-single '+heatmapChangeClass(active.avg)+'" style="--heat-cols:'+cols+';--heat-rows:'+rows+'">'+
    '<div class="heat-sector-head"><div><strong>'+E(active.name)+'</strong><small>'+active.stocks.length+' acciones · '+(heatmapState.market==='tr'?'Trade Republic / LSX':'EEUU')+'</small></div><b class="'+C(active.avg)+'">'+PC(active.avg)+'</b></div>'+
    '<div class="heat-sector-grid">'+active.stocks.map(s=>heatmapTile(s,se,maxStock)).join('')+'</div>'+
   '</section><div id="heatmapHoverCard" class="heatmap-hover-card" aria-hidden="true"></div>';
