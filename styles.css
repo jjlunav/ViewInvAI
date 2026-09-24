@@ -4253,3 +4253,43 @@ html[data-theme="light"] .profile-news-grid>div+div{border-color:#e0e8eb!importa
 }
 html[data-theme="light"] .profile-performance-strip{background:#fff;border-color:#dce5e8}
 html[data-theme="light"] .profile-performance-strip>div{border-color:#dce5e8}
+
+
+/* Mobile entry controls compact - 2026-09-24 */
+@media(max-width:680px){
+  #view-entry .control-strip{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+    gap:6px!important;
+    padding:6px!important;
+    margin:6px 0 8px!important;
+    border-radius:10px!important;
+  }
+  #view-entry .control-strip>*{
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+  }
+  #view-entry #sessionSelect,
+  #view-entry .preset-trigger,
+  #view-entry #applyFilters,
+  #view-entry #toggleFilters{
+    min-height:36px!important;
+    height:36px!important;
+    padding:5px 9px!important;
+    font-size:12.5px!important;
+    border-radius:8px!important;
+  }
+  #view-entry .preset-picker{min-width:0!important;width:100%!important}
+  #view-entry .market-tabs{margin:5px 0!important}
+  #view-entry .tab{min-height:36px!important;padding:5px 8px!important}
+  #view-entry .filter-panel{
+    margin:5px 0!important;
+    padding:0 9px!important;
+    border-radius:10px!important;
+  }
+  #view-entry .filter-panel>summary{
+    min-height:38px!important;
+    padding:0!important;
+  }
+}
