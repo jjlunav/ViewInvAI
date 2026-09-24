@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r32">
+  <link rel="stylesheet" href="styles.css?v=20260924r33">
 </head>
 <body>
 <div class="app-shell">
@@ -20,6 +20,7 @@
     <nav class="nav">
       <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
       <button class="nav-item" data-view="recommendation"><span>◎</span>Recomendación actual</button>
+      <button class="nav-item" data-view="favorites"><span>★</span>Seguimiento</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
@@ -46,6 +47,7 @@
     <header class="topbar">
       <div class="topbar-left">
         <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menú">☰</button>
+        <div class="mobile-wordmark" aria-label="ViewInvAI"><span class="mobile-wordmark-mark">V</span><strong>ViewInv<span>AI</span></strong></div>
       </div>
       <div class="topbar-right">
         <div class="market-clocks" aria-label="Hora local de los mercados">
@@ -191,6 +193,18 @@
       </div>
       <div class="status-line"><span id="recommendationUpdated">pendiente</span></div>
       <div id="recommendationResults" class="recommendation-grid"><div class="empty-state">Calculando candidatas…</div></div>
+    </section>
+
+    <section class="view" id="view-favorites">
+      <div class="page-heading compact-heading">
+        <div><h1>Seguimiento</h1><p class="lead">Tus acciones favoritas en una lista rápida de consulta.</p></div>
+        <button type="button" class="section-help" data-help-section="favorites" aria-label="Ayuda sobre Seguimiento">?</button>
+      </div>
+      <div class="watchlist-summary">
+        <div><strong id="favoritesMobileCount">0</strong><span> instrumentos</span></div>
+        <small id="favoritesMobileSession">Sesión actual</small>
+      </div>
+      <div id="favoritesMobileResults" class="stock-list mobile-watchlist-list"></div>
     </section>
 
     <section class="view" id="view-heatmap">
@@ -413,7 +427,7 @@
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r31"></script>
+<script src="app.js?v=20260924r32"></script>
 <script src="alerts.js?v=20260924r3"></script>
 </body>
 </html>
