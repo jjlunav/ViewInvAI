@@ -9,7 +9,25 @@ const state = {
   loading: false
 };
 
+const PORTFOLIO_UI_KEY = "viewinvai:portfolioUi:v2";
+try {
+  const saved = JSON.parse(localStorage.getItem(PORTFOLIO_UI_KEY) || "{}");
+  state.selectedPortfolioId = saved && saved.selectedPortfolioId || null;
+  state.detailStockKey = saved && saved.detailStockKey || null;
+  state.detailPreferTr = saved && saved.detailPreferTr === true ? true : saved && saved.detailPreferTr === false ? false : null;
+} catch (_) {}
+
 const $ = selector => document.querySelector(selector);
+
+function savePortfolioUi() {
+  try {
+    localStorage.setItem(PORTFOLIO_UI_KEY, JSON.stringify({
+      selectedPortfolioId: state.selectedPortfolioId || null,
+      detailStockKey: state.detailStockKey || null,
+      detailPreferTr: state.detailPreferTr
+    }));
+  } catch (_) {}
+}
 
 function esc(value) {
   return String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({
@@ -80,6 +98,7 @@ function openStockInline(key, preferTr = null) {
   if (!key) return false;
   state.detailStockKey = key;
   state.detailPreferTr = preferTr === true ? true : preferTr === false ? false : null;
+  savePortfolioUi();
   renderApp();
   return true;
 }
@@ -232,17 +251,26 @@ function renderApp() {
 
   const selected = state.portfolios.find(p => p.id === state.selectedPortfolioId) || null;
   const positions = selected ? portfolioPositions(selected.id) : [];
+  savePortfolioUi();
 
   box.innerHTML =
-    '<div class="portfolio-tabs" role="tablist" aria-label="Mis carteras">' +
-      state.portfolios.map(renderPortfolioCard).join('') +
-      '<button type="button" class="portfolio-tab portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera">＋</button>' +
-      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras">↻</button>' +
+    '<div class="portfolio-workbar">' +
+      '<div class="portfolio-tabs-wrap">' +
+        '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">' +
+          state.portfolios.map(renderPortfolioCard).join('') +
+        '</div>' +
+        '<button type="button" class="portfolio-tab portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>' +
+        '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>' +
+        '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>' +
+      '</div>' +
+      '<button type="button" class="btn small portfolio-add-current"' + (selected ? '' : ' disabled') + '>＋ Añadir posición</button>' +
+      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>' +
     '</div>' +
     '<div id="portfolioContext" class="portfolio-context">' +
       (selected
-        ? '<section class="portfolio-block integrated"><div class="portfolio-block-head"><div><h2>' + esc(selected.name) + '</h2><span>' + esc(selected.broker || "") + '</span></div><button type="button" class="btn small portfolio-add-current">＋ Añadir posición</button></div>' +
-          '<div class="portfolio-position-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones.</div>') + '</div></section>'
+        ? '<section class="portfolio-block integrated portfolio-positions-only">' +
+            '<div class="portfolio-position-list">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
+          '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
     '</div>';
 
@@ -251,16 +279,120 @@ function renderApp() {
     const p = state.positions.find(x => x.stock_key === state.detailStockKey && Number(x.active) !== 0 && (!selected || x.portfolio_id === selected.id));
     const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
     if (context && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
-      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← ' + esc(selected ? selected.name : "Carteras") + '</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
+      context.innerHTML = '<div class="portfolio-inline-detail-head"><button type="button" data-portfolio-detail-close>← Posiciones</button></div><div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
       window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), state.detailStockKey, "Cartera · " + (selected ? selected.name : "posición"), preferTr);
     }
   }
+
+  requestAnimationFrame(updatePortfolioTabOverflow);
 }
 async function fetchJson(path) {
   const response = await api(path);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Error de backend");
   return data;
+}
+
+function closePortfolioTabOverflow() {
+  const menu = $("#portfolioTabsOverflow");
+  if (menu) {
+    menu.classList.remove("open");
+    menu.setAttribute("aria-hidden", "true");
+  }
+  const more = document.querySelector("[data-portfolio-tabs-more]");
+  if (more) more.setAttribute("aria-expanded", "false");
+}
+
+function updatePortfolioTabOverflow() {
+  const track = $("#portfolioTabsTrack");
+  const more = document.querySelector("[data-portfolio-tabs-more]");
+  const menu = $("#portfolioTabsOverflow");
+  if (!track || !more || !menu) return;
+
+  const selected = track.querySelector(".portfolio-tab.active");
+  if (selected) {
+    const left = selected.offsetLeft;
+    const right = left + selected.offsetWidth;
+    if (left < track.scrollLeft) track.scrollLeft = Math.max(0, left - 4);
+    else if (right > track.scrollLeft + track.clientWidth) track.scrollLeft = Math.max(0, right - track.clientWidth + 4);
+  }
+
+  const compute = () => {
+    const leftEdge = track.scrollLeft + 1;
+    const rightEdge = track.scrollLeft + track.clientWidth - 1;
+    return [...track.querySelectorAll("[data-portfolio-select]")].filter(el => {
+      const left = el.offsetLeft;
+      const right = left + el.offsetWidth;
+      return left < leftEdge || right > rightEdge;
+    });
+  };
+
+  more.hidden = true;
+  requestAnimationFrame(() => {
+    let hidden = compute();
+    more.hidden = hidden.length === 0;
+    requestAnimationFrame(() => {
+      hidden = compute();
+      menu.innerHTML = hidden.map(el => {
+        const p = state.portfolios.find(x => String(x.id) === String(el.dataset.portfolioSelect));
+        if (!p) return "";
+        const count = portfolioPositions(p.id).length;
+        return '<button type="button" class="portfolio-overflow-item' + (p.id === state.selectedPortfolioId ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
+          '<strong>' + esc(p.name) + '</strong><span>' + count + '</span></button>';
+      }).join("");
+      more.hidden = hidden.length === 0;
+      if (more.hidden) closePortfolioTabOverflow();
+    });
+  });
+}
+
+function portfolioPickerStocks(query = "") {
+  const all = window.ViewInvAI && typeof window.ViewInvAI.getAllStocks === "function" ? window.ViewInvAI.getAllStocks() : [];
+  const q = String(query || "").trim().toUpperCase();
+  let rows = all.filter(stock => {
+    if (!q) return true;
+    return [stock.ticker, stock.trTicker, stock.name, stock.isin, stock.trIsin].some(v => String(v || "").toUpperCase().includes(q));
+  });
+  rows.sort((a, b) => (num(b.marketCap) || 0) - (num(a.marketCap) || 0));
+  return rows.slice(0, 35);
+}
+
+function portfolioPickerRows(query = "") {
+  const rows = portfolioPickerStocks(query);
+  if (!rows.length) return '<div class="portfolio-empty-state compact">No se han encontrado acciones.</div>';
+  return rows.map(stock => {
+    const key = window.ViewInvAI.getStockKey(stock);
+    const tr = !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+    return '<div class="portfolio-stock-picker-row">' +
+      '<div><strong>' + esc(stock.ticker || stock.trTicker || "—") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
+      '<div class="portfolio-stock-picker-markets">' +
+        (tr ? '<button type="button" data-position-pick="' + esc(key) + '" data-position-pick-market="tr">TR</button>' : '') +
+        '<button type="button" data-position-pick="' + esc(key) + '" data-position-pick-market="us">EEUU</button>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function openPositionPicker() {
+  if (!state.user) return window.ViewInvAIAuth?.signIn?.();
+  if (!state.selectedPortfolioId) {
+    toast("Primero selecciona o crea una cartera.", true);
+    return;
+  }
+  openModal("Añadir posición",
+    '<div class="portfolio-stock-picker">' +
+      '<input id="portfolioStockSearch" class="input" type="search" autocomplete="off" placeholder="Buscar ticker, empresa o ISIN…">' +
+      '<div class="portfolio-stock-picker-results" id="portfolioStockPickerResults">' + portfolioPickerRows("") + '</div>' +
+    '</div>'
+  );
+  const input = $("#portfolioStockSearch");
+  if (input) {
+    input.addEventListener("input", () => {
+      const results = $("#portfolioStockPickerResults");
+      if (results) results.innerHTML = portfolioPickerRows(input.value);
+    });
+    setTimeout(() => input.focus(), 30);
+  }
 }
 
 async function loadAll({ syncFavorites = false } = {}) {
@@ -294,6 +426,7 @@ async function createPortfolio(payload) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "No se pudo crear la cartera.");
   state.selectedPortfolioId = data.portfolio && data.portfolio.id || state.selectedPortfolioId;
+  savePortfolioUi();
   await loadAll();
   return data.portfolio;
 }
@@ -607,13 +740,28 @@ function bind() {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
       state.detailStockKey = null;
       state.detailPreferTr = null;
+      savePortfolioUi();
+      closePortfolioTabOverflow();
       renderApp();
+      return;
+    }
+
+    const moreTabs = event.target.closest?.("[data-portfolio-tabs-more]");
+    if (moreTabs) {
+      const menu = $("#portfolioTabsOverflow");
+      const open = !!menu && !menu.classList.contains("open");
+      if (menu) {
+        menu.classList.toggle("open", open);
+        menu.setAttribute("aria-hidden", open ? "false" : "true");
+      }
+      moreTabs.setAttribute("aria-expanded", open ? "true" : "false");
       return;
     }
 
     if (event.target.closest?.("[data-portfolio-detail-close]")) {
       state.detailStockKey = null;
       state.detailPreferTr = null;
+      savePortfolioUi();
       renderApp();
       return;
     }
@@ -659,9 +807,16 @@ function bind() {
     }
 
     if (event.target.closest?.(".portfolio-add-current")) {
-      const currentKey = window.ViewInvAI && window.ViewInvAI.getCurrentStockKey ? window.ViewInvAI.getCurrentStockKey() : null;
-      if (currentKey) openAddPositionModal(currentKey);
-      else toast("Abre una acción y pulsa “Añadir a cartera”.");
+      openPositionPicker();
+      return;
+    }
+
+    const pick = event.target.closest?.("[data-position-pick]");
+    if (pick) {
+      const key = pick.dataset.positionPick;
+      const preferTr = pick.dataset.positionPickMarket === "tr";
+      closeModal();
+      setTimeout(() => openAddPositionModal(key, preferTr), 20);
       return;
     }
 
@@ -740,6 +895,14 @@ function bind() {
     }
   });
 
+  document.addEventListener("click", event => {
+    if (!event.target.closest?.(".portfolio-tabs-wrap")) closePortfolioTabOverflow();
+  });
+  window.addEventListener("resize", () => {
+    clearTimeout(updatePortfolioTabOverflow.timer);
+    updatePortfolioTabOverflow.timer = setTimeout(updatePortfolioTabOverflow, 80);
+  }, { passive: true });
+
   $("#portfolioModalClose")?.addEventListener("click", closeModal);
   $("#portfolioModalBackdrop")?.addEventListener("click", closeModal);
   document.addEventListener("keydown", event => {
@@ -792,6 +955,7 @@ window.ViewInvAIPortfolios = {
   reload: () => loadAll(),
   openNewPortfolio: openNewPortfolioModal,
   openAddPosition: openAddPositionModal,
+  openPositionPicker,
   openStarMenu,
   getState: () => state
 };
