@@ -7,7 +7,7 @@
   <meta name="description" content="ViewInvAI - AI-powered stock scanner, market insights and opportunities.">
   <title>ViewInvAI</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260924r1">
-  <link rel="stylesheet" href="styles.css?v=20260924r41">
+  <link rel="stylesheet" href="styles.css?v=20260924r42">
 </head>
 <body>
 <div class="app-shell">
@@ -18,7 +18,8 @@
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
-      <button class="nav-item active" data-view="entry"><span>◈</span>Potencial de entrada</button>
+      <button class="nav-item active" data-view="home"><span>⌂</span>Inicio</button>
+      <button class="nav-item" data-view="entry"><span>◈</span>Potencial de entrada</button>
       <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
       <button class="nav-item" data-view="portfolios"><span>★</span>Carteras</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
@@ -55,7 +56,21 @@
       </div>
     </div>
 
-    <section class="view active" id="view-entry">
+    <section class="view active" id="view-home">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Inicio <span class="heading-badge ai-badge">MERCADO</span></h1>
+          <p class="lead">Una vista rápida de las acciones que más consultas y de los mejores y peores rendimientos de la sesión diaria.</p>
+        </div>
+        <div class="heading-actions"><button class="btn icon-btn" id="refreshHome" title="Actualizar">↻</button></div>
+      </div>
+      <div class="home-summary-line">
+        <span id="homeSession">Sesión regular</span><span>·</span><span id="homeUpdated">Actualizando…</span>
+      </div>
+      <div id="homeGroups" class="home-dashboard"></div>
+    </section>
+
+    <section class="view" id="view-entry">
       <div class="page-heading compact-heading">
         <div>
           <h1>Potencial de entrada <span class="heading-badge ai-badge">IA · SCAN</span></h1>
@@ -416,19 +431,19 @@
     </aside>
 
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
-      <button type="button" class="mobile-nav-item active" data-mobile-view="entry"><span>◈</span><small>Mercado</small></button>
+      <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌂</span><small>Inicio</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Mercado</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Ideas IA</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>★</span><small>Carteras</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="alerts"><span>●</span><small>Avisos</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
     <footer>ViewInvAI · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
-<script src="app.js?v=20260924r38"></script>
+<script src="app.js?v=20260924r39"></script>
 <script src="alerts.js?v=20260924r3"></script>
-<script type="module" src="auth.js?v=20260924r4"></script>
+<script type="module" src="auth.js?v=20260924r5"></script>
 <script type="module" src="portfolio.js?v=20260924r1"></script>
 </body>
 </html>
