@@ -5020,3 +5020,298 @@ html[data-theme="light"] .profile-ai-live{background:#f4f8fa;border-color:#c7d7d
  .ai-chat-form{grid-template-columns:1fr}
  .ai-chat-form button{min-height:40px}
 }
+
+
+/* Sticky stock quote + single-screen heatmap - 2026-09-24 */
+
+/* In every stock detail, keep identity + live quote visible while the body scrolls. */
+.stock-profile-page .investing-profile-header{
+ position:sticky!important;
+ top:0!important;
+ z-index:1450!important;
+ margin:0!important;
+ border-radius:0 0 14px 14px!important;
+ padding:9px 12px!important;
+ min-height:68px!important;
+ backdrop-filter:blur(14px);
+ box-shadow:0 10px 24px rgba(0,0,0,.24)!important
+}
+.stock-profile-page .investing-profile-header .profile-title h2{
+ font-size:24px!important
+}
+.stock-profile-page .investing-profile-header .profile-title p{
+ font-size:9px!important;
+ max-width:360px
+}
+.stock-profile-page .investing-profile-header .profile-market{
+ font-size:7px!important
+}
+.stock-profile-page .investing-profile-header .profile-live{
+ padding:5px 8px!important;
+ gap:5px!important
+}
+.stock-profile-page .investing-profile-header .profile-live .price-pair>strong{
+ font-size:23px!important
+}
+.stock-profile-page .investing-profile-header .profile-live .price-pair>small{
+ font-size:8px!important
+}
+.stock-profile-page .investing-profile-header .quote-spread{
+ transform:scale(.86);
+ transform-origin:right center
+}
+.stock-profile-page .investing-profile-header .profile-primary-actions .btn{
+ min-height:34px!important;
+ padding:6px 9px!important;
+ font-size:9px!important
+}
+.stock-profile-page .profile-tabs{
+ position:sticky!important;
+ top:68px!important;
+ z-index:1440!important;
+ margin-top:0!important;
+ background:rgba(7,17,25,.96)!important;
+ backdrop-filter:blur(12px);
+ border-bottom:1px solid #20333d!important
+}
+.stock-profile-page .profile-toolbar{
+ position:relative!important;
+ top:auto!important;
+ z-index:auto!important
+}
+
+/* Heatmap: dense dashboard, inspired by classic market treemaps. */
+#view-heatmap{
+ max-width:none!important;
+ width:100%!important;
+ height:calc(100vh - 8px)!important;
+ overflow:hidden!important;
+ padding:8px 10px 6px!important
+}
+#view-heatmap>.page-heading{
+ margin-bottom:3px!important;
+ align-items:center!important
+}
+#view-heatmap>.page-heading h1{
+ font-size:18px!important;
+ margin:0!important
+}
+#view-heatmap>.page-heading .lead{
+ display:none!important
+}
+#view-heatmap .heatmap-toolbar{
+ margin:3px 0!important;
+ padding:4px 6px!important;
+ min-height:34px!important;
+ border-radius:8px!important
+}
+#view-heatmap .heatmap-toolbar .select{
+ min-height:28px!important;
+ padding:3px 7px!important;
+ font-size:9px!important
+}
+#view-heatmap .heatmap-market-tabs{
+ min-width:150px!important
+}
+#view-heatmap .tab{
+ padding:4px 7px!important;
+ font-size:9px!important
+}
+#view-heatmap .heatmap-legend{
+ gap:2px!important
+}
+#view-heatmap .heat-legend{
+ min-width:34px!important;
+ padding:3px 4px!important;
+ font-size:7px!important
+}
+#view-heatmap .status-line{
+ margin:2px 0 4px!important;
+ min-height:14px!important;
+ font-size:7px!important
+}
+#view-heatmap .heatmap-board{
+ position:relative;
+ display:grid!important;
+ grid-template-columns:repeat(16,minmax(0,1fr))!important;
+ grid-template-rows:repeat(8,minmax(0,1fr))!important;
+ grid-auto-flow:dense!important;
+ gap:3px!important;
+ width:100%!important;
+ height:calc(100vh - 112px)!important;
+ min-height:0!important;
+ overflow:hidden!important;
+ align-items:stretch!important
+}
+#view-heatmap .heat-sector{
+ grid-column:span 4!important;
+ grid-row:span 2!important;
+ display:grid!important;
+ grid-template-rows:22px minmax(0,1fr)!important;
+ min-width:0!important;
+ min-height:0!important;
+ overflow:hidden!important;
+ border-radius:5px!important;
+ transition:all .16s ease!important;
+ z-index:1
+}
+#view-heatmap .heat-sector.active{
+ grid-column:span 8!important;
+ grid-row:span 4!important;
+ z-index:20;
+ box-shadow:0 12px 34px rgba(0,0,0,.42)!important
+}
+#view-heatmap .heat-sector-head{
+ width:100%!important;
+ border:0!important;
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ padding:2px 5px!important;
+ min-height:22px!important;
+ background:#0b1b23!important;
+ color:inherit!important;
+ cursor:pointer
+}
+#view-heatmap .heat-sector-head strong{
+ font-size:8px!important
+}
+#view-heatmap .heat-sector-head small{
+ font-size:6px!important
+}
+#view-heatmap .heat-sector-head b{
+ font-size:8px!important
+}
+#view-heatmap .heat-sector-grid{
+ display:grid!important;
+ grid-template-columns:repeat(12,minmax(0,1fr))!important;
+ grid-auto-rows:minmax(12px,1fr)!important;
+ grid-auto-flow:dense!important;
+ gap:1px!important;
+ padding:1px!important;
+ min-height:0!important;
+ overflow:hidden!important
+}
+#view-heatmap .heat-stock{
+ border-radius:2px!important;
+ padding:1px!important;
+ gap:0!important;
+ min-height:0!important;
+ transition:transform .12s ease,filter .12s ease,box-shadow .12s ease,border-color .12s ease!important
+}
+#view-heatmap .heat-stock strong{
+ font-size:7px!important;
+ line-height:1!important
+}
+#view-heatmap .heat-stock span{
+ font-size:6px!important;
+ line-height:1!important
+}
+#view-heatmap .heat-stock small{
+ display:none!important
+}
+#view-heatmap .heat-sector.active .heat-stock strong{
+ font-size:10px!important
+}
+#view-heatmap .heat-sector.active .heat-stock span{
+ font-size:8px!important
+}
+#view-heatmap .heat-sector.active .heat-stock small{
+ display:block!important;
+ font-size:6px!important
+}
+#view-heatmap .heat-stock:hover,
+#view-heatmap .heat-stock:focus-visible{
+ z-index:30!important;
+ transform:scale(1.16)!important;
+ filter:brightness(1.25)!important;
+ box-shadow:0 5px 15px rgba(0,0,0,.45)!important;
+ border-color:#fff!important
+}
+#view-heatmap .heat-stock.selected{
+ z-index:31!important;
+ transform:scale(1.10)!important;
+ filter:brightness(1.28)!important;
+ border:2px solid #fff!important;
+ box-shadow:0 0 0 2px rgba(108,231,196,.6),0 6px 18px rgba(0,0,0,.55)!important
+}
+#view-heatmap .heatmap-hover-card{
+ position:absolute;
+ width:180px;
+ z-index:100;
+ display:grid;
+ grid-template-columns:1fr auto;
+ gap:2px 8px;
+ padding:7px 8px;
+ border:1px solid #3f6370;
+ border-radius:7px;
+ background:#07131a;
+ color:#e7f1f4;
+ box-shadow:0 10px 28px rgba(0,0,0,.48);
+ opacity:0;
+ visibility:hidden;
+ pointer-events:none;
+ transition:.1s ease
+}
+#view-heatmap .heatmap-hover-card.show{
+ opacity:1;
+ visibility:visible
+}
+#view-heatmap .heatmap-hover-card strong{
+ font-size:12px
+}
+#view-heatmap .heatmap-hover-card span{
+ grid-column:1/-1;
+ color:#8da2ab;
+ font-size:7px;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap
+}
+#view-heatmap .heatmap-hover-card b{
+ font-size:10px
+}
+#view-heatmap .heatmap-hover-card em{
+ font-style:normal;
+ font-size:10px;
+ font-weight:800
+}
+#view-heatmap .heat-xl{grid-column:span 6!important;grid-row:span 2!important}
+#view-heatmap .heat-lg{grid-column:span 4!important;grid-row:span 2!important}
+#view-heatmap .heat-md{grid-column:span 3!important;grid-row:span 1!important}
+#view-heatmap .heat-sm{grid-column:span 2!important;grid-row:span 1!important}
+
+html[data-theme="light"] .stock-profile-page .profile-tabs{
+ background:rgba(255,255,255,.96)!important;
+ border-color:#d5e1e6!important
+}
+html[data-theme="light"] #view-heatmap .heat-sector-head{
+ background:#f3f7f8!important
+}
+html[data-theme="light"] #view-heatmap .heatmap-hover-card{
+ background:#fff;color:#17313c;border-color:#afc4cd
+}
+
+@media(max-width:720px){
+ .stock-profile-page .investing-profile-header{
+  top:0!important;
+  border-radius:0 0 12px 12px!important;
+  padding:8px 10px!important;
+  grid-template-columns:minmax(0,1fr) auto!important
+ }
+ .stock-profile-page .investing-profile-header .profile-title h2{font-size:21px!important}
+ .stock-profile-page .investing-profile-header .profile-primary-actions{display:none!important}
+ .stock-profile-page .profile-tabs{top:64px!important;overflow-x:auto!important}
+ #view-heatmap{
+  height:auto!important;
+  min-height:calc(100vh - var(--mobile-nav-h))!important;
+  overflow:auto!important
+ }
+ #view-heatmap .heatmap-board{
+  height:calc(100vh - 155px)!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  grid-template-rows:repeat(8,minmax(0,1fr))!important
+ }
+ #view-heatmap .heat-sector{grid-column:span 4!important;grid-row:span 2!important}
+ #view-heatmap .heat-sector.active{grid-column:1/-1!important;grid-row:span 4!important}
+}
