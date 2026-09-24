@@ -3023,3 +3023,29 @@ html[data-theme="light"] .portfolio-empty-state{background:#fafcfc;border-color:
  .profile-live .quote-updated{font-size:7.5px!important}
 }
 html[data-theme="light"] .quote-updated{color:#6e8189!important}
+
+.portfolio-date-field{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) 40px;
+ gap:6px;
+ align-items:center;
+}
+.portfolio-date-field input{min-width:0}
+.portfolio-date-picker{
+ width:40px;
+ min-width:40px;
+ height:40px;
+ border:1px solid #2b4753;
+ border-radius:9px;
+ background:#102630;
+ color:#dbe9ed;
+ cursor:pointer;
+ font-size:16px;
+ line-height:1;
+}
+.portfolio-date-picker:active{transform:translateY(1px)}
+html[data-theme="light"] .portfolio-date-picker{
+ background:#f7fafb;
+ border-color:#cedde2;
+ color:#17303b;
+}
