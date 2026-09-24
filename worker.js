@@ -34,11 +34,19 @@ function applySecurityHeaders(headers) {
   return out;
 }
 
-function secureResponse(response) {
+function secureResponse(response, pathname = "") {
+  const headers = applySecurityHeaders(response.headers);
+  // The APK is a remote-shell WebView. Do not let it keep stale HTML/JS/CSS
+  // between deploys, otherwise it can continue running an old UI after a fix.
+  if (pathname === "/" || /\.(?:html|js|css)$/i.test(pathname)) {
+    headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    headers.set("Pragma", "no-cache");
+    headers.set("Expires", "0");
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: applySecurityHeaders(response.headers)
+    headers
   });
 }
 
@@ -504,7 +512,7 @@ export default {
       const guard = requestGuard(request); if (guard) return guard;
       return tradingViewSymbolAvailability(request);
     }
-    return secureResponse(await env.ASSETS.fetch(request));
+    return secureResponse(await env.ASSETS.fetch(request), url.pathname);
   },
 
   async scheduled(controller, env, ctx) {
