@@ -1354,42 +1354,90 @@ function stockEvents(s){
  });
 }
 function profileKpi(label,main,sub=''){
- return '<div class="profile-kpi"><small>'+E(label)+'</small><strong>'+main+'</strong>'+(sub?'<span>'+sub+'</span>':'')+'</div>';
+ return '<div class="profile-stat-row"><div><span>'+E(label)+'</span>'+(sub?'<small>'+sub+'</small>':'')+'</div><strong>'+main+'</strong></div>';
 }
 function profileIdentity(label,value,extra=''){
  return '<div class="profile-identity"><small>'+E(label)+'</small><strong>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
+}
+function profileTabs(){
+ return '<nav class="profile-tabs" aria-label="Secciones de la ficha">'+
+  '<button type="button" class="active" data-profile-jump="profile-general">General</button>'+
+  '<button type="button" data-profile-jump="profile-chart">Gráfico</button>'+
+  '<button type="button" data-profile-jump="profile-news">Noticias</button>'+
+  '<button type="button" class="profile-tab-ai" data-profile-jump="profile-ai">✦ IA ViewInvAI</button>'+
+  '<button type="button" data-profile-jump="profile-technical">Técnico</button>'+
+ '</nav>';
+}
+function profileSessionStrip(s,isTr=false){
+ let regular='<div class="profile-session-cell"><span>Regular</span><strong>'+snapshotPricePair(s,s.price,isTr)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Vol '+compactVol(s.volume)+'</small></div>';
+ let pre='<div class="profile-session-cell"><span>Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,isTr)+'</strong><b class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</b><small>Vol '+compactVol(s.premarketVolume)+'</small></div>';
+ let post='<div class="profile-session-cell"><span>Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,isTr)+'</strong><b class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</b><small>Vol '+compactVol(s.postmarketVolume)+'</small></div>';
+ return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
+}
+function profileAiPanel(s,mode='us'){
+ let a=recommendationAnalysis(s,mode),score=N(a.score)??0;
+ let tone=score>=72?'high':score>=60?'watch':'wait';
+ let label=score>=72?'Alta convicción':score>=60?'Vigilar':'Esperar';
+ let pos=a.parts.filter(x=>x.delta>2).sort((x,y)=>y.delta-x.delta).slice(0,3);
+ let neg=a.parts.filter(x=>x.delta<-2).sort((x,y)=>x.delta-y.delta).slice(0,3);
+ let posHtml=pos.length?pos.map(x=>'<li><span>'+E(x.label)+'</span><b class="positive">+'+F(x.delta,1)+'</b></li>').join(''):'<li class="muted"><span>Sin ventaja dominante</span><b>—</b></li>';
+ let negHtml=neg.length?neg.map(x=>'<li><span>'+E(x.label)+'</span><b class="negative">'+F(x.delta,1)+'</b></li>').join(''):'<li class="muted"><span>Sin riesgo dominante detectado</span><b>—</b></li>';
+ let cat=a.catalyst&&a.catalyst.events&&a.catalyst.events.length?a.catalyst.events[0].e:null;
+ return '<aside class="profile-ai-panel" id="profile-ai">'+
+  '<div class="profile-ai-head"><div><small>VIEWINVAI IA</small><h3>Lectura multifactor</h3></div><div class="profile-ai-score '+tone+'"><strong>'+F(score,0)+'</strong><span>/100</span></div></div>'+
+  '<div class="profile-ai-state '+tone+'"><b>'+label+'</b><span>'+E(recommendationNarrative(a))+'</span></div>'+
+  '<div class="profile-ai-columns"><div><h4>A favor</h4><ul>'+posHtml+'</ul></div><div><h4>En contra</h4><ul>'+negHtml+'</ul></div></div>'+
+  '<div class="profile-ai-catalyst"><small>Catalizador relevante</small><strong>'+E(cat?EL(cat):'Sin catalizador direccional fuerte')+'</strong><span>'+E(cat?(cat.title||cat.fact||''):'La IA sigue precio, volumen, tendencia, liquidez, técnicos, noticias y eventos.')+'</span></div>'+
+ '</aside>';
+}
+function profileGeneralStats(s,isTr,se){
+ let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
+ return [
+  profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
+  profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
+  profileKpi('Volumen actual',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
+  profileKpi('Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
+  profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),'USD'),
+  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada'),
+  profileKpi('Sector',E(s.sector||'—'),E(s.industry||'')),
+  profileKpi('Sesión activa',E(SN(se)),E(isTr?'Cotización principal LSX':'Referencia EEUU'))
+ ].join('');
+}
+function profileTechnicalStats(s){
+ return [
+  profileKpi('RSI',F(s.rsi,1),'Momentum'),
+  profileKpi('ADX',F(s.adx,1),'Fuerza de tendencia'),
+  profileKpi('EMA 20',PR(s.ema20),'Media corta'),
+  profileKpi('EMA 50',PR(s.ema50),'Media larga'),
+  profileKpi('1 semana',PC(s.perfWeek),'Rendimiento'),
+  profileKpi('1 mes',PC(s.perfMonth),'Rendimiento'),
+  profileKpi('Tendencia',trendState(s)===true?'Favorable':trendState(s)===false?'Débil / bajista':'Sin dato','EMA y precio'),
+  profileKpi('Liquidez',lowLiquidity(s,SES(),false)?'Vigilar':'Normal','Según volumen y spread disponibles')
+ ].join('');
 }
 function quickProfileHtml(s){
  let isTr=state.profilePreferTr===true&&trTradable(s),se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let origin=state.profileOriginView||state.currentView,back='← Volver a '+viewLabel(origin);
- let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
+ let origin=state.profileOriginView||state.currentView,back='← '+viewLabel(origin);
+ let currentChange=liveChangeHtml(s,SC(s,se),isTr);
  let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
  let events=stockEvents(s),now=Date.now();
  let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
- let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,4);
- let context=state.profileReason?'<div class="profile-context"><strong>Motivo de aparición:</strong> '+E(state.profileReason)+'</div>':'';
- let kpis=[
-  profileKpi(isTr?'Precio LSX':'Precio EEUU',currentPrice,currentChange),
-  profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
-  profileKpi('Volumen',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
-  profileKpi('Vol. relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
-  profileKpi('RSI / ADX',F(s.rsi,1)+' / '+F(s.adx,1),'Momentum / fuerza'),
-  profileKpi('EMA20 / EMA50',PR(s.ema20)+' / '+PR(s.ema50),'Estructura técnica'),
-  profileKpi('1 semana / 1 mes',PC(s.perfWeek)+' / '+PC(s.perfMonth),'Rendimiento'),
-  profileKpi('Resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
- ].join('');
+ let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
+ let context=state.profileReason?'<div class="profile-context"><strong>Por qué aparece:</strong> '+E(state.profileReason)+'</div>':'';
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
- let relation=isTr?'<div class="profile-data-note">Precio, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+'. El gráfico y los técnicos usan la referencia de '+E((s.exchange||'EEUU')+':'+(s.ticker||''))+'.</div>':'';
- return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>Vista rápida · '+E(viewLabel(origin))+'</span></div>'+
-  '<div class="profile-hero"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p><div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></div></div><div class="profile-live"><small>'+E(liveLabel)+'</small>'+bidAskHtml(s,isTr)+pricePair(s,SP(s,se),isTr)+currentChange+'</div></div>'+
-  relation+context+
-  '<section class="profile-section profile-chart-section"><div class="profile-section-head"><h3>Gráfico</h3><span>Hora España · TradingView puede diferir del último precio recibido</span></div>'+miniChart(s,isTr)+'</section>'+
-  '<section class="profile-section"><div class="profile-section-head"><h3>Resumen</h3><span>Datos esenciales</span></div><div class="profile-kpi-grid quick-kpi-grid">'+kpis+'</div></section>'+
-  '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Próximos catalizadores</h3><span>'+upcoming.length+'</span></div><div class="event-list profile-events">'+catalystHtml+'</div></section>'+
-  '<section class="profile-section quick-events"><div class="profile-section-head"><h3>Noticias recientes</h3><span>'+news.length+'</span></div><div class="event-list profile-events">'+newsHtml+'</div></section>';
+ let relation=isTr?'<div class="profile-data-note">Precio, BID y ASK: Trade Republic / '+E(s.trExchange||'LSX')+'. Gráfico y técnicos: '+E((s.exchange||'EEUU')+':'+(s.ticker||''))+'.</div>':'';
+ return '<div class="profile-toolbar"><button type="button" class="btn ghost quick-profile-back" data-stock-detail-back="1">'+E(back)+'</button><span>'+E(marketTitle)+'</span></div>'+
+  '<header class="profile-hero investing-profile-header"><div class="profile-title">'+favButton(s)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
+   '<div class="profile-live"><small>'+E(liveLabel)+'</small>'+pricePair(s,SP(s,se),isTr)+currentChange+bidAskHtml(s,isTr)+'</div>'+
+   '<div class="profile-primary-actions"><button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'">＋ Añadir a cartera</button></div></header>'+
+  profileTabs()+profileSessionStrip(s,isTr)+relation+context+
+  '<div class="profile-main-grid"><section class="profile-section profile-chart-section" id="profile-chart"><div class="profile-section-head"><h3>Gráfico</h3><span>TradingView · hora España</span></div>'+miniChart(s,isTr)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+  '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
+  '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
+  '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>';
 }
 function renderQuickProfile(){
  let box=$('#stockQuickDetail');if(!box)return;
