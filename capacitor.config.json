@@ -12,5 +12,13 @@
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#071018"
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    }
   }
 }
