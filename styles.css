@@ -4218,3 +4218,38 @@ html[data-theme="light"] .profile-ai-state{background:rgba(91,126,204,.06)!impor
 html[data-theme="light"] .profile-stat-row{border-color:#e4ebee!important}
 html[data-theme="light"] .profile-stat-row>div>span{color:#536d78!important}
 html[data-theme="light"] .profile-news-grid>div+div{border-color:#e0e8eb!important}
+
+
+/* Performance strip under TradingView, matching the reference information density */
+.profile-performance-strip{
+ display:grid;
+ grid-template-columns:repeat(6,minmax(0,1fr));
+ border-top:1px solid #1c3039;
+ background:#071118
+}
+.profile-performance-strip>div{
+ min-width:0;
+ display:grid;
+ gap:3px;
+ padding:9px 8px;
+ text-align:center;
+ border-right:1px solid #1c3039
+}
+.profile-performance-strip>div:last-child{border-right:0}
+.profile-performance-strip span{
+ color:#667e89;
+ font-size:7px;
+ font-weight:760;
+ text-transform:uppercase;
+ letter-spacing:.35px
+}
+.profile-performance-strip strong{font-size:10px;font-weight:800}
+@media(max-width:720px){
+ .profile-performance-strip{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+ }
+ .profile-performance-strip>div:nth-child(3n){border-right:0}
+ .profile-performance-strip>div:nth-child(-n+3){border-bottom:1px solid #1c3039}
+}
+html[data-theme="light"] .profile-performance-strip{background:#fff;border-color:#dce5e8}
+html[data-theme="light"] .profile-performance-strip>div{border-color:#dce5e8}
