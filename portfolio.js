@@ -338,35 +338,37 @@ function updatePortfolioTabOverflow() {
     else if (right > track.scrollLeft + track.clientWidth) track.scrollLeft = Math.max(0, right - track.clientWidth + 4);
   }
 
-  const compute = () => {
-    const leftEdge = track.scrollLeft + 1;
-    const rightEdge = track.scrollLeft + track.clientWidth - 1;
-    return [...track.querySelectorAll("[data-portfolio-select]")].filter(el => {
-      const left = el.offsetLeft;
-      const right = left + el.offsetWidth;
-      return left < leftEdge || right > rightEdge;
-    });
-  };
-
-  more.hidden = true;
   requestAnimationFrame(() => {
-    let hidden = compute();
-    more.hidden = hidden.length === 0;
-    requestAnimationFrame(() => {
-      hidden = compute();
-      menu.innerHTML = hidden.map(el => {
-        const p = state.portfolios.find(x => String(x.id) === String(el.dataset.portfolioSelect));
-        if (!p) return "";
-        const count = portfolioPositions(p.id).length;
-        return '<button type="button" class="portfolio-overflow-item' + (p.id === state.selectedPortfolioId ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
-          '<strong>' + esc(p.name) + '</strong><span>' + count + '</span></button>';
-      }).join("");
-      more.hidden = hidden.length === 0;
-      if (more.hidden) closePortfolioTabOverflow();
+    // The arrow exists only when portfolio tabs are actually clipped.
+    const overflowing = track.clientWidth > 0 && track.scrollWidth > track.clientWidth + 2;
+    more.hidden = !overflowing;
+    if (!overflowing) {
+      menu.innerHTML = "";
+      closePortfolioTabOverflow();
+      return;
+    }
+
+    const trackRect = track.getBoundingClientRect();
+    const hidden = [...track.querySelectorAll("[data-portfolio-select]")].filter(el => {
+      const rect = el.getBoundingClientRect();
+      return rect.left < trackRect.left - 1 || rect.right > trackRect.right + 1;
     });
+
+    menu.innerHTML = hidden.map(el => {
+      const p = state.portfolios.find(x => String(x.id) === String(el.dataset.portfolioSelect));
+      if (!p) return "";
+      const count = portfolioPositions(p.id).length;
+      return '<button type="button" class="portfolio-overflow-item' + (p.id === state.selectedPortfolioId ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
+        '<strong>' + esc(p.name) + '</strong><span>' + count + '</span></button>';
+    }).join("");
+
+    // If everything fits after layout settles, never show a meaningless >.
+    if (!hidden.length) {
+      more.hidden = true;
+      closePortfolioTabOverflow();
+    }
   });
 }
-
 function portfolioOrderRows() {
   return state.portfolios.map((p, index) =>
     '<div class="portfolio-order-row" data-portfolio-order-id="' + esc(p.id) + '">' +
