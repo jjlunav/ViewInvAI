@@ -1,6 +1,6 @@
 {
-  "appId": "com.catalystpulse.mobile",
-  "appName": "CatalystPulse",
+  "appId": "com.viewinvai.mobile",
+  "appName": "ViewInvAI",
   "webDir": "mobile-shell",
   "server": {
     "url": "https://catalystpulse.sonarlab.workers.dev/",
