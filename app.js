@@ -1711,7 +1711,10 @@ function profileAiPanel(s,mode='us'){
   '<div class="profile-ai-columns"><div><h4>A favor</h4><ul>'+posHtml+'</ul></div><div><h4>En contra</h4><ul>'+negHtml+'</ul></div></div>'+
   '<div class="profile-ai-catalyst"><small>Catalizador relevante</small><strong>'+E(cat?EL(cat):'Sin catalizador direccional fuerte')+'</strong><span>'+E(cat?(cat.title||cat.fact||''):'La IA sigue precio, volumen, tendencia, liquidez, técnicos, noticias y eventos.')+'</span></div>'+
   '<div class="profile-ai-live" data-ai-auto-key="'+E(stockKey(s))+'" data-ai-auto-prefer-tr="'+(mode==='tr'?'1':'0')+'"><span class="ai-live-dot"></span><span>IA avanzada preparada para analizar datos en vivo.</span></div>'+ 
-  '<button type="button" class="btn profile-ai-chat" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(mode==='tr'?'1':'0')+'">✦ Preguntar a ViewInvAI</button>'+ 
+  '<div class="profile-ai-actions">'+
+   '<button type="button" class="btn profile-ai-chat" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(mode==='tr'?'1':'0')+'">✦ Preguntar a ViewInvAI</button>'+
+   '<button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(stockKey(s))+'" data-chatgpt-prefer-tr="'+(mode==='tr'?'1':'0')+'">ChatGPT ↗</button>'+
+  '</div>'+
  '</aside>';
 }
 function profileGeneralStats(s,isTr,se){
@@ -1767,6 +1770,7 @@ function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
  return '<div class="profile-visual-toggle-row">'+
    '<button type="button" class="profile-visual-toggle" aria-expanded="false" data-profile-visual-toggle data-profile-visual-key="'+E(key)+'" data-profile-visual-prefer-tr="'+(isTr?'1':'0')+'">▸ Mostrar gráfico y análisis IA</button>'+
+   '<button type="button" class="profile-external-chatgpt" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">ChatGPT ↗</button>'+
   '</div>'+
   '<div class="profile-visual-analysis is-collapsed" data-profile-visual-analysis>'+
    '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
@@ -1983,6 +1987,80 @@ async function askAiChat(question){
  }catch(e){pending.remove();aiChatAdd('assistant error','<p>'+E(e.message||'No se pudo consultar la IA.')+'</p>')}
  finally{aiChatState.busy=false;if(input){input.disabled=false;input.focus()}if(send){send.disabled=false;send.textContent='Enviar'}}
 }
+function buildExternalChatGptPrompt(s,preferTr=false){
+ let q=canonicalQuote(s,preferTr),mode=preferTr?'tr':'us';
+ let a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false);
+ let events=stockEvents(s)
+  .sort((x,y)=>new Date(y.date||0)-new Date(x.date||0))
+  .slice(0,6)
+  .map(e=>'- '+String(e.date||'').slice(0,10)+' · '+String(e.title||e.fact||'').slice(0,220))
+  .join('\n');
+ let bid=preferTr?N(s.trLiveBid):usLiveBid(s),ask=preferTr?N(s.trLiveAsk):usLiveAsk(s);
+ let market=preferTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ let lines=[
+  'Analiza esta acción con enfoque de operativa de 1–2 días. Usa únicamente el contexto que te paso y, si necesitas información más reciente, indícalo claramente antes de asumir nada.',
+  '',
+  'ACCIÓN',
+  '- Empresa: '+String(s.name||'—'),
+  '- Ticker: '+String(preferTr?(s.trTicker||s.ticker):(s.ticker||'—')),
+  '- Mercado: '+market,
+  '- Ticker EEUU: '+String((s.exchange||'')+':'+(s.ticker||'')),
+  '- ISIN: '+String((preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—'),
+  '',
+  'MERCADO AHORA',
+  '- Precio: '+String(q.price??'—')+' '+String(q.nativeCurrency||''),
+  '- Variación: '+String(q.change??'—')+'%',
+  '- BID / ASK: '+String(bid??'—')+' / '+String(ask??'—'),
+  '- Volumen: '+String(SV(s,currentMarketSession())??s.volume??'—'),
+  '- Volumen relativo: '+String(RV(s,currentMarketSession())??'—')+'x',
+  '',
+  'TÉCNICO 1D',
+  '- RSI 14: '+String(s.rsi??'—'),
+  '- ADX 14: '+String(s.adx??'—'),
+  '- EMA20: '+String(s.ema20??'—'),
+  '- EMA50: '+String(s.ema50??'—'),
+  '',
+  'VIEWINVAI',
+  '- Score: '+String(a.score??'—')+'/100',
+  '- Calidad de datos: '+String(quality.score??'—')+'/100',
+  '- Catalizador: '+String(a.catalyst&&a.catalyst.events&&a.catalyst.events[0]?EL(a.catalyst.events[0].e):'Sin catalizador direccional fuerte'),
+  '',
+  'NOTICIAS / EVENTOS CARGADOS',
+  events||'- Sin eventos recientes cargados.',
+  '',
+  'Quiero que distingas hechos comprobados, interpretación e incertidumbre. Resume momentum, tendencia, volumen, liquidez, posibles catalizadores/riesgos y qué confirmaciones o invalidaciones vigilarías antes de una entrada. No inventes noticias, precios ni fechas.'
+ ];
+ return lines.join('\n');
+}
+async function copyTextForExternalChat(text){
+ try{
+  if(navigator.clipboard&&window.isSecureContext){
+   await navigator.clipboard.writeText(text);
+   return true;
+  }
+ }catch(_){}
+ try{
+  let ta=document.createElement('textarea');
+  ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';ta.style.pointerEvents='none';
+  document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,ta.value.length);
+  let ok=document.execCommand&&document.execCommand('copy');
+  ta.remove();
+  return !!ok;
+ }catch(_){return false}
+}
+async function openExternalChatGpt(key,preferTr=false){
+ let s=stockByKey(key);if(!s)return;
+ let prompt=buildExternalChatGptPrompt(s,preferTr===true&&trTradable(s));
+ let opened=null;
+ try{opened=window.open('https://chatgpt.com/','_blank','noopener,noreferrer')}catch(_){}
+ let copied=await copyTextForExternalChat(prompt);
+ if(copied)toast('ChatGPT abierto · prompt copiado. Pégalo en el chat.');
+ else toast('ChatGPT abierto. Copia el contexto manualmente desde ViewInvAI.',true);
+ if(!opened){
+  try{window.location.href='https://chatgpt.com/'}catch(_){}
+ }
+}
+
 function openAiChat(key,preferTr=false){
  let s=stockByKey(key);if(!s)return;
  if(!window.ViewInvAIAuth?.getUser?.()){window.ViewInvAIAuth?.signIn?.();return}
@@ -3120,6 +3198,12 @@ document.addEventListener('click',e=>{
  if(aiOpen){
   e.preventDefault();e.stopPropagation();
   openAiChat(aiOpen.dataset.aiChatStock,aiOpen.dataset.aiChatPreferTr==='1');
+  return;
+ }
+ let externalChat=e.target.closest&&e.target.closest('[data-chatgpt-stock]');
+ if(externalChat){
+  e.preventDefault();e.stopPropagation();
+  openExternalChatGpt(externalChat.dataset.chatgptStock,externalChat.dataset.chatgptPreferTr==='1');
   return;
  }
  let aiQuick=e.target.closest&&e.target.closest('[data-ai-quick]');
