@@ -186,7 +186,13 @@ jobs:
           from collections import Counter
 
           html = Path("index.html").read_text(encoding="utf-8")
-          app = Path("app.js").read_text(encoding="utf-8")
+          module_paths = [
+              "app.js", "stock-charts.js", "stock-profile.js",
+              "navigation.js", "mobile-app.js", "bootstrap.js"
+          ]
+          modules = {path: Path(path).read_text(encoding="utf-8") for path in module_paths}
+          app = modules["app.js"]
+          profile = modules["stock-profile.js"]
           worker = Path("worker.js").read_text(encoding="utf-8")
           workflow = Path(".github/workflows/check-frontend.yml").read_text(encoding="utf-8")
 
@@ -199,18 +205,20 @@ jobs:
           if missing:
               raise SystemExit("Faltan IDs: " + ", ".join(missing))
 
-          names = re.findall(r"(?m)^function\s+([A-Za-z_$][\w$]*)\s*\(", app)
+          names = []
+          for path, source in modules.items():
+              names.extend(re.findall(r"(?m)^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", source))
           dup = sorted(name for name, count in Counter(names).items() if count > 1)
           if dup:
-              raise SystemExit("Funciones duplicadas en app.js: " + ", ".join(dup))
+              raise SystemExit("Funciones duplicadas entre módulos frontend: " + ", ".join(dup))
 
-          if app.count('<header class="profile-hero investing-profile-header unified-stock-header">') != 1:
+          if profile.count('<header class="profile-hero investing-profile-header unified-stock-header">') != 1:
               raise SystemExit("La cabecera unificada debe tener una única plantilla")
-          if "return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in app:
+          if "return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in profile:
               raise SystemExit("El detalle rápido/embebido dejó de reutilizar profileHeroHtml")
-          if "return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+" not in app:
+          if "return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+" not in profile:
               raise SystemExit("El catálogo dejó de reutilizar profileHeroHtml")
-          if "container.classList.add('stock-profile-page','embedded-stock-profile')" not in app:
+          if "container.classList.add('stock-profile-page','embedded-stock-profile')" not in profile:
               raise SystemExit("El detalle de cartera dejó de reutilizar stock-profile-page")
 
           forbidden = {
@@ -220,7 +228,7 @@ jobs:
               "javascript: URL": r"javascript\s*:",
           }
           for label, pattern in forbidden.items():
-              if re.search(pattern, app, re.I) or re.search(pattern, worker, re.I):
+              if any(re.search(pattern, source, re.I) for source in modules.values()) or re.search(pattern, worker, re.I):
                   raise SystemExit("Patron peligroso detectado: " + label)
 
           if 'Access-Control-Allow-Origin": "*"' in worker or "Access-Control-Allow-Origin': '*'" in worker:
@@ -236,7 +244,7 @@ jobs:
               "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
               "Private key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
           }
-          joined = "\n".join([app, worker, html, workflow])
+          joined = "\n".join([*modules.values(), worker, html, workflow])
           for label, pattern in secret_patterns.items():
               if re.search(pattern, joined):
                   raise SystemExit("Posible secreto embebido: " + label)
