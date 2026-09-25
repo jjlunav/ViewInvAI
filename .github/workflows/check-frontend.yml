@@ -153,6 +153,26 @@ jobs:
           window.addEventListener('unhandledrejection', (e) => {
             document.documentElement.dataset.runtimeError = String((e && e.reason && (e.reason.message || e.reason)) || 'unhandled rejection');
           });
+          const smokeFetch = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : String(input && input.url || '');
+            if (url.includes('/api/tr-history')) {
+              const now = Date.now();
+              const points = Array.from({length:80}, (_,i) => {
+                const close = 9.5 + i * 0.008 + Math.sin(i/5) * 0.08;
+                return {time:now-(79-i)*60000,open:close-0.02,high:close+0.05,low:close-0.05,close,volume:1000+i*15};
+              });
+              return Promise.resolve(new Response(JSON.stringify({isin:'US0000000001',exchange:'LSX',points,source:'smoke'}), {
+                status:200,
+                headers:{'Content-Type':'application/json'}
+              }));
+            }
+            return smokeFetch(input, init);
+          };
+          window.open = (url) => {
+            document.documentElement.dataset.externalOpen = String(url || '');
+            return { closed:false };
+          };
           </script>
           '''
           html = html.replace('<script src="app.js', pre + '<script src="app.js', 1)
@@ -202,22 +222,64 @@ jobs:
                   }
                 }
 
+                const chatgpt = root.querySelector('[data-chatgpt-stock]');
+                if (!chatgpt) {
+                  fail('external ChatGPT button missing');
+                  return;
+                }
+                chatgpt.click();
+                if (!String(document.documentElement.dataset.externalOpen || '').includes('https://chatgpt.com/?q=')) {
+                  fail('ChatGPT prompt URL was not prepared');
+                  return;
+                }
+                document.body.dataset.smokeChatgpt = 'ok';
+
+                const originalAuth = window.ViewInvAIAuth;
+                window.ViewInvAIAuth = Object.assign({}, originalAuth || {}, {getUser:()=>({uid:'smoke'}),signIn:()=>{}});
+                const internalAi = root.querySelector('[data-ai-chat-stock]');
+                if (!internalAi) {
+                  fail('internal ViewInvAI button missing');
+                  return;
+                }
+                internalAi.click();
+                const aiPanel = document.querySelector('#aiChatPanel');
+                if (!aiPanel || !aiPanel.classList.contains('open')) {
+                  fail('internal ViewInvAI chat did not open');
+                  return;
+                }
+                document.body.dataset.smokeAiChat = 'ok';
+                document.querySelector('#aiChatClose')?.click();
+
                 toggle.click();
                 setTimeout(() => {
                   if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
                     fail('chart/AI section did not expand');
                     return;
                   }
-                  toggle.click();
+                  if (!root.querySelector('.tr-native-chart')) {
+                    fail('LSX native chart did not render from Trade Republic history');
+                    return;
+                  }
+                  document.body.dataset.smokeTrChart = 'ok';
+
+                  applyTheme('light', true);
                   setTimeout(() => {
-                    if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
-                      fail('chart/AI section did not collapse again');
+                    if (!root.querySelector('.tr-native-chart')) {
+                      fail('theme change replaced the native LSX chart');
                       return;
                     }
-                    document.body.dataset.smokeProfile = 'ok';
-                    document.body.dataset.smokeProfileCompact = 'ok';
-                  }, 80);
-                }, 120);
+                    applyTheme('dark', true);
+                    toggle.click();
+                    setTimeout(() => {
+                      if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
+                        fail('chart/AI section did not collapse again');
+                        return;
+                      }
+                      document.body.dataset.smokeProfile = 'ok';
+                      document.body.dataset.smokeProfileCompact = 'ok';
+                    }, 80);
+                  }, 120);
+                }, 220);
                 return;
               }
               if (Date.now() - started < 7500) {
@@ -323,8 +385,8 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::El detalle compacto, el toggle gráfico/IA o la cabecera responsive fallaron"
+          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-tr-chart="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-ai-chat="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-chatgpt="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::El detalle compacto, gráfico LSX o acciones IA/ChatGPT fallaron"
             grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
             tail -100 /tmp/catalyst-chrome.log || true
             exit 1
