@@ -6,6 +6,9 @@ on:
     paths:
       - "app.js"
       - "navigation.js"
+      - "stock-charts.js"
+      - "stock-profile.js"
+      - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
       - "web-mobile.css"
