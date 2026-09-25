@@ -505,16 +505,14 @@ jobs:
                 return;
               }
               const detail = document.querySelector('#stockQuickDetail');
-              const diagnostics = [
-                'body=' + document.body.className,
-                'stateKey=' + String((typeof state !== 'undefined' && state.profileKey) || ''),
-                'detailHidden=' + String(detail ? detail.classList.contains('is-hidden') : 'missing'),
-                'detailHtml=' + String(detail ? detail.innerHTML.length : -1),
-                'renderQuickProfile=' + typeof renderQuickProfile,
-                'replaceHistory=' + typeof replaceCurrentAppHistory,
-                'profileHero=' + typeof profileHeroHtml
-              ].join(' | ');
-              fail('profile did not open: ' + diagnostics);
+              document.body.dataset.smokeProfileBodyOpen = document.body.classList.contains('stock-detail-open') ? 'yes' : 'no';
+              document.body.dataset.smokeProfileStateKey = String((typeof state !== 'undefined' && state.profileKey) || 'none');
+              document.body.dataset.smokeProfileDetailHidden = String(detail ? detail.classList.contains('is-hidden') : 'missing');
+              document.body.dataset.smokeProfileDetailHtml = String(detail ? detail.innerHTML.length : -1);
+              document.body.dataset.smokeProfileRenderFn = typeof renderQuickProfile;
+              document.body.dataset.smokeProfileHistoryFn = typeof replaceCurrentAppHistory;
+              document.body.dataset.smokeProfileHeroFn = typeof profileHeroHtml;
+              fail('profile-open-failed');
               document.body.dataset.smokeProfile = 'fail';
             }
 
