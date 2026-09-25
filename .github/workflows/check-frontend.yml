@@ -116,6 +116,15 @@ jobs:
           if dup:
               raise SystemExit("Funciones duplicadas en app.js: " + ", ".join(dup))
 
+          if app.count('<header class="profile-hero investing-profile-header unified-stock-header">') != 1:
+              raise SystemExit("La cabecera unificada debe tener una única plantilla")
+          if "return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in app:
+              raise SystemExit("El detalle rápido/embebido dejó de reutilizar profileHeroHtml")
+          if "return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+" not in app:
+              raise SystemExit("El catálogo dejó de reutilizar profileHeroHtml")
+          if "container.classList.add('stock-profile-page','embedded-stock-profile')" not in app:
+              raise SystemExit("El detalle de cartera dejó de reutilizar stock-profile-page")
+
           forbidden = {
               "eval()": r"\beval\s*\(",
               "new Function()": r"\bnew\s+Function\s*\(",
