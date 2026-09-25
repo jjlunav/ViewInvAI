@@ -43,6 +43,11 @@ CLINICAL_REFRESH_HOURS = 6
 CLINICAL_SYMBOL_LIMIT = 18
 CLINICAL_STUDY_LIMIT = 60
 CLINICAL_LOOKAHEAD_DAYS = 120
+OPENFDA_DRUGS_URL = "https://api.fda.gov/drug/drugsfda.json"
+OPENFDA_API_KEY = os.environ.get("OPENFDA_API_KEY", "").strip()
+FDA_REFRESH_HOURS = 12
+FDA_SYMBOL_LIMIT = 16
+FDA_RESULT_LIMIT = 30
 
 COLS = [
     "name","description","type","exchange","currency","sector","industry","market_cap_basic","close","change","high","low","bid","ask","volume",
@@ -805,6 +810,198 @@ def fetch_clinical_events(stocks, previous, now):
     return out, now.isoformat(), True
 
 
+FDA_ACTION_STATUS = {
+    "AP": ("Aprobación", "approved", 92),
+    "TA": ("Aprobación tentativa", "tentative_approval", 76),
+    "CR": ("Complete Response", "complete_response", 90),
+    "NA": ("No aprobable", "not_approvable", 90),
+    "WD": ("Retirada", "withdrawn", 82),
+    "AE": ("Aprobable", "approvable", 70),
+}
+
+
+def fda_status_info(value):
+    code = str(value or "").strip().upper()
+    label, kind, impact = FDA_ACTION_STATUS.get(code, ("Actualización regulatoria", "regulatory_update", 64))
+    return code, label, kind, impact
+
+
+def fda_submission_date(value):
+    text = str(value or "").strip()
+    for pattern in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return dt.datetime.strptime(text, pattern).replace(tzinfo=dt.timezone.utc)
+        except Exception:
+            pass
+    return None
+
+
+def fda_application_url(application_number):
+    digits = re.sub(r"\D", "", str(application_number or ""))
+    if not digits:
+        return "https://www.accessdata.fda.gov/scripts/cder/daf/"
+    return "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=" + digits
+
+
+def carry_previous_fda_events(previous, now):
+    cutoff = now - dt.timedelta(days=NEWS_DAYS)
+    rows = []
+    for event in previous.get("events") or []:
+        if event.get("sourceFamily") != "fda":
+            continue
+        when = event_date(event.get("date"))
+        if when and cutoff <= when <= now + dt.timedelta(days=1):
+            rows.append(event)
+    return rows
+
+
+def fetch_fda_events(stocks, previous, now):
+    previous_events = carry_previous_fda_events(previous, now)
+    prev_updated = event_date((previous.get("meta") or {}).get("fdaUpdatedAt"))
+    if prev_updated and (now - prev_updated).total_seconds() < FDA_REFRESH_HOURS * 3600:
+        return previous_events, prev_updated.isoformat(), False
+
+    candidates = [stock for stock in stocks if clinical_candidate(stock)]
+    candidates.sort(
+        key=lambda stock: (
+            1 if stock.get("tradeRepublicTradable") else 0,
+            mover_score(stock),
+        ),
+        reverse=True,
+    )
+    chosen = candidates[:FDA_SYMBOL_LIMIT]
+    if not chosen:
+        return previous_events, now.isoformat(), True
+
+    cutoff = now - dt.timedelta(days=NEWS_DAYS)
+    headers = {
+        "User-Agent": "ViewInvAI/0.4 market-research",
+        "Accept": "application/json",
+    }
+
+    def fetch_one(stock):
+        query = clinical_company_query(stock.get("name"))
+        if not query:
+            return []
+        params = {
+            "search": 'sponsor_name:"' + query.replace('"', "") + '"',
+            "limit": FDA_RESULT_LIMIT,
+        }
+        if OPENFDA_API_KEY:
+            params["api_key"] = OPENFDA_API_KEY
+        response = requests.get(OPENFDA_DRUGS_URL, params=params, headers=headers, timeout=25)
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        payload = response.json() or {}
+        rows = []
+        for application in payload.get("results") or []:
+            sponsor = str(application.get("sponsor_name") or "").strip()
+            if not clinical_sponsor_matches(stock.get("name"), sponsor):
+                continue
+            application_number = str(application.get("application_number") or "").strip()
+            url = fda_application_url(application_number)
+            products = application.get("products") or []
+            product_names = []
+            for product in products:
+                name = str((product or {}).get("brand_name") or "").strip()
+                if name and name not in product_names:
+                    product_names.append(name)
+            product_label = ", ".join(product_names[:3])
+            for submission in application.get("submissions") or []:
+                when = fda_submission_date((submission or {}).get("submission_status_date"))
+                if not when or when < cutoff or when > now + dt.timedelta(days=1):
+                    continue
+                status_code, status_label, status_kind, impact = fda_status_info((submission or {}).get("submission_status"))
+                submission_type = str((submission or {}).get("submission_type") or "").strip().upper()
+                submission_number = str((submission or {}).get("submission_number") or "").strip()
+                class_description = str((submission or {}).get("submission_class_code_description") or "").strip()
+                public_notes = str((submission or {}).get("submission_public_notes") or "").strip()
+                detail = class_description or public_notes
+                title = "FDA · " + status_label
+                if product_label:
+                    title += " · " + product_label
+                fact_parts = [
+                    sponsor + " figura como sponsor oficial en Drugs@FDA.",
+                    "La submission " + (submission_type + submission_number if submission_type or submission_number else "registrada") +
+                    " recibió estado " + (status_code or "sin código") + " (" + status_label + ") el " + when.date().isoformat() + ".",
+                ]
+                if detail:
+                    fact_parts.append(detail[:320])
+                rows.append({
+                    "id": "fda:" + application_number + ":" + submission_type + ":" + submission_number + ":" + when.date().isoformat(),
+                    "eventKind": "news",
+                    "ticker": stock.get("ticker"),
+                    "name": stock.get("name"),
+                    "exchange": stock.get("exchange"),
+                    "date": when.isoformat(),
+                    "type": "medical",
+                    "title": title[:240],
+                    "source": "FDA / Drugs@FDA",
+                    "sourceFamily": "fda",
+                    "url": url,
+                    "sources": [{
+                        "name": "FDA / Drugs@FDA",
+                        "url": url,
+                        "tier": 3,
+                        "kind": "registro oficial / fuente primaria",
+                        "family": "official",
+                        "independent": False,
+                    }],
+                    "sourceCount": 1,
+                    "independentSourceCount": 0,
+                    "corroborated": False,
+                    "verification": "Registro oficial FDA / Drugs@FDA · sponsor validado",
+                    "impactScore": impact,
+                    "tradeRepublicVerified": bool(stock.get("tradeRepublicVerified")),
+                    "tradeRepublicTradable": bool(stock.get("tradeRepublicTradable")),
+                    "fact": " ".join(fact_parts)[:800],
+                    "hypothesis": (
+                        "Una decisión regulatoria de FDA puede alterar materialmente expectativas y volatilidad. "
+                        "El registro confirma la acción regulatoria, pero no determina por sí solo la reacción bursátil."
+                    ),
+                    "isin": stock.get("isin"),
+                    "fdaApplicationNumber": application_number,
+                    "fdaSubmissionType": submission_type,
+                    "fdaSubmissionNumber": submission_number,
+                    "fdaStatus": status_code,
+                    "fdaStatusKind": status_kind,
+                    "fdaSponsor": sponsor,
+                })
+        return rows
+
+    out = []
+    seen = set()
+    failed_tickers = set()
+    success_count = 0
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        future_map = {pool.submit(fetch_one, stock): stock for stock in chosen}
+        for future in as_completed(future_map):
+            stock = future_map[future]
+            try:
+                rows = future.result()
+                success_count += 1
+            except Exception as exc:
+                ticker = stock.get("ticker")
+                failed_tickers.add(ticker)
+                print("openfda warning", ticker, str(exc))
+                continue
+            for event in rows:
+                key = event.get("id")
+                if key and key not in seen:
+                    seen.add(key)
+                    out.append(event)
+
+    if success_count == 0:
+        return previous_events, (prev_updated.isoformat() if prev_updated else None), False
+
+    for event in previous_events:
+        if event.get("ticker") in failed_tickers and event.get("id") not in seen:
+            seen.add(event.get("id"))
+            out.append(event)
+    return out, now.isoformat(), True
+
+
 def cached_tr_metadata(previous):
     cache = {}
     for row in previous.get("stocks") or []:
@@ -1366,6 +1563,9 @@ def main():
     clinical_events, clinical_updated_at, clinical_refreshed = fetch_clinical_events(stocks, previous, now)
     events.extend(clinical_events)
 
+    fda_events, fda_updated_at, fda_refreshed = fetch_fda_events(stocks, previous, now)
+    events.extend(fda_events)
+
     events.sort(key=lambda e: (
         -(e.get("impactScore") or 0),
         e.get("date") or "",
@@ -1397,7 +1597,11 @@ def main():
             "clinicalEventCount": len(clinical_events),
             "clinicalUpdatedAt": clinical_updated_at,
             "clinicalRefreshed": clinical_refreshed,
-            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. ClinicalTrials.gov se consulta directamente para ensayos con lead sponsor validado y solo se publican fechas con día exacto; una fecha de finalización de estudio no se presenta como fecha garantizada de resultados. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
+            "fdaEventCount": len(fda_events),
+            "fdaUpdatedAt": fda_updated_at,
+            "fdaRefreshed": fda_refreshed,
+            "fdaApiKeyConfigured": bool(OPENFDA_API_KEY),
+            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. ClinicalTrials.gov se consulta directamente para ensayos con lead sponsor validado y solo se publican fechas con día exacto; una fecha de finalización de estudio no se presenta como fecha garantizada de resultados. FDA/Drugs@FDA se usa para acciones regulatorias ya registradas y nunca para inventar futuras fechas PDUFA. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
         },
         "stocks": stocks,
         "events": events,
@@ -1421,10 +1625,14 @@ def main():
     print("ENTRY FILTER DIAGNOSTICS:", " | ".join(f"{name}={len(rows)}" for name, rows in stages))
     sample = stages[-1][1][:12]
     print("ENTRY FILTER SAMPLE:", [(s.get("ticker"), s.get("changePct"), s.get("relVolume"), s.get("adx"), s.get("rsi"), s.get("volume")) for s in sample])
-    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news;", len(clinical_events), "clinical")
+    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news;", len(clinical_events), "clinical;", len(fda_events), "fda")
     print("CLINICAL EVENT SAMPLE:", [
         (e.get("ticker"), e.get("clinicalLeadSponsor"), e.get("clinicalNct"), e.get("date"), e.get("clinicalPhase"), e.get("clinicalDateType"))
         for e in clinical_events[:12]
+    ])
+    print("FDA EVENT SAMPLE:", [
+        (e.get("ticker"), e.get("fdaSponsor"), e.get("fdaApplicationNumber"), e.get("fdaStatus"), e.get("date"))
+        for e in fda_events[:12]
     ])
 
 if __name__ == "__main__":
