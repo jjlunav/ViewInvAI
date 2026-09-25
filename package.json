@@ -1,6 +1,6 @@
 {
   "name": "viewinvai-android",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "description": "Android application for ViewInvAI with shared backend logic and an isolated native mobile presentation.",
