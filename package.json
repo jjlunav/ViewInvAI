@@ -1,14 +1,15 @@
 {
   "name": "viewinvai-android",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "Android application for ViewInvAI with shared backend logic and an isolated native mobile presentation.",
+  "description": "Android application for ViewInvAI with the full frontend packaged locally and shared online market/backend services.",
   "scripts": {
     "android:add": "cap add android",
     "android:sync": "cap sync android",
     "android:open": "cap open android",
-    "android:build:debug": "cd android && ./gradlew assembleDebug"
+    "android:build:debug": "cd android && ./gradlew assembleDebug",
+    "mobile:build": "node scripts/build_mobile_shell.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
