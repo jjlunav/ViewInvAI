@@ -678,6 +678,15 @@ jobs:
                           const mobileSpread = header && header.querySelector('.quote-spread');
                           const mobileActions = header && header.querySelector('.profile-primary-actions');
                           document.body.dataset.mobileHeaderHeight = String(Math.round(headerRect.height));
+                          const mobileBack = header && header.querySelector('.profile-back-cell');
+                          const mobileTitle = header && header.querySelector('.profile-title');
+                          const mobileLive = header && header.querySelector('.profile-live');
+                          const h = el => el ? Math.round(el.getBoundingClientRect().height) : -1;
+                          document.body.dataset.mobileHeaderBackH = String(h(mobileBack));
+                          document.body.dataset.mobileHeaderTitleH = String(h(mobileTitle));
+                          document.body.dataset.mobileHeaderLiveH = String(h(mobileLive));
+                          document.body.dataset.mobileHeaderActionsH = String(h(mobileActions));
+                          document.body.dataset.mobileHeaderSpreadH = String(h(mobileSpread));
                           document.body.dataset.mobileHeaderSpread = mobileSpread ? getComputedStyle(mobileSpread).display : 'missing';
                           document.body.dataset.mobileHeaderActions = mobileActions ? getComputedStyle(mobileActions).display : 'missing';
                           document.body.dataset.mobileHeaderPageWidth = String(document.documentElement.scrollWidth);
