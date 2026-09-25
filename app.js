@@ -313,9 +313,14 @@ function updateThemeButton(){
 }
 function refreshVisibleChartThemes(){
  document.querySelectorAll('.tv-advanced-chart').forEach(el=>{
-  if(el.dataset.loaded==='1'||el.querySelector('.tradingview-widget-container')){
-   renderTradingViewChart(el,el.dataset.chartMarket||'us');
+  if(!(el.dataset.loaded==='1'||el.querySelector('.tradingview-widget-container')||el.querySelector('.tr-native-chart')))return;
+  let s=stockByKey(el.dataset.stockKey);
+  if(el.dataset.chartMarket==='tr'&&el.dataset.trRange&&s){
+   let range=el.dataset.trRange||'1d';
+   loadTrChartHistory(s,range).then(data=>renderTrNativeChart(el,s,data,range)).catch(()=>{});
+   return;
   }
+  renderTradingViewChart(el,'us');
  });
 }
 function applyTheme(theme,rerenderCharts=true){
