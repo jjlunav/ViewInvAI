@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "score-engine.js"
       - "auth.js"
       - "portfolio.js"
       - "worker.js"
@@ -59,6 +60,7 @@ jobs:
         run: python -m compileall -q scripts
       - name: Validar JavaScript
         run: |
+          node --check score-engine.js
           node --check app.js
           node --check auth.js
           node --check portfolio.js
@@ -72,7 +74,7 @@ jobs:
           from collections import Counter
 
           files = [
-              Path("app.js"), Path("auth.js"), Path("portfolio.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
+              Path("score-engine.js"), Path("app.js"), Path("auth.js"), Path("portfolio.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
               Path("scripts/update_market.py"),
               Path(".github/workflows/check-frontend.yml"),
               Path(".github/workflows/update-market-data.yml"),
@@ -97,6 +99,7 @@ jobs:
               "verify=False": r"verify\s*=\s*False",
           }
           code_combined = "\n".join([
+              texts["score-engine.js"],
               texts["app.js"],
               texts["auth.js"],
               texts["portfolio.js"],
