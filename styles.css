@@ -8932,3 +8932,19 @@ html[data-theme="light"] .tr-native-axis{
   top:auto!important
  }
 }
+
+
+/* Multi-currency transaction summary - 2026-09-25 */
+.transaction-currency-values{
+ display:flex!important;
+ flex-wrap:wrap!important;
+ align-items:baseline!important;
+ gap:1px 3px!important
+}
+.transaction-currency-values>span{
+ white-space:nowrap
+}
+.transaction-currency-sep{
+ color:#5f7680!important;
+ font-weight:500!important
+}
