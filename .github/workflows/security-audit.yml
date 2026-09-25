@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "mobile-app.js"
+      - "mobile-app.css"
       - "market-session.js"
       - "score-engine.js"
       - "auth.js"
