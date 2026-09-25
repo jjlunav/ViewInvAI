@@ -12,6 +12,7 @@ on:
       - "catalog.js"
       - "heatmap.js"
       - "events.js"
+      - "stock-list.js"
       - "recommendation.js"
       - "help.js"
       - "bootstrap.js"
