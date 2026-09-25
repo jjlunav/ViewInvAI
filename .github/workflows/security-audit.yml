@@ -112,7 +112,10 @@ jobs:
       - name: Validar matching de fuentes clinicas
         run: |
           python - <<'PY'
-          from scripts.update_market import clinical_exact_date, clinical_sponsor_matches
+          from scripts.update_market import (
+              clinical_exact_date, clinical_sponsor_matches,
+              fda_status_info, fda_submission_date,
+          )
           assert clinical_sponsor_matches("Merck & Co., Inc.", "Merck Sharp & Dohme LLC")
           assert clinical_sponsor_matches("Moderna, Inc.", "ModernaTX, Inc.")
           assert clinical_sponsor_matches("Eli Lilly and Company", "Eli Lilly and Company")
@@ -120,7 +123,13 @@ jobs:
           assert clinical_exact_date("2026-10-15") is not None
           assert clinical_exact_date("2026-10") is None
           assert clinical_exact_date("2026") is None
-          print("Clinical source matching: OK")
+          assert fda_submission_date("20260925") is not None
+          assert fda_submission_date("2026-09-25") is not None
+          assert fda_submission_date("202609") is None
+          assert fda_status_info("AP")[1] == "Aprobación"
+          assert fda_status_info("CR")[2] == "complete_response"
+          assert fda_status_info("WD")[2] == "withdrawn"
+          print("Primary clinical/FDA source matching: OK")
           PY
       - name: Validar JavaScript
         run: |
