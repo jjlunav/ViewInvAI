@@ -32,6 +32,82 @@ function nativeAuthPlugin() {
     : null;
 }
 
+function nativeMessagingPlugin() {
+  return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging
+    ? window.Capacitor.Plugins.FirebaseMessaging
+    : null;
+}
+
+let pushListenersBound = false;
+let lastRegisteredPushToken = "";
+
+async function registerPushToken(token) {
+  token = String(token || "").trim();
+  if (!token || !currentUser || token === lastRegisteredPushToken) return false;
+  const response = await apiFetch("/api/devices", {
+    method: "POST",
+    body: JSON.stringify({
+      pushToken: token,
+      platform: "android",
+      appVersion: document.documentElement.dataset.appVersion || ""
+    })
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "No se pudo registrar este dispositivo para avisos.");
+  }
+  lastRegisteredPushToken = token;
+  window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: true } }));
+  return true;
+}
+
+function openPushStock(notification) {
+  const data = notification && notification.data || {};
+  const stockKey = String(data.stockKey || data.stock_key || "");
+  const preferTr = String(data.preferTr || data.prefer_tr || "") === "1" || data.preferTr === true;
+  if (!stockKey) return;
+  const open = () => window.ViewInvAI && window.ViewInvAI.openStockByKey && window.ViewInvAI.openStockByKey(stockKey, "Aviso push", preferTr);
+  if (!open()) setTimeout(open, 900);
+}
+
+async function bindPushListeners(plugin) {
+  if (!plugin || pushListenersBound) return;
+  pushListenersBound = true;
+  await plugin.addListener("tokenReceived", event => {
+    registerPushToken(event && event.token).catch(error => console.warn("FCM token sync failed", error));
+  });
+  await plugin.addListener("notificationActionPerformed", event => {
+    openPushStock(event && event.notification);
+  });
+  await plugin.addListener("notificationReceived", event => {
+    window.dispatchEvent(new CustomEvent("viewinvai:push-received", { detail: event || {} }));
+  });
+}
+
+async function ensurePushRegistration() {
+  const plugin = nativeMessagingPlugin();
+  if (!plugin || !currentUser) return false;
+  try {
+    const supported = await plugin.isSupported().catch(() => ({ isSupported: true }));
+    if (supported && supported.isSupported === false) return false;
+    await bindPushListeners(plugin);
+    let permission = await plugin.checkPermissions();
+    if (!permission || !["granted"].includes(permission.receive)) {
+      permission = await plugin.requestPermissions();
+    }
+    if (!permission || permission.receive !== "granted") {
+      window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, permission: permission && permission.receive || "denied" } }));
+      return false;
+    }
+    const result = await plugin.getToken();
+    return registerPushToken(result && result.token);
+  } catch (error) {
+    console.warn("Push registration unavailable", error);
+    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, error: String(error && error.message || error) } }));
+    return false;
+  }
+}
+
 async function loadWebSdk() {
   if (!webSdkPromise) {
     webSdkPromise = Promise.all([
@@ -177,6 +253,7 @@ async function syncBackendUser() {
   }
   const data = await response.json();
   window.dispatchEvent(new CustomEvent("viewinvai:account-ready", { detail: data }));
+  ensurePushRegistration().catch(error => console.warn("Push setup failed", error));
   return data;
 }
 
@@ -276,6 +353,11 @@ async function signOutAccount() {
       const { authSdk, auth } = await loadWebSdk();
       await authSdk.signOut(auth);
     }
+    try {
+      const messaging = nativeMessagingPlugin();
+      if (messaging) await messaging.deleteToken();
+    } catch (_) {}
+    lastRegisteredPushToken = "";
     setUser(null, { sync: false });
     closeAccountMenu();
     showToast("Sesión cerrada");
