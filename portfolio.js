@@ -869,7 +869,48 @@ function localDateValue(date = new Date()) {
   return y + "-" + m + "-" + d;
 }
 
-function openAddPositionModal(stockKey, preferTrOverride = null) {
+function positionForPortfolioStock(stockKey, portfolioId) {
+  return state.positions.find(p =>
+    p.stock_key === stockKey &&
+    String(p.portfolio_id) === String(portfolioId) &&
+    Number(p.active) !== 0
+  ) || null;
+}
+
+function applyPositionFormState(form, stock, fallbackPreferTr) {
+  if (!form || !stock) return;
+  const portfolioId = form.querySelector('[name="portfolioId"]')?.value || '';
+  const existing = positionForPortfolioStock(form.dataset.stockKey, portfolioId);
+  const preferTr = existing ? Number(existing.prefer_tr) === 1 : fallbackPreferTr;
+  const current = currentMarket(stock, preferTr);
+  form.dataset.preferTr = preferTr ? '1' : '0';
+  form.dataset.existingPositionId = existing?.id || '';
+
+  const quantity = form.querySelector('[name="quantity"]');
+  const avgPrice = form.querySelector('[name="avgPrice"]');
+  const currency = form.querySelector('[name="currency"]');
+  const openedAt = form.querySelector('[name="openedAt"]');
+  const notes = form.querySelector('[name="notes"]');
+  const save = form.querySelector('[data-save-position]');
+  const mode = form.querySelector('[data-position-form-mode]');
+
+  if (quantity) quantity.value = existing && num(existing.quantity) !== null ? existing.quantity : '';
+  if (avgPrice) {
+    avgPrice.value = existing && num(existing.avg_price) !== null ? existing.avg_price : '';
+    avgPrice.placeholder = current.price === null ? '' : String(current.price);
+  }
+  if (currency) currency.value = existing
+    ? String(existing.currency || (preferTr ? 'EUR' : stock.currency || 'USD')).toUpperCase()
+    : (preferTr ? 'EUR' : String(stock.currency || 'USD').toUpperCase());
+  if (openedAt) openedAt.value = existing && existing.opened_at ? String(existing.opened_at).slice(0,10) : localDateValue();
+  if (notes) notes.value = existing?.notes || '';
+  if (save) save.textContent = existing ? 'Guardar cambios' : 'Guardar posición';
+  if (mode) mode.textContent = existing
+    ? 'Posición existente · modifica los datos o usa Operaciones para compras/ventas parciales.'
+    : 'Nueva posición en esta cartera.';
+}
+
+function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null) {
   if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
   if (!state.portfolios.length) {
     toast("Primero crea una cartera.", true);
@@ -881,16 +922,27 @@ function openAddPositionModal(stockKey, preferTrOverride = null) {
     toast("Abre primero una acción para añadirla.", true);
     return;
   }
-  const preferTr = preferTrOverride === true ? true : preferTrOverride === false ? false : !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+
+  const memberships = activePortfolioMemberships(stockKey);
+  const preferredPortfolioId = portfolioIdOverride ||
+    (state.selectedPortfolioId && state.portfolios.some(p => p.id === state.selectedPortfolioId) ? state.selectedPortfolioId : '') ||
+    (memberships.length === 1 ? memberships[0].position.portfolio_id : '') ||
+    state.portfolios[0].id;
+  const existingInitial = positionForPortfolioStock(stockKey, preferredPortfolioId);
+  const preferTr = existingInitial
+    ? Number(existingInitial.prefer_tr) === 1
+    : preferTrOverride === true ? true : preferTrOverride === false ? false : !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
   const current = currentMarket(stock, preferTr);
-  const options = state.portfolios.map(p => '<option value="' + esc(p.id) + '"' + (p.id === state.selectedPortfolioId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
-  openModal("Añadir " + (stock.trTicker || stock.ticker || "acción"),
+  const options = state.portfolios.map(p => '<option value="' + esc(p.id) + '"' + (String(p.id) === String(preferredPortfolioId) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+
+  openModal((existingInitial ? "Gestionar " : "Añadir ") + (stock.trTicker || stock.ticker || "acción"),
     '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '" data-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
       '<div class="position-form-stock"><strong>' + esc(stock.trTicker || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span><b>' + formatMoney(current.price, current.currency) + '</b></div>' +
+      '<div class="portfolio-form-mode" data-position-form-mode></div>' +
       '<label><span>Cartera</span><select name="portfolioId" required>' + options + '</select></label>' +
       '<div class="portfolio-form-grid"><label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>' +
       '<label><span>Precio medio</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" placeholder="' + esc(current.price || "") + '"></label></div>' +
-      '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option' + (preferTr ? ' selected' : '') + '>EUR</option><option' + (!preferTr ? ' selected' : '') + '>USD</option><option>GBP</option></select></label>' +
+      '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option>EUR</option><option>USD</option><option>GBP</option></select></label>' +
       '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
       '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>' +
@@ -898,10 +950,14 @@ function openAddPositionModal(stockKey, preferTrOverride = null) {
     '</form>'
   );
 
-  // Bind directly to the button created inside the dynamic modal. This avoids
-  // relying on delegated form-submit behaviour in Android System WebView.
   const form = $("#addPositionForm");
   const saveButton = form?.querySelector("[data-save-position]");
+  if (form) {
+    applyPositionFormState(form, stock, preferTr);
+    form.querySelector('[name="portfolioId"]')?.addEventListener('change', () => {
+      applyPositionFormState(form, stock, preferTrOverride === true ? true : preferTrOverride === false ? false : preferTr);
+    });
+  }
   if (form && saveButton) {
     saveButton.addEventListener("click", event => {
       event.preventDefault();
@@ -923,6 +979,24 @@ function activePortfolioMemberships(stockKey) {
 
 function isInPortfolio(stockKey) {
   return activePortfolioMemberships(stockKey).length > 0;
+}
+
+function confirmRemoveExposure(positionId) {
+  const position = transactionPosition(positionId);
+  if (!position) return toast('No se encuentra la posición.', true);
+  const portfolio = state.portfolios.find(p => String(p.id) === String(position.portfolio_id));
+  const currency = String(position.currency || 'EUR').toUpperCase();
+  openModal('Eliminar exposición',
+    '<div class="portfolio-remove-confirm">' +
+      '<strong>' + esc(position.ticker || '') + ' · ' + esc(portfolio?.name || 'Cartera') + '</strong>' +
+      '<p>Esto elimina completamente esta posición de la cartera. No se interpreta como una venta parcial ni modifica otras carteras.</p>' +
+      '<div class="portfolio-remove-confirm-data"><span>' + esc(formatNumber(position.quantity,4)) + ' uds.</span><span>Media ' + esc(formatMoney(position.avg_price,currency)) + '</span></div>' +
+      '<div class="portfolio-remove-confirm-actions">' +
+        '<button type="button" class="btn ghost" data-cancel-remove-exposure>Cancelar</button>' +
+        '<button type="button" class="btn danger" data-confirm-remove-exposure="' + esc(position.id) + '">Eliminar exposición completa</button>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 async function removePositionMembership(position) {
@@ -976,13 +1050,30 @@ function openStarMenu(stockKey, preferTr = null) {
   if (!state.user) return window.ViewInvAIAuth?.signIn?.();
   const stock = stockByKey(stockKey);
   if (!stock) return;
-  const memberships = new Set(state.positions.filter(p => p.stock_key === stockKey && Number(p.active) !== 0).map(p => p.portfolio_id));
-  const rows = state.portfolios.map(p =>
-    '<button type="button" class="star-portfolio-choice' + (memberships.has(p.id) ? ' selected' : '') + '" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
-      '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + (memberships.has(p.id) ? 'Ya está en esta cartera' : 'Añadir a esta cartera') + '</small>' +
-    '</button>'
-  ).join('');
-  openModal("Añadir a cartera",
+
+  const rows = state.portfolios.map(p => {
+    const existing = positionForPortfolioStock(stockKey, p.id);
+    if (!existing) {
+      return '<button type="button" class="star-portfolio-choice" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
+        '<span>☆</span><strong>' + esc(p.name) + '</strong><small>Añadir a esta cartera</small>' +
+      '</button>';
+    }
+
+    const qty = num(existing.quantity), avg = num(existing.avg_price);
+    const currency = String(existing.currency || (Number(existing.prefer_tr) === 1 ? 'EUR' : 'USD')).toUpperCase();
+    const detail = (qty === null ? 'Posición activa' : formatNumber(qty,4) + ' uds.') + (avg === null ? '' : ' · media ' + formatMoney(avg,currency));
+    return '<div class="star-portfolio-manager">' +
+      '<button type="button" class="star-portfolio-choice selected" data-edit-portfolio-position="' + esc(existing.id) + '" data-star-stock="' + esc(stockKey) + '">' +
+        '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + esc(detail) + ' · editar datos</small>' +
+      '</button>' +
+      '<div class="star-portfolio-manager-actions">' +
+        '<button type="button" data-manage-position-transactions="' + esc(existing.id) + '">Operaciones</button>' +
+        '<button type="button" class="danger" data-remove-exposure-position="' + esc(existing.id) + '">Eliminar exposición</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  openModal(isInPortfolio(stockKey) ? "Gestionar carteras" : "Añadir a cartera",
     '<div class="star-portfolio-menu">' +
       '<div class="star-stock-summary"><strong>' + esc((preferTr && stock.trTicker) || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
       (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras.</div>') +
@@ -1164,29 +1255,60 @@ function bind() {
       return;
     }
 
-    const removeChoice = event.target.closest?.("[data-remove-stock-portfolio]");
-    if (removeChoice) {
+    const editPosition = event.target.closest?.("[data-edit-portfolio-position]");
+    if (editPosition) {
       event.preventDefault();
       event.stopPropagation();
-      removeStockFromPortfolio(removeChoice.dataset.removeStockKey, removeChoice.dataset.removeStockPortfolio);
+      const position = transactionPosition(editPosition.dataset.editPortfolioPosition);
+      if (position) {
+        closeModal();
+        setTimeout(() => openAddPositionModal(position.stock_key, Number(position.prefer_tr) === 1, position.portfolio_id), 20);
+      }
       return;
     }
 
-    const removeDirect = event.target.closest?.("[data-remove-portfolio-stock]");
-    if (removeDirect) {
+    const manageTransactions = event.target.closest?.("[data-manage-position-transactions]");
+    if (manageTransactions) {
       event.preventDefault();
       event.stopPropagation();
-      removeStockFromPortfolio(removeDirect.dataset.removePortfolioStock);
+      openTransactionsModal(manageTransactions.dataset.managePositionTransactions);
+      return;
+    }
+
+    const removeExposure = event.target.closest?.("[data-remove-exposure-position]");
+    if (removeExposure) {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmRemoveExposure(removeExposure.dataset.removeExposurePosition);
+      return;
+    }
+
+    const cancelRemove = event.target.closest?.("[data-cancel-remove-exposure]");
+    if (cancelRemove) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeModal();
+      return;
+    }
+
+    const confirmRemove = event.target.closest?.("[data-confirm-remove-exposure]");
+    if (confirmRemove) {
+      event.preventDefault();
+      event.stopPropagation();
+      const position = transactionPosition(confirmRemove.dataset.confirmRemoveExposure);
+      if (!position) return;
+      try {
+        await removePositionMembership(position);
+        toast('Exposición eliminada de la cartera');
+        closeModal();
+      } catch (error) {
+        toast(error.message || 'No se pudo eliminar la exposición.', true);
+      }
       return;
     }
 
     const starChoice = event.target.closest?.("[data-star-add-portfolio]");
     if (starChoice) {
-      if (starChoice.classList.contains("selected")) {
-        closeModal();
-        toast("La acción ya está en esa cartera.");
-        return;
-      }
       const pref = starChoice.dataset.starPreferTr;
       openAddToSpecificPortfolio(starChoice.dataset.starStock, starChoice.dataset.starAddPortfolio, pref === "1" ? true : pref === "0" ? false : null);
       return;
@@ -1216,7 +1338,7 @@ function bind() {
       event.preventDefault();
       event.stopPropagation();
       const pref = add.dataset.addPortfolioPreferTr;
-      openAddPositionModal(add.dataset.addPortfolioStock, pref === "1" ? true : pref === "0" ? false : null);
+      openStarMenu(add.dataset.addPortfolioStock, pref === "1" ? true : pref === "0" ? false : null);
       return;
     }
 
