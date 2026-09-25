@@ -819,7 +819,8 @@ function refreshTrLiveDom(){
 function initTrLive(){
  connectTrLive();
  setInterval(()=>{if(!document.hidden)refreshTrLiveDom()},1000);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden){connectTrLive();requestAnimationFrame(()=>observeActiveTrLivePrices())}});
+ setInterval(pruneTrLiveSubscriptions,15000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){connectTrLive();requestAnimationFrame(()=>observeActiveTrLivePrices());pruneTrLiveSubscriptions()}});
 }
 
 function activeLiveRoots(){
@@ -850,6 +851,17 @@ function visibleLiveNodes(selector,margin=500){
 function setHtmlIfChanged(el,html){if(el&&el.innerHTML!==html)el.innerHTML=html}
 function observeActiveTrLivePrices(){
  for(let root of activeLiveRoots())observeTrLivePrices(root);
+}
+function pruneTrLiveSubscriptions(){
+ if(document.hidden||!trLive.wanted.size)return;
+ const selector='[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key],[data-tr-spread-key],[data-tr-price-eur-key],[data-tr-price-usd-key]';
+ let keep=new Set(),h=window.innerHeight||900;
+ for(let root of activeLiveRoots())for(let el of root.querySelectorAll(selector)){
+  let r=el.getBoundingClientRect();if(r.bottom<-700||r.top>h+700)continue;
+  let key=el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
+  if(key)keep.add(key);
+ }
+ for(let key of [...trLive.wanted])if(!keep.has(key))dropTrLiveKey(key);
 }
 function usStockByKey(key){let s=stockByKey(key);return s&&market(s,'us')?s:null}
 function usVisibleKeys(){
@@ -922,6 +934,8 @@ function scheduleLiveViewRefresh(delay=180){
 }
 async function pollUsLive(){
  if(usLive.busy||document.hidden)return;
+ let minGap=document.body.classList.contains('stock-detail-open')?2500:5000;
+ if(usLive.lastFetchAt&&Date.now()-usLive.lastFetchAt<minGap)return;
  let stocks=usVisibleKeys();if(!stocks.length)return;
  usLive.busy=true;
  try{
