@@ -196,10 +196,11 @@ function apiGuard(request) {
   const allowed = new Set(["GET", "POST", "PATCH", "DELETE"]);
   if (!allowed.has(request.method)) return { status: 405, error: "Method not allowed" };
   const url = new URL(request.url);
-  const origin = request.headers.get("Origin");
-  if (origin && origin !== url.origin) return { status: 403, error: "Forbidden" };
+  const origin = String(request.headers.get("Origin") || "");
+  const nativeOrigin = ["https://localhost","http://localhost","capacitor://localhost","ionic://localhost"].includes(origin.toLowerCase());
+  if (origin && origin !== url.origin && !nativeOrigin) return { status: 403, error: "Forbidden" };
   const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
-  if (site && !["same-origin", "none"].includes(site)) return { status: 403, error: "Forbidden" };
+  if (!nativeOrigin && site && !["same-origin", "none"].includes(site)) return { status: 403, error: "Forbidden" };
   if (["POST", "PATCH", "DELETE"].includes(request.method)) {
     const type = String(request.headers.get("Content-Type") || "").toLowerCase();
     if (request.method !== "DELETE" && type && !type.startsWith("application/json")) {
