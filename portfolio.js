@@ -1187,7 +1187,7 @@ async function savePositionForm(form) {
 }
 
 function bind() {
-  document.addEventListener("click", event => {
+  document.addEventListener("click", async event => {
     const login = event.target.closest?.(".portfolio-google-login");
     if (login) {
       window.ViewInvAIAuth?.signIn();
