@@ -257,6 +257,7 @@ function calculateTransactionLedger(rows) {
 
 async function ensureOpeningTransaction(env, userId, position) {
   if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return;
+  await ensureTransactionsSchema(env);
   const existing = await env.DB.prepare(
     "SELECT id FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? LIMIT 1"
   ).bind(userId, position.portfolio_id, position.stock_key).first();
