@@ -7817,3 +7817,434 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
   flex-direction:column-reverse!important
  }
 }
+
+
+/* Universal compact stock-card grid + readability pass - 2026-09-25 */
+
+/* Full-width stock screens now grow left-to-right in compact cards instead of
+   stretching each instrument across the entire desktop viewport. */
+.stock-list.stock-card-grid{
+ display:grid!important;
+ grid-template-columns:repeat(auto-fill,minmax(420px,540px))!important;
+ align-items:start!important;
+ align-content:start!important;
+ justify-content:start!important;
+ gap:10px!important;
+ overflow:visible!important;
+ border:0!important;
+ border-radius:0!important;
+ background:transparent!important;
+ box-shadow:none!important
+}
+.stock-list.stock-card-grid>.investing-stock-card{
+ width:100%!important;
+ max-width:540px!important;
+ min-width:0!important;
+ border:1px solid #203842!important;
+ border-radius:12px!important;
+ overflow:hidden!important;
+ background:#081219!important;
+ box-shadow:0 7px 18px rgba(0,0,0,.10)!important
+}
+.stock-list.stock-card-grid>.investing-stock-card:last-child{
+ border:1px solid #203842!important
+}
+.stock-list.stock-card-grid>.empty-state{
+ grid-column:1/-1!important
+}
+
+/* Shared stock card density. Applies to Radar, Inicio, Carteras, Futuro and Calendario. */
+.investing-stock-card .investing-stock-row{
+ grid-template-columns:minmax(0,1fr) minmax(158px,auto) 12px!important;
+ align-items:center!important;
+ gap:10px!important;
+ min-height:78px!important;
+ padding:10px 12px!important
+}
+.investing-stock-card .investing-stock-left{
+ gap:5px!important
+}
+.investing-stock-card .investing-stock-name-row{
+ gap:7px!important
+}
+.investing-stock-card .investing-stock-copy{
+ gap:3px!important
+}
+.investing-stock-card .investing-stock-copy .stock-name{
+ font-size:15px!important;
+ line-height:1.14!important;
+ font-weight:780!important;
+ color:#f0f6f8!important
+}
+.investing-stock-card .investing-stock-meta{
+ gap:5px!important;
+ flex-wrap:wrap!important;
+ color:#91a8b2!important;
+ font-size:10px!important;
+ line-height:1.2!important
+}
+.investing-stock-card .investing-stock-meta .rank{
+ padding:2px 5px!important;
+ font-size:8px!important;
+ color:#a6bbc4!important;
+ background:#102630!important
+}
+.investing-stock-card .investing-stock-meta .pill{
+ font-size:8px!important
+}
+.investing-stock-card .meta-clock{
+ font-size:11px!important;
+ color:#df6a75!important
+}
+.investing-stock-card .stock-ai-chip{
+ padding:3px 7px!important;
+ font-size:9px!important;
+ line-height:1.2!important;
+ color:#c3ceff!important;
+ background:rgba(115,167,255,.12)!important;
+ border-color:rgba(130,176,255,.26)!important
+}
+.investing-stock-card .investing-stock-right{
+ min-width:158px!important;
+ gap:2px!important
+}
+.investing-stock-card .stock-list-price .price-pair{
+ display:grid!important;
+ grid-template-columns:auto auto!important;
+ grid-template-areas:
+  "main secondary"
+  "updated updated"!important;
+ justify-content:end!important;
+ align-items:baseline!important;
+ column-gap:5px!important;
+ row-gap:1px!important
+}
+.investing-stock-card .stock-list-price .price-pair>strong{
+ grid-area:main!important;
+ font-size:18px!important;
+ line-height:1!important;
+ color:#f5f9fa!important;
+ letter-spacing:-.2px!important
+}
+.investing-stock-card .stock-list-price .price-pair>small:not(.quote-updated){
+ grid-area:secondary!important;
+ font-size:10px!important;
+ line-height:1!important;
+ color:#9cb0b9!important;
+ opacity:1!important
+}
+.investing-stock-card .stock-list-price .quote-updated{
+ grid-area:updated!important;
+ justify-self:end!important;
+ margin:1px 0 0!important;
+ padding:0!important;
+ border:0!important;
+ background:transparent!important;
+ color:#7f98a3!important;
+ font-size:8px!important;
+ line-height:1.1!important;
+ opacity:1!important
+}
+.investing-stock-card .investing-stock-right>.quote-change{
+ font-size:13px!important;
+ line-height:1.05!important;
+ font-weight:820!important
+}
+.investing-stock-card .stock-session-quote{
+ min-height:19px!important;
+ gap:4px!important;
+ color:#9cafb7!important;
+ font-size:10px!important;
+ opacity:1!important
+}
+.investing-stock-card .stock-session-quote .session-icon{
+ font-size:12px!important;
+ color:#ffc84c!important
+}
+.investing-stock-card .stock-session-quote small{
+ display:inline-flex!important;
+ align-items:center!important;
+ min-height:16px!important;
+ padding:2px 5px!important;
+ border:1px solid #40525a!important;
+ border-radius:5px!important;
+ background:#101b21!important;
+ color:#d7e1e5!important;
+ font-size:8.5px!important;
+ line-height:1!important;
+ font-weight:850!important;
+ letter-spacing:.45px!important;
+ opacity:1!important
+}
+.investing-stock-card .stock-session-quote strong{
+ font-size:10.5px!important;
+ line-height:1.05!important;
+ color:#c2d0d5!important;
+ font-weight:720!important
+}
+.investing-stock-card .stock-session-quote>span:last-child{
+ font-size:10.5px!important;
+ line-height:1.05!important;
+ font-weight:820!important
+}
+.investing-stock-card .open-arrow{
+ align-self:center!important;
+ color:#718b96!important;
+ font-size:21px!important
+}
+
+/* Market data is kept, but grouped into a dense lower band. */
+.investing-stock-card .stock-market-line{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ flex-wrap:nowrap!important;
+ gap:8px!important;
+ min-height:34px!important;
+ padding:6px 12px!important;
+ border-top:1px solid rgba(73,105,118,.28)!important;
+ background:#071118!important
+}
+.investing-stock-card .stock-market-line .quote-spread{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(66px,1fr))!important;
+ gap:4px!important;
+ margin:0!important;
+ padding:0!important
+}
+.investing-stock-card .stock-market-line .quote-side{
+ min-width:66px!important;
+ padding:3px 6px!important;
+ border-color:#34515e!important;
+ background:#091820!important
+}
+.investing-stock-card .stock-market-line .quote-side small{
+ font-size:8px!important;
+ line-height:1!important;
+ opacity:1!important
+}
+.investing-stock-card .stock-market-line .quote-side strong{
+ font-size:11px!important;
+ line-height:1.05!important;
+ color:#edf5f7!important
+}
+.investing-stock-card .stock-list-metrics{
+ display:grid!important;
+ grid-template-columns:repeat(4,auto)!important;
+ align-items:center!important;
+ justify-content:end!important;
+ gap:8px!important;
+ color:#8ba2ac!important;
+ font-size:9px!important;
+ line-height:1.1!important;
+ opacity:1!important
+}
+.investing-stock-card .stock-list-metrics span{
+ white-space:nowrap!important
+}
+.investing-stock-card .stock-list-metrics b{
+ color:#c4d2d7!important;
+ font-size:9.5px!important;
+ font-weight:780!important
+}
+.investing-stock-card .stock-context-line{
+ min-height:31px!important;
+ padding:5px 12px!important;
+ gap:8px!important;
+ color:#8fa5ae!important;
+ font-size:9px!important
+}
+.investing-stock-card .stock-context-line strong{
+ color:#e2ecef!important;
+ font-size:10px!important
+}
+.investing-stock-card .stock-context-line span{
+ color:#9cb0b8!important
+}
+
+/* Existing portfolio cards use the same readable scale instead of shrinking again. */
+#view-portfolios .portfolio-card-grid>.portfolio-investing-card{
+ flex-basis:500px!important;
+ width:min(100%,500px)!important;
+ max-width:500px!important
+}
+#view-portfolios .portfolio-card-grid .investing-stock-row{
+ min-height:78px!important;
+ padding:10px 12px!important
+}
+#view-portfolios .portfolio-card-grid .investing-stock-copy .stock-name{
+ font-size:15px!important
+}
+#view-portfolios .portfolio-card-grid .stock-list-price .price-pair>strong{
+ font-size:18px!important
+}
+#view-portfolios .portfolio-card-grid .stock-market-line{
+ min-height:34px!important;
+ padding:6px 12px!important
+}
+#view-portfolios .portfolio-card-grid .portfolio-position-numbers span,
+#view-portfolios .portfolio-card-grid .portfolio-position-signal{
+ font-size:9px!important
+}
+
+/* The three Inicio columns stay one card wide but inherit the same typography. */
+#view-home .home-stock-list{
+ display:grid!important;
+ gap:7px!important;
+ padding:7px!important
+}
+#view-home .home-investing-card{
+ border:1px solid #203842!important;
+ border-radius:10px!important;
+ overflow:hidden!important
+}
+
+/* Light theme keeps the same hierarchy and contrast. */
+html[data-theme="light"] .stock-list.stock-card-grid>.investing-stock-card,
+html[data-theme="light"] #view-home .home-investing-card{
+ background:#fff!important;
+ border-color:#cbd9df!important
+}
+html[data-theme="light"] .investing-stock-card .investing-stock-meta,
+html[data-theme="light"] .investing-stock-card .stock-list-metrics{
+ color:#5d747e!important
+}
+html[data-theme="light"] .investing-stock-card .stock-list-metrics b,
+html[data-theme="light"] .investing-stock-card .stock-session-quote strong{
+ color:#314a54!important
+}
+html[data-theme="light"] .investing-stock-card .stock-session-quote small{
+ background:#eef4f6!important;
+ border-color:#bccbd1!important;
+ color:#334b55!important
+}
+html[data-theme="light"] .investing-stock-card .stock-market-line{
+ background:#f8fbfc!important;
+ border-color:#dbe5e9!important
+}
+html[data-theme="light"] .investing-stock-card .stock-market-line .quote-side{
+ background:#fff!important;
+ border-color:#bfd0d7!important
+}
+html[data-theme="light"] .investing-stock-card .stock-market-line .quote-side strong{
+ color:#203943!important
+}
+html[data-theme="light"] .investing-stock-card .stock-list-price .quote-updated{
+ color:#607983!important
+}
+
+/* Tablets and phones remain single-column and keep every field visible. */
+@media(max-width:760px){
+ .stock-list.stock-card-grid{
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:7px!important
+ }
+ .stock-list.stock-card-grid>.investing-stock-card{
+  max-width:none!important
+ }
+ .investing-stock-card .investing-stock-row{
+  grid-template-columns:minmax(0,1fr) minmax(128px,142px) 10px!important;
+  gap:6px!important;
+  min-height:72px!important;
+  padding:9px 9px!important
+ }
+ .investing-stock-card .investing-stock-name-row{
+  gap:5px!important
+ }
+ .investing-stock-card .investing-stock-copy .stock-name{
+  font-size:14px!important
+ }
+ .investing-stock-card .investing-stock-meta{
+  gap:4px!important;
+  font-size:9.5px!important
+ }
+ .investing-stock-card .stock-ai-chip{
+  padding:3px 6px!important;
+  font-size:8.5px!important
+ }
+ .investing-stock-card .investing-stock-right{
+  min-width:0!important
+ }
+ .investing-stock-card .stock-list-price .price-pair>strong{
+  font-size:16px!important
+ }
+ .investing-stock-card .stock-list-price .price-pair>small:not(.quote-updated){
+  font-size:9px!important
+ }
+ .investing-stock-card .stock-list-price .quote-updated{
+  font-size:7.5px!important
+ }
+ .investing-stock-card .investing-stock-right>.quote-change{
+  font-size:12px!important
+ }
+ .investing-stock-card .stock-session-quote{
+  gap:3px!important
+ }
+ .investing-stock-card .stock-session-quote small{
+  min-height:15px!important;
+  padding:2px 4px!important;
+  font-size:8px!important
+ }
+ .investing-stock-card .stock-session-quote strong,
+ .investing-stock-card .stock-session-quote>span:last-child{
+  font-size:9px!important
+ }
+ .investing-stock-card .stock-market-line{
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr)!important;
+  gap:6px!important;
+  padding:5px 9px!important
+ }
+ .investing-stock-card .stock-market-line .quote-spread{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(58px,1fr))!important
+ }
+ .investing-stock-card .stock-market-line .quote-side{
+  min-width:58px!important;
+  padding:3px 5px!important
+ }
+ .investing-stock-card .stock-market-line .quote-side small{
+  font-size:7.5px!important
+ }
+ .investing-stock-card .stock-market-line .quote-side strong{
+  font-size:10px!important
+ }
+ .investing-stock-card .stock-list-metrics{
+  grid-template-columns:repeat(2,auto)!important;
+  gap:4px 8px!important;
+  font-size:8.5px!important
+ }
+ .investing-stock-card .stock-list-metrics b{
+  font-size:9px!important
+ }
+ .investing-stock-card .stock-context-line{
+  padding:5px 9px!important;
+  font-size:8.5px!important
+ }
+ #view-portfolios .portfolio-card-grid>.portfolio-investing-card{
+  min-width:0!important;
+  width:100%!important;
+  max-width:none!important
+ }
+}
+
+@media(max-width:420px){
+ .investing-stock-card .investing-stock-row{
+  grid-template-columns:minmax(0,1fr) 124px 9px!important
+ }
+ .investing-stock-card .investing-stock-copy .stock-name{
+  font-size:13.5px!important
+ }
+ .investing-stock-card .stock-list-price .price-pair{
+  grid-template-columns:1fr!important;
+  grid-template-areas:"main" "secondary" "updated"!important;
+  justify-items:end!important;
+  row-gap:1px!important
+ }
+ .investing-stock-card .stock-list-price .price-pair>strong{
+  font-size:15.5px!important
+ }
+ .investing-stock-card .stock-session-quote .session-icon{
+  display:none!important
+ }
+}
