@@ -176,6 +176,36 @@ function portfolioPositions(portfolioId) {
   return state.positions.filter(p => p.portfolio_id === portfolioId && Number(p.active) !== 0);
 }
 
+function portfolioSummaryHtml(portfolio, positions) {
+  if (!portfolio || !positions.length) return "";
+  const baseCurrency = String(portfolio.base_currency || "EUR").toUpperCase();
+  let currentValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0;
+  for (const p of positions) {
+    const stock = stockByKey(p.stock_key);
+    const qty = num(p.quantity);
+    if (p.last_signal) analyzed++;
+    if (!stock || qty === null) { currentComplete = false; costComplete = false; continue; }
+    const preferTr = Number(p.prefer_tr) === 1;
+    const market = currentMarket(stock, preferTr);
+    const currentUnit = marketValueInCurrency(market, baseCurrency);
+    if (currentUnit === null) currentComplete = false;
+    else currentValue += qty * currentUnit;
+
+    const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
+    const avg = num(p.avg_price);
+    if (avg === null || entryCurrency !== baseCurrency) costComplete = false;
+    else invested += qty * avg;
+  }
+  const pnl = currentComplete && costComplete ? currentValue - invested : null;
+  const pnlPct = pnl !== null && invested > 0 ? pnl / invested * 100 : null;
+  return '<div class="portfolio-summary-bar">' +
+    '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
+    '<div><small>VALOR ACTUAL</small><strong>' + (currentComplete ? formatMoney(currentValue, baseCurrency) : '—') + '</strong></div>' +
+    (pnl === null ? '' : '<div><small>RESULTADO</small><strong class="' + (pnl >= 0 ? 'pnl-up' : 'pnl-down') + '">' + (pnl >= 0 ? '+' : '') + formatMoney(pnl, baseCurrency) + ' · ' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%</strong></div>') +
+    '<div><small>SEGUIMIENTO IA</small><strong>' + analyzed + '/' + positions.length + '</strong></div>' +
+  '</div>';
+}
+
 function renderLoggedOut(box) {
   box.innerHTML = '<div class="portfolio-auth-gate">' +
     '<div class="portfolio-auth-icon">★</div>' +
@@ -208,6 +238,7 @@ function renderPositionRow(p, index = 0) {
   const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
   const currentEntryPrice = marketValueInCurrency(market, entryCurrency);
   const currentValue = qty !== null && currentEntryPrice !== null ? qty * currentEntryPrice : null;
+  const pnlAbs = qty !== null && avg !== null && currentEntryPrice !== null ? (currentEntryPrice - avg) * qty : null;
   const pnlPct = avg !== null && avg > 0 && currentEntryPrice !== null ? (currentEntryPrice / avg - 1) * 100 : null;
   const [signalLabel] = signalInfo(p.last_signal);
 
@@ -217,7 +248,7 @@ function renderPositionRow(p, index = 0) {
         '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
         '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
         '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
-        (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%</b> desde entrada</span>') +
+        (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%' + (pnlAbs === null ? '' : ' · ' + (pnlAbs >= 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency)) + '</b> desde entrada</span>') +
       '</div>' +
       '<div class="portfolio-position-actions">' +
         '<span class="portfolio-position-signal">' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span>' +
@@ -289,7 +320,7 @@ function renderApp() {
     '</div>' +
     '<div id="portfolioContext" class="portfolio-context">' +
       (selected
-        ? '<section class="portfolio-block integrated portfolio-positions-only">' +
+        ? portfolioSummaryHtml(selected, positions) + '<section class="portfolio-block integrated portfolio-positions-only">' +
             '<div class="portfolio-position-list stock-list portfolio-card-grid">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
           '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
