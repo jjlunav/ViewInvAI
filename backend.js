@@ -553,9 +553,10 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
     "You are ViewInvAI, a risk-aware market monitoring assistant.",
     "Use ONLY the supplied structured data. Do not invent facts or news.",
     "The user may own the stock (position) or only follow it (watchlist).",
-    "For a position, signal must be HOLD, REVIEW, or SELL. For watchlist, signal must be BUY, WATCH, or AVOID.",
-    "BUY and SELL require strong evidence. If data is incomplete, lower confidence.",
-    "Return JSON only with keys: signal, confidence (0-100), score (-100 to 100), horizon, thesis, riskSummary, reasons (max 4 strings), catalysts (max 4 strings).",
+    "The deterministicReference is authoritative for signal, score and confidence. Do not override it.",
+    "Your job is to explain the supplied evidence, risks and catalysts clearly and conservatively.",
+    "For a position, the authoritative signal is HOLD, REVIEW, or SELL. For watchlist, it is BUY, WATCH, or AVOID.",
+    "Return JSON only with keys: signal, confidence, score, horizon, thesis, riskSummary, reasons (max 4 strings), catalysts (max 4 strings). Echo signal, confidence and score from deterministicReference.",
     "",
     JSON.stringify({
       subject: {
@@ -586,7 +587,8 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       recentEvents: events,
       deterministicReference: {
         score: fallback.score,
-        signal: fallback.signal
+        signal: fallback.signal,
+        confidence: fallback.confidence
       }
     })
   ].join("\n");
@@ -600,21 +602,18 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
     const parsed = extractAiJson(result);
     if (!parsed) return fallback;
 
-    const isPosition = target.subject_type === "position";
-    const allowed = new Set(isPosition ? ["HOLD", "REVIEW", "SELL"] : ["BUY", "WATCH", "AVOID"]);
-    const signal = String(parsed.signal || "").toUpperCase();
-    if (!allowed.has(signal)) return fallback;
-
+    // Signal, score and confidence stay deterministic. The language model is
+    // allowed to explain the evidence, but it cannot silently change the trading state.
     return {
-      signal,
-      confidence: Math.max(0, Math.min(100, Math.round(finiteNumber(parsed.confidence) ?? fallback.confidence))),
-      score: Math.max(-100, Math.min(100, Math.round(finiteNumber(parsed.score) ?? fallback.score))),
-      horizon: trimText(parsed.horizon || "1-2d", 24) || "1-2d",
+      signal: fallback.signal,
+      confidence: fallback.confidence,
+      score: fallback.score,
+      horizon: trimText(parsed.horizon || fallback.horizon || "1-2d", 24) || "1-2d",
       thesis: trimText(parsed.thesis || fallback.thesis, 500),
       riskSummary: trimText(parsed.riskSummary || fallback.riskSummary, 500),
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
-      engine: "workers-ai",
+      engine: "rules+workers-ai-narrative",
       model
     };
   } catch (error) {
