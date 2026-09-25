@@ -554,10 +554,10 @@ function usPriceCell(s,which,se){
  return '<span class="table-price-wrap"><span class="table-price-cell'+(cls?' '+cls:'')+'" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,false)+'</small></span>';
 }
 function liveChangeHtml(s,fallback,preferTr=false){
- let value=preferTr&&trTradable(s)?(trLiveChange(s)??N(fallback)):(usLiveChange(s)??N(fallback));
- let attrs=preferTr&&trTradable(s)
+ let trActive=preferTr&&trTradable(s)&&trMarketOpen(),value=trActive?(trLiveChange(s)??N(fallback)):(preferTr?marketChange(s,currentMarketSession(),true):(usLiveChange(s)??N(fallback)));
+ let attrs=trActive
   ?' data-tr-live-change-key="'+E(stockKey(s))+'"'
-  :' data-us-live-change-key="'+E(stockKey(s))+'"';
+  :(!preferTr?' data-us-live-change-key="'+E(stockKey(s))+'"':'');
  return '<span class="quote-change '+C(value)+'"'+attrs+'>'+PC(value)+'</span>';
 }
 
@@ -1755,7 +1755,8 @@ function profileHeroHtml(s,isTr=false,opts={}){
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
  let currentChange=liveChangeHtml(s,SC(s,se),isTr);
- let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
+ let trFresh=isTr&&trMarketOpen()&&N(s.trLiveReceivedAt)!==null&&Date.now()-N(s.trLiveReceivedAt)<60000;
+ let liveLabel=isTr?(trFresh?'LSX · EN DIRECTO':trMarketOpen()?'LSX · ÚLTIMO DATO':'LSX · MERCADO CERRADO'):'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
  let back='';
  if(opts.backKind==='portfolio')back='<button type="button" class="profile-back-inline" data-portfolio-detail-close>← Atrás</button>';
  else if(opts.backKind==='profile')back='<button type="button" class="profile-back-inline" data-profile-back="'+E(opts.backView||state.currentView)+'">← Atrás</button>';
@@ -2438,7 +2439,7 @@ async function highConvictionRecommendation(mode){
  let se=a.se,vol=SV(s,se),price=N(s.price),ema20=N(s.ema20),ema50=N(s.ema50);
  let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
  let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
- let quality=[a.change,a.rv,a.adx,a.rsi,price,ema20,ema50,vol].filter(v=>N(v)!==null).length;
+ let dataQuality=stockDataQuality(s,mode,chart.available);
  let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
  let gates={
   score:a.score>=82,
@@ -2452,7 +2453,7 @@ async function highConvictionRecommendation(mode){
   spread:a.spread===null||a.spread<=3.5,
   momentum:a.change!==null&&a.change>=.5&&a.change<=20,
   catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
-  quality:quality>=7
+  quality:dataQuality.score>=70
  };
  let eligible=Object.values(gates).every(Boolean);
  let reasons=[];
@@ -2461,7 +2462,7 @@ async function highConvictionRecommendation(mode){
  if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
  if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
  if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
- return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons};
+ return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
 }
 function recommendationSignal(score,bucket,qualityScore=100){
  if(qualityScore<55)return{key:'wait',label:'ESPERAR',text:'Faltan datos suficientes para emitir una señal fuerte.'};
