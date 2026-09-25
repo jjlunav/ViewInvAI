@@ -15,6 +15,7 @@ toUI(state.filters);
 initHelpSystem();
 initStockInteractions();
 initCatalogInteractions();
+initHeatmapInteractions();
 document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
  applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
 }));
