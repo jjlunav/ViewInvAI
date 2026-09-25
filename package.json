@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "Android wrapper for ViewInvAI using Capacitor.",
+  "description": "Android application for ViewInvAI with shared backend logic and an isolated native mobile presentation.",
   "scripts": {
     "android:add": "cap add android",
     "android:sync": "cap sync android",
