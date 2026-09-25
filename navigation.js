@@ -158,7 +158,3 @@ document.addEventListener('click',e=>{
 });
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
-
-renderNavigation();
-initAppHistory();
-initNativeBackHandling();
