@@ -407,8 +407,12 @@ function recentEvents(snapshot, stock, limit = 12) {
       type: e.type || e.eventKind || "event",
       title: trimText(e.title || e.fact || "", 240),
       fact: trimText(e.fact || e.title || "", 300),
-      impact: trimText(e.impact || e.context || "", 260),
+      impact: trimText(e.hypothesis || e.impact || e.context || "", 260),
       impactScore: finiteNumber(e.impactScore),
+      verification: trimText(e.verification || "", 180),
+      sourceCount: finiteNumber(e.sourceCount),
+      independentSourceCount: finiteNumber(e.independentSourceCount),
+      corroborated: e.corroborated === true,
       url: trimText(e.url || e.sourceUrl || "", 500)
     }));
 }
@@ -563,6 +567,7 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
   const prompt = [
     "You are ViewInvAI, a risk-aware market monitoring assistant.",
     "Use ONLY the supplied structured data. Do not invent facts or news.",
+    "Distinguish source verification from market interpretation. An issuer-distributed release is not independent corroboration.",
     "The user may own the stock (position) or only follow it (watchlist).",
     "The deterministicReference is authoritative for signal, score and confidence. Do not override it.",
     "Your job is to explain the supplied evidence, risks and catalysts clearly and conservatively.",
