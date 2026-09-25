@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "navigation.js"
       - "mobile-app.js"
       - "mobile-app.css"
       - "web-mobile.css"
