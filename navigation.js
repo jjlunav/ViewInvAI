@@ -7,17 +7,17 @@
 
 const NAV_ORDER=['home','portfolios','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
- home:{icon:'⌂',short:'Inicio'},
- entry:{icon:'◈',short:'Radar'},
- recommendation:{icon:'◎',short:'Ideas IA'},
- portfolios:{icon:'★',short:'Carteras'},
- alerts:{icon:'●',short:'Avisos'},
- catalog:{icon:'▤',short:'TR'},
- heatmap:{icon:'▦',short:'Mapa'},
- future:{icon:'✦',short:'Futuro'},
- calendar:{icon:'▣',short:'Calendario'},
- catalogUS:{icon:'▥',short:'EEUU'},
- settings:{icon:'⚙',short:'Ajustes'}
+ home:{icon:'⌂',short:'Inicio',desc:'Resumen de mercado'},
+ entry:{icon:'◈',short:'Radar',desc:'Entradas y filtros'},
+ recommendation:{icon:'◎',short:'Ideas IA',desc:'Lectura multifactor'},
+ portfolios:{icon:'★',short:'Carteras',desc:'Posiciones y seguimiento'},
+ alerts:{icon:'●',short:'Avisos',desc:'Señales de alta convicción'},
+ catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
+ heatmap:{icon:'▦',short:'Mapa',desc:'Mercado por sectores'},
+ future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
+ calendar:{icon:'▣',short:'Calendario',desc:'Noticias y eventos'},
+ catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
+ settings:{icon:'⚙',short:'Ajustes',desc:'Preferencias y avisos'}
 };
 const PRIMARY_MOBILE_VIEWS=['home','portfolios','recommendation','entry'];
 
@@ -36,7 +36,7 @@ function renderNavigation(){
    '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
  }
  if(grid){
-  grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b></button>').join('');
+  grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+E(NAV_META[v].icon)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
  }
  syncMobileNavigation();
 }
