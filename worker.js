@@ -23,6 +23,37 @@ const RATE_BUCKETS = new Map();
 function requestIdentity(request){
   return String(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "anon").split(",")[0].trim().slice(0,80);
 }
+function requestActorKey(request){
+  const auth=String(request.headers.get("Authorization")||"");
+  const token=auth.startsWith("Bearer ")?auth.slice(7):"";
+  if(token){
+    try{
+      const payload=token.split(".")[1]||"";
+      const normalized=payload.replace(/-/g,"+").replace(/_/g,"/");
+      const padded=normalized+"=".repeat((4-normalized.length%4)%4);
+      const parsed=JSON.parse(atob(padded));
+      if(parsed&&parsed.sub)return"user:"+String(parsed.sub).slice(0,128);
+    }catch(_){}
+  }
+  return"ip:"+requestIdentity(request);
+}
+async function enforcedRateLimit(request,env,name,limit,windowMs,bindingName){
+  const binding=bindingName&&env&&env[bindingName];
+  if(binding&&typeof binding.limit==="function"){
+    try{
+      const result=await binding.limit({key:name+":"+requestActorKey(request)});
+      if(result&&result.success===false){
+        const retry=Math.max(1,Math.round(windowMs/1000));
+        return jsonResponse({error:"Too many requests",retryAfter:retry},429,{"Retry-After":String(retry),"Cache-Control":"no-store"});
+      }
+      return null;
+    }catch(error){
+      console.warn("Distributed rate limit fallback",bindingName,String(error&&error.message||error));
+    }
+  }
+  return rateLimit(request,name,limit,windowMs);
+}
+
 function rateLimit(request, bucket, max, windowMs=60000){
   const now=Date.now(),key=bucket+":"+requestIdentity(request);
   let row=RATE_BUCKETS.get(key);
@@ -643,12 +674,12 @@ export default {
     }
 
     let limited=null;
-    if(url.pathname==="/api/ai/chat")limited=rateLimit(request,"ai-chat",20,60000);
-    else if(url.pathname==="/api/us-live")limited=rateLimit(request,"us-live",90,60000);
-    else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=rateLimit(request,"chart",60,60000);
-    else if(url.pathname==="/api/fx-live")limited=rateLimit(request,"fx",60,60000);
-    else if(url.pathname==="/api/tr-live")limited=rateLimit(request,"tr-live",30,60000);
-    else if(isBackendApiPath(url.pathname))limited=rateLimit(request,"backend",180,60000);
+    if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
+    else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
+    else if(isBackendApiPath(url.pathname))limited=await enforcedRateLimit(request,env,"backend",180,60000,"API_RATE_LIMITER");
     if(limited)return limited;
 
     if (isBackendApiPath(url.pathname)) {
