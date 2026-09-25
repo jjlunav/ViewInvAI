@@ -32,10 +32,26 @@ function nativeAuthPlugin() {
     : null;
 }
 
+let nativeMessagingProxy = null;
 function nativeMessagingPlugin() {
-  return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging
-    ? window.Capacitor.Plugins.FirebaseMessaging
-    : null;
+  const cap = window.Capacitor;
+  if (!cap) return null;
+  if (nativeMessagingProxy) return nativeMessagingProxy;
+  if (cap.Plugins && cap.Plugins.FirebaseMessaging) {
+    nativeMessagingProxy = cap.Plugins.FirebaseMessaging;
+    return nativeMessagingProxy;
+  }
+  if (typeof cap.isPluginAvailable === "function" &&
+      typeof cap.registerPlugin === "function" &&
+      cap.isPluginAvailable("FirebaseMessaging")) {
+    try {
+      nativeMessagingProxy = cap.registerPlugin("FirebaseMessaging");
+      return nativeMessagingProxy;
+    } catch (error) {
+      console.warn("FirebaseMessaging bridge registration failed", error);
+    }
+  }
+  return null;
 }
 
 let pushListenersBound = false;
