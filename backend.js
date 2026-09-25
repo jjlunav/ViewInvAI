@@ -183,7 +183,25 @@ function transactionPayload(body) {
   };
 }
 
+let transactionsSchemaReady = false;
+async function ensureTransactionsSchema(env) {
+  if (transactionsSchemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS transactions (" +
+      "id TEXT PRIMARY KEY,portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',exchange TEXT NOT NULL DEFAULT '',isin TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0," +
+      "side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),quantity REAL NOT NULL CHECK(quantity>0),price REAL NOT NULL CHECK(price>=0),fees REAL NOT NULL DEFAULT 0 CHECK(fees>=0),currency TEXT NOT NULL DEFAULT 'EUR',executed_at TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',origin TEXT NOT NULL DEFAULT 'manual',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+    ),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id,executed_at DESC,created_at DESC)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_date ON transactions(portfolio_id,executed_at DESC,created_at DESC)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_stock ON transactions(user_id,portfolio_id,stock_key,executed_at,created_at)")
+  ]);
+  transactionsSchemaReady = true;
+}
+
 async function transactionRows(env, userId, portfolioId, stockKey) {
+  await ensureTransactionsSchema(env);
   const rows = await env.DB.prepare(
     "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? ORDER BY executed_at ASC,created_at ASC,id ASC"
   ).bind(userId, portfolioId, stockKey).all();
@@ -346,7 +364,9 @@ async function handlePortfolios(request, env, user, json, parts) {
   }
 
   if (request.method === "DELETE") {
+    await ensureTransactionsSchema(env);
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM transactions WHERE portfolio_id=? AND user_id=?").bind(id, user.id),
       env.DB.prepare("DELETE FROM positions WHERE portfolio_id=? AND user_id=?").bind(id, user.id),
       env.DB.prepare("DELETE FROM portfolios WHERE id=? AND user_id=?").bind(id, user.id)
     ]);
@@ -432,6 +452,7 @@ async function handlePositions(request, env, user, json, parts, url) {
 }
 
 async function handleTransactions(request, env, user, json, parts, url) {
+  await ensureTransactionsSchema(env);
   const id = parts[1] || "";
 
   if (request.method === "GET" && !id) {
