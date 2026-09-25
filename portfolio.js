@@ -3,6 +3,7 @@ const state = {
   portfolios: [],
   positions: [],
   watchlist: [],
+  portfolioTransactionSummaries: {},
   selectedPortfolioId: null,
   detailStockKey: null,
   detailPreferTr: null,
@@ -196,12 +197,23 @@ function portfolioSummaryHtml(portfolio, positions) {
     if (avg === null || entryCurrency !== baseCurrency) costComplete = false;
     else invested += qty * avg;
   }
-  const pnl = currentComplete && costComplete ? currentValue - invested : null;
-  const pnlPct = pnl !== null && invested > 0 ? pnl / invested * 100 : null;
+
+  const openPnl = currentComplete && costComplete ? currentValue - invested : null;
+  const openPnlPct = openPnl !== null && invested > 0 ? openPnl / invested * 100 : null;
+  const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
+  const currencySummary = txSummary && txSummary.currencies && txSummary.currencies[baseCurrency] || null;
+  const realizedPnl = currencySummary ? num(currencySummary.realizedPnl) : null;
+  const totalPnl = openPnl !== null && realizedPnl !== null ? openPnl + realizedPnl : null;
+  const pnlHtml = (label, value, suffix = "") => value === null ? "" :
+    '<div><small>' + label + '</small><strong class="' + (value >= 0 ? 'pnl-up' : 'pnl-down') + '">' +
+      (value > 0 ? '+' : '') + formatMoney(value, baseCurrency) + suffix + '</strong></div>';
+
   return '<div class="portfolio-summary-bar">' +
     '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
     '<div><small>VALOR ACTUAL</small><strong>' + (currentComplete ? formatMoney(currentValue, baseCurrency) : '—') + '</strong></div>' +
-    (pnl === null ? '' : '<div><small>RESULTADO</small><strong class="' + (pnl >= 0 ? 'pnl-up' : 'pnl-down') + '">' + (pnl >= 0 ? '+' : '') + formatMoney(pnl, baseCurrency) + ' · ' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%</strong></div>') +
+    pnlHtml('ABIERTO', openPnl, openPnlPct === null ? '' : ' · ' + (openPnlPct >= 0 ? '+' : '') + formatNumber(openPnlPct, 2) + '%') +
+    pnlHtml('REALIZADO', realizedPnl) +
+    pnlHtml('TOTAL', totalPnl) +
     '<div><small>SEGUIMIENTO IA</small><strong>' + analyzed + '/' + positions.length + '</strong></div>' +
   '</div>';
 }
@@ -524,6 +536,8 @@ async function loadAll({ syncFavorites = false } = {}) {
   } finally {
     state.loading = false;
     renderApp();
+    const summaryPortfolioId = state.selectedPortfolioId;
+    if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});
   }
 }
 
@@ -684,6 +698,20 @@ async function fetchTransactions(position) {
     limit: '300'
   });
   return fetchJson('/api/transactions?' + qs.toString());
+}
+
+async function refreshPortfolioTransactionSummary(portfolioId, rerender = true) {
+  portfolioId = String(portfolioId || "");
+  if (!state.user || !portfolioId) return null;
+  try {
+    const data = await fetchJson('/api/transactions?portfolioId=' + encodeURIComponent(portfolioId) + '&limit=1');
+    state.portfolioTransactionSummaries[portfolioId] = data.portfolioSummary || null;
+    if (rerender && String(state.selectedPortfolioId || "") === portfolioId) renderApp();
+    return data.portfolioSummary || null;
+  } catch (error) {
+    console.warn("Portfolio transaction summary failed", error);
+    return null;
+  }
 }
 
 function portfolioTransactionSummaryHtml(summary) {
@@ -1259,6 +1287,7 @@ function bind() {
       savePortfolioUi();
       closePortfolioTabOverflow();
       renderApp();
+      refreshPortfolioTransactionSummary(state.selectedPortfolioId).catch(() => {});
       return;
     }
 
@@ -1514,6 +1543,7 @@ function bind() {
       state.portfolios = [];
       state.positions = [];
       state.watchlist = [];
+      state.portfolioTransactionSummaries = {};
       state.selectedPortfolioId = null;
       renderApp();
     } else {
