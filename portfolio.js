@@ -681,6 +681,29 @@ async function fetchTransactions(position) {
   return fetchJson('/api/transactions?' + qs.toString());
 }
 
+function portfolioTransactionSummaryHtml(summary) {
+  if (!summary) return "";
+  const currencies = summary.currencies && typeof summary.currencies === "object" ? summary.currencies : {};
+  const currencyRows = Object.entries(currencies).map(([currency, row]) => {
+    const realized = num(row.realizedPnl) || 0;
+    return '<div class="portfolio-history-currency">' +
+      '<div><small>' + esc(currency) + ' · COMPRAS</small><strong>' + formatMoney(row.buyGross, currency) + '</strong></div>' +
+      '<div><small>VENTAS</small><strong>' + formatMoney(row.sellGross, currency) + '</strong></div>' +
+      '<div><small>P&L REALIZADO</small><strong class="' + (realized < 0 ? 'pnl-down' : 'pnl-up') + '">' + (realized > 0 ? '+' : '') + formatMoney(realized, currency) + '</strong></div>' +
+      '<div><small>COMISIONES</small><strong>' + formatMoney(row.fees, currency) + '</strong></div>' +
+    '</div>';
+  }).join('');
+  return '<div class="portfolio-history-overview">' +
+    '<div class="transaction-history-summary">' +
+      '<span><b>' + Number(summary.total || 0) + '</b> operaciones</span>' +
+      '<span><b>' + Number(summary.buys || 0) + '</b> compras</span>' +
+      '<span><b>' + Number(summary.sells || 0) + '</b> ventas</span>' +
+      '<span><b>' + Number(summary.stocks || 0) + '</b> valores</span>' +
+    '</div>' +
+    (currencyRows ? '<div class="portfolio-history-currencies">' + currencyRows + '</div>' : '') +
+  '</div>';
+}
+
 async function openPortfolioTransactionHistory(portfolioId) {
   const portfolio = state.portfolios.find(p => String(p.id) === String(portfolioId));
   if (!portfolio) return toast('No se encuentra la cartera.', true);
@@ -692,11 +715,9 @@ async function openPortfolioTransactionHistory(portfolioId) {
     const rows = data.transactions || [];
     const body = $('#portfolioModalBody');
     if (!body) return;
-    const buys = rows.filter(x => String(x.side || '').toUpperCase() === 'BUY').length;
-    const sells = rows.length - buys;
     body.innerHTML =
       '<div class="transaction-ledger portfolio-transaction-history">' +
-        '<div class="transaction-history-summary"><span><b>' + rows.length + '</b> operaciones</span><span><b>' + buys + '</b> compras</span><span><b>' + sells + '</b> ventas</span></div>' +
+        portfolioTransactionSummaryHtml(data.portfolioSummary) +
         '<div class="transaction-history-head"><strong>Movimientos de ' + esc(portfolio.name) + '</strong><span>Más reciente primero</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(rows, portfolio.base_currency || 'EUR') + '</div>' +
       '</div>';
