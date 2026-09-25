@@ -26,5 +26,23 @@
       "database_id": "36134c26-075e-4602-9fde-da449187892d",
       "migrations_dir": "migrations"
     }
+  ],
+  "ratelimits": [
+    {
+      "name": "AI_RATE_LIMITER",
+      "namespace_id": "5606101",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    },
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "5606102",
+      "simple": {
+        "limit": 180,
+        "period": 60
+      }
+    }
   ]
 }
