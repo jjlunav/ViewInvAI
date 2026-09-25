@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', DATA_REFRESH_MS=30000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', STOCK_VIEWS_KEY='viewinvai:stockViews:v1', RECO_COOLDOWN_MS=86400000;
+const DATA='data/market.json', DATA_REFRESH_MS=300000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', STOCK_VIEWS_KEY='viewinvai:stockViews:v1', RECO_COOLDOWN_MS=86400000;
 function migrateLegacyBrandStorage(){
  const pairs=[
   ['viewinvai:customFilter:v1','catalystpulse:customFilter:v1'],
@@ -1538,7 +1538,7 @@ function entry(){
 
 function homeDailyChange(s){
  let preferTr=trTradable(s);
- return preferTr?(trLiveChange(s)??usLiveChange(s)??N(s.changePct)):(usLiveChange(s)??N(s.changePct));
+ return marketChange(s,currentMarketSession(),preferTr);
 }
 function homeUniverse(){
  return (db.stocks||[]).filter(s=>stockKey(s)&&(N(s.price)!==null||trTradable(s)));
@@ -2344,10 +2344,35 @@ function stockDataQuality(s,mode='us',chartAvailable=false){
  return {score,level:score>=85?'high':score>=70?'good':score>=55?'medium':'low',missing:[]};
 }
 function recommendationAnalysis(s,mode){
+ let se=currentMarketSession(),events=stockEvents(s);
+ if(window.ViewInvAIScore&&typeof window.ViewInvAIScore.analyze==='function'){
+  let r=window.ViewInvAIScore.analyze(recommendationEngineInput(s,mode,false),events);
+  let cat={
+   delta:N(r.catalystDelta)??0,
+   events:((r.catalyst&&r.catalyst.events)||[]).map(x=>({e:x.event,delta:x.delta,impact:x.impact,time:x.time}))
+  };
+  let parts=[...(r.factors||[])];
+  parts.push({label:'Noticias / eventos',delta:cat.delta,note:cat.events.length?cat.events.map(x=>EL(x.e)).join(' · '):'Sin catalizador direccional fuerte en la ventana'});
+  return{
+   score:N(r.score)??0,
+   baseScore:N(r.baseScore)??0,
+   parts,
+   catalyst:cat,
+   quality:r.quality||stockDataQuality(s,mode,false),
+   se,
+   change:N(r.change),
+   rv:N(r.relVolume),
+   adx:N(r.adx),
+   rsi:N(r.rsi),
+   spread:N(r.spread),
+   engineVersion:r.version||window.ViewInvAIScore.VERSION||''
+  };
+ }
  let a=recommendationTechnical(s,mode),cat=recommendationCatalyst(s);
  a.parts.push({label:'Noticias / eventos',delta:cat.delta,note:cat.events.length?cat.events.map(x=>EL(x.e)).join(' · '):'Sin catalizador direccional fuerte en la ventana'});
  a.catalyst=cat;
  a.score=Math.max(0,Math.min(100,Math.round((a.score+cat.delta)*10)/10));
+ a.quality=stockDataQuality(s,mode,false);
  return a;
 }
 
@@ -2440,10 +2465,15 @@ async function highConvictionRecommendation(mode){
 }
 function recommendationSignal(score,bucket,qualityScore=100){
  if(qualityScore<55)return{key:'wait',label:'ESPERAR',text:'Faltan datos suficientes para emitir una señal fuerte.'};
- if(score>=72){bucket.armed=true;return{key:'buy',label:'COMPRA',text:'Convicción suficiente para entrada según el motor actual.'}}
  if(bucket.armed&&score<=50)return{key:'sell',label:'VENTA',text:'La tesis ha perdido suficiente fuerza para activar salida.'};
  if(bucket.armed)return{key:'hold',label:'MANTENER',text:'La tesis sigue activa, pero sin nueva señal de compra.'};
- if(score>=60)return{key:'watch',label:'VIGILAR',text:'Es la mejor candidata del universo, pero aún no supera el umbral de compra.'};
+
+ let shared=window.ViewInvAIScore&&typeof window.ViewInvAIScore.watchSignal==='function'
+  ?window.ViewInvAIScore.watchSignal(score,qualityScore)
+  :(score>=72?'BUY':score>=60?'WATCH':score<35?'AVOID':'WAIT');
+ if(shared==='BUY'){bucket.armed=true;return{key:'buy',label:'COMPRA',text:'Convicción suficiente para entrada según el motor común de ViewInvAI.'}}
+ if(shared==='WATCH')return{key:'watch',label:'VIGILAR',text:'La candidata es interesante, pero todavía no supera el umbral común de entrada.'};
+ if(shared==='AVOID')return{key:'wait',label:'EVITAR',text:'El balance actual de señales no justifica una entrada.'};
  return{key:'wait',label:'ESPERAR',text:'No hay convicción suficiente para una entrada rigurosa en este momento.'};
 }
 function pickRecommendation(mode){
@@ -2506,7 +2536,7 @@ function heatmapWeight(s){
  let avg=N(s.avgVolume),p=N(s.price);
  return avg!==null&&p!==null&&avg>0&&p>0?avg*p:1;
 }
-function heatmapChange(s,se){return FC(s,se)}
+function heatmapChange(s,se){return marketChange(s,se,heatmapState.market==='tr')}
 function heatmapChangeClass(v){
  v=N(v);if(v===null)return'heat-na';
  if(v<=-5)return'heat-loss-strong';
