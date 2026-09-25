@@ -1456,6 +1456,7 @@ export async function handleBackendApi(request, env, services = {}) {
       d1: !!env.DB,
       ai: !!env.AI,
       firebase: !!String(env.FIREBASE_PROJECT_ID || "").trim(),
+      push: !!fcmServiceAccount(env),
       model: String(env.AI_MODEL || DEFAULT_AI_MODEL)
     });
   }
