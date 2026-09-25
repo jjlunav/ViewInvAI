@@ -565,18 +565,58 @@ function PC(v){v=N(v);return v===null?'—':(v>=0?'+':'')+F(v,2)+'%'}
 function C(v){v=N(v);return v===null?'':v>=0?'positive':'negative'}
 function DF(v){if(v===null||v===undefined||v==='')return'—';let raw=v;if(typeof raw==='string'&&/^\d+$/.test(raw))raw=Number(raw);if(typeof raw==='number'&&raw>0&&raw<1e12)raw*=1000;let d=new Date(raw);return isNaN(d)?'—':d.toLocaleDateString('es-ES')}
 function zoneClock(timeZone){
- let a=new Intl.DateTimeFormat('en-US',{timeZone,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+ let a=new Intl.DateTimeFormat('en-US',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
  return Object.fromEntries(a.map(x=>[x.type,x.value]));
 }
 function NY(){return zoneClock('America/New_York')}
 function BER(){return zoneClock('Europe/Berlin')}
 function weekdayOpen(p){return p&&p.weekday!=='Sat'&&p.weekday!=='Sun'}
+function dateKey(y,m,d){return String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0')}
+function nthWeekdayOfMonth(year,month,weekday,n){
+ let first=new Date(Date.UTC(year,month-1,1)),offset=(weekday-first.getUTCDay()+7)%7;
+ return 1+offset+(n-1)*7;
+}
+function lastWeekdayOfMonth(year,month,weekday){
+ let last=new Date(Date.UTC(year,month,0)),offset=(last.getUTCDay()-weekday+7)%7;
+ return last.getUTCDate()-offset;
+}
+function observedFixedDate(year,month,day){
+ let d=new Date(Date.UTC(year,month-1,day)),wd=d.getUTCDay();
+ if(wd===6)d.setUTCDate(d.getUTCDate()-1);
+ else if(wd===0)d.setUTCDate(d.getUTCDate()+1);
+ return dateKey(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate());
+}
+function easterSundayUtc(year){
+ let a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3);
+ let h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+ let month=Math.floor((h+l-7*m+114)/31),day=(h+l-7*m+114)%31+1;
+ return new Date(Date.UTC(year,month-1,day));
+}
+function usMarketCalendar(p){
+ if(!weekdayOpen(p))return{open:false,earlyClose:false,reason:'fin de semana'};
+ let y=+p.year,m=+p.month,d=+p.day,key=dateKey(y,m,d),closed=new Set();
+ closed.add(observedFixedDate(y,1,1));
+ closed.add(dateKey(y,1,nthWeekdayOfMonth(y,1,1,3)));
+ closed.add(dateKey(y,2,nthWeekdayOfMonth(y,2,1,3)));
+ let easter=easterSundayUtc(y),goodFriday=new Date(easter.getTime()-2*86400000);
+ closed.add(dateKey(goodFriday.getUTCFullYear(),goodFriday.getUTCMonth()+1,goodFriday.getUTCDate()));
+ closed.add(dateKey(y,5,lastWeekdayOfMonth(y,5,1)));
+ closed.add(observedFixedDate(y,6,19));
+ closed.add(observedFixedDate(y,7,4));
+ closed.add(dateKey(y,9,nthWeekdayOfMonth(y,9,1,1)));
+ let thanksgiving=nthWeekdayOfMonth(y,11,4,4);
+ closed.add(dateKey(y,11,thanksgiving));
+ closed.add(observedFixedDate(y,12,25));
+ if(closed.has(key))return{open:false,earlyClose:false,reason:'festivo EEUU'};
+ let early=(m===11&&d===thanksgiving+1)||(m===12&&d===24)||(m===7&&d===3);
+ return{open:true,earlyClose:early,reason:early?'cierre anticipado':''};
+}
 function auto(){
- let p=NY();if(!weekdayOpen(p))return'previous';
- let m=+p.hour*60 + +p.minute;
+ let p=NY(),calendar=usMarketCalendar(p);if(!calendar.open)return'previous';
+ let m=+p.hour*60 + +p.minute,regularEnd=calendar.earlyClose?780:960,postEnd=calendar.earlyClose?1020:1200;
  if(m>=240&&m<570)return'premarket';
- if(m>=570&&m<960)return'regular';
- if(m>=960&&m<1200)return'postmarket';
+ if(m>=570&&m<regularEnd)return'regular';
+ if(m>=regularEnd&&m<postEnd)return'postmarket';
  return'previous';
 }
 function trMarketOpen(){
