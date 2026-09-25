@@ -241,6 +241,7 @@ jobs:
                     return;
                   }
                 }
+                document.body.dataset.smokeHeaderLayout = 'ok';
 
                 if (root.querySelector('.profile-visual-toggle-row [data-chatgpt-stock]')) {
                   fail('duplicate upper ChatGPT button is still visible');
@@ -505,7 +506,7 @@ jobs:
               http://127.0.0.1:4173/ \
               > "$DOM" 2> "$LOG"
 
-            if ! grep -q 'data-smoke-profile-compact="ok"' "$DOM"; then
+            if ! grep -q 'data-smoke-header-layout="ok"' "$DOM"; then
               echo "::error::La cabecera compacta falla en viewport ${W}x${H}"
               grep -o 'data-smoke-error="[^"]*"' "$DOM" || true
               tail -100 "$LOG" || true
