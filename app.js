@@ -1808,7 +1808,6 @@ function profileAiPanel(s,mode='us'){
   '<div class="profile-ai-live" data-ai-auto-key="'+E(stockKey(s))+'" data-ai-auto-prefer-tr="'+(mode==='tr'?'1':'0')+'"><span class="ai-live-dot"></span><span>IA avanzada preparada para analizar datos en vivo.</span></div>'+ 
   '<div class="profile-ai-actions">'+
    '<button type="button" class="btn profile-ai-chat" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(mode==='tr'?'1':'0')+'">✦ Preguntar a ViewInvAI</button>'+
-   '<button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(stockKey(s))+'" data-chatgpt-prefer-tr="'+(mode==='tr'?'1':'0')+'">Preguntar a ChatGPT ↗</button>'+
   '</div>'+
  '</aside>';
 }
@@ -1865,6 +1864,7 @@ function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
  return '<div class="profile-visual-toggle-row">'+
    '<button type="button" class="profile-visual-toggle" aria-expanded="false" data-profile-visual-toggle data-profile-visual-key="'+E(key)+'" data-profile-visual-prefer-tr="'+(isTr?'1':'0')+'">▸ Mostrar gráfico y análisis IA</button>'+
+   '<button type="button" class="btn profile-chatgpt-open profile-chatgpt-visible" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">Preguntar a ChatGPT ↗</button>'+
   '</div>'+
   '<div class="profile-visual-analysis is-collapsed" data-profile-visual-analysis>'+
    '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
