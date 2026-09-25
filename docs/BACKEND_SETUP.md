@@ -8,7 +8,7 @@ This repository contains the backend code for:
 - Watchlist/favorites.
 - Periodic AI analysis of positions and watched stocks.
 - Analysis history and material-change alerts.
-- Android push-device registration (FCM delivery is the next step).
+- Android push-device registration and Firebase Cloud Messaging delivery.
 
 ## 1. Create the Cloudflare D1 database
 
@@ -123,14 +123,18 @@ Alerts are generated only for material changes, for example:
 - high-confidence BUY on a watched stock;
 - a large improvement in a watched stock.
 
-## 6. Next implementation step
+## 6. Current implementation and remaining environment setup
 
-Once D1 and Firebase are connected, the mobile/web UI will be wired to:
+The web/mobile UI is already wired to:
 
-1. Sign in with Google.
-2. Create portfolios by broker.
-3. Add/update positions.
-4. Convert favorites into synced watchlist entries.
-5. Show the latest AI state on every position/favorite.
-6. Register the Android FCM token.
-7. Deliver push notifications for material AI changes.
+1. Sign in with Google/Firebase.
+2. Create and order portfolios by broker.
+3. Add, update and close positions while preserving the transaction ledger.
+4. Synchronize favorites/watchlist state with the backend.
+5. Show AI state and analysis for positions and watched stocks.
+6. Register Android FCM tokens after notification permission has been granted.
+7. Deliver FCM push notifications for material alert events when the Worker has valid Firebase service-account credentials.
+
+The D1, Workers AI and rate-limit bindings are already declared in `wrangler.jsonc`. The remaining production-only items that require external account configuration are documented in `docs/INFRA_SETUP.md`: the FCM service-account secret, optional R2 market-data publication, and the SEC/EDGAR user-agent variable.
+
+Do not add those secrets to Git.
