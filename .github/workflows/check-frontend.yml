@@ -256,15 +256,17 @@ jobs:
                 }
                 document.body.dataset.smokeHeaderLayout = 'ok';
 
-                if (root.querySelector('.profile-visual-toggle-row [data-chatgpt-stock]')) {
-                  fail('duplicate upper ChatGPT button is still visible');
+                const visibleChatgpt = root.querySelector('.profile-visual-toggle-row [data-chatgpt-stock]');
+                const hiddenChatgpt = root.querySelector('.profile-ai-actions [data-chatgpt-stock]');
+                if (!visibleChatgpt) {
+                  fail('visible external ChatGPT button is missing next to the collapsed analysis control');
                   return;
                 }
-                const chatgpt = root.querySelector('.profile-ai-actions [data-chatgpt-stock]');
-                if (!chatgpt) {
-                  fail('ChatGPT button inside AI analysis is missing');
+                if (hiddenChatgpt) {
+                  fail('duplicate ChatGPT button remains inside the collapsed AI panel');
                   return;
                 }
+                const chatgpt = visibleChatgpt;
                 if (!/Preguntar a ChatGPT/i.test(chatgpt.textContent || '')) {
                   fail('ChatGPT button label is not explicit');
                   return;
