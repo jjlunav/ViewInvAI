@@ -4,6 +4,10 @@
 
 ViewInvAI es una plataforma de observación y análisis de acciones orientada a localizar, ordenar y revisar oportunidades mediante datos de mercado, filtros técnicos, señales y eventos próximos. No ejecuta operaciones ni actúa como bróker.
 
+## Arquitectura de interfaz
+
+ViewInvAI comparte una única capa de datos y lógica entre web y Android, pero mantiene presentaciones independientes. `styles.css` contiene la base web, `web-mobile.css` el responsive del navegador y `mobile-app.css` / `mobile-app.js` la interfaz exclusiva de la APK. Los cambios visuales de Android no deben implementarse como parches responsive dentro del CSS web.
+
 ## Cinta de movimiento EEUU
 
 En la parte superior de la aplicación aparece una cinta compacta con las acciones estadounidenses que presentan mayor movimiento en la sesión activa. La selección combina la magnitud de la variación con actividad de volumen, muestra ticker, precio y porcentaje, e incluye tanto subidas como bajadas.
