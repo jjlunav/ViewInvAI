@@ -518,6 +518,65 @@ async function proxyTradeRepublic(request) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+function safeSecretEqual(actual, expected) {
+  actual = String(actual || "");
+  expected = String(expected || "");
+  if (!actual || !expected || actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+async function publishMarketToR2(request, env) {
+  if (!env.MARKET_DATA_BUCKET || !String(env.MARKET_PUBLISH_TOKEN || "").trim()) {
+    return jsonResponse({ error: "Market publishing is not configured" }, 503, { "Cache-Control": "no-store" });
+  }
+  if (request.method !== "PUT" && request.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405, { "Cache-Control": "no-store" });
+  }
+  const auth = String(request.headers.get("Authorization") || "");
+  const expected = "Bearer " + String(env.MARKET_PUBLISH_TOKEN || "").trim();
+  if (!safeSecretEqual(auth, expected)) {
+    return jsonResponse({ error: "Unauthorized" }, 401, { "Cache-Control": "no-store" });
+  }
+
+  const url = new URL(request.url);
+  const kind = String(url.searchParams.get("kind") || "");
+  const key = kind === "snapshot" ? "data/market.json" : kind === "version" ? "data/market-version.json" : "";
+  if (!key) return jsonResponse({ error: "Invalid market asset kind" }, 400, { "Cache-Control": "no-store" });
+
+  const announced = Number(request.headers.get("Content-Length") || 0);
+  const maxBytes = kind === "snapshot" ? 24 * 1024 * 1024 : 64 * 1024;
+  if (announced > maxBytes) return jsonResponse({ error: "Payload too large" }, 413, { "Cache-Control": "no-store" });
+
+  const body = await request.arrayBuffer();
+  if (!body.byteLength || body.byteLength > maxBytes) {
+    return jsonResponse({ error: "Invalid payload size" }, body.byteLength > maxBytes ? 413 : 400, { "Cache-Control": "no-store" });
+  }
+
+  let parsed;
+  try { parsed = JSON.parse(new TextDecoder().decode(body)); }
+  catch (_) { return jsonResponse({ error: "Invalid JSON" }, 400, { "Cache-Control": "no-store" }); }
+
+  if (kind === "snapshot" && (!parsed || !Array.isArray(parsed.stocks) || !parsed.meta || !parsed.meta.updatedAt)) {
+    return jsonResponse({ error: "Invalid market snapshot" }, 400, { "Cache-Control": "no-store" });
+  }
+  if (kind === "version" && (!parsed || !parsed.updatedAt)) {
+    return jsonResponse({ error: "Invalid market version" }, 400, { "Cache-Control": "no-store" });
+  }
+
+  await env.MARKET_DATA_BUCKET.put(key, body, {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: { updatedAt: String(parsed.updatedAt || parsed.meta && parsed.meta.updatedAt || "") }
+  });
+  return jsonResponse({
+    ok: true,
+    key,
+    bytes: body.byteLength,
+    updatedAt: String(parsed.updatedAt || parsed.meta && parsed.meta.updatedAt || "")
+  }, 200, { "Cache-Control": "no-store" });
+}
+
 async function r2MarketAssetResponse(env, pathname) {
   if (!env || !env.MARKET_DATA_BUCKET) return null;
   const allowed = new Set(["/data/market.json", "/data/market-version.json"]);
@@ -578,6 +637,10 @@ function isBackendApiPath(pathname) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/internal/market-publish") {
+      return publishMarketToR2(request, env);
+    }
 
     let limited=null;
     if(url.pathname==="/api/ai/chat")limited=rateLimit(request,"ai-chat",20,60000);
