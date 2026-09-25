@@ -2197,10 +2197,12 @@ async function copyTextForExternalChat(text){
 async function openExternalChatGpt(key,preferTr=false){
  let s=stockByKey(key);if(!s)return;
  let prompt=buildExternalChatGptPrompt(s,preferTr===true&&trTradable(s));
- let copied=await copyTextForExternalChat(prompt);
  let target='https://chatgpt.com/?q='+encodeURIComponent(prompt);
  let opened=null;
+ // Open synchronously while the click still owns the user gesture. Waiting on
+ // the clipboard first can make mobile WebViews treat the new tab as a popup.
  try{opened=window.open(target,'_blank','noopener,noreferrer')}catch(_){}
+ let copied=await copyTextForExternalChat(prompt);
  if(opened){
   toast(copied?'ChatGPT abierto con el prompt preparado · también está copiado.':'ChatGPT abierto con el prompt preparado.');
   return;
