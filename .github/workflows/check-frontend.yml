@@ -395,15 +395,24 @@ jobs:
                       if (root.querySelector('.tr-native-chart')) {
                         document.body.dataset.smokeTrChart = 'ok';
 
-                        applyTheme('light', true);
+                        window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed'));
                         setTimeout(() => {
-                          if (!root.querySelector('.tr-native-chart')) {
-                            fail('theme change replaced the native LSX chart');
+                          if (!root.querySelector('.tr-native-chart') ||
+                              toggle.getAttribute('aria-expanded') !== 'true' ||
+                              visual.classList.contains('is-collapsed')) {
+                            fail('portfolio membership refresh destroyed the open stock analysis');
                             return;
                           }
-                          applyTheme('dark', true);
-                          toggle.click();
+
+                          applyTheme('light', true);
                           setTimeout(() => {
+                            if (!root.querySelector('.tr-native-chart')) {
+                              fail('theme change replaced the native LSX chart');
+                              return;
+                            }
+                            applyTheme('dark', true);
+                            toggle.click();
+                            setTimeout(() => {
                             if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
                               fail('chart/AI section did not collapse again');
                               return;
@@ -443,8 +452,9 @@ jobs:
                               return;
                             }
                             document.body.dataset.smokePortfolioSticky = 'ok';
-                          }, 100);
-                        }, 180);
+                            }, 100);
+                          }, 180);
+                        }, 100);
                         return;
                       }
 
