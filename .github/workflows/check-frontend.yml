@@ -252,12 +252,17 @@ jobs:
                   document.querySelector('#aiChatClose')?.click();
 
                   toggle.click();
-                  setTimeout(() => {
+                  const chartDeadline = Date.now() + 1800;
+                  const waitForNativeChart = () => {
                     if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
                       fail('chart/AI section did not expand');
                       return;
                     }
                     if (!root.querySelector('.tr-native-chart')) {
+                      if (Date.now() < chartDeadline) {
+                        setTimeout(waitForNativeChart, 100);
+                        return;
+                      }
                       fail('LSX native chart did not render from Trade Republic history');
                       return;
                     }
@@ -278,9 +283,10 @@ jobs:
                         }
                         document.body.dataset.smokeProfile = 'ok';
                         document.body.dataset.smokeProfileCompact = 'ok';
-                      }, 80);
-                    }, 120);
-                  }, 220);
+                      }, 100);
+                    }, 180);
+                  };
+                  setTimeout(waitForNativeChart, 100);
                 }, 120);
                 return;
               }
