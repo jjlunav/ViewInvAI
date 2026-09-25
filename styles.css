@@ -8721,3 +8721,19 @@ html[data-theme="light"] .tr-native-axis{
   align-items:flex-start!important
  }
 }
+
+
+/* Portfolio adjustment ledger semantics - 2026-09-25 */
+.transaction-side.adjust{
+ color:#9fc6ff;
+ border:1px solid #355b7a;
+ background:#12283a
+}
+.portfolio-history-overview .transaction-history-summary{
+ grid-template-columns:repeat(auto-fit,minmax(86px,1fr))!important
+}
+@media(max-width:720px){
+ .portfolio-history-overview .transaction-history-summary{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important
+ }
+}
