@@ -109,6 +109,19 @@ jobs:
         run: bandit -q -r scripts -ll
       - name: Compilar Python
         run: python -m compileall -q scripts
+      - name: Validar matching de fuentes clinicas
+        run: |
+          python - <<'PY'
+          from scripts.update_market import clinical_exact_date, clinical_sponsor_matches
+          assert clinical_sponsor_matches("Merck & Co., Inc.", "Merck Sharp & Dohme LLC")
+          assert clinical_sponsor_matches("Moderna, Inc.", "ModernaTX, Inc.")
+          assert clinical_sponsor_matches("Eli Lilly and Company", "Eli Lilly and Company")
+          assert not clinical_sponsor_matches("UnitedHealth Group Incorporated", "United Therapeutics Corporation")
+          assert clinical_exact_date("2026-10-15") is not None
+          assert clinical_exact_date("2026-10") is None
+          assert clinical_exact_date("2026") is None
+          print("Clinical source matching: OK")
+          PY
       - name: Validar JavaScript
         run: |
           node --check market-session.js
