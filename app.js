@@ -1103,11 +1103,10 @@ function toggleFavorite(key,preferTr=null){
  renderFavorites();
 }
 function currentMarketSession(){
- let se=auto();
- return se==='previous'?'postmarket':se;
+ return auto();
 }
 function sessionStageLabel(se){
- return se==='premarket'?'PREMARKET':se==='postmarket'?'POSTMARKET':'REGULAR';
+ return se==='premarket'?'PREMARKET':se==='postmarket'?'POSTMARKET':se==='previous'?'ÚLTIMA SESIÓN':'REGULAR';
 }
 function compactVol(v){
  v=N(v);if(v===null)return'—';
