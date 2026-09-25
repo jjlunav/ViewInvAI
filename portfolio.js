@@ -517,6 +517,7 @@ async function loadAll({ syncFavorites = false } = {}) {
     state.positions = positions.positions || [];
     state.watchlist = watchlist.watchlist || [];
     syncPortfolioStars();
+    window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{}}));
   } catch (error) {
     console.warn("Portfolio loading failed", error);
     toast(error.message || "No se pudieron cargar las carteras.", true);
@@ -911,6 +912,66 @@ function openAddPositionModal(stockKey, preferTrOverride = null) {
 }
 
 
+function activePortfolioMemberships(stockKey) {
+  return state.positions
+    .filter(p => p.stock_key === stockKey && Number(p.active) !== 0)
+    .map(p => ({
+      position: p,
+      portfolio: state.portfolios.find(x => String(x.id) === String(p.portfolio_id)) || null
+    }));
+}
+
+function isInPortfolio(stockKey) {
+  return activePortfolioMemberships(stockKey).length > 0;
+}
+
+async function removePositionMembership(position) {
+  if (!position || !position.id) return false;
+  const response = await api('/api/positions/' + encodeURIComponent(position.id), {method:'DELETE'});
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'No se pudo quitar de la cartera.');
+  state.positions = state.positions.filter(p => p.id !== position.id);
+  syncPortfolioStars();
+  window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{stockKey:position.stock_key}}));
+  renderApp();
+  return true;
+}
+
+async function removeStockFromPortfolio(stockKey, portfolioId = null) {
+  const memberships = activePortfolioMemberships(stockKey);
+  if (!memberships.length) return false;
+
+  let target = null;
+  if (portfolioId) target = memberships.find(x => String(x.position.portfolio_id) === String(portfolioId)) || null;
+  else if (memberships.length === 1) target = memberships[0];
+
+  if (target) {
+    try {
+      await removePositionMembership(target.position);
+      toast('Quitada de ' + (target.portfolio?.name || 'la cartera'));
+      closeModal();
+      return true;
+    } catch (error) {
+      toast(error.message || 'No se pudo quitar de la cartera.', true);
+      return false;
+    }
+  }
+
+  const rows = memberships.map(({position,portfolio}) =>
+    '<button type="button" class="star-portfolio-choice selected portfolio-remove-choice" data-remove-stock-portfolio="' + esc(position.portfolio_id) + '" data-remove-stock-key="' + esc(stockKey) + '">' +
+      '<span>−</span><strong>' + esc(portfolio?.name || 'Cartera') + '</strong><small>Quitar de esta cartera</small>' +
+    '</button>'
+  ).join('');
+  const stock = stockByKey(stockKey);
+  openModal('Quitar de cartera',
+    '<div class="star-portfolio-menu">' +
+      '<div class="star-stock-summary"><strong>' + esc(stock?.trTicker || stock?.ticker || '') + '</strong><span>' + esc(stock?.name || '') + '</span></div>' +
+      rows +
+    '</div>'
+  );
+  return true;
+}
+
 function openStarMenu(stockKey, preferTr = null) {
   if (!state.user) return window.ViewInvAIAuth?.signIn?.();
   const stock = stockByKey(stockKey);
@@ -1100,6 +1161,22 @@ function bind() {
       state.detailPreferTr = null;
       savePortfolioUi();
       renderApp();
+      return;
+    }
+
+    const removeChoice = event.target.closest?.("[data-remove-stock-portfolio]");
+    if (removeChoice) {
+      event.preventDefault();
+      event.stopPropagation();
+      removeStockFromPortfolio(removeChoice.dataset.removeStockKey, removeChoice.dataset.removeStockPortfolio);
+      return;
+    }
+
+    const removeDirect = event.target.closest?.("[data-remove-portfolio-stock]");
+    if (removeDirect) {
+      event.preventDefault();
+      event.stopPropagation();
+      removeStockFromPortfolio(removeDirect.dataset.removePortfolioStock);
       return;
     }
 
@@ -1330,6 +1407,13 @@ window.ViewInvAIPortfolios = {
   openAddPosition: openAddPositionModal,
   openPositionPicker,
   openStarMenu,
+  isInPortfolio,
+  getPortfolioMemberships: stockKey => activePortfolioMemberships(stockKey).map(x => ({
+    positionId: x.position.id,
+    portfolioId: x.position.portfolio_id,
+    portfolioName: x.portfolio?.name || ''
+  })),
+  removeStockFromPortfolio,
   getState: () => state
 };
 
