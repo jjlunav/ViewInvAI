@@ -1,3 +1,4 @@
+import "./score-engine.js";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const FIREBASE_JWKS = createRemoteJWKSet(
@@ -402,9 +403,12 @@ function recentEvents(snapshot, stock, limit = 12) {
     .slice(0, limit)
     .map(e => ({
       date: e.date || null,
+      eventKind: e.eventKind || (e.type === "news" ? "news" : "event"),
       type: e.type || e.eventKind || "event",
       title: trimText(e.title || e.fact || "", 240),
+      fact: trimText(e.fact || e.title || "", 300),
       impact: trimText(e.impact || e.context || "", 260),
+      impactScore: finiteNumber(e.impactScore),
       url: trimText(e.url || e.sourceUrl || "", 500)
     }));
 }
@@ -451,83 +455,90 @@ function chartFeatures(chart) {
 }
 
 function deterministicAssessment(target, stock, chart, events) {
-  let score = 0;
-  const reasons = [];
+  const engine = globalThis.ViewInvAIScore;
   const preferTr = Number(target.prefer_tr) === 1;
+  const price = preferTr && chart && chart.available ? finiteNumber(chart.last) : finiteNumber(stock.price);
   const change = preferTr && chart && chart.available
     ? finiteNumber(chart.return20)
     : finiteNumber(stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct);
-  const relVolume = finiteNumber(stock.relVolume);
-  const adx = finiteNumber(stock.adx);
-  const rsi = finiteNumber(stock.rsi);
-  const price = preferTr && chart && chart.available ? finiteNumber(chart.last) : finiteNumber(stock.price);
-  const ema20 = finiteNumber(stock.ema20);
-  const ema50 = finiteNumber(stock.ema50);
+  const bid = preferTr ? finiteNumber(stock.trLiveBid ?? stock.usBid) : finiteNumber(stock.usLiveBid ?? stock.usBid);
+  const ask = preferTr ? finiteNumber(stock.trLiveAsk ?? stock.usAsk) : finiteNumber(stock.usLiveAsk ?? stock.usAsk);
+  const spread = bid !== null && ask !== null && ask >= bid && (ask + bid) > 0
+    ? (ask - bid) / ((ask + bid) / 2) * 100
+    : null;
 
-  if (change !== null) {
-    score += Math.max(-20, Math.min(22, change * 1.4));
-    reasons.push("Movimiento " + change.toFixed(2) + "%");
-  }
-  if (relVolume !== null) {
-    score += Math.min(18, Math.max(-4, (relVolume - 1) * 10));
-    if (relVolume >= 1.5) reasons.push("Volumen relativo " + relVolume.toFixed(2) + "x");
-  }
-  if (adx !== null) score += Math.max(-4, Math.min(12, (adx - 18) * 0.45));
-  if (rsi !== null) {
-    if (rsi >= 45 && rsi <= 70) score += 8;
-    else if (rsi > 78) score -= 8;
-    else if (rsi < 35) score -= 5;
-  }
-  if (price !== null && ema20 !== null && ema50 !== null) {
-    if (price >= ema20 && ema20 >= ema50) {
-      score += 12;
-      reasons.push("Tendencia EMA favorable");
-    } else if (price < ema20 && ema20 < ema50) {
-      score -= 12;
-      reasons.push("Tendencia EMA deteriorada");
-    }
-  }
-  if (chart && chart.available) {
-    if (chart.trendUp) score += 10;
-    else score -= 7;
-    if (chart.return20 !== null && chart.return20 > 0 && chart.return20 <= 12) score += 5;
-    if (chart.return20 !== null && chart.return20 > 20) score -= 8;
-    if (chart.drawdown30 !== null && chart.drawdown30 < -10) score -= 8;
-    if (chart.volumeExpansion !== null && chart.volumeExpansion >= 1.3) score += 5;
-  }
+  const input = {
+    price,
+    change,
+    volume: finiteNumber(stock.usLiveVolume ?? stock.volume),
+    avgVolume: finiteNumber(stock.avgVolume),
+    relVolume: finiteNumber(stock.relVolume),
+    rsi: finiteNumber(stock.rsi),
+    adx: finiteNumber(stock.adx),
+    ema20: finiteNumber(stock.ema20),
+    ema50: finiteNumber(stock.ema50),
+    perfWeek: finiteNumber(stock.perfWeek),
+    perfMonth: finiteNumber(stock.perfMonth),
+    spread,
+    bid,
+    ask,
+    chartAvailable: !!(chart && chart.available)
+  };
 
-  const text = events.map(e => (e.title + " " + e.impact).toLowerCase()).join(" ");
-  if (/offering|dilution|bankruptcy|delist|halt|clinical hold|failed|missed|downgrade/.test(text)) {
-    score -= 12;
-    reasons.push("Riesgo reciente en noticias/eventos");
-  }
-  if (/approval|approved|contract|award|beat|raises guidance|partnership|positive topline/.test(text)) {
-    score += 8;
-    reasons.push("Catalizador positivo reciente");
+  if (!engine || typeof engine.analyze !== "function") {
+    return {
+      signal: target.subject_type === "position" ? "REVIEW" : "WATCH",
+      confidence: 50,
+      score: 50,
+      quality: 0,
+      horizon: "1-2d",
+      thesis: "El motor compartido de puntuación no está disponible temporalmente.",
+      riskSummary: "No se emite una señal fuerte sin el motor determinista.",
+      reasons: [],
+      catalysts: events.slice(0, 4).map(e => e.title).filter(Boolean),
+      engine: "score-engine-unavailable",
+      model: ""
+    };
   }
 
-  score = Math.max(-100, Math.min(100, Math.round(score)));
+  const assessment = engine.analyze(input, events);
+  const quality = assessment.quality && finiteNumber(assessment.quality.score) !== null ? assessment.quality.score : 0;
   const isPosition = target.subject_type === "position";
-  let signal;
-  if (isPosition) {
-    signal = score <= -30 ? "SELL" : score < 0 ? "REVIEW" : "HOLD";
-  } else {
-    signal = score >= 45 ? "BUY" : score < -20 ? "AVOID" : "WATCH";
-  }
-  const confidence = Math.max(55, Math.min(95, 58 + Math.round(Math.abs(score) * 0.35)));
+  const rawSignal = isPosition
+    ? engine.positionSignal(assessment.score, quality)
+    : engine.watchSignal(assessment.score, quality);
+  const signal = isPosition ? rawSignal : (rawSignal === "WAIT" ? "WATCH" : rawSignal);
+  const distance = Math.abs(assessment.score - 50);
+  const confidence = Math.max(50, Math.min(95, Math.round(48 + distance * 0.65 + quality * 0.18)));
+  const positive = (assessment.factors || []).filter(x => finiteNumber(x.delta) > 2).sort((a,b)=>b.delta-a.delta);
+  const negative = (assessment.factors || []).filter(x => finiteNumber(x.delta) < -2).sort((a,b)=>a.delta-b.delta);
+  const reasons = [...positive.slice(0, 3), ...negative.slice(0, 2)]
+    .slice(0, 4)
+    .map(x => x.label + (x.note ? " · " + x.note : ""));
 
   return {
     signal,
     confidence,
-    score,
+    score: assessment.score,
+    quality,
     horizon: "1-2d",
     thesis: isPosition
-      ? (signal === "SELL" ? "La tesis técnica y/o de catalizadores se ha deteriorado; conviene revisar la salida." : "La posición mantiene una estructura compatible con seguimiento activo.")
-      : (signal === "BUY" ? "La acción presenta una combinación favorable de tendencia, actividad y catalizadores." : "Aún no hay confirmación suficiente para una entrada de alta convicción."),
-    riskSummary: score < 0 ? "El balance de riesgo se ha deteriorado." : "Persisten riesgos de volatilidad y cambios rápidos de momentum.",
-    reasons: reasons.slice(0, 4),
-    catalysts: events.slice(0, 4).map(e => e.title).filter(Boolean),
-    engine: "rules-fallback",
+      ? (signal === "SELL"
+          ? "El score común de ViewInvAI se ha deteriorado hasta zona de salida."
+          : signal === "REVIEW"
+            ? "La posición requiere revisión porque la convicción o la calidad de los datos no son suficientes."
+            : "La posición mantiene una lectura compatible con seguimiento.")
+      : (signal === "BUY"
+          ? "El score común de ViewInvAI supera el umbral de entrada con calidad de datos suficiente."
+          : signal === "AVOID"
+            ? "La combinación actual de momentum, tendencia, liquidez y catalizadores es desfavorable."
+            : "Todavía no existe confirmación suficiente para una entrada fuerte."),
+    riskSummary: negative.length
+      ? "Principales riesgos: " + negative.slice(0, 2).map(x => x.label).join(", ") + "."
+      : "Persisten riesgos de volatilidad y cambios rápidos de momentum.",
+    reasons,
+    catalysts: (assessment.catalyst && assessment.catalyst.events || []).slice(0, 4).map(x => x.event && x.event.title).filter(Boolean),
+    engine: "viewinvai-score/" + (engine.VERSION || "unknown"),
     model: ""
   };
 }
@@ -613,7 +624,7 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       riskSummary: trimText(parsed.riskSummary || fallback.riskSummary, 500),
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
-      engine: "rules+workers-ai-narrative",
+      engine: "viewinvai-score/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
       model
     };
   } catch (error) {
@@ -636,7 +647,8 @@ async function analysisSettingsForUser(env, userId) {
 }
 
 async function maybeCreateAlert(env, target, stock, current, previous) {
-  const previousScore = previous ? finiteNumber(previous.score) : null;
+  const previousCompatible = previous && String(previous.engine || "").startsWith("viewinvai-score/");
+  const previousScore = previousCompatible ? finiteNumber(previous.score) : null;
   const delta = previousScore === null ? 0 : current.score - previousScore;
   const settings = await analysisSettingsForUser(env, target.user_id);
   let should = false;
@@ -692,7 +704,7 @@ async function analyzeTarget(env, target, services) {
   const current = await aiAssessment(env, target, stock, chart, events, fallback);
 
   const previous = await env.DB.prepare(
-    "SELECT signal,confidence,score,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
+    "SELECT signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
   ).bind(target.user_id, target.subject_type, target.subject_id).first();
 
   const snapshotId = uid("an_");
