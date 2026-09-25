@@ -4,13 +4,11 @@
  * Single application startup point. All shared modules are loaded before this file.
  */
 
-applyTheme(readTheme(),false);
+initSettings();
 restoreUiState();
 renderNavigation();
 initAppHistory();
 initNativeBackHandling();
-syncDeviceSettingsUi();
-syncScreenWakeLock();
 toUI(state.filters);
 initHelpSystem();
 initStockInteractions();
@@ -18,22 +16,10 @@ initCatalogInteractions();
 initHeatmapInteractions();
 initEventViewInteractions();
 initStockListInteractions();
-document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
- applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
-}));
-$('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
-$('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
-window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
-window.addEventListener('viewinvai:account-ready',e=>{renderAnalysisSettings(e.detail&&e.detail.settings||null);renderPushSettingsStatus()});
-window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null);renderPushSettingsStatus()});
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(s)refreshProfilePortfolioActions(s);
 });
-renderAnalysisSettings(null);
-renderPushSettingsStatus();
-refreshPushBackendStatus();
-setTimeout(()=>{renderPushSettingsStatus();refreshPushBackendStatus()},700);
 lockAllCriteria();
 initLeadersDock();
 initTrLive();
