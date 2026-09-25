@@ -532,27 +532,38 @@ def hypothesis_for(category):
     }.get(category, "Puede aumentar la volatilidad; no implica una dirección concreta.")
 
 
-def source_tier(name):
+def source_profile(name):
     n = (name or "").strip().lower()
-    primary = (
-        "reuters","dow jones","businesswire","business wire","pr newswire",
-        "globenewswire","accesswire","sec","securities and exchange",
-        "fda","food and drug administration","nasdaq","nyse","investor relations"
+    official = (
+        "sec","securities and exchange","fda","food and drug administration",
+        "nasdaq","nyse","investor relations"
+    )
+    issuer_wire = (
+        "businesswire","business wire","pr newswire","globenewswire","accesswire"
+    )
+    independent = (
+        "reuters","dow jones","bloomberg","cnbc","marketwatch","dpa-afx","dpa_afx",
+        "mt newswires","the fly"
     )
     reputable = (
         "tradingview","investing","benzinga","zacks","quartr","seeking alpha",
-        "marketwatch","bloomberg","cnbc","yahoo finance","dpa-afx","dpa_afx",
-        "mt newswires","tipranks","the fly"
+        "yahoo finance","tipranks"
     )
-    if any(x in n for x in primary):
-        return 3
+    if any(x in n for x in official):
+        return {"tier": 3, "kind": "fuente oficial / primaria", "family": "official", "independent": False}
+    if any(x in n for x in issuer_wire):
+        return {"tier": 3, "kind": "comunicado distribuido por el emisor", "family": "issuer-wire", "independent": False}
+    if any(x in n for x in independent):
+        return {"tier": 3, "kind": "medio financiero independiente", "family": "independent", "independent": True}
     if any(x in n for x in reputable):
-        return 2
-    return 0
+        return {"tier": 2, "kind": "medio financiero reputado", "family": "reputable", "independent": True}
+    return {"tier": 0, "kind": "sin validar", "family": "unknown", "independent": False}
+
+def source_tier(name):
+    return source_profile(name)["tier"]
 
 def source_kind(name):
-    tier = source_tier(name)
-    return "primaria / alta confianza" if tier >= 3 else "medio financiero reputado" if tier == 2 else "sin validar"
+    return source_profile(name)["kind"]
 
 def story_norm(title):
     s = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode().lower()
@@ -605,7 +616,15 @@ def cluster_news_events(events):
             if key in seen_sources:
                 continue
             seen_sources.add(key)
-            sources.append({"name": name, "url": url, "tier": tier, "kind": source_kind(name)})
+            profile = source_profile(name)
+            sources.append({
+                "name": name,
+                "url": url,
+                "tier": tier,
+                "kind": profile["kind"],
+                "family": profile["family"],
+                "independent": profile["independent"],
+            })
 
         # Do not publish stories supported only by unvalidated/community feeds.
         if not sources:
@@ -622,10 +641,19 @@ def cluster_news_events(events):
         sources.sort(key=lambda s: (-s["tier"], s["name"].lower()))
         best["sources"] = sources
         best["sourceCount"] = len(sources)
-        best["corroborated"] = len({s["name"].lower() for s in sources}) >= 2
+        independent_names = {s["name"].lower() for s in sources if s.get("independent")}
+        has_official = any(s.get("family") == "official" for s in sources)
+        has_issuer_wire = any(s.get("family") == "issuer-wire" for s in sources)
+        independent_confirmation = len(independent_names) >= 2 or (has_official and len(independent_names) >= 1)
+        best["corroborated"] = independent_confirmation
+        best["independentSourceCount"] = len(independent_names)
         best["verification"] = (
-            f"Contrastada en {best['sourceCount']} fuentes"
-            if best["corroborated"]
+            f"Contrastada con {len(independent_names)} fuentes independientes"
+            if len(independent_names) >= 2
+            else "Fuente oficial + contraste independiente"
+            if has_official and len(independent_names) >= 1
+            else "Comunicado del emisor; sin confirmación independiente"
+            if has_issuer_wire
             else f"Fuente validada: {sources[0]['name']}"
         )
         best["relatedHeadlines"] = len(items)
