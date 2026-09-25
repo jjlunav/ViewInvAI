@@ -623,25 +623,39 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
   }
 }
 
+async function analysisSettingsForUser(env, userId) {
+  const row = await env.DB.prepare(
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+  ).bind(userId).first();
+  return {
+    positionsMinutes: Math.max(5, Math.min(240, Math.round(finiteNumber(row && row.analysis_positions_minutes) ?? 10))),
+    watchlistMinutes: Math.max(10, Math.min(1440, Math.round(finiteNumber(row && row.analysis_watchlist_minutes) ?? 30))),
+    minBuyConfidence: Math.max(60, Math.min(99, Math.round(finiteNumber(row && row.min_buy_confidence) ?? 85))),
+    minSellConfidence: Math.max(60, Math.min(99, Math.round(finiteNumber(row && row.min_sell_confidence) ?? 80))),
+    notifyScoreChange: Math.max(5, Math.min(60, Math.round(finiteNumber(row && row.notify_score_change) ?? 20)))
+  };
+}
+
 async function maybeCreateAlert(env, target, stock, current, previous) {
   const previousScore = previous ? finiteNumber(previous.score) : null;
   const delta = previousScore === null ? 0 : current.score - previousScore;
+  const settings = await analysisSettingsForUser(env, target.user_id);
   let should = false;
   let type = "analysis-change";
   let severity = "info";
 
   if (target.subject_type === "position") {
-    if (current.signal === "SELL" && current.confidence >= 80 && (!previous || previous.signal !== "SELL")) {
+    if (current.signal === "SELL" && current.confidence >= settings.minSellConfidence && (!previous || previous.signal !== "SELL")) {
       should = true; type = "position-sell"; severity = "critical";
-    } else if (current.signal === "REVIEW" && current.confidence >= 78 && (!previous || previous.signal === "HOLD")) {
+    } else if (current.signal === "REVIEW" && current.confidence >= Math.max(60, settings.minSellConfidence - 2) && (!previous || previous.signal === "HOLD")) {
       should = true; type = "position-review"; severity = "warning";
-    } else if (previousScore !== null && delta <= -20) {
+    } else if (previousScore !== null && delta <= -settings.notifyScoreChange) {
       should = true; type = "position-deterioration"; severity = "warning";
     }
   } else {
-    if (current.signal === "BUY" && current.confidence >= 85 && (!previous || previous.signal !== "BUY")) {
+    if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "watchlist-buy"; severity = "high";
-    } else if (previousScore !== null && delta >= 25 && current.score > 20) {
+    } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "watchlist-improving"; severity = "info";
     }
   }
@@ -1021,23 +1035,33 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
     return { skipped: true, reason: "backend-not-configured" };
   }
 
-  const positionCutoff = new Date(Date.now() - 10 * 60000).toISOString();
-  const watchCutoff = new Date(Date.now() - 30 * 60000).toISOString();
-
   const [positionRows, watchRows] = await Promise.all([
     env.DB.prepare(
-      "SELECT 'position' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,last_analysis_at " +
-      "FROM positions WHERE active=1 AND (last_analysis_at IS NULL OR last_analysis_at<=?) ORDER BY COALESCE(last_analysis_at,'') ASC LIMIT 12"
-    ).bind(positionCutoff).all(),
+      "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at," +
+      "COALESCE(s.analysis_positions_minutes,10) AS analysis_interval_minutes " +
+      "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id WHERE p.active=1 " +
+      "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 40"
+    ).all(),
     env.DB.prepare(
-      "SELECT 'watchlist' AS subject_type,id AS subject_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,last_analysis_at " +
-      "FROM watchlist WHERE last_analysis_at IS NULL OR last_analysis_at<=? ORDER BY COALESCE(last_analysis_at,'') ASC LIMIT 12"
-    ).bind(watchCutoff).all()
+      "SELECT 'watchlist' AS subject_type,w.id AS subject_id,w.user_id,w.stock_key,w.ticker,w.name,w.exchange,w.isin,w.prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,w.last_analysis_at," +
+      "COALESCE(s.analysis_watchlist_minutes,30) AS analysis_interval_minutes " +
+      "FROM watchlist w LEFT JOIN user_settings s ON s.user_id=w.user_id " +
+      "ORDER BY COALESCE(w.last_analysis_at,'') ASC LIMIT 40"
+    ).all()
   ]);
 
-  const positions = positionRows.results || [];
-  const watchlist = watchRows.results || [];
-  const queue = [...positions, ...watchlist].slice(0, 8);
+  const nowMs = Date.now();
+  const due = row => {
+    if (!row.last_analysis_at) return true;
+    const last = new Date(row.last_analysis_at).getTime();
+    const minutes = Math.max(row.subject_type === "position" ? 5 : 10, finiteNumber(row.analysis_interval_minutes) ?? (row.subject_type === "position" ? 10 : 30));
+    return !Number.isFinite(last) || nowMs - last >= minutes * 60000;
+  };
+  const positions = (positionRows.results || []).filter(due);
+  const watchlist = (watchRows.results || []).filter(due);
+  const queue = [...positions, ...watchlist]
+    .sort((a,b) => String(a.last_analysis_at || "").localeCompare(String(b.last_analysis_at || "")))
+    .slice(0, 8);
   const results = [];
 
   for (const target of queue) {
