@@ -168,7 +168,7 @@ function syncScreenWakeLock(){
  else releaseScreenWakeLock();
 }
 
-const V={home:'00 Inicio',entry:'01 Mercado',recommendation:'02 Ideas IA',portfolios:'03 Carteras',alerts:'04 Avisos',heatmap:'05 Mapa de calor',future:'06 Potencial futuro',calendar:'07 Calendario y noticias',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',settings:'10 Settings'};
+const V={home:'00 Inicio',entry:'01 Radar de entrada',recommendation:'02 Ideas IA',portfolios:'03 Carteras',alerts:'04 Avisos',heatmap:'05 Mapa de calor',future:'06 Potencial futuro',calendar:'07 Calendario y noticias',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',settings:'10 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -2893,7 +2893,7 @@ async function load(force=false){
 const NAV_ORDER=['home','portfolios','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
  home:{icon:'⌂',short:'Inicio',base:10},
- entry:{icon:'◈',short:'Mercado',base:4},
+ entry:{icon:'◈',short:'Radar',base:4},
  recommendation:{icon:'◎',short:'Ideas IA',base:3.5},
  portfolios:{icon:'★',short:'Carteras',base:3.25},
  alerts:{icon:'●',short:'Avisos',base:3},
