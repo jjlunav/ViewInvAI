@@ -1642,9 +1642,10 @@ function profileSessionStrip(s,isTr=false){
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
 }
 function profileAiPanel(s,mode='us'){
- let a=recommendationAnalysis(s,mode),score=N(a.score)??0;
+ let a=recommendationAnalysis(s,mode),score=N(a.score)??0,q=stockDataQuality(s,mode,false);
  let tone=score>=72?'high':score>=60?'watch':'wait';
- let label=score>=72?'Alta convicción':score>=60?'Vigilar':'Esperar';
+ let label=q.score<55?'Datos insuficientes':score>=72?'Alta convicción':score>=60?'Vigilar':'Esperar';
+ let qualityText='Datos '+q.score+'/100'+(q.missing&&q.missing.length?' · falta '+q.missing.slice(0,2).join(', '):' · cobertura suficiente');
  let pos=a.parts.filter(x=>x.delta>2).sort((x,y)=>y.delta-x.delta).slice(0,3);
  let neg=a.parts.filter(x=>x.delta<-2).sort((x,y)=>x.delta-y.delta).slice(0,3);
  let posHtml=pos.length?pos.map(x=>'<li><span>'+E(x.label)+'</span><b class="positive">+'+F(x.delta,1)+'</b></li>').join(''):'<li class="muted"><span>Sin ventaja dominante</span><b>—</b></li>';
@@ -1652,6 +1653,7 @@ function profileAiPanel(s,mode='us'){
  let cat=a.catalyst&&a.catalyst.events&&a.catalyst.events.length?a.catalyst.events[0].e:null;
  return '<aside class="profile-ai-panel" id="profile-ai">'+
   '<div class="profile-ai-head"><div><small>VIEWINVAI IA</small><h3>Lectura multifactor</h3></div><div class="profile-ai-score '+tone+'"><strong>'+F(score,0)+'</strong><span>/100</span></div></div>'+
+  '<div class="profile-data-quality '+E(q.level)+'"><strong>'+E(qualityText)+'</strong><span>'+E(window.ViewInvAIScore&&window.ViewInvAIScore.VERSION?'motor '+window.ViewInvAIScore.VERSION:'motor local')+'</span></div>'+
   '<div class="profile-ai-state '+tone+'"><b>'+label+'</b><span>'+E(recommendationNarrative(a))+'</span></div>'+
   '<div class="profile-ai-columns"><div><h4>A favor</h4><ul>'+posHtml+'</ul></div><div><h4>En contra</h4><ul>'+negHtml+'</ul></div></div>'+
   '<div class="profile-ai-catalyst"><small>Catalizador relevante</small><strong>'+E(cat?EL(cat):'Sin catalizador direccional fuerte')+'</strong><span>'+E(cat?(cat.title||cat.fact||''):'La IA sigue precio, volumen, tendencia, liquidez, técnicos, noticias y eventos.')+'</span></div>'+
@@ -1689,12 +1691,12 @@ function profileFundamentalStats(s){
 }
 function profileTechnicalStats(s){
  return [
-  profileKpi('RSI',F(s.rsi,1),'Momentum'),
-  profileKpi('ADX',F(s.adx,1),'Fuerza de tendencia'),
-  profileKpi('EMA 20',PR(s.ema20),'Media corta'),
-  profileKpi('EMA 50',PR(s.ema50),'Media larga'),
-  profileKpi('Tendencia',trendState(s)===true?'Favorable':trendState(s)===false?'Débil / bajista':'Sin dato','EMA y precio'),
-  profileKpi('Liquidez',lowLiquidity(s,SES(),false)?'Vigilar':'Normal','Según volumen y spread disponibles')
+  profileKpi('RSI 14',F(s.rsi,1),'TradingView · 1D'),
+  profileKpi('ADX 14',F(s.adx,1),'TradingView · 1D'),
+  profileKpi('EMA 20',PR(s.ema20),'20 sesiones · 1D'),
+  profileKpi('EMA 50',PR(s.ema50),'50 sesiones · 1D'),
+  profileKpi('Tendencia',trendState(s)===true?'Favorable':trendState(s)===false?'Débil / bajista':'Sin dato','Precio + EMA · 1D'),
+  profileKpi('Liquidez',lowLiquidity(s,SES(),false)?'Vigilar':'Normal','Volumen y spread de la sesión')
  ].join('');
 }
 function profilePerformanceStrip(s){
@@ -2396,7 +2398,8 @@ async function highConvictionRecommendation(mode){
  if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
  return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons};
 }
-function recommendationSignal(score,bucket){
+function recommendationSignal(score,bucket,qualityScore=100){
+ if(qualityScore<55)return{key:'wait',label:'ESPERAR',text:'Faltan datos suficientes para emitir una señal fuerte.'};
  if(score>=72){bucket.armed=true;return{key:'buy',label:'COMPRA',text:'Convicción suficiente para entrada según el motor actual.'}}
  if(bucket.armed&&score<=50)return{key:'sell',label:'VENTA',text:'La tesis ha perdido suficiente fuerza para activar salida.'};
  if(bucket.armed)return{key:'hold',label:'MANTENER',text:'La tesis sigue activa, pero sin nueva señal de compra.'};
@@ -2426,7 +2429,7 @@ function recommendationNarrative(a){
 }
 function recommendationCard(mode,s){
  if(!s)return '<article class="recommendation-card empty-state">No hay una candidata con datos suficientes para este mercado.</article>';
- let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket);
+ let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
  if(bucket.armed!==wasArmed)saveRecommendationState();
  let se=a.se,ticker=preferTr?s.trTicker:s.ticker,marketName=preferTr?'TRADE REPUBLIC / LSX':'MERCADO EEUU';
  let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
@@ -2439,7 +2442,7 @@ function recommendationCard(mode,s){
   '<div class="reco-factors">'+factors+'</div>'+
   '<div class="reco-events"><h4>Noticias y eventos incorporados al análisis</h4>'+events+'</div>'+
   '<div class="reco-actions"><button type="button" class="btn secondary reco-open" data-reco-open="'+E(stockKey(s))+'" data-reco-prefer-tr="'+(preferTr?'1':'0')+'">Abrir ficha y gráfico</button>'+sold+'</div>'+
-  '<div class="reco-foot">Convicción heurística, no probabilidad estadística. Sin precio mínimo. La señal se recalcula con cotización, tendencia, volumen, RSI, ADX, rendimiento, liquidez, noticias y eventos disponibles.</div>'+
+  '<div class="reco-foot">Datos '+quality.score+'/100 · '+(window.ViewInvAIScore&&window.ViewInvAIScore.VERSION?E(window.ViewInvAIScore.VERSION)+' · ':'')+'Convicción heurística, no probabilidad estadística. La señal se recalcula con cotización, tendencia, volumen, RSI, ADX, rendimiento, liquidez, noticias y eventos disponibles.</div>'+
   '</article>';
 }
 function renderRecommendation(){
