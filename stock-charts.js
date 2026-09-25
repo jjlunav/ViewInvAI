@@ -184,27 +184,49 @@ function renderTradingViewChart(el,market){
 async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
  el.dataset.loaded='1';
+
  let block=el.closest('.tv-chart-block'),s=stockByKey(el.dataset.stockKey);
  if(!block||!s)return;
- let usAvailable=!!tradingViewChartSymbol(s,false),trAvailable=false,trData=null;
- if(trTradable(s)&&trIsin(s)){
-  try{trData=await loadTrChartHistory(s,'1d');trAvailable=!!(trData&&trData.points&&trData.points.length>1)}catch(_){}
- }
+
+ // Availability of the selector is structural: a verified TR instrument should
+ // be selectable immediately. Historical data is fetched only when LSX is the
+ // active market, so opening a US chart never waits on Trade Republic.
+ let usAvailable=!!tradingViewChartSymbol(s,false);
+ let trAvailable=!!(trTradable(s)&&trIsin(s));
  let preferTr=block.dataset.chartPreferTr==='1';
  let market=preferTr&&trAvailable?'tr':usAvailable?'us':trAvailable?'tr':'';
+
  setChartMarketUi(block,s,usAvailable,trAvailable,market);
+
  if(!market){
   el.innerHTML='<div class="chart-placeholder">No hay histórico LSX ni gráfico EEUU disponible para este valor.</div>';
   return;
  }
- if(market==='tr'){
-  renderTrNativeChart(el,s,trData,'1d');
- }else{
+
+ if(market==='us'){
   renderTradingViewChart(el,'us');
-  if(preferTr&&!trAvailable){
-   let note=document.createElement('div');note.className='chart-fallback-note';
+  return;
+ }
+
+ el.dataset.chartMarket='tr';
+ el.dataset.trRange='1d';
+ el.innerHTML='<div class="chart-placeholder">Cargando histórico LSX…</div>';
+
+ try{
+  let data=await loadTrChartHistory(s,'1d');
+  if(!el.isConnected||stockKey(s)!==el.dataset.stockKey)return;
+  renderTrNativeChart(el,s,data,'1d');
+  setChartMarketUi(block,s,usAvailable,true,'tr');
+ }catch(_){
+  if(usAvailable){
+   renderTradingViewChart(el,'us');
+   setChartMarketUi(block,s,usAvailable,trAvailable,'us');
+   let note=document.createElement('div');
+   note.className='chart-fallback-note';
    note.textContent='LSX sin histórico disponible · mostrando '+chartMarketName(s,false);
    block.appendChild(note);
+  }else{
+   el.innerHTML='<div class="chart-placeholder">No hay histórico LSX disponible para este valor.</div>';
   }
  }
 }
