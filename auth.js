@@ -438,6 +438,8 @@ window.ViewInvAIAuth = {
   getIdToken,
   apiFetch,
   syncBackendUser,
+  ensurePushRegistration,
+  hasNativeMessaging: () => !!nativeMessagingPlugin(),
   isNative: isNativePlatform
 };
 
