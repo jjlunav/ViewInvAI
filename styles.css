@@ -7513,3 +7513,211 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
   font-size:8px!important
  }
 }
+
+
+/* Portfolio transaction ledger - 2026-09-25 */
+.portfolio-transactions-open{
+ border:1px solid #2f4b59;
+ background:#0e1b24;
+ color:#a9c2ce;
+ border-radius:7px;
+ padding:5px 8px;
+ font-size:9px;
+ cursor:pointer
+}
+.portfolio-transactions-open:hover{
+ border-color:#4d788b;
+ color:#eef8fb
+}
+.transaction-ledger{
+ display:grid;
+ gap:10px;
+ min-width:0
+}
+.transaction-summary,
+.transaction-history-summary{
+ display:grid;
+ grid-template-columns:repeat(4,minmax(0,1fr));
+ gap:6px
+}
+.transaction-summary>div,
+.transaction-history-summary>span{
+ display:grid;
+ gap:2px;
+ min-width:0;
+ padding:7px 9px;
+ border:1px solid rgba(89,122,136,.18);
+ border-radius:9px;
+ background:rgba(255,255,255,.025)
+}
+.transaction-summary small,
+.transaction-history-summary span{
+ font-size:8px;
+ color:#718791
+}
+.transaction-summary strong,
+.transaction-history-summary b{
+ font-size:11px;
+ color:#e8f1f4
+}
+.transaction-form{
+ padding:9px;
+ border:1px solid rgba(83,112,126,.2);
+ border-radius:10px;
+ background:rgba(6,17,24,.55)
+}
+.transaction-form-head{
+ display:flex;
+ align-items:baseline;
+ justify-content:space-between;
+ gap:8px;
+ margin-bottom:8px
+}
+.transaction-form-head strong{
+ font-size:11px
+}
+.transaction-form-head span{
+ min-width:0;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ font-size:9px;
+ color:#78909a
+}
+.transaction-history-head{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:8px;
+ padding-top:2px
+}
+.transaction-history-head strong{
+ font-size:10px;
+ color:#dbe7eb
+}
+.transaction-history-head span{
+ font-size:8px;
+ color:#6f8792
+}
+.transaction-history{
+ display:grid;
+ gap:4px;
+ max-height:330px;
+ overflow:auto
+}
+.transaction-row{
+ display:grid;
+ grid-template-columns:auto minmax(0,1fr) auto auto;
+ align-items:center;
+ gap:7px;
+ min-width:0;
+ padding:6px 7px;
+ border:1px solid rgba(75,105,119,.16);
+ border-radius:8px;
+ background:#0a151d
+}
+.transaction-side{
+ min-width:48px;
+ text-align:center;
+ border-radius:999px;
+ padding:3px 5px;
+ font-size:7px;
+ font-weight:800;
+ letter-spacing:.25px
+}
+.transaction-side.buy{
+ color:#74e3bf;
+ border:1px solid #2f6f5b;
+ background:#153329
+}
+.transaction-side.sell{
+ color:#ff9198;
+ border:1px solid #744047;
+ background:#32191d
+}
+.transaction-main,
+.transaction-total{
+ display:grid;
+ gap:1px;
+ min-width:0
+}
+.transaction-main strong,
+.transaction-total strong{
+ font-size:9px;
+ color:#d9e5e9;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis
+}
+.transaction-main small,
+.transaction-total small{
+ font-size:8px;
+ color:#6f858f;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis
+}
+.transaction-total{
+ text-align:right
+}
+.transaction-delete{
+ width:25px;
+ height:25px;
+ display:grid;
+ place-items:center;
+ border:1px solid #4c3136;
+ border-radius:6px;
+ background:#211115;
+ color:#e77d84;
+ cursor:pointer
+}
+.transaction-history-summary{
+ grid-template-columns:repeat(3,minmax(0,1fr))
+}
+.transaction-history-summary>span{
+ display:flex;
+ align-items:baseline;
+ gap:5px
+}
+.portfolio-history{
+ width:auto!important;
+ white-space:nowrap
+}
+
+@media(max-width:720px){
+ .portfolio-position-actions{
+  flex-wrap:wrap!important;
+  justify-content:flex-start!important
+ }
+ .portfolio-transactions-open{
+  padding:4px 6px!important;
+  font-size:8px!important
+ }
+ .transaction-summary{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important
+ }
+ .transaction-history-summary{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important
+ }
+ .transaction-row{
+  grid-template-columns:auto minmax(0,1fr) auto!important;
+  gap:5px!important
+ }
+ .transaction-total{
+  grid-column:2/4!important;
+  text-align:left!important
+ }
+ .transaction-delete{
+  grid-column:3!important;
+  grid-row:1!important
+ }
+ .transaction-form{
+  padding:7px!important
+ }
+ .transaction-form .portfolio-form-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important
+ }
+ .portfolio-history{
+  padding:6px 8px!important
+ }
+}
