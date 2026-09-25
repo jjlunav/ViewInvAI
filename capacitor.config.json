@@ -2,13 +2,6 @@
   "appId": "com.viewinvai.mobile",
   "appName": "ViewInvAI",
   "webDir": "mobile-shell",
-  "server": {
-    "url": "https://viewinvai.sonarlab.workers.dev/?native=1",
-    "cleartext": false,
-    "allowNavigation": [
-      "viewinvai.sonarlab.workers.dev"
-    ]
-  },
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#071018"
