@@ -178,8 +178,10 @@ function portfolioPositions(portfolioId) {
 }
 
 function portfolioSummaryHtml(portfolio, positions) {
-  if (!portfolio || !positions.length) return "";
+  if (!portfolio) return "";
   const baseCurrency = String(portfolio.base_currency || "EUR").toUpperCase();
+  const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
+  if (!positions.length && !txSummary) return "";
   let currentValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0;
   for (const p of positions) {
     const stock = stockByKey(p.stock_key);
@@ -200,7 +202,6 @@ function portfolioSummaryHtml(portfolio, positions) {
 
   const openPnl = currentComplete && costComplete ? currentValue - invested : null;
   const openPnlPct = openPnl !== null && invested > 0 ? openPnl / invested * 100 : null;
-  const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
   const currencySummary = txSummary && txSummary.currencies && txSummary.currencies[baseCurrency] || null;
   const realizedPnl = currencySummary ? num(currencySummary.realizedPnl) : null;
   const totalPnl = openPnl !== null && realizedPnl !== null ? openPnl + realizedPnl : null;
