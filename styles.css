@@ -8449,3 +8449,58 @@ html[data-theme="light"] .investing-stock-card .stock-list-price .quote-updated{
   font-size:9px!important
  }
 }
+
+
+/* External ChatGPT handoff - 2026-09-25 */
+.profile-visual-toggle-row{
+ gap:7px!important;
+ flex-wrap:wrap!important
+}
+.profile-external-chatgpt,
+.profile-chatgpt-open{
+ border:1px solid rgba(116,151,255,.34)!important;
+ background:rgba(61,82,139,.14)!important;
+ color:#cbd7ff!important
+}
+.profile-external-chatgpt{
+ min-height:32px;
+ padding:6px 10px;
+ border-radius:9px;
+ font-size:9px;
+ font-weight:780;
+ cursor:pointer
+}
+.profile-external-chatgpt:hover,
+.profile-chatgpt-open:hover{
+ border-color:#7896ef!important;
+ background:rgba(80,105,177,.23)!important;
+ color:#f4f7ff!important
+}
+.profile-ai-actions{
+ display:grid;
+ grid-template-columns:1fr auto;
+ gap:7px;
+ padding:0 14px 12px
+}
+.profile-ai-actions .btn{
+ min-height:34px!important;
+ font-size:9px!important
+}
+@media(max-width:720px){
+ .profile-visual-toggle-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:6px!important
+ }
+ .profile-visual-toggle{
+  width:auto!important
+ }
+ .profile-external-chatgpt{
+  min-height:34px!important;
+  padding:7px 9px!important
+ }
+ .profile-ai-actions{
+  grid-template-columns:1fr!important;
+  padding:0 10px 10px!important
+ }
+}
