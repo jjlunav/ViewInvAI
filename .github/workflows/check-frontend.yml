@@ -299,6 +299,20 @@ jobs:
                       return;
                     }
 
+                    const waitForTrSelector = (deadline = Date.now() + 2500) => {
+                      const trButton = root.querySelector('.chart-market-toggle[data-chart-market="tr"]');
+                      if (trButton) {
+                        trButton.click();
+                        waitForNativeTrChart();
+                        return;
+                      }
+                      if (Date.now() < deadline) {
+                        setTimeout(() => waitForTrSelector(deadline), 50);
+                        return;
+                      }
+                      fail('LSX market selector did not become available');
+                    };
+
                     const waitForNativeTrChart = (deadline = Date.now() + 2500) => {
                       if (root.querySelector('.tr-native-chart')) {
                         document.body.dataset.smokeTrChart = 'ok';
@@ -327,10 +341,10 @@ jobs:
                         setTimeout(() => waitForNativeTrChart(deadline), 50);
                         return;
                       }
-                      fail('LSX native chart did not render automatically from Trade Republic history');
+                      fail('LSX native chart did not render after selecting the Trade Republic market');
                     };
 
-                    waitForNativeTrChart();
+                    waitForTrSelector();
                   }, 50);
                 }, 120);
                 return;
