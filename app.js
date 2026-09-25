@@ -1614,7 +1614,7 @@ function eventWhen(e){let t=eventTime(e);return DF(e.date)+(t?' · '+t:'')}
 function eventSources(e){
  let src=Array.isArray(e.sources)&&e.sources.length?e.sources:(e.source?[{name:e.source,url:e.url}]:[]);
  if(!src.length)return '';
- let linksHtml=src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url);return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">'+name+' ↗</a>':'<span>'+name+'</span>'}).join('');
+ let linksHtml=src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url),kind=E(s.kind||'');return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"'+(kind?' title="'+kind+'"':'')+' href="'+E(u)+'">'+name+' ↗</a>':'<span'+(kind?' title="'+kind+'"':'')+'>'+name+'</span>'}).join('');
  return '<div class="event-sources"><span class="verification">'+E(e.verification||'Fuente validada')+'</span>'+linksHtml+'</div>';
 }
 function eventItem(e){
