@@ -13,6 +13,7 @@ on:
       - "heatmap.js"
       - "events.js"
       - "recommendation.js"
+      - "help.js"
       - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
