@@ -67,6 +67,53 @@ function rateLimit(request, bucket, max, windowMs=60000){
   return jsonResponse({error:"Too many requests",retryAfter:retry},429,{"Retry-After":String(retry),"Cache-Control":"no-store"});
 }
 
+const TRUSTED_NATIVE_ORIGINS = new Set([
+  "https://localhost",
+  "http://localhost",
+  "capacitor://localhost",
+  "ionic://localhost"
+]);
+
+function trustedNativeOrigin(request) {
+  const origin = String(request.headers.get("Origin") || "").toLowerCase();
+  return origin && TRUSTED_NATIVE_ORIGINS.has(origin) ? origin : "";
+}
+
+function nativeCorsResponse(request, response) {
+  const origin = trustedNativeOrigin(request);
+  if (!origin || !response) return response;
+  const headers = new Headers(response.headers || {});
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Credentials", "true");
+  headers.set("Access-Control-Expose-Headers", "ETag,X-ViewInvAI-Market-Storage");
+  headers.append("Vary", "Origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+function nativePreflightResponse(request) {
+  const origin = trustedNativeOrigin(request);
+  if (!origin) return null;
+  const requestedHeaders = String(request.headers.get("Access-Control-Request-Headers") || "authorization,content-type");
+  const headers = applySecurityHeaders(new Headers({
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": requestedHeaders,
+    "Access-Control-Max-Age": "600",
+    "Vary": "Origin"
+  }));
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Credentials", "true");
+  headers.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  headers.set("Access-Control-Allow-Headers", requestedHeaders);
+  headers.set("Access-Control-Max-Age", "600");
+  return new Response(null, { status: 204, headers });
+}
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
@@ -111,10 +158,11 @@ function jsonResponse(payload, status = 200, extraHeaders = {}) {
 function requestGuard(request, { websocket = false } = {}) {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: applySecurityHeaders() });
   const url = new URL(request.url);
-  const origin = request.headers.get("Origin");
-  if (origin && origin !== url.origin) return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
+  const origin = String(request.headers.get("Origin") || "");
+  const nativeOrigin = trustedNativeOrigin(request);
+  if (origin && origin !== url.origin && !nativeOrigin) return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
   const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
-  if (site && !["same-origin", "none"].includes(site)) {
+  if (!nativeOrigin && site && !["same-origin", "none"].includes(site)) {
     return new Response("Forbidden", { status: 403, headers: applySecurityHeaders() });
   }
   if (websocket && (request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
@@ -669,6 +717,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (request.method === "OPTIONS") {
+      const preflight = nativePreflightResponse(request);
+      if (preflight) return preflight;
+    }
+
     if (url.pathname === "/api/internal/market-publish") {
       return publishMarketToR2(request, env);
     }
@@ -680,47 +733,47 @@ export default {
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
     else if(isBackendApiPath(url.pathname))limited=await enforcedRateLimit(request,env,"backend",180,60000,"API_RATE_LIMITER");
-    if(limited)return limited;
+    if(limited)return nativeCorsResponse(request, limited);
 
     if (isBackendApiPath(url.pathname)) {
-      return handleBackendApi(request, env, {
+      return nativeCorsResponse(request, await handleBackendApi(request, env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend
-      });
+      }));
     }
     if (url.pathname === "/api/tr-live") {
       return proxyTradeRepublic(request);
     }
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
-      return nasdaqQuotes(request);
+      return nativeCorsResponse(request, await nasdaqQuotes(request));
     }
     if (url.pathname === "/api/fx-live") {
       const guard = requestGuard(request); if (guard) return guard;
-      try { return await liveEurUsd(); }
+      try { return nativeCorsResponse(request, await liveEurUsd()); }
       catch (error) {
         console.warn("FX live upstream error", String(error && error.message || error));
-        return jsonResponse({ error: "FX unavailable" }, 502, { "Cache-Control": "no-store" });
+        return nativeCorsResponse(request, jsonResponse({ error: "FX unavailable" }, 502, { "Cache-Control": "no-store" }));
       }
     }
     if (url.pathname === "/api/us-chart") {
       const guard = requestGuard(request); if (guard) return guard;
-      return nasdaqChart(request);
+      return nativeCorsResponse(request, await nasdaqChart(request));
     }
     if (url.pathname === "/api/tr-history") {
       const guard = requestGuard(request); if (guard) return guard;
-      return tradeRepublicHistory(request);
+      return nativeCorsResponse(request, await tradeRepublicHistory(request));
     }
     if (url.pathname === "/api/tv-symbol") {
       const guard = requestGuard(request); if (guard) return guard;
-      return tradingViewSymbolAvailability(request);
+      return nativeCorsResponse(request, await tradingViewSymbolAvailability(request));
     }
     if (url.pathname === "/data/market.json" || url.pathname === "/data/market-version.json") {
       const r2 = await r2MarketAssetResponse(env, url.pathname);
-      if (r2) return r2;
+      if (r2) return nativeCorsResponse(request, r2);
     }
-    return secureResponse(await env.ASSETS.fetch(request), url.pathname);
+    return nativeCorsResponse(request, secureResponse(await env.ASSETS.fetch(request), url.pathname));
   },
 
   async scheduled(controller, env, ctx) {
