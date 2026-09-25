@@ -84,7 +84,7 @@ async function bindPushListeners(plugin) {
   });
 }
 
-async function ensurePushRegistration() {
+async function ensurePushRegistration(requestPermission = true) {
   const plugin = nativeMessagingPlugin();
   if (!plugin || !currentUser) return false;
   try {
@@ -106,7 +106,7 @@ async function ensurePushRegistration() {
       }
     }
     let permission = await plugin.checkPermissions();
-    if (!permission || !["granted"].includes(permission.receive)) {
+    if ((!permission || permission.receive !== "granted") && requestPermission) {
       permission = await plugin.requestPermissions();
     }
     if (!permission || permission.receive !== "granted") {
@@ -267,7 +267,7 @@ async function syncBackendUser() {
   }
   const data = await response.json();
   window.dispatchEvent(new CustomEvent("viewinvai:account-ready", { detail: data }));
-  ensurePushRegistration().catch(error => console.warn("Push setup failed", error));
+  ensurePushRegistration(false).catch(error => console.warn("Push setup failed", error));
   return data;
 }
 
