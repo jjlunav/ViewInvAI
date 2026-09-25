@@ -677,6 +677,11 @@ jobs:
                           }
                           const mobileSpread = header && header.querySelector('.quote-spread');
                           const mobileActions = header && header.querySelector('.profile-primary-actions');
+                          document.body.dataset.mobileHeaderHeight = String(Math.round(headerRect.height));
+                          document.body.dataset.mobileHeaderSpread = mobileSpread ? getComputedStyle(mobileSpread).display : 'missing';
+                          document.body.dataset.mobileHeaderActions = mobileActions ? getComputedStyle(mobileActions).display : 'missing';
+                          document.body.dataset.mobileHeaderPageWidth = String(document.documentElement.scrollWidth);
+                          document.body.dataset.mobileHeaderViewport = String(window.innerWidth);
                           if (!mobileSpread || getComputedStyle(mobileSpread).display === 'none') {
                             fail('mobile stock header hides BID/ASK');
                             return;
@@ -742,6 +747,7 @@ jobs:
             if ! grep -q "$attr" /tmp/viewinvai-mobile-dom.html; then
               echo "::error::Fallo smoke móvil: $marker"
               grep -o 'data-mobile-[^ >]*' /tmp/viewinvai-mobile-dom.html || true
+              grep -o 'data-mobile-smoke-error="[^"]*"' /tmp/viewinvai-mobile-dom.html || true
               grep -o 'data-runtime-error="[^"]*"' /tmp/viewinvai-mobile-dom.html || true
               tail -100 /tmp/viewinvai-mobile-chrome.log || true
               exit 1
