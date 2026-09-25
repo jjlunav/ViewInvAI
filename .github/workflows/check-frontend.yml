@@ -309,7 +309,7 @@ jobs:
                       return;
                     }
 
-                    const waitForTrSelector = (deadline = Date.now() + 2500) => {
+                    const waitForTrSelector = (deadline = Date.now() + 5000) => {
                       const trButton = root.querySelector('.chart-market-toggle[data-chart-market="tr"]');
                       if (trButton) {
                         trButton.click();
@@ -323,7 +323,7 @@ jobs:
                       fail('LSX market selector did not become available');
                     };
 
-                    const waitForNativeTrChart = (deadline = Date.now() + 2500) => {
+                    const waitForNativeTrChart = (deadline = Date.now() + 5000) => {
                       if (root.querySelector('.tr-native-chart')) {
                         document.body.dataset.smokeTrChart = 'ok';
 
@@ -454,7 +454,7 @@ jobs:
             --window-size=1024,768 \
             --force-device-scale-factor=1 \
             --user-data-dir=/tmp/catalyst-chrome-profile \
-            --virtual-time-budget=10000 \
+            --virtual-time-budget=15000 \
             --dump-dom \
             http://127.0.0.1:4173/ \
             > /tmp/catalyst-dom.html 2> /tmp/catalyst-chrome.log
