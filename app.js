@@ -97,6 +97,45 @@ function syncDeviceSettingsUi(){
  else setWakeLockStatus('Pendiente de activar');
 }
 
+function renderPushSettingsStatus(detail=null){
+ let status=$('#pushNotificationStatus'),button=$('#enablePushNotifications');
+ if(!status||!button)return;
+ let auth=window.ViewInvAIAuth;
+ if(!auth){
+  status.textContent='Comprobando…';button.disabled=true;return;
+ }
+ if(!auth.isNative?.()){
+  status.textContent='Solo APK Android';button.disabled=true;return;
+ }
+ if(!auth.hasNativeMessaging?.()){
+  status.textContent='APK pendiente de actualizar';button.disabled=true;return;
+ }
+ if(detail&&detail.enabled===true){
+  status.textContent='Activo';status.classList.add('active');status.classList.remove('error');button.disabled=false;return;
+ }
+ status.classList.remove('active');
+ if(detail&&detail.permission==='denied'){
+  status.textContent='Permiso denegado';status.classList.add('error');button.disabled=false;return;
+ }
+ if(detail&&detail.error){
+  status.textContent='No disponible';status.classList.add('error');button.disabled=false;return;
+ }
+ status.classList.remove('error');
+ status.textContent=auth.getUser?.()?'Preparado para activar':'Inicia sesión';
+ button.disabled=!auth.getUser?.();
+}
+async function retryPushRegistration(){
+ let auth=window.ViewInvAIAuth;
+ if(!auth?.ensurePushRegistration)return;
+ let button=$('#enablePushNotifications');if(button){button.disabled=true;button.textContent='Activando…'}
+ try{
+  let ok=await auth.ensurePushRegistration();
+  renderPushSettingsStatus({enabled:!!ok});
+ }finally{
+  if(button){button.textContent='Activar / reintentar';button.disabled=false}
+ }
+}
+
 let accountAnalysisSettings=null,analysisSettingsBusy=false;
 function clampSetting(value,min,max,fallback){
  let n=Math.round(Number(value));return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
@@ -3484,8 +3523,10 @@ document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEven
  applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
 }));
 $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
-window.addEventListener('viewinvai:account-ready',e=>renderAnalysisSettings(e.detail&&e.detail.settings||null));
-window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null)});
+$('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
+window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
+window.addEventListener('viewinvai:account-ready',e=>{renderAnalysisSettings(e.detail&&e.detail.settings||null);renderPushSettingsStatus()});
+window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null);renderPushSettingsStatus()});
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();
  else if(['catalog','catalogUS'].includes(state.currentView)&&state.profileKey){
@@ -3493,6 +3534,8 @@ window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  }
 });
 renderAnalysisSettings(null);
+renderPushSettingsStatus();
+setTimeout(()=>renderPushSettingsStatus(),700);
 lockAllCriteria();
 initLeadersDock();
 initTrLive();
