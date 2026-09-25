@@ -24,6 +24,7 @@ TR_URLS = [
     "https://assets.traderepublic.com/assets/files/DE/Instrument_Universe_DE_en.pdf",
 ]
 OUT = Path("data/market.json")
+VERSION_OUT = Path("data/market-version.json")
 TR_PDF_MAX_BYTES = 50 * 1024 * 1024
 TR_PDF_MAX_PAGES = 5000
 NEWS_SYMBOL_LIMIT = 60
@@ -894,6 +895,11 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+    VERSION_OUT.write_text(json.dumps({
+        "updatedAt": obj["meta"]["updatedAt"],
+        "stocks": len(stocks),
+        "events": len(events),
+    }, ensure_ascii=False, separators=(",", ":")))
 
     # Diagnostic summary for the frontend "Impulso intradía" preset.
     tr_rows = [s for s in stocks if s.get("tradeRepublicTradable")]
