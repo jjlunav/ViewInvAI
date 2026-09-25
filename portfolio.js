@@ -317,6 +317,7 @@ function renderApp() {
         '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>' +
       '</div>' +
       '<button type="button" class="btn small portfolio-add-current"' + (selected ? '' : ' disabled') + '>＋ Añadir posición</button>' +
+      '<button type="button" class="btn small portfolio-history"' + (selected ? ' data-portfolio-history="' + esc(selected.id) + '"' : ' disabled') + '>Historial</button>' +
       '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>' +
     '</div>' +
     '<div id="portfolioContext" class="portfolio-context">' +
@@ -655,6 +656,7 @@ function transactionRowsHtml(rows, currency) {
   return rows.map(tx => {
     const side = String(tx.side || '').toUpperCase();
     const isBuy = side === 'BUY';
+    const txCurrency = String(tx.currency || currency || 'EUR').toUpperCase();
     const executed = tx.executed_at ? new Date(tx.executed_at) : null;
     const when = executed && !isNaN(executed)
       ? executed.toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})
@@ -662,8 +664,8 @@ function transactionRowsHtml(rows, currency) {
     const fees = num(tx.fees);
     return '<div class="transaction-row">' +
       '<span class="transaction-side ' + (isBuy ? 'buy' : 'sell') + '">' + (isBuy ? 'COMPRA' : 'VENTA') + '</span>' +
-      '<div class="transaction-main"><strong>' + formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, currency) + '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, currency)) : '') + '</small></div>' +
-      '<div class="transaction-total"><strong>' + formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), currency) + '</strong><small>' + esc(tx.notes || tx.origin || '') + '</small></div>' +
+      '<div class="transaction-main"><strong>' + formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, txCurrency) + '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, txCurrency)) : '') + '</small></div>' +
+      '<div class="transaction-total"><strong>' + formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · ' + esc(tx.notes) : '') + '</small></div>' +
       (String(tx.origin || '') === 'manual' ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
     '</div>';
   }).join('');
@@ -676,6 +678,32 @@ async function fetchTransactions(position) {
     limit: '300'
   });
   return fetchJson('/api/transactions?' + qs.toString());
+}
+
+async function openPortfolioTransactionHistory(portfolioId) {
+  const portfolio = state.portfolios.find(p => String(p.id) === String(portfolioId));
+  if (!portfolio) return toast('No se encuentra la cartera.', true);
+  openModal('Historial · ' + portfolio.name,
+    '<div class="portfolio-loading compact"><span></span><p>Cargando operaciones…</p></div>'
+  );
+  try {
+    const data = await fetchJson('/api/transactions?portfolioId=' + encodeURIComponent(portfolioId) + '&limit=500');
+    const rows = data.transactions || [];
+    const body = $('#portfolioModalBody');
+    if (!body) return;
+    const buys = rows.filter(x => String(x.side || '').toUpperCase() === 'BUY').length;
+    const sells = rows.length - buys;
+    body.innerHTML =
+      '<div class="transaction-ledger portfolio-transaction-history">' +
+        '<div class="transaction-history-summary"><span><b>' + rows.length + '</b> operaciones</span><span><b>' + buys + '</b> compras</span><span><b>' + sells + '</b> ventas</span></div>' +
+        '<div class="transaction-history-head"><strong>Movimientos de ' + esc(portfolio.name) + '</strong><span>Más reciente primero</span></div>' +
+        '<div class="transaction-history">' + transactionRowsHtml(rows, portfolio.base_currency || 'EUR') + '</div>' +
+      '</div>';
+  } catch (error) {
+    const body = $('#portfolioModalBody');
+    if (body) body.innerHTML = '<div class="portfolio-empty-state compact">No se pudo cargar el historial.</div>';
+    toast(error.message || 'No se pudo cargar el historial.', true);
+  }
 }
 
 async function openTransactionsModal(positionId) {
@@ -1167,6 +1195,14 @@ function bind() {
       event.preventDefault();
       event.stopPropagation();
       openTransactionsModal(transactionsButton.dataset.positionTransactions);
+      return;
+    }
+
+    const portfolioHistory = event.target.closest?.("[data-portfolio-history]");
+    if (portfolioHistory) {
+      event.preventDefault();
+      event.stopPropagation();
+      openPortfolioTransactionHistory(portfolioHistory.dataset.portfolioHistory);
       return;
     }
 
