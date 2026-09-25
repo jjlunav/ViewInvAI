@@ -362,10 +362,15 @@ async function transactionRows(env, userId, portfolioId, stockKey) {
 export function calculateTransactionLedger(rows) {
   let quantity = 0;
   let costBasis = 0;
-  let realizedPnl = 0;
-  let totalFees = 0;
   let firstBuyAt = null;
   let currency = null;
+  const realizedByCurrency = {};
+  const feesByCurrency = {};
+
+  const addAmount = (bucket, key, value) => {
+    key = String(key || "EUR").toUpperCase();
+    bucket[key] = (bucket[key] || 0) + value;
+  };
 
   for (const row of rows || []) {
     const side = String(row.side || "").toUpperCase();
@@ -373,32 +378,39 @@ export function calculateTransactionLedger(rows) {
     const qty = finiteNumber(row.quantity);
     const price = finiteNumber(row.price);
     const fees = Math.max(0, finiteNumber(row.fees) || 0);
+    const rowCurrency = String(row.currency || currency || "EUR").toUpperCase();
     if (!qty || qty <= 0 || price === null || price < 0) continue;
-    if (!currency) currency = String(row.currency || "EUR").toUpperCase();
+    if (!currency) currency = rowCurrency;
 
     if (origin === "position-adjustment") {
       if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
       quantity = qty;
       costBasis = qty * price;
-      currency = String(row.currency || currency || "EUR").toUpperCase();
-      totalFees += fees;
+      currency = rowCurrency;
+      addAmount(feesByCurrency, rowCurrency, fees);
       continue;
     }
 
     if (side === "BUY") {
+      if (quantity > 1e-8 && currency !== rowCurrency) {
+        throw new Error("Transaction currency differs from current position");
+      }
+      if (quantity <= 1e-8) currency = rowCurrency;
       if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
       quantity += qty;
       costBasis += qty * price + fees;
-      totalFees += fees;
+      addAmount(feesByCurrency, rowCurrency, fees);
       continue;
     }
     if (side === "SELL") {
       if (qty > quantity + 1e-8) throw new Error("Sell quantity exceeds current position");
+      if (currency !== rowCurrency) throw new Error("Transaction currency differs from current position");
       const avg = quantity > 1e-8 ? costBasis / quantity : 0;
-      realizedPnl += qty * price - fees - qty * avg;
+      const realized = qty * price - fees - qty * avg;
+      addAmount(realizedByCurrency, rowCurrency, realized);
+      addAmount(feesByCurrency, rowCurrency, fees);
       quantity -= qty;
       costBasis -= qty * avg;
-      totalFees += fees;
       if (quantity <= 1e-8) {
         quantity = 0;
         costBasis = 0;
@@ -406,12 +418,23 @@ export function calculateTransactionLedger(rows) {
     }
   }
 
+  const realizedCurrencies = Object.keys(realizedByCurrency);
+  const feeCurrencies = Object.keys(feesByCurrency);
+  const realizedPnl = realizedCurrencies.length <= 1
+    ? realizedCurrencies.reduce((sum, key) => sum + realizedByCurrency[key], 0)
+    : null;
+  const totalFees = feeCurrencies.length <= 1
+    ? feeCurrencies.reduce((sum, key) => sum + feesByCurrency[key], 0)
+    : null;
+
   return {
     quantity,
     avgPrice: quantity > 1e-8 ? costBasis / quantity : null,
     invested: costBasis,
     realizedPnl,
+    realizedByCurrency,
     totalFees,
+    feesByCurrency,
     currency: currency || "EUR",
     firstBuyAt
   };
@@ -448,9 +471,14 @@ export function calculatePortfolioTransactionSummary(rows) {
 
   for (const groupRows of groups.values()) {
     const ledger = calculateTransactionLedger(groupRows);
-    const currency = String(ledger.currency || "EUR").toUpperCase();
-    if (!currencies[currency]) currencies[currency] = { buyGross: 0, sellGross: 0, fees: 0, realizedPnl: 0 };
-    currencies[currency].realizedPnl += ledger.realizedPnl || 0;
+    const realized = ledger.realizedByCurrency && typeof ledger.realizedByCurrency === "object"
+      ? ledger.realizedByCurrency
+      : (ledger.realizedPnl === null || ledger.realizedPnl === undefined ? {} : { [String(ledger.currency || "EUR").toUpperCase()]: ledger.realizedPnl });
+    for (const [currency, amount] of Object.entries(realized)) {
+      const key = String(currency || "EUR").toUpperCase();
+      if (!currencies[key]) currencies[key] = { buyGross: 0, sellGross: 0, fees: 0, realizedPnl: 0 };
+      currencies[key].realizedPnl += finiteNumber(amount) || 0;
+    }
   }
 
   for (const value of Object.values(currencies)) {
