@@ -1766,9 +1766,8 @@ function profilePerformanceStrip(s){
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
  let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
- return inPortfolio
-  ?'<button type="button" class="btn small profile-add-portfolio is-remove" data-remove-portfolio-stock="'+E(key)+'">− Quitar de cartera</button>'
-  :'<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>';
+ let label=inPortfolio?'★ Gestionar cartera':'＋ Añadir a cartera';
+ return '<button type="button" class="btn small profile-add-portfolio'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">'+label+'</button>';
 }
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
