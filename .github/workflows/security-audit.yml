@@ -84,6 +84,22 @@ jobs:
           if(adjustedSummary.adjustments!==1||adjustedSummary.buys!==2||adjustedSummary.sells!==1)throw new Error('Adjustment must not be counted as a buy');
           if(Math.abs(adjustedSummary.currencies.EUR.buyGross-300)>1e-9)throw new Error('Adjustment must not inflate buy gross');
 
+          const mixedCurrencyRows=[
+            {id:'m1',stock_key:'NASDAQ:MIX',side:'BUY',quantity:10,price:10,fees:0,currency:'EUR',executed_at:'2026-02-01T10:00:00Z'},
+            {id:'m2',stock_key:'NASDAQ:MIX',side:'SELL',quantity:5,price:20,fees:0,currency:'EUR',executed_at:'2026-02-02T10:00:00Z'},
+            {id:'m3',stock_key:'NASDAQ:MIX',side:'BUY',origin:'position-adjustment',quantity:10,price:30,fees:0,currency:'USD',executed_at:'2026-02-03T10:00:00Z'},
+            {id:'m4',stock_key:'NASDAQ:MIX',side:'SELL',quantity:2,price:40,fees:0,currency:'USD',executed_at:'2026-02-04T10:00:00Z'}
+          ];
+          const mixed=calculateTransactionLedger(mixedCurrencyRows);
+          if(mixed.realizedPnl!==null)throw new Error('Mixed currencies must not expose a fake scalar realized P&L');
+          if(Math.abs(mixed.realizedByCurrency.EUR-50)>1e-9||Math.abs(mixed.realizedByCurrency.USD-20)>1e-9)throw new Error('Realized P&L must stay separated by currency');
+          const mixedSummary=calculatePortfolioTransactionSummary(mixedCurrencyRows);
+          if(Math.abs(mixedSummary.currencies.EUR.realizedPnl-50)>1e-9||Math.abs(mixedSummary.currencies.USD.realizedPnl-20)>1e-9)throw new Error('Portfolio realized P&L currency attribution regression');
+
+          let mismatch=false;
+          try{calculateTransactionLedger([{side:'BUY',quantity:1,price:10,currency:'EUR'},{side:'SELL',quantity:1,price:10,currency:'USD'}])}catch(_){mismatch=true}
+          if(!mismatch)throw new Error('Ledger must reject a normal trade in a different currency from the open position');
+
           let oversell=false;
           try{calculateTransactionLedger([{side:'BUY',quantity:1,price:10},{side:'SELL',quantity:2,price:10}])}catch(_){oversell=true}
           if(!oversell)throw new Error('Ledger must reject oversell');
