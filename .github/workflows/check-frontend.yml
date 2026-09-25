@@ -674,6 +674,20 @@ jobs:
                             fail('stock header is not sticky after scroll');
                             return;
                           }
+                          const mobileSpread = header && header.querySelector('.quote-spread');
+                          const mobileActions = header && header.querySelector('.profile-primary-actions');
+                          if (!mobileSpread || getComputedStyle(mobileSpread).display === 'none') {
+                            fail('mobile stock header hides BID/ASK');
+                            return;
+                          }
+                          if (!mobileActions || getComputedStyle(mobileActions).display === 'none') {
+                            fail('mobile stock header hides primary actions');
+                            return;
+                          }
+                          if (headerRect.height > 118) {
+                            fail('mobile stock header is too tall: ' + headerRect.height);
+                            return;
+                          }
                           if (document.documentElement.scrollWidth > window.innerWidth + 1) {
                             fail('mobile profile overflow appeared after scroll');
                             return;
