@@ -253,6 +253,7 @@ function renderPositionRow(p, index = 0) {
       '<div class="portfolio-position-actions">' +
         '<span class="portfolio-position-signal">' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span>' +
         '<button type="button" class="portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">Analizar IA</button>' +
+        '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
       '</div>' +
     '</div>';
 
@@ -625,6 +626,180 @@ function openModal(title, html) {
   document.body.classList.add("app-modal-open");
 }
 
+function localDateTimeValue(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return y + "-" + m + "-" + d + "T" + hh + ":" + mm;
+}
+
+function transactionPosition(positionId) {
+  return state.positions.find(p => String(p.id) === String(positionId)) || null;
+}
+
+function transactionSummaryHtml(summary, currency) {
+  if (!summary) return "";
+  const qty = num(summary.quantity), avg = num(summary.avgPrice), realized = num(summary.realizedPnl), fees = num(summary.totalFees);
+  return '<div class="transaction-summary">' +
+    '<div><small>POSICIÓN</small><strong>' + (qty === null ? '—' : formatNumber(qty, 4) + ' uds.') + '</strong></div>' +
+    '<div><small>MEDIA</small><strong>' + formatMoney(avg, currency) + '</strong></div>' +
+    '<div><small>P&L REALIZADO</small><strong class="' + (realized !== null && realized < 0 ? 'pnl-down' : 'pnl-up') + '">' + (realized !== null && realized > 0 ? '+' : '') + formatMoney(realized, currency) + '</strong></div>' +
+    '<div><small>COMISIONES</small><strong>' + formatMoney(fees, currency) + '</strong></div>' +
+  '</div>';
+}
+
+function transactionRowsHtml(rows, currency) {
+  if (!rows || !rows.length) return '<div class="portfolio-empty-state compact">Todavía no hay operaciones registradas.</div>';
+  return rows.map(tx => {
+    const side = String(tx.side || '').toUpperCase();
+    const isBuy = side === 'BUY';
+    const executed = tx.executed_at ? new Date(tx.executed_at) : null;
+    const when = executed && !isNaN(executed)
+      ? executed.toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})
+      : '—';
+    const fees = num(tx.fees);
+    return '<div class="transaction-row">' +
+      '<span class="transaction-side ' + (isBuy ? 'buy' : 'sell') + '">' + (isBuy ? 'COMPRA' : 'VENTA') + '</span>' +
+      '<div class="transaction-main"><strong>' + formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, currency) + '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, currency)) : '') + '</small></div>' +
+      '<div class="transaction-total"><strong>' + formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), currency) + '</strong><small>' + esc(tx.notes || tx.origin || '') + '</small></div>' +
+      (String(tx.origin || '') === 'manual' ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
+    '</div>';
+  }).join('');
+}
+
+async function fetchTransactions(position) {
+  const qs = new URLSearchParams({
+    portfolioId: position.portfolio_id,
+    stockKey: position.stock_key,
+    limit: '300'
+  });
+  return fetchJson('/api/transactions?' + qs.toString());
+}
+
+async function openTransactionsModal(positionId) {
+  const position = transactionPosition(positionId);
+  if (!position) return toast('No se encuentra la posición.', true);
+  const stock = stockByKey(position.stock_key);
+  const preferTr = Number(position.prefer_tr) === 1;
+  const market = currentMarket(stock, preferTr);
+  const currency = String(position.currency || (preferTr ? 'EUR' : 'USD')).toUpperCase();
+
+  openModal('Operaciones · ' + (position.ticker || stock?.ticker || ''),
+    '<div class="portfolio-loading compact"><span></span><p>Cargando operaciones…</p></div>'
+  );
+
+  try {
+    const data = await fetchTransactions(position);
+    const body = $('#portfolioModalBody');
+    if (!body) return;
+    body.innerHTML =
+      '<div class="transaction-ledger" data-transaction-position="' + esc(position.id) + '">' +
+        transactionSummaryHtml(data.summary, currency) +
+        '<form id="transactionForm" class="portfolio-form transaction-form" data-position-id="' + esc(position.id) + '">' +
+          '<div class="transaction-form-head"><strong>Nueva operación</strong><span>' + esc(position.name || stock?.name || '') + '</span></div>' +
+          '<div class="portfolio-form-grid">' +
+            '<label><span>Tipo</span><select name="side"><option value="BUY">Compra</option><option value="SELL">Venta</option></select></label>' +
+            '<label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0.00000001" required></label>' +
+          '</div>' +
+          '<div class="portfolio-form-grid">' +
+            '<label><span>Precio</span><input name="price" type="number" inputmode="decimal" step="any" min="0" required placeholder="' + esc(market.price || '') + '"></label>' +
+            '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="0"></label>' +
+          '</div>' +
+          '<div class="portfolio-form-grid">' +
+            '<label><span>Divisa</span><input name="currency" value="' + esc(currency) + '" readonly></label>' +
+            '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="' + localDateTimeValue() + '" required></label>' +
+          '</div>' +
+          '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Opcional"></label>' +
+          '<div class="portfolio-form-status" data-transaction-status aria-live="polite"></div>' +
+          '<button type="submit" class="btn">Registrar operación</button>' +
+        '</form>' +
+        '<div class="transaction-history-head"><strong>Historial</strong><span>' + (data.transactions || []).length + ' operaciones</span></div>' +
+        '<div class="transaction-history">' + transactionRowsHtml(data.transactions || [], currency) + '</div>' +
+      '</div>';
+  } catch (error) {
+    const body = $('#portfolioModalBody');
+    if (body) body.innerHTML = '<div class="portfolio-empty-state compact">No se pudieron cargar las operaciones.</div>';
+    toast(error.message || 'No se pudieron cargar las operaciones.', true);
+  }
+}
+
+async function saveTransactionForm(form) {
+  if (!form || form.dataset.saving === '1') return;
+  const position = transactionPosition(form.dataset.positionId);
+  if (!position) return toast('No se encuentra la posición.', true);
+  const stock = stockByKey(position.stock_key);
+  const preferTr = Number(position.prefer_tr) === 1;
+  const fd = new FormData(form);
+  const executedRaw = String(fd.get('executedAt') || '');
+  const executedDate = new Date(executedRaw);
+  const payload = {
+    portfolioId: position.portfolio_id,
+    stockKey: position.stock_key,
+    ticker: position.ticker || stock?.ticker || '',
+    name: position.name || stock?.name || '',
+    exchange: position.exchange || (preferTr ? stock?.trExchange : stock?.exchange) || '',
+    isin: position.isin || (preferTr ? stock?.trIsin : stock?.isin) || '',
+    preferTr,
+    side: String(fd.get('side') || 'BUY'),
+    quantity: num(fd.get('quantity')),
+    price: num(fd.get('price')),
+    fees: num(fd.get('fees')) || 0,
+    currency: String(fd.get('currency') || position.currency || 'EUR'),
+    executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : '',
+    notes: String(fd.get('notes') || '')
+  };
+  const status = form.querySelector('[data-transaction-status]');
+  const button = form.querySelector('button[type="submit"]');
+  if (!payload.quantity || payload.quantity <= 0 || payload.price === null || payload.price < 0 || !payload.executedAt) {
+    if (status) status.textContent = 'Revisa cantidad, precio y fecha.';
+    return;
+  }
+
+  form.dataset.saving = '1';
+  if (button) { button.disabled = true; button.textContent = 'Guardando…'; }
+  try {
+    const response = await api('/api/transactions', {method:'POST',body:JSON.stringify(payload)});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudo guardar la operación.');
+    if (data.position) {
+      const i = state.positions.findIndex(p => p.id === data.position.id);
+      if (Number(data.position.active) === 0) {
+        if (i >= 0) state.positions.splice(i, 1);
+      } else if (i >= 0) state.positions[i] = data.position;
+      else state.positions.unshift(data.position);
+    }
+    toast(payload.side === 'BUY' ? 'Compra registrada' : 'Venta registrada');
+    await loadAll();
+    if (data.position && Number(data.position.active) !== 0) await openTransactionsModal(data.position.id);
+    else closeModal();
+  } catch (error) {
+    if (status) status.textContent = error.message || 'No se pudo guardar la operación.';
+    toast(error.message || 'No se pudo guardar la operación.', true);
+  } finally {
+    delete form.dataset.saving;
+    if (button && button.isConnected) { button.disabled = false; button.textContent = 'Registrar operación'; }
+  }
+}
+
+async function deleteTransaction(transactionId) {
+  if (!transactionId) return;
+  const ledger = document.querySelector('[data-transaction-position]');
+  const positionId = ledger && ledger.dataset.transactionPosition;
+  try {
+    const response = await api('/api/transactions/' + encodeURIComponent(transactionId), {method:'DELETE'});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudo eliminar la operación.');
+    toast('Operación eliminada');
+    await loadAll();
+    if (data.position && Number(data.position.active) !== 0) await openTransactionsModal(data.position.id);
+    else if (positionId) closeModal();
+  } catch (error) {
+    toast(error.message || 'No se pudo eliminar la operación.', true);
+  }
+}
+
 function openNewPortfolioModal() {
   if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
   openModal("Nueva cartera",
@@ -987,6 +1162,22 @@ function bind() {
       return;
     }
 
+    const transactionsButton = event.target.closest?.("[data-position-transactions]");
+    if (transactionsButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      openTransactionsModal(transactionsButton.dataset.positionTransactions);
+      return;
+    }
+
+    const deleteTx = event.target.closest?.("[data-transaction-delete]");
+    if (deleteTx) {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteTransaction(deleteTx.dataset.transactionDelete);
+      return;
+    }
+
     const row = event.target.closest?.("[data-open-stock]");
     if (row && !event.target.closest("button")) {
       const pref = row.dataset.positionPreferTr;
@@ -1026,6 +1217,12 @@ function bind() {
     if (event.target.id === "addPositionForm") {
       event.preventDefault();
       await savePositionForm(event.target);
+      return;
+    }
+
+    if (event.target.id === "transactionForm") {
+      event.preventDefault();
+      await saveTransactionForm(event.target);
     }
   });
 
