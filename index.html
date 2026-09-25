@@ -370,6 +370,24 @@
           <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
         </article>
 
+        <article class="settings-card push-settings-card">
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">AVISOS EN SEGUNDO PLANO</span>
+              <h2>Notificaciones push</h2>
+              <p>Recibe cambios relevantes de cartera y señales de alta convicción aunque ViewInvAI esté cerrada.</p>
+            </div>
+          </div>
+          <div class="settings-status-row">
+            <span>Estado</span>
+            <strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong>
+          </div>
+          <div class="settings-save-row push-settings-actions">
+            <span class="settings-note">Disponible en la APK Android con Firebase Messaging.</span>
+            <button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar</button>
+          </div>
+        </article>
+
         <article class="settings-card account-analysis-settings-card">
           <div class="settings-card-head">
             <div>
@@ -485,7 +503,7 @@
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌂</span><small>Inicio</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>★</span><small>Carteras</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Ideas IA</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Mercado</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Radar</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
