@@ -106,7 +106,7 @@ jobs:
               raise SystemExit("mobile-app.css no esta aislado por data-native-app")
 
           forbidden_core = (
-              "function renderAdaptiveNavigation",
+              "function renderNavigation",
               "function initAppHistory",
               "function initNativeBackHandling",
               "const NAV_ORDER",
@@ -116,7 +116,7 @@ jobs:
               raise SystemExit("app.js vuelve a mezclar navegacion: " + ", ".join(found))
 
           required_nav = (
-              "function renderAdaptiveNavigation",
+              "function renderNavigation",
               "function initAppHistory",
               "function initNativeBackHandling",
               "const NAV_ORDER",
