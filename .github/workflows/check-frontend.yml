@@ -192,6 +192,28 @@ jobs:
               }
               const row = document.querySelector('#entryResults [data-stock-key]');
               if (row) {
+                const nav = document.querySelector('.nav-item[data-view="entry"]');
+                if (!nav || !/Radar de entrada/i.test(nav.textContent || '')) {
+                  fail('Radar de entrada label missing');
+                  return;
+                }
+                const card = row.closest('.investing-stock-card');
+                const rect = card && card.getBoundingClientRect();
+                if (!rect || rect.width > 550) {
+                  fail('desktop stock card is too wide: ' + (rect ? rect.width : 'missing'));
+                  return;
+                }
+                const sessionLabel = card.querySelector('.stock-session-quote small');
+                if (sessionLabel && parseFloat(getComputedStyle(sessionLabel).fontSize || '0') < 8) {
+                  fail('session label is too small');
+                  return;
+                }
+                const metrics = card.querySelector('.stock-list-metrics');
+                if (metrics && parseFloat(getComputedStyle(metrics).fontSize || '0') < 8.5) {
+                  fail('stock metrics are too small');
+                  return;
+                }
+                document.body.dataset.smokeCards = 'ok';
                 document.body.dataset.smokeApp = 'ok';
                 row.click();
                 setTimeout(waitForProfile, 100);
@@ -243,6 +265,12 @@ jobs:
                   print(dom[max(0, pos-250):pos+1600])
           PY
             tail -100 /tmp/catalyst-chrome.log || true
+            exit 1
+          fi
+
+          if ! grep -q 'data-smoke-cards="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::Las tarjetas compactas/Radar no superaron la validación visual básica"
+            grep -o 'data-smoke-error="[^"]*"' /tmp/catalyst-dom.html || true
             exit 1
           fi
 
