@@ -69,7 +69,23 @@ Cuando existe, `scripts/update_market.py`:
 Sin esta variable no se hacen peticiones a SEC y la actualización de mercado
 continúa normalmente.
 
-## 4. Seguridad
+## 4. Rate limiting distribuido de Cloudflare
+
+El Worker usa actualmente limitación en memoria como fallback. También detecta
+automáticamente estos bindings opcionales de Cloudflare Workers Rate Limiting:
+
+- `AI_RATE_LIMITER`
+- `API_RATE_LIMITER`
+- `MARKET_RATE_LIMITER`
+
+Cuando existen, se utilizan antes del fallback local. Las claves autenticadas se
+basan en el UID contenido en el token Firebase; las rutas públicas usan la
+identidad de red disponible en el Worker.
+
+Cada binding debe tener un `namespace_id` único en la cuenta. La configuración
+exacta se añadirá a `wrangler.jsonc` cuando se asignen esos identificadores.
+
+## 5. Seguridad
 
 Nunca guardar en el repositorio:
 - cuentas de servicio Firebase;
