@@ -364,15 +364,45 @@ jobs:
                           fail('mobile stock profile did not open');
                           return;
                         }
-                        history.back();
+
+                        const viewportWidth = window.innerWidth;
+                        const pageWidth = document.documentElement.scrollWidth;
+                        if (pageWidth > viewportWidth + 1) {
+                          fail('mobile profile overflows horizontally: ' + pageWidth + ' > ' + viewportWidth);
+                          return;
+                        }
+
+                        const bottom = document.querySelector('#mobileBottomNav');
+                        const bottomRect = bottom && bottom.getBoundingClientRect();
+                        if (!bottomRect || bottomRect.left < -1 || bottomRect.right > viewportWidth + 1) {
+                          fail('mobile bottom navigation escapes viewport');
+                          return;
+                        }
+
+                        window.scrollTo(0, Math.min(900, document.documentElement.scrollHeight - window.innerHeight));
                         setTimeout(() => {
-                          if (document.body.classList.contains('stock-detail-open') ||
-                              !document.querySelector('#view-catalog.active')) {
-                            fail('browser back did not return from profile to catalog');
+                          const header = document.querySelector('.stock-profile-page .unified-stock-header');
+                          const headerRect = header && header.getBoundingClientRect();
+                          if (!headerRect || Math.abs(headerRect.top) > 2) {
+                            fail('stock header is not sticky after scroll');
                             return;
                           }
-                          document.body.dataset.mobileBack = 'ok';
-                        }, 350);
+                          if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+                            fail('mobile profile overflow appeared after scroll');
+                            return;
+                          }
+                          document.body.dataset.mobileLayout = 'ok';
+
+                          history.back();
+                          setTimeout(() => {
+                            if (document.body.classList.contains('stock-detail-open') ||
+                                !document.querySelector('#view-catalog.active')) {
+                              fail('browser back did not return from profile to catalog');
+                              return;
+                            }
+                            document.body.dataset.mobileBack = 'ok';
+                          }, 350);
+                        }, 300);
                       }, 250);
                     }, 350);
                   }, 350);
@@ -405,7 +435,7 @@ jobs:
             http://127.0.0.1:4174/ \
             > /tmp/viewinvai-mobile-dom.html 2> /tmp/viewinvai-mobile-chrome.log
 
-          for marker in mobile-nav mobile-catalog mobile-range mobile-filter mobile-back; do
+          for marker in mobile-nav mobile-catalog mobile-range mobile-filter mobile-layout mobile-back; do
             attr="data-$marker=\"ok\""
             if ! grep -q "$attr" /tmp/viewinvai-mobile-dom.html; then
               echo "::error::Fallo smoke móvil: $marker"
