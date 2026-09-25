@@ -157,6 +157,133 @@ function positionPayload(body) {
   };
 }
 
+function transactionPayload(body) {
+  const side = String(body.side || "").trim().toUpperCase();
+  const currency = String(body.currency || "EUR").trim().toUpperCase();
+  const quantity = finiteNumber(body.quantity);
+  const price = finiteNumber(body.price);
+  const fees = finiteNumber(body.fees);
+  const executedRaw = trimText(body.executedAt, 40);
+  const executedDate = executedRaw ? new Date(executedRaw) : new Date();
+  return {
+    portfolioId: trimText(body.portfolioId, 80),
+    stockKey: trimText(body.stockKey, 80).toUpperCase(),
+    ticker: trimText(body.ticker, 20).toUpperCase(),
+    name: trimText(body.name, 160),
+    exchange: trimText(body.exchange, 40).toUpperCase(),
+    isin: trimText(body.isin, 24).toUpperCase(),
+    preferTr: booleanInt(body.preferTr),
+    side,
+    quantity,
+    price,
+    fees: fees === null ? 0 : fees,
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
+    executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
+    notes: trimText(body.notes, 1000)
+  };
+}
+
+async function transactionRows(env, userId, portfolioId, stockKey) {
+  const rows = await env.DB.prepare(
+    "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? ORDER BY executed_at ASC,created_at ASC,id ASC"
+  ).bind(userId, portfolioId, stockKey).all();
+  return rows.results || [];
+}
+
+function calculateTransactionLedger(rows) {
+  let quantity = 0;
+  let costBasis = 0;
+  let realizedPnl = 0;
+  let totalFees = 0;
+  let firstBuyAt = null;
+  let currency = null;
+
+  for (const row of rows || []) {
+    const side = String(row.side || "").toUpperCase();
+    const qty = finiteNumber(row.quantity);
+    const price = finiteNumber(row.price);
+    const fees = Math.max(0, finiteNumber(row.fees) || 0);
+    if (!qty || qty <= 0 || price === null || price < 0) continue;
+    if (!currency) currency = String(row.currency || "EUR").toUpperCase();
+    if (side === "BUY") {
+      if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
+      quantity += qty;
+      costBasis += qty * price + fees;
+      totalFees += fees;
+      continue;
+    }
+    if (side === "SELL") {
+      if (qty > quantity + 1e-8) throw new Error("Sell quantity exceeds current position");
+      const avg = quantity > 1e-8 ? costBasis / quantity : 0;
+      realizedPnl += qty * price - fees - qty * avg;
+      quantity -= qty;
+      costBasis -= qty * avg;
+      totalFees += fees;
+      if (quantity <= 1e-8) {
+        quantity = 0;
+        costBasis = 0;
+      }
+    }
+  }
+
+  return {
+    quantity,
+    avgPrice: quantity > 1e-8 ? costBasis / quantity : null,
+    invested: costBasis,
+    realizedPnl,
+    totalFees,
+    currency: currency || "EUR",
+    firstBuyAt
+  };
+}
+
+async function ensureOpeningTransaction(env, userId, position) {
+  if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return;
+  const existing = await env.DB.prepare(
+    "SELECT id FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? LIMIT 1"
+  ).bind(userId, position.portfolio_id, position.stock_key).first();
+  if (existing) return;
+
+  const now = nowIso();
+  const executed = trimText(position.opened_at, 40);
+  const d = executed ? new Date(executed) : new Date(now);
+  const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
+  await env.DB.prepare(
+    "INSERT INTO transactions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?,?,'BUY',?,?,0,?,?,?,'position-seed',?,?)"
+  ).bind(
+    uid("tx_"), position.portfolio_id, userId, position.stock_key, position.ticker, position.name || "",
+    position.exchange || "", position.isin || "", booleanInt(position.prefer_tr),
+    finiteNumber(position.quantity), finiteNumber(position.avg_price), String(position.currency || "EUR").toUpperCase(),
+    executedAt, "Posición inicial importada", now, now
+  ).run();
+}
+
+async function recalculatePositionFromTransactions(env, userId, portfolioId, stockKey) {
+  const rows = await transactionRows(env, userId, portfolioId, stockKey);
+  if (!rows.length) return null;
+  const ledger = calculateTransactionLedger(rows);
+  const first = rows[0];
+  const now = nowIso();
+  const existing = await env.DB.prepare(
+    "SELECT id,notes,created_at FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
+  ).bind(userId, portfolioId, stockKey).first();
+  const positionId = existing && existing.id ? existing.id : uid("pos_");
+  await env.DB.prepare(
+    "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,opened_at,notes,active,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?) " +
+    "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,exchange=excluded.exchange,isin=excluded.isin,prefer_tr=excluded.prefer_tr,quantity=excluded.quantity,avg_price=excluded.avg_price,currency=excluded.currency,opened_at=excluded.opened_at,active=excluded.active,updated_at=excluded.updated_at"
+  ).bind(
+    positionId, portfolioId, userId, stockKey, first.ticker || "", first.name || "", first.exchange || "", first.isin || "",
+    booleanInt(first.prefer_tr), ledger.quantity, ledger.avgPrice, ledger.currency, ledger.firstBuyAt,
+    existing && existing.notes || "", ledger.quantity > 1e-8 ? 1 : 0, existing && existing.created_at || now, now
+  ).run();
+  return {
+    position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId, userId).first(),
+    ledger
+  };
+}
+
 function watchPayload(body) {
   return {
     stockKey: trimText(body.stockKey, 80).toUpperCase(),
@@ -230,7 +357,7 @@ async function handlePortfolios(request, env, user, json, parts) {
 }
 
 async function handlePositions(request, env, user, json, parts, url) {
-  const id = parts[2] || "";
+  const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
     let stmt = portfolioId
@@ -261,6 +388,7 @@ async function handlePositions(request, env, user, json, parts, url) {
       data.preferTr, data.quantity, data.avgPrice, data.currency, data.openedAt, data.notes, now, now
     ).run();
     const row = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew, user.id).first();
+    await ensureOpeningTransaction(env, user.id, row);
     return json({ position: row }, existing ? 200 : 201);
   }
 
@@ -303,8 +431,96 @@ async function handlePositions(request, env, user, json, parts, url) {
   return json({ error: "Method not allowed" }, 405);
 }
 
+async function handleTransactions(request, env, user, json, parts, url) {
+  const id = parts[1] || "";
+
+  if (request.method === "GET" && !id) {
+    const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
+    const stockKey = trimText(url.searchParams.get("stockKey"), 80).toUpperCase();
+    const limit = Math.max(1, Math.min(500, Math.round(finiteNumber(url.searchParams.get("limit")) || 200)));
+
+    let rows;
+    if (portfolioId && stockKey) {
+      rows = await env.DB.prepare(
+        "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? ORDER BY executed_at DESC,created_at DESC LIMIT ?"
+      ).bind(user.id, portfolioId, stockKey, limit).all();
+    } else if (portfolioId) {
+      rows = await env.DB.prepare(
+        "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? ORDER BY executed_at DESC,created_at DESC LIMIT ?"
+      ).bind(user.id, portfolioId, limit).all();
+    } else {
+      rows = await env.DB.prepare(
+        "SELECT * FROM transactions WHERE user_id=? ORDER BY executed_at DESC,created_at DESC LIMIT ?"
+      ).bind(user.id, limit).all();
+    }
+
+    let summary = null;
+    if (portfolioId && stockKey) {
+      const ascending = await transactionRows(env, user.id, portfolioId, stockKey);
+      summary = calculateTransactionLedger(ascending);
+    }
+    return json({ transactions: rows.results || [], summary });
+  }
+
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = transactionPayload(body);
+    if (!data.portfolioId || !data.stockKey || !data.ticker) return json({ error: "portfolioId, stockKey and ticker are required" }, 400);
+    if (!["BUY","SELL"].includes(data.side)) return json({ error: "side must be BUY or SELL" }, 400);
+    if (data.quantity === null || data.quantity <= 0) return json({ error: "quantity must be greater than zero" }, 400);
+    if (data.price === null || data.price < 0) return json({ error: "price must be zero or greater" }, 400);
+    if (data.fees < 0) return json({ error: "fees cannot be negative" }, 400);
+    if (!data.executedAt) return json({ error: "executedAt is invalid" }, 400);
+    if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
+
+    const position = await env.DB.prepare(
+      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
+    ).bind(user.id, data.portfolioId, data.stockKey).first();
+    if (position) {
+      await ensureOpeningTransaction(env, user.id, position);
+      const positionCurrency = String(position.currency || data.currency).toUpperCase();
+      if (positionCurrency !== data.currency) return json({ error: "Transaction currency must match the position currency" }, 400);
+    }
+
+    const beforeRows = await transactionRows(env, user.id, data.portfolioId, data.stockKey);
+    const before = calculateTransactionLedger(beforeRows);
+    if (data.side === "SELL" && data.quantity > before.quantity + 1e-8) {
+      return json({ error: "Sell quantity exceeds current position" }, 400);
+    }
+
+    const txId = uid("tx_");
+    const now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO transactions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'manual',?,?)"
+    ).bind(
+      txId, data.portfolioId, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin, data.preferTr,
+      data.side, data.quantity, data.price, data.fees, data.currency, data.executedAt, data.notes, now, now
+    ).run();
+
+    const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
+    const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
+    return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger }, 201);
+  }
+
+  if (!id) return json({ error: "Transaction id required" }, 400);
+  const existing = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(id, user.id).first();
+  if (!existing) return json({ error: "Transaction not found" }, 404);
+
+  if (request.method === "DELETE") {
+    if (String(existing.origin || "") === "position-seed") {
+      return json({ error: "The initial imported transaction cannot be deleted directly" }, 409);
+    }
+    await env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id, user.id).run();
+    const recalculated = await recalculatePositionFromTransactions(env, user.id, existing.portfolio_id, existing.stock_key);
+    return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
+
 async function handleWatchlist(request, env, user, json, parts) {
-  const id = parts[2] || "";
+  const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const rows = await env.DB.prepare("SELECT * FROM watchlist WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all();
     return json({ watchlist: rows.results || [] });
@@ -1030,6 +1246,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "me") return handleMe(request, env, user, json);
     if (root === "portfolios") return handlePortfolios(request, env, user, json, parts);
     if (root === "positions") return handlePositions(request, env, user, json, parts, url);
+    if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
@@ -1046,9 +1263,28 @@ export async function handleBackendApi(request, env, services = {}) {
   }
 }
 
+async function cleanupOldBackendData(env) {
+  if (!env.DB) return;
+  const now = Date.now();
+  const analysisCutoff = new Date(now - 90 * 86400000).toISOString();
+  const alertsCutoff = new Date(now - 180 * 86400000).toISOString();
+  const devicesCutoff = new Date(now - 90 * 86400000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM analysis_snapshots WHERE created_at<?").bind(analysisCutoff),
+    env.DB.prepare("DELETE FROM alert_events WHERE read_at IS NOT NULL AND created_at<?").bind(alertsCutoff),
+    env.DB.prepare("DELETE FROM devices WHERE enabled=0 AND updated_at<?").bind(devicesCutoff)
+  ]);
+}
+
 export async function runScheduledPortfolioAnalysis(env, services = {}) {
   if (!env.DB || !services.loadMarketSnapshot || !services.loadChart) {
     return { skipped: true, reason: "backend-not-configured" };
+  }
+
+  const nowDate = new Date();
+  if (nowDate.getUTCHours() === 3 && nowDate.getUTCMinutes() < 5) {
+    try { await cleanupOldBackendData(env); }
+    catch (error) { console.warn("Backend retention cleanup failed", String(error && error.message || error)); }
   }
 
   const [positionRows, watchRows] = await Promise.all([
