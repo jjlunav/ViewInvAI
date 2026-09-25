@@ -8424,20 +8424,42 @@ html[data-theme="light"] .investing-stock-card .stock-list-price .quote-updated{
 
 @media(min-width:721px) and (max-width:860px){
  .stock-profile-page .unified-stock-header .profile-live{
-  flex:1 1 300px!important;
-  min-width:250px!important;
-  width:auto!important
+  flex:1 1 230px!important;
+  min-width:210px!important;
+  width:auto!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:2px 5px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-spread{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  width:auto!important;
+  min-width:104px!important;
+  gap:3px!important;
+  transform:none!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side{
+  width:auto!important;
+  min-width:0!important;
+  padding:2px 4px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side small{
+  font-size:5.5px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side strong{
+  font-size:8px!important
  }
  .stock-profile-page .unified-stock-header .profile-primary-actions{
   flex:0 0 auto!important;
   justify-content:flex-start!important;
-  margin-left:auto!important
+  margin-left:auto!important;
+  gap:4px!important
  }
  .stock-profile-page .unified-stock-header .profile-primary-actions .btn{
   flex:0 1 auto!important;
-  min-height:30px!important;
-  padding:4px 7px!important;
-  font-size:8px!important
+  min-height:29px!important;
+  padding:3px 5px!important;
+  font-size:7.5px!important
  }
 }
 
