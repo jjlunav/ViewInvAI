@@ -7,10 +7,12 @@ ViewInvAI Android usa Capacitor 8 como contenedor nativo, pero no reutiliza la p
 La aplicación se divide en tres capas:
 
 1. **Datos y lógica compartidos**
-   - mismo backend de producción;
-   - mismas APIs y WebSocket;
-   - mismo motor de scoring;
-   - mismas carteras, autenticación, noticias, catalizadores, gráficos e IA.
+   - `app.js`: estado, mercado, filtros y render de vistas generales;
+   - `stock-charts.js`: gráficos TradingView e histórico LSX;
+   - `stock-profile.js`: ficha de acción y acciones IA;
+   - `navigation.js`: navegación, historial y botón Atrás;
+   - `bootstrap.js`: único punto de arranque y API pública;
+   - mismo backend de producción, APIs, WebSocket, scoring, carteras, autenticación, noticias y catalizadores.
 
 2. **Interfaz web**
    - `styles.css`: estilos compartidos y escritorio/tablet;
