@@ -619,10 +619,23 @@ function auto(){
  if(m>=regularEnd&&m<postEnd)return'postmarket';
  return'previous';
 }
+function lsxMarketCalendar(p){
+ if(!weekdayOpen(p))return{open:false,closeMinute:0,reason:'fin de semana'};
+ let y=+p.year,key=dateKey(y,+p.month,+p.day);
+ if(y===2026){
+  const closed=new Set([
+   '2026-01-01','2026-04-03','2026-04-06','2026-05-01',
+   '2026-12-24','2026-12-25','2026-12-26','2026-12-31'
+  ]);
+  if(closed.has(key))return{open:false,closeMinute:0,reason:'festivo LSX'};
+  if(key==='2026-12-30')return{open:true,closeMinute:840,reason:'cierre anticipado LSX'};
+ }
+ return{open:true,closeMinute:1380,reason:''};
+}
 function trMarketOpen(){
- let p=BER();if(!weekdayOpen(p))return false;
+ let p=BER(),calendar=lsxMarketCalendar(p);if(!calendar.open)return false;
  let m=+p.hour*60 + +p.minute;
- return m>=450&&m<1380;
+ return m>=450&&m<calendar.closeMinute;
 }
 function SES(){return state.session==='auto'?auto():state.session}
 function SN(s){return({premarket:'Premarket',regular:'Sesión regular',postmarket:'Postmarket',previous:'Sesión anterior'})[s]||s}
