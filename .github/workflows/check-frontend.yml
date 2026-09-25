@@ -551,6 +551,13 @@ jobs:
                 }
                 document.body.dataset.smokeCards = 'ok';
                 document.body.dataset.smokeApp = 'ok';
+                document.body.dataset.smokeRowKey = String(row.dataset.stockKey || 'none');
+                document.body.dataset.smokeRowStockFound = stockByKey(row.dataset.stockKey) ? 'yes' : 'no';
+                document.addEventListener('click', event => {
+                  if (event.target.closest && event.target.closest('[data-stock-key]') === row) {
+                    document.body.dataset.smokeRowClickObserved = 'yes';
+                  }
+                }, {capture:true, once:true});
                 profileStarted = Date.now();
                 row.click();
                 setTimeout(waitForProfile, 100);
