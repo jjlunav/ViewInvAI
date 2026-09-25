@@ -1,6 +1,6 @@
 {
   "name": "viewinvai-android",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "private": true,
   "type": "module",
   "description": "Android wrapper for ViewInvAI using Capacitor.",
