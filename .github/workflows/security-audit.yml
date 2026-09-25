@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "settings.js"
       - "navigation.js"
       - "stock-charts.js"
       - "stock-profile.js"
