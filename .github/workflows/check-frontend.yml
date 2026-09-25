@@ -77,6 +77,62 @@ jobs:
           if(!(fdaCr.catalyst.delta<0))throw new Error('Structured FDA Complete Response must be a negative catalyst');
           console.log('Shared score engine: OK');
           NODE
+      - name: Validar arquitectura frontend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          shared = Path("styles.css").read_text(encoding="utf-8")
+          web_mobile = Path("web-mobile.css").read_text(encoding="utf-8")
+          native_css = Path("mobile-app.css").read_text(encoding="utf-8")
+          app = Path("app.js").read_text(encoding="utf-8")
+          nav = Path("navigation.js").read_text(encoding="utf-8")
+          html = Path("index.html").read_text(encoding="utf-8")
+
+          narrow_shared = re.findall(r"@media\s*\([^)]*max-width\s*:\s*(\d+)px", shared, re.I)
+          narrow_shared = [int(x) for x in narrow_shared if int(x) <= 760]
+          if narrow_shared:
+              raise SystemExit(f"styles.css vuelve a mezclar responsive movil: {narrow_shared[:8]}")
+
+          if 'data-native-app' in shared or 'data-native-app' in web_mobile:
+              raise SystemExit("La UI nativa no puede vivir en CSS web")
+
+          media_count = len(re.findall(r"@media\s*\(", web_mobile))
+          if media_count > 8:
+              raise SystemExit(f"web-mobile.css vuelve a fragmentarse: {media_count} media queries")
+
+          if 'html[data-native-app="1"]' not in native_css:
+              raise SystemExit("mobile-app.css no esta aislado por data-native-app")
+
+          forbidden_core = (
+              "function renderAdaptiveNavigation",
+              "function initAppHistory",
+              "function initNativeBackHandling",
+              "const NAV_ORDER",
+          )
+          found = [item for item in forbidden_core if item in app]
+          if found:
+              raise SystemExit("app.js vuelve a mezclar navegacion: " + ", ".join(found))
+
+          required_nav = (
+              "function renderAdaptiveNavigation",
+              "function initAppHistory",
+              "function initNativeBackHandling",
+              "const NAV_ORDER",
+          )
+          missing = [item for item in required_nav if item not in nav]
+          if missing:
+              raise SystemExit("navigation.js incompleto: " + ", ".join(missing))
+
+          required_assets = ("web-mobile.css", "mobile-app.css", "navigation.js", "mobile-app.js")
+          missing_assets = [item for item in required_assets if item not in html]
+          if missing_assets:
+              raise SystemExit("index.html no carga la arquitectura separada: " + ", ".join(missing_assets))
+
+          print("Arquitectura frontend separada: OK")
+          PY
+
       - name: Validar sintaxis de avisos
         run: node --check alerts.js
       - name: Validar sintaxis de autenticación
