@@ -8662,3 +8662,62 @@ html[data-theme="light"] .tr-native-axis{
   min-height:320px!important
  }
 }
+
+
+/* Portfolio history analytics + push settings - 2026-09-25 */
+.portfolio-history-overview{
+ display:grid;
+ gap:7px
+}
+.portfolio-history-overview .transaction-history-summary{
+ grid-template-columns:repeat(4,minmax(0,1fr))
+}
+.portfolio-history-currencies{
+ display:grid;
+ gap:6px
+}
+.portfolio-history-currency{
+ display:grid;
+ grid-template-columns:repeat(4,minmax(0,1fr));
+ gap:6px;
+ padding:7px;
+ border:1px solid rgba(78,107,121,.18);
+ border-radius:9px;
+ background:rgba(255,255,255,.018)
+}
+.portfolio-history-currency>div{
+ display:grid;
+ gap:2px;
+ min-width:0
+}
+.portfolio-history-currency small{
+ color:#70858f;
+ font-size:8px;
+ letter-spacing:.25px
+}
+.portfolio-history-currency strong{
+ color:#dce8ec;
+ font-size:10px;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis
+}
+.push-settings-card .push-settings-actions{
+ align-items:center
+}
+.push-settings-card .settings-note{
+ margin:0!important
+}
+
+@media(max-width:720px){
+ .portfolio-history-overview .transaction-history-summary{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important
+ }
+ .portfolio-history-currency{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  padding:6px!important
+ }
+ .push-settings-card .push-settings-actions{
+  align-items:flex-start!important
+ }
+}
