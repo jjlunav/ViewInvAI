@@ -369,11 +369,22 @@ export function calculateTransactionLedger(rows) {
 
   for (const row of rows || []) {
     const side = String(row.side || "").toUpperCase();
+    const origin = String(row.origin || "");
     const qty = finiteNumber(row.quantity);
     const price = finiteNumber(row.price);
     const fees = Math.max(0, finiteNumber(row.fees) || 0);
     if (!qty || qty <= 0 || price === null || price < 0) continue;
     if (!currency) currency = String(row.currency || "EUR").toUpperCase();
+
+    if (origin === "position-adjustment") {
+      if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
+      quantity = qty;
+      costBasis = qty * price;
+      currency = String(row.currency || currency || "EUR").toUpperCase();
+      totalFees += fees;
+      continue;
+    }
+
     if (side === "BUY") {
       if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
       quantity += qty;
@@ -414,17 +425,19 @@ export function calculatePortfolioTransactionSummary(rows) {
   );
   const groups = new Map();
   const currencies = {};
-  let buys = 0, sells = 0;
+  let buys = 0, sells = 0, adjustments = 0;
 
   for (const row of sorted) {
     const side = String(row.side || "").toUpperCase();
+    const origin = String(row.origin || "");
     const currency = String(row.currency || "EUR").toUpperCase();
     const qty = finiteNumber(row.quantity);
     const price = finiteNumber(row.price);
     const fees = Math.max(0, finiteNumber(row.fees) || 0);
     if (!currencies[currency]) currencies[currency] = { buyGross: 0, sellGross: 0, fees: 0, realizedPnl: 0 };
     if (qty !== null && qty > 0 && price !== null && price >= 0) {
-      if (side === "BUY") { currencies[currency].buyGross += qty * price; buys++; }
+      if (origin === "position-adjustment") adjustments++;
+      else if (side === "BUY") { currencies[currency].buyGross += qty * price; buys++; }
       else if (side === "SELL") { currencies[currency].sellGross += qty * price; sells++; }
       currencies[currency].fees += fees;
     }
@@ -445,7 +458,7 @@ export function calculatePortfolioTransactionSummary(rows) {
       value[key] = Math.round((value[key] + Number.EPSILON) * 1000000) / 1000000;
     }
   }
-  return { total: sorted.length, buys, sells, stocks: groups.size, currencies };
+  return { total: sorted.length, buys, sells, adjustments, stocks: groups.size, currencies };
 }
 
 async function ensureOpeningTransaction(env, userId, position) {
@@ -471,6 +484,34 @@ async function ensureOpeningTransaction(env, userId, position) {
   ).run();
 }
 
+async function appendPositionAdjustment(env, userId, position, data) {
+  if (!position || data.quantity === null || data.quantity <= 0 || data.avgPrice === null || data.avgPrice < 0) return false;
+  await ensureTransactionsSchema(env);
+  await ensureOpeningTransaction(env, userId, position);
+  const rows = await transactionRows(env, userId, position.portfolio_id, position.stock_key);
+  const ledger = calculateTransactionLedger(rows);
+  const targetCurrency = String(data.currency || position.currency || ledger.currency || "EUR").toUpperCase();
+  const changed =
+    Math.abs((ledger.quantity || 0) - data.quantity) > 1e-8 ||
+    ledger.avgPrice === null ||
+    Math.abs((ledger.avgPrice || 0) - data.avgPrice) > 1e-8 ||
+    String(ledger.currency || targetCurrency).toUpperCase() !== targetCurrency;
+  if (!changed) return false;
+
+  const now = nowIso();
+  await env.DB.prepare(
+    "INSERT INTO transactions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?,?,'BUY',?,?,0,?,?,?,'position-adjustment',?,?)"
+  ).bind(
+    uid("tx_"), position.portfolio_id, userId, position.stock_key,
+    data.ticker || position.ticker || "", data.name || position.name || "",
+    data.exchange || position.exchange || "", data.isin || position.isin || "",
+    data.preferTr, data.quantity, data.avgPrice, targetCurrency, now,
+    "Ajuste manual desde Gestionar cartera", now, now
+  ).run();
+  return true;
+}
+
 async function recalculatePositionFromTransactions(env, userId, portfolioId, stockKey) {
   const rows = await transactionRows(env, userId, portfolioId, stockKey);
   if (!rows.length) return null;
@@ -478,7 +519,7 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
   const first = rows[0];
   const now = nowIso();
   const existing = await env.DB.prepare(
-    "SELECT id,notes,created_at FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
+    "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
   ).bind(userId, portfolioId, stockKey).first();
   const positionId = existing && existing.id ? existing.id : uid("pos_");
   await env.DB.prepare(
@@ -486,9 +527,17 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?) " +
     "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,exchange=excluded.exchange,isin=excluded.isin,prefer_tr=excluded.prefer_tr,quantity=excluded.quantity,avg_price=excluded.avg_price,currency=excluded.currency,opened_at=excluded.opened_at,active=excluded.active,updated_at=excluded.updated_at"
   ).bind(
-    positionId, portfolioId, userId, stockKey, first.ticker || "", first.name || "", first.exchange || "", first.isin || "",
-    booleanInt(first.prefer_tr), ledger.quantity, ledger.avgPrice, ledger.currency, ledger.firstBuyAt,
-    existing && existing.notes || "", ledger.quantity > 1e-8 ? 1 : 0, existing && existing.created_at || now, now
+    positionId, portfolioId, userId, stockKey,
+    existing && existing.ticker || first.ticker || "",
+    existing && existing.name || first.name || "",
+    existing && existing.exchange || first.exchange || "",
+    existing && existing.isin || first.isin || "",
+    existing ? booleanInt(existing.prefer_tr) : booleanInt(first.prefer_tr),
+    ledger.quantity, ledger.avgPrice, ledger.currency,
+    existing && existing.opened_at || ledger.firstBuyAt,
+    existing && existing.notes || "",
+    ledger.quantity > 1e-8 ? 1 : 0,
+    existing && existing.created_at || now, now
   ).run();
   return {
     position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId, userId).first(),
@@ -589,8 +638,9 @@ async function handlePositions(request, env, user, json, parts, url) {
     }
     if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
     const existing = await env.DB.prepare(
-      "SELECT id FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
+      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
     ).bind(user.id, data.portfolioId, data.stockKey).first();
+    if (existing) await ensureOpeningTransaction(env, user.id, existing);
     const idNew = existing && existing.id ? existing.id : uid("pos_");
     const now = nowIso();
     await env.DB.prepare(
@@ -601,8 +651,16 @@ async function handlePositions(request, env, user, json, parts, url) {
       idNew, data.portfolioId, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin,
       data.preferTr, data.quantity, data.avgPrice, data.currency, data.openedAt, data.notes, now, now
     ).run();
-    const row = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew, user.id).first();
-    await ensureOpeningTransaction(env, user.id, row);
+    let row = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew, user.id).first();
+    if (existing) {
+      const adjusted = await appendPositionAdjustment(env, user.id, existing, data);
+      if (adjusted) {
+        const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
+        row = recalculated && recalculated.position || row;
+      }
+    } else {
+      await ensureOpeningTransaction(env, user.id, row);
+    }
     return json({ position: row }, existing ? 200 : 201);
   }
 
