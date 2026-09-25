@@ -102,13 +102,20 @@
 
       const text=String((event&&event.title||'')+' '+(event&&event.fact||'')).toLowerCase();
       const impact=clamp(n(event&&event.impactScore)??50,0,100);
+      const fdaKind=String(event&&event.fdaStatusKind||'');
       let d=0;
-      if(positive.test(text))d+=6+impact*.05;
-      if(negative.test(text))d-=7+impact*.06;
+      if(fdaKind){
+        if(fdaKind==='approved')d+=10+impact*.05;
+        else if(fdaKind==='tentative_approval'||fdaKind==='approvable')d+=4+impact*.025;
+        else if(['complete_response','not_approvable','withdrawn'].includes(fdaKind))d-=10+impact*.055;
+      }else{
+        if(positive.test(text))d+=6+impact*.05;
+        if(negative.test(text))d-=7+impact*.06;
+      }
       if(event&&event.type==='financing')d-=6;
-      if(event&&event.type==='regulatory'&&!positive.test(text))d-=3;
+      if(event&&event.type==='regulatory'&&!positive.test(text)&&!fdaKind)d-=3;
       if(/reverse split|delist|bankrupt|chapter 11/.test(text))d-=7;
-      if(event&&event.type==='medical'&&positive.test(text))d+=4;
+      if(event&&event.type==='medical'&&positive.test(text)&&!fdaKind)d+=4;
       if(!isNews&&d===0)d+=Math.min(2.5,impact/40);
       delta+=d;
       relevant.push({event,delta:round1(d),impact,time});
