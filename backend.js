@@ -208,7 +208,7 @@ async function transactionRows(env, userId, portfolioId, stockKey) {
   return rows.results || [];
 }
 
-function calculateTransactionLedger(rows) {
+export function calculateTransactionLedger(rows) {
   let quantity = 0;
   let costBasis = 0;
   let realizedPnl = 0;
