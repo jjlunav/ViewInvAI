@@ -365,6 +365,19 @@ jobs:
                               fail('portfolio embedded stock header is not sticky at the top');
                               return;
                             }
+                            const embeddedToggle = portfolioHost.querySelector('[data-profile-visual-toggle]');
+                            const embeddedVisual = portfolioHost.querySelector('[data-profile-visual-analysis]');
+                            if (!embeddedToggle || !embeddedVisual ||
+                                embeddedToggle.getAttribute('aria-expanded') !== 'false' ||
+                                !embeddedVisual.classList.contains('is-collapsed')) {
+                              fail('portfolio embedded chart/AI is not collapsed by default');
+                              return;
+                            }
+                            const embeddedRect = embeddedHeader.getBoundingClientRect();
+                            if (!embeddedRect || embeddedRect.height > 125) {
+                              fail('portfolio embedded stock header is too tall');
+                              return;
+                            }
                             document.body.dataset.smokePortfolioSticky = 'ok';
                           }, 100);
                         }, 180);
