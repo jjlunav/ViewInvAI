@@ -19,6 +19,23 @@ const NASDAQ_QUOTE_TTL_MS = 2500;
 const nasdaqQuoteCache = new Map();
 const nasdaqQuoteInflight = new Map();
 
+const RATE_BUCKETS = new Map();
+function requestIdentity(request){
+  return String(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "anon").split(",")[0].trim().slice(0,80);
+}
+function rateLimit(request, bucket, max, windowMs=60000){
+  const now=Date.now(),key=bucket+":"+requestIdentity(request);
+  let row=RATE_BUCKETS.get(key);
+  if(!row||now-row.startedAt>=windowMs)row={startedAt:now,count:0};
+  row.count+=1;RATE_BUCKETS.set(key,row);
+  if(RATE_BUCKETS.size>5000){
+    for(const [k,v] of RATE_BUCKETS)if(!v||now-v.startedAt>windowMs*2)RATE_BUCKETS.delete(k);
+  }
+  if(row.count<=max)return null;
+  const retry=Math.max(1,Math.ceil((windowMs-(now-row.startedAt))/1000));
+  return jsonResponse({error:"Too many requests",retryAfter:retry},429,{"Retry-After":String(retry),"Cache-Control":"no-store"});
+}
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
@@ -536,6 +553,16 @@ function isBackendApiPath(pathname) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    let limited=null;
+    if(url.pathname==="/api/ai/chat")limited=rateLimit(request,"ai-chat",20,60000);
+    else if(url.pathname==="/api/us-live")limited=rateLimit(request,"us-live",90,60000);
+    else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=rateLimit(request,"chart",60,60000);
+    else if(url.pathname==="/api/fx-live")limited=rateLimit(request,"fx",60,60000);
+    else if(url.pathname==="/api/tr-live")limited=rateLimit(request,"tr-live",30,60000);
+    else if(isBackendApiPath(url.pathname))limited=rateLimit(request,"backend",180,60000);
+    if(limited)return limited;
+
     if (isBackendApiPath(url.pathname)) {
       return handleBackendApi(request, env, {
         jsonResponse,
