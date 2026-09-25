@@ -1763,6 +1763,13 @@ function profilePerformanceStrip(s){
  ];
  return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
+function profilePortfolioActionHtml(s,isTr=false){
+ let key=stockKey(s),api=window.ViewInvAIPortfolios;
+ let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
+ return inPortfolio
+  ?'<button type="button" class="btn small profile-add-portfolio is-remove" data-remove-portfolio-stock="'+E(key)+'">− Quitar de cartera</button>'
+  :'<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>';
+}
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -1780,7 +1787,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
     '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+'</div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+
-     '<button type="button" class="btn small profile-add-portfolio" data-add-portfolio-stock="'+E(stockKey(s))+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">＋ Añadir a cartera</button>'+
+     profilePortfolioActionHtml(s,isTr)+
      '<button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button>'+
     '</div>')+
    '</div>'+
@@ -3218,6 +3225,12 @@ document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEven
 $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
 window.addEventListener('viewinvai:account-ready',e=>renderAnalysisSettings(e.detail&&e.detail.settings||null));
 window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null)});
+window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
+ if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();
+ else if(['catalog','catalogUS'].includes(state.currentView)&&state.profileKey){
+  let s=stockByKey(state.profileKey);if(s)renderProfileView(s,state.currentView);
+ }
+});
 renderAnalysisSettings(null);
 lockAllCriteria();
 initLeadersDock();
