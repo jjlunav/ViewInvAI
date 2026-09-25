@@ -65,6 +65,10 @@ jobs:
           if(e.positionSignal(80,40)!=='REVIEW')throw new Error('Low-quality position must require REVIEW');
           const dilution=e.analyze({price:10,change:5,volume:300000,avgVolume:100000,relVolume:3,adx:30,rsi:55,ema20:9.5,ema50:9,spread:1,bid:9.95,ask:10.05},[{eventKind:'news',date:new Date().toISOString(),type:'financing',title:'Registered direct offering',impactScore:90}]);
           if(!(dilution.score<strong.score))throw new Error('Dilution catalyst risk is not reducing score');
+          const fdaApproved=e.analyze({price:10,change:0,volume:200000,avgVolume:200000,relVolume:1,adx:20,rsi:50,ema20:10,ema50:10,spread:1,bid:9.95,ask:10.05},[{eventKind:'news',date:new Date().toISOString(),type:'medical',fdaStatusKind:'approved',impactScore:92,title:'FDA · Aprobación'}]);
+          const fdaCr=e.analyze({price:10,change:0,volume:200000,avgVolume:200000,relVolume:1,adx:20,rsi:50,ema20:10,ema50:10,spread:1,bid:9.95,ask:10.05},[{eventKind:'news',date:new Date().toISOString(),type:'medical',fdaStatusKind:'complete_response',impactScore:90,title:'FDA · Complete Response'}]);
+          if(!(fdaApproved.catalyst.delta>0))throw new Error('Structured FDA approval must be a positive catalyst');
+          if(!(fdaCr.catalyst.delta<0))throw new Error('Structured FDA Complete Response must be a negative catalyst');
           console.log('Shared score engine: OK');
           NODE
       - name: Validar sintaxis de avisos
