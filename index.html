@@ -369,6 +369,27 @@
           </div>
           <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
         </article>
+
+        <article class="settings-card account-analysis-settings-card">
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">IA Y AVISOS</span>
+              <h2>Seguimiento de cartera</h2>
+              <p>Controla cada cuánto se reanalizan tus posiciones y favoritos y qué nivel exige ViewInvAI para generar avisos relevantes.</p>
+            </div>
+          </div>
+          <div class="analysis-settings-grid">
+            <label><span>Posiciones</span><input id="analysisPositionsMinutes" class="input" type="number" min="5" max="240" step="1" value="10"><small>minutos</small></label>
+            <label><span>Favoritos</span><input id="analysisWatchlistMinutes" class="input" type="number" min="10" max="1440" step="1" value="30"><small>minutos</small></label>
+            <label><span>Confianza compra</span><input id="minBuyConfidence" class="input" type="number" min="60" max="99" step="1" value="85"><small>%</small></label>
+            <label><span>Confianza salida</span><input id="minSellConfidence" class="input" type="number" min="60" max="99" step="1" value="80"><small>%</small></label>
+            <label><span>Cambio de score</span><input id="notifyScoreChange" class="input" type="number" min="5" max="60" step="1" value="20"><small>puntos</small></label>
+          </div>
+          <div class="settings-save-row">
+            <strong id="analysisSettingsStatus">Inicia sesión para sincronizar estos ajustes.</strong>
+            <button type="button" class="btn small" id="saveAnalysisSettings" disabled>Guardar</button>
+          </div>
+        </article>
       </div>
     </section>
 
