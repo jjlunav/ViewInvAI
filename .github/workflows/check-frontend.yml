@@ -242,16 +242,37 @@ jobs:
                   }
                 }
 
-                const chatgpt = root.querySelector('[data-chatgpt-stock]');
+                if (root.querySelector('.profile-visual-toggle-row [data-chatgpt-stock]')) {
+                  fail('duplicate upper ChatGPT button is still visible');
+                  return;
+                }
+                const chatgpt = root.querySelector('.profile-ai-actions [data-chatgpt-stock]');
                 if (!chatgpt) {
-                  fail('external ChatGPT button missing');
+                  fail('ChatGPT button inside AI analysis is missing');
+                  return;
+                }
+                if (!/Preguntar a ChatGPT/i.test(chatgpt.textContent || '')) {
+                  fail('ChatGPT button label is not explicit');
                   return;
                 }
                 chatgpt.click();
                 setTimeout(() => {
-                  if (!String(document.documentElement.dataset.externalOpen || '').includes('https://chatgpt.com/?q=')) {
+                  const external = String(document.documentElement.dataset.externalOpen || '');
+                  if (!external.includes('https://chatgpt.com/?q=')) {
                     fail('ChatGPT prompt URL was not prepared');
                     return;
+                  }
+                  const encoded = external.split('?q=')[1] || '';
+                  const prompt = decodeURIComponent(encoded);
+                  if (/ViewInvAI/i.test(prompt)) {
+                    fail('external ChatGPT prompt must not mention ViewInvAI');
+                    return;
+                  }
+                  for (const required of ['noticias','catalizadores','redes','geopolítico','dilución','SEC']) {
+                    if (!prompt.toLowerCase().includes(required.toLowerCase())) {
+                      fail('external ChatGPT prompt missing research scope: ' + required);
+                      return;
+                    }
                   }
                   document.body.dataset.smokeChatgpt = 'ok';
 
