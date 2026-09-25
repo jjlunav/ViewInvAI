@@ -656,6 +656,8 @@ function transactionRowsHtml(rows, currency) {
   if (!rows || !rows.length) return '<div class="portfolio-empty-state compact">Todavía no hay operaciones registradas.</div>';
   return rows.map(tx => {
     const side = String(tx.side || '').toUpperCase();
+    const origin = String(tx.origin || '');
+    const isAdjustment = origin === 'position-adjustment';
     const isBuy = side === 'BUY';
     const txCurrency = String(tx.currency || currency || 'EUR').toUpperCase();
     const executed = tx.executed_at ? new Date(tx.executed_at) : null;
@@ -664,10 +666,13 @@ function transactionRowsHtml(rows, currency) {
       : '—';
     const fees = num(tx.fees);
     return '<div class="transaction-row">' +
-      '<span class="transaction-side ' + (isBuy ? 'buy' : 'sell') + '">' + (isBuy ? 'COMPRA' : 'VENTA') + '</span>' +
-      '<div class="transaction-main"><strong>' + formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, txCurrency) + '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, txCurrency)) : '') + '</small></div>' +
-      '<div class="transaction-total"><strong>' + formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · ' + esc(tx.notes) : '') + '</small></div>' +
-      (String(tx.origin || '') === 'manual' ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
+      '<span class="transaction-side ' + (isAdjustment ? 'adjust' : isBuy ? 'buy' : 'sell') + '">' + (isAdjustment ? 'AJUSTE' : isBuy ? 'COMPRA' : 'VENTA') + '</span>' +
+      '<div class="transaction-main"><strong>' + (isAdjustment
+        ? formatNumber(tx.quantity, 4) + ' uds. · media ' + formatMoney(tx.price, txCurrency)
+        : formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, txCurrency)) +
+      '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, txCurrency)) : '') + '</small></div>' +
+      '<div class="transaction-total"><strong>' + (isAdjustment ? 'Saldo corregido' : formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency)) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · ' + esc(tx.notes) : '') + '</small></div>' +
+      (['manual','position-adjustment'].includes(origin) ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
     '</div>';
   }).join('');
 }
@@ -698,6 +703,7 @@ function portfolioTransactionSummaryHtml(summary) {
       '<span><b>' + Number(summary.total || 0) + '</b> operaciones</span>' +
       '<span><b>' + Number(summary.buys || 0) + '</b> compras</span>' +
       '<span><b>' + Number(summary.sells || 0) + '</b> ventas</span>' +
+      '<span><b>' + Number(summary.adjustments || 0) + '</b> ajustes</span>' +
       '<span><b>' + Number(summary.stocks || 0) + '</b> valores</span>' +
     '</div>' +
     (currencyRows ? '<div class="portfolio-history-currencies">' + currencyRows + '</div>' : '') +
