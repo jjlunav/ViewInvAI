@@ -1422,6 +1422,10 @@ def main():
     sample = stages[-1][1][:12]
     print("ENTRY FILTER SAMPLE:", [(s.get("ticker"), s.get("changePct"), s.get("relVolume"), s.get("adx"), s.get("rsi"), s.get("volume")) for s in sample])
     print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news;", len(clinical_events), "clinical")
+    print("CLINICAL EVENT SAMPLE:", [
+        (e.get("ticker"), e.get("clinicalLeadSponsor"), e.get("clinicalNct"), e.get("date"), e.get("clinicalPhase"), e.get("clinicalDateType"))
+        for e in clinical_events[:12]
+    ])
 
 if __name__ == "__main__":
     main()
