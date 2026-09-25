@@ -40,6 +40,11 @@ jobs:
           const weak=e.analyze({price:10,change:-8,volume:5000,avgVolume:100000,relVolume:.2,adx:10,rsi:25,ema20:11,ema50:12,spread:9,bid:9,ask:10},[]);
           if(!(strong.score>weak.score))throw new Error('Score engine ordering regression');
           if(!(strong.quality.score>weak.quality.score))throw new Error('Quality engine ordering regression');
+          if(e.watchSignal(90,40)!=='WAIT')throw new Error('Low-quality data must block BUY');
+          if(e.watchSignal(90,90)!=='BUY')throw new Error('High-quality strong score must allow BUY');
+          if(e.positionSignal(80,40)!=='REVIEW')throw new Error('Low-quality position must require REVIEW');
+          const dilution=e.analyze({price:10,change:5,volume:300000,avgVolume:100000,relVolume:3,adx:30,rsi:55,ema20:9.5,ema50:9,spread:1,bid:9.95,ask:10.05},[{eventKind:'news',date:new Date().toISOString(),type:'financing',title:'Registered direct offering',impactScore:90}]);
+          if(!(dilution.score<strong.score))throw new Error('Dilution catalyst risk is not reducing score');
           console.log('Shared score engine: OK');
           NODE
       - name: Validar sintaxis de avisos
