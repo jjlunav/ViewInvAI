@@ -54,7 +54,36 @@ jobs:
       - name: Validar sintaxis de carteras
         run: node --check portfolio.js
       - name: Validar sintaxis backend
-        run: node --check backend.js
+        run: |
+          node --check backend.js
+          node --input-type=module - <<'NODE'
+          import { calculateTransactionLedger } from './backend.js';
+          const ledger=calculateTransactionLedger([
+            {side:'BUY',quantity:10,price:10,fees:1,currency:'EUR',executed_at:'2026-01-01T10:00:00Z'},
+            {side:'BUY',quantity:10,price:20,fees:1,currency:'EUR',executed_at:'2026-01-02T10:00:00Z'},
+            {side:'SELL',quantity:5,price:30,fees:1,currency:'EUR',executed_at:'2026-01-03T10:00:00Z'}
+          ]);
+          if(Math.abs(ledger.quantity-15)>1e-9)throw new Error('Ledger quantity regression');
+          if(Math.abs(ledger.avgPrice-15.1)>1e-9)throw new Error('Ledger average price regression: '+ledger.avgPrice);
+          if(Math.abs(ledger.realizedPnl-73.5)>1e-9)throw new Error('Ledger realized P&L regression: '+ledger.realizedPnl);
+          let oversell=false;
+          try{calculateTransactionLedger([{side:'BUY',quantity:1,price:10},{side:'SELL',quantity:2,price:10}])}catch(_){oversell=true}
+          if(!oversell)throw new Error('Ledger must reject oversell');
+          console.log('Portfolio transaction ledger: OK');
+          NODE
+      - name: Validar migraciones D1
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          db=sqlite3.connect(':memory:')
+          for path in sorted(Path('migrations').glob('*.sql')):
+              db.executescript(path.read_text(encoding='utf-8'))
+          tables={row[0] for row in db.execute("select name from sqlite_master where type='table'")}
+          if 'transactions' not in tables:
+              raise SystemExit('Falta tabla transactions')
+          print('Migraciones D1: OK')
+          PY
       - name: Validar sintaxis Worker
         run: node --check worker.js
       - name: Comprobar estructura y seguridad basica
