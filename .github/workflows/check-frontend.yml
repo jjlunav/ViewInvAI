@@ -500,7 +500,7 @@ jobs:
                 }, 120);
                 return;
               }
-              if (Date.now() - started < 7500) {
+              if (Date.now() - (profileStarted || started) < 5000) {
                 setTimeout(waitForProfile, 100);
                 return;
               }
@@ -509,6 +509,7 @@ jobs:
             }
 
             let entryOpened = false;
+            let profileStarted = 0;
             function waitForRow() {
               if (!entryOpened) {
                 const entryNav = document.querySelector('.nav-item[data-view="entry"]');
@@ -542,6 +543,7 @@ jobs:
                 }
                 document.body.dataset.smokeCards = 'ok';
                 document.body.dataset.smokeApp = 'ok';
+                profileStarted = Date.now();
                 row.click();
                 setTimeout(waitForProfile, 100);
                 return;
