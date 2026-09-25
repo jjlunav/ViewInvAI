@@ -167,10 +167,57 @@ jobs:
             }
 
             function waitForProfile() {
-              const chart = document.querySelector('.tv-advanced-chart');
+              const root = document.querySelector('.stock-profile-page:not(.is-hidden)');
+              const chart = root && root.querySelector('.tv-advanced-chart');
               const profileOpen = document.body.classList.contains('stock-detail-open');
               if (chart && profileOpen) {
-                document.body.dataset.smokeProfile = 'ok';
+                const toggle = root.querySelector('[data-profile-visual-toggle]');
+                const visual = root.querySelector('[data-profile-visual-analysis]');
+                if (!toggle || !visual || toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
+                  fail('chart/AI section is not collapsed by default');
+                  return;
+                }
+
+                const header = root.querySelector('.unified-stock-header');
+                const headerRect = header && header.getBoundingClientRect();
+                if (!headerRect || headerRect.height > 125) {
+                  fail('responsive stock header is too tall: ' + (headerRect ? headerRect.height : 'missing'));
+                  return;
+                }
+                const parts = [
+                  root.querySelector('.profile-back-cell'),
+                  root.querySelector('.profile-title'),
+                  root.querySelector('.profile-live'),
+                  root.querySelector('.profile-primary-actions')
+                ].filter(Boolean).filter(el => getComputedStyle(el).display !== 'none');
+                const overlaps = (a,b) => {
+                  const x=Math.min(a.right,b.right)-Math.max(a.left,b.left);
+                  const y=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
+                  return x>2 && y>2;
+                };
+                for (let i=0;i<parts.length;i++) for (let j=i+1;j<parts.length;j++) {
+                  if (overlaps(parts[i].getBoundingClientRect(),parts[j].getBoundingClientRect())) {
+                    fail('responsive stock header elements overlap');
+                    return;
+                  }
+                }
+
+                toggle.click();
+                setTimeout(() => {
+                  if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
+                    fail('chart/AI section did not expand');
+                    return;
+                  }
+                  toggle.click();
+                  setTimeout(() => {
+                    if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
+                      fail('chart/AI section did not collapse again');
+                      return;
+                    }
+                    document.body.dataset.smokeProfile = 'ok';
+                    document.body.dataset.smokeProfileCompact = 'ok';
+                  }, 80);
+                }, 120);
                 return;
               }
               if (Date.now() - started < 7500) {
@@ -245,6 +292,8 @@ jobs:
             --no-sandbox \
             --disable-gpu \
             --disable-dev-shm-usage \
+            --window-size=1024,768 \
+            --force-device-scale-factor=1 \
             --user-data-dir=/tmp/catalyst-chrome-profile \
             --virtual-time-budget=10000 \
             --dump-dom \
@@ -274,8 +323,8 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::No se pudo abrir el detalle/gráfico en navegador real"
+          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::El detalle compacto, el toggle gráfico/IA o la cabecera responsive fallaron"
             grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
             tail -100 /tmp/catalyst-chrome.log || true
             exit 1
