@@ -712,6 +712,22 @@ jobs:
                             fail('mobile stock header hides primary actions');
                             return;
                           }
+                          const minFont = (selector, min, label) => {
+                            const el = header.querySelector(selector);
+                            const size = el ? parseFloat(getComputedStyle(el).fontSize || '0') : 0;
+                            if (!el || size < min) {
+                              fail('mobile stock header ' + label + ' is too small: ' + size + 'px');
+                              return false;
+                            }
+                            return true;
+                          };
+                          if (!minFont('.profile-market', 6.4, 'market label') ||
+                              !minFont('.profile-title p', 8.4, 'company name') ||
+                              !minFont('.quote-side small', 6.4, 'BID/ASK label') ||
+                              !minFont('.quote-side strong', 8.5, 'BID/ASK value') ||
+                              !minFont('.profile-primary-actions .btn', 7.8, 'action button')) {
+                            return;
+                          }
                           if (headerRect.height > 118) {
                             fail('mobile stock header is too tall: ' + headerRect.height);
                             return;
