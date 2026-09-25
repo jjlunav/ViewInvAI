@@ -11,6 +11,7 @@ on:
       - "stock-interactions.js"
       - "catalog.js"
       - "heatmap.js"
+      - "events.js"
       - "bootstrap.js"
       - "market-session.js"
       - "score-engine.js"
@@ -55,6 +56,7 @@ jobs:
           node --check stock-interactions.js
           node --check catalog.js
           node --check heatmap.js
+          node --check events.js
           node --check bootstrap.js
           node --check mobile-app.js
           node - <<'NODE'
@@ -156,12 +158,15 @@ jobs:
           heatmap = Path("heatmap.js").read_text(encoding="utf-8")
           if "function renderHeatmap" not in heatmap or "function initHeatmapInteractions" not in heatmap:
               raise SystemExit("heatmap.js incompleto")
+          events = Path("events.js").read_text(encoding="utf-8")
+          if "function stockEvents" not in events or "function renderFuture" not in events or "function renderCalendar" not in events:
+              raise SystemExit("events.js incompleto")
           if "load(true);" not in bootstrap or "window.ViewInvAI={" not in bootstrap:
               raise SystemExit("bootstrap.js no posee el arranque/API publica")
 
           required_assets = (
               "web-mobile.css", "mobile-app.css", "navigation.js", "mobile-app.js",
-              "stock-charts.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "bootstrap.js"
+              "stock-charts.js", "events.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "bootstrap.js"
           )
           missing_assets = [item for item in required_assets if item not in html]
           if missing_assets:
@@ -202,7 +207,7 @@ jobs:
 
           html = Path("index.html").read_text(encoding="utf-8")
           module_paths = [
-              "app.js", "stock-charts.js", "stock-profile.js",
+              "app.js", "stock-charts.js", "events.js", "stock-profile.js",
               "navigation.js", "mobile-app.js", "bootstrap.js"
           ]
           modules = {path: Path(path).read_text(encoding="utf-8") for path in module_paths}
@@ -277,7 +282,7 @@ jobs:
 
           rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html market-session.js score-engine.js app.js stock-charts.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/catalyst-smoke/
+          cp index.html market-session.js score-engine.js app.js stock-charts.js events.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -690,7 +695,7 @@ jobs:
 
           rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
           mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html market-session.js score-engine.js app.js stock-charts.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-mobile/
+          cp index.html market-session.js score-engine.js app.js stock-charts.js events.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-mobile/
           cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
