@@ -2740,7 +2740,7 @@ function hideHelpBanner(){
 function initHelpSystem(){
  const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
  const sectionHelp={
-  entry:{title:'Potencial de entrada',text:'Escanea acciones que cumplen el criterio seleccionado. Puedes cambiar sesión, mercado y filtros técnicos. La lista se recalcula con los datos disponibles y no aplica ningún precio mínimo.'},
+  entry:{title:'Radar de entrada',text:'Escanea acciones que cumplen el criterio seleccionado. Puedes cambiar sesión, mercado y filtros técnicos. La lista se recalcula con los datos disponibles y no aplica ningún precio mínimo.'},
   recommendation:{title:'Ideas IA',text:'Selecciona oportunidades mediante análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores.'},
   portfolios:{title:'Carteras',text:'Organiza posiciones por bróker. Cada posición y cada favorito sincronizado puede analizarse de forma recurrente para detectar mantenimiento, revisión o posible salida.'},
   heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
