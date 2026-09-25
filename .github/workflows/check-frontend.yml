@@ -332,6 +332,26 @@ jobs:
                             }
                             document.body.dataset.smokeProfile = 'ok';
                             document.body.dataset.smokeProfileCompact = 'ok';
+
+                            const sourceChart = root.querySelector('.tv-advanced-chart');
+                            const stockKey = sourceChart && sourceChart.dataset.stockKey;
+                            const portfolioHost = document.createElement('div');
+                            portfolioHost.className = 'portfolio-inline-stock';
+                            document.body.appendChild(portfolioHost);
+                            const rendered = stockKey && window.ViewInvAI &&
+                              typeof window.ViewInvAI.renderEmbeddedStockDetail === 'function' &&
+                              window.ViewInvAI.renderEmbeddedStockDetail(portfolioHost, stockKey, 'Cartera · Smoke', true);
+                            const embeddedHeader = portfolioHost.querySelector('.unified-stock-header');
+                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader) {
+                              fail('portfolio embedded stock detail did not reuse the unified profile');
+                              return;
+                            }
+                            const embeddedStyle = getComputedStyle(embeddedHeader);
+                            if (embeddedStyle.position !== 'sticky' || Math.abs(parseFloat(embeddedStyle.top || '0')) > 1) {
+                              fail('portfolio embedded stock header is not sticky at the top');
+                              return;
+                            }
+                            document.body.dataset.smokePortfolioSticky = 'ok';
                           }, 100);
                         }, 180);
                         return;
@@ -452,8 +472,8 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-tr-chart="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-ai-chat="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-chatgpt="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::El detalle compacto, gráfico LSX o acciones IA/ChatGPT fallaron"
+          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-tr-chart="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-ai-chat="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-chatgpt="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-portfolio-sticky="ok"' /tmp/catalyst-dom.html; then
+            echo "::error::El detalle compacto, sticky de cartera, gráfico LSX o acciones IA/ChatGPT fallaron"
             grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
             tail -100 /tmp/catalyst-chrome.log || true
             exit 1
@@ -464,6 +484,36 @@ jobs:
             exit 1
           fi
 
+          for spec in "760,768" "840,768" "920,768" "1180,800"; do
+            W="${spec%,*}"
+            H="${spec#*,}"
+            PROFILE="/tmp/catalyst-chrome-profile-${W}"
+            DOM="/tmp/catalyst-dom-${W}.html"
+            LOG="/tmp/catalyst-chrome-${W}.log"
+            rm -rf "$PROFILE"
+
+            "$CHROME" \
+              --headless=new \
+              --no-sandbox \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --window-size="$W,$H" \
+              --force-device-scale-factor=1 \
+              --user-data-dir="$PROFILE" \
+              --virtual-time-budget=10000 \
+              --dump-dom \
+              http://127.0.0.1:4173/ \
+              > "$DOM" 2> "$LOG"
+
+            if ! grep -q 'data-smoke-profile-compact="ok"' "$DOM"; then
+              echo "::error::La cabecera compacta falla en viewport ${W}x${H}"
+              grep -o 'data-smoke-error="[^"]*"' "$DOM" || true
+              tail -100 "$LOG" || true
+              exit 1
+            fi
+          done
+
+          echo "Cabecera responsive 760/840/920/1180 px: OK"
           echo "Smoke test navegador: OK"
 
       - name: Smoke test movil, filtros y navegacion atras
