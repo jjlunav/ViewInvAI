@@ -72,6 +72,18 @@ jobs:
           const eur=summary.currencies&&summary.currencies.EUR;
           if(!eur||summary.total!==3||summary.buys!==2||summary.sells!==1)throw new Error('Portfolio history summary regression');
           if(Math.abs(eur.buyGross-300)>1e-9||Math.abs(eur.sellGross-150)>1e-9||Math.abs(eur.fees-3)>1e-9||Math.abs(eur.realizedPnl-73.5)>1e-9)throw new Error('Portfolio currency totals regression');
+
+          const adjustedRows=rows.concat([{
+            id:'4',stock_key:'NASDAQ:AAA',side:'BUY',origin:'position-adjustment',
+            quantity:20,price:12,fees:0,currency:'EUR',executed_at:'2026-01-04T10:00:00Z'
+          }]);
+          const adjusted=calculateTransactionLedger(adjustedRows);
+          if(Math.abs(adjusted.quantity-20)>1e-9||Math.abs(adjusted.avgPrice-12)>1e-9)throw new Error('Manual adjustment must replace current exposure without inventing a trade');
+          if(Math.abs(adjusted.realizedPnl-73.5)>1e-9)throw new Error('Manual adjustment must preserve prior realized P&L');
+          const adjustedSummary=calculatePortfolioTransactionSummary(adjustedRows);
+          if(adjustedSummary.adjustments!==1||adjustedSummary.buys!==2||adjustedSummary.sells!==1)throw new Error('Adjustment must not be counted as a buy');
+          if(Math.abs(adjustedSummary.currencies.EUR.buyGross-300)>1e-9)throw new Error('Adjustment must not inflate buy gross');
+
           let oversell=false;
           try{calculateTransactionLedger([{side:'BUY',quantity:1,price:10},{side:'SELL',quantity:2,price:10}])}catch(_){oversell=true}
           if(!oversell)throw new Error('Ledger must reject oversell');
