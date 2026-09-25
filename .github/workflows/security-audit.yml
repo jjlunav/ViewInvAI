@@ -8,6 +8,7 @@ on:
       - "navigation.js"
       - "stock-charts.js"
       - "stock-profile.js"
+      - "stock-interactions.js"
       - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
