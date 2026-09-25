@@ -10,6 +10,7 @@ on:
       - "stock-profile.js"
       - "stock-interactions.js"
       - "catalog.js"
+      - "heatmap.js"
       - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
