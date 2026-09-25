@@ -7,39 +7,28 @@
 
 const NAV_ORDER=['home','portfolios','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
- home:{icon:'⌂',short:'Inicio',base:10},
- entry:{icon:'◈',short:'Radar',base:4},
- recommendation:{icon:'◎',short:'Ideas IA',base:3.5},
- portfolios:{icon:'★',short:'Carteras',base:3.25},
- alerts:{icon:'●',short:'Avisos',base:3},
- catalog:{icon:'▤',short:'TR',base:2.5},
- heatmap:{icon:'▦',short:'Mapa',base:2},
- future:{icon:'✦',short:'Futuro',base:1.5},
- calendar:{icon:'▣',short:'Calendario',base:1},
- catalogUS:{icon:'▥',short:'EEUU',base:.5},
- settings:{icon:'⚙',short:'Ajustes',base:.25}
+ home:{icon:'⌂',short:'Inicio'},
+ entry:{icon:'◈',short:'Radar'},
+ recommendation:{icon:'◎',short:'Ideas IA'},
+ portfolios:{icon:'★',short:'Carteras'},
+ alerts:{icon:'●',short:'Avisos'},
+ catalog:{icon:'▤',short:'TR'},
+ heatmap:{icon:'▦',short:'Mapa'},
+ future:{icon:'✦',short:'Futuro'},
+ calendar:{icon:'▣',short:'Calendario'},
+ catalogUS:{icon:'▥',short:'EEUU'},
+ settings:{icon:'⚙',short:'Ajustes'}
 };
-let navUsage=readNavigationUsage();
-function readNavigationUsage(){
- try{let x=JSON.parse(localStorage.getItem(NAV_USAGE_KEY)||'{}');return x&&typeof x==='object'?x:{}}catch(_){return{}}
-}
-function saveNavigationUsage(){try{localStorage.setItem(NAV_USAGE_KEY,JSON.stringify(navUsage))}catch(_){}}
-function navigationScore(v){
- let x=navUsage[v]||{},count=Math.max(0,N(x.count)??0),last=Math.max(0,N(x.lastUsed)??0),recent=last?Math.max(0,1-(Date.now()-last)/(14*86400000))*.35:0;
- return (NAV_META[v]?.base||0)+count+recent;
-}
+const PRIMARY_MOBILE_VIEWS=['home','portfolios','recommendation','entry'];
+
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
-function recordNavigationUse(v){
- if(!NAV_META[v])return;
- let x=navUsage[v]||{count:0,lastUsed:0};x.count=(N(x.count)??0)+1;x.lastUsed=Date.now();navUsage[v]=x;saveNavigationUsage();
-}
-function renderAdaptiveNavigation(){
+function renderNavigation(){
  let order=navigationOrder(),side=$('#sidebar .nav');
  if(side){
   let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
- const direct=['home','portfolios','recommendation','entry'];
+ const direct=PRIMARY_MOBILE_VIEWS;
  const rest=order.filter(v=>!direct.includes(v));
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
@@ -98,7 +87,7 @@ function applyAppHistorySnapshot(snap){
  state.profilePreferTr=snap.profilePreferTr===true?true:snap.profilePreferTr===false?false:null;
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+state.currentView));
  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===state.currentView));
- renderAdaptiveNavigation();$('#sidebar')?.classList.remove('open');
+ renderNavigation();$('#sidebar')?.classList.remove('open');
  let box=$('#stockQuickDetail');
  if(state.profileKey){document.body.classList.add('stock-detail-open');if(box)box.classList.remove('is-hidden');if(db.stocks.length)renderQuickProfile()}
  else{document.body.classList.remove('stock-detail-open');if(box){box.classList.add('is-hidden');box.innerHTML=''}renderCurrentView()}
@@ -148,13 +137,12 @@ function initNativeBackHandling(){
   lastNativeBackAt=now;showExitBackBanner();
  });
 }
-function show(v,preserveProfile=false,recordHistory=true,trackUsage=true){
+function show(v,preserveProfile=false,recordHistory=true){
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
- if(trackUsage)recordNavigationUse(v);
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
  state.currentView=v;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$('#view-'+v).classList.add('active');
- document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderAdaptiveNavigation();
+ document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderNavigation();
  $('#sidebar').classList.remove('open');closeMobileMore();saveUiState();render();window.scrollTo({top:0,behavior:'auto'});
  if(recordHistory)pushCurrentAppHistory();
 }
@@ -171,6 +159,6 @@ document.addEventListener('click',e=>{
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 
-renderAdaptiveNavigation();
+renderNavigation();
 initAppHistory();
 initNativeBackHandling();
