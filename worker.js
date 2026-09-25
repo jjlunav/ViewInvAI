@@ -518,8 +518,32 @@ async function proxyTradeRepublic(request) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+async function r2MarketAssetResponse(env, pathname) {
+  if (!env || !env.MARKET_DATA_BUCKET) return null;
+  const allowed = new Set(["/data/market.json", "/data/market-version.json"]);
+  if (!allowed.has(pathname)) return null;
+  try {
+    const key = pathname.replace(/^\//, "");
+    const object = await env.MARKET_DATA_BUCKET.get(key);
+    if (!object) return null;
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    if (object.httpEtag) headers.set("ETag", object.httpEtag);
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    headers.set("Cache-Control", pathname.endsWith("market-version.json")
+      ? "public, max-age=30, must-revalidate"
+      : "public, max-age=60, must-revalidate");
+    headers.set("X-ViewInvAI-Market-Storage", "r2");
+    return secureResponse(new Response(object.body, { status: 200, headers }), pathname);
+  } catch (error) {
+    console.warn("R2 market asset fallback", String(error && error.message || error));
+    return null;
+  }
+}
+
 async function loadMarketSnapshotForBackend(env) {
-  const response = await env.ASSETS.fetch(new Request("https://viewinvai.local/data/market.json"));
+  let response = await r2MarketAssetResponse(env, "/data/market.json");
+  if (!response) response = await env.ASSETS.fetch(new Request("https://viewinvai.local/data/market.json"));
   if (!response.ok) throw new Error("Market snapshot unavailable");
   const data = await response.json();
   if (!data || !Array.isArray(data.stocks)) throw new Error("Invalid market snapshot");
@@ -597,6 +621,10 @@ export default {
     if (url.pathname === "/api/tv-symbol") {
       const guard = requestGuard(request); if (guard) return guard;
       return tradingViewSymbolAvailability(request);
+    }
+    if (url.pathname === "/data/market.json" || url.pathname === "/data/market-version.json") {
+      const r2 = await r2MarketAssetResponse(env, url.pathname);
+      if (r2) return r2;
     }
     return secureResponse(await env.ASSETS.fetch(request), url.pathname);
   },
