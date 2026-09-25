@@ -21,7 +21,7 @@
       <button class="nav-item active" data-view="home"><span>⌂</span>Inicio</button>
       <button class="nav-item" data-view="portfolios"><span>★</span>Carteras</button>
       <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
-      <button class="nav-item" data-view="entry"><span>◈</span>Potencial de entrada</button>
+      <button class="nav-item" data-view="entry"><span>◈</span>Radar de entrada</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
@@ -62,10 +62,10 @@
     <section class="view" id="view-entry">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Potencial de entrada <span class="heading-badge ai-badge">IA · SCAN</span></h1>
+          <h1>Radar de entrada <span class="heading-badge ai-badge">IA · SCAN</span></h1>
           <p class="lead">Explora acciones de Trade Republic o EEUU que cumplen el criterio seleccionado. Filtra por sesión, variación, volumen, RSI, ADX, tendencia y liquidez para localizar posibles entradas, sin precio mínimo.</p>
         </div>
-        <div class="heading-actions"><button type="button" class="section-help" data-help-section="entry" aria-label="Ayuda sobre Potencial de entrada">?</button><button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button></div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="entry" aria-label="Ayuda sobre Radar de entrada">?</button><button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button></div>
       </div>
 
       <div class="control-strip">
@@ -172,7 +172,7 @@
         <span>·</span>
         <span id="entryUpdated">pendiente</span>
       </div>
-      <div id="entryResults" class="stock-list"></div>
+      <div id="entryResults" class="stock-list stock-card-grid"></div>
     </section>
 
     <section class="view" id="view-recommendation">
@@ -258,7 +258,7 @@
         <select id="futureType" class="select"><option value="all">Todo tipo de catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
         <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
       </div>
-      <div id="futureResults" class="stock-list"></div>
+      <div id="futureResults" class="stock-list stock-card-grid"></div>
     </section>
 
 
@@ -287,7 +287,7 @@
 
     <section class="view" id="view-calendar">
       <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Consulta cronológicamente resultados, eventos clínicos, corporativos y regulatorios, además de noticias y catalizadores asociados a las acciones cargadas.</p></div><button type="button" class="section-help" data-help-section="calendar" aria-label="Ayuda sobre Calendario y noticias">?</button></div>
-      <div id="calendarResults" class="stock-list"></div>
+      <div id="calendarResults" class="stock-list stock-card-grid"></div>
     </section>
 
     <section class="view" id="view-catalog">
