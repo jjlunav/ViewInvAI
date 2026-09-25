@@ -17,6 +17,7 @@ initStockInteractions();
 initCatalogInteractions();
 initHeatmapInteractions();
 initEventViewInteractions();
+initStockListInteractions();
 document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
  applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
 }));
