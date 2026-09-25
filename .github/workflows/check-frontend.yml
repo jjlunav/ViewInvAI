@@ -504,7 +504,17 @@ jobs:
                 setTimeout(waitForProfile, 100);
                 return;
               }
-              fail('profile or TradingView chart did not open');
+              const detail = document.querySelector('#stockQuickDetail');
+              const diagnostics = [
+                'body=' + document.body.className,
+                'stateKey=' + String((typeof state !== 'undefined' && state.profileKey) || ''),
+                'detailHidden=' + String(detail ? detail.classList.contains('is-hidden') : 'missing'),
+                'detailHtml=' + String(detail ? detail.innerHTML.length : -1),
+                'renderQuickProfile=' + typeof renderQuickProfile,
+                'replaceHistory=' + typeof replaceCurrentAppHistory,
+                'profileHero=' + typeof profileHeroHtml
+              ].join(' | ');
+              fail('profile did not open: ' + diagnostics);
               document.body.dataset.smokeProfile = 'fail';
             }
 
