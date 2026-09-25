@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const DATA='data/market.json', DATA_REFRESH_MS=300000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', STOCK_VIEWS_KEY='viewinvai:stockViews:v1', RECO_COOLDOWN_MS=86400000;
+const DATA='data/market.json', DATA_VERSION='data/market-version.json', DATA_REFRESH_MS=60000, CATALOG_PAGE_SIZE=200, CATALOG_MOBILE_PAGE_SIZE=40, MAX_TR_LIVE_SUBSCRIPTIONS=120, CUSTOM_FILTER_KEY='viewinvai:customFilter:v1', FAV_KEY='viewinvai:favorites:v1', LEADERS_PIN_KEY='viewinvai:leadersPinned:v1', UI_KEY='viewinvai:ui:v1', RECO_KEY='viewinvai:recommendation:v1', THEME_KEY='viewinvai:theme:v1', NAV_USAGE_KEY='viewinvai:navigationUsage:v1', STOCK_VIEWS_KEY='viewinvai:stockViews:v1', RECO_COOLDOWN_MS=86400000;
 function migrateLegacyBrandStorage(){
  const pairs=[
   ['viewinvai:customFilter:v1','catalystpulse:customFilter:v1'],
@@ -2831,6 +2831,15 @@ async function load(force=false){
  if(loading)return;
  loading=true;
  try{
+  if(!force&&db.stocks.length&&lastDataStamp){
+   try{
+    let vr=await fetch(DATA_VERSION,{cache:'no-cache'});
+    if(vr.ok){
+     let v=await vr.json(),stamp=String(v&&v.updatedAt||'');
+     if(stamp&&stamp===lastDataStamp)return;
+    }
+   }catch(_){}
+  }
   let url=force?DATA+'?v='+Date.now():DATA;
   let r=await fetch(url,{cache:force?'reload':'no-cache'});
   if(!r.ok)throw Error(r.status);
