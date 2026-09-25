@@ -13,6 +13,8 @@ on:
       - "backend.js"
       - "index.html"
       - "styles.css"
+      - "mobile-app.css"
+      - "mobile-app.js"
       - "worker.js"
       - "package.json"
       - "capacitor.config.json"
@@ -39,6 +41,7 @@ jobs:
           node --check market-session.js
           node --check score-engine.js
           node --check app.js
+          node --check mobile-app.js
           node - <<'NODE'
           require('./market-session.js');
           const m=globalThis.ViewInvAIMarketSession;
@@ -170,7 +173,7 @@ jobs:
 
           rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/catalyst-smoke/
+          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css mobile-app.css mobile-app.js /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -545,7 +548,7 @@ jobs:
           echo "Cabecera responsive 760/840/920/1180 px: OK"
           echo "Smoke test navegador: OK"
 
-      - name: Smoke test movil, filtros y navegacion atras
+      - name: Smoke test app nativa movil, filtros y navegacion atras
         run: |
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
@@ -556,7 +559,7 @@ jobs:
 
           rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
           mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/viewinvai-mobile/
+          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css mobile-app.css mobile-app.js /tmp/viewinvai-mobile/
           cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -597,6 +600,10 @@ jobs:
             };
 
             wait(() => {
+              if (document.documentElement.dataset.nativeApp !== '1' || !document.documentElement.classList.contains('native-app')) {
+                fail('native application presentation mode did not initialize');
+                return true;
+              }
               const entryButton = document.querySelector('.mobile-nav-item[data-mobile-view="entry"]');
               if (entryButton && !document.querySelector('#view-entry.active')) {
                 entryButton.click();
@@ -608,6 +615,11 @@ jobs:
               const nav = document.querySelector('#mobileBottomNav');
               if (!nav || getComputedStyle(nav).display === 'none' || nav.getBoundingClientRect().height < 50) {
                 fail('fixed mobile navigation is not visible');
+                return true;
+              }
+              const mainPaddingBottom = parseFloat(getComputedStyle(document.querySelector('.main')).paddingBottom || '0');
+              if (mainPaddingBottom + 1 < nav.getBoundingClientRect().height) {
+                fail('native content does not reserve space for bottom navigation');
                 return true;
               }
               document.body.dataset.mobileNav = 'ok';
@@ -743,8 +755,36 @@ jobs:
                               !minFont('.profile-primary-actions .btn', 7.8, 'action button')) {
                             return;
                           }
-                          if (headerRect.height > 118) {
-                            fail('mobile stock header is too tall: ' + headerRect.height);
+                          const rectOf = el => el && getComputedStyle(el).display !== 'none' ? el.getBoundingClientRect() : null;
+                          const intersects = (a, b, tolerance = 1) => {
+                            if (!a || !b) return false;
+                            const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                            const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                            return x > tolerance && y > tolerance;
+                          };
+                          const headerParts = [mobileBack, mobileTitle, mobileLive, mobileActions].map(rectOf).filter(Boolean);
+                          for (let i = 0; i < headerParts.length; i++) {
+                            for (let j = i + 1; j < headerParts.length; j++) {
+                              if (intersects(headerParts[i], headerParts[j], 2)) {
+                                fail('native stock header elements overlap');
+                                return;
+                              }
+                            }
+                          }
+                          const tabs = document.querySelector('.stock-profile-page .profile-tabs');
+                          const tabsRect = rectOf(tabs);
+                          if (tabsRect && intersects(headerRect, tabsRect, 2)) {
+                            fail('native profile tabs overlap the sticky stock header');
+                            return;
+                          }
+                          const visualToggle = document.querySelector('.profile-visual-toggle');
+                          const externalChat = document.querySelector('.profile-chatgpt-visible');
+                          if (intersects(rectOf(visualToggle), rectOf(externalChat), 2)) {
+                            fail('native graph/AI and ChatGPT actions overlap');
+                            return;
+                          }
+                          if (headerRect.height > 150) {
+                            fail('native stock header is unexpectedly tall: ' + headerRect.height);
                             return;
                           }
                           if (document.documentElement.scrollWidth > window.innerWidth + 1) {
@@ -792,7 +832,7 @@ jobs:
             --user-data-dir=/tmp/viewinvai-mobile-profile \
             --virtual-time-budget=10000 \
             --dump-dom \
-            http://127.0.0.1:4174/ \
+            http://127.0.0.1:4174/?native=1 \
             > /tmp/viewinvai-mobile-dom.html 2> /tmp/viewinvai-mobile-chrome.log
 
           for marker in mobile-nav mobile-catalog mobile-range mobile-filter mobile-layout mobile-back; do
@@ -812,7 +852,7 @@ jobs:
             exit 1
           fi
 
-          echo "Smoke test móvil, filtros y navegación: OK"
+          echo "Smoke test app nativa móvil, filtros, encuadres y navegación: OK"
 
           for spec in "360,800" "412,915"; do
             W="${spec%,*}"
@@ -832,7 +872,7 @@ jobs:
               --user-data-dir="$PROFILE" \
               --virtual-time-budget=10000 \
               --dump-dom \
-              http://127.0.0.1:4174/ \
+              http://127.0.0.1:4174/?native=1 \
               > "$DOM" 2> "$LOG"
 
             if ! grep -q 'data-mobile-layout="ok"' "$DOM"; then
@@ -844,4 +884,4 @@ jobs:
             fi
           done
 
-          echo "Barrido responsive 360/390/412 px: OK"
+          echo "Barrido app nativa 360/390/412 px: OK"
