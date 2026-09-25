@@ -7307,3 +7307,57 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
     padding:9px 10px!important
   }
 }
+
+
+/* Portfolio summary bar - 2026-09-25 */
+.portfolio-summary-bar{
+ display:flex;
+ flex-wrap:wrap;
+ align-items:stretch;
+ gap:8px;
+ margin:0 0 10px;
+ padding:8px;
+ border:1px solid rgba(95,140,160,.18);
+ border-radius:12px;
+ background:rgba(8,22,30,.62)
+}
+.portfolio-summary-bar>div{
+ display:grid;
+ gap:2px;
+ min-width:128px;
+ padding:7px 10px;
+ border-radius:9px;
+ background:rgba(255,255,255,.025)
+}
+.portfolio-summary-bar small{
+ font-size:8px;
+ letter-spacing:.45px;
+ color:#718994
+}
+.portfolio-summary-bar strong{
+ font-size:13px;
+ line-height:1.25;
+ color:#e8f1f4
+}
+.portfolio-summary-bar strong.pnl-up{color:#72e7bd}
+.portfolio-summary-bar strong.pnl-down{color:#ff7d87}
+
+@media(max-width:720px){
+ .portfolio-summary-bar{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+  margin:0 0 8px!important;
+  padding:6px!important
+ }
+ .portfolio-summary-bar>div{
+  min-width:0!important;
+  padding:6px 8px!important
+ }
+ .portfolio-summary-bar small{font-size:8px!important}
+ .portfolio-summary-bar strong{
+  font-size:11px!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important
+ }
+}
