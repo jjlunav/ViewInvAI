@@ -8,6 +8,9 @@ const MAX_TR_LIVE_SUBSCRIPTIONS=120;
 const TR_LIVE_DIRECT='wss://api.traderepublic.com';
 
 function trProxyUrl(){
+ if(window.ViewInvAIRuntime&&typeof window.ViewInvAIRuntime.websocketUrl==='function'){
+  return window.ViewInvAIRuntime.websocketUrl('/api/tr-live');
+ }
  return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live';
 }
 
