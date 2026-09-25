@@ -2051,13 +2051,19 @@ async function copyTextForExternalChat(text){
 async function openExternalChatGpt(key,preferTr=false){
  let s=stockByKey(key);if(!s)return;
  let prompt=buildExternalChatGptPrompt(s,preferTr===true&&trTradable(s));
- let opened=null;
- try{opened=window.open('https://chatgpt.com/','_blank','noopener,noreferrer')}catch(_){}
  let copied=await copyTextForExternalChat(prompt);
- if(copied)toast('ChatGPT abierto · prompt copiado. Pégalo en el chat.');
- else toast('ChatGPT abierto. Copia el contexto manualmente desde ViewInvAI.',true);
- if(!opened){
-  try{window.location.href='https://chatgpt.com/'}catch(_){}
+ let target='https://chatgpt.com/?q='+encodeURIComponent(prompt);
+ let opened=null;
+ try{opened=window.open(target,'_blank','noopener,noreferrer')}catch(_){}
+ if(opened){
+  toast(copied?'ChatGPT abierto con el prompt preparado · también está copiado.':'ChatGPT abierto con el prompt preparado.');
+  return;
+ }
+ try{
+  window.location.href=target;
+ }catch(_){
+  if(copied)toast('No se pudo abrir ChatGPT · prompt copiado.',true);
+  else toast('No se pudo abrir ChatGPT.',true);
  }
 }
 
