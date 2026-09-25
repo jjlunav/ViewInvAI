@@ -7465,3 +7465,51 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
  .profile-data-quality strong{font-size:10px!important}
  .profile-data-quality span{font-size:8px!important}
 }
+
+
+/* Data quality badge - 2026-09-25 */
+.profile-data-quality{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:8px;
+ margin:8px 0 0;
+ padding:6px 8px;
+ border:1px solid rgba(94,125,139,.2);
+ border-radius:9px;
+ background:rgba(255,255,255,.025)
+}
+.profile-data-quality strong{
+ font-size:9px;
+ line-height:1.3;
+ color:#b6c7ce
+}
+.profile-data-quality span{
+ flex:0 0 auto;
+ font-size:8px;
+ color:#70858f
+}
+.profile-data-quality.high{border-color:rgba(67,202,151,.28)}
+.profile-data-quality.high strong{color:#79e7bd}
+.profile-data-quality.good{border-color:rgba(107,177,219,.26)}
+.profile-data-quality.good strong{color:#9ccfe8}
+.profile-data-quality.medium{border-color:rgba(225,181,83,.28)}
+.profile-data-quality.medium strong{color:#f0cb74}
+.profile-data-quality.low{border-color:rgba(239,107,115,.28)}
+.profile-data-quality.low strong{color:#ff8d95}
+
+@media(max-width:720px){
+ .profile-data-quality{
+  align-items:flex-start!important;
+  flex-direction:column!important;
+  gap:2px!important;
+  padding:6px 8px!important
+ }
+ .profile-data-quality strong{
+  font-size:9px!important;
+  white-space:normal!important
+ }
+ .profile-data-quality span{
+  font-size:8px!important
+ }
+}
