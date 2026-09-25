@@ -91,6 +91,20 @@ async function ensurePushRegistration() {
     const supported = await plugin.isSupported().catch(() => ({ isSupported: true }));
     if (supported && supported.isSupported === false) return false;
     await bindPushListeners(plugin);
+    if (typeof plugin.createChannel === "function") {
+      try {
+        await plugin.createChannel({
+          id: "viewinvai_market_alerts",
+          name: "Alertas de mercado",
+          description: "Cambios relevantes en cartera y señales de ViewInvAI",
+          importance: 4,
+          vibration: true,
+          lights: true
+        });
+      } catch (error) {
+        console.warn("Push channel setup failed", error);
+      }
+    }
     let permission = await plugin.checkPermissions();
     if (!permission || !["granted"].includes(permission.receive)) {
       permission = await plugin.requestPermissions();
