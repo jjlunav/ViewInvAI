@@ -9,7 +9,7 @@
 html[data-native-app="1"]{
   --native-page-x:12px;
   --native-gap:10px;
-  --native-nav-h:68px;
+  --native-nav-h:calc(68px + var(--native-safe-bottom));
   --native-profile-header-h:122px;
   --native-safe-top:env(safe-area-inset-top,0px);
   --native-safe-right:env(safe-area-inset-right,0px);
@@ -68,12 +68,12 @@ html[data-native-app="1"] .main{
   min-width:0!important;
   max-width:none!important;
   margin:0!important;
-  padding:var(--native-safe-top) 0 calc(var(--native-nav-h) + var(--native-safe-bottom) + 16px)!important;
+  padding:var(--native-safe-top) 0 calc(var(--native-nav-h) + 16px)!important;
   background:transparent!important;
 }
 
 html[data-native-app="1"] body.stock-detail-open .main{
-  padding-bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 12px)!important;
+  padding-bottom:calc(var(--native-nav-h) + 12px)!important;
 }
 
 html[data-native-app="1"] footer{
@@ -783,7 +783,7 @@ html[data-native-app="1"] .app-modal{
   left:8px!important;
   right:8px!important;
   top:auto!important;
-  bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 8px)!important;
+  bottom:calc(var(--native-nav-h) + 8px)!important;
   transform:translateY(16px)!important;
   width:auto!important;
   max-width:none!important;
@@ -813,7 +813,7 @@ html[data-native-app="1"] .portfolio-stock-picker-results{
 
 html[data-native-app="1"] .notification-bell{
   right:10px!important;
-  bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 10px)!important;
+  bottom:calc(var(--native-nav-h) + 10px)!important;
   width:40px!important;
   height:40px!important;
   z-index:1780!important;
@@ -822,7 +822,7 @@ html[data-native-app="1"] .notification-bell{
 html[data-native-app="1"] .notification-center{
   left:8px!important;
   right:8px!important;
-  bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 58px)!important;
+  bottom:calc(var(--native-nav-h) + 58px)!important;
   width:auto!important;
   max-width:none!important;
   max-height:55dvh!important;
@@ -1332,7 +1332,7 @@ html[data-native-app="1"] .mobile-bottom-nav{
   grid-template-columns:repeat(5,minmax(0,1fr))!important;
   align-items:stretch!important;
   width:100%!important;
-  height:calc(var(--native-nav-h) + var(--native-safe-bottom))!important;
+  height:var(--native-nav-h)!important;
   min-height:0!important;
   padding:6px max(6px,var(--native-safe-right)) max(6px,var(--native-safe-bottom)) max(6px,var(--native-safe-left))!important;
   gap:3px!important;
@@ -1383,7 +1383,7 @@ html[data-native-app="1"] .mobile-more-sheet{
   position:fixed!important;
   left:8px!important;
   right:8px!important;
-  bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 8px)!important;
+  bottom:calc(var(--native-nav-h) + 8px)!important;
   z-index:1820!important;
   width:auto!important;
   max-height:min(66dvh,520px)!important;
@@ -1410,7 +1410,7 @@ html[data-native-app="1"] .mobile-more-item{
 html[data-native-app="1"] .ai-chat-panel{
   left:8px!important;
   right:8px!important;
-  bottom:calc(var(--native-nav-h) + var(--native-safe-bottom) + 8px)!important;
+  bottom:calc(var(--native-nav-h) + 8px)!important;
   width:auto!important;
   max-width:none!important;
   max-height:calc(100dvh - var(--native-safe-top) - var(--native-nav-h) - 24px)!important;
