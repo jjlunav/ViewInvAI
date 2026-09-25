@@ -10,7 +10,7 @@ En la parte superior de la aplicación aparece una cinta compacta con las accion
 
 La cinta se desplaza automáticamente de forma horizontal cuando hay muchos valores. Al colocar el ratón encima se pausa, y al pulsar una acción se abre su gráfico en TradingView. La sesión utilizada cambia automáticamente entre premarket, sesión regular y postmarket.
 
-## Potencial de entrada
+## Radar de entrada
 
 ### Orden del ranking
 
@@ -45,7 +45,7 @@ No existe un precio mínimo. Una acción puede aparecer independientemente de su
 
 El desplegable Configurar criterio muestra variación mínima y máxima, volumen relativo, volumen absoluto, ADX y RSI. Los campos numéricos están bloqueados por defecto; cada parámetro tiene su propio botón de candado para desbloquearlo individualmente antes de modificarlo. Los filtros activos son estrictos: si un dato necesario no está disponible, el valor no supera ese filtro.
 
-El porcentaje mostrado en cada candidato de Potencial de entrada es el mismo que utiliza la lógica de filtrado. En sesión regular se prioriza la cotización actual de EEUU cuando está disponible; premarket y postmarket usan sus métricas específicas. El volumen relativo de premarket/postmarket se calcula frente al volumen medio diario y no debe interpretarse como equivalente exacto al volumen relativo de la sesión regular.
+El porcentaje mostrado en cada candidato de Radar de entrada es el mismo que utiliza la lógica de filtrado. En sesión regular se prioriza la cotización actual de EEUU cuando está disponible; premarket y postmarket usan sus métricas específicas. El volumen relativo de premarket/postmarket se calcula frente al volumen medio diario y no debe interpretarse como equivalente exacto al volumen relativo de la sesión regular.
 
 La opción de tendencia exige precio ≥ EMA20 ≥ EMA50. La opción de liquidez excluye valores con menos de 10.000 títulos negociados o, cuando existe BID/ASK válido, con un spread superior al 8 %. El botón Guardar personalizado almacena el criterio en el navegador y lo recupera desde Personalizado guardado.
 
@@ -98,7 +98,7 @@ Permite explorar el universo de mercado con búsqueda por ticker o empresa. Pued
 - Catálogo completo.
 - Resto del mercado estadounidense.
 
-Cada resultado se abre pulsando sobre la propia fila y utiliza los mismos enlaces externos que Potencial de entrada.
+Cada resultado se abre pulsando sobre la propia fila y utiliza los mismos enlaces externos que Radar de entrada.
 
 ## Calendario y noticias
 
