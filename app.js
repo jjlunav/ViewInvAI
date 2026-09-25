@@ -2536,12 +2536,19 @@ function recommendationCatalystLegacy(s){
   if(isNews&&(t<now-72*3600000||t>now+2*3600000))continue;
   if(!isNews&&(t<now-6*3600000||t>now+14*86400000))continue;
   let text=((e.title||'')+' '+(e.fact||'')).toLowerCase(),impact=Math.max(0,Math.min(100,N(e.impactScore)??50)),d=0;
-  if(positive.test(text))d+=6+impact*.05;
-  if(negative.test(text))d-=7+impact*.06;
+  let fdaKind=String(e.fdaStatusKind||'');
+  if(fdaKind){
+   if(fdaKind==='approved')d+=10+impact*.05;
+   else if(fdaKind==='tentative_approval'||fdaKind==='approvable')d+=4+impact*.025;
+   else if(['complete_response','not_approvable','withdrawn'].includes(fdaKind))d-=10+impact*.055;
+  }else{
+   if(positive.test(text))d+=6+impact*.05;
+   if(negative.test(text))d-=7+impact*.06;
+  }
   if(e.type==='financing')d-=6;
-  if(e.type==='regulatory'&&!positive.test(text))d-=3;
+  if(e.type==='regulatory'&&!positive.test(text)&&!fdaKind)d-=3;
   if(/reverse split|delist|bankrupt|chapter 11/.test(text))d-=7;
-  if(e.type==='medical'&&positive.test(text))d+=4;
+  if(e.type==='medical'&&positive.test(text)&&!fdaKind)d+=4;
   if(!isNews&&d===0)d+=Math.min(2.5,impact/40);
   delta+=d;
   relevant.push({e,delta:d,impact,time:t});
