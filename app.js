@@ -1303,6 +1303,70 @@ async function ensureTradingViewTrSymbol(s){
   return'';
  }
 }
+const trChartHistoryCache=new Map();
+function trChartResolution(range){
+ return range==='1d'?60000:range==='1w'?300000:range==='1m'?900000:range==='3m'?3600000:range==='6m'?7200000:range==='1y'?14400000:3600000;
+}
+async function loadTrChartHistory(s,range='1d',force=false){
+ let isin=trIsin(s);if(!isin)throw Error('Sin ISIN de Trade Republic');
+ let key=isin+':'+range,cached=trChartHistoryCache.get(key);
+ if(!force&&cached&&Date.now()-cached.at<45000)return cached.data;
+ let url='/api/tr-history?isin='+encodeURIComponent(isin)+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+
+  '&range='+encodeURIComponent(range)+'&resolution='+encodeURIComponent(trChartResolution(range));
+ let response=await fetch(url,{cache:'no-store'});
+ if(!response.ok)throw Error('TR '+response.status);
+ let data=await response.json(),points=Array.isArray(data&&data.points)?data.points.filter(p=>N(p&&p.close)!==null):[];
+ if(points.length<2)throw Error('Histórico LSX insuficiente');
+ data.points=points;
+ trChartHistoryCache.set(key,{at:Date.now(),data});
+ return data;
+}
+function trChartTimeLabel(ts,range){
+ let d=new Date(Number(ts));if(!Number.isFinite(d.getTime()))return'';
+ if(range==='1d')return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+ return d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'});
+}
+function renderTrNativeChart(el,s,data,range='1d'){
+ let raw=Array.isArray(data&&data.points)?data.points:[],maxPoints=190;
+ let step=Math.max(1,Math.ceil(raw.length/maxPoints));
+ let pts=raw.filter((_,i)=>i%step===0||i===raw.length-1).map(p=>({
+  time:Number(p.time),open:N(p.open),high:N(p.high),low:N(p.low),close:N(p.close),volume:N(p.volume)
+ })).filter(p=>Number.isFinite(p.time)&&p.close!==null);
+ if(pts.length<2)throw Error('Histórico LSX insuficiente');
+
+ let W=1000,H=440,L=54,R=70,T=24,B=40,VH=70,G=14,priceBottom=H-B-VH-G,plotW=W-L-R;
+ let lo=Math.min(...pts.map(p=>p.low??p.close)),hi=Math.max(...pts.map(p=>p.high??p.close));
+ let pad=Math.max((hi-lo)*.06,Math.abs(hi)*.0015,.0001);lo-=pad;hi+=pad;
+ let span=Math.max(hi-lo,.0001),y=v=>T+(hi-v)/span*(priceBottom-T),x=i=>L+plotW*i/(pts.length-1);
+ let maxVol=Math.max(1,...pts.map(p=>p.volume||0)),cw=Math.max(2,Math.min(7,plotW/pts.length*.62));
+ let grid='',axis='',candles='',volumes='',times='';
+ for(let i=0;i<5;i++){
+  let yy=T+(priceBottom-T)*i/4,val=hi-span*i/4;
+  grid+='<line x1="'+L+'" y1="'+yy.toFixed(1)+'" x2="'+(W-R)+'" y2="'+yy.toFixed(1)+'" class="tr-native-grid"/>';
+  axis+='<text x="'+(W-R+7)+'" y="'+(yy+3).toFixed(1)+'" class="tr-native-axis">'+E(F(val,val<10?3:2))+'</text>';
+ }
+ pts.forEach((p,i)=>{
+  let xx=x(i),o=p.open??p.close,c=p.close,h=p.high??Math.max(o,c),l=p.low??Math.min(o,c),cls=c>=o?'up':'down';
+  let yo=y(o),yc=y(c),yh=y(h),yl=y(l),top=Math.min(yo,yc),bodyH=Math.max(1,Math.abs(yc-yo));
+  candles+='<line x1="'+xx.toFixed(1)+'" y1="'+yh.toFixed(1)+'" x2="'+xx.toFixed(1)+'" y2="'+yl.toFixed(1)+'" class="tr-native-wick '+cls+'"/>'+
+   '<rect x="'+(xx-cw/2).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+cw.toFixed(1)+'" height="'+bodyH.toFixed(1)+'" class="tr-native-candle '+cls+'"/>';
+  let vh=(p.volume||0)/maxVol*VH;
+  volumes+='<rect x="'+(xx-cw/2).toFixed(1)+'" y="'+(H-B-vh).toFixed(1)+'" width="'+cw.toFixed(1)+'" height="'+vh.toFixed(1)+'" class="tr-native-volume '+cls+'"/>';
+ });
+ for(let i=0;i<5;i++){
+  let idx=Math.min(pts.length-1,Math.round((pts.length-1)*i/4)),xx=x(idx);
+  times+='<text x="'+xx.toFixed(1)+'" y="'+(H-14)+'" text-anchor="'+(i===0?'start':i===4?'end':'middle')+'" class="tr-native-axis">'+E(trChartTimeLabel(pts[idx].time,range))+'</text>';
+ }
+ let first=pts[0].close,last=pts[pts.length-1].close,change=first?((last/first)-1)*100:null;
+ let ranges=['1d','1w','1m','3m','6m','1y'].map(r=>'<button type="button" data-tr-chart-range="'+r+'" class="'+(r===range?'active':'')+'">'+r.toUpperCase()+'</button>').join('');
+ el.dataset.chartMarket='tr';el.dataset.trRange=range;
+ el.innerHTML='<div class="tr-native-chart">'+
+  '<div class="tr-native-toolbar"><div><strong>'+E((s.trExchange||'LSX')+' · '+(s.trTicker||s.ticker||''))+'</strong><span>Trade Republic · histórico real</span></div><div class="tr-native-ranges">'+ranges+'</div></div>'+
+  '<div class="tr-native-summary"><strong>'+E(F(last,last<10?3:2))+' €</strong><span class="'+C(change)+'">'+PC(change)+'</span><small>'+pts.length+' puntos</small></div>'+
+  '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Gráfico '+E(s.trTicker||s.ticker||'LSX')+'">'+grid+axis+volumes+candles+times+'</svg>'+
+ '</div>';
+}
+
 function chartMarketName(s,useTr=false){
  if(useTr)return (s.trExchange||'LSX')+' · '+(s.trTicker||'TR');
  return (s.exchange||'EEUU')+' · '+(s.ticker||'');
@@ -1375,26 +1439,64 @@ async function loadMiniChart(el){
  el.dataset.loaded='1';
  let block=el.closest('.tv-chart-block'),s=stockByKey(el.dataset.stockKey);
  if(!block||!s)return;
- let usAvailable=!!tradingViewChartSymbol(s,false);
- let trAvailable=false;
- if(trTradingViewCandidate(s))trAvailable=!!(await ensureTradingViewTrSymbol(s));
+ let usAvailable=!!tradingViewChartSymbol(s,false),trAvailable=false,trData=null;
+ if(trTradable(s)&&trIsin(s)){
+  try{trData=await loadTrChartHistory(s,'1d');trAvailable=!!(trData&&trData.points&&trData.points.length>1)}catch(_){}
+ }
  let preferTr=block.dataset.chartPreferTr==='1';
  let market=preferTr&&trAvailable?'tr':usAvailable?'us':trAvailable?'tr':'';
- setChartMarketUi(block,s,usAvailable,trAvailable,market,preferTr);
+ setChartMarketUi(block,s,usAvailable,trAvailable,market);
  if(!market){
-  el.innerHTML='<div class="chart-placeholder">TradingView no ofrece un gráfico disponible para este valor.</div>';
+  el.innerHTML='<div class="chart-placeholder">No hay histórico LSX ni gráfico EEUU disponible para este valor.</div>';
   return;
  }
- renderTradingViewChart(el,market);
+ if(market==='tr'){
+  renderTrNativeChart(el,s,trData,'1d');
+ }else{
+  renderTradingViewChart(el,'us');
+  if(preferTr&&!trAvailable){
+   let note=document.createElement('div');note.className='chart-fallback-note';
+   note.textContent='LSX sin histórico disponible · mostrando '+chartMarketName(s,false);
+   block.appendChild(note);
+  }
+ }
 }
-function switchMiniChartMarket(button){
+async function switchMiniChartMarket(button){
  let block=button&&button.closest('.tv-chart-block');if(!block)return;
  let el=block.querySelector('.tv-advanced-chart'),s=stockByKey(block.dataset.stockKey);if(!el||!s)return;
  let market=button.dataset.chartMarket==='tr'?'tr':'us';
- if(market==='tr'&&!tradingViewChartSymbol(s,true))return;
- if(market==='us'&&!tradingViewChartSymbol(s,false))return;
- block.querySelectorAll('.chart-market-toggle').forEach(b=>b.classList.toggle('active',b===button));
- renderTradingViewChart(el,market);
+ block.querySelectorAll('.chart-fallback-note').forEach(n=>n.remove());
+ if(market==='tr'){
+  try{
+   let data=await loadTrChartHistory(s,el.dataset.trRange||'1d');
+   renderTrNativeChart(el,s,data,el.dataset.trRange||'1d');
+  }catch(_){
+   if(!tradingViewChartSymbol(s,false))return;
+   market='us';renderTradingViewChart(el,'us');
+   let note=document.createElement('div');note.className='chart-fallback-note';note.textContent='LSX no disponible · mostrando '+chartMarketName(s,false);block.appendChild(note);
+  }
+ }else{
+  if(!tradingViewChartSymbol(s,false))return;
+  renderTradingViewChart(el,'us');
+ }
+ block.querySelectorAll('.chart-market-toggle').forEach(b=>b.classList.toggle('active',b.dataset.chartMarket===market));
+}
+async function switchTrChartRange(button){
+ let block=button&&button.closest('.tv-chart-block'),el=block&&block.querySelector('.tv-advanced-chart'),s=block&&stockByKey(block.dataset.stockKey);
+ if(!el||!s)return;
+ let range=String(button.dataset.trChartRange||'1d');
+ try{
+  button.disabled=true;
+  let data=await loadTrChartHistory(s,range);
+  renderTrNativeChart(el,s,data,range);
+  setChartMarketUi(block,s,!!tradingViewChartSymbol(s,false),true,'tr');
+ }catch(_){
+  let note=block.querySelector('.chart-fallback-note');
+  if(!note){note=document.createElement('div');note.className='chart-fallback-note';block.appendChild(note)}
+  note.textContent='No hay histórico LSX disponible para '+range.toUpperCase()+'.';
+ }finally{
+  button.disabled=false;
+ }
 }
 
 function metric(label,main,sub,help,mainClass='',subClass=''){
@@ -3224,6 +3326,8 @@ document.addEventListener('click',e=>{
   setProfileVisualExpanded(visualToggle,visualToggle.getAttribute('aria-expanded')!=='true');
   return;
  }
+ let trRange=e.target.closest&&e.target.closest('[data-tr-chart-range]');
+ if(trRange){e.preventDefault();e.stopPropagation();switchTrChartRange(trRange);return}
  let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
  if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
  let profileJump=e.target.closest&&e.target.closest('[data-profile-jump]');
