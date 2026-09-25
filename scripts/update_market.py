@@ -38,6 +38,11 @@ SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "").strip()
 SEC_REFRESH_MINUTES = 30
 SEC_SYMBOL_LIMIT = 30
+CLINICALTRIALS_URL = "https://clinicaltrials.gov/api/v2/studies"
+CLINICAL_REFRESH_HOURS = 6
+CLINICAL_SYMBOL_LIMIT = 18
+CLINICAL_STUDY_LIMIT = 60
+CLINICAL_LOOKAHEAD_DAYS = 120
 
 COLS = [
     "name","description","type","exchange","currency","sector","industry","market_cap_basic","close","change","high","low","bid","ask","volume",
@@ -556,6 +561,249 @@ def fetch_sec_events(stocks, previous, now):
     if not out and previous_events:
         out = previous_events
     return out, now.isoformat(), True
+
+
+CLINICAL_GENERIC_TOKENS = {
+    "and", "bio", "biotech", "biotechnology", "bioscience", "biosciences",
+    "health", "medical", "medicine", "pharma", "pharmaceutical", "pharmaceuticals",
+    "science", "sciences", "technology", "technologies", "therapeutic", "therapeutics",
+}
+
+
+def clinical_company_tokens(value):
+    return [
+        token for token in norm(value).split()
+        if len(token) >= 4 and token not in CLINICAL_GENERIC_TOKENS
+    ]
+
+
+def clinical_company_query(value):
+    tokens = clinical_company_tokens(value)
+    return " ".join(tokens[:3]) or norm(value)
+
+
+def clinical_sponsor_matches(company_name, sponsor_name):
+    company = norm(company_name)
+    sponsor = norm(sponsor_name)
+    if not company or not sponsor:
+        return False
+    compact_company = company.replace(" ", "")
+    compact_sponsor = sponsor.replace(" ", "")
+    shorter = min(len(compact_company), len(compact_sponsor))
+    if shorter >= 6 and (
+        compact_company == compact_sponsor
+        or compact_company.startswith(compact_sponsor)
+        or compact_sponsor.startswith(compact_company)
+    ):
+        return True
+
+    company_tokens = clinical_company_tokens(company_name)
+    sponsor_tokens = clinical_company_tokens(sponsor_name)
+    if not company_tokens or not sponsor_tokens:
+        return False
+    common = set(company_tokens) & set(sponsor_tokens)
+    if any(len(token) >= 5 for token in common) and min(len(company_tokens), len(sponsor_tokens)) <= 2:
+        return True
+    union = set(company_tokens) | set(sponsor_tokens)
+    if union and len(common) / len(union) >= 0.5:
+        return True
+    return SequenceMatcher(None, " ".join(company_tokens), " ".join(sponsor_tokens)).ratio() >= 0.82
+
+
+def clinical_exact_date(value):
+    text = str(value or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None
+    try:
+        return dt.datetime.fromisoformat(text).replace(tzinfo=dt.timezone.utc)
+    except Exception:
+        return None
+
+
+def clinical_candidate(stock):
+    text = " ".join(str(stock.get(key) or "") for key in ("sector", "industry", "name")).lower()
+    return any(term in text for term in (
+        "biotechnology", "biotech", "biopharma", "biopharmaceutical",
+        "pharmaceutical", "therapeutics",
+    ))
+
+
+def carry_previous_clinical_events(previous, now):
+    start = now - dt.timedelta(days=1)
+    end = now + dt.timedelta(days=CLINICAL_LOOKAHEAD_DAYS)
+    rows = []
+    for event in previous.get("events") or []:
+        if event.get("sourceFamily") != "clinicaltrials":
+            continue
+        when = event_date(event.get("date"))
+        if when and start <= when <= end:
+            rows.append(event)
+    return rows
+
+
+def fetch_clinical_events(stocks, previous, now):
+    previous_events = carry_previous_clinical_events(previous, now)
+    prev_updated = event_date((previous.get("meta") or {}).get("clinicalUpdatedAt"))
+    if prev_updated and (now - prev_updated).total_seconds() < CLINICAL_REFRESH_HOURS * 3600:
+        return previous_events, prev_updated.isoformat(), False
+
+    candidates = [stock for stock in stocks if clinical_candidate(stock)]
+    candidates.sort(
+        key=lambda stock: (
+            1 if stock.get("tradeRepublicTradable") else 0,
+            mover_score(stock),
+        ),
+        reverse=True,
+    )
+    chosen = candidates[:CLINICAL_SYMBOL_LIMIT]
+    if not chosen:
+        return previous_events, now.isoformat(), True
+
+    start = now - dt.timedelta(days=1)
+    end = now + dt.timedelta(days=CLINICAL_LOOKAHEAD_DAYS)
+    headers = {
+        "User-Agent": "ViewInvAI/0.4 market-research",
+        "Accept": "application/json",
+    }
+
+    def phase_label(phases):
+        phases = [str(value or "").upper() for value in (phases or [])]
+        if "PHASE3" in phases:
+            return "Fase 3", 68
+        if "PHASE2" in phases:
+            return "Fase 2", 58
+        if "PHASE1" in phases or "EARLY_PHASE1" in phases:
+            return "Fase 1", 46
+        if "PHASE4" in phases:
+            return "Fase 4", 50
+        return "Ensayo clínico", 42
+
+    def fetch_one(stock):
+        query = clinical_company_query(stock.get("name"))
+        if not query:
+            return []
+        response = requests.get(
+            CLINICALTRIALS_URL,
+            params={
+                "query.lead": query,
+                "filter.overallStatus": "RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING|ENROLLING_BY_INVITATION",
+                "pageSize": CLINICAL_STUDY_LIMIT,
+                "format": "json",
+            },
+            headers=headers,
+            timeout=25,
+        )
+        response.raise_for_status()
+        payload = response.json() or {}
+        rows = []
+        for study in payload.get("studies") or []:
+            protocol = (study or {}).get("protocolSection") or {}
+            identification = protocol.get("identificationModule") or {}
+            sponsor_module = protocol.get("sponsorCollaboratorsModule") or {}
+            lead = sponsor_module.get("leadSponsor") or {}
+            lead_name = str(lead.get("name") or "").strip()
+            lead_class = str(lead.get("class") or "").strip().upper()
+            if lead_class and lead_class != "INDUSTRY":
+                continue
+            if not clinical_sponsor_matches(stock.get("name"), lead_name):
+                continue
+
+            status_module = protocol.get("statusModule") or {}
+            primary = status_module.get("primaryCompletionDateStruct") or {}
+            completion = status_module.get("completionDateStruct") or {}
+            date_struct = primary if primary.get("date") else completion
+            when = clinical_exact_date(date_struct.get("date"))
+            if not when or when < start or when > end:
+                continue
+
+            nct = str(identification.get("nctId") or "").strip()
+            if not nct:
+                continue
+            design = protocol.get("designModule") or {}
+            phase, impact = phase_label(design.get("phases") or [])
+            overall_status = str(status_module.get("overallStatus") or "").replace("_", " ").title()
+            date_type = str(date_struct.get("type") or "").upper()
+            estimated = date_type == "ESTIMATED"
+            date_kind = "finalización primaria" if primary.get("date") else "finalización del estudio"
+            brief_title = str(identification.get("briefTitle") or "").strip()
+            url = f"https://clinicaltrials.gov/study/{nct}"
+            date_word = "estimada" if estimated else "registrada"
+            title = f"ClinicalTrials.gov · {date_kind} · {phase}"
+            fact = (
+                f"{lead_name} figura como lead sponsor. ClinicalTrials.gov marca el "
+                f"{when.date().isoformat()} como fecha {date_word} de {date_kind}"
+                + (f" para {brief_title}." if brief_title else ".")
+            )
+            rows.append({
+                "id": f"clinicaltrials:{nct}:{date_kind.replace(' ', '-')}",
+                "eventKind": "scheduled",
+                "ticker": stock.get("ticker"),
+                "name": stock.get("name"),
+                "exchange": stock.get("exchange"),
+                "date": when.isoformat(),
+                "datePrecision": "day",
+                "type": "medical",
+                "title": title[:240],
+                "source": "ClinicalTrials.gov",
+                "sourceFamily": "clinicaltrials",
+                "url": url,
+                "sources": [{
+                    "name": "ClinicalTrials.gov",
+                    "url": url,
+                    "tier": 3,
+                    "kind": "registro oficial / fuente primaria",
+                    "family": "official",
+                    "independent": False,
+                }],
+                "sourceCount": 1,
+                "independentSourceCount": 0,
+                "corroborated": False,
+                "verification": "Registro oficial ClinicalTrials.gov · lead sponsor validado",
+                "impactScore": impact,
+                "tradeRepublicVerified": bool(stock.get("tradeRepublicVerified")),
+                "tradeRepublicTradable": bool(stock.get("tradeRepublicTradable")),
+                "fact": fact[:700],
+                "hypothesis": "La finalización del estudio puede aumentar la atención sobre el programa, pero no equivale a una fecha garantizada de publicación de resultados ni anticipa su dirección.",
+                "isin": stock.get("isin"),
+                "clinicalNct": nct,
+                "clinicalPhase": phase,
+                "clinicalStatus": overall_status,
+                "clinicalLeadSponsor": lead_name,
+                "clinicalDateType": date_type or None,
+            })
+        return rows
+
+    out = []
+    seen = set()
+    failed_tickers = set()
+    success_count = 0
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        future_map = {pool.submit(fetch_one, stock): stock for stock in chosen}
+        for future in as_completed(future_map):
+            stock = future_map[future]
+            try:
+                rows = future.result()
+                success_count += 1
+            except Exception as exc:
+                ticker = stock.get("ticker")
+                failed_tickers.add(ticker)
+                print("clinicaltrials warning", ticker, str(exc))
+                continue
+            for event in rows:
+                key = event.get("id")
+                if key and key not in seen:
+                    seen.add(key)
+                    out.append(event)
+
+    if success_count == 0:
+        return previous_events, (prev_updated.isoformat() if prev_updated else None), False
+
+    for event in previous_events:
+        if event.get("ticker") in failed_tickers and event.get("id") not in seen:
+            seen.add(event.get("id"))
+            out.append(event)
+    return out, now.isoformat(), True
+
 
 def cached_tr_metadata(previous):
     cache = {}
@@ -1115,6 +1363,9 @@ def main():
     sec_events, sec_updated_at, sec_refreshed = fetch_sec_events(stocks, previous, now)
     events.extend(sec_events)
 
+    clinical_events, clinical_updated_at, clinical_refreshed = fetch_clinical_events(stocks, previous, now)
+    events.extend(clinical_events)
+
     events.sort(key=lambda e: (
         -(e.get("impactScore") or 0),
         e.get("date") or "",
@@ -1143,7 +1394,10 @@ def main():
             "secEnabled": bool(SEC_USER_AGENT),
             "secMapRefreshed": sec_map_refreshed,
             "secRefreshed": sec_refreshed,
-            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
+            "clinicalEventCount": len(clinical_events),
+            "clinicalUpdatedAt": clinical_updated_at,
+            "clinicalRefreshed": clinical_refreshed,
+            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. ClinicalTrials.gov se consulta directamente para ensayos con lead sponsor validado y solo se publican fechas con día exacto; una fecha de finalización de estudio no se presenta como fecha garantizada de resultados. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
         },
         "stocks": stocks,
         "events": events,
@@ -1167,7 +1421,7 @@ def main():
     print("ENTRY FILTER DIAGNOSTICS:", " | ".join(f"{name}={len(rows)}" for name, rows in stages))
     sample = stages[-1][1][:12]
     print("ENTRY FILTER SAMPLE:", [(s.get("ticker"), s.get("changePct"), s.get("relVolume"), s.get("adx"), s.get("rsi"), s.get("volume")) for s in sample])
-    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news")
+    print(len(stocks), "stocks;", matched, "TR candidates;", same_isin, "same ISIN;", different_isin, "different ISIN;", unresolved_isin, "unresolved ISIN;", tr_ticker_count, "TR tickers;", tr_tradable_count, "TR tradable;", len(events), "events;", len(news_events), "news;", len(clinical_events), "clinical")
 
 if __name__ == "__main__":
     main()
