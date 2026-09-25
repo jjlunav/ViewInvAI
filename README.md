@@ -6,7 +6,7 @@ ViewInvAI es una plataforma de observación y análisis de acciones orientada a 
 
 ## Arquitectura de interfaz
 
-ViewInvAI comparte una única capa de datos y lógica entre web y Android, pero mantiene presentaciones independientes. `styles.css` contiene la base web, `web-mobile.css` el responsive del navegador y `mobile-app.css` / `mobile-app.js` la interfaz exclusiva de la APK. Los cambios visuales de Android no deben implementarse como parches responsive dentro del CSS web.
+ViewInvAI comparte datos y lógica entre web y Android, pero mantiene presentaciones independientes. El frontend común está dividido por responsabilidad (`app.js`, `stock-charts.js`, `stock-profile.js`, `navigation.js`) y arranca desde un único `bootstrap.js`. `styles.css` contiene la base web, `web-mobile.css` el responsive del navegador y `mobile-app.css` / `mobile-app.js` la interfaz exclusiva de la APK. Los cambios visuales de Android no deben implementarse como parches responsive dentro del CSS web.
 
 ## Cinta de movimiento EEUU
 
