@@ -406,6 +406,48 @@ export function calculateTransactionLedger(rows) {
   };
 }
 
+export function calculatePortfolioTransactionSummary(rows) {
+  const sorted = [...(rows || [])].sort((a,b) =>
+    String(a.executed_at || "").localeCompare(String(b.executed_at || "")) ||
+    String(a.created_at || "").localeCompare(String(b.created_at || "")) ||
+    String(a.id || "").localeCompare(String(b.id || ""))
+  );
+  const groups = new Map();
+  const currencies = {};
+  let buys = 0, sells = 0;
+
+  for (const row of sorted) {
+    const side = String(row.side || "").toUpperCase();
+    const currency = String(row.currency || "EUR").toUpperCase();
+    const qty = finiteNumber(row.quantity);
+    const price = finiteNumber(row.price);
+    const fees = Math.max(0, finiteNumber(row.fees) || 0);
+    if (!currencies[currency]) currencies[currency] = { buyGross: 0, sellGross: 0, fees: 0, realizedPnl: 0 };
+    if (qty !== null && qty > 0 && price !== null && price >= 0) {
+      if (side === "BUY") { currencies[currency].buyGross += qty * price; buys++; }
+      else if (side === "SELL") { currencies[currency].sellGross += qty * price; sells++; }
+      currencies[currency].fees += fees;
+    }
+    const key = String(row.stock_key || row.ticker || "");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+
+  for (const groupRows of groups.values()) {
+    const ledger = calculateTransactionLedger(groupRows);
+    const currency = String(ledger.currency || "EUR").toUpperCase();
+    if (!currencies[currency]) currencies[currency] = { buyGross: 0, sellGross: 0, fees: 0, realizedPnl: 0 };
+    currencies[currency].realizedPnl += ledger.realizedPnl || 0;
+  }
+
+  for (const value of Object.values(currencies)) {
+    for (const key of ["buyGross","sellGross","fees","realizedPnl"]) {
+      value[key] = Math.round((value[key] + Number.EPSILON) * 1000000) / 1000000;
+    }
+  }
+  return { total: sorted.length, buys, sells, stocks: groups.size, currencies };
+}
+
 async function ensureOpeningTransaction(env, userId, position) {
   if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return;
   await ensureTransactionsSchema(env);
@@ -627,12 +669,17 @@ async function handleTransactions(request, env, user, json, parts, url) {
       ).bind(user.id, limit).all();
     }
 
-    let summary = null;
+    let summary = null, portfolioSummary = null;
     if (portfolioId && stockKey) {
       const ascending = await transactionRows(env, user.id, portfolioId, stockKey);
       summary = calculateTransactionLedger(ascending);
+    } else if (portfolioId) {
+      const all = await env.DB.prepare(
+        "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? ORDER BY executed_at ASC,created_at ASC"
+      ).bind(user.id, portfolioId).all();
+      portfolioSummary = calculatePortfolioTransactionSummary(all.results || []);
     }
-    return json({ transactions: rows.results || [], summary });
+    return json({ transactions: rows.results || [], summary, portfolioSummary });
   }
 
   if (request.method === "POST" && !id) {
