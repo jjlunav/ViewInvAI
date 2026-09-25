@@ -1808,7 +1808,7 @@ function profileAiPanel(s,mode='us'){
   '<div class="profile-ai-live" data-ai-auto-key="'+E(stockKey(s))+'" data-ai-auto-prefer-tr="'+(mode==='tr'?'1':'0')+'"><span class="ai-live-dot"></span><span>IA avanzada preparada para analizar datos en vivo.</span></div>'+ 
   '<div class="profile-ai-actions">'+
    '<button type="button" class="btn profile-ai-chat" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(mode==='tr'?'1':'0')+'">✦ Preguntar a ViewInvAI</button>'+
-   '<button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(stockKey(s))+'" data-chatgpt-prefer-tr="'+(mode==='tr'?'1':'0')+'">ChatGPT ↗</button>'+
+   '<button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(stockKey(s))+'" data-chatgpt-prefer-tr="'+(mode==='tr'?'1':'0')+'">Preguntar a ChatGPT ↗</button>'+
   '</div>'+
  '</aside>';
 }
@@ -1865,7 +1865,6 @@ function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
  return '<div class="profile-visual-toggle-row">'+
    '<button type="button" class="profile-visual-toggle" aria-expanded="false" data-profile-visual-toggle data-profile-visual-key="'+E(key)+'" data-profile-visual-prefer-tr="'+(isTr?'1':'0')+'">▸ Mostrar gráfico y análisis IA</button>'+
-   '<button type="button" class="profile-external-chatgpt" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">ChatGPT ↗</button>'+
   '</div>'+
   '<div class="profile-visual-analysis is-collapsed" data-profile-visual-analysis>'+
    '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
@@ -2083,47 +2082,63 @@ async function askAiChat(question){
  finally{aiChatState.busy=false;if(input){input.disabled=false;input.focus()}if(send){send.disabled=false;send.textContent='Enviar'}}
 }
 function buildExternalChatGptPrompt(s,preferTr=false){
- let q=canonicalQuote(s,preferTr),mode=preferTr?'tr':'us';
- let a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false);
+ let q=canonicalQuote(s,preferTr);
  let events=stockEvents(s)
   .sort((x,y)=>new Date(y.date||0)-new Date(x.date||0))
-  .slice(0,6)
+  .slice(0,8)
   .map(e=>'- '+String(e.date||'').slice(0,10)+' · '+String(e.title||e.fact||'').slice(0,220))
   .join('\n');
  let bid=preferTr?N(s.trLiveBid):usLiveBid(s),ask=preferTr?N(s.trLiveAsk):usLiveAsk(s);
  let market=preferTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ let usSymbol=String((s.exchange||'')+':'+(s.ticker||''));
+ let selectedTicker=String(preferTr?(s.trTicker||s.ticker):(s.ticker||'—'));
+ let isin=String((preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—');
+ let nowIso=new Date().toISOString();
  let lines=[
-  'Analiza esta acción con enfoque de operativa de 1–2 días. Usa únicamente el contexto que te paso y, si necesitas información más reciente, indícalo claramente antes de asumir nada.',
+  'Quiero un análisis MUY completo, actualizado y contrastado de esta acción y de la empresa. Responde en español. Investiga activamente en la web y no te limites a los datos de referencia que incluyo abajo.',
   '',
-  'ACCIÓN',
+  'IDENTIFICACIÓN',
   '- Empresa: '+String(s.name||'—'),
-  '- Ticker: '+String(preferTr?(s.trTicker||s.ticker):(s.ticker||'—')),
-  '- Mercado: '+market,
-  '- Ticker EEUU: '+String((s.exchange||'')+':'+(s.ticker||'')),
-  '- ISIN: '+String((preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—'),
+  '- Ticker seleccionado: '+selectedTicker,
+  '- Mercado seleccionado: '+market,
+  '- Símbolo EEUU: '+usSymbol,
+  '- ISIN: '+isin,
+  '- Momento de la consulta: '+nowIso,
   '',
-  'MERCADO AHORA',
+  'REFERENCIA INICIAL DE MERCADO (úsala solo como punto de partida y contrástala con datos actuales)',
   '- Precio: '+String(q.price??'—')+' '+String(q.nativeCurrency||''),
   '- Variación: '+String(q.change??'—')+'%',
   '- BID / ASK: '+String(bid??'—')+' / '+String(ask??'—'),
   '- Volumen: '+String(SV(s,currentMarketSession())??s.volume??'—'),
   '- Volumen relativo: '+String(RV(s,currentMarketSession())??'—')+'x',
+  '- RSI 14 1D: '+String(s.rsi??'—'),
+  '- ADX 14 1D: '+String(s.adx??'—'),
+  '- EMA20 1D: '+String(s.ema20??'—'),
+  '- EMA50 1D: '+String(s.ema50??'—'),
   '',
-  'TÉCNICO 1D',
-  '- RSI 14: '+String(s.rsi??'—'),
-  '- ADX 14: '+String(s.adx??'—'),
-  '- EMA20: '+String(s.ema20??'—'),
-  '- EMA50: '+String(s.ema50??'—'),
+  'EVENTOS/NOTICIAS YA DETECTADOS PARA QUE LOS CONTRASTES',
+  events||'- Ninguno cargado como referencia.',
   '',
-  'VIEWINVAI',
-  '- Score: '+String(a.score??'—')+'/100',
-  '- Calidad de datos: '+String(quality.score??'—')+'/100',
-  '- Catalizador: '+String(a.catalyst&&a.catalyst.events&&a.catalyst.events[0]?EL(a.catalyst.events[0].e):'Sin catalizador direccional fuerte'),
+  'HAZ ESTA INVESTIGACIÓN:',
+  '1. Cotización actual: precio y hora exacta del dato, cierre anterior, premarket/regular/postmarket si aplica, y cotización LSX/Trade Republic si existe. Distingue datos en tiempo real, diferidos y de sesiones distintas. Incluye BID/ASK, spread, volumen, volumen relativo, liquidez, gaps, pausas o halts si existen.',
+  '2. Explica qué está moviendo HOY la cotización. Separa claramente hechos confirmados, hipótesis razonables y rumores. Si no hay catalizador claro, dilo.',
+  '3. Revisa noticias de las últimas 24–72 horas y también los últimos 7 días. Prioriza fuentes primarias: web de la empresa/Investor Relations, comunicados oficiales, SEC/EDGAR, reguladores, FDA/ClinicalTrials si aplica y bolsas oficiales. Después contrasta con Reuters, Bloomberg, CNBC, MarketWatch, Barron\'s u otras fuentes financieras reputadas.',
+  '4. Revisa filings y estructura de capital: 8-K, 10-Q, 10-K, 6-K, 20-F, S-1, S-3, 424B, ATM, offerings, warrants, convertibles, deuda, ampliaciones, splits/reverse splits, recompras, cambios de acciones en circulación, float, insider transactions y cualquier riesgo de dilución.',
+  '5. Analiza negocio y fundamentales: qué hace la empresa, segmentos, clientes, competencia, ingresos, crecimiento, márgenes, EBITDA/beneficio, cash, cash burn/runway, deuda, guidance, valoración, market cap y enterprise value. Señala deterioros o mejoras relevantes.',
+  '6. Analiza técnico y microestructura: tendencia en 1D y, si hay datos fiables, 1H/15m; soportes/resistencias, VWAP, medias, RSI, ADX, ATR/volatilidad, máximos/mínimos recientes, volumen por precio, short interest, days-to-cover, borrow fee, disponibilidad de acciones para corto y opciones/IV/flujo si aportan información real.',
+  '7. Busca sentimiento y conversación: Stocktwits, Reddit, X/Twitter, Seeking Alpha y otros foros o páginas bursátiles relevantes. Resume el consenso, cambios de sentimiento, temas repetidos y actividad anómala. Trata las redes como opinión/sentimiento, nunca como hecho confirmado.',
+  '8. Revisa próximos catalizadores con fecha y hora cuando sea posible: resultados, guidance, conferencias, investor days, FDA/PDUFA, ensayos clínicos, contratos, adjudicaciones, lanzamientos, votaciones societarias, vencimientos, desbloqueos, financiación, litigios, decisiones regulatorias o cualquier evento que pueda mover la acción.',
+  '9. Evalúa contexto sectorial, macroeconómico y geopolítico SOLO si afecta materialmente a esta empresa: tipos de interés, inflación, divisas, materias primas, regulación, aranceles, conflictos, elecciones o decisiones gubernamentales relevantes, cadena de suministro y movimientos de competidores.',
+  '10. Comprueba consenso de analistas, cambios recientes de precio objetivo/rating y estimaciones, pero distingue claramente opinión de analistas de hechos.',
   '',
-  'NOTICIAS / EVENTOS CARGADOS',
-  events||'- Sin eventos recientes cargados.',
-  '',
-  'Quiero que distingas hechos comprobados, interpretación e incertidumbre. Resume momentum, tendencia, volumen, liquidez, posibles catalizadores/riesgos y qué confirmaciones o invalidaciones vigilarías antes de una entrada. No inventes noticias, precios ni fechas.'
+  'FORMATO DE LA RESPUESTA:',
+  '- Empieza con una foto actual muy breve: precio/sesión, movimiento, volumen y catalizador principal.',
+  '- Después: hechos confirmados; noticias/catalizadores; técnico; fundamentales; capital/dilución; sentimiento; macro/sector; riesgos.',
+  '- Incluye enlaces y fecha/hora de las fuentes principales. No cuentes copias del mismo comunicado como confirmaciones independientes.',
+  '- Señala cualquier dato contradictorio entre fuentes y cuál consideras más fiable.',
+  '- Cierra con tres escenarios: alcista, neutral y bajista, indicando qué tendría que ocurrir para validar o invalidar cada uno.',
+  '- Termina con una conclusión clara del estado ACTUAL de la empresa y de la cotización, y qué vigilar en las próximas horas, 1–2 días y próximas semanas.',
+  '- No inventes precios, noticias, fechas ni rumores. Si un dato no puede verificarse, indícalo expresamente.'
  ];
  return lines.join('\n');
 }
