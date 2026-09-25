@@ -39,6 +39,25 @@ jobs:
         env:
           SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
         run: python scripts/update_market.py
+      - name: Publicar snapshot en R2 cuando esté configurado
+        env:
+          MARKET_PUBLISH_URL: ${{ vars.MARKET_PUBLISH_URL }}
+          MARKET_PUBLISH_TOKEN: ${{ secrets.MARKET_PUBLISH_TOKEN }}
+        run: |
+          if [ -z "${MARKET_PUBLISH_URL}" ] || [ -z "${MARKET_PUBLISH_TOKEN}" ]; then
+            echo "R2 publisher no configurado; se mantiene publicación Git como fallback."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            -X PUT "${MARKET_PUBLISH_URL}?kind=snapshot" \
+            -H "Authorization: Bearer ${MARKET_PUBLISH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @data/market.json
+          curl --fail-with-body --silent --show-error \
+            -X PUT "${MARKET_PUBLISH_URL}?kind=version" \
+            -H "Authorization: Bearer ${MARKET_PUBLISH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @data/market-version.json
       - name: Publicar datos actualizados
         env:
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
