@@ -4,6 +4,7 @@
   const VERSION='2026.09.25-v1';
 
   function n(value){
+    if(value===null||value===undefined||value==='')return null;
     const x=Number(value);
     return Number.isFinite(x)?x:null;
   }
