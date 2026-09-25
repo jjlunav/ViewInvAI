@@ -97,6 +97,16 @@ function syncDeviceSettingsUi(){
  else setWakeLockStatus('Pendiente de activar');
 }
 
+let pushBackendConfigured=null;
+async function refreshPushBackendStatus(){
+ try{
+  let response=await fetch('/api/backend/status',{cache:'no-store'});
+  if(!response.ok)return;
+  let data=await response.json();
+  pushBackendConfigured=data&&data.push===true;
+  renderPushSettingsStatus();
+ }catch(_){}
+}
 function renderPushSettingsStatus(detail=null){
  let status=$('#pushNotificationStatus'),button=$('#enablePushNotifications');
  if(!status||!button)return;
@@ -111,7 +121,10 @@ function renderPushSettingsStatus(detail=null){
   status.textContent='APK pendiente de actualizar';button.disabled=true;return;
  }
  if(detail&&detail.enabled===true){
-  status.textContent='Activo';status.classList.add('active');status.classList.remove('error');button.disabled=false;return;
+  status.textContent=pushBackendConfigured===false?'Dispositivo activo · servidor pendiente':'Activo';
+  status.classList.toggle('active',pushBackendConfigured!==false);
+  status.classList.toggle('error',pushBackendConfigured===false);
+  button.disabled=false;return;
  }
  status.classList.remove('active');
  if(detail&&detail.permission==='denied'){
@@ -121,7 +134,8 @@ function renderPushSettingsStatus(detail=null){
   status.textContent='No disponible';status.classList.add('error');button.disabled=false;return;
  }
  status.classList.remove('error');
- status.textContent=auth.getUser?.()?'Preparado para activar':'Inicia sesión';
+ if(auth.getUser?.()&&pushBackendConfigured===false)status.textContent='Servidor push pendiente';
+ else status.textContent=auth.getUser?.()?'Preparado para activar':'Inicia sesión';
  button.disabled=!auth.getUser?.();
 }
 async function retryPushRegistration(){
@@ -3537,7 +3551,8 @@ window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
 });
 renderAnalysisSettings(null);
 renderPushSettingsStatus();
-setTimeout(()=>renderPushSettingsStatus(),700);
+refreshPushBackendStatus();
+setTimeout(()=>{renderPushSettingsStatus();refreshPushBackendStatus()},700);
 lockAllCriteria();
 initLeadersDock();
 initTrLive();
