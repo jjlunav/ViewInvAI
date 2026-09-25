@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import re
 import time
 import unicodedata
@@ -32,6 +33,11 @@ NEWS_DAYS = 7
 NEWS_PER_SYMBOL = 10
 TR_METADATA_LIMIT = 2200  # enough to complete unresolved TR/LSX symbols in one pass
 TR_METADATA_BATCH = 75
+SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "").strip()
+SEC_REFRESH_MINUTES = 30
+SEC_SYMBOL_LIMIT = 30
 
 COLS = [
     "name","description","type","exchange","currency","sector","industry","market_cap_basic","close","change","high","low","bid","ask","volume",
@@ -339,6 +345,217 @@ def verify_us_isins(stocks, previous):
         else:
             stock["tradeRepublicVerified"] = False
     return same, different, unresolved
+
+def attach_sec_ciks(stocks, previous):
+    """Attach SEC CIKs from the official ticker map when a declared user-agent is configured.
+
+    SEC asks automated clients to identify themselves. If SEC_USER_AGENT is not
+    configured, the updater simply preserves previously resolved CIKs and makes
+    no SEC request.
+    """
+    prev_by_symbol = {
+        row.get("tvSymbol"): row
+        for row in previous.get("stocks") or []
+        if row.get("tvSymbol")
+    }
+    for stock in stocks:
+        prev = prev_by_symbol.get(stock.get("tvSymbol")) or {}
+        if prev.get("secCik"):
+            stock["secCik"] = str(prev["secCik"]).zfill(10)
+        if prev.get("secName"):
+            stock["secName"] = prev["secName"]
+
+    if not SEC_USER_AGENT:
+        return sum(1 for stock in stocks if stock.get("secCik")), False
+
+    headers = {
+        "User-Agent": SEC_USER_AGENT,
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "application/json",
+    }
+    try:
+        response = requests.get(SEC_TICKERS_URL, headers=headers, timeout=25)
+        response.raise_for_status()
+        payload = response.json() or {}
+        fields = payload.get("fields") or []
+        data = payload.get("data") or []
+        if not fields or not data:
+            return sum(1 for stock in stocks if stock.get("secCik")), False
+        idx = {name: i for i, name in enumerate(fields)}
+        ticker_i = idx.get("ticker")
+        cik_i = idx.get("cik")
+        name_i = idx.get("name")
+        if ticker_i is None or cik_i is None:
+            return sum(1 for stock in stocks if stock.get("secCik")), False
+
+        by_ticker = {}
+        for row in data:
+            try:
+                ticker = str(row[ticker_i] or "").strip().upper()
+                cik = str(int(row[cik_i])).zfill(10)
+            except Exception:
+                continue
+            if not ticker:
+                continue
+            by_ticker.setdefault(ticker, []).append({
+                "cik": cik,
+                "name": str(row[name_i] or "").strip() if name_i is not None else "",
+            })
+
+        for stock in stocks:
+            ticker = str(stock.get("ticker") or "").strip().upper()
+            matches = by_ticker.get(ticker) or []
+            if len(matches) == 1:
+                stock["secCik"] = matches[0]["cik"]
+                if matches[0]["name"]:
+                    stock["secName"] = matches[0]["name"]
+        return sum(1 for stock in stocks if stock.get("secCik")), True
+    except Exception as exc:
+        print("sec ticker map warning", str(exc))
+        return sum(1 for stock in stocks if stock.get("secCik")), False
+
+
+def sec_event_type(form, description=""):
+    text = (str(form or "") + " " + str(description or "")).lower()
+    if any(x in text for x in ("s-1", "s-3", "424b", "prospectus")):
+        return "financing"
+    if any(x in text for x in ("10-k", "10-q", "20-f", "40-f")):
+        return "earnings"
+    if "8-k" in text or "6-k" in text:
+        return "corporate"
+    return "regulatory"
+
+
+def carry_previous_sec_events(previous, now):
+    cutoff = now - dt.timedelta(days=NEWS_DAYS)
+    rows = []
+    for event in previous.get("events") or []:
+        if event.get("sourceFamily") != "sec":
+            continue
+        when = event_date(event.get("date"))
+        if when and cutoff <= when <= now + dt.timedelta(hours=1):
+            rows.append(event)
+    return rows
+
+
+def fetch_sec_events(stocks, previous, now):
+    previous_events = carry_previous_sec_events(previous, now)
+    if not SEC_USER_AGENT:
+        return previous_events, None, False
+
+    prev_updated = event_date((previous.get("meta") or {}).get("secUpdatedAt"))
+    if prev_updated and (now - prev_updated).total_seconds() < SEC_REFRESH_MINUTES * 60:
+        return previous_events, prev_updated.isoformat(), False
+
+    headers = {
+        "User-Agent": SEC_USER_AGENT,
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "application/json",
+    }
+    chosen = [
+        stock for stock in sorted(stocks, key=mover_score, reverse=True)
+        if stock.get("secCik")
+    ][:SEC_SYMBOL_LIMIT]
+    if not chosen:
+        return previous_events, now.isoformat(), True
+
+    cutoff = now - dt.timedelta(days=NEWS_DAYS)
+    out = []
+    seen = set()
+
+    def fetch_one(stock):
+        cik = str(stock.get("secCik") or "").zfill(10)
+        response = requests.get(SEC_SUBMISSIONS_URL.format(cik=cik), headers=headers, timeout=20)
+        response.raise_for_status()
+        payload = response.json() or {}
+        recent = ((payload.get("filings") or {}).get("recent") or {})
+        forms = recent.get("form") or []
+        accessions = recent.get("accessionNumber") or []
+        filing_dates = recent.get("filingDate") or []
+        primary_docs = recent.get("primaryDocument") or []
+        descriptions = recent.get("primaryDocDescription") or []
+        rows = []
+        count = min(len(forms), len(accessions), len(filing_dates))
+        for i in range(count):
+            form = str(forms[i] or "").strip().upper()
+            if not (
+                form in {"8-K", "8-K/A", "10-Q", "10-Q/A", "10-K", "10-K/A", "6-K", "6-K/A", "20-F", "40-F", "DEF 14A"}
+                or form.startswith("S-1")
+                or form.startswith("S-3")
+                or form.startswith("424B")
+            ):
+                continue
+            try:
+                filed = dt.datetime.fromisoformat(str(filing_dates[i])).replace(tzinfo=dt.timezone.utc)
+            except Exception:
+                continue
+            if filed < cutoff or filed > now + dt.timedelta(days=1):
+                continue
+            accession = str(accessions[i] or "")
+            clean_accession = accession.replace("-", "")
+            document = str(primary_docs[i] or "") if i < len(primary_docs) else ""
+            description = str(descriptions[i] or "") if i < len(descriptions) else ""
+            cik_int = str(int(cik))
+            url = (
+                f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{clean_accession}/{document}"
+                if clean_accession and document else
+                f"https://www.sec.gov/edgar/browse/?CIK={cik_int}"
+            )
+            event_type = sec_event_type(form, description)
+            title = f"SEC {form}" + (f" · {description}" if description else "")
+            rows.append({
+                "id": f"sec:{cik}:{accession}",
+                "eventKind": "news",
+                "ticker": stock.get("ticker"),
+                "name": stock.get("name"),
+                "exchange": stock.get("exchange"),
+                "date": filed.isoformat(),
+                "type": event_type,
+                "title": title[:240],
+                "source": "SEC EDGAR",
+                "sourceFamily": "sec",
+                "url": url,
+                "sources": [{
+                    "name": "SEC EDGAR",
+                    "url": url,
+                    "tier": 3,
+                    "kind": "fuente oficial / primaria",
+                    "family": "official",
+                    "independent": False,
+                }],
+                "sourceCount": 1,
+                "independentSourceCount": 0,
+                "corroborated": False,
+                "verification": "Documento oficial SEC / EDGAR",
+                "impactScore": 86 if event_type in {"financing", "earnings"} else 78,
+                "tradeRepublicVerified": bool(stock.get("tradeRepublicVerified")),
+                "tradeRepublicTradable": bool(stock.get("tradeRepublicTradable")),
+                "fact": f"Presentación oficial {form} registrada en SEC/EDGAR.",
+                "hypothesis": hypothesis_for(event_type),
+                "isin": stock.get("isin"),
+                "secCik": cik,
+                "secForm": form,
+                "accessionNumber": accession,
+            })
+        return rows
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        future_map = {pool.submit(fetch_one, stock): stock for stock in chosen}
+        for future in as_completed(future_map):
+            try:
+                rows = future.result()
+            except Exception as exc:
+                print("sec submissions warning", future_map[future].get("ticker"), str(exc))
+                continue
+            for event in rows:
+                key = event.get("id")
+                if key and key not in seen:
+                    seen.add(key)
+                    out.append(event)
+
+    if not out and previous_events:
+        out = previous_events
+    return out, now.isoformat(), True
 
 def cached_tr_metadata(previous):
     cache = {}
@@ -836,6 +1053,7 @@ def main():
             matched += 1
 
     same_isin, different_isin, unresolved_isin = verify_us_isins(stocks, previous)
+    sec_cik_count, sec_map_refreshed = attach_sec_ciks(stocks, previous)
 
     tr_meta = fetch_tr_metadata(stocks, previous)
     tr_ticker_count = 0
@@ -894,6 +1112,9 @@ def main():
     news_events = build_news_events(stocks, now)
     events.extend(news_events)
 
+    sec_events, sec_updated_at, sec_refreshed = fetch_sec_events(stocks, previous, now)
+    events.extend(sec_events)
+
     events.sort(key=lambda e: (
         -(e.get("impactScore") or 0),
         e.get("date") or "",
@@ -916,7 +1137,13 @@ def main():
             "unresolvedIsinCount": unresolved_isin,
             "trUniverseSource": tr_source,
             "newsCount": len(news_events),
-            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
+            "secCikCount": sec_cik_count,
+            "secEventCount": len(sec_events),
+            "secUpdatedAt": sec_updated_at,
+            "secEnabled": bool(SEC_USER_AGENT),
+            "secMapRefreshed": sec_map_refreshed,
+            "secRefreshed": sec_refreshed,
+            "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
         },
         "stocks": stocks,
         "events": events,
