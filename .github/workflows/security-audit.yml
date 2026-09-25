@@ -12,6 +12,7 @@ on:
       - "catalog.js"
       - "heatmap.js"
       - "events.js"
+      - "recommendation.js"
       - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
