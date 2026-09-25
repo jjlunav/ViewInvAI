@@ -41,20 +41,22 @@ jobs:
         env:
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$(git status --porcelain -- data/market.json)" ]; then exit 0; fi
+          if [ -z "$(git status --porcelain -- data/market.json data/market-version.json)" ]; then exit 0; fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           cp data/market.json /tmp/market.json
+          cp data/market-version.json /tmp/market-version.json
           git fetch origin main
           git reset --hard origin/main
           cp /tmp/market.json data/market.json
+          cp /tmp/market-version.json data/market-version.json
 
-          if git diff --quiet -- data/market.json; then exit 0; fi
+          if git diff --quiet -- data/market.json data/market-version.json; then exit 0; fi
 
-          git add data/market.json
+          git add data/market.json data/market-version.json
           git commit -m "Update market data"
 
           for attempt in 1 2 3; do
@@ -65,5 +67,5 @@ jobs:
             sleep 2
           done
 
-          echo "No se pudo publicar data/market.json tras 3 intentos."
+          echo "No se pudieron publicar los datos de mercado tras 3 intentos."
           exit 1
