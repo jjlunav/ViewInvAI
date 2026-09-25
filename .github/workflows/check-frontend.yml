@@ -293,47 +293,45 @@ jobs:
                   document.querySelector('#aiChatClose')?.click();
 
                   toggle.click();
-                  setTimeout(async () => {
+                  setTimeout(() => {
                     if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
                       fail('chart/AI section did not expand');
                       return;
                     }
-                    try {
-                      const chartEl = root.querySelector('.tv-advanced-chart');
-                      if (!root.querySelector('.tr-native-chart')) {
-                        const stock = chartEl && stockByKey(chartEl.dataset.stockKey);
-                        if (!chartEl || !stock) throw new Error('chart target missing');
-                        const data = await loadTrChartHistory(stock, '1d', true);
-                        renderTrNativeChart(chartEl, stock, data, '1d');
-                      }
-                    } catch (error) {
-                      fail('LSX native chart runtime failed: ' + String(error && error.message || error));
-                      return;
-                    }
-                    if (!root.querySelector('.tr-native-chart')) {
-                      fail('LSX native chart did not render from Trade Republic history');
-                      return;
-                    }
-                    document.body.dataset.smokeTrChart = 'ok';
 
-                    applyTheme('light', true);
-                    setTimeout(() => {
-                      if (!root.querySelector('.tr-native-chart')) {
-                        fail('theme change replaced the native LSX chart');
+                    const waitForNativeTrChart = (deadline = Date.now() + 2500) => {
+                      if (root.querySelector('.tr-native-chart')) {
+                        document.body.dataset.smokeTrChart = 'ok';
+
+                        applyTheme('light', true);
+                        setTimeout(() => {
+                          if (!root.querySelector('.tr-native-chart')) {
+                            fail('theme change replaced the native LSX chart');
+                            return;
+                          }
+                          applyTheme('dark', true);
+                          toggle.click();
+                          setTimeout(() => {
+                            if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
+                              fail('chart/AI section did not collapse again');
+                              return;
+                            }
+                            document.body.dataset.smokeProfile = 'ok';
+                            document.body.dataset.smokeProfileCompact = 'ok';
+                          }, 100);
+                        }, 180);
                         return;
                       }
-                      applyTheme('dark', true);
-                      toggle.click();
-                      setTimeout(() => {
-                        if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
-                          fail('chart/AI section did not collapse again');
-                          return;
-                        }
-                        document.body.dataset.smokeProfile = 'ok';
-                        document.body.dataset.smokeProfileCompact = 'ok';
-                      }, 100);
-                    }, 180);
-                  }, 140);
+
+                      if (Date.now() < deadline) {
+                        setTimeout(() => waitForNativeTrChart(deadline), 50);
+                        return;
+                      }
+                      fail('LSX native chart did not render automatically from Trade Republic history');
+                    };
+
+                    waitForNativeTrChart();
+                  }, 50);
                 }, 120);
                 return;
               }
