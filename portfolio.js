@@ -656,14 +656,34 @@ function transactionPosition(positionId) {
   return state.positions.find(p => String(p.id) === String(positionId)) || null;
 }
 
+function transactionCurrencyAmounts(map, scalar, fallbackCurrency, signed = false) {
+  const entries = map && typeof map === "object"
+    ? Object.entries(map).map(([key, value]) => [String(key || fallbackCurrency || "EUR").toUpperCase(), num(value)]).filter(([, value]) => value !== null)
+    : [];
+  if (entries.length) {
+    return entries.map(([key, value]) =>
+      '<span class="' + (signed ? (value < 0 ? 'pnl-down' : 'pnl-up') : '') + '">' +
+        (signed && value > 0 ? '+' : '') + formatMoney(value, key) +
+      '</span>'
+    ).join('<span class="transaction-currency-sep"> · </span>');
+  }
+  const value = num(scalar);
+  return value === null ? '—' :
+    '<span class="' + (signed ? (value < 0 ? 'pnl-down' : 'pnl-up') : '') + '">' +
+      (signed && value > 0 ? '+' : '') + formatMoney(value, fallbackCurrency) +
+    '</span>';
+}
+
 function transactionSummaryHtml(summary, currency) {
   if (!summary) return "";
-  const qty = num(summary.quantity), avg = num(summary.avgPrice), realized = num(summary.realizedPnl), fees = num(summary.totalFees);
+  const qty = num(summary.quantity), avg = num(summary.avgPrice);
+  const realizedHtml = transactionCurrencyAmounts(summary.realizedByCurrency, summary.realizedPnl, currency, true);
+  const feesHtml = transactionCurrencyAmounts(summary.feesByCurrency, summary.totalFees, currency, false);
   return '<div class="transaction-summary">' +
     '<div><small>POSICIÓN</small><strong>' + (qty === null ? '—' : formatNumber(qty, 4) + ' uds.') + '</strong></div>' +
     '<div><small>MEDIA</small><strong>' + formatMoney(avg, currency) + '</strong></div>' +
-    '<div><small>P&L REALIZADO</small><strong class="' + (realized !== null && realized < 0 ? 'pnl-down' : 'pnl-up') + '">' + (realized !== null && realized > 0 ? '+' : '') + formatMoney(realized, currency) + '</strong></div>' +
-    '<div><small>COMISIONES</small><strong>' + formatMoney(fees, currency) + '</strong></div>' +
+    '<div><small>P&L REALIZADO</small><strong class="transaction-currency-values">' + realizedHtml + '</strong></div>' +
+    '<div><small>COMISIONES</small><strong class="transaction-currency-values">' + feesHtml + '</strong></div>' +
   '</div>';
 }
 
