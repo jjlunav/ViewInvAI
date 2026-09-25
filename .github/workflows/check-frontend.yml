@@ -228,58 +228,60 @@ jobs:
                   return;
                 }
                 chatgpt.click();
-                if (!String(document.documentElement.dataset.externalOpen || '').includes('https://chatgpt.com/?q=')) {
-                  fail('ChatGPT prompt URL was not prepared');
-                  return;
-                }
-                document.body.dataset.smokeChatgpt = 'ok';
-
-                const originalAuth = window.ViewInvAIAuth;
-                window.ViewInvAIAuth = Object.assign({}, originalAuth || {}, {getUser:()=>({uid:'smoke'}),signIn:()=>{}});
-                const internalAi = root.querySelector('[data-ai-chat-stock]');
-                if (!internalAi) {
-                  fail('internal ViewInvAI button missing');
-                  return;
-                }
-                internalAi.click();
-                const aiPanel = document.querySelector('#aiChatPanel');
-                if (!aiPanel || !aiPanel.classList.contains('open')) {
-                  fail('internal ViewInvAI chat did not open');
-                  return;
-                }
-                document.body.dataset.smokeAiChat = 'ok';
-                document.querySelector('#aiChatClose')?.click();
-
-                toggle.click();
                 setTimeout(() => {
-                  if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
-                    fail('chart/AI section did not expand');
+                  if (!String(document.documentElement.dataset.externalOpen || '').includes('https://chatgpt.com/?q=')) {
+                    fail('ChatGPT prompt URL was not prepared');
                     return;
                   }
-                  if (!root.querySelector('.tr-native-chart')) {
-                    fail('LSX native chart did not render from Trade Republic history');
-                    return;
-                  }
-                  document.body.dataset.smokeTrChart = 'ok';
+                  document.body.dataset.smokeChatgpt = 'ok';
 
-                  applyTheme('light', true);
+                  const originalAuth = window.ViewInvAIAuth;
+                  window.ViewInvAIAuth = Object.assign({}, originalAuth || {}, {getUser:()=>({uid:'smoke'}),signIn:()=>{}});
+                  const internalAi = root.querySelector('[data-ai-chat-stock]');
+                  if (!internalAi) {
+                    fail('internal ViewInvAI button missing');
+                    return;
+                  }
+                  internalAi.click();
+                  const aiPanel = document.querySelector('#aiChatPanel');
+                  if (!aiPanel || !aiPanel.classList.contains('open')) {
+                    fail('internal ViewInvAI chat did not open');
+                    return;
+                  }
+                  document.body.dataset.smokeAiChat = 'ok';
+                  document.querySelector('#aiChatClose')?.click();
+
+                  toggle.click();
                   setTimeout(() => {
-                    if (!root.querySelector('.tr-native-chart')) {
-                      fail('theme change replaced the native LSX chart');
+                    if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
+                      fail('chart/AI section did not expand');
                       return;
                     }
-                    applyTheme('dark', true);
-                    toggle.click();
+                    if (!root.querySelector('.tr-native-chart')) {
+                      fail('LSX native chart did not render from Trade Republic history');
+                      return;
+                    }
+                    document.body.dataset.smokeTrChart = 'ok';
+
+                    applyTheme('light', true);
                     setTimeout(() => {
-                      if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
-                        fail('chart/AI section did not collapse again');
+                      if (!root.querySelector('.tr-native-chart')) {
+                        fail('theme change replaced the native LSX chart');
                         return;
                       }
-                      document.body.dataset.smokeProfile = 'ok';
-                      document.body.dataset.smokeProfileCompact = 'ok';
-                    }, 80);
-                  }, 120);
-                }, 220);
+                      applyTheme('dark', true);
+                      toggle.click();
+                      setTimeout(() => {
+                        if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
+                          fail('chart/AI section did not collapse again');
+                          return;
+                        }
+                        document.body.dataset.smokeProfile = 'ok';
+                        document.body.dataset.smokeProfileCompact = 'ok';
+                      }, 80);
+                    }, 120);
+                  }, 220);
+                }, 120);
                 return;
               }
               if (Date.now() - started < 7500) {
