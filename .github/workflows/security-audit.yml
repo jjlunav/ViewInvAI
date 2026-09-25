@@ -11,6 +11,7 @@ on:
       - "stock-interactions.js"
       - "catalog.js"
       - "heatmap.js"
+      - "events.js"
       - "bootstrap.js"
       - "mobile-app.js"
       - "mobile-app.css"
