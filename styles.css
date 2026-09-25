@@ -7721,3 +7721,23 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
   padding:6px 8px!important
  }
 }
+
+
+/* Portfolio remove action - 2026-09-25 */
+.profile-add-portfolio.is-remove{
+ border-color:rgba(224,104,112,.48)!important;
+ background:rgba(74,24,30,.32)!important;
+ color:#ff9aa1!important
+}
+.profile-add-portfolio.is-remove:hover{
+ border-color:#d96d76!important;
+ background:rgba(96,30,37,.48)!important;
+ color:#ffd6d9!important
+}
+.portfolio-remove-choice.selected{
+ border-color:rgba(224,104,112,.38)!important
+}
+.portfolio-remove-choice.selected>span,
+.portfolio-remove-choice.selected>small{
+ color:#ff9aa1!important
+}
