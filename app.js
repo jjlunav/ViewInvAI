@@ -1903,6 +1903,18 @@ function profilePortfolioActionHtml(s,isTr=false){
  let label=inPortfolio?'★ Gestionar cartera':'＋ Añadir a cartera';
  return '<button type="button" class="btn small profile-add-portfolio'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">'+label+'</button>';
 }
+function refreshProfilePortfolioActions(s){
+ if(!s)return;
+ let key=stockKey(s);
+ document.querySelectorAll('[data-add-portfolio-stock]').forEach(button=>{
+  if(button.dataset.addPortfolioStock!==key)return;
+  let isTr=button.dataset.addPortfolioPreferTr==='1';
+  let template=document.createElement('template');
+  template.innerHTML=profilePortfolioActionHtml(s,isTr).trim();
+  let next=template.content.firstElementChild;
+  if(next)button.replaceWith(next);
+ });
+}
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -3335,10 +3347,8 @@ window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.de
 window.addEventListener('viewinvai:account-ready',e=>{renderAnalysisSettings(e.detail&&e.detail.settings||null);renderPushSettingsStatus()});
 window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null);renderPushSettingsStatus()});
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
- if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();
- else if(['catalog','catalogUS'].includes(state.currentView)&&state.profileKey){
-  let s=stockByKey(state.profileKey);if(s)renderProfileView(s,state.currentView);
- }
+ let s=state.profileKey?stockByKey(state.profileKey):null;
+ if(s)refreshProfilePortfolioActions(s);
 });
 renderAnalysisSettings(null);
 renderPushSettingsStatus();
