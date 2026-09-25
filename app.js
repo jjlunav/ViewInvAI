@@ -1307,6 +1307,10 @@ function fromUI(){
 function lockCriterion(id,locked=true){let input=$('#'+id),btn=$('.field-lock[data-target="'+id+'"]');if(!input||!btn)return;input.readOnly=locked;btn.classList.toggle('unlocked',!locked);btn.textContent=locked?'🔒':'🔓';btn.title=locked?'Desbloquear este parámetro':'Bloquear este parámetro';btn.setAttribute('aria-label',locked?'Desbloquear '+id:'Bloquear '+id)}
 function lockAllCriteria(){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(id=>lockCriterion(id,true))}
 function toUI(x){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(k=>$('#'+k).value=x[k]);$('#requireTrend').checked=!!x.trend;$('#excludeIlliquid').checked=!!x.illiquid}
+function entryUniverseMatch(s){
+ if(state.entryMarket==='tr')return trTradable(s);
+ return market(s,'us')&&!trTradable(s);
+}
 function entrySessionForPreset(){
  if(state.preset==='postmarketExplosion')return'postmarket';
  if(state.preset==='premarketExplosion')return'premarket';
