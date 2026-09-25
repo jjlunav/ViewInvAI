@@ -465,3 +465,35 @@ jobs:
           fi
 
           echo "Smoke test móvil, filtros y navegación: OK"
+
+          for spec in "360,800" "412,915"; do
+            W="${spec%,*}"
+            H="${spec#*,}"
+            PROFILE="/tmp/viewinvai-mobile-profile-${W}"
+            DOM="/tmp/viewinvai-mobile-dom-${W}.html"
+            LOG="/tmp/viewinvai-mobile-chrome-${W}.log"
+            rm -rf "$PROFILE"
+
+            "$CHROME" \
+              --headless=new \
+              --no-sandbox \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --window-size="$W,$H" \
+              --force-device-scale-factor=1 \
+              --user-data-dir="$PROFILE" \
+              --virtual-time-budget=10000 \
+              --dump-dom \
+              http://127.0.0.1:4174/ \
+              > "$DOM" 2> "$LOG"
+
+            if ! grep -q 'data-mobile-layout="ok"' "$DOM"; then
+              echo "::error::Fallo responsive en viewport ${W}x${H}"
+              grep -o 'data-mobile-smoke-error="[^"]*"' "$DOM" || true
+              grep -o 'data-runtime-error="[^"]*"' "$DOM" || true
+              tail -100 "$LOG" || true
+              exit 1
+            fi
+          done
+
+          echo "Barrido responsive 360/390/412 px: OK"
