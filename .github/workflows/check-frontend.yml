@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "market-session.js"
       - "score-engine.js"
       - "alerts.js"
       - "auth.js"
@@ -35,8 +36,22 @@ jobs:
           persist-credentials: false
       - name: Validar sintaxis JavaScript
         run: |
+          node --check market-session.js
           node --check score-engine.js
           node --check app.js
+          node - <<'NODE'
+          require('./market-session.js');
+          const m=globalThis.ViewInvAIMarketSession;
+          if(!m)throw new Error('Market session module did not initialize');
+          const parts=(year,month,day,weekday,hour,minute)=>({year:String(year),month:String(month).padStart(2,'0'),day:String(day).padStart(2,'0'),weekday,hour:String(hour).padStart(2,'0'),minute:String(minute).padStart(2,'0')});
+          if(m.usSession(parts(2026,12,25,'Fri',10,0))!=='previous')throw new Error('US Christmas must be closed');
+          if(m.usSession(parts(2026,11,27,'Fri',12,30))!=='regular')throw new Error('US Black Friday must still be regular before 13:00 ET');
+          if(m.usSession(parts(2026,11,27,'Fri',13,30))!=='postmarket')throw new Error('US Black Friday early close regression');
+          if(m.lsxOpen(parts(2026,12,24,'Thu',10,0)))throw new Error('LSX 24 Dec 2026 must be closed');
+          if(!m.lsxOpen(parts(2026,12,30,'Wed',13,30)))throw new Error('LSX 30 Dec must be open before 14:00');
+          if(m.lsxOpen(parts(2026,12,30,'Wed',14,30)))throw new Error('LSX 30 Dec must close at 14:00');
+          console.log('Market session module: OK');
+          NODE
           node - <<'NODE'
           require('./score-engine.js');
           const e=globalThis.ViewInvAIScore;
@@ -142,7 +157,7 @@ jobs:
 
           rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/catalyst-smoke/
+          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -429,7 +444,7 @@ jobs:
 
           rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
           mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/viewinvai-mobile/
+          cp index.html market-session.js score-engine.js app.js alerts.js auth.js portfolio.js styles.css /tmp/viewinvai-mobile/
           cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
