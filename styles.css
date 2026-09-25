@@ -8443,11 +8443,11 @@ html[data-theme="light"] .investing-stock-card .stock-list-price .quote-updated{
   min-width:0!important;
   padding:2px 4px!important
  }
- .stock-profile-page .unified-stock-header .quote-side small{
-  font-size:5.5px!important
+  .stock-profile-page .unified-stock-header .quote-side small{
+  font-size:6.5px!important
  }
- .stock-profile-page .unified-stock-header .quote-side strong{
-  font-size:8px!important
+  .stock-profile-page .unified-stock-header .quote-side strong{
+  font-size:8.8px!important
  }
  .stock-profile-page .unified-stock-header .profile-primary-actions{
   flex:0 0 auto!important;
@@ -8829,11 +8829,11 @@ html[data-theme="light"] .tr-native-axis{
   gap:1px 5px!important;
   padding:0!important
  }
- .stock-profile-page .unified-stock-header .profile-live>small:first-child{
+  .stock-profile-page .unified-stock-header .profile-live>small:first-child{
   display:block!important;
   grid-area:label!important;
   margin:0!important;
-  font-size:5.5px!important;
+  font-size:6.5px!important;
   line-height:1!important
  }
  .stock-profile-page .unified-stock-header .profile-live-main{
@@ -8854,15 +8854,15 @@ html[data-theme="light"] .tr-native-axis{
  .stock-profile-page .unified-stock-header .profile-live .price-pair>strong{
   font-size:18px!important
  }
- .stock-profile-page .unified-stock-header .profile-live .price-pair>small:not(.quote-updated){
-  font-size:6px!important;
+  .stock-profile-page .unified-stock-header .profile-live .price-pair>small:not(.quote-updated){
+  font-size:7px!important;
   white-space:nowrap!important
  }
- .stock-profile-page .unified-stock-header .profile-live .quote-updated{
+  .stock-profile-page .unified-stock-header .profile-live .quote-updated{
   margin:0!important;
   padding:0!important;
   border:0!important;
-  font-size:5.5px!important;
+  font-size:6.5px!important;
   line-height:1!important;
   white-space:nowrap!important
  }
