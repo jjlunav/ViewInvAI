@@ -96,6 +96,53 @@ function syncDeviceSettingsUi(){
  else if(document.visibilityState!=='visible')setWakeLockStatus('En pausa');
  else setWakeLockStatus('Pendiente de activar');
 }
+
+let accountAnalysisSettings=null,analysisSettingsBusy=false;
+function clampSetting(value,min,max,fallback){
+ let n=Math.round(Number(value));return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
+}
+function renderAnalysisSettings(settings=null){
+ accountAnalysisSettings=settings&&typeof settings==='object'?settings:null;
+ const map={
+  analysisPositionsMinutes:['analysis_positions_minutes',5,240,10],
+  analysisWatchlistMinutes:['analysis_watchlist_minutes',10,1440,30],
+  minBuyConfidence:['min_buy_confidence',60,99,85],
+  minSellConfidence:['min_sell_confidence',60,99,80],
+  notifyScoreChange:['notify_score_change',5,60,20]
+ };
+ for(const [id,[key,min,max,fallback]] of Object.entries(map)){
+  let el=$('#'+id);if(!el)continue;
+  let raw=accountAnalysisSettings&&accountAnalysisSettings[key];
+  el.value=clampSetting(raw,min,max,fallback);
+  el.disabled=!accountAnalysisSettings||analysisSettingsBusy;
+ }
+ let button=$('#saveAnalysisSettings');if(button)button.disabled=!accountAnalysisSettings||analysisSettingsBusy;
+ let status=$('#analysisSettingsStatus');if(status){
+  status.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para sincronizar estos ajustes.';
+ }
+}
+async function saveAnalysisSettings(){
+ if(analysisSettingsBusy||!accountAnalysisSettings||!window.ViewInvAIAuth||typeof window.ViewInvAIAuth.apiFetch!=='function')return;
+ analysisSettingsBusy=true;renderAnalysisSettings(accountAnalysisSettings);
+ try{
+  let body={
+   analysisPositionsMinutes:clampSetting($('#analysisPositionsMinutes')?.value,5,240,10),
+   analysisWatchlistMinutes:clampSetting($('#analysisWatchlistMinutes')?.value,10,1440,30),
+   minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
+   minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
+   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20)
+  };
+  let response=await window.ViewInvAIAuth.apiFetch('/api/settings',{method:'PATCH',body:JSON.stringify(body)});
+  let data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error||'No se pudieron guardar los ajustes.');
+  accountAnalysisSettings=data.settings||accountAnalysisSettings;
+  let status=$('#analysisSettingsStatus');if(status)status.textContent='Ajustes guardados.';
+ }catch(e){
+  let status=$('#analysisSettingsStatus');if(status)status.textContent=e&&e.message?e.message:'No se pudieron guardar los ajustes.';
+ }finally{
+  analysisSettingsBusy=false;renderAnalysisSettings(accountAnalysisSettings);
+ }
+}
 async function acquireScreenWakeLock(){
  if(wakeLockBusy||!deviceSettings.keepScreenAwake||document.visibilityState!=='visible')return;
  if(screenWakeLock&&!screenWakeLock.released){syncDeviceSettingsUi();return}
@@ -3014,6 +3061,10 @@ initHelpSystem();
 document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
  applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
 }));
+$('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
+window.addEventListener('viewinvai:account-ready',e=>renderAnalysisSettings(e.detail&&e.detail.settings||null));
+window.addEventListener('viewinvai:auth-changed',e=>{if(!(e.detail&&e.detail.user))renderAnalysisSettings(null)});
+renderAnalysisSettings(null);
 lockAllCriteria();
 initLeadersDock();
 initTrLive();
