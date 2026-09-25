@@ -1763,6 +1763,42 @@ function profilePerformanceStrip(s){
  ];
  return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
 }
+function profileVisualAnalysisHtml(s,isTr=false){
+ let key=stockKey(s);
+ return '<div class="profile-visual-toggle-row">'+
+   '<button type="button" class="profile-visual-toggle" aria-expanded="false" data-profile-visual-toggle data-profile-visual-key="'+E(key)+'" data-profile-visual-prefer-tr="'+(isTr?'1':'0')+'">▸ Mostrar gráfico y análisis IA</button>'+
+  '</div>'+
+  '<div class="profile-visual-analysis is-collapsed" data-profile-visual-analysis>'+
+   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+  '</div>';
+}
+function profileDetailRoot(el){
+ return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;
+}
+function activateProfileVisualAnalysis(root,s,preferTr=false){
+ if(!root||!s||root.dataset.visualAnalysisLoaded==='1')return;
+ root.dataset.visualAnalysisLoaded='1';
+ requestAnimationFrame(()=>{
+  root.querySelectorAll('[data-profile-visual-analysis] .mini-chart').forEach(loadMiniChart);
+  loadAiBrief(root,s,preferTr===true);
+ });
+}
+function setProfileVisualExpanded(button,expanded,focusId=''){
+ if(!button)return;
+ let root=profileDetailRoot(button),panel=root&&root.querySelector('[data-profile-visual-analysis]');
+ if(!root||!panel)return;
+ expanded=!!expanded;
+ panel.classList.toggle('is-collapsed',!expanded);
+ button.setAttribute('aria-expanded',expanded?'true':'false');
+ button.textContent=expanded?'▾ Ocultar gráfico y análisis IA':'▸ Mostrar gráfico y análisis IA';
+ if(expanded){
+  let s=stockByKey(button.dataset.profileVisualKey);
+  let preferTr=button.dataset.profileVisualPreferTr==='1';
+  if(s)activateProfileVisualAnalysis(root,s,preferTr);
+  if(focusId)requestAnimationFrame(()=>root.querySelector('#'+CSS.escape(focusId))?.scrollIntoView({behavior:'smooth',block:'start'}));
+ }
+}
+
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
  let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
@@ -1804,7 +1840,7 @@ function quickProfileHtml(s,opts={}){
  return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
   '<div class="unified-profile-body">'+
    profileTabs()+profileSessionStrip(s,isTr)+
-   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+   profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
@@ -1816,14 +1852,14 @@ function renderQuickProfile(){
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(!s){closeQuickProfile(false);return}
  box.innerHTML=quickProfileHtml(s);
- requestAnimationFrame(()=>{box.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(box);pollUsLive();loadAiBrief(box,s,state.profilePreferTr===true)});
+ requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }
 function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
  let s=stockByKey(key);if(!container||!s)return false;
  let useTr=preferTr===true&&trTradable(s);
  container.classList.add('stock-profile-page','embedded-stock-profile');
  container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
- requestAnimationFrame(()=>{container.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(container);pollUsLive();loadAiBrief(container,s,useTr)});
+ requestAnimationFrame(()=>{observeTrLivePrices(container);pollUsLive()});
  return true;
 }
 function profileHtml(s,view){
@@ -1867,7 +1903,7 @@ function profileHtml(s,view){
  return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+
   '<div class="unified-profile-body">'+
    profileTabs()+profileSessionStrip(s,isTr)+
-   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
+   profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
@@ -1883,7 +1919,7 @@ function renderProfileView(view){
  let valid=s&&(isTr?trTradable(s):market(s,'us'));
  if(!valid){detail.classList.add('is-hidden');browse.classList.remove('is-hidden');return false}
  browse.classList.add('is-hidden');detail.classList.remove('is-hidden');detail.classList.add('stock-profile-page');detail.innerHTML=profileHtml(s,view);
- requestAnimationFrame(()=>{detail.querySelectorAll('.mini-chart').forEach(loadMiniChart);observeTrLivePrices(detail);pollUsLive()});
+ requestAnimationFrame(()=>{observeTrLivePrices(detail);pollUsLive()});
  return true;
 }
 
@@ -3080,14 +3116,41 @@ if(keepScreenAwakeToggle)keepScreenAwakeToggle.addEventListener('change',e=>{
 });
 $('#mobileMenu')?.addEventListener('click',()=>$('#sidebar')?.classList.toggle('open'));
 document.addEventListener('click',e=>{
+ let aiOpen=e.target.closest&&e.target.closest('[data-ai-chat-stock]');
+ if(aiOpen){
+  e.preventDefault();e.stopPropagation();
+  openAiChat(aiOpen.dataset.aiChatStock,aiOpen.dataset.aiChatPreferTr==='1');
+  return;
+ }
+ let aiQuick=e.target.closest&&e.target.closest('[data-ai-quick]');
+ if(aiQuick){
+  e.preventDefault();e.stopPropagation();
+  askAiChat(aiQuick.dataset.aiQuick||'');
+  return;
+ }
+ let visualToggle=e.target.closest&&e.target.closest('[data-profile-visual-toggle]');
+ if(visualToggle){
+  e.preventDefault();e.stopPropagation();
+  setProfileVisualExpanded(visualToggle,visualToggle.getAttribute('aria-expanded')!=='true');
+  return;
+ }
  let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
  if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
  let profileJump=e.target.closest&&e.target.closest('[data-profile-jump]');
  if(profileJump){
   e.preventDefault();e.stopPropagation();
-  let id=profileJump.dataset.profileJump,target=id&&document.getElementById(id);
-  let tabs=profileJump.closest('.profile-tabs')||document.querySelector('.stock-profile-page:not(.is-hidden) .profile-tabs, .stock-profile:not(.is-hidden) .profile-tabs, .portfolio-inline-stock .profile-tabs');
+  let id=profileJump.dataset.profileJump;
+  let root=profileDetailRoot(profileJump);
+  let tabs=profileJump.closest('.profile-tabs')||root?.querySelector('.profile-tabs');
   tabs?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.profileJump===id));
+  if(id==='profile-chart'||id==='profile-ai'){
+   let toggle=root?.querySelector('[data-profile-visual-toggle]');
+   if(toggle&&toggle.getAttribute('aria-expanded')!=='true'){
+    setProfileVisualExpanded(toggle,true,id);
+    return;
+   }
+  }
+  let target=id&&(root?.querySelector('#'+CSS.escape(id))||document.getElementById(id));
   if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
   return;
  }
