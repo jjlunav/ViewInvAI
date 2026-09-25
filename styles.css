@@ -7424,3 +7424,44 @@ html[data-theme="light"] #view-portfolios .portfolio-card-grid>.portfolio-invest
   flex-direction:column!important
  }
 }
+
+
+/* Data quality indicator - 2026-09-25 */
+.profile-data-quality{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:8px;
+ margin:0 0 8px;
+ padding:6px 8px;
+ border:1px solid rgba(111,143,157,.18);
+ border-radius:9px;
+ background:rgba(255,255,255,.025)
+}
+.profile-data-quality strong{
+ min-width:0;
+ font-size:10px;
+ line-height:1.25;
+ color:#bdd0d7
+}
+.profile-data-quality span{
+ flex:0 0 auto;
+ font-size:8px;
+ color:#637985
+}
+.profile-data-quality.high{border-color:rgba(89,205,157,.28);background:rgba(89,205,157,.055)}
+.profile-data-quality.high strong{color:#7ce5bd}
+.profile-data-quality.good{border-color:rgba(101,181,218,.24)}
+.profile-data-quality.medium{border-color:rgba(220,174,84,.28);background:rgba(220,174,84,.045)}
+.profile-data-quality.medium strong{color:#e4bf72}
+.profile-data-quality.low{border-color:rgba(223,103,112,.3);background:rgba(223,103,112,.05)}
+.profile-data-quality.low strong{color:#ef9299}
+
+@media(max-width:720px){
+ .profile-data-quality{
+  gap:6px!important;
+  padding:6px 7px!important
+ }
+ .profile-data-quality strong{font-size:10px!important}
+ .profile-data-quality span{font-size:8px!important}
+}
