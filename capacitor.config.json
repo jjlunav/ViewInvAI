@@ -19,6 +19,13 @@
       "providers": [
         "google.com"
       ]
+    },
+    "FirebaseMessaging": {
+      "presentationOptions": [
+        "alert",
+        "badge",
+        "sound"
+      ]
     }
   }
 }
