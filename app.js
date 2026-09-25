@@ -381,7 +381,6 @@ function applyTheme(theme,rerenderCharts=true){
  updateThemeButton();
  if(rerenderCharts)requestAnimationFrame(refreshVisibleChartThemes);
 }
-function toggleTheme(){applyTheme(currentTheme()==='light'?'dark':'light',true)}
 
 function N(v){v=Number(v);return Number.isFinite(v)?v:null}
 function E(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
@@ -567,15 +566,6 @@ function pricePair(s,p,preferTr=false){
   :(direct?'Cotización actual recibida desde Nasdaq.com; el valor en € es una conversión EUR/USD de referencia.':'Esperando cotización Nasdaq actual; se muestra temporalmente el último snapshot disponible.');
  return '<span class="price-pair'+(direct?' live-quote':'')+(dirCls?' '+dirCls:'')+'"'+liveAttrs+' title="'+E(source)+'">'+pricePairInner(s,p,preferTr)+'</span>';
 }
-function levelPair(s,p,preferTr=false){
- let d='\u0024';
- if(preferTr&&s&&s.tradeRepublicVerified){
-  let x=trPriceValues(s,p);
-  return money(x.eur,'€')+' / '+money(x.usd,d);
- }
- let x=priceCurrencies(s,p);
- return money(x.usd,d)+' / '+money(x.eur,'€');
-}
 function snapshotPricePair(s,p,preferTr=false){
  let x=priceCurrencies(s,p),d='\u0024';
  let primary=preferTr?money(x.eur,'€'):money(x.usd,d);
@@ -597,7 +587,6 @@ function bidAskHtml(s,preferTr=false){
  }
  return '<span class="quote-spread quote-spread-us '+(s.usLiveIsRealTime?'realtime':'delayed')+'" data-us-spread-key="'+E(stockKey(s))+'" title="'+(s.usLiveIsRealTime?'Bid y Ask actuales recibidos desde Nasdaq.com':'Bid/Ask no marcado como tiempo real por Nasdaq; no se reutiliza el snapshot diferido')+'">'+bidAskInner(s,false)+'</span>';
 }
-function flashQuote(el,dir){setQuoteDirection(el,dir)}
 
 function trPriceCell(s,which,se){
  let x=trPriceValues(s,SP(s,se)),value=which==='eur'?x.eur:x.usd,sym=which==='eur'?'€':'\u0024',dec=quotePrecision(s,true,SP(s,se));
@@ -1090,7 +1079,6 @@ function tickerDisplay(s,preferTr=false){
  return '<strong>'+E(us)+'</strong>';
 }
 
-function viewLabel(v){return String(V[v]||'Vista').replace(/^\d+\s*/,'')}
 function inferProfilePreferTr(s){
  if(state.currentView==='catalog')return true;
  if(state.currentView==='catalogUS')return false;
@@ -1159,10 +1147,6 @@ function compactVol(v){
  if(a>=1e6)return F(v/1e6,1)+'M';
  if(a>=1e3)return F(v/1e3,1)+'K';
  return I(v);
-}
-function tvHref(s){
- let sym=encodeURIComponent(String(s.tvSymbol||((s.exchange||'NASDAQ')+':'+(s.ticker||''))).replace(':','-'));
- return 'https://www.tradingview.com/symbols/'+sym+'/';
 }
 function topGainers(kind,se){
  return db.stocks
@@ -1248,9 +1232,6 @@ function renderFavorites(){
   return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s,'',preferTr)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div>'+pricePair(s,p,preferTr)+'</div>'+bidAskHtml(s,preferTr)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,preferTr)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }
-function metric(label,main,sub,help,mainClass='',subClass=''){
- return '<div class="metric-help" title="'+E(help)+'"><small>'+E(label)+' <span class="info-dot">ⓘ</span></small><b class="'+E(mainClass)+'">'+main+'</b><span class="'+E(subClass)+'">'+sub+'</span></div>';
-}
 function rankingWhy(s,next,se,q,pos,preferTr=false){
  if(state.preset==='emerging'){
   let e=emergingSignal(s,se);
@@ -1326,11 +1307,6 @@ function fromUI(){
 function lockCriterion(id,locked=true){let input=$('#'+id),btn=$('.field-lock[data-target="'+id+'"]');if(!input||!btn)return;input.readOnly=locked;btn.classList.toggle('unlocked',!locked);btn.textContent=locked?'🔒':'🔓';btn.title=locked?'Desbloquear este parámetro':'Bloquear este parámetro';btn.setAttribute('aria-label',locked?'Desbloquear '+id:'Bloquear '+id)}
 function lockAllCriteria(){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(id=>lockCriterion(id,true))}
 function toUI(x){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(k=>$('#'+k).value=x[k]);$('#requireTrend').checked=!!x.trend;$('#excludeIlliquid').checked=!!x.illiquid}
-function entryUniverseMatch(s){
- if(state.entryMarket==='tr')return trTradable(s);
- // “Resto EEUU” means US-listed stocks that are not already in the verified TR set.
- return market(s,'us')&&!trTradable(s);
-}
 function entrySessionForPreset(){
  if(state.preset==='postmarketExplosion')return'postmarket';
  if(state.preset==='premarketExplosion')return'premarket';
