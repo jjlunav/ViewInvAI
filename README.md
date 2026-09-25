@@ -90,6 +90,22 @@ Cuando el proveedor facilita una hora concreta, se muestra junto a la fecha en h
 
 Las noticias duplicadas procedentes de distintos medios se agrupan por hecho y se conservan sus fuentes como contraste. Solo se publican noticias procedentes de fuentes financieras reputadas o fuentes primarias disponibles; cuando varias fuentes independientes cubren el mismo hecho, la interfaz lo indica. La aparición de un catalizador no implica que la acción vaya a subir o bajar.
 
+Para ensayos clínicos, el actualizador puede consultar directamente ClinicalTrials.gov. Solo acepta coincidencias validadas con el lead sponsor de la empresa y, para no inventar precisión, únicamente publica como evento fechado los registros que incluyen día exacto. Una fecha de finalización primaria o del estudio se identifica como tal y no se presenta como una fecha garantizada de publicación de resultados.
+
+## Carteras
+
+Las carteras sincronizadas permiten separar posiciones por bróker, registrar compras, ventas y ajustes manuales, y conservar un historial de operaciones. El coste medio y el P&L realizado se calculan a partir del ledger de transacciones.
+
+El resumen de cada cartera muestra, cuando las divisas permiten una comparación válida:
+
+- Valor actual de las posiciones abiertas.
+- P&L abierto.
+- P&L realizado de operaciones cerradas.
+- Resultado total abierto + realizado.
+- Cobertura del seguimiento IA.
+
+Los importes realizados y las comisiones se mantienen separados por divisa. Si una corrección manual cambia la moneda de una posición, ViewInvAI no suma monedas distintas como si fueran equivalentes.
+
 ## Radar de acciones
 
 Permite explorar el universo de mercado con búsqueda por ticker o empresa. Puede filtrarse por sesión, por dirección del movimiento y por cobertura:
