@@ -71,19 +71,18 @@ continúa normalmente.
 
 ## 4. Rate limiting distribuido de Cloudflare
 
-El Worker usa actualmente limitación en memoria como fallback. También detecta
-automáticamente estos bindings opcionales de Cloudflare Workers Rate Limiting:
+El Worker mantiene limitación en memoria como fallback y ya tiene activos en
+`wrangler.jsonc` dos bindings de Workers Rate Limiting:
 
-- `AI_RATE_LIMITER`
-- `API_RATE_LIMITER`
-- `MARKET_RATE_LIMITER`
+- `AI_RATE_LIMITER`: 20 solicitudes/minuto.
+- `API_RATE_LIMITER`: 180 solicitudes/minuto.
 
-Cuando existen, se utilizan antes del fallback local. Las claves autenticadas se
-basan en el UID contenido en el token Firebase; las rutas públicas usan la
-identidad de red disponible en el Worker.
+Las rutas autenticadas se agrupan por UID del token Firebase cuando está
+disponible. Las rutas públicas de mercado conservan por ahora el limitador local
+para evitar penalizar a varios móviles que compartan una misma IP/NAT.
 
-Cada binding debe tener un `namespace_id` único en la cuenta. La configuración
-exacta se añadirá a `wrangler.jsonc` cuando se asignen esos identificadores.
+El código también entiende `MARKET_RATE_LIMITER` si en el futuro se decide
+aplicar un límite distribuido a las cotizaciones públicas.
 
 ## 5. Seguridad
 
