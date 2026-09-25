@@ -15,6 +15,10 @@ const NASDAQ_HEADERS = {
   "Referer": "https://www.nasdaq.com/"
 };
 
+const NASDAQ_QUOTE_TTL_MS = 2500;
+const nasdaqQuoteCache = new Map();
+const nasdaqQuoteInflight = new Map();
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
@@ -307,42 +311,59 @@ async function tradeRepublicHistory(request) {
 async function fetchNasdaqQuote(symbol) {
   const safe = safeStockSymbol(symbol);
   if (!safe) return null;
-  const response = await fetch("https://api.nasdaq.com/api/quote/" + encodeURIComponent(safe) + "/info?assetclass=stocks", {
-    headers: NASDAQ_HEADERS,
-    cf: { cacheTtl: 0, cacheEverything: false }
-  });
-  if (!response.ok) throw new Error("Nasdaq " + response.status);
-  const json = await response.json();
-  const data = json && json.data;
-  if (!data) return null;
-  const primary = data.primaryData || {};
-  const secondary = data.secondaryData || null;
-  return {
-    symbol: data.symbol || safe,
-    exchange: data.exchange || null,
-    marketStatus: data.marketStatus || null,
-    price: parseMarketNumber(primary.lastSalePrice),
-    change: parseMarketNumber(primary.netChange),
-    changePct: parseMarketNumber(primary.percentageChange),
-    bid: parseMarketNumber(primary.bidPrice),
-    ask: parseMarketNumber(primary.askPrice),
-    bidSize: parseMarketNumber(primary.bidSize),
-    askSize: parseMarketNumber(primary.askSize),
-    volume: parseMarketNumber(primary.volume),
-    timestamp: primary.lastTradeTimestamp || null,
-    isRealTime: primary.isRealTime === true,
-    secondary: secondary ? {
-      price: parseMarketNumber(secondary.lastSalePrice),
-      change: parseMarketNumber(secondary.netChange),
-      changePct: parseMarketNumber(secondary.percentageChange),
-      bid: parseMarketNumber(secondary.bidPrice),
-      ask: parseMarketNumber(secondary.askPrice),
-      volume: parseMarketNumber(secondary.volume),
-      timestamp: secondary.lastTradeTimestamp || null,
-      isRealTime: secondary.isRealTime === true
-    } : null,
-    source: "Nasdaq"
-  };
+
+  const cached = nasdaqQuoteCache.get(safe);
+  if (cached && Date.now() - cached.at < NASDAQ_QUOTE_TTL_MS) return cached.value;
+  if (nasdaqQuoteInflight.has(safe)) return nasdaqQuoteInflight.get(safe);
+
+  const promise = (async () => {
+    const response = await fetch("https://api.nasdaq.com/api/quote/" + encodeURIComponent(safe) + "/info?assetclass=stocks", {
+      headers: NASDAQ_HEADERS,
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    if (!response.ok) throw new Error("Nasdaq " + response.status);
+    const json = await response.json();
+    const data = json && json.data;
+    if (!data) return null;
+    const primary = data.primaryData || {};
+    const secondary = data.secondaryData || null;
+    const value = {
+      symbol: data.symbol || safe,
+      exchange: data.exchange || null,
+      marketStatus: data.marketStatus || null,
+      price: parseMarketNumber(primary.lastSalePrice),
+      change: parseMarketNumber(primary.netChange),
+      changePct: parseMarketNumber(primary.percentageChange),
+      bid: parseMarketNumber(primary.bidPrice),
+      ask: parseMarketNumber(primary.askPrice),
+      bidSize: parseMarketNumber(primary.bidSize),
+      askSize: parseMarketNumber(primary.askSize),
+      volume: parseMarketNumber(primary.volume),
+      timestamp: primary.lastTradeTimestamp || null,
+      isRealTime: primary.isRealTime === true,
+      secondary: secondary ? {
+        price: parseMarketNumber(secondary.lastSalePrice),
+        change: parseMarketNumber(secondary.netChange),
+        changePct: parseMarketNumber(secondary.percentageChange),
+        bid: parseMarketNumber(secondary.bidPrice),
+        ask: parseMarketNumber(secondary.askPrice),
+        volume: parseMarketNumber(secondary.volume),
+        timestamp: secondary.lastTradeTimestamp || null,
+        isRealTime: secondary.isRealTime === true
+      } : null,
+      source: "Nasdaq"
+    };
+    nasdaqQuoteCache.set(safe, { at: Date.now(), value });
+    if (nasdaqQuoteCache.size > 500) {
+      const cutoff = Date.now() - 60000;
+      for (const [key, row] of nasdaqQuoteCache) if (!row || row.at < cutoff) nasdaqQuoteCache.delete(key);
+    }
+    return value;
+  })();
+
+  nasdaqQuoteInflight.set(safe, promise);
+  try { return await promise; }
+  finally { nasdaqQuoteInflight.delete(safe); }
 }
 
 async function nasdaqQuotes(request) {
