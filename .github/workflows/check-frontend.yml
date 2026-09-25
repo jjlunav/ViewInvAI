@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app.js"
+      - "settings.js"
       - "navigation.js"
       - "stock-charts.js"
       - "stock-profile.js"
@@ -53,6 +54,7 @@ jobs:
           node --check market-session.js
           node --check score-engine.js
           node --check app.js
+          node --check settings.js
           node --check navigation.js
           node --check stock-charts.js
           node --check stock-profile.js
@@ -148,6 +150,10 @@ jobs:
           if missing:
               raise SystemExit("navigation.js incompleto: " + ", ".join(missing))
 
+          settings = Path("settings.js").read_text(encoding="utf-8")
+          if "function initSettings" not in settings or "function applyTheme" not in settings or "function syncScreenWakeLock" not in settings:
+              raise SystemExit("settings.js incompleto")
+
           charts = Path("stock-charts.js").read_text(encoding="utf-8")
           profile = Path("stock-profile.js").read_text(encoding="utf-8")
           bootstrap = Path("bootstrap.js").read_text(encoding="utf-8")
@@ -180,7 +186,7 @@ jobs:
               raise SystemExit("bootstrap.js no posee el arranque/API publica")
 
           required_assets = (
-              "web-mobile.css", "mobile-app.css", "navigation.js", "mobile-app.js",
+              "web-mobile.css", "mobile-app.css", "settings.js", "navigation.js", "mobile-app.js",
               "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "bootstrap.js"
           )
           missing_assets = [item for item in required_assets if item not in html]
@@ -222,7 +228,7 @@ jobs:
 
           html = Path("index.html").read_text(encoding="utf-8")
           module_paths = [
-              "app.js", "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js",
+              "app.js", "settings.js", "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js",
               "navigation.js", "mobile-app.js", "bootstrap.js"
           ]
           modules = {path: Path(path).read_text(encoding="utf-8") for path in module_paths}
@@ -297,7 +303,7 @@ jobs:
 
           rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
           mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html market-session.js score-engine.js app.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/catalyst-smoke/
+          cp index.html market-session.js score-engine.js app.js settings.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/catalyst-smoke/
           cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
@@ -710,7 +716,7 @@ jobs:
 
           rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
           mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html market-session.js score-engine.js app.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-mobile/
+          cp index.html market-session.js score-engine.js app.js settings.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-mobile/
           cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
           JSON
