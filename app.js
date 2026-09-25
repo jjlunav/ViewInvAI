@@ -2169,7 +2169,7 @@ function recommendationEligible(s,mode){
  let se=currentMarketSession();
  return SP(s,se)!==null||usLivePrice(s)!==null||(mode==='tr'&&trLivePrice(s)!==null);
 }
-function recommendationTechnical(s,mode){
+function recommendationTechnicalLegacy(s,mode){
  let preferTr=mode==='tr',se=currentMarketSession(),score=50,factors=[];
  let add=(label,delta,note)=>{delta=Math.round(Number(delta||0)*10)/10;score+=delta;factors.push({label,delta,note})};
  let ch=preferTr?(trLiveChange(s)??FC(s,se)):FC(s,se),rv=RV(s,se),adx=N(s.adx),rsi=N(s.rsi);
@@ -2232,7 +2232,7 @@ function recommendationTechnical(s,mode){
 
  return{score,parts:factors,se,change:ch,rv,adx,rsi,spread:sp};
 }
-function recommendationCatalyst(s){
+function recommendationCatalystLegacy(s){
  let now=Date.now(),events=stockEvents(s),delta=0,relevant=[];
  let positive=/\b(approval|approved|authorization|clearance|contract|award|wins?|partnership|strategic agreement|beats?|raises? guidance|positive|topline|met (?:the )?(?:primary )?endpoint|acquisition|buyout|order|milestone payment)\b/i;
  let negative=/\b(offering|dilution|dilutive|reverse split|delist|bankrupt|chapter 11|misses?|lowers? guidance|cuts? guidance|clinical hold|failed|fails|investigation|subpoena|lawsuit|going concern|termination|withdraws?)\b/i;
@@ -2255,6 +2255,51 @@ function recommendationCatalyst(s){
  relevant.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)||b.impact-a.impact||b.time-a.time);
  delta=Math.max(-18,Math.min(18,delta));
  return{delta:Math.round(delta*10)/10,events:relevant.slice(0,3)};
+}
+function recommendationEngineInput(s,mode='us',chartAvailable=false){
+ let preferTr=mode==='tr',se=currentMarketSession();
+ let quote=canonicalQuote(s,preferTr),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
+ let quoteAt=preferTr?(N(s&&s.trLiveUpdatedAt)??N(s&&s.trLiveReceivedAt)):(N(s&&s.usLiveReceivedAt)??parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York'));
+ let now=Date.now();
+ return {
+  price:quote&&N(quote.price)!==null?N(quote.price):SP(s,se),
+  change:marketChange(s,se,preferTr),
+  volume:SV(s,se),
+  avgVolume:N(s&&s.avgVolume),
+  relVolume:RV(s,se),
+  rsi:N(s&&s.rsi),
+  adx:N(s&&s.adx),
+  ema20:N(s&&s.ema20),
+  ema50:N(s&&s.ema50),
+  perfWeek:N(s&&s.perfWeek),
+  perfMonth:N(s&&s.perfMonth),
+  spread:spreadPct(s,preferTr),
+  bid:preferTr?N(s&&s.trLiveBid):usLiveBid(s),
+  ask:preferTr?N(s&&s.trLiveAsk):usLiveAsk(s),
+  quoteAgeMs:quoteAt?Math.max(0,now-quoteAt):null,
+  snapshotAgeMs:snapshotAt?Math.max(0,now-snapshotAt):null,
+  chartAvailable:chartAvailable===true
+ };
+}
+function recommendationTechnical(s,mode){
+ if(!window.ViewInvAIScore||typeof window.ViewInvAIScore.technical!=='function')return recommendationTechnicalLegacy(s,mode);
+ let input=recommendationEngineInput(s,mode),r=window.ViewInvAIScore.technical(input),se=currentMarketSession();
+ return {score:r.score,parts:r.factors,se,change:r.change,rv:r.relVolume,adx:r.adx,rsi:r.rsi,spread:r.spread};
+}
+function recommendationCatalyst(s){
+ if(!window.ViewInvAIScore||typeof window.ViewInvAIScore.catalyst!=='function')return recommendationCatalystLegacy(s);
+ let r=window.ViewInvAIScore.catalyst(stockEvents(s));
+ return {delta:r.delta,events:(r.events||[]).map(x=>({e:x.event,delta:x.delta,impact:x.impact,time:x.time}))};
+}
+function stockDataQuality(s,mode='us',chartAvailable=false){
+ if(!s)return{score:0,level:'low',missing:['acción']};
+ if(window.ViewInvAIScore&&typeof window.ViewInvAIScore.quality==='function'){
+  return window.ViewInvAIScore.quality(Object.assign(recommendationEngineInput(s,mode,chartAvailable),{eventsCount:stockEvents(s).length}));
+ }
+ let input=recommendationEngineInput(s,mode,chartAvailable);
+ let vals=[input.price,input.change,input.volume,input.relVolume,input.rsi,input.adx,input.ema20,input.ema50,input.bid,input.ask];
+ let count=vals.filter(v=>N(v)!==null).length,score=Math.round(count/vals.length*100);
+ return {score,level:score>=85?'high':score>=70?'good':score>=55?'medium':'low',missing:[]};
 }
 function recommendationAnalysis(s,mode){
  let a=recommendationTechnical(s,mode),cat=recommendationCatalyst(s);
