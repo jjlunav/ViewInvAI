@@ -30,6 +30,157 @@ function booleanInt(value) {
   return value === true || value === 1 || value === "1" ? 1 : 0;
 }
 
+let fcmAccessCache = null;
+
+function base64UrlBytes(bytes) {
+  let binary = "";
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i++) binary += String.fromCharCode(view[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlText(value) {
+  return base64UrlBytes(new TextEncoder().encode(String(value)));
+}
+
+function fcmServiceAccount(env) {
+  const raw = String(env.FCM_SERVICE_ACCOUNT_JSON || "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.project_id || !parsed.client_email || !parsed.private_key) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function importGooglePrivateKey(pem) {
+  const clean = String(pem || "")
+    .replace(/\\n/g, "\n")
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+  const binary = atob(clean);
+  const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+  return crypto.subtle.importKey(
+    "pkcs8",
+    bytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+}
+
+async function fcmAccessToken(env) {
+  const account = fcmServiceAccount(env);
+  if (!account) return null;
+  if (fcmAccessCache && fcmAccessCache.clientEmail === account.client_email && Date.now() < fcmAccessCache.expiresAt - 60000) {
+    return { token: fcmAccessCache.token, projectId: account.project_id };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlText(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = base64UrlText(JSON.stringify({
+    iss: account.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600
+  }));
+  const unsigned = header + "." + claim;
+  const key = await importGooglePrivateKey(account.private_key);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
+  const assertion = unsigned + "." + base64UrlBytes(signature);
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  if (!response.ok) throw new Error("FCM OAuth " + response.status);
+  const data = await response.json();
+  const token = String(data.access_token || "");
+  if (!token) throw new Error("FCM OAuth returned no token");
+  fcmAccessCache = {
+    clientEmail: account.client_email,
+    token,
+    expiresAt: Date.now() + Math.max(300, Number(data.expires_in) || 3600) * 1000
+  };
+  return { token, projectId: account.project_id };
+}
+
+async function sendFcmToDevice(env, auth, device, alert, target) {
+  const response = await fetch(
+    "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(auth.projectId) + "/messages:send",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + auth.token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: {
+          token: device.push_token,
+          notification: {
+            title: alert.title,
+            body: alert.message
+          },
+          data: {
+            alertId: alert.id,
+            stockKey: String(target.stock_key || ""),
+            ticker: String(target.ticker || ""),
+            preferTr: Number(target.prefer_tr) === 1 ? "1" : "0",
+            alertType: String(alert.alert_type || ""),
+            severity: String(alert.severity || "")
+          },
+          android: {
+            priority: alert.severity === "critical" || alert.severity === "high" ? "high" : "normal",
+            notification: {
+              channel_id: "viewinvai_market_alerts",
+              sound: "default"
+            }
+          }
+        }
+      })
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const status = String(payload && payload.error && payload.error.status || "");
+    const details = JSON.stringify(payload && payload.error || {});
+    const invalid = status === "NOT_FOUND" || status === "INVALID_ARGUMENT" || /UNREGISTERED|registration-token-not-registered/i.test(details);
+    if (invalid) {
+      await env.DB.prepare("UPDATE devices SET enabled=0,updated_at=? WHERE id=?").bind(nowIso(), device.id).run();
+    }
+    throw new Error("FCM send " + response.status + (status ? " " + status : ""));
+  }
+  return true;
+}
+
+async function dispatchPushAlert(env, alert, target) {
+  const auth = await fcmAccessToken(env);
+  if (!auth || !env.DB) return { configured: false, sent: 0 };
+
+  const rows = await env.DB.prepare(
+    "SELECT id,push_token,platform FROM devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC LIMIT 20"
+  ).bind(target.user_id).all();
+  const devices = rows.results || [];
+  if (!devices.length) return { configured: true, sent: 0 };
+
+  const settled = await Promise.allSettled(devices.map(device => sendFcmToDevice(env, auth, device, alert, target)));
+  const sent = settled.filter(x => x.status === "fulfilled").length;
+  if (sent > 0) {
+    await env.DB.prepare("UPDATE alert_events SET pushed_at=? WHERE id=?").bind(nowIso(), alert.id).run();
+  }
+  for (const row of settled) {
+    if (row.status === "rejected") console.warn("FCM device send failed", String(row.reason && row.reason.message || row.reason));
+  }
+  return { configured: true, sent };
+}
+
 function defaultJson(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -929,6 +1080,10 @@ async function maybeCreateAlert(env, target, stock, current, previous) {
     id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "",
     type, severity, title, message, current.snapshotId, now
   ).run();
+
+  const alert = { id, alert_type: type, severity, title, message };
+  try { await dispatchPushAlert(env, alert, target); }
+  catch (error) { console.warn("Push alert dispatch failed", String(error && error.message || error)); }
   return id;
 }
 
