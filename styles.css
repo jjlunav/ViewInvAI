@@ -8723,3 +8723,167 @@ html[data-theme="light"] .tr-native-axis{
   grid-template-columns:repeat(2,minmax(0,1fr))!important
  }
 }
+
+
+/* Mobile complete stock header - 2026-09-25 */
+@media(max-width:720px){
+ .stock-profile-page .unified-stock-header{
+  width:calc(100% - 12px)!important;
+  max-width:none!important;
+  margin:0 6px 6px!important;
+  min-height:0!important;
+  border-radius:10px!important
+ }
+ .stock-profile-page .unified-stock-header-inner{
+  display:grid!important;
+  grid-template-columns:50px minmax(0,1fr) 140px!important;
+  grid-template-areas:
+   "back title title"
+   "live live actions"!important;
+  align-items:center!important;
+  justify-content:stretch!important;
+  gap:4px 6px!important;
+  width:100%!important;
+  min-width:0!important;
+  padding:5px 6px!important
+ }
+ .stock-profile-page .profile-back-cell{
+  grid-area:back!important;
+  min-width:0!important
+ }
+ .stock-profile-page .profile-back-inline{
+  width:auto!important;
+  min-width:48px!important;
+  min-height:28px!important;
+  height:28px!important;
+  padding:4px 6px!important;
+  font-size:8px!important
+ }
+ .stock-profile-page .unified-stock-header .profile-title{
+  grid-area:title!important;
+  min-width:0!important;
+  gap:5px!important
+ }
+ .stock-profile-page .unified-stock-header .profile-title>div:last-child{
+  min-width:0!important;
+  overflow:hidden!important
+ }
+ .stock-profile-page .unified-stock-header .profile-market{
+  display:block!important;
+  margin:0 0 1px!important;
+  font-size:5.8px!important;
+  line-height:1!important
+ }
+ .stock-profile-page .unified-stock-header .profile-title h2{
+  display:inline!important;
+  margin:0 4px 0 0!important;
+  font-size:18px!important;
+  line-height:1!important
+ }
+ .stock-profile-page .unified-stock-header .profile-title p{
+  display:inline!important;
+  max-width:190px!important;
+  font-size:7.8px!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live{
+  grid-area:live!important;
+  min-width:0!important;
+  width:100%!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:
+   "label label"
+   "main spread"!important;
+  align-items:center!important;
+  justify-content:stretch!important;
+  gap:1px 5px!important;
+  padding:0!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live>small:first-child{
+  display:block!important;
+  grid-area:label!important;
+  margin:0!important;
+  font-size:5.5px!important;
+  line-height:1!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live-main{
+  grid-area:main!important;
+  gap:4px!important;
+  min-width:0!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live .price-pair>strong{
+  font-size:18px!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live .price-pair>small:not(.quote-updated){
+  font-size:6px!important
+ }
+ .stock-profile-page .unified-stock-header .profile-live .quote-change{
+  font-size:10.5px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-spread{
+  display:grid!important;
+  grid-area:spread!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:3px!important;
+  width:auto!important;
+  min-width:88px!important;
+  transform:none!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side{
+  width:auto!important;
+  min-width:0!important;
+  padding:2px 4px!important;
+  gap:3px!important;
+  border-radius:6px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side small{
+  font-size:5.5px!important
+ }
+ .stock-profile-page .unified-stock-header .quote-side strong{
+  font-size:8px!important
+ }
+ .stock-profile-page .unified-stock-header .profile-primary-actions{
+  grid-area:actions!important;
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  align-items:stretch!important;
+  justify-content:stretch!important;
+  gap:3px!important;
+  width:100%!important;
+  min-width:0!important;
+  margin:0!important
+ }
+ .stock-profile-page .unified-stock-header .profile-primary-actions .btn{
+  width:100%!important;
+  min-width:0!important;
+  min-height:29px!important;
+  height:29px!important;
+  padding:3px 4px!important;
+  font-size:7.2px!important;
+  line-height:1.05!important;
+  white-space:normal!important
+ }
+ .stock-profile-page .unified-profile-body>.profile-tabs{
+  top:80px!important
+ }
+}
+@media(max-width:340px){
+ .stock-profile-page .unified-stock-header-inner{
+  grid-template-columns:46px minmax(0,1fr)!important;
+  grid-template-areas:
+   "back title"
+   "live live"
+   "actions actions"!important
+ }
+ .stock-profile-page .unified-stock-header .profile-primary-actions{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important
+ }
+ .stock-profile-page .unified-profile-body>.profile-tabs{
+  position:relative!important;
+  top:auto!important
+ }
+}
