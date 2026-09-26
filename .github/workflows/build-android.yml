@@ -219,6 +219,56 @@ jobs:
           fi
           echo "Packaged Android frontend smoke: OK"
 
+      - name: Capture web and Android visual parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME"
+          mkdir -p visual-parity /tmp/viewinvai-web-profile /tmp/viewinvai-native-shot-profile
+
+          STOCK_KEY="$(python3 - <<'PY'
+          import json, urllib.parse
+          data=json.load(open('data/market.json',encoding='utf-8'))
+          stocks=data.get('stocks') or []
+          stock=next((s for s in stocks if str(s.get('ticker','')).upper()=='SPRO'), None)
+          if stock is None:
+              stock=next((s for s in stocks if s.get('tvSymbol') or s.get('ticker')), None)
+          if not stock:
+              raise SystemExit('No stock available for visual parity')
+          key=str(stock.get('tvSymbol') or (str(stock.get('exchange',''))+':'+str(stock.get('ticker','')))).upper()
+          print(urllib.parse.quote(key,safe=''))
+          PY
+          )"
+
+          python -m http.server 4183 --bind 127.0.0.1 >/tmp/viewinvai-web-http.log 2>&1 &
+          WEB_PID=$!
+          (cd mobile-shell && python -m http.server 4184 --bind 127.0.0.1 >/tmp/viewinvai-native-shot-http.log 2>&1) &
+          NATIVE_PID=$!
+          trap 'kill "$WEB_PID" "$NATIVE_PID" 2>/dev/null || true' EXIT
+          sleep 1
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage             --window-size=412,915 --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-web-profile --virtual-time-budget=7000             --screenshot="$PWD/visual-parity/web-stock.png"             "http://127.0.0.1:4183/#app/catalog/stock/${STOCK_KEY}"
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage             --window-size=412,915 --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-native-shot-profile --virtual-time-budget=7000             --screenshot="$PWD/visual-parity/android-stock.png"             "http://127.0.0.1:4184/#app/catalog/stock/${STOCK_KEY}"
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage             --window-size=412,915 --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-web-profile --virtual-time-budget=5000             --screenshot="$PWD/visual-parity/web-catalog.png"             "http://127.0.0.1:4183/#app/catalog"
+
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage             --window-size=412,915 --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-native-shot-profile --virtual-time-budget=5000             --screenshot="$PWD/visual-parity/android-catalog.png"             "http://127.0.0.1:4184/#app/catalog"
+
+          test -s visual-parity/web-stock.png
+          test -s visual-parity/android-stock.png
+          test -s visual-parity/web-catalog.png
+          test -s visual-parity/android-catalog.png
+
+      - name: Upload visual parity captures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ViewInvAI-Visual-Parity
+          path: visual-parity/*.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Generate Android project
         run: npx cap add android
 
