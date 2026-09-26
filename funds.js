@@ -13,6 +13,7 @@
   ['1A','perf1Y'],['3A','perf3Y'],['5A','perf5Y'],['10A','perf10Y'],['Hist.','perfSinceInception']
  ];
  const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',sort:'perf1Y',selectedIsin:null};
+ const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -132,20 +133,205 @@
    state.products=[];state.meta={};
   }finally{state.loading=false;render()}
  }
+
+ function api(path,options={}){
+  if(!root.ViewInvAIAuth||typeof root.ViewInvAIAuth.apiFetch!=='function')throw Error('La cuenta todavía no está disponible.');
+  return root.ViewInvAIAuth.apiFetch(path,options);
+ }
+ function productForPosition(position){
+  return state.products.find(p=>p.isin===position.isin)||norm({
+   isin:position.isin,name:position.name,type:position.product_type,provider:position.provider,index:position.index_name,
+   currency:position.currency,platforms:{tradeRepublic:'unknown',myInvestor:'unknown'}
+  });
+ }
+ function selectedFundPortfolio(){
+  return account.portfolios.find(p=>String(p.id)===String(account.selectedPortfolioId))||account.portfolios[0]||null;
+ }
+ function fundPositions(portfolioId){
+  return account.positions.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.active)!==0);
+ }
+ function fundPositionCard(position){
+  const p=productForPosition(position),units=num(position.units),avg=num(position.avg_price),current=num(p.nav);
+  const value=units!==null&&current!==null?units*current:null;
+  const invested=units!==null&&avg!==null?units*avg:null;
+  const pnl=value!==null&&invested!==null?value-invested:null;
+  const pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
+  return '<article class="fund-position-card">'+
+   '<div class="fund-position-main"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':'FONDO')+'</span><h3>'+esc(p.name||position.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div>'+
+   '<div class="fund-position-value"><small>VALOR ACTUAL</small><strong>'+money(value,position.currency||p.currency)+'</strong><span>'+esc(ageText(p.valueDate||p.sourceUpdatedAt))+'</span></div></div>'+
+   '<div class="fund-position-metrics">'+
+    '<span><small>Participaciones</small><b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span>'+
+    '<span><small>Media</small><b>'+money(avg,position.currency||p.currency)+'</b></span>'+
+    '<span><small>P&L</small><b class="'+((pnl||0)>=0?'positive':'negative')+'">'+(pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)))+'</b></span>'+
+    '<span><small>Plataforma</small><b>'+esc(position.platform||'—')+'</b></span>'+
+   '</div>'+
+   '<details class="fund-more"><summary>Detalles</summary>'+compactFacts(p)+perfStrip(p)+'</details>'+
+   '<div class="fund-card-actions"><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button></div>'+
+  '</article>';
+ }
+ function renderPortfolio(){
+  const box=q('#fundPortfolioApp');if(!box)return;
+  account.user=root.ViewInvAIAuth?.getUser?.()||account.user;
+  if(!account.user){
+   box.innerHTML='<div class="portfolio-empty-state"><h2>Cartera de fondos</h2><p>Inicia sesión con Google para sincronizar tus fondos y ETFs entre web y Android.</p><button type="button" class="btn" data-fund-login>Entrar con Google</button></div>';
+   return;
+  }
+  if(account.loading){box.innerHTML='<div class="portfolio-loading"><span></span><p>Cargando fondos…</p></div>';return}
+  const selected=selectedFundPortfolio();
+  if(!selected){
+   box.innerHTML='<div class="portfolio-empty-state"><h2>Tu cartera de fondos está vacía</h2><p>Al añadir el primer fondo se creará automáticamente una cartera “Fondos y ETFs”.</p><button type="button" class="btn" data-fund-new-portfolio>＋ Crear cartera</button></div>';
+   return;
+  }
+  account.selectedPortfolioId=selected.id;
+  const rows=fundPositions(selected.id);
+  let total=0,invested=0,complete=true;
+  for(const position of rows){
+   const p=productForPosition(position),units=num(position.units),avg=num(position.avg_price),nav=num(p.nav);
+   if(units===null||nav===null){complete=false;continue}
+   total+=units*nav;
+   if(avg!==null)invested+=units*avg;else complete=false;
+  }
+  const pnl=complete?total-invested:null,pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
+  box.innerHTML=
+   '<div class="fund-portfolio-toolbar"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div><button type="button" class="btn small" data-fund-new-portfolio>＋ Cartera</button></div>'+
+   '<div class="portfolio-summary-bar">'+
+    '<div><small>CARTERA</small><strong>'+esc(selected.name)+'</strong></div>'+
+    '<div><small>VALOR ACTUAL</small><strong>'+(complete?money(total,selected.base_currency||'EUR'):'—')+'</strong></div>'+
+    '<div><small>P&L</small><strong class="'+((pnl||0)>=0?'pnl-up':'pnl-down')+'">'+(pnl===null?'—':money(pnl,selected.base_currency||'EUR')+(pnlPct===null?'':' · '+pct(pnlPct)))+'</strong></div>'+
+    '<div><small>POSICIONES</small><strong>'+rows.length+'</strong></div>'+
+   '</div>'+
+   (rows.length?'<div class="fund-position-grid">'+rows.map(fundPositionCard).join('')+'</div>':'<div class="portfolio-empty-state compact">Todavía no hay fondos en esta cartera. Añádelos desde el menú Fondos y ETFs.</div>');
+ }
+ async function loadPortfolio(force=false){
+  account.user=root.ViewInvAIAuth?.getUser?.()||null;
+  if(!account.user){account.portfolios=[];account.positions=[];renderPortfolio();return}
+  if(account.loading&&!force)return;
+  account.loading=true;renderPortfolio();
+  try{
+   const [pr,ps]=await Promise.all([api('/api/fund-portfolios'),api('/api/fund-positions')]);
+   const pd=await pr.json().catch(()=>({})),sd=await ps.json().catch(()=>({}));
+   if(!pr.ok)throw Error(pd.error||'No se pudieron cargar las carteras de fondos.');
+   if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
+   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];
+   if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
+  }catch(e){console.warn('Fund portfolio loading failed',e)}
+  finally{account.loading=false;renderPortfolio()}
+ }
+ async function ensureDefaultFundPortfolio(){
+  if(account.portfolios.length)return account.portfolios[0];
+  const r=await api('/api/fund-portfolios',{method:'POST',body:JSON.stringify({name:'Fondos y ETFs',platform:'',baseCurrency:'EUR'})});
+  const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo crear la cartera de fondos.');
+  account.portfolios=[data.portfolio];account.selectedPortfolioId=data.portfolio.id;return data.portfolio;
+ }
+ function ensureModal(){
+  let backdrop=q('#fundModalBackdrop'),modal=q('#fundModal');
+  if(backdrop&&modal)return modal;
+  backdrop=document.createElement('div');backdrop.id='fundModalBackdrop';backdrop.className='portfolio-modal-backdrop';backdrop.setAttribute('aria-hidden','true');
+  modal=document.createElement('section');modal.id='fundModal';modal.className='portfolio-modal';modal.setAttribute('aria-hidden','true');
+  modal.innerHTML='<div class="portfolio-modal-card"><div class="portfolio-modal-head"><h2 id="fundModalTitle">Fondos</h2><button type="button" data-fund-modal-close aria-label="Cerrar">×</button></div><div id="fundModalBody"></div></div>';
+  document.body.append(backdrop,modal);return modal;
+ }
+ function closeModal(){
+  q('#fundModal')?.classList.remove('open');q('#fundModal')?.setAttribute('aria-hidden','true');
+  q('#fundModalBackdrop')?.classList.remove('open');q('#fundModalBackdrop')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('app-modal-open');
+ }
+ function openModal(title,html){
+  const modal=ensureModal(),backdrop=q('#fundModalBackdrop');
+  q('#fundModalTitle').textContent=title;q('#fundModalBody').innerHTML=html;
+  modal.classList.add('open');modal.setAttribute('aria-hidden','false');backdrop.classList.add('open');backdrop.setAttribute('aria-hidden','false');document.body.classList.add('app-modal-open');
+ }
+ function platformOptions(product,current=''){
+  let rows=[];
+  if(verified(product.platforms.tradeRepublic))rows.push('Trade Republic');
+  if(verified(product.platforms.myInvestor))rows.push('MyInvestor');
+  if(current&&!rows.includes(current))rows.push(current);
+  rows.push('Otra');
+  return [...new Set(rows)].map(x=>'<option value="'+esc(x)+'"'+(x===current?' selected':'')+'>'+esc(x)+'</option>').join('');
+ }
+ async function openPositionForm(product,existing=null){
+  account.user=root.ViewInvAIAuth?.getUser?.()||null;
+  if(!account.user){root.ViewInvAIAuth?.signIn?.();return}
+  if(!account.portfolios.length)await ensureDefaultFundPortfolio();
+  const portfolio=selectedFundPortfolio()||account.portfolios[0];
+  const currentPlatform=existing?.platform||(verified(product.platforms.myInvestor)&&!verified(product.platforms.tradeRepublic)?'MyInvestor':verified(product.platforms.tradeRepublic)?'Trade Republic':'Otra');
+  openModal(existing?'Editar posición':'Añadir a cartera',
+   '<form id="fundPositionForm" class="portfolio-form" data-position-id="'+esc(existing?.id||'')+'" data-isin="'+esc(product.isin)+'">'+
+    '<div class="portfolio-form-grid"><label><span>Cartera</span><select name="fundPortfolioId">'+account.portfolios.map(p=>'<option value="'+esc(p.id)+'"'+(String(p.id)===String(existing?.fund_portfolio_id||portfolio.id)?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label>'+
+    '<label><span>Plataforma</span><select name="platform">'+platformOptions(product,currentPlatform)+'</select></label></div>'+
+    '<div class="portfolio-form-grid"><label><span>Participaciones</span><input name="units" type="number" inputmode="decimal" step="any" min="0" required value="'+esc(existing?.units??'')+'"></label>'+
+    '<label><span>Precio / VL medio</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" value="'+esc(existing?.avg_price??'')+'"></label></div>'+
+    '<div class="portfolio-form-grid"><label><span>Divisa</span><input name="currency" maxlength="3" value="'+esc(existing?.currency||product.currency||'EUR')+'"></label>'+
+    '<label><span>Fecha inicial</span><input name="openedAt" type="date" value="'+esc((existing?.opened_at||'').slice(0,10))+'"></label></div>'+
+    '<label><span>Notas</span><input name="notes" maxlength="1000" value="'+esc(existing?.notes||'')+'"></label>'+
+    '<button type="submit" class="btn">'+(existing?'Guardar cambios':'Añadir posición')+'</button>'+
+   '</form>');
+ }
+ async function savePosition(form){
+  const product=state.products.find(p=>p.isin===form.dataset.isin)||productForPosition({isin:form.dataset.isin,name:''});
+  const fd=new FormData(form),id=form.dataset.positionId;
+  const payload={
+   fundPortfolioId:String(fd.get('fundPortfolioId')||''),
+   isin:product.isin,name:product.name,productType:product.type,provider:product.provider,indexName:product.index,
+   platform:String(fd.get('platform')||''),units:num(fd.get('units')),avgPrice:num(fd.get('avgPrice')),
+   currency:String(fd.get('currency')||product.currency||'EUR').toUpperCase(),openedAt:String(fd.get('openedAt')||''),notes:String(fd.get('notes')||'')
+  };
+  const r=await api(id?'/api/fund-positions/'+encodeURIComponent(id):'/api/fund-positions',{method:id?'PATCH':'POST',body:JSON.stringify(payload)});
+  const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la posición.');
+  closeModal();await loadPortfolio(true);
+ }
+ async function createFundPortfolio(){
+  openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
+ }
  function bind(){
   q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
   q('#fundSort')?.addEventListener('change',e=>{state.sort=e.target.value;render()});
   q('#refreshFunds')?.addEventListener('click',()=>load(true));
-  document.addEventListener('click',e=>{
-   const b=e.target.closest&&e.target.closest('[data-fund-position]');if(!b)return;
-   const isin=b.dataset.fundPosition,p=state.products.find(x=>x.isin===isin);
-   if(!p)return;
-   window.dispatchEvent(new CustomEvent('viewinvai:fund-position-request',{detail:{product:p}}));
+  document.addEventListener('click',async e=>{
+   const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
+   if(asset){
+    const mode=asset.dataset.portfolioAsset;
+    document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{const active=b.dataset.portfolioAsset===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',active?'true':'false')});
+    document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>p.classList.toggle('is-hidden',p.dataset.portfolioAssetPanel!==mode));
+    if(mode==='funds')loadPortfolio(false);
+    return;
+   }
+   if(e.target.closest?.('[data-fund-login]')){root.ViewInvAIAuth?.signIn?.();return}
+   const select=e.target.closest&&e.target.closest('[data-fund-portfolio-select]');
+   if(select){account.selectedPortfolioId=select.dataset.fundPortfolioSelect;renderPortfolio();return}
+   if(e.target.closest?.('[data-fund-new-portfolio]')){createFundPortfolio();return}
+   if(e.target.closest?.('[data-fund-modal-close]')||e.target.id==='fundModalBackdrop'){closeModal();return}
+   const add=e.target.closest&&e.target.closest('[data-fund-position]');
+   if(add){
+    const p=state.products.find(x=>x.isin===add.dataset.fundPosition);if(p)await openPositionForm(p);return;
+   }
+   const edit=e.target.closest&&e.target.closest('[data-fund-position-edit]');
+   if(edit){
+    const position=account.positions.find(p=>String(p.id)===String(edit.dataset.fundPositionEdit));if(position)await openPositionForm(productForPosition(position),position);return;
+   }
+   const del=e.target.closest&&e.target.closest('[data-fund-position-delete]');
+   if(del){
+    const id=del.dataset.fundPositionDelete;
+    const r=await api('/api/fund-positions/'+encodeURIComponent(id),{method:'DELETE'});if(r.ok)await loadPortfolio(true);return;
+   }
   });
+  document.addEventListener('submit',async e=>{
+   if(e.target.id==='fundPositionForm'){e.preventDefault();try{await savePosition(e.target)}catch(err){console.warn(err);alert(err.message||'No se pudo guardar la posición.')}return}
+   if(e.target.id==='fundPortfolioForm'){
+    e.preventDefault();const fd=new FormData(e.target);
+    try{
+     const r=await api('/api/fund-portfolios',{method:'POST',body:JSON.stringify({name:String(fd.get('name')||''),platform:String(fd.get('platform')||''),baseCurrency:'EUR'})});
+     const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo crear la cartera.');
+     closeModal();account.selectedPortfolioId=data.portfolio.id;await loadPortfolio(true);
+    }catch(err){console.warn(err);alert(err.message||'No se pudo crear la cartera.')}
+   }
+  });
+  window.addEventListener('viewinvai:auth-changed',()=>loadPortfolio(true));
+  window.addEventListener('viewinvai:account-ready',()=>loadPortfolio(true));
  }
- function init(){bind();if(document.querySelector('#view-funds'))load(false)}
+ function init(){bind();if(document.querySelector('#view-funds'))load(false);renderPortfolio()}
 
- root.ViewInvAIFunds={init,load,render,getState:()=>state,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null};
+ root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null};
 })(window);
