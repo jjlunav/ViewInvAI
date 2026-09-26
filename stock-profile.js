@@ -11,13 +11,13 @@ function profileIdentity(label,value,extra=''){
  return '<div class="profile-identity"><small>'+E(label)+'</small><strong>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
 }
 function profileTabs(){
- return '<nav class="profile-tabs" aria-label="Secciones de la ficha">'+
-  '<button type="button" class="active" data-profile-jump="profile-general">General</button>'+
-  '<button type="button" data-profile-jump="profile-chart">Gráfico</button>'+
-  '<button type="button" data-profile-jump="profile-news">Noticias</button>'+
-  '<button type="button" data-profile-jump="profile-fundamental">Fundamental</button>'+
-  '<button type="button" data-profile-jump="profile-technical">Técnico</button>'+
-  '<button type="button" class="profile-tab-ai" data-profile-jump="profile-ai">✦ IA ViewInvAI</button>'+
+ return '<nav class="profile-tabs" aria-label="Secciones de la ficha" role="tablist">'+
+  '<button type="button" class="active" role="tab" aria-selected="true" data-profile-tab="general">General</button>'+
+  '<button type="button" role="tab" aria-selected="false" data-profile-tab="chart">Gráfico</button>'+
+  '<button type="button" role="tab" aria-selected="false" data-profile-tab="news">Noticias</button>'+
+  '<button type="button" role="tab" aria-selected="false" data-profile-tab="fundamental">Fundamental</button>'+
+  '<button type="button" role="tab" aria-selected="false" data-profile-tab="technical">Técnico</button>'+
+  '<button type="button" role="tab" aria-selected="false" class="profile-tab-ai" data-profile-tab="ai">✦ IA ViewInvAI</button>'+
  '</nav>';
 }
 function profileSessionStrip(s,isTr=false){
@@ -102,41 +102,39 @@ function profilePerformanceStrip(s){
 }
 function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
- return '<div class="profile-visual-toggle-row">'+
-   '<button type="button" class="profile-visual-toggle" aria-expanded="false" data-profile-visual-toggle data-profile-visual-key="'+E(key)+'" data-profile-visual-prefer-tr="'+(isTr?'1':'0')+'">▸ Mostrar gráfico y análisis IA</button>'+
-   '<button type="button" class="btn profile-chatgpt-open profile-chatgpt-visible" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">Preguntar a ChatGPT ↗</button>'+
-  '</div>'+
-  '<div class="profile-visual-analysis is-collapsed" data-profile-visual-analysis>'+
-   '<div class="profile-main-grid"><section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+profileAiPanel(s,isTr?'tr':'us')+'</div>'+
-  '</div>';
+ return '<section class="profile-tab-panel" data-profile-panel="chart" hidden>'+
+   '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+
+  '</section>'+
+  '<section class="profile-tab-panel" data-profile-panel="ai" hidden>'+
+   '<div class="profile-ai-tab-actions"><button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">Preguntar a ChatGPT ↗</button></div>'+
+   profileAiPanel(s,isTr?'tr':'us')+
+  '</section>';
 }
 function profileDetailRoot(el){
  return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;
 }
-function activateProfileVisualAnalysis(root,s,preferTr=false){
- if(!root||!s||root.dataset.visualAnalysisLoaded==='1')return;
- root.dataset.visualAnalysisLoaded='1';
- requestAnimationFrame(()=>{
-  root.querySelectorAll('[data-profile-visual-analysis] .mini-chart').forEach(loadMiniChart);
-  loadAiBrief(root,s,preferTr===true);
- });
-}
-function setProfileVisualExpanded(button,expanded,focusId=''){
- if(!button)return;
- let root=profileDetailRoot(button),panel=root&&root.querySelector('[data-profile-visual-analysis]');
- if(!root||!panel)return;
- expanded=!!expanded;
- panel.classList.toggle('is-collapsed',!expanded);
- button.setAttribute('aria-expanded',expanded?'true':'false');
- button.textContent=expanded?'▾ Ocultar gráfico y análisis IA':'▸ Mostrar gráfico y análisis IA';
- if(expanded){
-  let s=stockByKey(button.dataset.profileVisualKey);
-  let preferTr=button.dataset.profileVisualPreferTr==='1';
-  if(s)activateProfileVisualAnalysis(root,s,preferTr);
-  if(focusId)requestAnimationFrame(()=>root.querySelector('#'+CSS.escape(focusId))?.scrollIntoView({behavior:'smooth',block:'start'}));
+function activateProfileTabData(root,s,preferTr=false,tab=''){
+ if(!root||!s)return;
+ const market=preferTr===true?'tr':'us';
+ if(tab==='chart'){
+  const loadKey=stockKey(s)+'|'+market;
+  if(root.dataset.profileChartLoadedKey===loadKey)return;
+  root.dataset.profileChartLoadedKey=loadKey;
+  requestAnimationFrame(()=>{
+   root.querySelectorAll('[data-profile-panel="chart"] .mini-chart').forEach(el=>{
+    delete el.dataset.loaded;
+    loadMiniChart(el);
+   });
+  });
+  return;
+ }
+ if(tab==='ai'){
+  const loadKey=stockKey(s)+'|'+market;
+  if(root.dataset.profileAiLoadedKey===loadKey)return;
+  root.dataset.profileAiLoadedKey=loadKey;
+  requestAnimationFrame(()=>loadAiBrief(root,s,preferTr===true));
  }
 }
-
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
  let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
@@ -170,13 +168,20 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-    '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+'</div>'+
-    (opts.hideActions?'':'<div class="profile-primary-actions">'+
-     profilePortfolioActionHtml(s,isTr)+
-     '<button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button>'+
-    '</div>')+
+    '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
+}
+function nativeProfileChrome(){
+ return document.documentElement.dataset.nativeApp==='1';
+}
+function profileStickyShellHtml(s,isTr=false,opts={}){
+ const hero=profileHeroHtml(s,isTr,opts);
+ return nativeProfileChrome()?'<div class="profile-sticky-shell">'+hero+profileTabs()+'</div>':hero;
+}
+function profileBodyTabsHtml(){
+ return nativeProfileChrome()?'':profileTabs();
 }
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
@@ -186,93 +191,30 @@ function quickProfileHtml(s,opts={}){
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
- let backKind=opts.embedded?'portfolio':'quick';
- return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
+ return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
-   profileTabs()+profileSessionStrip(s,isTr)+
+   profileBodyTabsHtml()+
+   '<section class="profile-tab-panel active" data-profile-panel="general">'+profileSessionStrip(s,isTr)+
+   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section></section>'+
    profileVisualAnalysisHtml(s,isTr)+
-   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
-   '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>'+
+   '<section class="profile-tab-panel" data-profile-panel="fundamental" hidden><section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section></section>'+
+   '<section class="profile-tab-panel" data-profile-panel="technical" hidden><section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section></section>'+
+   '<section class="profile-tab-panel" data-profile-panel="news" hidden><section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section></section>'+
   '</div>';
 }
 function renderQuickProfile(){
  let box=$('#stockQuickDetail');if(!box)return;
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(!s){closeQuickProfile(false);return}
+ delete box.dataset.profileChartLoadedKey;
+ delete box.dataset.profileAiLoadedKey;
  box.innerHTML=quickProfileHtml(s);
- requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
+ requestAnimationFrame(()=>{
+  observeTrLivePrices(box);
+  pollUsLive();
+  window.ViewInvAINativeUI?.syncLayout?.();
+ });
 }
-function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
- let s=stockByKey(key);if(!container||!s)return false;
- let useTr=preferTr===true&&trTradable(s);
- container.classList.add('stock-profile-page','embedded-stock-profile');
- container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
- requestAnimationFrame(()=>{observeTrLivePrices(container);pollUsLive()});
- return true;
-}
-function profileHtml(s,view){
- let isTr=view==='catalog',se=currentMarketSession();
- let title=isTr?(s.trTicker||'Ticker LSX pendiente'):s.ticker;
- let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let relatedUs=(s.exchange||'')+':'+(s.ticker||'');
- let events=stockEvents(s),now=Date.now();
- let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,20);
- let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,30);
- let relationBadge=s.instrumentLinkStatus==='same_isin'
-  ?'<span class="relation-status ok">ISIN coincidente</span>'
-  :s.instrumentLinkStatus==='different_isin'
-   ?'<span class="relation-status warn">ISIN diferente</span>'
-   :'<span class="relation-status pending">ISIN pendiente</span>';
- let trRelation=isTr
-  ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong>'+relationBadge+'</div>'
-  :(s.tradeRepublicCandidate?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong>'+relationBadge+'</div>':'');
- let trNote=isTr
-  ?'<div class="profile-data-note">Precio principal, BID y ASK: LSX/Trade Republic en €. La referencia en USD se calcula con EUR/USD. Premarket, regular, postmarket y técnicos corresponden a '+E(relatedUs)+'.</div>'
-  :'';
- let feedWarning=!isTr
-  ?'<div class="profile-feed-warning '+(s.usLiveIsRealTime?'live':'')+'">'+(s.usLiveIsRealTime
-    ?'Precio, BID y ASK actuales: Nasdaq.com. TradingView puede diferir ligeramente por proveedor.'
-    :'El snapshot del screener EEUU está diferido ('+E(s.updateMode||'sin modo')+'). ViewInvAI intenta sustituir precio, BID y ASK por la cotización actual de Nasdaq.com para los valores visibles.')+'</div>'
-  :'';
- let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
- let identity=[
-  profileIdentity('Ticker Trade Republic / LSX',s.trTicker||'—',s.trExchange||'LSX'),
-  profileIdentity('Ticker EEUU',s.ticker||'—',s.exchange||''),
-  profileIdentity('ISIN Trade Republic',s.trIsin||'—'),
-  profileIdentity('ISIN EEUU',s.usIsin||s.isin||'—'),
-  profileIdentity('WKN',s.trWkn||'—'),
-  profileIdentity('Nombre en TR / LSX',s.trNameAtExchange||s.name||'—')
- ].join('');
- let currentChange=liveChangeHtml(s,SC(s,se),isTr);
- let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
- let upHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos futuros fechados cargados para este valor.</div>';
- let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
- let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
- return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+
-  '<div class="unified-profile-body">'+
-   profileTabs()+profileSessionStrip(s,isTr)+
-   profileVisualAnalysisHtml(s,isTr)+
-   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section>'+
-   '<section class="profile-section profile-identity-section"><div class="profile-section-head"><h3>Identificación y mercados</h3><span>Equivalencias del instrumento</span></div><div class="profile-identity-grid">'+identity+'</div></section>'+
-   '<section class="profile-section" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos eventos</h4><div class="event-list profile-events">'+upHtml+'</div></div></div></section>'+
-   '<section class="profile-section profile-source-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Origen de cada dato</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico LSX: histórico Trade Republic dibujado por ViewInvAI; gráfico EEUU: TradingView. Noticias y eventos: fuentes enlazadas. ViewInvAI cruza estos datos con su motor multifactor de IA.</div>'+links(s)+'</section>'+
-  '</div>';
-}
-function renderProfileView(view){
- let isTr=view==='catalog',detail=$(isTr?'#catalogDetail':'#catalogUSDetail'),browse=$(isTr?'#catalogBrowse':'#catalogUSBrowse');
- if(!detail||!browse)return false;
- let s=state.profileKey?stockByKey(state.profileKey):null;
- let valid=s&&(isTr?trTradable(s):market(s,'us'));
- if(!valid){detail.classList.add('is-hidden');browse.classList.remove('is-hidden');return false}
- browse.classList.add('is-hidden');detail.classList.remove('is-hidden');detail.classList.add('stock-profile-page');detail.innerHTML=profileHtml(s,view);
- requestAnimationFrame(()=>{observeTrLivePrices(detail);pollUsLive()});
- return true;
-}
-
 const aiBriefCache=new Map();
 let aiChatState={key:null,preferTr:false,history:[],busy:false};
 

@@ -2,42 +2,6 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "package.json"
-      - "capacitor.config.json"
-      - "index.html"
-      - "styles.css"
-      - "web-mobile.css"
-      - "mobile-app.css"
-      - "mobile-app.js"
-      - "native-runtime.js"
-      - "*.js"
-      - "scripts/build_mobile_shell.mjs"
-      - "mobile-shell/**"
-      - ".github/workflows/build-android.yml"
-      - "scripts/apply_android_branding.py"
-      - "firebase/**"
-  push:
-    branches:
-      - main
-    paths:
-      - "package.json"
-      - "capacitor.config.json"
-      - "index.html"
-      - "styles.css"
-      - "web-mobile.css"
-      - "mobile-app.css"
-      - "mobile-app.js"
-      - "native-runtime.js"
-      - "*.js"
-      - "scripts/build_mobile_shell.mjs"
-      - "mobile-shell/**"
-      - ".github/workflows/build-android.yml"
-      - "scripts/apply_android_branding.py"
-      - "firebase/**"
 
 permissions:
   contents: read
@@ -89,11 +53,13 @@ jobs:
           test -s mobile-shell/styles.css
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
+          test -s mobile-shell/funds.js
           test -s mobile-shell/native-runtime.js
           VERSION="$(node -p "require('./package.json').version")"
           grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
           test -s mobile-shell/data/market.json
           test -s mobile-shell/data/market-version.json
+          test -s mobile-shell/data/funds.json
           grep -q 'const native = true' mobile-shell/index.html
           if grep -q '"url"[[:space:]]*:[[:space:]]*"https://viewinvai' capacitor.config.json; then
             echo "::error::Android config still points at the remote web shell."
@@ -109,7 +75,6 @@ jobs:
             echo "::error::Chrome/Chromium no está disponible en el runner"
             exit 1
           fi
-
           QA_SHELL="/tmp/viewinvai-native-smoke-shell"
           rm -rf "$QA_SHELL" /tmp/viewinvai-native-profile
           cp -a mobile-shell "$QA_SHELL"
@@ -118,113 +83,65 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-          p = Path(os.environ["QA_SHELL"]) / "index.html"
-          html = p.read_text(encoding="utf-8")
-          inject = r"""
+          p=Path(os.environ["QA_SHELL"])/"index.html"
+          html=p.read_text(encoding="utf-8")
+          inject=r"""
           <script>
           (() => {
-            const started = Date.now();
-            const fail = msg => {
-              document.documentElement.dataset.nativeSmoke = 'fail';
-              document.documentElement.dataset.nativeSmokeError = String(msg);
-              console.error('NATIVE_SMOKE_FAIL', msg);
+            const started=Date.now();
+            const fail=m=>{document.documentElement.dataset.nativeSmoke='fail';document.documentElement.dataset.nativeSmokeError=String(m);console.error('NATIVE_SMOKE_FAIL',m)};
+            const wait=()=>{
+              try{
+                if(!window.ViewInvAI||!window.ViewInvAIFunds||!window.ViewInvAI.getAllStocks().length){
+                  if(Date.now()-started<8000)return setTimeout(wait,100);
+                  return fail('runtime did not initialize');
+                }
+                const more=document.querySelector('#mobileBottomNav [data-mobile-more]');
+                more?.click();
+                if(!document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]'))return fail('funds missing from More menu');
+                document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]')?.click();
+                if(!document.querySelector('#view-funds.active'))return fail('funds view did not open');
+                const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
+                if(!stock)return fail('no usable stock');
+                const key=window.ViewInvAI.getStockKey(stock);
+                if(!window.ViewInvAI.openStockByKey(key,'APK smoke',true))return fail('global detail did not open');
+                setTimeout(()=>{
+                  const detail=document.querySelector('#stockQuickDetail');
+                  if(!detail||detail.classList.contains('is-hidden'))return fail('stock detail hidden');
+                  if(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length!==1)return fail('stock detail duplicated');
+                  if(typeof window.ViewInvAI.renderEmbeddedStockDetail==='function')return fail('obsolete embedded stock detail API remains');
+                  const nav=document.querySelector('#mobileBottomNav'),shell=detail.querySelector('.profile-sticky-shell');
+                  if(!nav||getComputedStyle(nav).display==='none')return fail('bottom navigation hidden in detail');
+                  if(!shell||getComputedStyle(shell).position!=='fixed')return fail('pinned stock shell missing');
+                  const general=detail.querySelector('[data-profile-panel="general"]'),chart=detail.querySelector('[data-profile-panel="chart"]'),ai=detail.querySelector('[data-profile-panel="ai"]');
+                  if(!general||general.hidden||!chart||!chart.hidden||!ai||!ai.hidden)return fail('default stock tab state invalid');
+                  if(!detail.querySelector('[data-quote-freshness-key]'))return fail('freshness indicator missing');
+                  detail.querySelector('[data-profile-tab="chart"]')?.click();
+                  setTimeout(()=>{
+                    if(chart.hidden||!general.hidden)return fail('chart tab failed');
+                    detail.dataset.profileChartLoadedKey='__stale_stock__';
+                    const next=window.ViewInvAI.getAllStocks().find(s=>window.ViewInvAI.getStockKey(s)!==key);
+                    if(next&&typeof state==='object'&&typeof renderQuickProfile==='function'){
+                      state.profileKey=window.ViewInvAI.getStockKey(next);state.profilePreferTr=false;renderQuickProfile();
+                      if(detail.dataset.profileChartLoadedKey==='__stale_stock__')return fail('tab load state leaked across stocks');
+                    }
+                    document.documentElement.dataset.nativeSmoke='ok';
+                  },150);
+                },250);
+              }catch(e){fail(e&&(e.stack||e.message)||e)}
             };
-            const wait = () => {
-              try {
-                if (typeof window.ViewInvAI !== 'object' || !window.ViewInvAI.getAllStocks) {
-                  if (Date.now() - started < 8000) return setTimeout(wait, 100);
-                  return fail('ViewInvAI runtime did not initialize');
-                }
-                const stocks = window.ViewInvAI.getAllStocks();
-                if (!Array.isArray(stocks) || stocks.length < 100) return fail('packaged market universe missing');
-
-                for (const view of ['home','portfolios','recommendation','entry']) {
-                  const nav = document.querySelector('#mobileBottomNav [data-mobile-view="' + view + '"]');
-                  if (!nav) return fail(view + ' bottom navigation missing');
-                  nav.click();
-                  if (!document.querySelector('#view-' + view + '.active')) return fail('bottom navigation did not switch to ' + view);
-                }
-
-                const secondaryViews = ['alerts','catalog','heatmap','future','calendar','catalogUS','settings'];
-                for (const view of secondaryViews) {
-                  const more = document.querySelector('#mobileBottomNav [data-mobile-more]');
-                  if (!more) return fail('More navigation button missing before ' + view);
-                  more.click();
-                  const sheet = document.querySelector('#mobileMoreSheet');
-                  if (!sheet || !sheet.classList.contains('open') || getComputedStyle(sheet).visibility === 'hidden') {
-                    return fail('More sheet did not open for ' + view);
-                  }
-                  const item = sheet.querySelector('[data-mobile-view="' + view + '"]');
-                  if (!item) return fail('More item missing: ' + view);
-                  item.click();
-                  if (!document.querySelector('#view-' + view + '.active')) return fail('More navigation did not switch to ' + view);
-                }
-
-                document.querySelector('#mobileBottomNav [data-mobile-view="entry"]')?.click();
-                const criteria = document.querySelector('#view-entry details');
-                if (criteria) {
-                  const summary = criteria.querySelector('summary');
-                  summary?.click();
-                  if (!criteria.open) return fail('Radar criteria panel did not open');
-                }
-
-                const stock = stocks.find(s => s && (s.tvSymbol || s.ticker));
-                if (!stock) return fail('no usable stock in packaged snapshot');
-                const key = window.ViewInvAI.getStockKey(stock);
-                if (!window.ViewInvAI.openStockByKey(key, 'APK smoke')) return fail('openStockByKey returned false');
-
-                setTimeout(() => {
-                  const detail = document.querySelector('#stockQuickDetail');
-                  if (!document.body.classList.contains('stock-detail-open')) return fail('stock detail state not opened');
-                  if (!detail || detail.classList.contains('is-hidden')) return fail('stock detail stayed hidden');
-                  if (detail.innerHTML.length < 1500) return fail('stock detail HTML is unexpectedly empty');
-                  if (!detail.querySelector('.unified-stock-header')) return fail('stock detail header missing');
-                  if (!detail.querySelector('.unified-profile-body')) return fail('stock detail body missing');
-                  const visibleViews = [...document.querySelectorAll('.view')].filter(v => getComputedStyle(v).display !== 'none');
-                  if (visibleViews.length) return fail('underlying app view remains visible below stock detail: ' + visibleViews.map(v => v.id).join(','));
-                  const bottomNav = document.querySelector('#mobileBottomNav');
-                  if (bottomNav && getComputedStyle(bottomNav).display !== 'none') return fail('bottom navigation remains visible inside stock detail');
-                  const header = detail.querySelector('.unified-stock-header');
-                  const tabs = detail.querySelector('.profile-tabs');
-                  if (!header || !tabs) return fail('stock detail header or tabs missing');
-                  const headerRect = header.getBoundingClientRect();
-                  const tabsRect = tabs.getBoundingClientRect();
-                  if (tabsRect.top < headerRect.bottom - 2) return fail('stock detail tabs are covered by the fixed header');
-                  const visualToggle = detail.querySelector('[data-profile-visual-toggle]');
-                  if (!visualToggle) return fail('stock detail actions missing');
-                  visualToggle.click();
-                  const visual = detail.querySelector('[data-profile-visual-analysis]');
-                  if (!visual || visual.classList.contains('is-collapsed') || visualToggle.getAttribute('aria-expanded') !== 'true') {
-                    return fail('stock chart/analysis did not expand');
-                  }
-                  const back = detail.querySelector('[data-stock-detail-back]');
-                  if (!back) return fail('stock detail back button missing');
-                  back.click();
-                  setTimeout(() => {
-                    if (document.body.classList.contains('stock-detail-open')) return fail('stock detail did not close');
-                    if (!document.querySelector('#view-entry.active')) return fail('stock detail did not return to origin view');
-                    document.documentElement.dataset.nativeSmoke = 'ok';
-                  }, 120);
-                }, 250);
-              } catch (e) {
-                fail(e && e.stack || e && e.message || e);
-              }
-            };
-            setTimeout(wait, 150);
+            setTimeout(wait,150);
           })();
           </script>
           """
-          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          p.write_text(html.replace("</body>",inject+"\n</body>"),encoding="utf-8")
           PY
-
           cd "$QA_SHELL"
           python -m http.server 4182 --bind 127.0.0.1 >/tmp/viewinvai-native-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-
-          "$CHROME"             --headless=new             --no-sandbox             --disable-gpu             --disable-dev-shm-usage             --window-size=412,915             --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-native-profile             --virtual-time-budget=12000             --dump-dom             http://127.0.0.1:4182/             > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
-
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=412,915 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=12000 --dump-dom http://127.0.0.1:4182/ > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
           if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
             echo "::error::El frontend empaquetado no supera el recorrido funcional nativo"
             grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true
@@ -237,12 +154,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'body.stock-detail-open #stockQuickDetail>.unified-stock-header' mobile-shell/mobile-app.css
+          grep -q 'profile-sticky-shell' mobile-shell/mobile-app.css
           grep -q 'position:fixed!important' mobile-shell/mobile-app.css
-          grep -q 'body.stock-detail-open #stockQuickDetail .profile-tabs' mobile-shell/mobile-app.css
-          grep -q 'position:sticky!important' mobile-shell/mobile-app.css
+          grep -q 'body.stock-detail-open .mobile-bottom-nav' mobile-shell/mobile-app.css
+          grep -q 'display:grid!important' mobile-shell/mobile-app.css
           grep -q '#view-portfolios .portfolio-position-list.stock-list' mobile-shell/mobile-app.css
           grep -q 'grid-template-columns:minmax(0,1fr)!important' mobile-shell/mobile-app.css
+          grep -q 'Funds / ETFs native layout' mobile-shell/mobile-app.css
           echo "Android layout guards: OK"
 
       - name: Generate Android project

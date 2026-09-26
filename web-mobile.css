@@ -1867,3 +1867,16 @@ html,body{font-size:14px}
 
 .quick-kpi-grid{grid-template-columns:1fr}
 }
+
+
+/* Funds / ETFs mobile web */
+#view-funds .fund-toolbar{grid-template-columns:1fr 1fr}
+#view-funds .fund-search{grid-column:1/-1}
+#view-funds .fund-grid{grid-template-columns:1fr}
+#view-funds .fund-facts,
+#view-funds .fund-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#view-portfolios .portfolio-asset-switch{display:flex;width:100%}
+#view-portfolios .portfolio-asset-switch button{flex:1}
+#view-portfolios .fund-portfolio-toolbar{align-items:flex-start}
+#view-portfolios .fund-position-grid{grid-template-columns:1fr}
+#view-portfolios .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}

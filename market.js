@@ -180,6 +180,70 @@ function quoteUpdatedLabel(s,preferTr=false){
  let sameDay=dateFmt.format(d)===dateFmt.format(today);
  return 'ES '+(sameDay?'':dateFmt.format(d)+' · ')+quoteClockFormat.format(d);
 }
+function quoteAgeText(ms){
+ ms=N(ms);
+ if(ms===null)return 'sin hora';
+ let age=Math.max(0,Date.now()-ms);
+ if(age<5000)return 'ahora';
+ if(age<60000)return 'hace '+Math.max(1,Math.floor(age/1000))+' s';
+ if(age<3600000)return 'hace '+Math.max(1,Math.floor(age/60000))+' min';
+ if(age<86400000)return 'hace '+Math.max(1,Math.floor(age/3600000))+' h';
+ return 'hace '+Math.max(1,Math.floor(age/86400000))+' d';
+}
+function declaredQuoteDelayMinutes(s){
+ if(!s)return null;
+ for(let key of ['delayMinutes','quoteDelayMinutes','usDelayMinutes','marketDelayMinutes']){
+  let v=N(s[key]);if(v!==null&&v>0&&v<1440)return Math.round(v);
+ }
+ let raw=String(s.updateMode||s.usUpdateMode||s.quoteMode||'');
+ let m=raw.match(/(\d{1,3})\s*(?:min|minute)/i);
+ if(m){let v=Number(m[1]);if(Number.isFinite(v)&&v>0&&v<1440)return v}
+ return null;
+}
+function quoteFreshnessInfo(s,preferTr=false){
+ let ms=quoteTimestampMs(s,preferTr);
+ let age=ms===null?null:Math.max(0,Date.now()-ms);
+ let market=preferTr&&trTradable(s)?'tr':'us';
+ let quote=canonicalQuote(s,market==='tr');
+ let delay=market==='us'?declaredQuoteDelayMinutes(s):null;
+ let direct=market==='tr'?trLivePrice(s)!==null:usLivePrice(s)!==null;
+ let realTime=market==='tr'?direct:(direct&&s&&s.usLiveIsRealTime===true);
+ let open=market==='tr'?trMarketOpen():auto()!=='previous';
+ let source=quote&&quote.source||'';
+ let state='stale',label='Último dato';
+ if(!ms){
+  state='unknown';label='Sin hora de actualización';
+ }else if(!open){
+  state='closed';label='Mercado cerrado · '+quoteAgeText(ms);
+ }else if(delay!==null){
+  state='delayed';label='Retraso '+delay+' min · '+quoteAgeText(ms);
+ }else if(!realTime){
+  state='delayed';label='Dato diferido · '+quoteAgeText(ms);
+ }else if(age!==null&&age<=120000){
+  state='live';label='En directo · '+quoteAgeText(ms);
+ }else{
+  state='stale';label='Último dato · '+quoteAgeText(ms);
+ }
+ let exact=ms?new Date(ms).toLocaleString('es-ES',{timeZone:'Europe/Madrid'}):'sin hora disponible';
+ let title=(source?source+' · ':'')+exact+(delay!==null?' · retraso declarado '+delay+' min':'');
+ return{state,label,title,updatedAt:ms,ageMs:age,delayMinutes:delay,source,live:state==='live'};
+}
+function quoteFreshnessHtml(s,preferTr=false,extraClass=''){
+ if(!s)return '';
+ let info=quoteFreshnessInfo(s,preferTr),key=stockKey(s);
+ return '<span class="quote-freshness '+E(info.state)+(extraClass?' '+E(extraClass):'')+'" data-quote-freshness-key="'+E(key)+'" data-quote-freshness-tr="'+(preferTr?'1':'0')+'" title="'+E(info.title)+'"><i aria-hidden="true"></i><span>'+E(info.label)+'</span></span>';
+}
+function refreshQuoteFreshnessDom(root=document){
+ if(!root||!root.querySelectorAll)return;
+ root.querySelectorAll('[data-quote-freshness-key]').forEach(el=>{
+  let s=stockByKey(el.dataset.quoteFreshnessKey);if(!s)return;
+  let preferTr=el.dataset.quoteFreshnessTr==='1',info=quoteFreshnessInfo(s,preferTr);
+  el.classList.remove('live','delayed','closed','stale','unknown');
+  el.classList.add(info.state);
+  let text=el.querySelector('span');if(text)text.textContent=info.label;else el.textContent=info.label;
+  el.title=info.title;
+ });
+}
 function pricePairInner(s,p,preferTr=false){
  let d='\u0024',dec=quotePrecision(s,preferTr,p),updated='<small class="quote-updated">'+quoteUpdatedLabel(s,preferTr)+'</small>';
  if(preferTr&&trTradable(s)){
@@ -653,6 +717,7 @@ function scheduleEntryAutoSort(delay=650){
 }
 function initUsLive(){
  setInterval(refreshUsLiveDom,1000);
+ setInterval(()=>refreshQuoteFreshnessDom(document),1000);
  setInterval(pollUsLive,3000);
  setTimeout(pollUsLive,700);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();scheduleEntryAutoSort(0)}});
