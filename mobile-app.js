@@ -17,6 +17,8 @@
 
   let bodyObserver = null;
   let navObserver = null;
+  let chromeObserver = null;
+  let observedChrome = null;
   let resizeFrame = 0;
 
   function px(value) {
@@ -25,6 +27,22 @@
 
   function bottomNav() {
     return document.getElementById('mobileBottomNav');
+  }
+
+  function stockChrome() {
+    return document.querySelector(
+      'body.stock-detail-open #stockQuickDetail:not(.is-hidden) > .profile-sticky-shell'
+    );
+  }
+
+  function observeStockChrome() {
+    const chrome = stockChrome();
+    if (chrome === observedChrome) return;
+    if (chromeObserver) chromeObserver.disconnect();
+    observedChrome = chrome || null;
+    if (!chrome || typeof ResizeObserver !== 'function') return;
+    chromeObserver = new ResizeObserver(() => requestMetricSync());
+    chromeObserver.observe(chrome);
   }
 
   function syncViewportMetrics() {
@@ -38,6 +56,12 @@
       if (rect.height > 20) root.style.setProperty('--native-nav-h', px(rect.height));
     }
 
+    const chrome = stockChrome();
+    const chromeRect = chrome && chrome.getBoundingClientRect();
+    root.style.setProperty(
+      '--native-stock-chrome-h',
+      chromeRect && chromeRect.height > 20 ? px(chromeRect.height) : '0px'
+    );
   }
 
   function requestMetricSync() {
@@ -56,6 +80,12 @@
       document.body.classList.contains('stock-detail-open')
     );
 
+    observeStockChrome();
+    requestMetricSync();
+  }
+
+  function syncLayout() {
+    observeStockChrome();
     requestMetricSync();
   }
 
@@ -101,7 +131,7 @@
 
     observeNavigation();
     syncActiveView();
-    requestMetricSync();
+    syncLayout();
   }
 
   if (document.readyState === 'loading') {
@@ -112,6 +142,6 @@
 
   window.ViewInvAINativeUI = Object.freeze({
     isNative: true,
-    syncLayout: requestMetricSync
+    syncLayout
   });
 })();
