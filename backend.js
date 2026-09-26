@@ -1009,7 +1009,7 @@ async function handleFundPositions(request, env, user, json, parts, url) {
 }
 
 
-function calculateFundLedger(rows) {
+export function calculateFundLedger(rows) {
   let units=0,costBasis=0,realized=0,currency="EUR",firstBuyAt=null,totalFees=0;
   for(const row of rows||[]){
     const side=String(row.side||"").toUpperCase();
