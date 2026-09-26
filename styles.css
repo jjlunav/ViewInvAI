@@ -7284,3 +7284,28 @@ html[data-theme="light"] .tr-native-axis{
  color:var(--muted);
  font-size:9px;
 }
+
+
+/* Funds toolbar split: wide comparator on web, compact trigger on native. */
+.fund-toolbar{
+ display:grid;
+ grid-template-columns:minmax(260px,1.35fr) minmax(0,4.65fr);
+ gap:10px;
+ align-items:stretch;
+}
+.fund-toolbar>.fund-search{
+ grid-column:1;
+ min-width:0;
+}
+.fund-toolbar-advanced{
+ grid-column:2;
+ display:grid;
+ grid-template-columns:repeat(7,minmax(118px,1fr));
+ gap:10px;
+ min-width:0;
+}
+.fund-toolbar-advanced>*{min-width:0;width:100%}
+.fund-mobile-filters-toggle{display:none}
+
+/* Native-only compact fund list is generated from the same product data. */
+.fund-mobile-compare{display:none}
