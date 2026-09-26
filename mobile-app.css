@@ -2124,3 +2124,70 @@ html[data-native-app="1"] .fund-detail-hero>div:last-child{
  text-align:left!important;
  min-width:0!important;
 }
+
+
+/* Native funds comparison uses the same sortable table, adapted for touch. */
+html[data-native-app="1"] #view-funds .fund-table-scroll{
+ width:100%!important;
+ max-width:100%!important;
+ overflow-x:auto!important;
+ overflow-y:visible!important;
+ border-radius:11px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table{
+ min-width:1640px!important;
+ font-size:9px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table th,
+html[data-native-app="1"] #view-funds .fund-table td{
+ height:48px!important;
+ padding:6px 7px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table thead th{
+ height:36px!important;
+}
+html[data-native-app="1"] #view-funds .fund-sort-button{
+ height:36px!important;
+ min-height:36px!important;
+ padding:0 7px!important;
+ font-size:8px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table th[data-fund-column="name"],
+html[data-native-app="1"] #view-funds .fund-table td.fund-table-fund{
+ width:178px!important;
+ min-width:178px!important;
+ max-width:178px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table-fund-main strong{
+ font-size:10px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table-fund-main small{
+ font-size:7.5px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table th:first-child,
+html[data-native-app="1"] #view-funds .fund-table td:first-child{
+ position:sticky!important;
+ left:0!important;
+ z-index:3!important;
+}
+html[data-native-app="1"] #view-funds .fund-actions-head,
+html[data-native-app="1"] #view-funds .fund-table-actions{
+ position:static!important;
+ box-shadow:none!important;
+}
+html[data-native-app="1"] #view-funds .fund-table-actions{
+ display:flex!important;
+ gap:4px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table-actions .btn{
+ min-height:28px!important;
+ padding:4px 6px!important;
+ font-size:8px!important;
+}
+html[data-native-app="1"] #view-funds .fund-table-swipe-hint{
+ display:block!important;
+}
+html[data-native-app="1"] #view-funds .funds-status{
+ flex-wrap:wrap!important;
+ gap:4px 6px!important;
+}
