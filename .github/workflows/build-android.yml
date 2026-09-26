@@ -141,10 +141,10 @@ jobs:
                   if (!document.querySelector('#view-' + view + '.active')) return fail('bottom navigation did not switch to ' + view);
                 }
 
-                const more = document.querySelector('#mobileBottomNav [data-mobile-more]');
-                if (!more) return fail('More navigation button missing');
                 const secondaryViews = ['alerts','catalog','heatmap','future','calendar','catalogUS','settings'];
                 for (const view of secondaryViews) {
+                  const more = document.querySelector('#mobileBottomNav [data-mobile-more]');
+                  if (!more) return fail('More navigation button missing before ' + view);
                   more.click();
                   const sheet = document.querySelector('#mobileMoreSheet');
                   if (!sheet || !sheet.classList.contains('open') || getComputedStyle(sheet).visibility === 'hidden') {
