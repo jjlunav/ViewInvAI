@@ -16,6 +16,7 @@
  const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
+ function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
  function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
@@ -284,6 +285,32 @@
    '<tbody>'+rows.map(fundTableRow).join('')+'</tbody></table></div>'+
    '<div class="fund-table-swipe-hint">Desliza horizontalmente para ver todas las columnas · Pulsa una cabecera para ordenar</div>';
  }
+ function mobileSortHead(key,label){
+  const active=state.sort===key;
+  return '<button type="button" class="fund-mobile-sort'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'">'+esc(label)+(active?'<i aria-hidden="true">'+(state.sortDir==='asc'?'↑':'↓')+'</i>':'')+'</button>';
+ }
+ function fundMobileRow(p){
+  const one=num(p.perf1M),six=num(p.perf6M),year=num(p.perf1Y);
+  return '<button type="button" class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'">'+
+   '<span class="fund-mobile-name">'+esc(p.name||p.isin)+'</span>'+
+   '<b class="'+(one===null?'muted':one>=0?'positive':'negative')+'">'+pct(one)+'</b>'+
+   '<b class="'+(six===null?'muted':six>=0?'positive':'negative')+'">'+pct(six)+'</b>'+
+   '<b class="'+(year===null?'muted':year>=0?'positive':'negative')+'">'+pct(year)+'</b>'+
+   '<span class="fund-mobile-open" aria-hidden="true">›</span>'+
+  '</button>';
+ }
+ function fundMobileList(rows){
+  return '<div class="fund-mobile-compare">'+
+   '<div class="fund-mobile-compare-head">'+mobileSortHead('name','Fondo')+mobileSortHead('perf1M','1M')+mobileSortHead('perf6M','6M')+mobileSortHead('perf1Y','1A')+'<span></span></div>'+
+   '<div class="fund-mobile-rows">'+rows.map(fundMobileRow).join('')+'</div>'+
+  '</div>';
+ }
+ function updateMobileFiltersState(){
+  const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
+  const active=[state.platform!=='all',state.type!=='all',state.provider!=='all',state.region!=='all',state.distribution!=='all',state.maxTer!==null].filter(Boolean).length;
+  button.textContent=active?'Filtros · '+active:'Filtros';
+  button.classList.toggle('active',active>0);
+ }
  function renderFundDetail(p){
   const risk=[
    ['Volatilidad 3A',pct(p.volatility3Y)],['Drawdown máx.',pct(p.maxDrawdown)],['Sharpe 3A',num(p.sharpe3Y)===null?'—':num(p.sharpe3Y).toLocaleString('es-ES',{maximumFractionDigits:2})],
@@ -305,10 +332,12 @@
   const rows=filtered();
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
+  const results=rows.length?(nativeFundsView()?fundMobileList(rows):fundTable(rows)):
+    '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
    '<div class="funds-status"><span>'+rows.length+' productos</span><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(FUND_COLUMNS.find(([key])=>key===state.sort)?.[1]||state.sort)+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
-   (rows.length?fundTable(rows):
-    '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>');
+   results;
+  updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
  }
  async function load(force=false){
@@ -543,6 +572,11 @@
   openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
  }
  function bind(){
+  q('#fundMobileFiltersToggle')?.addEventListener('click',()=>{
+   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
+   const open=toolbar.classList.toggle('mobile-filters-open');
+   button.setAttribute('aria-expanded',open?'true':'false');
+  });
   q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
