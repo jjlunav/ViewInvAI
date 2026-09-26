@@ -2,42 +2,6 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "package.json"
-      - "capacitor.config.json"
-      - "index.html"
-      - "styles.css"
-      - "web-mobile.css"
-      - "mobile-app.css"
-      - "mobile-app.js"
-      - "native-runtime.js"
-      - "*.js"
-      - "scripts/build_mobile_shell.mjs"
-      - "mobile-shell/**"
-      - ".github/workflows/build-android.yml"
-      - "scripts/apply_android_branding.py"
-      - "firebase/**"
-  push:
-    branches:
-      - main
-    paths:
-      - "package.json"
-      - "capacitor.config.json"
-      - "index.html"
-      - "styles.css"
-      - "web-mobile.css"
-      - "mobile-app.css"
-      - "mobile-app.js"
-      - "native-runtime.js"
-      - "*.js"
-      - "scripts/build_mobile_shell.mjs"
-      - "mobile-shell/**"
-      - ".github/workflows/build-android.yml"
-      - "scripts/apply_android_branding.py"
-      - "firebase/**"
 
 permissions:
   contents: read
