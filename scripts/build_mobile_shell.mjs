@@ -34,10 +34,13 @@ const files = [
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
+await mkdir(path.join(out, 'data'), { recursive: true });
 
 for (const file of files) {
   await cp(path.join(root, file), path.join(out, file));
 }
+await cp(path.join(root, 'data', 'market.json'), path.join(out, 'data', 'market.json'));
+await cp(path.join(root, 'data', 'market-version.json'), path.join(out, 'data', 'market-version.json'));
 
 let html = await readFile(path.join(root, 'index.html'), 'utf8');
 html = html.replace(
@@ -60,4 +63,8 @@ if (!built.includes('index.html') || !built.includes('styles.css') || !built.inc
   throw new Error('Packaged mobile shell is incomplete.');
 }
 
-console.log('Packaged ViewInvAI mobile shell:', built.length, 'files');
+const localMarket = JSON.parse(await readFile(path.join(out, 'data', 'market.json'), 'utf8'));
+if (!Array.isArray(localMarket.stocks) || localMarket.stocks.length < 100) {
+  throw new Error('Packaged market snapshot is missing or unexpectedly small.');
+}
+console.log('Packaged ViewInvAI mobile shell:', built.length, 'files ·', localMarket.stocks.length, 'stocks');
