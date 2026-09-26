@@ -53,6 +53,18 @@ def currency_from_name(name: str) -> str:
     return match.group(1).upper() if match else "EUR"
 
 
+def exchange_product_type(name: str) -> str:
+    low = name.lower()
+    etp_markers = (
+        " etp", " etn", " etc", "physical gold", "physical silver",
+        "commodity", "commodities", "crude oil", "natural gas", "cocoa",
+        "wheat", "corn ", "sugar", "platinum", "palladium", "nickel",
+        "copper", "tin ", "lead ", " 2x ", " 3x ", "leveraged", " lev ",
+        "short eur", "short usd", "short gbp", "short jpy", "short chf",
+    )
+    return "etp" if any(marker in " " + low for marker in etp_markers) else "etf"
+
+
 def clean_name(text: str) -> str:
     text = re.sub(r"UNIVERSO DE INVERSI[ÓO]N.*$", "", text, flags=re.I).strip()
     return re.sub(r"\s+", " ", text).strip(" -")
@@ -73,7 +85,7 @@ def parse_trade_republic_etfs(pdf_bytes: bytes):
             products.append({
                 "isin": current["isin"],
                 "name": name,
-                "type": "etf",
+                "type": exchange_product_type(name),
                 "provider": "",
                 "index": "",
                 "category": "",
@@ -302,7 +314,7 @@ def enrich_trade_republic_history(products):
         return products, 0
     candidates = [
         p for p in products
-        if p.get("type") == "etf" and p.get("platforms", {}).get("tradeRepublic") == "verified"
+        if p.get("type") in {"etf","etp"} and p.get("platforms", {}).get("tradeRepublic") == "verified"
     ]
     workers = max(1, min(8, int(os.environ.get("VIEWINVAI_FUNDS_WORKERS", "5"))))
     enriched = 0
