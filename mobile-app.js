@@ -15,21 +15,12 @@
   root.dataset.nativeApp = '1';
   root.classList.add('native-app');
 
-  let headerObserver = null;
   let bodyObserver = null;
   let navObserver = null;
   let resizeFrame = 0;
 
   function px(value) {
     return Math.max(0, Math.round(Number(value) || 0)) + 'px';
-  }
-
-  function activeProfileHeader() {
-    return document.querySelector(
-      'body.stock-detail-open .stock-profile-page:not(.is-hidden) .unified-stock-header,' +
-      'body.stock-detail-open .stock-profile:not(.is-hidden) .unified-stock-header,' +
-      '.portfolio-inline-stock.stock-profile-page .unified-stock-header'
-    );
   }
 
   function bottomNav() {
@@ -47,11 +38,6 @@
       if (rect.height > 20) root.style.setProperty('--native-nav-h', px(rect.height));
     }
 
-    const header = activeProfileHeader();
-    if (header) {
-      const rect = header.getBoundingClientRect();
-      if (rect.height > 20) root.style.setProperty('--native-profile-header-h', px(rect.height));
-    }
   }
 
   function requestMetricSync() {
@@ -71,16 +57,6 @@
     );
 
     requestMetricSync();
-    observeCurrentHeader();
-  }
-
-  function observeCurrentHeader() {
-    if (headerObserver) headerObserver.disconnect();
-    const header = activeProfileHeader();
-    if (!header || typeof ResizeObserver !== 'function') return;
-
-    headerObserver = new ResizeObserver(() => requestMetricSync());
-    headerObserver.observe(header);
   }
 
   function observeNavigation() {
