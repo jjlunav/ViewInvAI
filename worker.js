@@ -621,11 +621,13 @@ async function publishMarketToR2(request, env) {
 
   const url = new URL(request.url);
   const kind = String(url.searchParams.get("kind") || "");
-  const key = kind === "snapshot" ? "data/market.json" : kind === "version" ? "data/market-version.json" : "";
+  const key = kind === "snapshot" ? "data/market.json" :
+    kind === "version" ? "data/market-version.json" :
+    kind === "funds" ? "data/funds.json" : "";
   if (!key) return jsonResponse({ error: "Invalid market asset kind" }, 400, { "Cache-Control": "no-store" });
 
   const announced = Number(request.headers.get("Content-Length") || 0);
-  const maxBytes = kind === "snapshot" ? 24 * 1024 * 1024 : 64 * 1024;
+  const maxBytes = kind === "snapshot" ? 24 * 1024 * 1024 : kind === "funds" ? 12 * 1024 * 1024 : 64 * 1024;
   if (announced > maxBytes) return jsonResponse({ error: "Payload too large" }, 413, { "Cache-Control": "no-store" });
 
   const body = await request.arrayBuffer();
@@ -639,6 +641,9 @@ async function publishMarketToR2(request, env) {
 
   if (kind === "snapshot" && (!parsed || !Array.isArray(parsed.stocks) || !parsed.meta || !parsed.meta.updatedAt)) {
     return jsonResponse({ error: "Invalid market snapshot" }, 400, { "Cache-Control": "no-store" });
+  }
+  if (kind === "funds" && (!parsed || !Array.isArray(parsed.products) || !parsed.meta || !parsed.meta.updatedAt)) {
+    return jsonResponse({ error: "Invalid funds snapshot" }, 400, { "Cache-Control": "no-store" });
   }
   if (kind === "version" && (!parsed || !parsed.updatedAt)) {
     return jsonResponse({ error: "Invalid market version" }, 400, { "Cache-Control": "no-store" });
@@ -658,7 +663,7 @@ async function publishMarketToR2(request, env) {
 
 async function r2MarketAssetResponse(env, pathname) {
   if (!env || !env.MARKET_DATA_BUCKET) return null;
-  const allowed = new Set(["/data/market.json", "/data/market-version.json"]);
+  const allowed = new Set(["/data/market.json", "/data/market-version.json", "/data/funds.json"]);
   if (!allowed.has(pathname)) return null;
   try {
     const key = pathname.replace(/^\//, "");
@@ -670,7 +675,9 @@ async function r2MarketAssetResponse(env, pathname) {
     headers.set("Content-Type", "application/json; charset=utf-8");
     headers.set("Cache-Control", pathname.endsWith("market-version.json")
       ? "public, max-age=30, must-revalidate"
-      : "public, max-age=60, must-revalidate");
+      : pathname.endsWith("funds.json")
+        ? "public, max-age=900, must-revalidate"
+        : "public, max-age=60, must-revalidate");
     headers.set("X-ViewInvAI-Market-Storage", "r2");
     return secureResponse(new Response(object.body, { status: 200, headers }), pathname);
   } catch (error) {
@@ -769,7 +776,7 @@ export default {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await tradingViewSymbolAvailability(request));
     }
-    if (url.pathname === "/data/market.json" || url.pathname === "/data/market-version.json") {
+    if (url.pathname === "/data/market.json" || url.pathname === "/data/market-version.json" || url.pathname === "/data/funds.json") {
       const r2 = await r2MarketAssetResponse(env, url.pathname);
       if (r2) return nativeCorsResponse(request, r2);
     }
