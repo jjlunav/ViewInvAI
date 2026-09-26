@@ -5,8 +5,6 @@ const state = {
   watchlist: [],
   portfolioTransactionSummaries: {},
   selectedPortfolioId: null,
-  detailStockKey: null,
-  detailPreferTr: null,
   loading: false
 };
 
@@ -14,22 +12,14 @@ const PORTFOLIO_UI_KEY = "viewinvai:portfolioUi:v2";
 try {
   const saved = JSON.parse(localStorage.getItem(PORTFOLIO_UI_KEY) || "{}");
   state.selectedPortfolioId = saved && saved.selectedPortfolioId || null;
-  state.detailStockKey = saved && saved.detailStockKey || null;
-  state.detailPreferTr = saved && saved.detailPreferTr === true ? true : saved && saved.detailPreferTr === false ? false : null;
 } catch (_) {}
-// 0.6.6 uses the same full stock detail from every entry point. Discard the
-// legacy inline-detail state left by older APKs while preserving the portfolio.
-state.detailStockKey = null;
-state.detailPreferTr = null;
 
 const $ = selector => document.querySelector(selector);
 
 function savePortfolioUi() {
   try {
     localStorage.setItem(PORTFOLIO_UI_KEY, JSON.stringify({
-      selectedPortfolioId: state.selectedPortfolioId || null,
-      detailStockKey: state.detailStockKey || null,
-      detailPreferTr: state.detailPreferTr
+      selectedPortfolioId: state.selectedPortfolioId || null
     }));
   } catch (_) {}
 }
@@ -120,9 +110,6 @@ function openStockInline(key, preferTr = null) {
     toast("No se pudo localizar esa acción en el mercado actual.", true);
     return false;
   }
-  state.detailStockKey = null;
-  state.detailPreferTr = null;
-  savePortfolioUi();
   if (window.ViewInvAI && typeof window.ViewInvAI.openStockByKey === "function") {
     return window.ViewInvAI.openStockByKey(canonicalStockKey(key), "Cartera · posición activa", preferTr);
   }
@@ -1385,8 +1372,6 @@ function bind() {
     const selector = event.target.closest?.("[data-portfolio-select]");
     if (selector) {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
-      state.detailStockKey = null;
-      state.detailPreferTr = null;
       savePortfolioUi();
       closePortfolioTabOverflow();
       renderApp();
@@ -1406,13 +1391,6 @@ function bind() {
       return;
     }
 
-    if (event.target.closest?.("[data-portfolio-detail-close]")) {
-      state.detailStockKey = null;
-      state.detailPreferTr = null;
-      savePortfolioUi();
-      renderApp();
-      return;
-    }
 
     const editPosition = event.target.closest?.("[data-edit-portfolio-position]");
     if (editPosition) {
