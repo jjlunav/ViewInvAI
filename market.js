@@ -174,7 +174,11 @@ function quoteTimestampMs(s,preferTr=false){
 }
 function quoteUpdatedLabel(s,preferTr=false){
  let ms=quoteTimestampMs(s,preferTr);
- return ms?'ES '+quoteClockFormat.format(new Date(ms)):'ES --:--:--';
+ if(!ms)return 'ES --:--:--';
+ let d=new Date(ms),today=new Date();
+ let dateFmt=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit'});
+ let sameDay=dateFmt.format(d)===dateFmt.format(today);
+ return 'ES '+(sameDay?'':dateFmt.format(d)+' · ')+quoteClockFormat.format(d);
 }
 function pricePairInner(s,p,preferTr=false){
  let d='\u0024',dec=quotePrecision(s,preferTr,p),updated='<small class="quote-updated">'+quoteUpdatedLabel(s,preferTr)+'</small>';
@@ -344,6 +348,7 @@ function trApplyTickerPayload(s,payload){
  s.trLiveReceivedAt=Date.now();
  trLive.lastDataAt=s.trLiveReceivedAt;
  scheduleEntryAutoSort();
+ window.dispatchEvent(new CustomEvent('viewinvai:quote-updated',{detail:{key:stockKey(s),market:'tr',updatedAt:s.trLiveUpdatedAt||s.trLiveReceivedAt}}));
 }
 function trSendSubscriptions(){
  if(!trLive.connected||!trLive.ws||trLive.ws.readyState!==WebSocket.OPEN)return;
@@ -547,6 +552,7 @@ function usApplyQuote(s,q){
  s.usLiveIsRealTime=q.isRealTime===true;
  s.usLiveSource=q.source||'Nasdaq';
  s.usLiveReceivedAt=Date.now();
+ window.dispatchEvent(new CustomEvent('viewinvai:quote-updated',{detail:{key:stockKey(s),market:'us',updatedAt:quoteTimestampMs(s,false)||s.usLiveReceivedAt}}));
 }
 function refreshUsLiveDom(){
  visibleLiveNodes('[data-us-live-key]').forEach(el=>{
