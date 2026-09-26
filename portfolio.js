@@ -17,6 +17,10 @@ try {
   state.detailStockKey = saved && saved.detailStockKey || null;
   state.detailPreferTr = saved && saved.detailPreferTr === true ? true : saved && saved.detailPreferTr === false ? false : null;
 } catch (_) {}
+// 0.6.6 uses the same full stock detail from every entry point. Discard the
+// legacy inline-detail state left by older APKs while preserving the portfolio.
+state.detailStockKey = null;
+state.detailPreferTr = null;
 
 const $ = selector => document.querySelector(selector);
 
@@ -113,18 +117,16 @@ function syncPortfolioStars() {
 function openStockInline(key, preferTr = null) {
   const stock = stockByKey(key);
   if (!stock) {
-    state.detailStockKey = null;
-    state.detailPreferTr = null;
-    savePortfolioUi();
-    renderApp();
     toast("No se pudo localizar esa acción en el mercado actual.", true);
     return false;
   }
-  state.detailStockKey = canonicalStockKey(key);
-  state.detailPreferTr = preferTr === true ? true : preferTr === false ? false : null;
+  state.detailStockKey = null;
+  state.detailPreferTr = null;
   savePortfolioUi();
-  renderApp();
-  return true;
+  if (window.ViewInvAI && typeof window.ViewInvAI.openStockByKey === "function") {
+    return window.ViewInvAI.openStockByKey(canonicalStockKey(key), "Cartera · posición activa", preferTr);
+  }
+  return false;
 }
 
 function signalInfo(signal) {
@@ -425,23 +427,6 @@ function renderApp() {
           '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
     '</div>';
-
-  if (state.detailStockKey) {
-    const context = $("#portfolioContext");
-    const p = state.positions.find(x => sameStockRef(x.stock_key, state.detailStockKey) && Number(x.active) !== 0 && (!selected || String(x.portfolio_id) === String(selected.id)));
-    const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
-    const stock = stockByKey(state.detailStockKey);
-    if (context && stock && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
-      const previous = context.innerHTML;
-      context.innerHTML = '<div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
-      const rendered = window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), canonicalStockKey(state.detailStockKey), "Cartera · " + (selected ? selected.name : "posición"), preferTr);
-      if (!rendered) context.innerHTML = previous;
-    } else {
-      state.detailStockKey = null;
-      state.detailPreferTr = null;
-      savePortfolioUi();
-    }
-  }
 
   requestAnimationFrame(() => {
     updatePortfolioTabOverflow();
