@@ -197,7 +197,8 @@ function analysisBadge(item) {
 }
 
 function portfolioPositions(portfolioId) {
-  return state.positions.filter(p => p.portfolio_id === portfolioId && Number(p.active) !== 0);
+  const id = String(portfolioId ?? "");
+  return state.positions.filter(p => String(p.portfolio_id ?? "") === id && Number(p.active) !== 0);
 }
 
 function portfolioSummaryHtml(portfolio, positions) {
@@ -334,6 +335,43 @@ function renderPositionRow(p, index = 0) {
     '<div class="portfolio-position-main"><div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || stock.name || "") + '</span></div>' +
     '<div class="portfolio-position-quote">' + quotePairHtml(stock, preferTr) + changeHtml(market.change) + '</div></div>' + context + '</article>';
 }
+function renderPositionRowSafe(p, index = 0) {
+  try {
+    const html = renderPositionRow(p, index);
+    if (html) return html;
+    throw new Error("La posición no generó contenido");
+  } catch (error) {
+    console.error("Portfolio position render failed", {
+      positionId: p && p.id,
+      portfolioId: p && p.portfolio_id,
+      stockKey: p && p.stock_key,
+      error
+    });
+    const ticker = p && (p.ticker || String(p.stock_key || "").split(":").pop()) || "—";
+    const name = p && p.name || "Posición guardada";
+    const qty = num(p && p.quantity);
+    const avg = num(p && p.avg_price);
+    const currency = String(p && p.currency || (Number(p && p.prefer_tr) === 1 ? "EUR" : "USD")).toUpperCase();
+    return '<article class="portfolio-position portfolio-position-render-error">' +
+      '<div class="portfolio-position-main">' +
+        '<div class="portfolio-position-id"><strong>' + esc(ticker) + '</strong><span>' + esc(name) + '</span></div>' +
+        '<div class="portfolio-position-quote"><strong>Posición activa</strong></div>' +
+      '</div>' +
+      '<div class="portfolio-position-context">' +
+        '<div class="portfolio-position-numbers">' +
+          '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
+          '<span>Media <b>' + formatMoney(avg, currency) + '</b></span>' +
+        '</div>' +
+        '<div class="portfolio-position-actions">' +
+          '<span class="portfolio-position-signal">No se pudo dibujar la cotización, pero la posición sigue disponible</span>' +
+          '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p && p.id || "") + '">Operaciones</button>' +
+          '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p && p.id || "") + '">Editar posición</button>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+}
+
 function renderWatchRow(w) {
   const stock = stockByKey(w.stock_key);
   const market = currentMarket(stock);
@@ -383,7 +421,7 @@ function renderApp() {
     '<div id="portfolioContext" class="portfolio-context">' +
       (selected
         ? portfolioSummaryHtml(selected, positions) + '<section class="portfolio-block integrated portfolio-positions-only">' +
-            '<div class="portfolio-position-list stock-list portfolio-card-grid">' + (positions.length ? positions.map(renderPositionRow).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
+            '<div class="portfolio-position-list stock-list portfolio-card-grid">' + (positions.length ? positions.map(renderPositionRowSafe).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
           '</section>'
         : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
     '</div>';
