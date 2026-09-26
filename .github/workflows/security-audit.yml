@@ -134,6 +134,22 @@ jobs:
           if(!fundOversell)throw new Error('Fund ledger must reject oversell');
           console.log('Portfolio and fund ledgers: OK');
           NODE
+      - name: Validar importador oficial de fondos y ETFs
+        env:
+          VIEWINVAI_FUNDS_HISTORY: "0"
+        run: |
+          python scripts/update_funds.py
+          python - <<'PY'
+          import json
+          data=json.load(open("data/funds.json",encoding="utf-8"))
+          products=data.get("products") or []
+          verified=[p for p in products if (p.get("platforms") or {}).get("tradeRepublic")=="verified"]
+          if len(verified)<100:
+              raise SystemExit(f"Catálogo ETF de Trade Republic sospechosamente pequeño: {len(verified)}")
+          if any(not p.get("isin") or len(p["isin"])!=12 for p in verified):
+              raise SystemExit("ISIN inválido en catálogo ETF")
+          print(f"Trade Republic ETF import: {len(verified)} productos verificados")
+          PY
       - name: Analisis estatico Python
         run: bandit -q -r scripts -ll
       - name: Compilar Python
