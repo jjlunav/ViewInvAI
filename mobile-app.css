@@ -1392,7 +1392,7 @@ html[data-native-app="1"] .mobile-more-backdrop{
   opacity:0!important;
   visibility:hidden!important;
   pointer-events:none!important;
-  transition:opacity .16s ease,visibility .16s ease!important;
+  transition:opacity .16s ease!important;
 }
 
 html[data-native-app="1"] .mobile-more-backdrop.open{
@@ -1420,7 +1420,7 @@ html[data-native-app="1"] .mobile-more-sheet{
   opacity:0!important;
   visibility:hidden!important;
   pointer-events:none!important;
-  transition:transform .16s ease,opacity .16s ease,visibility .16s ease!important;
+  transition:transform .16s ease,opacity .16s ease!important;
 }
 
 html[data-native-app="1"] .mobile-more-sheet.open{
