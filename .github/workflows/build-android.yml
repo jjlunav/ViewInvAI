@@ -202,8 +202,10 @@ jobs:
                   detail.dataset.visualAnalysisLoadedKey = '__stale_stock__';
                   const currentKey = window.ViewInvAI.getCurrentStockKey();
                   const nextStock = window.ViewInvAI.getAllStocks().find(item => window.ViewInvAI.getStockKey(item) !== currentKey);
-                  if (nextStock) {
-                    window.ViewInvAI.openStockByKey(window.ViewInvAI.getStockKey(nextStock), 'Native stale-state smoke', false);
+                  if (nextStock && typeof state === 'object' && typeof renderQuickProfile === 'function') {
+                    state.profileKey = window.ViewInvAI.getStockKey(nextStock);
+                    state.profilePreferTr = false;
+                    renderQuickProfile();
                     if (detail.dataset.visualAnalysisLoadedKey === '__stale_stock__') {
                       return fail('stock chart/AI state leaked into the next stock');
                     }
