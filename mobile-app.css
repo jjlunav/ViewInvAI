@@ -10,7 +10,6 @@ html[data-native-app="1"]{
   --native-page-x:12px;
   --native-gap:10px;
   --native-nav-h:calc(68px + var(--native-safe-bottom));
-  --native-profile-header-h:122px;
   --native-safe-top:env(safe-area-inset-top,0px);
   --native-safe-right:env(safe-area-inset-right,0px);
   --native-safe-bottom:env(safe-area-inset-bottom,0px);
@@ -1374,7 +1373,7 @@ html[data-native-app="1"] .unified-stock-header .profile-primary-actions .btn{
   white-space:normal!important;
 }
 
-/* Tabs sit below the measured native header rather than a hard-coded pixel guess. */
+/* The profile body follows the unified sticky chrome in normal document flow. */
 html[data-native-app="1"] .stock-profile-page .unified-profile-body,
 html[data-native-app="1"] .stock-profile .unified-profile-body{
   width:100%!important;
