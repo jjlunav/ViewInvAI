@@ -261,10 +261,12 @@ jobs:
 
           if profile.count('<header class="profile-hero investing-profile-header unified-stock-header">') != 1:
               raise SystemExit("La cabecera unificada debe tener una única plantilla")
-          if "return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in profile:
-              raise SystemExit("El detalle rápido/embebido dejó de reutilizar profileHeroHtml")
-          if "return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+" not in profile:
-              raise SystemExit("El catálogo dejó de reutilizar profileHeroHtml")
+          if "const hero=profileHeroHtml(s,isTr,opts);" not in profile:
+              raise SystemExit("El shell de ficha dejó de reutilizar profileHeroHtml")
+          if "return profileStickyShellHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in profile:
+              raise SystemExit("El detalle rápido/embebido dejó de reutilizar el shell unificado")
+          if "return profileStickyShellHtml(s,isTr,{backKind:'profile',backView:view})+" not in profile:
+              raise SystemExit("El catálogo dejó de reutilizar el shell unificado")
           if "container.classList.add('stock-profile-page','embedded-stock-profile')" not in profile:
               raise SystemExit("El detalle de cartera dejó de reutilizar stock-profile-page")
 
