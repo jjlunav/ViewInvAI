@@ -1,8 +1,184 @@
 {
   "meta": {
-    "updatedAt": null,
+    "updatedAt": "2026-09-27T00:18:00+02:00",
     "source": "MyInvestor",
-    "notes": "Overlay de disponibilidad verificada. No añadir un ISIN sin comprobar que la clase exacta está disponible."
+    "notes": "Disponibilidad verificada por ISIN exacto en fuentes oficiales de MyInvestor. No se infiere disponibilidad por similitud de nombre."
   },
-  "products": []
+  "products": [
+    {
+      "isin": "IE000ZYRH0Q7",
+      "name": "iShares Developed World Index Fund (IE) Acc EUR clase S",
+      "type": "fund",
+      "provider": "iShares / BlackRock",
+      "index": "MSCI World",
+      "category": "Renta variable indexada",
+      "region": "Global desarrollado",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.06,
+      "sources": [
+        {
+          "label": "MyInvestor · iShares clase S",
+          "url": "https://myinvestor.es/notas-de-prensa/myinvestor-comercializa-los-fondos-indexados-de-ishares-con-las-comisiones-mas-competitivas-de-espana/"
+        }
+      ]
+    },
+    {
+      "isin": "IE000N4ZYX28",
+      "name": "iShares US Equity Index Fund clase S",
+      "type": "fund",
+      "provider": "iShares / BlackRock",
+      "index": "S&P 500",
+      "category": "Renta variable indexada",
+      "region": "Estados Unidos",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.05,
+      "sources": [
+        {
+          "label": "MyInvestor · iShares clase S",
+          "url": "https://myinvestor.es/notas-de-prensa/myinvestor-comercializa-los-fondos-indexados-de-ishares-con-las-comisiones-mas-competitivas-de-espana/"
+        }
+      ]
+    },
+    {
+      "isin": "IE000QAZP7L2",
+      "name": "iShares Emerging Markets Index Fund (IE) Acc EUR clase S",
+      "type": "fund",
+      "provider": "iShares / BlackRock",
+      "index": "MSCI Emerging Markets",
+      "category": "Renta variable indexada",
+      "region": "Mercados emergentes",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.16,
+      "sources": [
+        {
+          "label": "MyInvestor · iShares clase S",
+          "url": "https://myinvestor.es/notas-de-prensa/myinvestor-comercializa-los-fondos-indexados-de-ishares-con-las-comisiones-mas-competitivas-de-espana/"
+        }
+      ]
+    },
+    {
+      "isin": "IE0004ZP1ND3",
+      "name": "iShares Global Aggregate 1–5 Year Bond Index Fund EUR Hedged",
+      "type": "fund",
+      "provider": "iShares / BlackRock",
+      "index": "Global Aggregate 1–5 Year Bond",
+      "category": "Renta fija indexada",
+      "region": "Global",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.1,
+      "sources": [
+        {
+          "label": "MyInvestor · iShares clase S",
+          "url": "https://myinvestor.es/notas-de-prensa/myinvestor-comercializa-los-fondos-indexados-de-ishares-con-las-comisiones-mas-competitivas-de-espana/"
+        }
+      ]
+    },
+    {
+      "isin": "IE00BYX5MX67",
+      "name": "Fidelity S&P 500 Index Fund P-ACC-EUR",
+      "type": "fund",
+      "provider": "Fidelity",
+      "index": "S&P 500",
+      "category": "Renta variable indexada",
+      "region": "Estados Unidos",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.06,
+      "sources": [
+        {
+          "label": "MyInvestor · fondos más baratos",
+          "url": "https://blog.myinvestor.es/cuales-son-los-fondos-de-inversion-mas-baratos/"
+        }
+      ]
+    },
+    {
+      "isin": "IE00BYX5MD61",
+      "name": "Fidelity MSCI Europe Index Fund P-ACC-EUR",
+      "type": "fund",
+      "provider": "Fidelity",
+      "index": "MSCI Europe",
+      "category": "Renta variable indexada",
+      "region": "Europa",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "sources": [
+        {
+          "label": "MyInvestor · consultorio fondos indexados",
+          "url": "https://blog.myinvestor.es/consultorio-debo-invertir-mi-dinero-de-golpe-o-en-varias-aportaciones/"
+        }
+      ]
+    },
+    {
+      "isin": "IE00BDRK7L36",
+      "name": "iShares Europe Index Fund (IE) D Acc EUR",
+      "type": "fund",
+      "provider": "iShares / BlackRock",
+      "index": "Índice europeo",
+      "category": "Renta variable indexada",
+      "region": "Europa",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "sources": [
+        {
+          "label": "MyInvestor · consultorio fondos indexados",
+          "url": "https://blog.myinvestor.es/consultorio-debo-invertir-mi-dinero-de-golpe-o-en-varias-aportaciones/"
+        }
+      ]
+    },
+    {
+      "isin": "IE0007987708",
+      "name": "Vanguard European Stock Index Fund EUR Acc",
+      "type": "fund",
+      "provider": "Vanguard",
+      "index": "Índice europeo",
+      "category": "Renta variable indexada",
+      "region": "Europa",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "sources": [
+        {
+          "label": "MyInvestor · consultorio fondos indexados",
+          "url": "https://blog.myinvestor.es/consultorio-debo-invertir-mi-dinero-de-golpe-o-en-varias-aportaciones/"
+        }
+      ]
+    },
+    {
+      "isin": "LU0389811539",
+      "name": "Amundi Index MSCI Europe IE-C",
+      "type": "fund",
+      "provider": "Amundi",
+      "index": "MSCI Europe",
+      "category": "Renta variable indexada",
+      "region": "Europa",
+      "currency": "EUR",
+      "distribution": "Acumulación",
+      "ter": 0.15,
+      "sources": [
+        {
+          "label": "MyInvestor · consultorio fondos indexados",
+          "url": "https://blog.myinvestor.es/consultorio-debo-invertir-mi-dinero-de-golpe-o-en-varias-aportaciones/"
+        }
+      ]
+    },
+    {
+      "isin": "ES0110182039",
+      "name": "BBVA Bolsa Índice",
+      "type": "fund",
+      "provider": "BBVA AM",
+      "index": "IBEX 35",
+      "category": "Renta variable indexada",
+      "region": "España",
+      "currency": "EUR",
+      "sources": [
+        {
+          "label": "MyInvestor · consultorio fondos indexados",
+          "url": "https://blog.myinvestor.es/consultorio-debo-invertir-mi-dinero-de-golpe-o-en-varias-aportaciones/"
+        }
+      ]
+    }
+  ]
 }
