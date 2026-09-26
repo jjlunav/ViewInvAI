@@ -199,6 +199,15 @@ jobs:
                   if (!visual || visual.classList.contains('is-collapsed') || visualToggle.getAttribute('aria-expanded') !== 'true') {
                     return fail('stock chart/analysis did not expand');
                   }
+                  detail.dataset.visualAnalysisLoadedKey = '__stale_stock__';
+                  const currentKey = window.ViewInvAI.getCurrentStockKey();
+                  const nextStock = window.ViewInvAI.getAllStocks().find(item => window.ViewInvAI.getStockKey(item) !== currentKey);
+                  if (nextStock) {
+                    window.ViewInvAI.openStockByKey(window.ViewInvAI.getStockKey(nextStock), 'Native stale-state smoke', false);
+                    if (detail.dataset.visualAnalysisLoadedKey === '__stale_stock__') {
+                      return fail('stock chart/AI state leaked into the next stock');
+                    }
+                  }
                   const back = detail.querySelector('[data-stock-detail-back]');
                   if (!back) return fail('stock detail back button missing');
                   back.click();
