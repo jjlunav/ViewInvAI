@@ -166,7 +166,7 @@
     '<span><small>Plataforma</small><b>'+esc(position.platform||'—')+'</b></span>'+
    '</div>'+
    '<details class="fund-more"><summary>Detalles</summary>'+compactFacts(p)+perfStrip(p)+'</details>'+
-   '<div class="fund-card-actions"><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button></div>'+
+   '<div class="fund-card-actions"><button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button></div>'+
   '</article>';
  }
  function renderPortfolio(){
@@ -280,6 +280,68 @@
   const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la posición.');
   closeModal();await loadPortfolio(true);
  }
+
+ function fundTransactionRowsHtml(rows,currency){
+  if(!rows||!rows.length)return '<div class="portfolio-empty-state compact">Todavía no hay operaciones registradas.</div>';
+  return rows.map(tx=>{
+   const buy=String(tx.side||'').toUpperCase()==='BUY';
+   const when=tx.executed_at?new Date(tx.executed_at):null;
+   const date=when&&Number.isFinite(when.getTime())?when.toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+   const total=(num(tx.units)||0)*(num(tx.price)||0);
+   return '<div class="transaction-row">'+
+    '<span class="transaction-side '+(buy?'buy':'sell')+'">'+(buy?'COMPRA':'VENTA')+'</span>'+
+    '<div class="transaction-main"><strong>'+esc((num(tx.units)||0).toLocaleString('es-ES',{maximumFractionDigits:6}))+' × '+money(tx.price,tx.currency||currency)+'</strong><small>'+esc(date)+(num(tx.fees)?' · comisión '+money(tx.fees,tx.currency||currency):'')+'</small></div>'+
+    '<div class="transaction-total"><strong>'+money(total,tx.currency||currency)+'</strong><small>'+esc(tx.notes||'')+'</small></div>'+
+    '<button type="button" class="transaction-delete" data-fund-transaction-delete="'+esc(tx.id)+'" aria-label="Eliminar operación">×</button>'+
+   '</div>';
+  }).join('');
+ }
+ async function openFundTransactions(positionId){
+  const position=account.positions.find(p=>String(p.id)===String(positionId));
+  if(!position)return;
+  const product=productForPosition(position),currency=position.currency||product.currency||'EUR';
+  openModal('Operaciones · '+(product.name||position.isin),'<div class="portfolio-loading compact"><span></span><p>Cargando operaciones…</p></div>');
+  try{
+   const r=await api('/api/fund-transactions?positionId='+encodeURIComponent(position.id));
+   const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudieron cargar las operaciones.');
+   const summary=data.summary||{};
+   q('#fundModalBody').innerHTML=
+    '<div class="transaction-ledger">'+
+     '<div class="transaction-summary">'+
+      '<div><small>POSICIÓN</small><strong>'+esc((num(summary.units)||0).toLocaleString('es-ES',{maximumFractionDigits:6}))+' uds.</strong></div>'+
+      '<div><small>MEDIA</small><strong>'+money(summary.avgPrice,currency)+'</strong></div>'+
+      '<div><small>P&L REALIZADO</small><strong class="'+((num(summary.realizedPnl)||0)>=0?'pnl-up':'pnl-down')+'">'+money(summary.realizedPnl,currency)+'</strong></div>'+
+      '<div><small>COMISIONES</small><strong>'+money(summary.totalFees,currency)+'</strong></div>'+
+     '</div>'+
+     '<form id="fundTransactionForm" class="portfolio-form transaction-form" data-position-id="'+esc(position.id)+'">'+
+      '<div class="portfolio-form-grid"><label><span>Tipo</span><select name="side"><option value="BUY">Compra / aportación</option><option value="SELL">Venta / reembolso</option></select></label>'+
+      '<label><span>Participaciones</span><input name="units" type="number" inputmode="decimal" step="any" min="0.00000001" required></label></div>'+
+      '<div class="portfolio-form-grid"><label><span>Precio / VL</span><input name="price" type="number" inputmode="decimal" step="any" min="0" required value="'+esc(num(product.nav)??'')+'"></label>'+
+      '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="0"></label></div>'+
+      '<div class="portfolio-form-grid"><label><span>Divisa</span><input name="currency" value="'+esc(currency)+'" readonly></label>'+
+      '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="'+new Date().toISOString().slice(0,16)+'" required></label></div>'+
+      '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Opcional"></label>'+
+      '<button type="submit" class="btn">Registrar operación</button>'+
+     '</form>'+
+     '<div class="transaction-history-head"><strong>Historial</strong><span>'+(data.transactions||[]).length+' operaciones</span></div>'+
+     '<div class="transaction-history">'+fundTransactionRowsHtml(data.transactions||[],currency)+'</div>'+
+    '</div>';
+  }catch(e){q('#fundModalBody').innerHTML='<div class="portfolio-empty-state compact">'+esc(e.message||'No se pudieron cargar las operaciones.')+'</div>'}
+ }
+ async function saveFundTransaction(form){
+  const position=account.positions.find(p=>String(p.id)===String(form.dataset.positionId));
+  if(!position)throw Error('No se encuentra la posición.');
+  const fd=new FormData(form),raw=String(fd.get('executedAt')||''),date=new Date(raw);
+  const payload={
+   positionId:position.id,side:String(fd.get('side')||'BUY'),units:num(fd.get('units')),price:num(fd.get('price')),
+   fees:num(fd.get('fees'))||0,currency:String(fd.get('currency')||position.currency||'EUR'),
+   executedAt:Number.isFinite(date.getTime())?date.toISOString():'',notes:String(fd.get('notes')||'')
+  };
+  const r=await api('/api/fund-transactions',{method:'POST',body:JSON.stringify(payload)});
+  const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la operación.');
+  await loadPortfolio(true);await openFundTransactions(position.id);
+ }
+
  async function createFundPortfolio(){
   openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
  }
@@ -307,6 +369,16 @@
    if(add){
     const p=state.products.find(x=>x.isin===add.dataset.fundPosition);if(p)await openPositionForm(p);return;
    }
+   const transactions=e.target.closest&&e.target.closest('[data-fund-transactions]');
+   if(transactions){await openFundTransactions(transactions.dataset.fundTransactions);return}
+   const deleteTx=e.target.closest&&e.target.closest('[data-fund-transaction-delete]');
+   if(deleteTx){
+    const txId=deleteTx.dataset.fundTransactionDelete;
+    const positionId=q('#fundTransactionForm')?.dataset.positionId;
+    const r=await api('/api/fund-transactions/'+encodeURIComponent(txId),{method:'DELETE'});
+    if(r.ok){await loadPortfolio(true);if(positionId)await openFundTransactions(positionId)}
+    return;
+   }
    const edit=e.target.closest&&e.target.closest('[data-fund-position-edit]');
    if(edit){
     const position=account.positions.find(p=>String(p.id)===String(edit.dataset.fundPositionEdit));if(position)await openPositionForm(productForPosition(position),position);return;
@@ -318,14 +390,15 @@
    }
   });
   document.addEventListener('submit',async e=>{
-   if(e.target.id==='fundPositionForm'){e.preventDefault();try{await savePosition(e.target)}catch(err){console.warn(err);alert(err.message||'No se pudo guardar la posición.')}return}
+   if(e.target.id==='fundPositionForm'){e.preventDefault();try{await savePosition(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la posición.')+'</div>')}return}
+   if(e.target.id==='fundTransactionForm'){e.preventDefault();try{await saveFundTransaction(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la operación.')+'</div>')}return}
    if(e.target.id==='fundPortfolioForm'){
     e.preventDefault();const fd=new FormData(e.target);
     try{
      const r=await api('/api/fund-portfolios',{method:'POST',body:JSON.stringify({name:String(fd.get('name')||''),platform:String(fd.get('platform')||''),baseCurrency:'EUR'})});
      const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo crear la cartera.');
      closeModal();account.selectedPortfolioId=data.portfolio.id;await loadPortfolio(true);
-    }catch(err){console.warn(err);alert(err.message||'No se pudo crear la cartera.')}
+    }catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo crear la cartera.')+'</div>')}
    }
   });
   window.addEventListener('viewinvai:auth-changed',()=>loadPortfolio(true));
