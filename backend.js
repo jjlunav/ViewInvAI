@@ -1008,6 +1008,103 @@ async function handleFundPositions(request, env, user, json, parts, url) {
   return json({ error:"Method not allowed" },405);
 }
 
+
+function calculateFundLedger(rows) {
+  let units=0,costBasis=0,realized=0,currency="EUR",firstBuyAt=null,totalFees=0;
+  for(const row of rows||[]){
+    const side=String(row.side||"").toUpperCase();
+    const qty=finiteNumber(row.units),price=finiteNumber(row.price),fees=Math.max(0,finiteNumber(row.fees)||0);
+    const cur=String(row.currency||currency||"EUR").toUpperCase();
+    if(qty===null||qty<=0||price===null||price<0)continue;
+    if(units>1e-8&&cur!==currency)throw new Error("Fund transaction currency differs from current position");
+    if(units<=1e-8)currency=cur;
+    totalFees+=fees;
+    if(side==="BUY"){
+      if(!firstBuyAt)firstBuyAt=row.executed_at||row.created_at||null;
+      units+=qty;
+      costBasis+=qty*price+fees;
+    }else if(side==="SELL"){
+      if(qty>units+1e-8)throw new Error("Sell units exceed current fund position");
+      const avg=units>1e-8?costBasis/units:0;
+      realized+=qty*price-fees-qty*avg;
+      units-=qty;
+      costBasis-=qty*avg;
+      if(units<=1e-8){units=0;costBasis=0}
+    }
+  }
+  return {units,avgPrice:units>1e-8?costBasis/units:null,invested:costBasis,realizedPnl:realized,totalFees,currency,firstBuyAt};
+}
+
+async function fundTransactionRows(env,userId,positionId){
+  await ensureFundSchema(env);
+  const rows=await env.DB.prepare(
+    "SELECT * FROM fund_transactions WHERE user_id=? AND fund_position_id=? ORDER BY executed_at ASC,created_at ASC,id ASC"
+  ).bind(userId,positionId).all();
+  return rows.results||[];
+}
+
+async function recalculateFundPosition(env,userId,positionId){
+  const existing=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,userId).first();
+  if(!existing)return null;
+  const ledger=calculateFundLedger(await fundTransactionRows(env,userId,positionId));
+  await env.DB.prepare(
+    "UPDATE fund_positions SET units=?,avg_price=?,currency=?,opened_at=?,active=?,updated_at=? WHERE id=? AND user_id=?"
+  ).bind(ledger.units,ledger.avgPrice,ledger.currency,ledger.firstBuyAt,ledger.units>1e-8?1:0,nowIso(),positionId,userId).run();
+  return {position:await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,userId).first(),ledger};
+}
+
+async function handleFundTransactions(request,env,user,json,parts,url){
+  await ensureFundSchema(env);
+  const id=parts[1]||"";
+  if(request.method==="GET"&&!id){
+    const positionId=trimText(url.searchParams.get("positionId"),80);
+    const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
+    let rows;
+    if(positionId){
+      rows=await env.DB.prepare("SELECT * FROM fund_transactions WHERE user_id=? AND fund_position_id=? ORDER BY executed_at DESC,created_at DESC").bind(user.id,positionId).all();
+      return json({transactions:rows.results||[],summary:calculateFundLedger(await fundTransactionRows(env,user.id,positionId))});
+    }
+    if(portfolioId){
+      rows=await env.DB.prepare("SELECT * FROM fund_transactions WHERE user_id=? AND fund_portfolio_id=? ORDER BY executed_at DESC,created_at DESC").bind(user.id,portfolioId).all();
+    }else{
+      rows=await env.DB.prepare("SELECT * FROM fund_transactions WHERE user_id=? ORDER BY executed_at DESC,created_at DESC LIMIT 500").bind(user.id).all();
+    }
+    return json({transactions:rows.results||[]});
+  }
+  if(request.method==="POST"&&!id){
+    const body=await readJson(request);
+    const positionId=trimText(body.positionId,80);
+    const side=String(body.side||"").toUpperCase();
+    const units=finiteNumber(body.units),price=finiteNumber(body.price),fees=Math.max(0,finiteNumber(body.fees)||0);
+    const currency=/^[A-Z]{3}$/.test(String(body.currency||"EUR").toUpperCase())?String(body.currency||"EUR").toUpperCase():"EUR";
+    const dateRaw=trimText(body.executedAt,40),date=dateRaw?new Date(dateRaw):new Date();
+    if(!["BUY","SELL"].includes(side))return json({error:"side must be BUY or SELL"},400);
+    if(units===null||units<=0)return json({error:"units must be greater than zero"},400);
+    if(price===null||price<0)return json({error:"price must be zero or greater"},400);
+    if(!Number.isFinite(date.getTime()))return json({error:"executedAt is invalid"},400);
+    const position=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,user.id).first();
+    if(!position)return json({error:"Fund position not found"},404);
+    const before=calculateFundLedger(await fundTransactionRows(env,user.id,positionId));
+    if(side==="SELL"&&units>before.units+1e-8)return json({error:"Sell units exceed current fund position"},400);
+    if(before.units>1e-8&&before.currency!==currency)return json({error:"Transaction currency must match the fund position"},400);
+    const txId=uid("ftx_"),now=nowIso();
+    await env.DB.prepare(
+      "INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(txId,position.fund_portfolio_id,position.id,user.id,position.isin,side,units,price,fees,currency,date.toISOString(),trimText(body.notes,1000),now,now).run();
+    const recalculated=await recalculateFundPosition(env,user.id,position.id);
+    return json({transaction:await env.DB.prepare("SELECT * FROM fund_transactions WHERE id=? AND user_id=?").bind(txId,user.id).first(),position:recalculated&&recalculated.position,summary:recalculated&&recalculated.ledger},201);
+  }
+  if(!id)return json({error:"Fund transaction id required"},400);
+  const existing=await env.DB.prepare("SELECT * FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if(!existing)return json({error:"Fund transaction not found"},404);
+  if(request.method==="DELETE"){
+    await env.DB.prepare("DELETE FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id).run();
+    const recalculated=await recalculateFundPosition(env,user.id,existing.fund_position_id);
+    return json({deleted:true,position:recalculated&&recalculated.position,summary:recalculated&&recalculated.ledger});
+  }
+  return json({error:"Method not allowed"},405);
+}
+
 async function handleWatchlist(request, env, user, json, parts) {
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
@@ -1743,6 +1840,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
+    if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
