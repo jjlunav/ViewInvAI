@@ -232,7 +232,7 @@ jobs:
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           test -n "$CHROME"
-          mkdir -p visual-parity /tmp/viewinvai-web-profile /tmp/viewinvai-native-shot-profile
+          mkdir -p visual-parity /tmp/viewinvai-web-stock-profile /tmp/viewinvai-native-stock-profile /tmp/viewinvai-web-catalog-profile /tmp/viewinvai-native-catalog-profile
 
           STOCK_KEY="$(python3 - <<'PY'
           import json, urllib.parse
