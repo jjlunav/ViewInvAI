@@ -2,7 +2,7 @@ name: Auditoria de seguridad
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/android-ui-0.6.7]
     paths:
       - "app.js"
       - "settings.js"
@@ -25,6 +25,7 @@ on:
       - "score-engine.js"
       - "auth.js"
       - "portfolio.js"
+      - "funds.js"
       - "worker.js"
       - "backend.js"
       - "package.json"
