@@ -377,7 +377,13 @@ jobs:
                           window.ViewInvAIFunds.load(true).then(()=>{
                             const cards=document.querySelectorAll('#fundsApp .fund-card');
                             if(cards.length!==2)return fail('fund catalogue did not render');
-                            if(!document.querySelector('#fundsApp .fund-more'))return fail('fund extended data disclosure missing');
+                            const fundDetail=document.querySelector('#fundsApp [data-fund-detail]');
+                            if(!fundDetail)return fail('fund detail action missing');
+                            fundDetail.click();
+                            const fundModal=document.querySelector('#fundModal');
+                            if(!fundModal||!fundModal.classList.contains('open')||!fundModal.querySelector('.fund-detail-sheet'))return fail('fund detail disclosure did not open');
+                            if(!fundModal.querySelector('.fund-performance')||!fundModal.querySelector('.fund-risk-grid'))return fail('fund detail is incomplete');
+                            document.querySelector('[data-fund-modal-close]')?.click();
                             if(!document.querySelector('#view-portfolios [data-portfolio-asset="funds"]'))return fail('fund portfolio switch missing');
                             document.documentElement.dataset.smoke='ok';
                           }).catch(fail);
