@@ -6879,3 +6879,58 @@ html[data-theme="light"] .tr-native-axis{
  color:#5f7680!important;
  font-weight:500!important
 }
+
+
+/* Shared market-data freshness indicator */
+.quote-freshness{
+ display:inline-flex;
+ align-items:center;
+ gap:5px;
+ max-width:100%;
+ color:#7f949d;
+ font-size:8px;
+ line-height:1.2;
+ white-space:nowrap;
+}
+.quote-freshness i{
+ width:6px;
+ height:6px;
+ flex:0 0 6px;
+ border-radius:50%;
+ background:#748891;
+}
+.quote-freshness.live{color:#6ddfba}
+.quote-freshness.live i{background:#45d6a7}
+.quote-freshness.delayed{color:#d7b96a}
+.quote-freshness.delayed i{background:#d7b96a}
+.quote-freshness.closed{color:#8ba0aa}
+.quote-freshness.closed i{background:#8ba0aa}
+.quote-freshness.stale{color:#d08f68}
+.quote-freshness.stale i{background:#d08f68}
+.quote-freshness.unknown{color:#7f949d}
+.stock-card-freshness{
+ justify-content:flex-end;
+ margin-top:3px;
+}
+.profile-quote-freshness{
+ grid-column:1/-1;
+ justify-self:start;
+ margin-top:2px;
+}
+
+/* Real profile tabs: only one information layer is visible at a time. */
+.profile-tab-panel[hidden]{
+ display:none!important;
+}
+.profile-tab-panel.active{
+ display:block;
+}
+.profile-tab-panel[data-profile-panel="chart"],
+.profile-tab-panel[data-profile-panel="ai"]{
+ margin-top:10px;
+}
+.profile-ai-tab-actions{
+ display:flex;
+ justify-content:flex-end;
+ margin:0 0 8px;
+}
