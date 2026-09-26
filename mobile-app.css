@@ -1070,6 +1070,28 @@ html[data-native-app="1"] #view-portfolios .portfolio-position-context{
   gap:7px!important;
 }
 
+html[data-native-app="1"] #view-portfolios .portfolio-context,
+html[data-native-app="1"] #view-portfolios .portfolio-positions-only,
+html[data-native-app="1"] #view-portfolios .portfolio-position-list.stock-list{
+  width:100%!important;
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+html[data-native-app="1"] #view-portfolios .portfolio-position-list.stock-list{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:8px!important;
+  overflow:visible!important;
+}
+
+html[data-native-app="1"] #view-portfolios .portfolio-investing-card,
+html[data-native-app="1"] #view-portfolios .portfolio-position{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+}
+
 html[data-native-app="1"] #view-portfolios .portfolio-position-numbers{
   display:grid!important;
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
@@ -1142,16 +1164,18 @@ html[data-native-app="1"] .portfolio-inline-stock .unified-stock-header{
 /* The stock detail header stays in document flow and sticks only while scrolling.
    This avoids fixed bars covering the first section on real Android WebView. */
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail>.unified-stock-header{
-  position:sticky!important;
+  position:fixed!important;
   top:var(--native-safe-top)!important;
-  left:auto!important;
-  right:auto!important;
-  width:100%!important;
+  left:0!important;
+  right:0!important;
+  width:auto!important;
+  max-width:none!important;
+  margin:0!important;
   z-index:1760!important;
 }
 
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail>.unified-profile-body{
-  padding-top:0!important;
+  padding-top:calc(var(--native-profile-header-h) + 8px)!important;
 }
 
 html[data-native-app="1"] .stock-profile-page .unified-stock-header-inner,
@@ -1379,10 +1403,41 @@ html[data-native-app="1"] .profile-tabs button{
 
 html[data-native-app="1"] .profile-session-strip{
   display:grid!important;
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:6px!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:5px!important;
   width:100%!important;
   margin:0 0 8px!important;
+}
+
+html[data-native-app="1"] .profile-session-cell{
+  min-width:0!important;
+  padding:8px 7px!important;
+  gap:3px 5px!important;
+  border:1px solid var(--native-line)!important;
+  border-radius:9px!important;
+  overflow:hidden!important;
+}
+
+html[data-native-app="1"] .profile-session-cell>strong{
+  min-width:0!important;
+  font-size:10.5px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+html[data-native-app="1"] .profile-session-cell>b{
+  font-size:9.5px!important;
+  white-space:nowrap!important;
+}
+
+html[data-native-app="1"] .profile-session-cell>span,
+html[data-native-app="1"] .profile-session-cell>small{
+  min-width:0!important;
+  font-size:7px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
 }
 
 html[data-native-app="1"] .profile-visual-toggle-row{
@@ -1429,6 +1484,66 @@ html[data-native-app="1"] .profile-identity-grid{
   display:grid!important;
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
   gap:6px!important;
+}
+
+html[data-native-app="1"] .profile-stat-list{
+  padding:6px!important;
+}
+
+html[data-native-app="1"] .profile-stat-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  align-content:start!important;
+  align-items:start!important;
+  gap:5px!important;
+  min-width:0!important;
+  min-height:72px!important;
+  padding:8px!important;
+  border:1px solid rgba(76,100,111,.22)!important;
+  border-radius:9px!important;
+  background:var(--native-surface-2)!important;
+  overflow:hidden!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>div,
+html[data-native-app="1"] .profile-stat-row>strong{
+  min-width:0!important;
+  width:100%!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>strong{
+  text-align:left!important;
+  overflow:hidden!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>strong .price-pair{
+  justify-content:flex-start!important;
+  max-width:100%!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>strong .quote-spread{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:4px!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:100%!important;
+  justify-content:stretch!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>strong .quote-side{
+  width:100%!important;
+  min-width:0!important;
+  padding:4px 5px!important;
+  overflow:hidden!important;
+}
+
+html[data-native-app="1"] .profile-stat-row>strong .quote-side strong{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
 }
 
 html[data-native-app="1"] .profile-performance-strip{
@@ -1715,7 +1830,7 @@ html[data-native-app="1"] .event-list{
   }
 
   html[data-native-app="1"] .profile-session-strip{
-    grid-template-columns:minmax(0,1fr)!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
   }
 
   html[data-native-app="1"] .profile-stat-list,
@@ -1835,10 +1950,19 @@ html[data-native-app="1"] body.stock-detail-open .floating-account{
 }
 
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail .profile-tabs{
-  position:relative!important;
-  top:auto!important;
-  z-index:auto!important;
+  position:sticky!important;
+  top:calc(var(--native-safe-top) + var(--native-profile-header-h))!important;
+  z-index:1750!important;
   margin:0 calc(var(--native-page-x) * -1) 8px!important;
-  background:#061017!important;
-  backdrop-filter:none!important;
+  background:rgba(6,16,23,.99)!important;
+  backdrop-filter:blur(12px)!important;
+  -webkit-backdrop-filter:blur(12px)!important;
+}
+
+
+/* Android UI regression guard: the stock sheet owns the viewport horizontally. */
+html[data-native-app="1"] body.stock-detail-open,
+html[data-native-app="1"] body.stock-detail-open #stockQuickDetail{
+  overflow-x:hidden!important;
+  max-width:100vw!important;
 }
