@@ -56,7 +56,7 @@ function initStockInteractions(){
     });
     if(tab==='chart'||tab==='ai'){
      let s=state.profileKey?stockByKey(state.profileKey):null;
-     if(s)activateProfileVisualAnalysis(root,s,state.profilePreferTr===true);
+     if(s)activateProfileTabData(root,s,state.profilePreferTr===true,tab);
     }
     window.ViewInvAINativeUI?.syncLayout?.();
     requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
