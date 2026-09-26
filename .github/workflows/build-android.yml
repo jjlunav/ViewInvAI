@@ -136,7 +136,10 @@ jobs:
                   return fail('ViewInvAI runtime did not initialize');
                 }
                 const stocks = window.ViewInvAI.getAllStocks();
-                if (!Array.isArray(stocks) || stocks.length < 100) return fail('packaged market universe missing');
+                if (!Array.isArray(stocks) || stocks.length < 100) {
+                  if (Date.now() - started < 8000) return setTimeout(wait, 100);
+                  return fail('packaged market universe missing');
+                }
 
                 for (const view of ['home','portfolios','recommendation','entry']) {
                   const nav = document.querySelector('#mobileBottomNav [data-mobile-view="' + view + '"]');
