@@ -119,29 +119,13 @@ function activateProfileVisualAnalysis(root,s,preferTr=false){
  if(root.dataset.visualAnalysisLoadedKey===loadKey)return;
  root.dataset.visualAnalysisLoadedKey=loadKey;
  requestAnimationFrame(()=>{
-  root.querySelectorAll('[data-profile-visual-analysis] .mini-chart').forEach(el=>{
+  root.querySelectorAll('[data-profile-panel="chart"] .mini-chart').forEach(el=>{
    delete el.dataset.loaded;
    loadMiniChart(el);
   });
   loadAiBrief(root,s,preferTr===true);
  });
 }
-function setProfileVisualExpanded(button,expanded,focusId=''){
- if(!button)return;
- let root=profileDetailRoot(button),panel=root&&root.querySelector('[data-profile-visual-analysis]');
- if(!root||!panel)return;
- expanded=!!expanded;
- panel.classList.toggle('is-collapsed',!expanded);
- button.setAttribute('aria-expanded',expanded?'true':'false');
- button.textContent=expanded?'▾ Ocultar gráfico y análisis IA':'▸ Mostrar gráfico y análisis IA';
- if(expanded){
-  let s=stockByKey(button.dataset.profileVisualKey);
-  let preferTr=button.dataset.profileVisualPreferTr==='1';
-  if(s)activateProfileVisualAnalysis(root,s,preferTr);
-  if(focusId)requestAnimationFrame(()=>root.querySelector('#'+CSS.escape(focusId))?.scrollIntoView({behavior:'smooth',block:'start'}));
- }
-}
-
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
  let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
@@ -236,67 +220,6 @@ function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
  requestAnimationFrame(()=>{observeTrLivePrices(container);pollUsLive()});
  return true;
 }
-function profileHtml(s,view){
- let isTr=view==='catalog',se=currentMarketSession();
- let title=isTr?(s.trTicker||'Ticker LSX pendiente'):s.ticker;
- let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let relatedUs=(s.exchange||'')+':'+(s.ticker||'');
- let events=stockEvents(s),now=Date.now();
- let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,20);
- let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,30);
- let relationBadge=s.instrumentLinkStatus==='same_isin'
-  ?'<span class="relation-status ok">ISIN coincidente</span>'
-  :s.instrumentLinkStatus==='different_isin'
-   ?'<span class="relation-status warn">ISIN diferente</span>'
-   :'<span class="relation-status pending">ISIN pendiente</span>';
- let trRelation=isTr
-  ?'<div class="profile-relation"><span>Instrumento TR</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong><span class="relation-arrow">↔</span><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong>'+relationBadge+'</div>'
-  :(s.tradeRepublicCandidate?'<div class="profile-relation"><span>Cotización EEUU</span><strong>'+E(relatedUs)+'</strong><span class="relation-arrow">↔</span><span>Trade Republic</span><strong>'+E((s.trExchange||'LSX')+':'+(s.trTicker||'pendiente'))+'</strong>'+relationBadge+'</div>':'');
- let trNote=isTr
-  ?'<div class="profile-data-note">Precio principal, BID y ASK: LSX/Trade Republic en €. La referencia en USD se calcula con EUR/USD. Premarket, regular, postmarket y técnicos corresponden a '+E(relatedUs)+'.</div>'
-  :'';
- let feedWarning=!isTr
-  ?'<div class="profile-feed-warning '+(s.usLiveIsRealTime?'live':'')+'">'+(s.usLiveIsRealTime
-    ?'Precio, BID y ASK actuales: Nasdaq.com. TradingView puede diferir ligeramente por proveedor.'
-    :'El snapshot del screener EEUU está diferido ('+E(s.updateMode||'sin modo')+'). ViewInvAI intenta sustituir precio, BID y ASK por la cotización actual de Nasdaq.com para los valores visibles.')+'</div>'
-  :'';
- let context=state.profileReason?'<div class="profile-context"><strong>Por qué llegaste aquí:</strong> '+E(state.profileReason)+'</div>':'';
- let identity=[
-  profileIdentity('Ticker Trade Republic / LSX',s.trTicker||'—',s.trExchange||'LSX'),
-  profileIdentity('Ticker EEUU',s.ticker||'—',s.exchange||''),
-  profileIdentity('ISIN Trade Republic',s.trIsin||'—'),
-  profileIdentity('ISIN EEUU',s.usIsin||s.isin||'—'),
-  profileIdentity('WKN',s.trWkn||'—'),
-  profileIdentity('Nombre en TR / LSX',s.trNameAtExchange||s.name||'—')
- ].join('');
- let currentChange=liveChangeHtml(s,SC(s,se),isTr);
- let liveLabel=isTr?'LSX · TIEMPO REAL':'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
- let upHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos futuros fechados cargados para este valor.</div>';
- let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
- let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
- return profileStickyShellHtml(s,isTr,{backKind:'profile',backView:view})+
-  '<div class="unified-profile-body">'+
-   profileBodyTabsHtml()+
-   '<section class="profile-tab-panel active" data-profile-panel="general">'+profileSessionStrip(s,isTr)+
-   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
-   '<section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores disponibles</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section></section>'+
-   '<section class="profile-tab-panel" data-profile-panel="general-extra"><section class="profile-section profile-identity-section"><div class="profile-section-head"><h3>Identificación y mercados</h3><span>Equivalencias del instrumento</span></div><div class="profile-identity-grid">'+identity+'</div></section></section>'+
-   '<section class="profile-tab-panel" data-profile-panel="news" hidden><section class="profile-section" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos eventos</h4><div class="event-list profile-events">'+upHtml+'</div></div></div></section>'+
-   '<section class="profile-section profile-source-section"><div class="profile-section-head"><h3>Contraste y fuentes</h3><span>Origen de cada dato</span></div><div class="source-note">Precio TR: LSX/Trade Republic. Precio EEUU actual: Nasdaq.com cuando está disponible. Gráfico LSX: histórico Trade Republic dibujado por ViewInvAI; gráfico EEUU: TradingView. Noticias y eventos: fuentes enlazadas. ViewInvAI cruza estos datos con su motor multifactor de IA.</div>'+links(s)+'</section>'+
-  '</div>';
-}
-function renderProfileView(view){
- let isTr=view==='catalog',detail=$(isTr?'#catalogDetail':'#catalogUSDetail'),browse=$(isTr?'#catalogBrowse':'#catalogUSBrowse');
- if(!detail||!browse)return false;
- let s=state.profileKey?stockByKey(state.profileKey):null;
- let valid=s&&(isTr?trTradable(s):market(s,'us'));
- if(!valid){detail.classList.add('is-hidden');browse.classList.remove('is-hidden');return false}
- browse.classList.add('is-hidden');detail.classList.remove('is-hidden');detail.classList.add('stock-profile-page');detail.innerHTML=profileHtml(s,view);
- requestAnimationFrame(()=>{observeTrLivePrices(detail);pollUsLive()});
- return true;
-}
-
 const aiBriefCache=new Map();
 let aiChatState={key:null,preferTr:false,history:[],busy:false};
 
