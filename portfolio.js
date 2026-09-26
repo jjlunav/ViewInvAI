@@ -247,7 +247,7 @@ function renderLoading(box) {
 
 function renderPortfolioCard(p) {
   const count = portfolioPositions(p.id).length;
-  const selected = state.selectedPortfolioId === p.id;
+  const selected = String(state.selectedPortfolioId ?? "") === String(p.id ?? "");
   return '<button type="button" class="portfolio-tab' + (selected ? ' active' : '') + '" data-portfolio-select="' + esc(p.id) + '">' +
     '<strong>' + esc(p.name) + '</strong>' +
     '<span>' + count + '</span>' +
@@ -361,6 +361,34 @@ function renderPositionRowSafe(p, index = 0) {
   }
 }
 
+function portfolioContextHtml(selected, positions) {
+  if (!selected) {
+    return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
+  }
+  try {
+    const summary = portfolioSummaryHtml(selected, positions);
+    const rows = positions.length
+      ? positions.map(renderPositionRowSafe).join('')
+      : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>';
+    return summary +
+      '<section class="portfolio-block integrated portfolio-positions-only">' +
+        '<div class="portfolio-position-list stock-list portfolio-card-grid">' + rows + '</div>' +
+      '</section>';
+  } catch (error) {
+    console.error("Portfolio context render failed", {
+      portfolioId: selected && selected.id,
+      positions: positions && positions.length,
+      error
+    });
+    const rows = (positions || []).map(renderPositionRowSafe).join('') ||
+      '<div class="portfolio-empty-state compact">No se pudo dibujar el resumen de la cartera.</div>';
+    return '<div class="portfolio-render-warning">El resumen no se ha podido actualizar, pero tus posiciones siguen disponibles.</div>' +
+      '<section class="portfolio-block integrated portfolio-positions-only">' +
+        '<div class="portfolio-position-list stock-list portfolio-card-grid">' + rows + '</div>' +
+      '</section>';
+  }
+}
+
 function renderWatchRow(w) {
   const stock = stockByKey(w.stock_key);
   const market = currentMarket(stock);
@@ -388,7 +416,7 @@ function renderApp() {
     state.selectedPortfolioId = state.portfolios[0] ? state.portfolios[0].id : null;
   }
 
-  const selected = state.portfolios.find(p => p.id === state.selectedPortfolioId) || null;
+  const selected = state.portfolios.find(p => String(p.id ?? "") === String(state.selectedPortfolioId ?? "")) || null;
   const positions = selected ? portfolioPositions(selected.id) : [];
   savePortfolioUi();
 
@@ -408,11 +436,7 @@ function renderApp() {
       '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>' +
     '</div>' +
     '<div id="portfolioContext" class="portfolio-context">' +
-      (selected
-        ? portfolioSummaryHtml(selected, positions) + '<section class="portfolio-block integrated portfolio-positions-only">' +
-            '<div class="portfolio-position-list stock-list portfolio-card-grid">' + (positions.length ? positions.map(renderPositionRowSafe).join('') : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>') + '</div>' +
-          '</section>'
-        : '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>') +
+      portfolioContextHtml(selected, positions) +
     '</div>';
 
   requestAnimationFrame(() => {
