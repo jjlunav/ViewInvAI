@@ -24,18 +24,9 @@ function requestIdentity(request){
   return String(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "anon").split(",")[0].trim().slice(0,80);
 }
 function requestActorKey(request){
-  const auth=String(request.headers.get("Authorization")||"");
-  const token=auth.startsWith("Bearer ")?auth.slice(7):"";
-  if(token){
-    try{
-      const payload=token.split(".")[1]||"";
-      const normalized=payload.replace(/-/g,"+").replace(/_/g,"/");
-      const padded=normalized+"=".repeat((4-normalized.length%4)%4);
-      const parsed=JSON.parse(atob(padded));
-      if(parsed&&parsed.sub)return"user:"+String(parsed.sub).slice(0,128);
-    }catch(_){}
-  }
-  return"ip:"+requestIdentity(request);
+  // The pre-authentication limiter must not trust claims from an unverified JWT.
+  // Authentication-specific identity is resolved later by verifyFirebaseUser().
+  return "ip:"+requestIdentity(request);
 }
 async function enforcedRateLimit(request,env,name,limit,windowMs,bindingName){
   const binding=bindingName&&env&&env[bindingName];
