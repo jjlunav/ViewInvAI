@@ -32,34 +32,35 @@ function initStockInteractions(){
    askAiChat(aiQuick.dataset.aiQuick||'');
    return;
   }
-  let visualToggle=e.target.closest&&e.target.closest('[data-profile-visual-toggle]');
-  if(visualToggle){
-   e.preventDefault();e.stopPropagation();
-   setProfileVisualExpanded(visualToggle,visualToggle.getAttribute('aria-expanded')!=='true');
-   return;
-  }
   let chartRetry=e.target.closest&&e.target.closest('[data-chart-retry]');
   if(chartRetry){e.preventDefault();e.stopPropagation();retryMiniChart(chartRetry);return}
   let trRange=e.target.closest&&e.target.closest('[data-tr-chart-range]');
   if(trRange){e.preventDefault();e.stopPropagation();switchTrChartRange(trRange);return}
   let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
   if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
-  let profileJump=e.target.closest&&e.target.closest('[data-profile-jump]');
-  if(profileJump){
+  let profileTab=e.target.closest&&e.target.closest('[data-profile-tab]');
+  if(profileTab){
    e.preventDefault();e.stopPropagation();
-   let id=profileJump.dataset.profileJump;
-   let root=profileDetailRoot(profileJump);
-   let tabs=profileJump.closest('.profile-tabs')||root?.querySelector('.profile-tabs');
-   tabs?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.profileJump===id));
-   if(id==='profile-chart'||id==='profile-ai'){
-    let toggle=root?.querySelector('[data-profile-visual-toggle]');
-    if(toggle&&toggle.getAttribute('aria-expanded')!=='true'){
-     setProfileVisualExpanded(toggle,true,id);
-     return;
+   let root=profileDetailRoot(profileTab),tab=profileTab.dataset.profileTab;
+   if(root&&tab){
+    root.dataset.profileTab=tab;
+    root.querySelectorAll('[data-profile-tab]').forEach(button=>{
+     let active=button.dataset.profileTab===tab;
+     button.classList.toggle('active',active);
+     button.setAttribute('aria-selected',active?'true':'false');
+    });
+    root.querySelectorAll('[data-profile-panel]').forEach(panel=>{
+     let active=panel.dataset.profilePanel===tab||(tab==='general'&&panel.dataset.profilePanel==='general-extra');
+     panel.hidden=!active;
+     panel.classList.toggle('active',active);
+    });
+    if(tab==='chart'||tab==='ai'){
+     let s=state.profileKey?stockByKey(state.profileKey):null;
+     if(s)activateProfileVisualAnalysis(root,s,state.profilePreferTr===true);
     }
+    window.ViewInvAINativeUI?.syncLayout?.();
+    requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
    }
-   let target=id&&(root?.querySelector('#'+CSS.escape(id))||document.getElementById(id));
-   if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
    return;
   }
   let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
