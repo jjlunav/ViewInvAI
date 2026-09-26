@@ -381,7 +381,12 @@ function renderApp() {
     }
   }
 
-  requestAnimationFrame(updatePortfolioTabOverflow);
+  requestAnimationFrame(() => {
+    updatePortfolioTabOverflow();
+    if (window.ViewInvAI && typeof window.ViewInvAI.observeLiveQuotes === "function") {
+      window.ViewInvAI.observeLiveQuotes(box);
+    }
+  });
 }
 async function fetchJson(path) {
   const response = await api(path);
