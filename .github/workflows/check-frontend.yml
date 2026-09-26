@@ -509,13 +509,17 @@ jobs:
                               window.ViewInvAI.renderEmbeddedStockDetail(portfolioHost, stockKey, 'Cartera · Smoke', true);
                             const embeddedHeader = portfolioHost.querySelector('.unified-stock-header');
                             const embeddedShell = portfolioHost.querySelector('.profile-sticky-shell');
-                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader || !embeddedShell) {
+                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader) {
                               fail('portfolio embedded stock detail did not reuse the unified profile');
                               return;
                             }
-                            const embeddedStyle = getComputedStyle(embeddedShell);
-                            if (embeddedStyle.position !== 'sticky') {
-                              fail('portfolio embedded stock shell is not sticky');
+                            if (embeddedShell) {
+                              fail('native sticky shell leaked into the web DOM');
+                              return;
+                            }
+                            const embeddedStyle = getComputedStyle(embeddedHeader);
+                            if (embeddedStyle.position !== 'sticky' || Math.abs(parseFloat(embeddedStyle.top || '0')) > 1) {
+                              fail('portfolio embedded stock header is not sticky at the top');
                               return;
                             }
                             const embeddedToggle = portfolioHost.querySelector('[data-profile-visual-toggle]');
