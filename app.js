@@ -41,9 +41,11 @@ function rebuildMarketIndexes(){
  stockIndexByKey=new Map();stockIndexByTickerExchange=new Map();stockIndexByIsin=new Map();eventIndexByRef=new Map();
  for(let stock of (db.stocks||[])){
   let key=stockKey(stock);if(key)stockIndexByKey.set(key,stock);
-  let exact=tickerRef(stock.ticker,stock.exchange),any=tickerRef(stock.ticker,'*');
-  if(exact&&!stockIndexByTickerExchange.has(exact))stockIndexByTickerExchange.set(exact,stock);
-  if(any&&!stockIndexByTickerExchange.has(any))stockIndexByTickerExchange.set(any,stock);
+  for(let [ticker,exchange] of [[stock.ticker,stock.exchange],[stock.trTicker,stock.trExchange||'LSX']]){
+   let exact=tickerRef(ticker,exchange),any=tickerRef(ticker,'*');
+   if(exact&&!stockIndexByTickerExchange.has(exact))stockIndexByTickerExchange.set(exact,stock);
+   if(any&&!stockIndexByTickerExchange.has(any))stockIndexByTickerExchange.set(any,stock);
+  }
   for(let value of [stock.isin,stock.usIsin,stock.trIsin]){
    let ref=isinRef(value);if(ref&&!stockIndexByIsin.has(ref))stockIndexByIsin.set(ref,stock);
   }
@@ -214,8 +216,28 @@ function stockKey(s){
  return String((s&&s.tvSymbol)||(((s&&s.exchange)||'')+':'+((s&&s.ticker)||''))).toUpperCase();
 }
 function stockByKey(key){
- key=String(key||'').toUpperCase();
- return stockIndexByKey.get(key)||null;
+ let raw=String(key||'').trim().toUpperCase();
+ if(!raw)return null;
+ let direct=stockIndexByKey.get(raw);if(direct)return direct;
+ if(raw.startsWith('I:'))return stockIndexByIsin.get(raw)||null;
+ if(/^[A-Z]{2}[A-Z0-9]{10}$/.test(raw)){
+  let byIsin=stockIndexByIsin.get(isinRef(raw));if(byIsin)return byIsin;
+ }
+ if(raw.startsWith('T:')){
+  let parts=raw.split(':');
+  if(parts.length>=3){
+   let exchange=parts[1],ticker=parts.slice(2).join(':');
+   let byTicker=stockIndexByTickerExchange.get(tickerRef(ticker,exchange))||stockIndexByTickerExchange.get(tickerRef(ticker,'*'));
+   if(byTicker)return byTicker;
+  }
+ }
+ let colon=raw.indexOf(':');
+ if(colon>0){
+  let exchange=raw.slice(0,colon),ticker=raw.slice(colon+1);
+  let byTicker=stockIndexByTickerExchange.get(tickerRef(ticker,exchange))||stockIndexByTickerExchange.get(tickerRef(ticker,'*'));
+  if(byTicker)return byTicker;
+ }
+ return stockIndexByTickerExchange.get(tickerRef(raw,'*'))||null;
 }
 let stockViews=readStockViews();
 function readStockViews(){
