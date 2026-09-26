@@ -150,6 +150,17 @@ jobs:
               raise SystemExit("ISIN inválido en catálogo ETF")
           print(f"Trade Republic ETF import: {len(verified)} productos verificados")
           PY
+      - name: Validar histórico ETF de Trade Republic
+        run: |
+          python - <<'PY'
+          from scripts.update_funds import tr_history
+          points=tr_history("FR0014003IY1")
+          if len(points)<30:
+              raise SystemExit(f"Histórico ETF insuficiente: {len(points)} puntos")
+          if points[-1][1] <= 0:
+              raise SystemExit("Último precio ETF inválido")
+          print(f"Trade Republic ETF history: {len(points)} puntos")
+          PY
       - name: Analisis estatico Python
         run: bandit -q -r scripts -ll
       - name: Compilar Python
