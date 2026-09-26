@@ -38,6 +38,8 @@ function initStockInteractions(){
    setProfileVisualExpanded(visualToggle,visualToggle.getAttribute('aria-expanded')!=='true');
    return;
   }
+  let chartRetry=e.target.closest&&e.target.closest('[data-chart-retry]');
+  if(chartRetry){e.preventDefault();e.stopPropagation();retryMiniChart(chartRetry);return}
   let trRange=e.target.closest&&e.target.closest('[data-tr-chart-range]');
   if(trRange){e.preventDefault();e.stopPropagation();switchTrChartRange(trRange);return}
   let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
