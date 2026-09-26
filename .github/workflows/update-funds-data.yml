@@ -1,0 +1,71 @@
+name: Actualizar fondos y ETFs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/update_funds.py"
+      - "data/myinvestor-funds.json"
+      - "requirements.txt"
+      - ".github/workflows/update-funds-data.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: funds-data
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements.txt"
+      - name: Instalar dependencias fijadas
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          python -m pip check
+      - name: Actualizar catálogo de fondos y ETFs
+        run: python scripts/update_funds.py
+      - name: Publicar snapshot online cuando esté configurado
+        env:
+          MARKET_PUBLISH_URL: ${{ vars.MARKET_PUBLISH_URL }}
+          MARKET_PUBLISH_TOKEN: ${{ secrets.MARKET_PUBLISH_TOKEN }}
+        run: |
+          if [ -z "${MARKET_PUBLISH_URL}" ] || [ -z "${MARKET_PUBLISH_TOKEN}" ]; then
+            echo "Publisher R2 no configurado; se mantiene publicación Git como fallback."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error             -X PUT "${MARKET_PUBLISH_URL}?kind=funds"             -H "Authorization: Bearer ${MARKET_PUBLISH_TOKEN}"             -H "Content-Type: application/json"             --data-binary @data/funds.json
+      - name: Publicar catálogo actualizado
+        env:
+          GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain -- data/funds.json)" ]; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          cp data/funds.json /tmp/funds.json
+          git fetch origin main
+          git reset --hard origin/main
+          cp /tmp/funds.json data/funds.json
+          if git diff --quiet -- data/funds.json; then exit 0; fi
+          git add data/funds.json
+          git commit -m "Update funds and ETFs data"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            echo "Push concurrente; reintentando ($attempt/3)..."
+            sleep 2
+          done
+          exit 1
