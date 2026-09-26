@@ -22,7 +22,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -37,6 +37,9 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements.txt
           python -m pip check
       - name: Actualizar catálogo de fondos y ETFs
+        env:
+          VIEWINVAI_FUNDS_HISTORY: "1"
+          VIEWINVAI_FUNDS_WORKERS: "5"
         run: python scripts/update_funds.py
       - name: Publicar snapshot online cuando esté configurado
         env:
