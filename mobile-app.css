@@ -134,6 +134,31 @@ html[data-native-app="1"] .view.active{
   display:block!important;
 }
 
+/* A stock profile is a full native screen. The previously active view must
+   never remain visible underneath the fixed profile header. */
+html[data-native-app="1"] body.stock-detail-open .view,
+html[data-native-app="1"] body.stock-detail-open .view.active{
+  display:none!important;
+}
+
+html[data-native-app="1"] body.stock-detail-open #stockQuickDetail.stock-profile-page:not(.is-hidden),
+html[data-native-app="1"] body.stock-detail-open #stockQuickDetail.stock-profile:not(.is-hidden){
+  display:block!important;
+}
+
+html[data-native-app="1"] body.stock-detail-open .mobile-bottom-nav{
+  display:none!important;
+}
+
+html[data-native-app="1"] body.stock-detail-open .notification-bell,
+html[data-native-app="1"] body.stock-detail-open .notification-center{
+  display:none!important;
+}
+
+html[data-native-app="1"] body.stock-detail-open .main{
+  padding-bottom:18px!important;
+}
+
 html[data-native-app="1"] .view>.page-heading{
   position:relative!important;
   display:grid!important;
