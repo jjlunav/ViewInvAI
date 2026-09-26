@@ -335,6 +335,75 @@ function transactionPayload(body) {
   };
 }
 
+
+function fundPortfolioPayload(body) {
+  return {
+    name: trimText(body.name, 80),
+    platform: trimText(body.platform, 60),
+    baseCurrency: /^[A-Z]{3}$/.test(String(body.baseCurrency || "EUR").toUpperCase())
+      ? String(body.baseCurrency || "EUR").toUpperCase()
+      : "EUR",
+    sortOrder: Math.max(-1000, Math.min(1000, Math.round(finiteNumber(body.sortOrder) || 0)))
+  };
+}
+
+function fundPositionPayload(body) {
+  const isin = trimText(body.isin, 24).toUpperCase();
+  const productType = String(body.productType || "fund").toLowerCase() === "etf" ? "etf" : "fund";
+  const units = finiteNumber(body.units);
+  const avgPrice = finiteNumber(body.avgPrice);
+  return {
+    fundPortfolioId: trimText(body.fundPortfolioId, 80),
+    isin,
+    name: trimText(body.name, 180),
+    productType,
+    provider: trimText(body.provider, 120),
+    indexName: trimText(body.indexName, 160),
+    platform: trimText(body.platform, 60),
+    units,
+    avgPrice,
+    currency: /^[A-Z]{3}$/.test(String(body.currency || "EUR").toUpperCase())
+      ? String(body.currency || "EUR").toUpperCase()
+      : "EUR",
+    openedAt: trimText(body.openedAt, 40) || null,
+    notes: trimText(body.notes, 1000)
+  };
+}
+
+let fundSchemaReady = false;
+async function ensureFundSchema(env) {
+  if (fundSchemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS fund_portfolios (" +
+      "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,platform TEXT NOT NULL DEFAULT '',base_currency TEXT NOT NULL DEFAULT 'EUR',sort_order INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+    ),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_portfolios_user ON fund_portfolios(user_id,sort_order,created_at)"),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS fund_positions (" +
+      "id TEXT PRIMARY KEY,fund_portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,isin TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',product_type TEXT NOT NULL DEFAULT 'fund' CHECK(product_type IN ('fund','etf')),provider TEXT NOT NULL DEFAULT '',index_name TEXT NOT NULL DEFAULT '',platform TEXT NOT NULL DEFAULT '',units REAL NOT NULL DEFAULT 0 CHECK(units>=0),avg_price REAL,currency TEXT NOT NULL DEFAULT 'EUR',opened_at TEXT,notes TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "FOREIGN KEY(fund_portfolio_id) REFERENCES fund_portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+    ),
+    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_fund_positions_portfolio_isin ON fund_positions(fund_portfolio_id,isin)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_positions_user_active ON fund_positions(user_id,active)"),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS fund_transactions (" +
+      "id TEXT PRIMARY KEY,fund_portfolio_id TEXT NOT NULL,fund_position_id TEXT NOT NULL,user_id TEXT NOT NULL,isin TEXT NOT NULL,side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),units REAL NOT NULL CHECK(units>0),price REAL NOT NULL CHECK(price>=0),fees REAL NOT NULL DEFAULT 0 CHECK(fees>=0),currency TEXT NOT NULL DEFAULT 'EUR',executed_at TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "FOREIGN KEY(fund_portfolio_id) REFERENCES fund_portfolios(id) ON DELETE CASCADE,FOREIGN KEY(fund_position_id) REFERENCES fund_positions(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+    ),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_transactions_user_date ON fund_transactions(user_id,executed_at DESC,created_at DESC)")
+  ]);
+  fundSchemaReady = true;
+}
+
+async function oneFundPortfolio(env, userId, id) {
+  await ensureFundSchema(env);
+  return env.DB.prepare(
+    "SELECT id,user_id,name,platform,base_currency,sort_order,created_at,updated_at FROM fund_portfolios WHERE id=? AND user_id=?"
+  ).bind(id, userId).first();
+}
+
 let transactionsSchemaReady = false;
 async function ensureTransactionsSchema(env) {
   if (transactionsSchemaReady) return;
@@ -824,6 +893,119 @@ async function handleTransactions(request, env, user, json, parts, url) {
   }
 
   return json({ error: "Method not allowed" }, 405);
+}
+
+
+async function handleFundPortfolios(request, env, user, json, parts) {
+  await ensureFundSchema(env);
+  const id = parts[1] || "";
+  if (request.method === "GET" && !id) {
+    const rows = await env.DB.prepare(
+      "SELECT p.*, (SELECT COUNT(*) FROM fund_positions x WHERE x.fund_portfolio_id=p.id AND x.active=1) AS position_count " +
+      "FROM fund_portfolios p WHERE p.user_id=? ORDER BY p.sort_order ASC,p.created_at ASC"
+    ).bind(user.id).all();
+    return json({ portfolios: rows.results || [] });
+  }
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = fundPortfolioPayload(body);
+    if (!data.name) return json({ error: "Fund portfolio name is required" }, 400);
+    const idNew = uid("fpf_"), now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO fund_portfolios (id,user_id,name,platform,base_currency,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)"
+    ).bind(idNew,user.id,data.name,data.platform,data.baseCurrency,data.sortOrder,now,now).run();
+    return json({ portfolio: await oneFundPortfolio(env,user.id,idNew) },201);
+  }
+  if (!id) return json({ error: "Fund portfolio id required" },400);
+  const existing = await oneFundPortfolio(env,user.id,id);
+  if (!existing) return json({ error: "Fund portfolio not found" },404);
+  if (request.method === "PATCH") {
+    const body = await readJson(request);
+    const data = fundPortfolioPayload({
+      name: body.name !== undefined ? body.name : existing.name,
+      platform: body.platform !== undefined ? body.platform : existing.platform,
+      baseCurrency: body.baseCurrency !== undefined ? body.baseCurrency : existing.base_currency,
+      sortOrder: body.sortOrder !== undefined ? body.sortOrder : existing.sort_order
+    });
+    if (!data.name) return json({ error: "Fund portfolio name is required" },400);
+    await env.DB.prepare(
+      "UPDATE fund_portfolios SET name=?,platform=?,base_currency=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(data.name,data.platform,data.baseCurrency,data.sortOrder,nowIso(),id,user.id).run();
+    return json({ portfolio: await oneFundPortfolio(env,user.id,id) });
+  }
+  if (request.method === "DELETE") {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM fund_transactions WHERE fund_portfolio_id=? AND user_id=?").bind(id,user.id),
+      env.DB.prepare("DELETE FROM fund_positions WHERE fund_portfolio_id=? AND user_id=?").bind(id,user.id),
+      env.DB.prepare("DELETE FROM fund_portfolios WHERE id=? AND user_id=?").bind(id,user.id)
+    ]);
+    return json({ deleted:true });
+  }
+  return json({ error:"Method not allowed" },405);
+}
+
+async function handleFundPositions(request, env, user, json, parts, url) {
+  await ensureFundSchema(env);
+  const id = parts[1] || "";
+  if (request.method === "GET" && !id) {
+    const portfolioId = trimText(url.searchParams.get("portfolioId"),80);
+    const stmt = portfolioId
+      ? env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND fund_portfolio_id=? AND active=1 ORDER BY created_at DESC").bind(user.id,portfolioId)
+      : env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id);
+    const rows = await stmt.all();
+    return json({ positions: rows.results || [] });
+  }
+  if (request.method === "POST" && !id) {
+    const body = await readJson(request);
+    const data = fundPositionPayload(body);
+    if (!data.fundPortfolioId || !/^[A-Z]{2}[A-Z0-9]{10}$/.test(data.isin)) {
+      return json({ error:"fundPortfolioId and valid ISIN are required" },400);
+    }
+    if (data.units === null || data.units < 0) return json({ error:"units must be zero or greater" },400);
+    if (data.avgPrice !== null && data.avgPrice < 0) return json({ error:"avgPrice cannot be negative" },400);
+    if (!(await oneFundPortfolio(env,user.id,data.fundPortfolioId))) return json({ error:"Fund portfolio not found" },404);
+    const existing = await env.DB.prepare(
+      "SELECT id FROM fund_positions WHERE user_id=? AND fund_portfolio_id=? AND isin=?"
+    ).bind(user.id,data.fundPortfolioId,data.isin).first();
+    const idNew = existing && existing.id ? existing.id : uid("fpos_"), now = nowIso();
+    await env.DB.prepare(
+      "INSERT INTO fund_positions (id,fund_portfolio_id,user_id,isin,name,product_type,provider,index_name,platform,units,avg_price,currency,opened_at,notes,active,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) " +
+      "ON CONFLICT(fund_portfolio_id,isin) DO UPDATE SET name=excluded.name,product_type=excluded.product_type,provider=excluded.provider,index_name=excluded.index_name,platform=excluded.platform,units=excluded.units,avg_price=excluded.avg_price,currency=excluded.currency,opened_at=excluded.opened_at,notes=excluded.notes,active=1,updated_at=excluded.updated_at"
+    ).bind(idNew,data.fundPortfolioId,user.id,data.isin,data.name,data.productType,data.provider,data.indexName,data.platform,data.units,data.avgPrice,data.currency,data.openedAt,data.notes,now,now).run();
+    return json({ position: await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(idNew,user.id).first() },existing?200:201);
+  }
+  if (!id) return json({ error:"Fund position id required" },400);
+  const existing = await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if (!existing) return json({ error:"Fund position not found" },404);
+  if (request.method === "PATCH") {
+    const body = await readJson(request);
+    const data = fundPositionPayload({
+      fundPortfolioId: body.fundPortfolioId !== undefined ? body.fundPortfolioId : existing.fund_portfolio_id,
+      isin: existing.isin,
+      name: body.name !== undefined ? body.name : existing.name,
+      productType: body.productType !== undefined ? body.productType : existing.product_type,
+      provider: body.provider !== undefined ? body.provider : existing.provider,
+      indexName: body.indexName !== undefined ? body.indexName : existing.index_name,
+      platform: body.platform !== undefined ? body.platform : existing.platform,
+      units: body.units !== undefined ? body.units : existing.units,
+      avgPrice: body.avgPrice !== undefined ? body.avgPrice : existing.avg_price,
+      currency: body.currency !== undefined ? body.currency : existing.currency,
+      openedAt: body.openedAt !== undefined ? body.openedAt : existing.opened_at,
+      notes: body.notes !== undefined ? body.notes : existing.notes
+    });
+    if (data.units === null || data.units < 0) return json({ error:"units must be zero or greater" },400);
+    if (!(await oneFundPortfolio(env,user.id,data.fundPortfolioId))) return json({ error:"Fund portfolio not found" },404);
+    await env.DB.prepare(
+      "UPDATE fund_positions SET fund_portfolio_id=?,name=?,product_type=?,provider=?,index_name=?,platform=?,units=?,avg_price=?,currency=?,opened_at=?,notes=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(data.fundPortfolioId,data.name,data.productType,data.provider,data.indexName,data.platform,data.units,data.avgPrice,data.currency,data.openedAt,data.notes,nowIso(),id,user.id).run();
+    return json({ position: await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(id,user.id).first() });
+  }
+  if (request.method === "DELETE") {
+    await env.DB.prepare("UPDATE fund_positions SET active=0,updated_at=? WHERE id=? AND user_id=?").bind(nowIso(),id,user.id).run();
+    return json({ deleted:true });
+  }
+  return json({ error:"Method not allowed" },405);
 }
 
 async function handleWatchlist(request, env, user, json, parts) {
@@ -1559,6 +1741,8 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "portfolios") return handlePortfolios(request, env, user, json, parts);
     if (root === "positions") return handlePositions(request, env, user, json, parts, url);
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
+    if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
+    if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
