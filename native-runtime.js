@@ -16,8 +16,9 @@
     const raw = String(value || '');
     if (!localNativeOrigin) return raw;
     if (/^https?:\/\//i.test(raw) || /^wss?:\/\//i.test(raw)) return raw;
-    if (raw.startsWith('/api/') || raw.startsWith('/data/')) return BACKEND_ORIGIN + raw;
-    if (/^data\/market(?:-version)?\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + '/' + raw;
+    if (raw.startsWith('/api/')) return BACKEND_ORIGIN + raw;
+    if (raw.startsWith('/data/')) return raw.slice(1);
+    if (/^data\/market(?:-version)?\.json(?:[?#].*)?$/i.test(raw)) return raw;
     return raw;
   };
 
