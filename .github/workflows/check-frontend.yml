@@ -506,13 +506,14 @@ jobs:
                               typeof window.ViewInvAI.renderEmbeddedStockDetail === 'function' &&
                               window.ViewInvAI.renderEmbeddedStockDetail(portfolioHost, stockKey, 'Cartera · Smoke', true);
                             const embeddedHeader = portfolioHost.querySelector('.unified-stock-header');
-                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader) {
+                            const embeddedShell = portfolioHost.querySelector('.profile-sticky-shell');
+                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader || !embeddedShell) {
                               fail('portfolio embedded stock detail did not reuse the unified profile');
                               return;
                             }
-                            const embeddedStyle = getComputedStyle(embeddedHeader);
-                            if (embeddedStyle.position !== 'sticky' || Math.abs(parseFloat(embeddedStyle.top || '0')) > 1) {
-                              fail('portfolio embedded stock header is not sticky at the top');
+                            const embeddedStyle = getComputedStyle(embeddedShell);
+                            if (embeddedStyle.position !== 'sticky') {
+                              fail('portfolio embedded stock shell is not sticky');
                               return;
                             }
                             const embeddedToggle = portfolioHost.querySelector('[data-profile-visual-toggle]');
@@ -872,14 +873,16 @@ jobs:
                         window.scrollTo(0, Math.min(900, document.documentElement.scrollHeight - window.innerHeight));
                         setTimeout(() => {
                           const header = document.querySelector('.stock-profile-page .unified-stock-header');
+                          const shell = document.querySelector('.stock-profile-page .profile-sticky-shell');
                           const headerRect = header && header.getBoundingClientRect();
-                          const headerPosition = header ? getComputedStyle(header).position : '';
-                          if (!headerRect || !['sticky','fixed'].includes(headerPosition)) {
-                            fail('native stock header is not pinned during scroll: ' + headerPosition);
+                          const shellRect = shell && shell.getBoundingClientRect();
+                          const shellPosition = shell ? getComputedStyle(shell).position : '';
+                          if (!headerRect || !shellRect || shellPosition !== 'sticky') {
+                            fail('native stock chrome is not a single sticky shell: ' + shellPosition);
                             return;
                           }
-                          if (headerRect.bottom <= 0 || headerRect.top >= window.innerHeight) {
-                            fail('native stock header disappeared during scroll');
+                          if (shellRect.bottom <= 0 || shellRect.top >= window.innerHeight) {
+                            fail('native stock chrome disappeared during scroll');
                             return;
                           }
                           const mobileSpread = header && header.querySelector('.quote-spread');
