@@ -5,12 +5,13 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','portfolios','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
+const NAV_ORDER=['home','portfolios','funds','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
  home:{icon:'⌂',short:'Inicio',desc:'Resumen de mercado'},
  entry:{icon:'◈',short:'Radar',desc:'Entradas y filtros'},
  recommendation:{icon:'◎',short:'Ideas IA',desc:'Lectura multifactor'},
  portfolios:{icon:'★',short:'Carteras',desc:'Posiciones y seguimiento'},
+ funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
  alerts:{icon:'●',short:'Avisos',desc:'Señales de alta convicción'},
  catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
  heatmap:{icon:'▦',short:'Mapa',desc:'Mercado por sectores'},

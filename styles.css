@@ -45,6 +45,8 @@
 .mini-chart{height:255px;width:100%;min-width:0;overflow:hidden;border:1px solid #1d3039;border-radius:7px;background:#000}
 .mini-chart .tradingview-widget-container,.mini-chart .tradingview-widget-container__widget{width:100%;height:100%;background:#000}
 .chart-placeholder{height:100%;display:grid;place-items:center;color:#627d89;font-size:9px;background:#000}
+.chart-placeholder-error>div{display:grid;justify-items:center;gap:10px;max-width:300px;padding:18px;text-align:center}
+.chart-retry{min-height:34px;padding:6px 12px;border:1px solid #355a68;border-radius:8px;background:#0c1c24;color:#dce8ec;font:inherit;font-size:9px;font-weight:800;cursor:pointer}
 
 
 /* Grouped catalysts per stock */
@@ -6877,3 +6879,235 @@ html[data-theme="light"] .tr-native-axis{
  color:#5f7680!important;
  font-weight:500!important
 }
+
+
+/* Shared market-data freshness indicator */
+.quote-freshness{
+ display:inline-flex;
+ align-items:center;
+ gap:5px;
+ max-width:100%;
+ color:#7f949d;
+ font-size:8px;
+ line-height:1.2;
+ white-space:nowrap;
+}
+.quote-freshness i{
+ width:6px;
+ height:6px;
+ flex:0 0 6px;
+ border-radius:50%;
+ background:#748891;
+}
+.quote-freshness.live{color:#6ddfba}
+.quote-freshness.live i{background:#45d6a7}
+.quote-freshness.delayed{color:#d7b96a}
+.quote-freshness.delayed i{background:#d7b96a}
+.quote-freshness.closed{color:#8ba0aa}
+.quote-freshness.closed i{background:#8ba0aa}
+.quote-freshness.stale{color:#d08f68}
+.quote-freshness.stale i{background:#d08f68}
+.quote-freshness.unknown{color:#7f949d}
+.stock-card-freshness{
+ justify-content:flex-end;
+ margin-top:3px;
+}
+.profile-quote-freshness{
+ grid-column:1/-1;
+ justify-self:start;
+ margin-top:2px;
+}
+
+/* Real profile tabs: only one information layer is visible at a time. */
+.profile-tab-panel[hidden]{
+ display:none!important;
+}
+.profile-tab-panel.active{
+ display:block;
+}
+.profile-tab-panel[data-profile-panel="chart"],
+.profile-tab-panel[data-profile-panel="ai"]{
+ margin-top:10px;
+}
+.profile-ai-tab-actions{
+ display:flex;
+ justify-content:flex-end;
+ margin:0 0 8px;
+}
+
+
+/* Funds / ETFs */
+.fund-toolbar{
+ display:grid;
+ grid-template-columns:minmax(220px,1.6fr) repeat(3,minmax(150px,.7fr));
+ gap:10px;
+ margin:0 0 10px;
+}
+.fund-search{
+ width:100%;
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ color:var(--text);
+ padding:10px 12px;
+}
+.fund-data-note,.funds-status{
+ color:var(--muted);
+ font-size:12px;
+}
+.fund-data-note{margin:0 0 12px}
+.funds-status{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.fund-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}
+.fund-card{
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:14px;
+ background:var(--panel);
+ padding:14px;
+ box-shadow:0 10px 28px rgba(0,0,0,.08);
+}
+.fund-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.fund-card-head h3{font-size:15px;line-height:1.25;margin:4px 0}
+.fund-card-head p{margin:0;color:var(--muted);font-size:10px;letter-spacing:.04em}
+.fund-kind{font-size:9px;font-weight:800;letter-spacing:.08em;color:var(--accent)}
+.fund-platforms{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.fund-platform{
+ display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;
+ padding:3px 6px;font-size:9px;white-space:nowrap
+}
+.fund-platform.ok{color:#5ed0aa;border-color:rgba(94,208,170,.35)}
+.fund-platform.pending{color:#b4a46b;border-color:rgba(180,164,107,.35)}
+.fund-platform.no{color:var(--muted)}
+.fund-primary-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.fund-primary-row>div{border-top:1px solid var(--line);padding-top:9px;min-width:0}
+.fund-primary-row small,.fund-primary-row span{display:block;color:var(--muted);font-size:9px}
+.fund-primary-row strong{display:block;font-size:17px;margin:2px 0}
+.fund-performance{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px
+}
+.fund-performance span{border:1px solid var(--line);border-radius:8px;padding:6px;min-width:0}
+.fund-performance small,.fund-performance b{display:block;font-size:9px}
+.fund-performance b{font-size:11px;margin-top:2px}
+.fund-more{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.fund-more summary{cursor:pointer;color:var(--muted);font-size:11px}
+.fund-facts,.fund-risk-grid{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px
+}
+.fund-facts>div,.fund-risk-grid>div{background:var(--panel-2);border-radius:8px;padding:7px;min-width:0}
+.fund-facts small,.fund-risk-grid small{display:block;color:var(--muted);font-size:8px}
+.fund-facts strong,.fund-risk-grid strong{display:block;font-size:10px;overflow-wrap:anywhere;margin-top:2px}
+.fund-source-line{display:flex;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:9px;margin-top:8px}
+.fund-source-line a{color:var(--accent)}
+.fund-card-actions{display:flex;justify-content:flex-end;margin-top:10px}
+
+
+.portfolio-asset-switch{
+ display:inline-flex;
+ gap:4px;
+ margin:0 0 12px;
+ padding:4px;
+ border:1px solid var(--line);
+ border-radius:12px;
+ background:var(--panel);
+}
+.portfolio-asset-switch button{
+ border:0;
+ border-radius:9px;
+ background:transparent;
+ color:var(--muted);
+ padding:8px 12px;
+ font:inherit;
+ font-size:11px;
+ font-weight:700;
+ cursor:pointer;
+}
+.portfolio-asset-switch button.active{background:var(--accent);color:#071014}
+.fund-portfolio-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.fund-portfolio-toolbar .portfolio-tabs-track{display:flex;gap:6px;min-width:0;overflow:auto}
+.fund-position-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px;margin-top:10px}
+.fund-position-card{
+ min-width:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:13px
+}
+.fund-position-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.fund-position-main h3{margin:4px 0;font-size:14px;line-height:1.25}
+.fund-position-main p{margin:0;color:var(--muted);font-size:9px}
+.fund-position-value{text-align:right;min-width:110px}
+.fund-position-value small,.fund-position-value span{display:block;color:var(--muted);font-size:8px}
+.fund-position-value strong{display:block;font-size:16px;margin:2px 0}
+.fund-position-metrics{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px
+}
+.fund-position-metrics span{background:var(--panel-2);border-radius:8px;padding:7px;min-width:0}
+.fund-position-metrics small,.fund-position-metrics b{display:block;font-size:8px}
+.fund-position-metrics b{font-size:10px;margin-top:2px;overflow-wrap:anywhere}
+
+
+/* Funds compact disclosure + freshness */
+.fund-toolbar{
+ grid-template-columns:minmax(220px,1.7fr) repeat(6,minmax(130px,.75fr));
+}
+.fund-ter-filter{
+ display:flex;
+ align-items:center;
+ gap:7px;
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ padding:0 9px;
+ color:var(--muted);
+ font-size:10px;
+}
+.fund-ter-filter input{
+ width:72px;
+ min-width:0;
+ border:0;
+ outline:0;
+ background:transparent;
+ color:var(--text);
+ padding:9px 0;
+}
+.fund-card-compact{
+ display:flex;
+ gap:6px;
+ flex-wrap:wrap;
+ margin-top:9px;
+}
+.fund-card-compact span{
+ max-width:100%;
+ border:1px solid var(--line);
+ border-radius:999px;
+ padding:4px 7px;
+ color:var(--muted);
+ font-size:9px;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+}
+.fund-freshness{
+ display:inline-flex!important;
+ align-items:center;
+ gap:5px;
+ margin-top:4px;
+ color:var(--muted)!important;
+ font-size:9px!important;
+ line-height:1.2;
+}
+.fund-freshness i{
+ width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:#81939c;
+}
+.fund-freshness.live{color:#64d9b2!important}
+.fund-freshness.live i{background:#45d6a7}
+.fund-freshness.nav{color:#82a9d8!important}
+.fund-freshness.nav i{background:#6da1db}
+.fund-freshness.snapshot{color:#d1ab67!important}
+.fund-freshness.snapshot i{background:#c69b4f}
+.fund-card-actions{gap:6px;flex-wrap:wrap}
+.fund-detail-sheet{display:grid;gap:12px}
+.fund-detail-sheet h4{margin:4px 0 -4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fund-detail-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.fund-detail-hero h3{margin:4px 0;font-size:17px}
+.fund-detail-hero p{margin:0;color:var(--muted);font-size:10px}
+.fund-detail-hero>div:last-child{text-align:right;min-width:120px}
+.fund-detail-hero>div:last-child>strong{display:block;font-size:18px}

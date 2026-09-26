@@ -16,6 +16,7 @@ initCatalogInteractions();
 initHeatmapInteractions();
 initEventViewInteractions();
 initStockListInteractions();
+window.ViewInvAIFunds?.init?.();
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(s)refreshProfilePortfolioActions(s);
@@ -53,7 +54,6 @@ window.ViewInvAI={
  renderStandardStockCard:(stock,options={})=>standardStockCard(stock,Number(options.index)||0,options||{}),
  renderPricePair:(stock,preferTr=false)=>pricePair(stock,SP(stock,currentMarketSession()),preferTr),
  renderLiveChange:(stock,preferTr=false)=>liveChangeHtml(stock,SC(stock,currentMarketSession()),preferTr),
- renderEmbeddedStockDetail,
  getEurUsd:()=>eurUsd(),
  getFavoriteKeys:()=>[...favorites],
  replaceFavoriteKeys:keys=>{favorites=new Set((Array.isArray(keys)?keys:[]).filter(Boolean));saveFavorites();renderFavorites();$$('.fav-star').forEach(b=>{let on=favorites.has(b.dataset.favKey);b.classList.toggle('active',on);b.textContent=on?'★':'☆'});return true;},

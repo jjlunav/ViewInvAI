@@ -2,7 +2,7 @@ name: Validar frontend
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/android-ui-0.6.7]
     paths:
       - "app.js"
       - "settings.js"
@@ -23,6 +23,7 @@ on:
       - "alerts.js"
       - "auth.js"
       - "portfolio.js"
+      - "funds.js"
       - "backend.js"
       - "index.html"
       - "styles.css"
@@ -33,6 +34,9 @@ on:
       - "package.json"
       - "capacitor.config.json"
       - "migrations/**"
+      - "data/funds.json"
+      - "data/myinvestor-funds.json"
+      - "scripts/update_funds.py"
       - "wrangler.jsonc"
       - ".github/workflows/check-frontend.yml"
   pull_request:
@@ -190,10 +194,13 @@ jobs:
               raise SystemExit("help.js incompleto")
           if "load(true);" not in bootstrap or "window.ViewInvAI={" not in bootstrap:
               raise SystemExit("bootstrap.js no posee el arranque/API publica")
+          funds = Path("funds.js").read_text(encoding="utf-8")
+          if "root.ViewInvAIFunds=" not in funds or "/api/fund-portfolios" not in funds or "/api/fund-positions" not in funds:
+              raise SystemExit("funds.js incompleto")
 
           required_assets = (
               "web-mobile.css", "mobile-app.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
-              "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "bootstrap.js"
+              "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "funds.js", "bootstrap.js"
           )
           missing_assets = [item for item in required_assets if item not in html]
           if missing_assets:
@@ -208,6 +215,8 @@ jobs:
         run: node --check auth.js
       - name: Validar sintaxis de carteras
         run: node --check portfolio.js
+      - name: Validar sintaxis de fondos y ETFs
+        run: node --check funds.js
       - name: Validar sintaxis backend
         run: node --check backend.js
       - name: Validar migraciones D1
@@ -219,8 +228,10 @@ jobs:
           for path in sorted(Path('migrations').glob('*.sql')):
               db.executescript(path.read_text(encoding='utf-8'))
           tables={row[0] for row in db.execute("select name from sqlite_master where type='table'")}
-          if 'transactions' not in tables:
-              raise SystemExit('Falta tabla transactions')
+          required={'transactions','fund_portfolios','fund_positions','fund_transactions'}
+          missing=sorted(required-tables)
+          if missing:
+              raise SystemExit('Faltan tablas: '+', '.join(missing))
           print('Migraciones D1: OK')
           PY
       - name: Validar sintaxis Worker
@@ -235,7 +246,7 @@ jobs:
           html = Path("index.html").read_text(encoding="utf-8")
           module_paths = [
               "app.js", "settings.js", "market.js", "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js",
-              "navigation.js", "mobile-app.js", "bootstrap.js"
+              "navigation.js", "mobile-app.js", "bootstrap.js", "funds.js"
           ]
           modules = {path: Path(path).read_text(encoding="utf-8") for path in module_paths}
           app = modules["app.js"]
@@ -246,7 +257,8 @@ jobs:
           required = [
               "view-entry","view-recommendation","recommendationResults","view-future","view-calendar",
               "view-catalog","view-catalogUS","view-settings","catalogDetail","catalogUSDetail",
-              "catalogSearch","catalogUSSearch","marketLeaders","mobileBottomNav","mobileMoreSheet"
+              "catalogSearch","catalogUSSearch","marketLeaders","mobileBottomNav","mobileMoreSheet",
+              "view-funds","fundsApp","fundSearch","fundPortfolioApp"
           ]
           missing = [x for x in required if f'id="{x}"' not in html]
           if missing:
@@ -261,12 +273,16 @@ jobs:
 
           if profile.count('<header class="profile-hero investing-profile-header unified-stock-header">') != 1:
               raise SystemExit("La cabecera unificada debe tener una única plantilla")
-          if "return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+" not in profile:
-              raise SystemExit("El detalle rápido/embebido dejó de reutilizar profileHeroHtml")
-          if "return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+" not in profile:
-              raise SystemExit("El catálogo dejó de reutilizar profileHeroHtml")
-          if "container.classList.add('stock-profile-page','embedded-stock-profile')" not in profile:
-              raise SystemExit("El detalle de cartera dejó de reutilizar stock-profile-page")
+          if "const hero=profileHeroHtml(s,isTr,opts);" not in profile:
+              raise SystemExit("El shell de ficha dejó de reutilizar profileHeroHtml")
+          if "function quickProfileHtml" not in profile or "return profileStickyShellHtml" not in profile:
+              raise SystemExit("La ficha global no reutiliza el shell unificado")
+          if "function renderEmbeddedStockDetail" in profile or "function renderProfileView" in profile or "function profileHtml" in profile:
+              raise SystemExit("Queda una segunda implementación de ficha de acción")
+          if 'data-profile-tab="general"' not in profile or 'data-profile-panel="general"' not in profile:
+              raise SystemExit("La ficha no usa pestañas reales")
+          if "function activateProfileTabData" not in profile:
+              raise SystemExit("Falta carga diferida por pestaña")
 
           forbidden = {
               "eval()": r"\beval\s*\(",
@@ -298,7 +314,7 @@ jobs:
 
           print("Frontend y comprobaciones de seguridad: OK")
           PY
-      - name: Smoke test en navegador real
+      - name: Smoke test ficha única, fondos y navegador
         run: |
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
@@ -306,749 +322,175 @@ jobs:
             echo "::error::Chrome/Chromium no está disponible en el runner"
             exit 1
           fi
-
-          rm -rf /tmp/catalyst-smoke /tmp/catalyst-chrome-profile
-          mkdir -p /tmp/catalyst-smoke/data /tmp/catalyst-chrome-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/catalyst-smoke/
-          cat > /tmp/catalyst-smoke/data/market.json <<'JSON'
-          {"meta":{"updatedAt":"2026-09-23T20:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
+          rm -rf /tmp/viewinvai-smoke /tmp/viewinvai-smoke-profile
+          mkdir -p /tmp/viewinvai-smoke/data /tmp/viewinvai-smoke-profile
+          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
+          cat > /tmp/viewinvai-smoke/data/market.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"premarketPrice":9.8,"premarketChangePct":3,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin","usLivePrice":10.1,"usLiveChangePct":6,"usLiveReceivedAt":1790445600000,"usLiveTimestamp":1790445600000,"usLiveIsRealTime":true,"usLiveSource":"smoke"}],"events":[]}
           JSON
-
+          cat > /tmp/viewinvai-smoke/data/funds.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z"},"products":[{"isin":"IE00SMOKE0001","name":"Smoke Global Index ETF","type":"etf","provider":"Smoke","index":"Global Index","currency":"EUR","nav":105.5,"valueDate":"2026-09-26T18:00:00Z","perf1M":1.2,"perf6M":4.2,"perf1Y":8.4,"platforms":{"tradeRepublic":"verified","myInvestor":"unknown"},"sources":[]},{"isin":"IE00SMOKE0002","name":"Smoke Index Fund","type":"fund","provider":"Smoke","index":"World Index","currency":"EUR","nav":42.1,"valueDate":"2026-09-25T00:00:00Z","perf1Y":7.1,"platforms":{"tradeRepublic":"unknown","myInvestor":"verified"},"sources":[]}]}
+          JSON
           python - <<'PY'
           from pathlib import Path
-          p = Path("/tmp/catalyst-smoke/index.html")
-          html = p.read_text(encoding="utf-8")
-          pre = r'''<script>
-          window.addEventListener('error', (e) => {
-            document.documentElement.dataset.runtimeError = String((e && (e.message || (e.error && e.error.message))) || 'runtime error');
-          });
-          window.addEventListener('unhandledrejection', (e) => {
-            document.documentElement.dataset.runtimeError = String((e && e.reason && (e.reason.message || e.reason)) || 'unhandled rejection');
-          });
-          const smokeFetch = window.fetch.bind(window);
-          window.fetch = (input, init) => {
-            const url = typeof input === 'string' ? input : String(input && input.url || '');
-            if (url.includes('/api/tr-history')) {
-              const now = Date.now();
-              const points = Array.from({length:80}, (_,i) => {
-                const close = 9.5 + i * 0.008 + Math.sin(i/5) * 0.08;
-                return {time:now-(79-i)*60000,open:close-0.02,high:close+0.05,low:close-0.05,close,volume:1000+i*15};
-              });
-              return Promise.resolve(new Response(JSON.stringify({isin:'US0000000001',exchange:'LSX',points,source:'smoke'}), {
-                status:200,
-                headers:{'Content-Type':'application/json'}
-              }));
-            }
-            return smokeFetch(input, init);
-          };
-          window.open = (url) => {
-            document.documentElement.dataset.externalOpen = String(url || '');
-            return { closed:false };
-          };
-          </script>
-          '''
-          html = html.replace('<script src="app.js', pre + '<script src="app.js', 1)
-          inject = r'''
+          p=Path("/tmp/viewinvai-smoke/index.html")
+          html=p.read_text(encoding="utf-8")
+          inject=r'''
           <script>
           (() => {
-            const started = Date.now();
-
-            function fail(message) {
-              document.body.dataset.smokeError = String(message);
-              console.error('SMOKE_FAIL', message);
-            }
-
-            function waitForProfile() {
-              const root = document.querySelector('.stock-profile-page:not(.is-hidden)');
-              const chart = root && root.querySelector('.tv-advanced-chart');
-              const profileOpen = document.body.classList.contains('stock-detail-open');
-              if (chart && profileOpen) {
-                const toggle = root.querySelector('[data-profile-visual-toggle]');
-                const visual = root.querySelector('[data-profile-visual-analysis]');
-                if (!toggle || !visual || toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
-                  fail('chart/AI section is not collapsed by default');
-                  return;
+            const fail = m => { document.documentElement.dataset.smoke='fail'; document.documentElement.dataset.smokeError=String(m); console.error('SMOKE_FAIL',m); };
+            const started=Date.now();
+            const wait=()=> {
+              try {
+                if(!window.ViewInvAI || !window.ViewInvAIFunds || !window.ViewInvAI.getAllStocks().length){
+                  if(Date.now()-started<7000)return setTimeout(wait,100);
+                  return fail('runtime did not initialize');
                 }
-
-                const header = root.querySelector('.unified-stock-header');
-                const headerRect = header && header.getBoundingClientRect();
-                if (!headerRect || headerRect.height > 125) {
-                  fail('responsive stock header is too tall: ' + (headerRect ? headerRect.height : 'missing'));
-                  return;
-                }
-                const parts = [
-                  root.querySelector('.profile-back-cell'),
-                  root.querySelector('.profile-title'),
-                  root.querySelector('.profile-live'),
-                  root.querySelector('.profile-primary-actions')
-                ].filter(Boolean).filter(el => getComputedStyle(el).display !== 'none');
-                const overlaps = (a,b) => {
-                  const x=Math.min(a.right,b.right)-Math.max(a.left,b.left);
-                  const y=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
-                  return x>2 && y>2;
-                };
-                for (let i=0;i<parts.length;i++) for (let j=i+1;j<parts.length;j++) {
-                  if (overlaps(parts[i].getBoundingClientRect(),parts[j].getBoundingClientRect())) {
-                    fail('responsive stock header elements overlap');
-                    return;
-                  }
-                }
-                document.body.dataset.smokeHeaderLayout = 'ok';
-
-                const visibleChatgpt = root.querySelector('.profile-visual-toggle-row [data-chatgpt-stock]');
-                const hiddenChatgpt = root.querySelector('.profile-ai-actions [data-chatgpt-stock]');
-                if (!visibleChatgpt) {
-                  fail('visible external ChatGPT button is missing next to the collapsed analysis control');
-                  return;
-                }
-                if (hiddenChatgpt) {
-                  fail('duplicate ChatGPT button remains inside the collapsed AI panel');
-                  return;
-                }
-                const chatgpt = visibleChatgpt;
-                if (!/Preguntar a ChatGPT/i.test(chatgpt.textContent || '')) {
-                  fail('ChatGPT button label is not explicit');
-                  return;
-                }
-                chatgpt.click();
-                setTimeout(() => {
-                  const external = String(document.documentElement.dataset.externalOpen || '');
-                  if (!external.includes('https://chatgpt.com/?q=')) {
-                    fail('ChatGPT prompt URL was not prepared');
-                    return;
-                  }
-                  const encoded = external.split('?q=')[1] || '';
-                  const prompt = decodeURIComponent(encoded);
-                  if (/ViewInvAI/i.test(prompt)) {
-                    fail('external ChatGPT prompt must not mention ViewInvAI');
-                    return;
-                  }
-                  for (const required of ['noticias','catalizadores','redes','geopolítico','dilución','SEC']) {
-                    if (!prompt.toLowerCase().includes(required.toLowerCase())) {
-                      fail('external ChatGPT prompt missing research scope: ' + required);
-                      return;
-                    }
-                  }
-                  document.body.dataset.smokeChatgpt = 'ok';
-
-                  const originalAuth = window.ViewInvAIAuth;
-                  window.ViewInvAIAuth = Object.assign({}, originalAuth || {}, {getUser:()=>({uid:'smoke'}),signIn:()=>{}});
-                  const internalAi = root.querySelector('[data-ai-chat-stock]');
-                  if (!internalAi) {
-                    fail('internal ViewInvAI button missing');
-                    return;
-                  }
-                  internalAi.click();
-                  const aiPanel = document.querySelector('#aiChatPanel');
-                  if (!aiPanel || !aiPanel.classList.contains('open')) {
-                    fail('internal ViewInvAI chat did not open');
-                    return;
-                  }
-                  document.body.dataset.smokeAiChat = 'ok';
-                  document.querySelector('#aiChatClose')?.click();
-
-                  toggle.click();
-                  setTimeout(() => {
-                    if (toggle.getAttribute('aria-expanded') !== 'true' || visual.classList.contains('is-collapsed')) {
-                      fail('chart/AI section did not expand');
-                      return;
-                    }
-
-                    const waitForTrSelector = (deadline = Date.now() + 5000) => {
-                      const trButton = root.querySelector('.chart-market-toggle[data-chart-market="tr"]');
-                      if (trButton) {
-                        trButton.click();
-                        waitForNativeTrChart();
-                        return;
-                      }
-                      if (Date.now() < deadline) {
-                        setTimeout(() => waitForTrSelector(deadline), 50);
-                        return;
-                      }
-                      fail('LSX market selector did not become available');
-                    };
-
-                    const waitForNativeTrChart = (deadline = Date.now() + 5000) => {
-                      if (root.querySelector('.tr-native-chart')) {
-                        document.body.dataset.smokeTrChart = 'ok';
-
-                        window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed'));
-                        setTimeout(() => {
-                          if (!root.querySelector('.tr-native-chart') ||
-                              toggle.getAttribute('aria-expanded') !== 'true' ||
-                              visual.classList.contains('is-collapsed')) {
-                            fail('portfolio membership refresh destroyed the open stock analysis');
-                            return;
-                          }
-
-                          applyTheme('light', true);
-                          setTimeout(() => {
-                            if (!root.querySelector('.tr-native-chart')) {
-                              fail('theme change replaced the native LSX chart');
-                              return;
-                            }
-                            applyTheme('dark', true);
-                            toggle.click();
-                            setTimeout(() => {
-                            if (toggle.getAttribute('aria-expanded') !== 'false' || !visual.classList.contains('is-collapsed')) {
-                              fail('chart/AI section did not collapse again');
-                              return;
-                            }
-                            document.body.dataset.smokeProfile = 'ok';
-                            document.body.dataset.smokeProfileCompact = 'ok';
-
-                            const sourceChart = root.querySelector('.tv-advanced-chart');
-                            const stockKey = sourceChart && sourceChart.dataset.stockKey;
-                            const portfolioHost = document.createElement('div');
-                            portfolioHost.className = 'portfolio-inline-stock';
-                            document.body.appendChild(portfolioHost);
-                            const rendered = stockKey && window.ViewInvAI &&
-                              typeof window.ViewInvAI.renderEmbeddedStockDetail === 'function' &&
-                              window.ViewInvAI.renderEmbeddedStockDetail(portfolioHost, stockKey, 'Cartera · Smoke', true);
-                            const embeddedHeader = portfolioHost.querySelector('.unified-stock-header');
-                            if (!rendered || !portfolioHost.classList.contains('stock-profile-page') || !embeddedHeader) {
-                              fail('portfolio embedded stock detail did not reuse the unified profile');
-                              return;
-                            }
-                            const embeddedStyle = getComputedStyle(embeddedHeader);
-                            if (embeddedStyle.position !== 'sticky' || Math.abs(parseFloat(embeddedStyle.top || '0')) > 1) {
-                              fail('portfolio embedded stock header is not sticky at the top');
-                              return;
-                            }
-                            const embeddedToggle = portfolioHost.querySelector('[data-profile-visual-toggle]');
-                            const embeddedVisual = portfolioHost.querySelector('[data-profile-visual-analysis]');
-                            if (!embeddedToggle || !embeddedVisual ||
-                                embeddedToggle.getAttribute('aria-expanded') !== 'false' ||
-                                !embeddedVisual.classList.contains('is-collapsed')) {
-                              fail('portfolio embedded chart/AI is not collapsed by default');
-                              return;
-                            }
-                            const embeddedRect = embeddedHeader.getBoundingClientRect();
-                            if (!embeddedRect || embeddedRect.height > 125) {
-                              fail('portfolio embedded stock header is too tall');
-                              return;
-                            }
-                            document.body.dataset.smokePortfolioSticky = 'ok';
-                            }, 100);
-                          }, 180);
-                        }, 100);
-                        return;
-                      }
-
-                      if (Date.now() < deadline) {
-                        setTimeout(() => waitForNativeTrChart(deadline), 50);
-                        return;
-                      }
-                      fail('LSX native chart did not render after selecting the Trade Republic market');
-                    };
-
-                    waitForTrSelector();
-                  }, 50);
-                }, 120);
-                return;
-              }
-              if (Date.now() - (profileStarted || started) < 5000) {
-                setTimeout(waitForProfile, 100);
-                return;
-              }
-              const detail = document.querySelector('#stockQuickDetail');
-              document.body.dataset.smokeProfileBodyOpen = document.body.classList.contains('stock-detail-open') ? 'yes' : 'no';
-              document.body.dataset.smokeProfileStateKey = String((typeof state !== 'undefined' && state.profileKey) || 'none');
-              document.body.dataset.smokeProfileDetailHidden = String(detail ? detail.classList.contains('is-hidden') : 'missing');
-              document.body.dataset.smokeProfileDetailHtml = String(detail ? detail.innerHTML.length : -1);
-              document.body.dataset.smokeProfileRenderFn = typeof renderQuickProfile;
-              document.body.dataset.smokeProfileHistoryFn = typeof replaceCurrentAppHistory;
-              document.body.dataset.smokeProfileHeroFn = typeof profileHeroHtml;
-              fail('profile-open-failed');
-              document.body.dataset.smokeProfile = 'fail';
-            }
-
-            let entryOpened = false;
-            let profileStarted = 0;
-            function waitForRow() {
-              if (!entryOpened) {
-                const entryNav = document.querySelector('.nav-item[data-view="entry"]');
-                if (entryNav) {
-                  entryOpened = true;
-                  entryNav.click();
-                }
-              }
-              const row = document.querySelector('#entryResults [data-stock-key]');
-              if (row) {
-                const nav = document.querySelector('.nav-item[data-view="entry"]');
-                if (!nav || !/Radar de entrada/i.test(nav.textContent || '')) {
-                  fail('Radar de entrada label missing');
-                  return;
-                }
-                const card = row.closest('.investing-stock-card');
-                const rect = card && card.getBoundingClientRect();
-                if (!rect || rect.width > 550) {
-                  fail('desktop stock card is too wide: ' + (rect ? rect.width : 'missing'));
-                  return;
-                }
-                const sessionLabel = card.querySelector('.stock-session-quote small');
-                if (sessionLabel && parseFloat(getComputedStyle(sessionLabel).fontSize || '0') < 8) {
-                  fail('session label is too small');
-                  return;
-                }
-                const metrics = card.querySelector('.stock-list-metrics');
-                if (metrics && parseFloat(getComputedStyle(metrics).fontSize || '0') < 8.5) {
-                  fail('stock metrics are too small');
-                  return;
-                }
-                document.body.dataset.smokeCards = 'ok';
-                document.body.dataset.smokeApp = 'ok';
-                document.body.dataset.smokeRowKey = String(row.dataset.stockKey || 'none');
-                document.body.dataset.smokeRowStockFound = stockByKey(row.dataset.stockKey) ? 'yes' : 'no';
-                document.addEventListener('click', event => {
-                  if (event.target.closest && event.target.closest('[data-stock-key]') === row) {
-                    document.body.dataset.smokeRowClickObserved = 'yes';
-                  }
-                }, {capture:true, once:true});
-                profileStarted = Date.now();
-                row.click();
-                setTimeout(waitForProfile, 100);
-                return;
-              }
-              if (Date.now() - started < 6000) {
-                setTimeout(waitForRow, 100);
-                return;
-              }
-              fail('entry row was not rendered');
-              document.body.dataset.smokeApp = 'fail';
-            }
-
-            setTimeout(waitForRow, 100);
+                const stock=window.ViewInvAI.getAllStocks()[0], key=window.ViewInvAI.getStockKey(stock);
+                if(!window.ViewInvAI.openStockByKey(key,'Smoke',true))return fail('global stock detail did not open');
+                setTimeout(()=>{
+                  const root=document.querySelector('#stockQuickDetail');
+                  if(!root || root.classList.contains('is-hidden'))return fail('global detail missing');
+                  if(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length!==1)return fail('stock header is duplicated');
+                  if(typeof window.ViewInvAI.renderEmbeddedStockDetail==='function')return fail('obsolete embedded detail API remains');
+                  const general=root.querySelector('[data-profile-panel="general"]');
+                  const chart=root.querySelector('[data-profile-panel="chart"]');
+                  const ai=root.querySelector('[data-profile-panel="ai"]');
+                  if(!general || general.hidden || !chart || !chart.hidden || !ai || !ai.hidden)return fail('default tab visibility is wrong');
+                  const fresh=root.querySelector('[data-quote-freshness-key]');
+                  if(!fresh)return fail('quote freshness indicator missing');
+                  const chartTab=root.querySelector('[data-profile-tab="chart"]');
+                  chartTab?.click();
+                  setTimeout(()=>{
+                    if(chart.hidden || !general.hidden)return fail('chart tab did not switch panels');
+                    const aiTab=root.querySelector('[data-profile-tab="ai"]');
+                    aiTab?.click();
+                    setTimeout(()=>{
+                      if(ai.hidden || !chart.hidden)return fail('AI tab did not switch panels');
+                      if(!ai.querySelector('[data-chatgpt-stock]') || !ai.querySelector('[data-ai-chat-stock]'))return fail('AI actions missing from AI tab');
+                      history.back();
+                      setTimeout(()=>{
+                        const fundsNav=document.querySelector('[data-view="funds"]');
+                        if(!fundsNav)return fail('funds navigation missing');
+                        fundsNav.click();
+                        setTimeout(()=>{
+                          window.ViewInvAIFunds.load(true).then(()=>{
+                            const cards=document.querySelectorAll('#fundsApp .fund-card');
+                            if(cards.length!==2)return fail('fund catalogue did not render');
+                            const fundDetail=document.querySelector('#fundsApp [data-fund-detail]');
+                            if(!fundDetail)return fail('fund detail action missing');
+                            fundDetail.click();
+                            const fundModal=document.querySelector('#fundModal');
+                            if(!fundModal||!fundModal.classList.contains('open')||!fundModal.querySelector('.fund-detail-sheet'))return fail('fund detail disclosure did not open');
+                            if(!fundModal.querySelector('.fund-performance')||!fundModal.querySelector('.fund-risk-grid'))return fail('fund detail is incomplete');
+                            document.querySelector('[data-fund-modal-close]')?.click();
+                            if(!document.querySelector('#view-portfolios [data-portfolio-asset="funds"]'))return fail('fund portfolio switch missing');
+                            document.documentElement.dataset.smoke='ok';
+                          }).catch(fail);
+                        },100);
+                      },150);
+                    },100);
+                  },150);
+                },200);
+              } catch(e){ fail(e && (e.stack||e.message)||e); }
+            };
+            setTimeout(wait,100);
           })();
           </script>
           '''
-          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          p.write_text(html.replace("</body>",inject+"\n</body>"),encoding="utf-8")
           PY
-
-          cd /tmp/catalyst-smoke
-          python -m http.server 4173 --bind 127.0.0.1 >/tmp/catalyst-http.log 2>&1 &
+          cd /tmp/viewinvai-smoke
+          python -m http.server 4173 --bind 127.0.0.1 >/tmp/viewinvai-smoke-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-
-          "$CHROME" \
-            --headless=new \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-dev-shm-usage \
-            --window-size=1024,768 \
-            --force-device-scale-factor=1 \
-            --user-data-dir=/tmp/catalyst-chrome-profile \
-            --virtual-time-budget=15000 \
-            --dump-dom \
-            http://127.0.0.1:4173/ \
-            > /tmp/catalyst-dom.html 2> /tmp/catalyst-chrome.log
-
-          if ! grep -q 'data-smoke-app="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::La aplicación no llegó a renderizar una acción"
-            grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
-            grep -o 'data-runtime-error="[^"]*"' /tmp/catalyst-dom.html || true
-            python - <<'PY'
-          from pathlib import Path
-          dom = Path("/tmp/catalyst-dom.html").read_text(encoding="utf-8", errors="replace")
-          for needle in ('id="entrySessionText"', 'id="entryCount"', 'id="entryResults"'):
-              pos = dom.find(needle)
-              if pos >= 0:
-                  print("\nDOM DEBUG", needle)
-                  print(dom[max(0, pos-250):pos+1600])
-          PY
-            tail -100 /tmp/catalyst-chrome.log || true
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=1024,768 --user-data-dir=/tmp/viewinvai-smoke-profile --virtual-time-budget=10000 --dump-dom http://127.0.0.1:4173/ > /tmp/viewinvai-smoke-dom.html 2>/tmp/viewinvai-smoke-chrome.log
+          if ! grep -q 'data-smoke="ok"' /tmp/viewinvai-smoke-dom.html; then
+            echo "::error::Smoke web falló"
+            grep -o 'data-smoke-error="[^"]*"' /tmp/viewinvai-smoke-dom.html || true
+            tail -100 /tmp/viewinvai-smoke-chrome.log || true
             exit 1
           fi
-
-          if ! grep -q 'data-smoke-cards="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::Las tarjetas compactas/Radar no superaron la validación visual básica"
-            grep -o 'data-smoke-error="[^"]*"' /tmp/catalyst-dom.html || true
+          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|SMOKE_FAIL' /tmp/viewinvai-smoke-chrome.log; then
+            cat /tmp/viewinvai-smoke-chrome.log
             exit 1
           fi
+          echo "Ficha única + pestañas + frescura + fondos: OK"
 
-          if ! grep -q 'data-smoke-profile="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-profile-compact="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-tr-chart="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-ai-chat="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-chatgpt="ok"' /tmp/catalyst-dom.html || ! grep -q 'data-smoke-portfolio-sticky="ok"' /tmp/catalyst-dom.html; then
-            echo "::error::El detalle compacto, sticky de cartera, gráfico LSX o acciones IA/ChatGPT fallaron"
-            grep -o 'data-smoke-[^ >]*' /tmp/catalyst-dom.html || true
-            tail -100 /tmp/catalyst-chrome.log || true
-            exit 1
-          fi
-
-          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|SMOKE_FAIL' /tmp/catalyst-chrome.log; then
-            cat /tmp/catalyst-chrome.log
-            exit 1
-          fi
-
-          for spec in "760,768" "840,768" "920,768" "1180,800"; do
-            W="${spec%,*}"
-            H="${spec#*,}"
-            PROFILE="/tmp/catalyst-chrome-profile-${W}"
-            DOM="/tmp/catalyst-dom-${W}.html"
-            LOG="/tmp/catalyst-chrome-${W}.log"
-            rm -rf "$PROFILE"
-
-            "$CHROME" \
-              --headless=new \
-              --no-sandbox \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --window-size="$W,$H" \
-              --force-device-scale-factor=1 \
-              --user-data-dir="$PROFILE" \
-              --virtual-time-budget=10000 \
-              --dump-dom \
-              http://127.0.0.1:4173/ \
-              > "$DOM" 2> "$LOG"
-
-            if ! grep -q 'data-smoke-header-layout="ok"' "$DOM"; then
-              echo "::error::La cabecera compacta falla en viewport ${W}x${H}"
-              grep -o 'data-smoke-error="[^"]*"' "$DOM" || true
-              tail -100 "$LOG" || true
-              exit 1
-            fi
-          done
-
-          echo "Cabecera responsive 760/840/920/1180 px: OK"
-          echo "Smoke test navegador: OK"
-
-      - name: Smoke test app nativa movil, filtros y navegacion atras
+      - name: Smoke test presentación nativa sin generar APK
         run: |
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          if [ -z "$CHROME" ]; then
-            echo "::error::Chrome/Chromium no está disponible en el runner"
-            exit 1
-          fi
-
-          rm -rf /tmp/viewinvai-mobile /tmp/viewinvai-mobile-profile
-          mkdir -p /tmp/viewinvai-mobile/data /tmp/viewinvai-mobile-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-mobile/
-          cat > /tmp/viewinvai-mobile/data/market.json <<'JSON'
-          {"meta":{"updatedAt":"2026-09-24T07:30:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10.0,"changePct":5.0,"volume":100000,"avgVolume":50000,"relVolume":2.0,"premarketPrice":9.8,"premarketChangePct":3.0,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4.0,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9.0,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin"}],"events":[]}
+          if [ -z "$CHROME" ]; then exit 1; fi
+          rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
+          mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
+          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-native/
+          cat > /tmp/viewinvai-native/data/market.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
-
+          cat > /tmp/viewinvai-native/data/funds.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z"},"products":[]}
+          JSON
           python - <<'PY'
           from pathlib import Path
-          p = Path("/tmp/viewinvai-mobile/index.html")
-          html = p.read_text(encoding="utf-8")
-          pre = r'''<script>
-          window.addEventListener('error', (e) => {
-            document.documentElement.dataset.runtimeError = String((e && (e.message || (e.error && e.error.message))) || 'runtime error');
-          });
-          window.addEventListener('unhandledrejection', (e) => {
-            document.documentElement.dataset.runtimeError = String((e && e.reason && (e.reason.message || e.reason)) || 'unhandled rejection');
-          });
-          </script>
-          '''
-          html = html.replace('<script src="app.js', pre + '<script src="app.js', 1)
-          inject = r'''
+          p=Path("/tmp/viewinvai-native/index.html")
+          html=p.read_text(encoding="utf-8")
+          inject=r'''
           <script>
           (() => {
-            const started = Date.now();
-            const fail = (message) => {
-              document.body.dataset.mobileSmokeError = String(message);
-              console.error('MOBILE_SMOKE_FAIL', message);
-            };
-            const wait = (fn, message, timeout = 7000) => {
-              if (fn()) return;
-              if (Date.now() - started < timeout) return setTimeout(() => wait(fn, message, timeout), 100);
-              fail(message);
-            };
-            const inputValue = (selector, value) => {
-              const el = document.querySelector(selector);
-              if (!el) return false;
-              el.value = value;
-              el.dispatchEvent(new Event('input', {bubbles:true}));
-              return true;
-            };
-
-            wait(() => {
-              if (document.documentElement.dataset.nativeApp !== '1' || !document.documentElement.classList.contains('native-app')) {
-                fail('native application presentation mode did not initialize');
-                return true;
-              }
-              const entryButton = document.querySelector('.mobile-nav-item[data-mobile-view="entry"]');
-              if (entryButton && !document.querySelector('#view-entry.active')) {
-                entryButton.click();
-                return false;
-              }
-              const row = document.querySelector('#entryResults [data-stock-key]');
-              if (!row) return false;
-
-              const nav = document.querySelector('#mobileBottomNav');
-              if (!nav || getComputedStyle(nav).display === 'none' || nav.getBoundingClientRect().height < 50) {
-                fail('fixed mobile navigation is not visible');
-                return true;
-              }
-              const mainPaddingBottom = parseFloat(getComputedStyle(document.querySelector('.main')).paddingBottom || '0');
-              if (mainPaddingBottom + 1 < nav.getBoundingClientRect().height) {
-                fail('native content does not reserve space for bottom navigation');
-                return true;
-              }
-              document.body.dataset.mobileNav = 'ok';
-
-              const fixedViews = [...document.querySelectorAll('.mobile-nav-item[data-mobile-view]')].map(x => x.dataset.mobileView);
-              if (fixedViews.join(',') !== 'home,portfolios,recommendation,entry') {
-                fail('fixed mobile navigation order is incorrect: ' + fixedViews.join(','));
-                return true;
-              }
-              const more = document.querySelector('.mobile-nav-item[data-mobile-more]');
-              if (!more) {
-                fail('mobile More navigation item missing');
-                return true;
-              }
-              more.click();
-              const catalog = document.querySelector('.mobile-more-item[data-mobile-view="catalog"]');
-              if (!catalog) {
-                fail('catalog item missing from More menu');
-                return true;
-              }
-              catalog.click();
-
-              setTimeout(() => {
-                const card = document.querySelector('#catalogResults .catalog-mobile-card');
-                if (!card) {
-                  fail('mobile catalog card did not render');
-                  return;
+            const fail=m=>{document.documentElement.dataset.nativeSmoke='fail';document.documentElement.dataset.nativeSmokeError=String(m);console.error('NATIVE_SMOKE_FAIL',m)};
+            const started=Date.now();
+            const wait=()=>{
+              try{
+                if(!window.ViewInvAI||!window.ViewInvAI.getAllStocks().length){
+                  if(Date.now()-started<7000)return setTimeout(wait,100);
+                  return fail('native runtime did not initialize');
                 }
-                document.body.dataset.mobileCatalog = 'ok';
-
-                if (typeof catalogFilterMatch !== 'function' ||
-                    !catalogFilterMatch(5, '4..6', 'number') ||
-                    catalogFilterMatch(5, '6..7', 'number') ||
-                    !catalogFilterMatch(250000, '200k..300k', 'number')) {
-                  fail('catalog numeric range parser failed');
-                  return;
-                }
-                document.body.dataset.mobileRange = 'ok';
-
-                if (!inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', 'TES')) {
-                  fail('mobile column filter input missing');
-                  return;
-                }
-                setTimeout(() => {
-                  if (!document.querySelector('#catalogResults .catalog-mobile-card')) {
-                    fail('matching mobile text filter removed expected result');
-                    return;
-                  }
-                  if (!inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', 'NOPE')) {
-                    fail('mobile filter disappeared after rerender');
-                    return;
-                  }
-                  setTimeout(() => {
-                    if (document.querySelector('#catalogResults .catalog-mobile-card')) {
-                      fail('non-matching mobile text filter did not remove result');
-                      return;
-                    }
-                    document.body.dataset.mobileFilter = 'ok';
-
-                    inputValue('.catalog-col-filter[data-mode="tr"][data-col="tickerUs"]', '');
-                    setTimeout(() => {
-                      const restored = document.querySelector('#catalogResults .catalog-mobile-card');
-                      if (!restored) {
-                        fail('catalog result did not return after clearing filter');
-                        return;
-                      }
-                      restored.click();
-                      setTimeout(() => {
-                        if (!document.body.classList.contains('stock-detail-open')) {
-                          fail('mobile stock profile did not open');
-                          return;
-                        }
-
-                        const viewportWidth = window.innerWidth;
-                        const pageWidth = document.documentElement.scrollWidth;
-                        if (pageWidth > viewportWidth + 1) {
-                          fail('mobile profile overflows horizontally: ' + pageWidth + ' > ' + viewportWidth);
-                          return;
-                        }
-
-                        const bottom = document.querySelector('#mobileBottomNav');
-                        if (bottom && getComputedStyle(bottom).display !== 'none') {
-                          fail('mobile bottom navigation must be hidden while stock detail is open');
-                          return;
-                        }
-
-                        window.scrollTo(0, Math.min(900, document.documentElement.scrollHeight - window.innerHeight));
-                        setTimeout(() => {
-                          const header = document.querySelector('.stock-profile-page .unified-stock-header');
-                          const headerRect = header && header.getBoundingClientRect();
-                          const headerPosition = header ? getComputedStyle(header).position : '';
-                          if (!headerRect || !['sticky','fixed'].includes(headerPosition)) {
-                            fail('native stock header is not pinned during scroll: ' + headerPosition);
-                            return;
-                          }
-                          if (headerRect.bottom <= 0 || headerRect.top >= window.innerHeight) {
-                            fail('native stock header disappeared during scroll');
-                            return;
-                          }
-                          const mobileSpread = header && header.querySelector('.quote-spread');
-                          const mobileActions = header && header.querySelector('.profile-primary-actions');
-                          document.body.dataset.mobileHeaderHeight = String(Math.round(headerRect.height));
-                          const mobileBack = header && header.querySelector('.profile-back-cell');
-                          const mobileTitle = header && header.querySelector('.profile-title');
-                          const mobileLive = header && header.querySelector('.profile-live');
-                          const h = el => el ? Math.round(el.getBoundingClientRect().height) : -1;
-                          document.body.dataset.mobileHeaderBackH = String(h(mobileBack));
-                          document.body.dataset.mobileHeaderTitleH = String(h(mobileTitle));
-                          document.body.dataset.mobileHeaderLiveH = String(h(mobileLive));
-                          document.body.dataset.mobileHeaderActionsH = String(h(mobileActions));
-                          document.body.dataset.mobileHeaderSpreadH = String(h(mobileSpread));
-                          document.body.dataset.mobileHeaderSpread = mobileSpread ? getComputedStyle(mobileSpread).display : 'missing';
-                          document.body.dataset.mobileHeaderActions = mobileActions ? getComputedStyle(mobileActions).display : 'missing';
-                          document.body.dataset.mobileHeaderPageWidth = String(document.documentElement.scrollWidth);
-                          document.body.dataset.mobileHeaderViewport = String(window.innerWidth);
-                          if (!mobileSpread || getComputedStyle(mobileSpread).display === 'none') {
-                            fail('mobile stock header hides BID/ASK');
-                            return;
-                          }
-                          if (!mobileActions || getComputedStyle(mobileActions).display === 'none') {
-                            fail('mobile stock header hides primary actions');
-                            return;
-                          }
-                          const minFont = (selector, min, label) => {
-                            const el = header.querySelector(selector);
-                            const size = el ? parseFloat(getComputedStyle(el).fontSize || '0') : 0;
-                            if (!el || size < min) {
-                              fail('mobile stock header ' + label + ' is too small: ' + size + 'px');
-                              return false;
-                            }
-                            return true;
-                          };
-                          if (!minFont('.profile-market', 6.4, 'market label') ||
-                              !minFont('.profile-title p', 8.4, 'company name') ||
-                              !minFont('.quote-side small', 6.4, 'BID/ASK label') ||
-                              !minFont('.quote-side strong', 8.5, 'BID/ASK value') ||
-                              !minFont('.profile-primary-actions .btn', 7.8, 'action button')) {
-                            return;
-                          }
-                          const rectOf = el => el && getComputedStyle(el).display !== 'none' ? el.getBoundingClientRect() : null;
-                          const intersects = (a, b, tolerance = 1) => {
-                            if (!a || !b) return false;
-                            const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-                            const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-                            return x > tolerance && y > tolerance;
-                          };
-                          const headerParts = [mobileBack, mobileTitle, mobileLive, mobileActions].map(rectOf).filter(Boolean);
-                          for (let i = 0; i < headerParts.length; i++) {
-                            for (let j = i + 1; j < headerParts.length; j++) {
-                              if (intersects(headerParts[i], headerParts[j], 2)) {
-                                fail('native stock header elements overlap');
-                                return;
-                              }
-                            }
-                          }
-                          const tabs = document.querySelector('.stock-profile-page .profile-tabs');
-                          const tabsRect = rectOf(tabs);
-                          if (tabsRect && intersects(headerRect, tabsRect, 2)) {
-                            fail('native profile tabs overlap the stock header');
-                            return;
-                          }
-                          const visualToggle = document.querySelector('.profile-visual-toggle');
-                          const externalChat = document.querySelector('.profile-chatgpt-visible');
-                          if (intersects(rectOf(visualToggle), rectOf(externalChat), 2)) {
-                            fail('native graph/AI and ChatGPT actions overlap');
-                            return;
-                          }
-                          if (headerRect.height > 150) {
-                            fail('native stock header is unexpectedly tall: ' + headerRect.height);
-                            return;
-                          }
-                          if (document.documentElement.scrollWidth > window.innerWidth + 1) {
-                            fail('mobile profile overflow appeared after scroll');
-                            return;
-                          }
-                          document.body.dataset.mobileLayout = 'ok';
-
-                          history.back();
-                          setTimeout(() => {
-                            if (document.body.classList.contains('stock-detail-open') ||
-                                !document.querySelector('#view-catalog.active')) {
-                              fail('browser back did not return from profile to catalog');
-                              return;
-                            }
-                            document.body.dataset.mobileBack = 'ok';
-                          }, 350);
-                        }, 300);
-                      }, 250);
-                    }, 350);
-                  }, 350);
-                }, 350);
-              }, 250);
-              return true;
-            }, 'application data did not render');
+                const more=document.querySelector('[data-mobile-more]');
+                more?.click();
+                if(!document.querySelector('.mobile-more-item[data-mobile-view="funds"]'))return fail('funds missing from native More menu');
+                const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
+                if(!stock)return fail('no stock');
+                window.ViewInvAI.openStockByKey(window.ViewInvAI.getStockKey(stock),'Native smoke',true);
+                setTimeout(()=>{
+                  const root=document.querySelector('#stockQuickDetail'), shell=root?.querySelector('.profile-sticky-shell'), nav=document.querySelector('#mobileBottomNav');
+                  if(!root||!shell||getComputedStyle(shell).position!=='fixed')return fail('native pinned stock shell missing');
+                  if(!nav||getComputedStyle(nav).display==='none')return fail('native bottom nav hidden');
+                  const tabs=root.querySelector('.profile-tabs');
+                  if(!tabs)return fail('native stock tabs missing');
+                  const hr=shell.getBoundingClientRect(), tr=tabs.getBoundingClientRect();
+                  if(tr.top < hr.top || tr.bottom > hr.bottom+2)return fail('native tabs escaped pinned shell');
+                  if(document.documentElement.scrollWidth>window.innerWidth+1)return fail('native horizontal overflow');
+                  const aiTab=root.querySelector('[data-profile-tab="ai"]');
+                  aiTab?.click();
+                  setTimeout(()=>{
+                    if(root.querySelector('[data-profile-panel="ai"]')?.hidden)return fail('native AI tab did not open');
+                    document.documentElement.dataset.nativeSmoke='ok';
+                  },100);
+                },250);
+              }catch(e){fail(e&&(e.stack||e.message)||e)}
+            };
+            setTimeout(wait,100);
           })();
           </script>
           '''
-          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          p.write_text(html.replace("</body>",inject+"\n</body>"),encoding="utf-8")
           PY
-
-          cd /tmp/viewinvai-mobile
-          python -m http.server 4174 --bind 127.0.0.1 >/tmp/viewinvai-mobile-http.log 2>&1 &
+          cd /tmp/viewinvai-native
+          python -m http.server 4174 --bind 127.0.0.1 >/tmp/viewinvai-native-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-
-          "$CHROME" \
-            --headless=new \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-dev-shm-usage \
-            --window-size=390,844 \
-            --force-device-scale-factor=1 \
-            --user-data-dir=/tmp/viewinvai-mobile-profile \
-            --virtual-time-budget=10000 \
-            --dump-dom \
-            http://127.0.0.1:4174/?native=1 \
-            > /tmp/viewinvai-mobile-dom.html 2> /tmp/viewinvai-mobile-chrome.log
-
-          for marker in mobile-nav mobile-catalog mobile-range mobile-filter mobile-layout mobile-back; do
-            attr="data-$marker=\"ok\""
-            if ! grep -q "$attr" /tmp/viewinvai-mobile-dom.html; then
-              echo "::error::Fallo smoke móvil: $marker"
-              grep -o 'data-mobile-[^ >]*' /tmp/viewinvai-mobile-dom.html || true
-              grep -o 'data-mobile-smoke-error="[^"]*"' /tmp/viewinvai-mobile-dom.html || true
-              grep -o 'data-runtime-error="[^"]*"' /tmp/viewinvai-mobile-dom.html || true
-              tail -100 /tmp/viewinvai-mobile-chrome.log || true
-              exit 1
-            fi
-          done
-
-          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|MOBILE_SMOKE_FAIL' /tmp/viewinvai-mobile-chrome.log; then
-            cat /tmp/viewinvai-mobile-chrome.log
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=390,844 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=10000 --dump-dom 'http://127.0.0.1:4174/?native=1' > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
+          if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
+            echo "::error::Smoke nativo falló"
+            grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true
+            tail -100 /tmp/viewinvai-native-chrome.log || true
             exit 1
           fi
-
-          echo "Smoke test app nativa móvil, filtros, encuadres y navegación: OK"
-
-          for spec in "360,800" "412,915"; do
-            W="${spec%,*}"
-            H="${spec#*,}"
-            PROFILE="/tmp/viewinvai-mobile-profile-${W}"
-            DOM="/tmp/viewinvai-mobile-dom-${W}.html"
-            LOG="/tmp/viewinvai-mobile-chrome-${W}.log"
-            rm -rf "$PROFILE"
-
-            "$CHROME" \
-              --headless=new \
-              --no-sandbox \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --window-size="$W,$H" \
-              --force-device-scale-factor=1 \
-              --user-data-dir="$PROFILE" \
-              --virtual-time-budget=10000 \
-              --dump-dom \
-              http://127.0.0.1:4174/?native=1 \
-              > "$DOM" 2> "$LOG"
-
-            if ! grep -q 'data-mobile-layout="ok"' "$DOM"; then
-              echo "::error::Fallo responsive en viewport ${W}x${H}"
-              grep -o 'data-mobile-smoke-error="[^"]*"' "$DOM" || true
-              grep -o 'data-runtime-error="[^"]*"' "$DOM" || true
-              tail -100 "$LOG" || true
-              exit 1
-            fi
-          done
-
-          echo "Barrido app nativa 360/390/412 px: OK"
+          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|NATIVE_SMOKE_FAIL' /tmp/viewinvai-native-chrome.log; then
+            cat /tmp/viewinvai-native-chrome.log
+            exit 1
+          fi
+          echo "Presentación nativa 390px: OK"

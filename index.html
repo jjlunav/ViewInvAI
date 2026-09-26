@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.5">
+<html lang="es" data-app-version="0.6.7">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -26,7 +26,7 @@
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20260926r4">
+  <link rel="stylesheet" href="mobile-app.css?v=20260926r5">
 </head>
 <body>
 <div class="app-shell">
@@ -39,6 +39,7 @@
     <nav class="nav">
       <button class="nav-item active" data-view="home"><span>⌂</span>Inicio</button>
       <button class="nav-item" data-view="portfolios"><span>★</span>Carteras</button>
+      <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
       <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
       <button class="nav-item" data-view="entry"><span>◈</span>Radar de entrada</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
@@ -217,9 +218,65 @@
           <button type="button" class="section-help" data-help-section="portfolios" aria-label="Ayuda sobre Carteras">?</button>
         </div>
       </div>
-      <div id="portfolioApp" class="portfolio-app">
+      <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
+        <button type="button" class="active" role="tab" aria-selected="true" data-portfolio-asset="stocks">Acciones</button>
+        <button type="button" role="tab" aria-selected="false" data-portfolio-asset="funds">Fondos / ETFs</button>
+      </div>
+      <div id="portfolioApp" class="portfolio-app" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
       </div>
+      <div id="fundPortfolioApp" class="portfolio-app is-hidden" data-portfolio-asset-panel="funds">
+        <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
+      </div>
+    </section>
+
+    <section class="view" id="view-funds">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Fondos indexados y ETFs <span class="heading-badge ai-badge">COMPARADOR</span></h1>
+          <p class="lead">Busca por nombre o ISIN, compara rentabilidades y costes y comprueba disponibilidad verificada en Trade Republic y MyInvestor.</p>
+        </div>
+        <div class="heading-actions"><button class="btn icon-btn" id="refreshFunds" title="Actualizar">↻</button></div>
+      </div>
+      <div class="fund-toolbar">
+        <input id="fundSearch" class="fund-search" type="search" placeholder="Nombre, ISIN, índice o gestora" autocomplete="off">
+        <select id="fundPlatform" class="select">
+          <option value="all">Todas las plataformas</option>
+          <option value="tr">Trade Republic</option>
+          <option value="mi">MyInvestor</option>
+          <option value="both">Disponible en ambas</option>
+        </select>
+        <select id="fundType" class="select">
+          <option value="all">Fondos y ETFs</option>
+          <option value="fund">Solo fondos indexados</option>
+          <option value="etf">Solo ETFs</option>
+          <option value="etp">ETP / ETC / ETN</option>
+        </select>
+        <select id="fundProvider" class="select"><option value="all">Todas las gestoras</option></select>
+        <select id="fundRegion" class="select"><option value="all">Todas las regiones</option></select>
+        <select id="fundDistribution" class="select">
+          <option value="all">Acumulación y distribución</option>
+          <option value="Acumulación">Acumulación</option>
+          <option value="Distribución">Distribución</option>
+        </select>
+        <label class="fund-ter-filter"><span>TER máx.</span><input id="fundMaxTer" type="number" min="0" max="10" step="0.05" placeholder="Sin límite"></label>
+        <select id="fundSort" class="select">
+          <option value="perf1M">Rentabilidad 1 mes</option>
+          <option value="perf3M">Rentabilidad 3 meses</option>
+          <option value="perf6M">Rentabilidad 6 meses</option>
+          <option value="perfYtd">Rentabilidad YTD</option>
+          <option value="perf1Y" selected>Rentabilidad 1 año</option>
+          <option value="perf3Y">Rentabilidad 3 años</option>
+          <option value="perf5Y">Rentabilidad 5 años</option>
+          <option value="perf10Y">Rentabilidad 10 años</option>
+          <option value="perfSinceInception">Desde lanzamiento</option>
+          <option value="terAsc">Menor TER</option>
+          <option value="sharpe3Y">Mayor Sharpe 3 años</option>
+          <option value="drawdown">Menor drawdown</option>
+        </select>
+      </div>
+      <div class="fund-data-note">Fondos tradicionales: valor liquidativo diario. ETFs: cotización de mercado. La disponibilidad por plataforma solo se marca como verificada cuando existe una fuente contrastable.</div>
+      <div id="fundsApp"><div class="empty-state">Cargando fondos y ETFs…</div></div>
     </section>
 
     <section class="view" id="view-heatmap">
@@ -470,7 +527,7 @@
       <div id="notificationList" class="notification-list"><div class="notification-empty">Todavía no hay avisos.</div></div>
     </aside>
     <button type="button" id="notificationBell" class="notification-bell" aria-label="Abrir centro de avisos" aria-expanded="false">
-      <span aria-hidden="true">●</span><span id="notificationBadge" class="notification-badge is-hidden">0</span>
+      <span class="notification-bell-icon" aria-hidden="true">🔔</span><span id="notificationBadge" class="notification-badge is-hidden">0</span>
     </button>
 
 
@@ -545,6 +602,7 @@
 <script src="stock-interactions.js?v=20260925r1"></script>
 <script src="navigation.js?v=20260925r4"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
+<script src="funds.js?v=20260926r1"></script>
 <script src="bootstrap.js?v=20260926r1"></script>
 <script src="alerts.js?v=20260924r3"></script>
 <script type="module" src="auth.js?v=20260925r7"></script>

@@ -28,6 +28,7 @@ const files = [
   'mobile-app.js',
   'bootstrap.js',
   'alerts.js',
+  'funds.js',
   'auth.js',
   'portfolio.js'
 ];
@@ -41,6 +42,7 @@ for (const file of files) {
 }
 await cp(path.join(root, 'data', 'market.json'), path.join(out, 'data', 'market.json'));
 await cp(path.join(root, 'data', 'market-version.json'), path.join(out, 'data', 'market-version.json'));
+await cp(path.join(root, 'data', 'funds.json'), path.join(out, 'data', 'funds.json'));
 
 let html = await readFile(path.join(root, 'index.html'), 'utf8');
 html = html.replace(
