@@ -240,6 +240,8 @@
       </div>
       <div class="fund-toolbar">
         <input id="fundSearch" class="fund-search" type="search" placeholder="Nombre, ISIN, índice o gestora" autocomplete="off">
+        <button type="button" class="btn fund-mobile-filters-toggle" id="fundMobileFiltersToggle" aria-expanded="false" aria-controls="fundToolbarAdvanced">Filtros</button>
+        <div class="fund-toolbar-advanced" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
           <option value="tr">Trade Republic</option>
@@ -274,6 +276,7 @@
           <option value="sharpe3Y">Mayor Sharpe 3 años</option>
           <option value="drawdown">Menor drawdown</option>
         </select>
+        </div>
       </div>
       <div class="fund-data-note">Fondos tradicionales: valor liquidativo diario. ETFs: cotización de mercado. La disponibilidad por plataforma solo se marca como verificada cuando existe una fuente contrastable.</div>
       <div id="fundsApp"><div class="empty-state">Cargando fondos y ETFs…</div></div>
