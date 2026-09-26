@@ -6934,3 +6934,76 @@ html[data-theme="light"] .tr-native-axis{
  justify-content:flex-end;
  margin:0 0 8px;
 }
+
+
+/* Funds / ETFs */
+.fund-toolbar{
+ display:grid;
+ grid-template-columns:minmax(220px,1.6fr) repeat(3,minmax(150px,.7fr));
+ gap:10px;
+ margin:0 0 10px;
+}
+.fund-search{
+ width:100%;
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ color:var(--text);
+ padding:10px 12px;
+}
+.fund-data-note,.funds-status{
+ color:var(--muted);
+ font-size:12px;
+}
+.fund-data-note{margin:0 0 12px}
+.funds-status{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.fund-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}
+.fund-card{
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:14px;
+ background:var(--panel);
+ padding:14px;
+ box-shadow:0 10px 28px rgba(0,0,0,.08);
+}
+.fund-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.fund-card-head h3{font-size:15px;line-height:1.25;margin:4px 0}
+.fund-card-head p{margin:0;color:var(--muted);font-size:10px;letter-spacing:.04em}
+.fund-kind{font-size:9px;font-weight:800;letter-spacing:.08em;color:var(--accent)}
+.fund-platforms{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.fund-platform{
+ display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;
+ padding:3px 6px;font-size:9px;white-space:nowrap
+}
+.fund-platform.ok{color:#5ed0aa;border-color:rgba(94,208,170,.35)}
+.fund-platform.pending{color:#b4a46b;border-color:rgba(180,164,107,.35)}
+.fund-platform.no{color:var(--muted)}
+.fund-primary-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.fund-primary-row>div{border-top:1px solid var(--line);padding-top:9px;min-width:0}
+.fund-primary-row small,.fund-primary-row span{display:block;color:var(--muted);font-size:9px}
+.fund-primary-row strong{display:block;font-size:17px;margin:2px 0}
+.fund-performance{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px
+}
+.fund-performance span{border:1px solid var(--line);border-radius:8px;padding:6px;min-width:0}
+.fund-performance small,.fund-performance b{display:block;font-size:9px}
+.fund-performance b{font-size:11px;margin-top:2px}
+.fund-more{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.fund-more summary{cursor:pointer;color:var(--muted);font-size:11px}
+.fund-facts,.fund-risk-grid{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px
+}
+.fund-facts>div,.fund-risk-grid>div{background:var(--panel-2);border-radius:8px;padding:7px;min-width:0}
+.fund-facts small,.fund-risk-grid small{display:block;color:var(--muted);font-size:8px}
+.fund-facts strong,.fund-risk-grid strong{display:block;font-size:10px;overflow-wrap:anywhere;margin-top:2px}
+.fund-source-line{display:flex;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:9px;margin-top:8px}
+.fund-source-line a{color:var(--accent)}
+.fund-card-actions{display:flex;justify-content:flex-end;margin-top:10px}
+@media(max-width:760px){
+ .fund-toolbar{grid-template-columns:1fr 1fr}
+ .fund-search{grid-column:1/-1}
+ .fund-grid{grid-template-columns:1fr}
+ .fund-performance{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .fund-facts,.fund-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
