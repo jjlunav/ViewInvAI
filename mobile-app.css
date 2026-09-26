@@ -2063,3 +2063,9 @@ html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .profile-p
 html[data-native-app="1"] .profile-sticky-shell .profile-tabs button{
   min-height:34px!important;
 }
+
+
+html[data-native-app="1"][data-theme="light"] .profile-sticky-shell{
+  background:rgba(249,252,253,.99)!important;
+  box-shadow:0 8px 24px rgba(34,59,69,.10)!important;
+}
