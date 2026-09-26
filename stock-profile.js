@@ -114,10 +114,15 @@ function profileDetailRoot(el){
  return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;
 }
 function activateProfileVisualAnalysis(root,s,preferTr=false){
- if(!root||!s||root.dataset.visualAnalysisLoaded==='1')return;
- root.dataset.visualAnalysisLoaded='1';
+ if(!root||!s)return;
+ const loadKey=stockKey(s)+'|'+(preferTr===true?'tr':'us');
+ if(root.dataset.visualAnalysisLoadedKey===loadKey)return;
+ root.dataset.visualAnalysisLoadedKey=loadKey;
  requestAnimationFrame(()=>{
-  root.querySelectorAll('[data-profile-visual-analysis] .mini-chart').forEach(loadMiniChart);
+  root.querySelectorAll('[data-profile-visual-analysis] .mini-chart').forEach(el=>{
+   delete el.dataset.loaded;
+   loadMiniChart(el);
+  });
   loadAiBrief(root,s,preferTr===true);
  });
 }
@@ -178,6 +183,9 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '</div>'+
   '</header>';
 }
+function profileStickyShellHtml(s,isTr=false,opts={}){
+ return '<div class="profile-sticky-shell">'+profileHeroHtml(s,isTr,opts)+profileTabs()+'</div>';
+}
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
  let isTr=requested&&trTradable(s),se=currentMarketSession();
@@ -187,9 +195,9 @@ function quickProfileHtml(s,opts={}){
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  let backKind=opts.embedded?'portfolio':'quick';
- return profileHeroHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
+ return profileStickyShellHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
   '<div class="unified-profile-body">'+
-   profileTabs()+profileSessionStrip(s,isTr)+
+   profileSessionStrip(s,isTr)+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
@@ -201,12 +209,20 @@ function renderQuickProfile(){
  let box=$('#stockQuickDetail');if(!box)return;
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(!s){closeQuickProfile(false);return}
+ delete box.dataset.visualAnalysisLoaded;
+ delete box.dataset.visualAnalysisLoadedKey;
  box.innerHTML=quickProfileHtml(s);
- requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
+ requestAnimationFrame(()=>{
+  observeTrLivePrices(box);
+  pollUsLive();
+  window.ViewInvAINativeUI?.syncLayout?.();
+ });
 }
 function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
  let s=stockByKey(key);if(!container||!s)return false;
  let useTr=preferTr===true&&trTradable(s);
+ delete container.dataset.visualAnalysisLoaded;
+ delete container.dataset.visualAnalysisLoadedKey;
  container.classList.add('stock-profile-page','embedded-stock-profile');
  container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
  requestAnimationFrame(()=>{observeTrLivePrices(container);pollUsLive()});
@@ -250,9 +266,9 @@ function profileHtml(s,view){
  let upHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos futuros fechados cargados para este valor.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas para este valor.</div>';
  let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
- return profileHeroHtml(s,isTr,{backKind:'profile',backView:view})+
+ return profileStickyShellHtml(s,isTr,{backKind:'profile',backView:view})+
   '<div class="unified-profile-body">'+
-   profileTabs()+profileSessionStrip(s,isTr)+
+   profileSessionStrip(s,isTr)+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
