@@ -865,8 +865,13 @@ jobs:
                         }
 
                         const bottom = document.querySelector('#mobileBottomNav');
-                        if (bottom && getComputedStyle(bottom).display !== 'none') {
-                          fail('mobile bottom navigation must be hidden while stock detail is open');
+                        if (!bottom || getComputedStyle(bottom).display === 'none') {
+                          fail('mobile bottom navigation disappeared while stock detail is open');
+                          return;
+                        }
+                        const stockPaddingBottom = parseFloat(getComputedStyle(document.querySelector('.main')).paddingBottom || '0');
+                        if (stockPaddingBottom + 1 < bottom.getBoundingClientRect().height) {
+                          fail('stock detail does not reserve space for persistent bottom navigation');
                           return;
                         }
 
