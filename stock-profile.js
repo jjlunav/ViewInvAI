@@ -183,8 +183,15 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '</div>'+
   '</header>';
 }
+function nativeProfileChrome(){
+ return document.documentElement.dataset.nativeApp==='1';
+}
 function profileStickyShellHtml(s,isTr=false,opts={}){
- return '<div class="profile-sticky-shell">'+profileHeroHtml(s,isTr,opts)+profileTabs()+'</div>';
+ const hero=profileHeroHtml(s,isTr,opts);
+ return nativeProfileChrome()?'<div class="profile-sticky-shell">'+hero+profileTabs()+'</div>':hero;
+}
+function profileBodyTabsHtml(){
+ return nativeProfileChrome()?'':profileTabs();
 }
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
@@ -197,7 +204,7 @@ function quickProfileHtml(s,opts={}){
  let backKind=opts.embedded?'portfolio':'quick';
  return profileStickyShellHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
   '<div class="unified-profile-body">'+
-   profileSessionStrip(s,isTr)+
+   profileBodyTabsHtml()+profileSessionStrip(s,isTr)+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
@@ -268,7 +275,7 @@ function profileHtml(s,view){
  let updated=db.meta.updatedAt?new Date(db.meta.updatedAt).toLocaleString('es-ES'):'—';
  return profileStickyShellHtml(s,isTr,{backKind:'profile',backView:view})+
   '<div class="unified-profile-body">'+
-   profileSessionStrip(s,isTr)+
+   profileBodyTabsHtml()+profileSessionStrip(s,isTr)+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Mercado y sesión</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section>'+
    '<section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section>'+
