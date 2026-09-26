@@ -90,7 +90,10 @@ jobs:
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
           test -s mobile-shell/native-runtime.js
-          grep -q 'data-app-version="0.6.0"' mobile-shell/index.html
+          VERSION="$(node -p "require('./package.json').version")"
+          grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
+          test -s mobile-shell/data/market.json
+          test -s mobile-shell/data/market-version.json
           grep -q 'const native = true' mobile-shell/index.html
           if grep -q '"url"[[:space:]]*:[[:space:]]*"https://viewinvai' capacitor.config.json; then
             echo "::error::Android config still points at the remote web shell."
