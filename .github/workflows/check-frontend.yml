@@ -420,7 +420,12 @@ jobs:
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
           cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-native/
-          cp data/market.json data/funds.json /tmp/viewinvai-native/data/
+          cat > /tmp/viewinvai-native/data/market.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
+          JSON
+          cat > /tmp/viewinvai-native/data/funds.json <<'JSON'
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z"},"products":[]}
+          JSON
           python - <<'PY'
           from pathlib import Path
           p=Path("/tmp/viewinvai-native/index.html")
