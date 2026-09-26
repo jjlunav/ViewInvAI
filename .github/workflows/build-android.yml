@@ -219,6 +219,39 @@ jobs:
                   setTimeout(() => {
                     if (document.body.classList.contains('stock-detail-open')) return fail('stock detail did not close');
                     if (!document.querySelector('#view-entry.active')) return fail('stock detail did not return to origin view');
+
+                    const portfoliosApi = window.ViewInvAIPortfolios;
+                    const pState = portfoliosApi && portfoliosApi.getState && portfoliosApi.getState();
+                    if (!portfoliosApi || !pState) return fail('portfolio API is unavailable');
+                    pState.user = { id: 'smoke-user' };
+                    pState.loading = false;
+                    pState.portfolios = [{
+                      id: '1',
+                      name: 'Trade Activo',
+                      broker: 'Trade Republic',
+                      base_currency: 'EUR',
+                      sort_order: 0,
+                      created_at: '2026-01-01T00:00:00Z'
+                    }];
+                    pState.positions = [{
+                      id: 'smoke-position',
+                      portfolio_id: 1,
+                      stock_key: key,
+                      ticker: stock.ticker || 'SMOKE',
+                      name: stock.name || 'Smoke stock',
+                      exchange: stock.exchange || 'NASDAQ',
+                      prefer_tr: 0,
+                      quantity: 2,
+                      avg_price: 1,
+                      currency: 'USD',
+                      active: 1
+                    }];
+                    pState.selectedPortfolioId = '1';
+                    portfoliosApi.render();
+                    const tab = document.querySelector('#portfolioApp [data-portfolio-select="1"]');
+                    const row = document.querySelector('#portfolioApp .portfolio-position-list > article');
+                    if (!tab || !/1/.test(tab.textContent || '')) return fail('portfolio count did not render active position');
+                    if (!row) return fail('active portfolio position disappeared from the portfolio UI');
                     document.documentElement.dataset.nativeSmoke = 'ok';
                   }, 120);
                 }, 250);
