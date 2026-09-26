@@ -176,6 +176,13 @@ jobs:
                   if (detail.innerHTML.length < 1500) return fail('stock detail HTML is unexpectedly empty');
                   if (!detail.querySelector('.unified-stock-header')) return fail('stock detail header missing');
                   if (!detail.querySelector('.unified-profile-body')) return fail('stock detail body missing');
+                  const visibleViews = [...document.querySelectorAll('.view')].filter(v => getComputedStyle(v).display !== 'none');
+                  if (visibleViews.length) return fail('underlying app view remains visible below stock detail: ' + visibleViews.map(v => v.id).join(','));
+                  const bottomNav = document.querySelector('#mobileBottomNav');
+                  if (bottomNav && getComputedStyle(bottomNav).display !== 'none') return fail('bottom navigation remains visible inside stock detail');
+                  const header = detail.querySelector('.unified-stock-header');
+                  const body = detail.querySelector('.unified-profile-body');
+                  if (body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 2) return fail('stock detail body is covered by sticky header');
                   const visualToggle = detail.querySelector('[data-profile-visual-toggle]');
                   if (!visualToggle) return fail('stock detail actions missing');
                   visualToggle.click();
