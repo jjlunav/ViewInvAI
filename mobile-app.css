@@ -2099,3 +2099,28 @@ html[data-native-app="1"] #view-portfolios .portfolio-asset-switch button{flex:1
 html[data-native-app="1"] #view-portfolios .fund-portfolio-toolbar{align-items:flex-start!important}
 html[data-native-app="1"] #view-portfolios .fund-position-grid{grid-template-columns:1fr!important}
 html[data-native-app="1"] #view-portfolios .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+
+
+html[data-native-app="1"] #view-funds .fund-toolbar{
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+}
+html[data-native-app="1"] #view-funds .fund-toolbar>*{min-width:0!important}
+html[data-native-app="1"] #view-funds .fund-search{grid-column:1/-1!important}
+html[data-native-app="1"] #view-funds .fund-ter-filter{min-height:38px!important}
+html[data-native-app="1"] #view-funds .fund-card{padding:11px!important}
+html[data-native-app="1"] #view-funds .fund-primary-row{gap:7px!important}
+html[data-native-app="1"] #view-funds .fund-card-actions{
+ justify-content:flex-start!important;
+}
+html[data-native-app="1"] #view-funds .fund-card-actions .btn{
+ flex:1 1 120px!important;
+ min-height:34px!important;
+}
+html[data-native-app="1"] .fund-detail-hero{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr)!important;
+}
+html[data-native-app="1"] .fund-detail-hero>div:last-child{
+ text-align:left!important;
+ min-width:0!important;
+}
