@@ -2008,3 +2008,58 @@ html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .price-pai
 html[data-native-app="1"] .profile-sticky-shell .profile-tabs{
   scroll-padding-inline:var(--native-page-x)!important;
 }
+
+
+/* Recoverable chart state: never leave an infinite loading panel. */
+html[data-native-app="1"] .chart-placeholder-error>div{
+  display:grid!important;
+  justify-items:center!important;
+  gap:10px!important;
+  max-width:260px!important;
+  padding:18px!important;
+  text-align:center!important;
+}
+
+html[data-native-app="1"] .chart-retry{
+  min-height:36px!important;
+  padding:7px 14px!important;
+  border:1px solid #355a68!important;
+  border-radius:9px!important;
+  background:#0c1c24!important;
+  color:#dce8ec!important;
+  font-size:9px!important;
+  font-weight:800!important;
+}
+
+html[data-native-app="1"] #view-portfolios .portfolio-position-render-error{
+  border:1px solid #5f5130!important;
+  background:#121a1c!important;
+}
+
+/* Let the price/change own a full row; BID/ASK is compact below it.
+   This prevents the right edge of large percentage changes from being clipped. */
+html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .profile-live{
+  grid-template-columns:minmax(0,1fr)!important;
+  grid-template-areas:
+    "label"
+    "main"
+    "spread"!important;
+  gap:3px!important;
+}
+
+html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .profile-live-main{
+  justify-content:center!important;
+}
+
+html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .quote-spread{
+  width:100%!important;
+  min-width:0!important;
+}
+
+html[data-native-app="1"] .profile-sticky-shell .unified-stock-header .profile-primary-actions .btn{
+  min-height:32px!important;
+}
+
+html[data-native-app="1"] .profile-sticky-shell .profile-tabs button{
+  min-height:34px!important;
+}
