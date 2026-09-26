@@ -2,7 +2,7 @@ name: Validar frontend
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/android-ui-0.6.7]
     paths:
       - "app.js"
       - "settings.js"
@@ -23,6 +23,7 @@ on:
       - "alerts.js"
       - "auth.js"
       - "portfolio.js"
+      - "funds.js"
       - "backend.js"
       - "index.html"
       - "styles.css"
@@ -33,6 +34,9 @@ on:
       - "package.json"
       - "capacitor.config.json"
       - "migrations/**"
+      - "data/funds.json"
+      - "data/myinvestor-funds.json"
+      - "scripts/update_funds.py"
       - "wrangler.jsonc"
       - ".github/workflows/check-frontend.yml"
   pull_request:
