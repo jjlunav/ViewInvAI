@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS fund_positions (
   user_id TEXT NOT NULL,
   isin TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '',
-  product_type TEXT NOT NULL DEFAULT 'fund' CHECK(product_type IN ('fund','etf')),
+  product_type TEXT NOT NULL DEFAULT 'fund' CHECK(product_type IN ('fund','etf','etp')),
   provider TEXT NOT NULL DEFAULT '',
   index_name TEXT NOT NULL DEFAULT '',
   platform TEXT NOT NULL DEFAULT '',
