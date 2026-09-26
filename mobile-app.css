@@ -1979,8 +1979,7 @@ html[data-native-app="1"] body.stock-detail-open{
 }
 
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail{
-  overflow-x:clip!important;
-  overflow-y:visible!important;
+  overflow:visible!important;
   max-width:100vw!important;
 }
 
