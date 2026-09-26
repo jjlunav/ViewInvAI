@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+import websocket
 from pypdf import PdfReader
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -178,6 +182,139 @@ def merge_existing(products, previous, myinvestor):
     return sorted(merged, key=lambda x: (x.get("type") != "fund", x.get("name", ""), x.get("isin", "")))
 
 
+
+def epoch_ms(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(value * 1000 if 0 < value < 1_000_000_000_000 else value)
+
+
+def tr_history(isin: str):
+    ws = websocket.create_connection(
+        "wss://api.traderepublic.com",
+        origin="https://app.traderepublic.com",
+        header=["User-Agent: Mozilla/5.0"],
+        timeout=12,
+    )
+    try:
+        ws.send("connect 30")
+        hello = str(ws.recv() or "")
+        if not hello.startswith("connected"):
+            raise RuntimeError("unexpected Trade Republic greeting")
+        payload = {
+            "type": "aggregateHistoryLight",
+            "id": isin + ".LSX",
+            "range": "max",
+            "resolution": 86400000,
+        }
+        ws.send("sub 1 " + json.dumps(payload, separators=(",", ":")))
+        deadline = time.time() + 12
+        while time.time() < deadline:
+            raw = str(ws.recv() or "")
+            if not raw.startswith("1 "):
+                continue
+            match = re.match(r"^1\s+([A-Z])(?:\s+([\s\S]+))?$", raw)
+            if not match:
+                continue
+            code, body = match.group(1), match.group(2) or ""
+            if code == "E":
+                raise RuntimeError("history rejected")
+            if code != "A":
+                continue
+            data = json.loads(body or "{}")
+            rows = []
+            for point in data.get("aggregates") or []:
+                stamp = epoch_ms(point.get("time"))
+                try:
+                    close = float(point.get("close"))
+                except (TypeError, ValueError):
+                    continue
+                if stamp and close > 0:
+                    rows.append((stamp, close))
+            rows.sort()
+            return rows[-5000:]
+        raise TimeoutError("Trade Republic history timeout")
+    finally:
+        try:
+            ws.send("unsub 1")
+        except Exception:
+            pass
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+def return_for_days(points, days: int):
+    if len(points) < 2:
+        return None
+    end_t, end_p = points[-1]
+    cutoff = end_t - days * 86400000
+    candidates = [row for row in points if row[0] <= cutoff]
+    if not candidates:
+        return None
+    start_t, start_p = candidates[-1]
+    # Require enough history to avoid presenting a partial period as the full period.
+    if end_t - start_t < days * 86400000 * 0.90 or start_p <= 0:
+        return None
+    return round((end_p / start_p - 1) * 100, 6)
+
+
+def enrich_one_tr_product(product):
+    try:
+        points = tr_history(product["isin"])
+        if len(points) < 2:
+            return product, False
+        last_t, last_p = points[-1]
+        first_t, first_p = points[0]
+        product.update({
+            "nav": last_p,
+            "valueDate": datetime.fromtimestamp(last_t / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+            "sourceUpdatedAt": now_iso(),
+            "perf1M": return_for_days(points, 30),
+            "perf3M": return_for_days(points, 91),
+            "perf6M": return_for_days(points, 182),
+            "perfYtd": None,
+            "perf1Y": return_for_days(points, 365),
+            "perf3Y": return_for_days(points, 365 * 3),
+            "perf5Y": return_for_days(points, 365 * 5),
+            "perf10Y": return_for_days(points, 365 * 10),
+            "perfSinceInception": round((last_p / first_p - 1) * 100, 6) if first_p > 0 else None,
+        })
+        year = datetime.fromtimestamp(last_t / 1000, tz=timezone.utc).year
+        ytd = [row for row in points if datetime.fromtimestamp(row[0] / 1000, tz=timezone.utc).year < year]
+        if ytd and ytd[-1][1] > 0:
+            product["perfYtd"] = round((last_p / ytd[-1][1] - 1) * 100, 6)
+        product.setdefault("sources", []).append({
+            "label": "Trade Republic · histórico LSX",
+            "url": "https://traderepublic.com/es-es"
+        })
+        return product, True
+    except Exception as exc:
+        print(f"History unavailable {product.get('isin')}: {exc}")
+        return product, False
+
+
+def enrich_trade_republic_history(products):
+    if os.environ.get("VIEWINVAI_FUNDS_HISTORY", "1").lower() in {"0", "false", "no"}:
+        return products, 0
+    candidates = [
+        p for p in products
+        if p.get("type") == "etf" and p.get("platforms", {}).get("tradeRepublic") == "verified"
+    ]
+    workers = max(1, min(8, int(os.environ.get("VIEWINVAI_FUNDS_WORKERS", "5"))))
+    enriched = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(enrich_one_tr_product, p): p for p in candidates}
+        for future in as_completed(futures):
+            product, ok = future.result()
+            if ok:
+                enriched += 1
+    return products, enriched
+
+
 def main():
     previous = read_json(OUT, {"meta": {}, "products": []})
     myinvestor = read_json(MYINVESTOR, {"meta": {}, "products": []})
@@ -185,6 +322,7 @@ def main():
     response.raise_for_status()
     tr_products = parse_trade_republic_etfs(response.content)
     products = merge_existing(tr_products, previous, myinvestor)
+    products, history_count = enrich_trade_republic_history(products)
 
     payload = {
         "meta": {
@@ -195,6 +333,7 @@ def main():
             ],
             "tradeRepublicEtfCount": sum(1 for p in products if p.get("platforms", {}).get("tradeRepublic") == "verified"),
             "myInvestorVerifiedCount": sum(1 for p in products if p.get("platforms", {}).get("myInvestor") == "verified"),
+            "tradeRepublicHistoryCount": history_count,
             "notes": "ETFs de Trade Republic extraídos de su universo oficial. MyInvestor solo se marca disponible mediante overlay de ISIN verificado."
         },
         "products": products
