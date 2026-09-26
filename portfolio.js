@@ -85,8 +85,21 @@ function stockByKey(key) {
     : null;
 }
 
+function canonicalStockKey(value) {
+  const stock = stockByKey(value);
+  if (stock && window.ViewInvAI && typeof window.ViewInvAI.getStockKey === "function") {
+    return String(window.ViewInvAI.getStockKey(stock) || "").trim().toUpperCase();
+  }
+  return String(value || "").trim().toUpperCase();
+}
+
+function sameStockRef(a, b) {
+  const left = canonicalStockKey(a), right = canonicalStockKey(b);
+  return !!left && !!right && left === right;
+}
+
 function portfolioStockKeys() {
-  return [...new Set(state.positions.filter(p => Number(p.active) !== 0).map(p => p.stock_key).filter(Boolean))];
+  return [...new Set(state.positions.filter(p => Number(p.active) !== 0).map(p => canonicalStockKey(p.stock_key)).filter(Boolean))];
 }
 
 function syncPortfolioStars() {
@@ -96,8 +109,16 @@ function syncPortfolioStars() {
 }
 
 function openStockInline(key, preferTr = null) {
-  if (!key) return false;
-  state.detailStockKey = key;
+  const stock = stockByKey(key);
+  if (!stock) {
+    state.detailStockKey = null;
+    state.detailPreferTr = null;
+    savePortfolioUi();
+    renderApp();
+    toast("No se pudo localizar esa acción en el mercado actual.", true);
+    return false;
+  }
+  state.detailStockKey = canonicalStockKey(key);
   state.detailPreferTr = preferTr === true ? true : preferTr === false ? false : null;
   savePortfolioUi();
   renderApp();
@@ -343,11 +364,18 @@ function renderApp() {
 
   if (state.detailStockKey) {
     const context = $("#portfolioContext");
-    const p = state.positions.find(x => x.stock_key === state.detailStockKey && Number(x.active) !== 0 && (!selected || x.portfolio_id === selected.id));
+    const p = state.positions.find(x => sameStockRef(x.stock_key, state.detailStockKey) && Number(x.active) !== 0 && (!selected || String(x.portfolio_id) === String(selected.id)));
     const preferTr = p ? Number(p.prefer_tr) === 1 : state.detailPreferTr === true;
-    if (context && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
+    const stock = stockByKey(state.detailStockKey);
+    if (context && stock && window.ViewInvAI && typeof window.ViewInvAI.renderEmbeddedStockDetail === "function") {
+      const previous = context.innerHTML;
       context.innerHTML = '<div id="portfolioInlineStock" class="portfolio-inline-stock"></div>';
-      window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), state.detailStockKey, "Cartera · " + (selected ? selected.name : "posición"), preferTr);
+      const rendered = window.ViewInvAI.renderEmbeddedStockDetail($("#portfolioInlineStock"), canonicalStockKey(state.detailStockKey), "Cartera · " + (selected ? selected.name : "posición"), preferTr);
+      if (!rendered) context.innerHTML = previous;
+    } else {
+      state.detailStockKey = null;
+      state.detailPreferTr = null;
+      savePortfolioUi();
     }
   }
 
@@ -947,7 +975,7 @@ function localDateValue(date = new Date()) {
 
 function positionForPortfolioStock(stockKey, portfolioId) {
   return state.positions.find(p =>
-    p.stock_key === stockKey &&
+    sameStockRef(p.stock_key, stockKey) &&
     String(p.portfolio_id) === String(portfolioId) &&
     Number(p.active) !== 0
   ) || null;
@@ -1046,7 +1074,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
 
 function activePortfolioMemberships(stockKey) {
   return state.positions
-    .filter(p => p.stock_key === stockKey && Number(p.active) !== 0)
+    .filter(p => sameStockRef(p.stock_key, stockKey) && Number(p.active) !== 0)
     .map(p => ({
       position: p,
       portfolio: state.portfolios.find(x => String(x.id) === String(p.portfolio_id)) || null
@@ -1167,7 +1195,7 @@ function openAddToSpecificPortfolio(stockKey, portfolioId, preferTr) {
 async function syncFavorite(active, key) {
   if (!state.user || !key) return;
   try {
-    const existing = state.watchlist.find(x => x.stock_key === key);
+    const existing = state.watchlist.find(x => sameStockRef(x.stock_key, key));
     if (active) {
       if (existing) return;
       const stock = stockByKey(key);
@@ -1583,7 +1611,7 @@ function bind() {
   });
 
   window.addEventListener("viewinvai:quote-updated", event => {
-    if (!event.detail || !state.positions.some(p => p.stock_key === event.detail.key)) return;
+    if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
     clearTimeout(renderApp.quoteTimer);
     renderApp.quoteTimer = setTimeout(renderApp, 180);
   });
