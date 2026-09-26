@@ -714,6 +714,7 @@ function isBackendApiPath(pathname) {
     pathname === "/api/transactions" || pathname.startsWith("/api/transactions/") ||
     pathname === "/api/fund-portfolios" || pathname.startsWith("/api/fund-portfolios/") ||
     pathname === "/api/fund-positions" || pathname.startsWith("/api/fund-positions/") ||
+    pathname === "/api/fund-transactions" || pathname.startsWith("/api/fund-transactions/") ||
     pathname === "/api/watchlist" || pathname.startsWith("/api/watchlist/") ||
     pathname === "/api/analysis" || pathname.startsWith("/api/analysis/") ||
     pathname === "/api/ai" || pathname.startsWith("/api/ai/") ||
