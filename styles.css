@@ -7041,3 +7041,73 @@ html[data-theme="light"] .tr-native-axis{
 .fund-position-metrics span{background:var(--panel-2);border-radius:8px;padding:7px;min-width:0}
 .fund-position-metrics small,.fund-position-metrics b{display:block;font-size:8px}
 .fund-position-metrics b{font-size:10px;margin-top:2px;overflow-wrap:anywhere}
+
+
+/* Funds compact disclosure + freshness */
+.fund-toolbar{
+ grid-template-columns:minmax(220px,1.7fr) repeat(6,minmax(130px,.75fr));
+}
+.fund-ter-filter{
+ display:flex;
+ align-items:center;
+ gap:7px;
+ min-width:0;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ padding:0 9px;
+ color:var(--muted);
+ font-size:10px;
+}
+.fund-ter-filter input{
+ width:72px;
+ min-width:0;
+ border:0;
+ outline:0;
+ background:transparent;
+ color:var(--text);
+ padding:9px 0;
+}
+.fund-card-compact{
+ display:flex;
+ gap:6px;
+ flex-wrap:wrap;
+ margin-top:9px;
+}
+.fund-card-compact span{
+ max-width:100%;
+ border:1px solid var(--line);
+ border-radius:999px;
+ padding:4px 7px;
+ color:var(--muted);
+ font-size:9px;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+}
+.fund-freshness{
+ display:inline-flex!important;
+ align-items:center;
+ gap:5px;
+ margin-top:4px;
+ color:var(--muted)!important;
+ font-size:9px!important;
+ line-height:1.2;
+}
+.fund-freshness i{
+ width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:#81939c;
+}
+.fund-freshness.live{color:#64d9b2!important}
+.fund-freshness.live i{background:#45d6a7}
+.fund-freshness.nav{color:#82a9d8!important}
+.fund-freshness.nav i{background:#6da1db}
+.fund-freshness.snapshot{color:#d1ab67!important}
+.fund-freshness.snapshot i{background:#c69b4f}
+.fund-card-actions{gap:6px;flex-wrap:wrap}
+.fund-detail-sheet{display:grid;gap:12px}
+.fund-detail-sheet h4{margin:4px 0 -4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fund-detail-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.fund-detail-hero h3{margin:4px 0;font-size:17px}
+.fund-detail-hero p{margin:0;color:var(--muted);font-size:10px}
+.fund-detail-hero>div:last-child{text-align:right;min-width:120px}
+.fund-detail-hero>div:last-child>strong{display:block;font-size:18px}
