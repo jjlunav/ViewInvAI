@@ -888,8 +888,8 @@ jobs:
                           const headerRect = header && header.getBoundingClientRect();
                           const shellRect = shell && shell.getBoundingClientRect();
                           const shellPosition = shell ? getComputedStyle(shell).position : '';
-                          if (!headerRect || !shellRect || shellPosition !== 'sticky') {
-                            fail('native stock chrome is not a single sticky shell: ' + shellPosition);
+                          if (!headerRect || !shellRect || shellPosition !== 'fixed') {
+                            fail('native stock chrome is not one pinned shell: ' + shellPosition);
                             return;
                           }
                           if (shellRect.bottom <= 0 || shellRect.top >= window.innerHeight) {
