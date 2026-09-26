@@ -8,6 +8,18 @@ ViewInvAI es una plataforma de observación y análisis de acciones orientada a 
 
 ViewInvAI comparte datos y lógica entre web y Android, pero mantiene presentaciones independientes. El frontend común está dividido por responsabilidad (`app.js`, `stock-charts.js`, `stock-profile.js`, `navigation.js`) y arranca desde un único `bootstrap.js`. `styles.css` contiene la base web, `web-mobile.css` el responsive del navegador y `mobile-app.css` / `mobile-app.js` la interfaz exclusiva de la APK. Los cambios visuales de Android no deben implementarse como parches responsive dentro del CSS web.
 
+### Ficha única de activo
+
+Todas las entradas a una acción (Inicio, Radar, Ideas IA, Carteras, Avisos y Catálogos) abren el mismo detalle global. No deben crearse fichas específicas por menú ni renderizadores alternativos. La plantilla vive en `stock-profile.js` y cambia únicamente los datos y el mercado preferido del activo. Las secciones General, Gráfico, Noticias, Fundamental, Técnico e IA son pestañas reales y cargan el contenido pesado bajo demanda.
+
+Los precios muestran siempre un estado de frescura común. Un retraso numérico solo se muestra cuando la fuente lo declara; en el resto de casos se informa de la antigüedad del último dato sin inventar un retardo.
+
+### Fondos indexados y ETFs
+
+`funds.js` implementa un catálogo compartido entre web y Android identificado por ISIN. Los fondos tradicionales y los ETF se mantienen como tipos diferentes: los fondos usan valor liquidativo fechado y los ETF pueden usar cotización/histórico de mercado. La disponibilidad en Trade Republic o MyInvestor solo se marca como verificada cuando existe evidencia para la clase exacta.
+
+Las carteras de fondos se almacenan separadas de las posiciones de acciones mediante `fund_portfolios`, `fund_positions` y `fund_transactions`. La interfaz de Carteras permite cambiar entre Acciones y Fondos/ETFs sin mezclar sus modelos contables.
+
 ## Cinta de movimiento EEUU
 
 En la parte superior de la aplicación aparece una cinta compacta con las acciones estadounidenses que presentan mayor movimiento en la sesión activa. La selección combina la magnitud de la variación con actividad de volumen, muestra ticker, precio y porcentaje, e incluye tanto subidas como bajadas.
