@@ -100,6 +100,96 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke test packaged Android frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::Chrome/Chromium no está disponible en el runner"
+            exit 1
+          fi
+
+          rm -rf /tmp/viewinvai-native-profile
+          mkdir -p /tmp/viewinvai-native-profile
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("mobile-shell/index.html")
+          html = p.read_text(encoding="utf-8")
+          inject = r"""
+          <script>
+          (() => {
+            const started = Date.now();
+            const fail = msg => {
+              document.documentElement.dataset.nativeSmoke = 'fail';
+              document.documentElement.dataset.nativeSmokeError = String(msg);
+              console.error('NATIVE_SMOKE_FAIL', msg);
+            };
+            const wait = () => {
+              try {
+                if (typeof window.ViewInvAI !== 'object' || !window.ViewInvAI.getAllStocks) {
+                  if (Date.now() - started < 8000) return setTimeout(wait, 100);
+                  return fail('ViewInvAI runtime did not initialize');
+                }
+                const stocks = window.ViewInvAI.getAllStocks();
+                if (!Array.isArray(stocks) || stocks.length < 100) return fail('packaged market universe missing');
+
+                const nav = document.querySelector('#mobileBottomNav [data-mobile-view="entry"]');
+                if (!nav) return fail('Radar bottom navigation missing');
+                nav.click();
+                if (!document.querySelector('#view-entry.active')) return fail('bottom navigation did not switch to Radar');
+
+                const more = document.querySelector('#mobileBottomNav [data-mobile-more]');
+                if (!more) return fail('More navigation button missing');
+                more.click();
+                const sheet = document.querySelector('#mobileMoreSheet');
+                if (!sheet || !sheet.classList.contains('open') || getComputedStyle(sheet).visibility === 'hidden') {
+                  return fail('More sheet did not open');
+                }
+                document.querySelector('#mobileMoreClose')?.click();
+
+                const stock = stocks.find(s => s && (s.tvSymbol || s.ticker));
+                if (!stock) return fail('no usable stock in packaged snapshot');
+                const key = window.ViewInvAI.getStockKey(stock);
+                if (!window.ViewInvAI.openStockByKey(key, 'APK smoke')) return fail('openStockByKey returned false');
+
+                setTimeout(() => {
+                  const detail = document.querySelector('#stockQuickDetail');
+                  if (!document.body.classList.contains('stock-detail-open')) return fail('stock detail state not opened');
+                  if (!detail || detail.classList.contains('is-hidden')) return fail('stock detail stayed hidden');
+                  if (detail.innerHTML.length < 1500) return fail('stock detail HTML is unexpectedly empty');
+                  if (!detail.querySelector('.unified-stock-header')) return fail('stock detail header missing');
+                  if (!detail.querySelector('.unified-profile-body')) return fail('stock detail body missing');
+                  if (!detail.querySelector('[data-profile-visual-toggle]')) return fail('stock detail actions missing');
+                  document.documentElement.dataset.nativeSmoke = 'ok';
+                }, 250);
+              } catch (e) {
+                fail(e && e.stack || e && e.message || e);
+              }
+            };
+            setTimeout(wait, 150);
+          })();
+          </script>
+          """
+          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          PY
+
+          cd mobile-shell
+          python -m http.server 4182 --bind 127.0.0.1 >/tmp/viewinvai-native-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 1
+
+          "$CHROME"             --headless=new             --no-sandbox             --disable-gpu             --disable-dev-shm-usage             --window-size=412,915             --force-device-scale-factor=1             --user-data-dir=/tmp/viewinvai-native-profile             --virtual-time-budget=12000             --dump-dom             http://127.0.0.1:4182/             > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
+
+          if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
+            echo "::error::El frontend empaquetado no supera el recorrido funcional nativo"
+            grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true
+            tail -100 /tmp/viewinvai-native-chrome.log || true
+            exit 1
+          fi
+          echo "Packaged Android frontend smoke: OK"
+
       - name: Generate Android project
         run: npx cap add android
 
