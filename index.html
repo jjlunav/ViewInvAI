@@ -252,14 +252,27 @@
           <option value="etf">Solo ETFs</option>
           <option value="etp">ETP / ETC / ETN</option>
         </select>
+        <select id="fundProvider" class="select"><option value="all">Todas las gestoras</option></select>
+        <select id="fundRegion" class="select"><option value="all">Todas las regiones</option></select>
+        <select id="fundDistribution" class="select">
+          <option value="all">Acumulación y distribución</option>
+          <option value="Acumulación">Acumulación</option>
+          <option value="Distribución">Distribución</option>
+        </select>
+        <label class="fund-ter-filter"><span>TER máx.</span><input id="fundMaxTer" type="number" min="0" max="10" step="0.05" placeholder="Sin límite"></label>
         <select id="fundSort" class="select">
           <option value="perf1M">Rentabilidad 1 mes</option>
+          <option value="perf3M">Rentabilidad 3 meses</option>
           <option value="perf6M">Rentabilidad 6 meses</option>
+          <option value="perfYtd">Rentabilidad YTD</option>
           <option value="perf1Y" selected>Rentabilidad 1 año</option>
           <option value="perf3Y">Rentabilidad 3 años</option>
           <option value="perf5Y">Rentabilidad 5 años</option>
           <option value="perf10Y">Rentabilidad 10 años</option>
           <option value="perfSinceInception">Desde lanzamiento</option>
+          <option value="terAsc">Menor TER</option>
+          <option value="sharpe3Y">Mayor Sharpe 3 años</option>
+          <option value="drawdown">Menor drawdown</option>
         </select>
       </div>
       <div class="fund-data-note">Fondos tradicionales: valor liquidativo diario. ETFs: cotización de mercado. La disponibilidad por plataforma solo se marca como verificada cuando existe una fuente contrastable.</div>
