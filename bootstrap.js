@@ -16,6 +16,7 @@ initCatalogInteractions();
 initHeatmapInteractions();
 initEventViewInteractions();
 initStockListInteractions();
+window.ViewInvAIFunds?.init?.();
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(s)refreshProfilePortfolioActions(s);
