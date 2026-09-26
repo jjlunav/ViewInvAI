@@ -1043,6 +1043,18 @@ async function fundTransactionRows(env,userId,positionId){
   return rows.results||[];
 }
 
+async function ensureFundOpeningTransaction(env,userId,position){
+  if(!position)return;
+  const existing=await env.DB.prepare("SELECT id FROM fund_transactions WHERE user_id=? AND fund_position_id=? LIMIT 1").bind(userId,position.id).first();
+  if(existing)return;
+  const units=finiteNumber(position.units),avg=finiteNumber(position.avg_price);
+  if(units===null||units<=0||avg===null||avg<0)return;
+  const now=nowIso(),executed=position.opened_at||position.created_at||now;
+  await env.DB.prepare(
+    "INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,created_at,updated_at) VALUES (?,?,?,?,?,'BUY',?,?,?,?,?,?,?,?)"
+  ).bind(uid("ftx_seed_"),position.fund_portfolio_id,position.id,userId,position.isin,units,avg,0,String(position.currency||"EUR").toUpperCase(),executed,"Saldo inicial importado",now,now).run();
+}
+
 async function recalculateFundPosition(env,userId,positionId){
   const existing=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,userId).first();
   if(!existing)return null;
@@ -1084,6 +1096,7 @@ async function handleFundTransactions(request,env,user,json,parts,url){
     if(!Number.isFinite(date.getTime()))return json({error:"executedAt is invalid"},400);
     const position=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,user.id).first();
     if(!position)return json({error:"Fund position not found"},404);
+    await ensureFundOpeningTransaction(env,user.id,position);
     const before=calculateFundLedger(await fundTransactionRows(env,user.id,positionId));
     if(side==="SELL"&&units>before.units+1e-8)return json({error:"Sell units exceed current fund position"},400);
     if(before.units>1e-8&&before.currency!==currency)return json({error:"Transaction currency must match the fund position"},400);
