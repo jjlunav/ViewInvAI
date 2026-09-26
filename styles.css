@@ -7000,13 +7000,6 @@ html[data-theme="light"] .tr-native-axis{
 .fund-source-line{display:flex;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:9px;margin-top:8px}
 .fund-source-line a{color:var(--accent)}
 .fund-card-actions{display:flex;justify-content:flex-end;margin-top:10px}
-@media(max-width:760px){
- .fund-toolbar{grid-template-columns:1fr 1fr}
- .fund-search{grid-column:1/-1}
- .fund-grid{grid-template-columns:1fr}
- .fund-performance{grid-template-columns:repeat(4,minmax(0,1fr))}
- .fund-facts,.fund-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
 
 
 .portfolio-asset-switch{
@@ -7048,10 +7041,3 @@ html[data-theme="light"] .tr-native-axis{
 .fund-position-metrics span{background:var(--panel-2);border-radius:8px;padding:7px;min-width:0}
 .fund-position-metrics small,.fund-position-metrics b{display:block;font-size:8px}
 .fund-position-metrics b{font-size:10px;margin-top:2px;overflow-wrap:anywhere}
-@media(max-width:760px){
- .portfolio-asset-switch{display:flex;width:100%}
- .portfolio-asset-switch button{flex:1}
- .fund-portfolio-toolbar{align-items:flex-start}
- .fund-position-grid{grid-template-columns:1fr}
- .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
