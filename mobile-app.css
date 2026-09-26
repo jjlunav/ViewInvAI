@@ -709,27 +709,157 @@ html[data-native-app="1"] .catalog-mobile-list{
 html[data-native-app="1"] .catalog-mobile-card{
   width:100%!important;
   min-width:0!important;
-  padding:9px!important;
+  padding:10px!important;
   border:1px solid var(--native-line)!important;
-  border-radius:12px!important;
+  border-radius:13px!important;
   background:var(--native-surface)!important;
   overflow:hidden!important;
 }
 
+html[data-native-app="1"] .catalog-mobile-card-head{
+  display:grid!important;
+  grid-template-columns:28px minmax(0,1fr) 16px!important;
+  gap:8px!important;
+  align-items:start!important;
+  min-width:0!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-card-head .fav-star{
+  width:28px!important;
+  min-width:28px!important;
+  height:28px!important;
+  margin:0!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-id{
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr)!important;
+  grid-template-areas:
+    "ticker name"
+    "meta meta"!important;
+  align-items:baseline!important;
+  gap:2px 5px!important;
+  min-width:0!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-id>strong{
+  grid-area:ticker!important;
+  font-size:16px!important;
+  line-height:1.05!important;
+  color:#74e8c0!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-id>span{
+  grid-area:name!important;
+  min-width:0!important;
+  font-size:12px!important;
+  line-height:1.2!important;
+  color:#d3e0e4!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-id>small{
+  grid-area:meta!important;
+  font-size:8px!important;
+  line-height:1.2!important;
+  color:#6f8792!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-arrow{
+  align-self:center!important;
+  font-size:22px!important;
+  line-height:1!important;
+  color:#607d89!important;
+}
+
 html[data-native-app="1"] .catalog-mobile-quote{
+  display:flex!important;
+  align-items:flex-end!important;
+  justify-content:space-between!important;
   gap:8px!important;
   margin-top:8px!important;
-  padding-top:7px!important;
+  padding-top:8px!important;
+  border-top:1px solid var(--native-line)!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-quote .price-pair{
+  display:grid!important;
+  justify-items:start!important;
+  min-width:0!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-quote .price-pair>strong{
+  font-size:20px!important;
+  line-height:1!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-quote .price-pair>small{
+  font-size:9px!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-quote .quote-change{
+  flex:0 0 auto!important;
+  font-size:14px!important;
+  font-weight:800!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-spread{
+  margin-top:7px!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-spread .quote-spread{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+  width:100%!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-spread .quote-side{
+  min-width:0!important;
+  width:100%!important;
+  padding:6px 8px!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-spread .quote-side small{
+  font-size:7.5px!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-spread .quote-side strong{
+  font-size:11.5px!important;
 }
 
 html[data-native-app="1"] .catalog-mobile-metrics{
+  display:grid!important;
   grid-template-columns:repeat(4,minmax(0,1fr))!important;
-  gap:4px!important;
+  gap:5px!important;
+  margin-top:7px!important;
 }
 
 html[data-native-app="1"] .catalog-mobile-metrics>div{
   min-width:0!important;
   padding:6px 3px!important;
+  border-radius:8px!important;
+  background:var(--native-surface-2)!important;
+  text-align:center!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-metrics small{
+  display:block!important;
+  margin-bottom:2px!important;
+  font-size:7px!important;
+  color:#6f8792!important;
+}
+
+html[data-native-app="1"] .catalog-mobile-metrics strong{
+  display:block!important;
+  min-width:0!important;
+  font-size:10.5px!important;
+  color:#c8d7dc!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
 }
 
 html[data-native-app="1"] .settings-grid{
@@ -1009,19 +1139,19 @@ html[data-native-app="1"] .portfolio-inline-stock .unified-stock-header{
   overflow:visible!important;
 }
 
-/* The primary app stock sheet uses a fixed native header. It is measured by
-   mobile-app.js, so content and tabs always begin directly below it. */
+/* The stock detail header stays in document flow and sticks only while scrolling.
+   This avoids fixed bars covering the first section on real Android WebView. */
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail>.unified-stock-header{
-  position:fixed!important;
+  position:sticky!important;
   top:var(--native-safe-top)!important;
-  left:0!important;
-  right:0!important;
+  left:auto!important;
+  right:auto!important;
   width:100%!important;
   z-index:1760!important;
 }
 
 html[data-native-app="1"] body.stock-detail-open #stockQuickDetail>.unified-profile-body{
-  padding-top:calc(var(--native-profile-header-h) + 8px)!important;
+  padding-top:0!important;
 }
 
 html[data-native-app="1"] .stock-profile-page .unified-stock-header-inner,
@@ -1657,4 +1787,43 @@ html[data-native-app="1"][data-theme="light"] .stock-profile .unified-stock-head
 html[data-native-app="1"][data-theme="light"] .stock-profile-page .profile-tabs{
   background:rgba(249,252,253,.985)!important;
   border-color:var(--native-line)!important;
+}
+
+/* Native catalog controls are purpose-built for touch, not a compressed desktop toolbar. */
+html[data-native-app="1"] #view-catalog .catalog-toolbar,
+html[data-native-app="1"] #view-catalogUS .catalog-toolbar{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:6px!important;
+}
+
+html[data-native-app="1"] #view-catalog .catalog-toolbar>.grow,
+html[data-native-app="1"] #view-catalogUS .catalog-toolbar>.grow,
+html[data-native-app="1"] #view-catalog .catalog-toolbar>.count-pill,
+html[data-native-app="1"] #view-catalogUS .catalog-toolbar>.count-pill{
+  grid-column:1/-1!important;
+}
+
+html[data-native-app="1"] #view-catalog .catalog-toolbar .btn,
+html[data-native-app="1"] #view-catalogUS .catalog-toolbar .btn{
+  min-height:36px!important;
+  padding:6px 8px!important;
+  font-size:9.5px!important;
+}
+
+html[data-native-app="1"] #view-catalog .catalog-mobile-filters>summary,
+html[data-native-app="1"] #view-catalogUS .catalog-mobile-filters>summary{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:6px!important;
+}
+
+html[data-native-app="1"] #view-catalog .catalog-mobile-filters>summary b,
+html[data-native-app="1"] #view-catalogUS .catalog-mobile-filters>summary b{
+  flex:0 0 auto!important;
+  padding:3px 6px!important;
+  border:1px solid #315849!important;
+  border-radius:999px!important;
+  color:#76d9bb!important;
+  font-size:8px!important;
 }
