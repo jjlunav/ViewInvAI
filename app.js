@@ -194,7 +194,11 @@ function saveCustomPreset(x){
 }
 state.filters=preset('intraday');
 
-function N(v){v=Number(v);return Number.isFinite(v)?v:null}
+function N(v){
+ if(v===null||v===undefined)return null;
+ if(typeof v==='string'&&!v.trim())return null;
+ v=Number(v);return Number.isFinite(v)?v:null
+}
 function E(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function F(v,d=2){v=N(v);return v===null?'—':v.toLocaleString('es-ES',{maximumFractionDigits:d})}
 function I(v){v=N(v);return v===null?'—':Math.round(v).toLocaleString('es-ES')}
