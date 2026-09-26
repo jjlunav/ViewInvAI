@@ -375,8 +375,12 @@ jobs:
                         fundsNav.click();
                         setTimeout(()=>{
                           window.ViewInvAIFunds.load(true).then(()=>{
-                            const cards=document.querySelectorAll('#fundsApp .fund-card');
-                            if(cards.length!==2)return fail('fund catalogue did not render');
+                            const fundRows=document.querySelectorAll('#fundsApp .fund-table-row');
+                            if(fundRows.length!==2)return fail('fund table did not render');
+                            if(!document.querySelector('#fundsApp .fund-table')||document.querySelectorAll('#fundsApp [data-fund-sort-col]').length<10)return fail('sortable fund table missing');
+                            const oneYearSort=document.querySelector('#fundsApp [data-fund-sort-col="perf1Y"]');
+                            oneYearSort?.click();
+                            if(!oneYearSort?.classList.contains('active'))return fail('fund table column sorting did not activate');
                             const fundDetail=document.querySelector('#fundsApp [data-fund-detail]');
                             if(!fundDetail)return fail('fund detail action missing');
                             fundDetail.click();
@@ -430,7 +434,7 @@ jobs:
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
           cat > /tmp/viewinvai-native/data/funds.json <<'JSON'
-          {"meta":{"updatedAt":"2026-09-26T18:00:00Z"},"products":[]}
+          {"meta":{"updatedAt":"2026-09-26T18:00:00Z"},"products":[{"isin":"IE00SMOKE0001","name":"Smoke World Index Fund","type":"fund","provider":"Smoke","index":"World","currency":"EUR","nav":100,"valueDate":"2026-09-25T00:00:00Z","perf1M":1.1,"perf6M":4.6,"perf1Y":9.2,"platforms":{"tradeRepublic":"unknown","myInvestor":"verified"}},{"isin":"IE00SMOKE0002","name":"Smoke Europe Index Fund","type":"fund","provider":"Smoke","index":"Europe","currency":"EUR","nav":80,"valueDate":"2026-09-25T00:00:00Z","perf1M":-0.5,"perf6M":2.4,"perf1Y":6.8,"platforms":{"tradeRepublic":"unknown","myInvestor":"verified"}}]}
           JSON
           python - <<'PY'
           from pathlib import Path
@@ -441,34 +445,58 @@ jobs:
           (() => {
             const fail=m=>{document.documentElement.dataset.nativeSmoke='fail';document.documentElement.dataset.nativeSmokeError=String(m);console.error('NATIVE_SMOKE_FAIL',m)};
             const started=Date.now();
+            const testStock=()=>{
+              const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
+              if(!stock)return fail('no stock');
+              window.ViewInvAI.openStockByKey(window.ViewInvAI.getStockKey(stock),'Native smoke',true);
+              setTimeout(()=>{
+                const root=document.querySelector('#stockQuickDetail'), shell=root?.querySelector('.profile-sticky-shell'), nav=document.querySelector('#mobileBottomNav');
+                if(!root||!shell||getComputedStyle(shell).position!=='fixed')return fail('native pinned stock shell missing');
+                if(!nav||getComputedStyle(nav).display==='none')return fail('native bottom nav hidden');
+                const tabs=root.querySelector('.profile-tabs');
+                if(!tabs)return fail('native stock tabs missing');
+                const hr=shell.getBoundingClientRect(), tr=tabs.getBoundingClientRect();
+                if(tr.top < hr.top || tr.bottom > hr.bottom+2)return fail('native tabs escaped pinned shell');
+                if(document.documentElement.scrollWidth>window.innerWidth+1)return fail('native horizontal overflow');
+                const aiTab=root.querySelector('[data-profile-tab="ai"]');
+                aiTab?.click();
+                setTimeout(()=>{
+                  if(root.querySelector('[data-profile-panel="ai"]')?.hidden)return fail('native AI tab did not open');
+                  document.documentElement.dataset.nativeSmoke='ok';
+                },100);
+              },250);
+            };
             const wait=()=>{
               try{
-                if(!window.ViewInvAI||!window.ViewInvAI.getAllStocks().length){
+                if(!window.ViewInvAI||!window.ViewInvAIFunds||!window.ViewInvAI.getAllStocks().length){
                   if(Date.now()-started<7000)return setTimeout(wait,100);
                   return fail('native runtime did not initialize');
                 }
                 const more=document.querySelector('[data-mobile-more]');
                 more?.click();
-                if(!document.querySelector('.mobile-more-item[data-mobile-view="funds"]'))return fail('funds missing from native More menu');
-                const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
-                if(!stock)return fail('no stock');
-                window.ViewInvAI.openStockByKey(window.ViewInvAI.getStockKey(stock),'Native smoke',true);
-                setTimeout(()=>{
-                  const root=document.querySelector('#stockQuickDetail'), shell=root?.querySelector('.profile-sticky-shell'), nav=document.querySelector('#mobileBottomNav');
-                  if(!root||!shell||getComputedStyle(shell).position!=='fixed')return fail('native pinned stock shell missing');
-                  if(!nav||getComputedStyle(nav).display==='none')return fail('native bottom nav hidden');
-                  const tabs=root.querySelector('.profile-tabs');
-                  if(!tabs)return fail('native stock tabs missing');
-                  const hr=shell.getBoundingClientRect(), tr=tabs.getBoundingClientRect();
-                  if(tr.top < hr.top || tr.bottom > hr.bottom+2)return fail('native tabs escaped pinned shell');
-                  if(document.documentElement.scrollWidth>window.innerWidth+1)return fail('native horizontal overflow');
-                  const aiTab=root.querySelector('[data-profile-tab="ai"]');
-                  aiTab?.click();
-                  setTimeout(()=>{
-                    if(root.querySelector('[data-profile-panel="ai"]')?.hidden)return fail('native AI tab did not open');
-                    document.documentElement.dataset.nativeSmoke='ok';
-                  },100);
-                },250);
+                const fundsItem=document.querySelector('.mobile-more-item[data-mobile-view="funds"]');
+                if(!fundsItem)return fail('funds missing from native More menu');
+                fundsItem.click();
+                window.ViewInvAIFunds.load(true).then(()=>{
+                  const fundView=document.querySelector('#view-funds');
+                  if(!fundView?.classList.contains('active'))return fail('native funds view did not open');
+                  const rows=document.querySelectorAll('#fundsApp .fund-mobile-row');
+                  if(rows.length!==2)return fail('native compact fund rows missing');
+                  if(document.querySelector('#fundsApp .fund-table'))return fail('desktop fund table rendered in native mode');
+                  const head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Fondo|1M|6M|1A')return fail('native fund columns are not compact');
+                  const toggle=document.querySelector('#fundMobileFiltersToggle'),advanced=document.querySelector('#fundToolbarAdvanced');
+                  if(!toggle||!advanced)return fail('native fund filter drawer missing');
+                  if(getComputedStyle(advanced).display!=='none')return fail('advanced fund filters must start hidden');
+                  toggle.click();
+                  if(getComputedStyle(advanced).display==='none')return fail('advanced fund filters did not open');
+                  toggle.click();
+                  rows[0].click();
+                  const modal=document.querySelector('#fundModal');
+                  if(!modal?.classList.contains('open')||!modal.querySelector('.fund-detail-sheet'))return fail('native fund detail did not open');
+                  document.querySelector('[data-fund-modal-close]')?.click();
+                  testStock();
+                }).catch(fail);
               }catch(e){fail(e&&(e.stack||e.message)||e)}
             };
             setTimeout(wait,100);
