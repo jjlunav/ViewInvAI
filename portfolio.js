@@ -412,7 +412,7 @@ function renderApp() {
   });
 
   if (!state.selectedPortfolioId && state.portfolios.length) state.selectedPortfolioId = state.portfolios[0].id;
-  if (state.selectedPortfolioId && !state.portfolios.some(p => p.id === state.selectedPortfolioId)) {
+  if (state.selectedPortfolioId && !state.portfolios.some(p => String(p.id ?? "") === String(state.selectedPortfolioId ?? ""))) {
     state.selectedPortfolioId = state.portfolios[0] ? state.portfolios[0].id : null;
   }
 
