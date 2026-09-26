@@ -185,7 +185,7 @@ jobs:
                   const bottomNav = document.querySelector('#mobileBottomNav');
                   if (!bottomNav || getComputedStyle(bottomNav).display === 'none') return fail('bottom navigation disappears inside stock detail');
                   const shell = detail.querySelector('.profile-sticky-shell');
-                  if (!shell || getComputedStyle(shell).position !== 'sticky') return fail('unified sticky stock shell missing');
+                  if (!shell || getComputedStyle(shell).position !== 'fixed') return fail('unified pinned stock shell missing');
                   const header = detail.querySelector('.unified-stock-header');
                   const tabs = detail.querySelector('.profile-tabs');
                   if (!header || !tabs) return fail('stock detail header or tabs missing');
@@ -251,7 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'profile-sticky-shell' mobile-shell/mobile-app.css
-          grep -q 'position:sticky!important' mobile-shell/mobile-app.css
+          grep -q 'position:fixed!important' mobile-shell/mobile-app.css
           grep -q 'body.stock-detail-open .mobile-bottom-nav' mobile-shell/mobile-app.css
           grep -q 'display:grid!important' mobile-shell/mobile-app.css
           grep -q '#view-portfolios .portfolio-position-list.stock-list' mobile-shell/mobile-app.css
