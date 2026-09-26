@@ -110,11 +110,15 @@ jobs:
             exit 1
           fi
 
-          rm -rf /tmp/viewinvai-native-profile
+          QA_SHELL="/tmp/viewinvai-native-smoke-shell"
+          rm -rf "$QA_SHELL" /tmp/viewinvai-native-profile
+          cp -a mobile-shell "$QA_SHELL"
           mkdir -p /tmp/viewinvai-native-profile
+          export QA_SHELL
           python - <<'PY'
+          import os
           from pathlib import Path
-          p = Path("mobile-shell/index.html")
+          p = Path(os.environ["QA_SHELL"]) / "index.html"
           html = p.read_text(encoding="utf-8")
           inject = r"""
           <script>
@@ -181,8 +185,11 @@ jobs:
                   const bottomNav = document.querySelector('#mobileBottomNav');
                   if (bottomNav && getComputedStyle(bottomNav).display !== 'none') return fail('bottom navigation remains visible inside stock detail');
                   const header = detail.querySelector('.unified-stock-header');
-                  const body = detail.querySelector('.unified-profile-body');
-                  if (body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 2) return fail('stock detail body is covered by sticky header');
+                  const tabs = detail.querySelector('.profile-tabs');
+                  if (!header || !tabs) return fail('stock detail header or tabs missing');
+                  const headerRect = header.getBoundingClientRect();
+                  const tabsRect = tabs.getBoundingClientRect();
+                  if (tabsRect.top < headerRect.bottom - 2) return fail('stock detail tabs are covered by the fixed header');
                   const visualToggle = detail.querySelector('[data-profile-visual-toggle]');
                   if (!visualToggle) return fail('stock detail actions missing');
                   visualToggle.click();
@@ -210,7 +217,7 @@ jobs:
           p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
           PY
 
-          cd mobile-shell
+          cd "$QA_SHELL"
           python -m http.server 4182 --bind 127.0.0.1 >/tmp/viewinvai-native-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
@@ -225,6 +232,183 @@ jobs:
             exit 1
           fi
           echo "Packaged Android frontend smoke: OK"
+
+      - name: Android layout regression QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::Chrome/Chromium no está disponible en el runner"
+            exit 1
+          fi
+
+          QA_SHELL="/tmp/viewinvai-layout-qa-shell"
+          rm -rf "$QA_SHELL" /tmp/viewinvai-layout-qa-*
+          cp -a mobile-shell "$QA_SHELL"
+          export QA_SHELL
+
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["QA_SHELL"]) / "index.html"
+          html = p.read_text(encoding="utf-8")
+          inject = r"""
+          <script>
+          (() => {
+            const started = Date.now();
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const fail = msg => {
+              document.documentElement.dataset.nativeLayoutQa = 'fail';
+              document.documentElement.dataset.nativeLayoutQaError = String(msg);
+              console.error('NATIVE_LAYOUT_QA_FAIL', msg);
+            };
+            const overlap = (a,b,t=1) =>
+              Math.min(a.right,b.right)-Math.max(a.left,b.left)>t &&
+              Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>t;
+            const visible = el => {
+              if (!el) return false;
+              const cs=getComputedStyle(el), r=el.getBoundingClientRect();
+              return cs.display!=='none' && cs.visibility!=='hidden' && r.width>0 && r.height>0;
+            };
+            const noXOverflow = label => {
+              const sw=Math.max(document.documentElement.scrollWidth,document.body.scrollWidth);
+              if(sw>innerWidth+3) throw new Error(label+' horizontal overflow '+sw+'>'+innerWidth);
+            };
+            const childrenInside = (container, selector, label) => {
+              const c=container.getBoundingClientRect();
+              container.querySelectorAll(selector).forEach(child=>{
+                if(!visible(child)) return;
+                const r=child.getBoundingClientRect();
+                if(r.left<c.left-2||r.right>c.right+2||r.top<c.top-2||r.bottom>c.bottom+2)
+                  throw new Error(label+' child escapes');
+              });
+            };
+
+            async function run(){
+              while((!window.ViewInvAI?.getAllStocks) && Date.now()-started<10000) await sleep(100);
+              const api=window.ViewInvAI;
+              if(!api?.getAllStocks) throw new Error('ViewInvAI runtime did not initialize');
+              const stocks=api.getAllStocks();
+              const stock=stocks.find(s=>String(s?.ticker||'').toUpperCase()==='SPRO')||stocks.find(s=>s&&(s.tvSymbol||s.ticker));
+              if(!stock) throw new Error('No stock for layout QA');
+              const key=api.getStockKey(stock);
+              if(!api.openStockByKey(key,'Android layout QA',!!stock.trTicker)) throw new Error('Could not open stock detail');
+              await sleep(550);
+
+              const detail=document.querySelector('#stockQuickDetail');
+              const header=detail?.querySelector('.unified-stock-header');
+              const tabs=detail?.querySelector('.profile-tabs');
+              const sessions=detail?.querySelector('.profile-session-strip');
+              if(!detail||!header||!tabs||!sessions) throw new Error('Stock detail structure incomplete');
+
+              if(getComputedStyle(header).position!=='fixed') throw new Error('Stock header is not fixed');
+              if(getComputedStyle(tabs).position!=='sticky') throw new Error('Stock tabs are not sticky');
+              const h0=header.getBoundingClientRect(), t0=tabs.getBoundingClientRect();
+              if(h0.bottom<=0||h0.top>=innerHeight) throw new Error('Stock header not visible initially');
+              if(t0.top<h0.bottom-2) throw new Error('Tabs covered by stock header');
+
+              const cells=[...sessions.querySelectorAll('.profile-session-cell')].filter(visible);
+              if(cells.length!==3) throw new Error('Expected three session cells');
+              if(sessions.getBoundingClientRect().height>135) throw new Error('Session block too tall');
+              for(let i=0;i<cells.length;i++)for(let j=i+1;j<cells.length;j++)
+                if(overlap(cells[i].getBoundingClientRect(),cells[j].getBoundingClientRect())) throw new Error('Session cells overlap');
+
+              detail.querySelectorAll('.profile-stat-row').forEach((row,i)=>{
+                childrenInside(row,':scope > div, :scope > strong','stat '+i);
+                const spread=row.querySelector('.quote-spread');
+                if(spread) childrenInside(spread,'.quote-side','spread '+i);
+              });
+              detail.querySelectorAll('.profile-stat-list').forEach((list,k)=>{
+                const rows=[...list.querySelectorAll(':scope > .profile-stat-row')].filter(visible);
+                for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++)
+                  if(overlap(rows[i].getBoundingClientRect(),rows[j].getBoundingClientRect())) throw new Error('Stat cards overlap '+k);
+              });
+              noXOverflow('stock detail');
+
+              (detail.querySelector('#profile-fundamental')||detail.querySelector('#profile-general')).scrollIntoView({block:'start'});
+              await sleep(400);
+              const h1=header.getBoundingClientRect(), t1=tabs.getBoundingClientRect();
+              if(Math.abs(h1.top-h0.top)>2) throw new Error('Stock header moved while scrolling');
+              if(h1.bottom<=0||h1.top>=innerHeight) throw new Error('Stock header disappeared while scrolling');
+              if(t1.top<h1.bottom-2||t1.bottom<=t1.top) throw new Error('Tabs hidden behind header while scrolling');
+
+              detail.querySelector('[data-stock-detail-back]')?.click();
+              await sleep(250);
+              document.querySelector('#mobileBottomNav [data-mobile-more]')?.click();
+              await sleep(80);
+              document.querySelector('#mobileMoreSheet [data-mobile-view="catalog"]')?.click();
+              await sleep(450);
+
+              const card=document.querySelector('#view-catalog .catalog-mobile-card');
+              if(!card) throw new Error('Catalog mobile card missing');
+              const ticker=card.querySelector('.catalog-mobile-id>strong');
+              const name=card.querySelector('.catalog-mobile-id>span');
+              if(!ticker||!name) throw new Error('Catalog identity missing');
+              if(overlap(ticker.getBoundingClientRect(),name.getBoundingClientRect())) throw new Error('Catalog ticker/name overlap');
+              const metrics=[...card.querySelectorAll('.catalog-mobile-metrics>div')].filter(visible);
+              for(let i=0;i<metrics.length;i++)for(let j=i+1;j<metrics.length;j++)
+                if(overlap(metrics[i].getBoundingClientRect(),metrics[j].getBoundingClientRect())) throw new Error('Catalog metrics overlap');
+              noXOverflow('catalog');
+
+              const pv=document.querySelector('#view-portfolios');
+              const probe=document.createElement('div');
+              probe.className='portfolio-position-list stock-list portfolio-card-grid';
+              probe.innerHTML='<article class="portfolio-investing-card" style="height:40px"></article><article class="portfolio-investing-card" style="height:40px"></article>';
+              pv.appendChild(probe);
+              const pr=probe.getBoundingClientRect();
+              if(pr.width>innerWidth+2) throw new Error('Portfolio grid exceeds viewport');
+              if([...probe.children].some(x=>x.getBoundingClientRect().width>pr.width+2)) throw new Error('Portfolio card exceeds grid');
+              if(getComputedStyle(probe).gridTemplateColumns.split(' ').filter(Boolean).length!==1) throw new Error('Portfolio grid is not single-column');
+              probe.remove();
+
+              document.documentElement.dataset.nativeLayoutQa='ok';
+            }
+            run().catch(e=>fail(e?.stack||e?.message||e));
+          })();
+          </script>
+          """
+          p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
+          PY
+
+          (
+            cd "$QA_SHELL"
+            python -m http.server 4185 --bind 127.0.0.1 >/tmp/viewinvai-layout-http.log 2>&1
+          ) &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 1
+
+          run_layout_qa() {
+            WIDTH="$1"
+            HEIGHT="$2"
+            PROFILE="/tmp/viewinvai-layout-qa-$WIDTH"
+            rm -rf "$PROFILE"
+            mkdir -p "$PROFILE"
+            "$CHROME" \
+              --headless=new \
+              --no-sandbox \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --window-size="$WIDTH,$HEIGHT" \
+              --force-device-scale-factor=1 \
+              --user-data-dir="$PROFILE" \
+              --virtual-time-budget=16000 \
+              --dump-dom \
+              "http://127.0.0.1:4185/" \
+              > "/tmp/viewinvai-layout-$WIDTH.html" 2>"/tmp/viewinvai-layout-$WIDTH.log"
+
+            if ! grep -q 'data-native-layout-qa="ok"' "/tmp/viewinvai-layout-$WIDTH.html"; then
+              echo "::error::Android layout QA failed at $WIDTH x $HEIGHT"
+              grep -o 'data-native-layout-qa-error="[^"]*"' "/tmp/viewinvai-layout-$WIDTH.html" || true
+              tail -80 "/tmp/viewinvai-layout-$WIDTH.log" || true
+              exit 1
+            fi
+          }
+
+          run_layout_qa 412 915
+          run_layout_qa 360 800
+          echo "Android layout regression QA: OK"
 
       - name: Generate Android project
         run: npx cap add android
