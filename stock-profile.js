@@ -191,8 +191,7 @@ function quickProfileHtml(s,opts={}){
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
- let backKind=opts.embedded?'portfolio':'quick';
- return profileStickyShellHtml(s,isTr,{backKind,hideActions:opts.embedded===true})+
+ return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
    '<section class="profile-tab-panel active" data-profile-panel="general">'+profileSessionStrip(s,isTr)+
