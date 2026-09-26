@@ -60,7 +60,17 @@ async function loadTrChartHistory(s,range='1d',force=false){
  if(!force&&cached&&Date.now()-cached.at<45000)return cached.data;
  let url='/api/tr-history?isin='+encodeURIComponent(isin)+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+
   '&range='+encodeURIComponent(range)+'&resolution='+encodeURIComponent(trChartResolution(range));
- let response=await fetch(url,{cache:'no-store'});
+ let controller=typeof AbortController==='function'?new AbortController():null;
+ let timeout=controller?setTimeout(()=>controller.abort(),9000):null;
+ let response;
+ try{
+  response=await fetch(url,{cache:'no-store',signal:controller?controller.signal:undefined});
+ }catch(error){
+  if(error&&error.name==='AbortError')throw Error('Tiempo de espera agotado para el histórico LSX');
+  throw error;
+ }finally{
+  if(timeout)clearTimeout(timeout);
+ }
  if(!response.ok)throw Error('TR '+response.status);
  let data=await response.json(),points=Array.isArray(data&&data.points)?data.points.filter(p=>N(p&&p.close)!==null):[];
  if(points.length<2)throw Error('Histórico LSX insuficiente');
@@ -132,6 +142,9 @@ function setChartMarketUi(block,s,usAvailable,trAvailable,active){
   slot.hidden=!(usAvailable&&trAvailable);
  }
 }
+function chartRetryHtml(message){
+ return '<div class="chart-placeholder chart-placeholder-error"><div><span>'+E(message||'No se pudo cargar el gráfico.')+'</span><button type="button" class="chart-retry" data-chart-retry="1">Reintentar</button></div></div>';
+}
 function miniChart(s,preferTr=false){
  return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<div class="chart-market-control-slot" data-chart-market-controls></div>'+
@@ -148,6 +161,8 @@ function renderTradingViewChart(el,market){
   return;
  }
  el.dataset.chartMarket=useTr?'tr':'us';
+ const attempt=String((Number(el.dataset.chartAttempt)||0)+1);
+ el.dataset.chartAttempt=attempt;
  el.innerHTML='';
  let wrap=document.createElement('div');wrap.className='tradingview-widget-container';
  let widget=document.createElement('div');widget.className='tradingview-widget-container__widget';
@@ -178,8 +193,18 @@ function renderTradingViewChart(el,market){
   extended_hours:true,
   support_host:'https://www.tradingview.com'
  });
+ script.onerror=()=>{
+  if(!el.isConnected||el.dataset.chartAttempt!==attempt)return;
+  el.innerHTML=chartRetryHtml('TradingView no ha podido cargar.');
+ };
  wrap.appendChild(script);
  el.appendChild(wrap);
+ setTimeout(()=>{
+  if(!el.isConnected||el.dataset.chartAttempt!==attempt)return;
+  if(!el.querySelector('iframe')){
+   el.innerHTML=chartRetryHtml('El gráfico está tardando demasiado en cargar.');
+  }
+ },9000);
 }
 async function loadMiniChart(el){
  if(!el||el.dataset.loaded==='1')return;
@@ -217,7 +242,7 @@ async function loadMiniChart(el){
   if(!el.isConnected||stockKey(s)!==el.dataset.stockKey)return;
   renderTrNativeChart(el,s,data,'1d');
   setChartMarketUi(block,s,usAvailable,true,'tr');
- }catch(_){
+ }catch(error){
   if(usAvailable){
    renderTradingViewChart(el,'us');
    setChartMarketUi(block,s,usAvailable,trAvailable,'us');
@@ -226,7 +251,7 @@ async function loadMiniChart(el){
    note.textContent='LSX sin histórico disponible · mostrando '+chartMarketName(s,false);
    block.appendChild(note);
   }else{
-   el.innerHTML='<div class="chart-placeholder">No hay histórico LSX disponible para este valor.</div>';
+   el.innerHTML=chartRetryHtml(error&&error.message?error.message:'No hay histórico LSX disponible para este valor.');
   }
  }
 }
@@ -266,4 +291,13 @@ async function switchTrChartRange(button){
  }finally{
   button.disabled=false;
  }
+}
+
+
+function retryMiniChart(button){
+ let el=button&&button.closest&&button.closest('.tv-advanced-chart');
+ if(!el)return;
+ delete el.dataset.loaded;
+ el.innerHTML='<div class="chart-placeholder">Reintentando gráfico…</div>';
+ loadMiniChart(el);
 }
