@@ -110,11 +110,15 @@ jobs:
             exit 1
           fi
 
-          rm -rf /tmp/viewinvai-native-profile
+          QA_SHELL="/tmp/viewinvai-native-smoke-shell"
+          rm -rf "$QA_SHELL" /tmp/viewinvai-native-profile
+          cp -a mobile-shell "$QA_SHELL"
           mkdir -p /tmp/viewinvai-native-profile
+          export QA_SHELL
           python - <<'PY'
+          import os
           from pathlib import Path
-          p = Path("mobile-shell/index.html")
+          p = Path(os.environ["QA_SHELL"]) / "index.html"
           html = p.read_text(encoding="utf-8")
           inject = r"""
           <script>
@@ -181,8 +185,11 @@ jobs:
                   const bottomNav = document.querySelector('#mobileBottomNav');
                   if (bottomNav && getComputedStyle(bottomNav).display !== 'none') return fail('bottom navigation remains visible inside stock detail');
                   const header = detail.querySelector('.unified-stock-header');
-                  const body = detail.querySelector('.unified-profile-body');
-                  if (body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 2) return fail('stock detail body is covered by sticky header');
+                  const tabs = detail.querySelector('.profile-tabs');
+                  if (!header || !tabs) return fail('stock detail header or tabs missing');
+                  const headerRect = header.getBoundingClientRect();
+                  const tabsRect = tabs.getBoundingClientRect();
+                  if (tabsRect.top < headerRect.bottom - 2) return fail('stock detail tabs are covered by the fixed header');
                   const visualToggle = detail.querySelector('[data-profile-visual-toggle]');
                   if (!visualToggle) return fail('stock detail actions missing');
                   visualToggle.click();
@@ -210,7 +217,7 @@ jobs:
           p.write_text(html.replace("</body>", inject + "\n</body>"), encoding="utf-8")
           PY
 
-          cd mobile-shell
+          cd "$QA_SHELL"
           python -m http.server 4182 --bind 127.0.0.1 >/tmp/viewinvai-native-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
@@ -225,6 +232,18 @@ jobs:
             exit 1
           fi
           echo "Packaged Android frontend smoke: OK"
+
+      - name: Verify Android layout guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'body.stock-detail-open #stockQuickDetail>.unified-stock-header' mobile-shell/mobile-app.css
+          grep -q 'position:fixed!important' mobile-shell/mobile-app.css
+          grep -q 'body.stock-detail-open #stockQuickDetail .profile-tabs' mobile-shell/mobile-app.css
+          grep -q 'position:sticky!important' mobile-shell/mobile-app.css
+          grep -q '#view-portfolios .portfolio-position-list.stock-list' mobile-shell/mobile-app.css
+          grep -q 'grid-template-columns:minmax(0,1fr)!important' mobile-shell/mobile-app.css
+          echo "Android layout guards: OK"
 
       - name: Generate Android project
         run: npx cap add android

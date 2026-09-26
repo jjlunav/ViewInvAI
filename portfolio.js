@@ -266,7 +266,31 @@ function renderPortfolioCard(p) {
 
 function renderPositionRow(p, index = 0) {
   const stock = stockByKey(p.stock_key);
-  if (!stock) return "";
+  if (!stock) {
+    const qty = num(p.quantity);
+    const avg = num(p.avg_price);
+    const preferTr = Number(p.prefer_tr) === 1;
+    const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
+    const ticker = p.ticker || String(p.stock_key || "").split(":").pop() || "—";
+    const name = p.name || "Posición guardada";
+    return '<article class="portfolio-position portfolio-position-missing">' +
+      '<div class="portfolio-position-main">' +
+        '<div class="portfolio-position-id"><strong>' + esc(ticker) + '</strong><span>' + esc(name) + '</span></div>' +
+        '<div class="portfolio-position-quote"><strong>Sin cotización</strong></div>' +
+      '</div>' +
+      '<div class="portfolio-position-context">' +
+        '<div class="portfolio-position-numbers">' +
+          '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
+          '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
+        '</div>' +
+        '<div class="portfolio-position-actions">' +
+          '<span class="portfolio-position-signal">El valor no está disponible en el catálogo actual</span>' +
+          '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
+          '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p.id) + '">Editar posición</button>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
   const preferTr = Number(p.prefer_tr) === 1;
   const market = currentMarket(stock, preferTr);
   const qty = num(p.quantity);

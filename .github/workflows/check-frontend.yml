@@ -874,8 +874,12 @@ jobs:
                           const header = document.querySelector('.stock-profile-page .unified-stock-header');
                           const headerRect = header && header.getBoundingClientRect();
                           const headerPosition = header ? getComputedStyle(header).position : '';
-                          if (!headerRect || !['static','relative','sticky'].includes(headerPosition)) {
-                            fail('native stock header uses an unsafe positioning mode: ' + headerPosition);
+                          if (!headerRect || !['sticky','fixed'].includes(headerPosition)) {
+                            fail('native stock header is not pinned during scroll: ' + headerPosition);
+                            return;
+                          }
+                          if (headerRect.bottom <= 0 || headerRect.top >= window.innerHeight) {
+                            fail('native stock header disappeared during scroll');
                             return;
                           }
                           const mobileSpread = header && header.querySelector('.quote-spread');
