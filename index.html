@@ -218,8 +218,15 @@
           <button type="button" class="section-help" data-help-section="portfolios" aria-label="Ayuda sobre Carteras">?</button>
         </div>
       </div>
-      <div id="portfolioApp" class="portfolio-app">
+      <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
+        <button type="button" class="active" role="tab" aria-selected="true" data-portfolio-asset="stocks">Acciones</button>
+        <button type="button" role="tab" aria-selected="false" data-portfolio-asset="funds">Fondos / ETFs</button>
+      </div>
+      <div id="portfolioApp" class="portfolio-app" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
+      </div>
+      <div id="fundPortfolioApp" class="portfolio-app is-hidden" data-portfolio-asset-panel="funds">
+        <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
       </div>
     </section>
 
