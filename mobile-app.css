@@ -2074,3 +2074,15 @@ html[data-native-app="1"][data-theme="light"] .profile-sticky-shell{
   background:rgba(249,252,253,.99)!important;
   box-shadow:0 8px 24px rgba(34,59,69,.10)!important;
 }
+
+
+html[data-native-app="1"] #view-portfolios .portfolio-render-warning{
+  margin:0 0 8px!important;
+  padding:8px 10px!important;
+  border:1px solid #5f5130!important;
+  border-radius:9px!important;
+  background:#171b16!important;
+  color:#d9c982!important;
+  font-size:9px!important;
+  line-height:1.35!important;
+}
