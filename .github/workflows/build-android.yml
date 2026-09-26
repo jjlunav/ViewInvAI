@@ -134,19 +134,35 @@ jobs:
                 const stocks = window.ViewInvAI.getAllStocks();
                 if (!Array.isArray(stocks) || stocks.length < 100) return fail('packaged market universe missing');
 
-                const nav = document.querySelector('#mobileBottomNav [data-mobile-view="entry"]');
-                if (!nav) return fail('Radar bottom navigation missing');
-                nav.click();
-                if (!document.querySelector('#view-entry.active')) return fail('bottom navigation did not switch to Radar');
+                for (const view of ['home','portfolios','recommendation','entry']) {
+                  const nav = document.querySelector('#mobileBottomNav [data-mobile-view="' + view + '"]');
+                  if (!nav) return fail(view + ' bottom navigation missing');
+                  nav.click();
+                  if (!document.querySelector('#view-' + view + '.active')) return fail('bottom navigation did not switch to ' + view);
+                }
 
                 const more = document.querySelector('#mobileBottomNav [data-mobile-more]');
                 if (!more) return fail('More navigation button missing');
-                more.click();
-                const sheet = document.querySelector('#mobileMoreSheet');
-                if (!sheet || !sheet.classList.contains('open') || getComputedStyle(sheet).visibility === 'hidden') {
-                  return fail('More sheet did not open');
+                const secondaryViews = ['alerts','catalog','heatmap','future','calendar','catalogUS','settings'];
+                for (const view of secondaryViews) {
+                  more.click();
+                  const sheet = document.querySelector('#mobileMoreSheet');
+                  if (!sheet || !sheet.classList.contains('open') || getComputedStyle(sheet).visibility === 'hidden') {
+                    return fail('More sheet did not open for ' + view);
+                  }
+                  const item = sheet.querySelector('[data-mobile-view="' + view + '"]');
+                  if (!item) return fail('More item missing: ' + view);
+                  item.click();
+                  if (!document.querySelector('#view-' + view + '.active')) return fail('More navigation did not switch to ' + view);
                 }
-                document.querySelector('#mobileMoreClose')?.click();
+
+                document.querySelector('#mobileBottomNav [data-mobile-view="entry"]')?.click();
+                const criteria = document.querySelector('#view-entry details');
+                if (criteria) {
+                  const summary = criteria.querySelector('summary');
+                  summary?.click();
+                  if (!criteria.open) return fail('Radar criteria panel did not open');
+                }
 
                 const stock = stocks.find(s => s && (s.tvSymbol || s.ticker));
                 if (!stock) return fail('no usable stock in packaged snapshot');
@@ -160,8 +176,21 @@ jobs:
                   if (detail.innerHTML.length < 1500) return fail('stock detail HTML is unexpectedly empty');
                   if (!detail.querySelector('.unified-stock-header')) return fail('stock detail header missing');
                   if (!detail.querySelector('.unified-profile-body')) return fail('stock detail body missing');
-                  if (!detail.querySelector('[data-profile-visual-toggle]')) return fail('stock detail actions missing');
-                  document.documentElement.dataset.nativeSmoke = 'ok';
+                  const visualToggle = detail.querySelector('[data-profile-visual-toggle]');
+                  if (!visualToggle) return fail('stock detail actions missing');
+                  visualToggle.click();
+                  const visual = detail.querySelector('[data-profile-visual-analysis]');
+                  if (!visual || visual.classList.contains('is-collapsed') || visualToggle.getAttribute('aria-expanded') !== 'true') {
+                    return fail('stock chart/analysis did not expand');
+                  }
+                  const back = detail.querySelector('[data-stock-detail-back]');
+                  if (!back) return fail('stock detail back button missing');
+                  back.click();
+                  setTimeout(() => {
+                    if (document.body.classList.contains('stock-detail-open')) return fail('stock detail did not close');
+                    if (!document.querySelector('#view-entry.active')) return fail('stock detail did not return to origin view');
+                    document.documentElement.dataset.nativeSmoke = 'ok';
+                  }, 120);
                 }, 250);
               } catch (e) {
                 fail(e && e.stack || e && e.message || e);
