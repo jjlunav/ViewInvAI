@@ -7111,3 +7111,201 @@ html[data-theme="light"] .tr-native-axis{
 .fund-detail-hero p{margin:0;color:var(--muted);font-size:10px}
 .fund-detail-hero>div:last-child{text-align:right;min-width:120px}
 .fund-detail-hero>div:last-child>strong{display:block;font-size:18px}
+
+
+/* Funds / ETFs sortable comparison table */
+.fund-table-scroll{
+ width:100%;
+ max-width:100%;
+ overflow-x:auto;
+ overflow-y:visible;
+ border:1px solid var(--line);
+ border-radius:14px;
+ background:var(--panel);
+ scrollbar-width:thin;
+ -webkit-overflow-scrolling:touch;
+}
+.fund-table{
+ width:max-content;
+ min-width:100%;
+ border-collapse:separate;
+ border-spacing:0;
+ table-layout:fixed;
+ font-size:10px;
+}
+.fund-table th,
+.fund-table td{
+ height:54px;
+ padding:8px 9px;
+ border-bottom:1px solid var(--line);
+ border-right:1px solid color-mix(in srgb,var(--line) 68%,transparent);
+ vertical-align:middle;
+ background:var(--panel);
+}
+.fund-table th:last-child,
+.fund-table td:last-child{border-right:0}
+.fund-table tbody tr:last-child td{border-bottom:0}
+.fund-table thead th{
+ height:40px;
+ padding:0;
+ background:var(--panel-2);
+ color:var(--muted);
+ text-align:left;
+ font-size:9px;
+ font-weight:700;
+ text-transform:uppercase;
+ letter-spacing:.035em;
+ white-space:nowrap;
+ z-index:4;
+}
+.fund-sort-button{
+ width:100%;
+ height:40px;
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:5px;
+ border:0;
+ background:transparent;
+ color:inherit;
+ padding:0 9px;
+ font:inherit;
+ text-transform:inherit;
+ letter-spacing:inherit;
+ cursor:pointer;
+}
+.fund-sort-button:hover,
+.fund-sort-button.active{color:var(--text);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.fund-sort-button i{
+ font-style:normal;
+ color:var(--accent);
+ font-size:10px;
+ opacity:.58;
+}
+.fund-sort-button.active i{opacity:1}
+.fund-table th[data-fund-column="name"],
+.fund-table td.fund-table-fund{width:300px;min-width:300px;max-width:300px}
+.fund-table th[data-fund-column="platform"],
+.fund-table td.fund-table-platforms{width:135px;min-width:135px;max-width:135px}
+.fund-table th[data-fund-column="current"],
+.fund-table td.fund-table-value{width:115px;min-width:115px;max-width:115px}
+.fund-table th[data-fund-column="freshness"],
+.fund-table td.fund-table-freshness{width:145px;min-width:145px;max-width:145px}
+.fund-table th[data-fund-column^="perf"],
+.fund-table td.fund-table-number{width:72px;min-width:72px;max-width:72px;text-align:right}
+.fund-table th[data-fund-column="ter"]{width:72px;min-width:72px;max-width:72px}
+.fund-table th[data-fund-column="index"],
+.fund-table td[title].fund-table-text{width:165px;min-width:165px;max-width:165px}
+.fund-table th[data-fund-column="provider"]{width:130px;min-width:130px;max-width:130px}
+.fund-table th[data-fund-column="distribution"]{width:110px;min-width:110px;max-width:110px}
+.fund-table th[data-fund-column="region"]{width:110px;min-width:110px;max-width:110px}
+.fund-actions-head,
+.fund-table-actions{width:164px;min-width:164px;max-width:164px}
+.fund-table th:first-child,
+.fund-table td:first-child{
+ position:sticky;
+ left:0;
+ z-index:3;
+ box-shadow:8px 0 16px -16px rgba(0,0,0,.9);
+}
+.fund-table thead th:first-child{z-index:6;background:var(--panel-2)}
+.fund-table-actions,
+.fund-actions-head{
+ position:sticky;
+ right:0;
+ z-index:3;
+ background:var(--panel);
+ box-shadow:-8px 0 16px -16px rgba(0,0,0,.9);
+}
+.fund-actions-head{z-index:6;background:var(--panel-2);padding:0 9px!important}
+.fund-table-row:hover td{background:color-mix(in srgb,var(--panel-2) 75%,var(--panel))}
+.fund-table-row:hover td:first-child,
+.fund-table-row:hover td:last-child{background:color-mix(in srgb,var(--panel-2) 75%,var(--panel))}
+.fund-table-fund-main{
+ display:grid;
+ grid-template-columns:auto minmax(0,1fr);
+ grid-template-areas:"kind name" "isin isin";
+ align-items:center;
+ gap:3px 7px;
+ min-width:0;
+}
+.fund-table-fund-main .fund-kind{grid-area:kind}
+.fund-table-fund-main strong{
+ grid-area:name;
+ min-width:0;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ font-size:11.5px;
+ line-height:1.2;
+}
+.fund-table-fund-main small{
+ grid-area:isin;
+ color:var(--muted);
+ font-size:8.5px;
+ letter-spacing:.03em;
+}
+.fund-table-platforms .fund-platforms{
+ justify-content:flex-start;
+ gap:3px;
+}
+.fund-table-platforms .fund-platform{font-size:8px;padding:2px 5px}
+.fund-table-value{text-align:right}
+.fund-table-value strong{font-size:11.5px;white-space:nowrap}
+.fund-table-freshness .fund-freshness{
+ margin:0;
+ white-space:normal;
+ font-size:8px!important;
+ line-height:1.25;
+}
+.fund-table-number{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fund-table-number.muted{color:var(--muted)}
+.fund-table-text{
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ color:var(--muted);
+}
+.fund-table-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ gap:5px;
+}
+.fund-table-actions .btn{
+ min-height:30px;
+ padding:5px 7px;
+ font-size:9px;
+ white-space:nowrap;
+}
+.fund-table-swipe-hint{
+ display:none;
+ margin:7px 2px 0;
+ color:var(--muted);
+ font-size:9px;
+}
+
+
+/* Funds toolbar split: wide comparator on web, compact trigger on native. */
+.fund-toolbar{
+ display:grid;
+ grid-template-columns:minmax(260px,1.35fr) minmax(0,4.65fr);
+ gap:10px;
+ align-items:stretch;
+}
+.fund-toolbar>.fund-search{
+ grid-column:1;
+ min-width:0;
+}
+.fund-toolbar-advanced{
+ grid-column:2;
+ display:grid;
+ grid-template-columns:repeat(7,minmax(118px,1fr));
+ gap:10px;
+ min-width:0;
+}
+.fund-toolbar-advanced>*{min-width:0;width:100%}
+.fund-mobile-filters-toggle{display:none}
+
+/* Native-only compact fund list is generated from the same product data. */
+.fund-mobile-compare{display:none}

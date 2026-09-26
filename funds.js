@@ -12,10 +12,11 @@
   ['1M','perf1M'],['3M','perf3M'],['6M','perf6M'],['YTD','perfYtd'],
   ['1A','perf1Y'],['3A','perf3Y'],['5A','perf5Y'],['10A','perf10Y'],['Hist.','perfSinceInception']
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',selectedIsin:null};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null};
  const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
+ function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
  function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
@@ -155,9 +156,58 @@
   if(state.platform==='both')return verified(p.platforms.tradeRepublic)&&verified(p.platforms.myInvestor);
   return true;
  }
+ function platformSortValue(p){
+  const tr=verified(p.platforms.tradeRepublic),mi=verified(p.platforms.myInvestor);
+  return tr&&mi?3:tr?2:mi?1:0;
+ }
+ function freshnessSortValue(p){
+  const live=liveQuote(p.isin);
+  if(p.type==='etf'&&live&&Number.isFinite(live.receivedAt))return live.receivedAt;
+  const t=new Date(p.valueDate||p.sourceUpdatedAt||'').getTime();
+  return Number.isFinite(t)?t:null;
+ }
+ function fundSortValue(p,key){
+  if(key==='name')return String(p.name||p.isin||'');
+  if(key==='platform')return platformSortValue(p);
+  if(key==='current')return fundCurrentValue(p);
+  if(key==='freshness')return freshnessSortValue(p);
+  if(key==='index'||key==='provider'||key==='distribution'||key==='region')return String(p[key]||'');
+  if(key==='type')return String(p.type||'');
+  return num(p[key]);
+ }
+ function compareFundRows(a,b){
+  const av=fundSortValue(a,state.sort),bv=fundSortValue(b,state.sort);
+  if(av===null||av===undefined||av==='')return(bv===null||bv===undefined||bv==='')?String(a.name).localeCompare(String(b.name),'es'):1;
+  if(bv===null||bv===undefined||bv==='')return-1;
+  let cmp=typeof av==='string'||typeof bv==='string'
+   ?String(av).localeCompare(String(bv),'es',{sensitivity:'base'})
+   :(av<bv?-1:av>bv?1:0);
+  if(state.sortDir==='desc')cmp*=-1;
+  return cmp||String(a.name).localeCompare(String(b.name),'es',{sensitivity:'base'});
+ }
+ function setFundSort(key,dir=null){
+  if(state.sort===key&&!dir)state.sortDir=state.sortDir==='asc'?'desc':'asc';
+  else{
+   state.sort=key;
+   state.sortDir=dir||(key==='name'||key==='index'||key==='provider'||key==='distribution'||key==='region'?'asc':'desc');
+  }
+  const select=q('#fundSort');
+  if(select){
+   const map={ter:'terAsc',maxDrawdown:'drawdown'};
+   const value=map[state.sort]||state.sort;
+   if([...select.options].some(o=>o.value===value))select.value=value;
+  }
+  render();
+ }
+ function applyFundSortSelect(value){
+  if(value==='terAsc'){state.sort='ter';state.sortDir='asc'}
+  else if(value==='drawdown'){state.sort='maxDrawdown';state.sortDir='desc'}
+  else{state.sort=value;state.sortDir='desc'}
+  render();
+ }
  function filtered(){
   const needle=state.query.trim().toLowerCase();
-  let rows=state.products.filter(p=>{
+  const rows=state.products.filter(p=>{
    if(state.type!=='all'&&p.type!==state.type)return false;
    if(!matchesPlatform(p))return false;
    if(state.provider!=='all'&&String(p.provider||'')!==state.provider)return false;
@@ -167,15 +217,7 @@
    if(!needle)return true;
    return [p.name,p.isin,p.provider,p.index,p.category,p.region].some(v=>String(v||'').toLowerCase().includes(needle));
   });
-  const key=state.sort;
-  rows.sort((a,b)=>{
-   if(key==='terAsc'){let av=num(a.ter),bv=num(b.ter);if(av===null)return 1;if(bv===null)return-1;return av-bv||String(a.name).localeCompare(String(b.name))}
-   if(key==='drawdown'){let av=num(a.maxDrawdown),bv=num(b.maxDrawdown);if(av===null)return 1;if(bv===null)return-1;return bv-av||String(a.name).localeCompare(String(b.name))}
-   let av=num(a[key]),bv=num(b[key]);
-   if(av===null&&bv===null)return String(a.name).localeCompare(String(b.name));
-   if(av===null)return 1;if(bv===null)return-1;
-   return bv-av||String(a.name).localeCompare(String(b.name));
-  });
+  rows.sort(compareFundRows);
   return rows;
  }
  function perfStrip(p){
@@ -200,19 +242,74 @@
    '<div class="fund-source-line"><span>'+esc(ageText(p.sourceUpdatedAt||p.valueDate))+'</span>'+(sources?'<span>·</span>'+sources:'')+'</div>'+
   '</details>';
  }
- function card(p){
-  const value=fundCurrentValue(p);
-  const valueLabel=p.type==='fund'?'VL oficial':'Precio';
+ const FUND_COLUMNS=[
+  ['name','Fondo'],
+  ['platform','Plataformas'],
+  ['current','VL / Precio'],
+  ['freshness','Actualización'],
+  ['perf1M','1M'],['perf3M','3M'],['perf6M','6M'],['perfYtd','YTD'],
+  ['perf1Y','1A'],['perf3Y','3A'],['perf5Y','5A'],['perf10Y','10A'],['perfSinceInception','Hist.'],
+  ['ter','TER'],['index','Índice'],['provider','Gestora'],['distribution','Clase'],['region','Región']
+ ];
+ function sortHeader(key,label){
+  const active=state.sort===key;
+  const arrow=active?(state.sortDir==='asc'?'↑':'↓'):'↕';
+  const aria=active?(state.sortDir==='asc'?'ascending':'descending'):'none';
+  return '<th scope="col" aria-sort="'+aria+'" data-fund-column="'+esc(key)+'"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button></th>';
+ }
+ function performanceCell(p,key){
+  const v=num(p[key]);
+  return '<td class="fund-table-number '+(v===null?'muted':v>=0?'positive':'negative')+'">'+pct(v)+'</td>';
+ }
+ function fundTableRow(p){
+  const current=fundCurrentValue(p);
   const liveAttr=p.type==='etf'&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
-  const headlinePeriod=state.sort.startsWith('perf')?state.sort:'perf1Y';
-  const headlineLabel=PERIODS.find(([,key])=>key===headlinePeriod)?.[0]||'1A';
-  return '<article class="fund-card" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+
-   '<div class="fund-card-head"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO')+'</span><h3>'+esc(p.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div><div class="fund-platforms">'+platformLabel(p)+'</div></div>'+
-   '<div class="fund-primary-row"><div><small>'+valueLabel+'</small><strong data-fund-current-value>'+money(value,p.currency)+'</strong>'+freshnessHtml(p)+'</div>'+
-   '<div><small>'+esc(headlineLabel)+'</small><strong class="'+((num(p[headlinePeriod])||0)>=0?'positive':'negative')+'">'+pct(p[headlinePeriod])+'</strong><span>'+esc(p.index||p.category||'')+'</span></div></div>'+
-   '<div class="fund-card-compact"><span>'+esc(p.provider||'Gestora N/D')+'</span><span>'+esc(p.index||p.category||'Índice N/D')+'</span><span>TER '+esc(num(p.ter)===null?'—':num(p.ter).toLocaleString('es-ES',{maximumFractionDigits:3})+'%')+'</span></div>'+
-   '<div class="fund-card-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Añadir a cartera</button></div>'+
-  '</article>';
+  const kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO';
+  return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+
+   '<td class="fund-table-fund"><div class="fund-table-fund-main"><span class="fund-kind">'+kind+'</span><strong>'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></div></td>'+
+   '<td class="fund-table-platforms"><div class="fund-platforms">'+platformLabel(p)+'</div></td>'+
+   '<td class="fund-table-value"><strong data-fund-current-value>'+money(current,p.currency)+'</strong></td>'+
+   '<td class="fund-table-freshness">'+freshnessHtml(p)+'</td>'+
+   PERIODS.map(([,key])=>performanceCell(p,key)).join('')+
+   '<td class="fund-table-number">'+(num(p.ter)===null?'—':esc(num(p.ter).toLocaleString('es-ES',{maximumFractionDigits:3})+'%'))+'</td>'+
+   '<td class="fund-table-text" title="'+esc(p.index||p.category||'')+'">'+esc(p.index||p.category||'—')+'</td>'+
+   '<td class="fund-table-text" title="'+esc(p.provider||'')+'">'+esc(p.provider||'—')+'</td>'+
+   '<td class="fund-table-text">'+esc(p.distribution||'—')+'</td>'+
+   '<td class="fund-table-text">'+esc(p.region||'—')+'</td>'+
+   '<td class="fund-table-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td>'+
+  '</tr>';
+ }
+ function fundTable(rows){
+  return '<div class="fund-table-scroll" role="region" aria-label="Comparador de fondos indexados y ETFs" tabindex="0">'+
+   '<table class="fund-table"><thead><tr>'+FUND_COLUMNS.map(([key,label])=>sortHeader(key,label)).join('')+'<th scope="col" class="fund-actions-head">Acciones</th></tr></thead>'+
+   '<tbody>'+rows.map(fundTableRow).join('')+'</tbody></table></div>'+
+   '<div class="fund-table-swipe-hint">Desliza horizontalmente para ver todas las columnas · Pulsa una cabecera para ordenar</div>';
+ }
+ function mobileSortHead(key,label){
+  const active=state.sort===key;
+  return '<button type="button" class="fund-mobile-sort'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'">'+esc(label)+(active?'<i aria-hidden="true">'+(state.sortDir==='asc'?'↑':'↓')+'</i>':'')+'</button>';
+ }
+ function fundMobileRow(p){
+  const one=num(p.perf1M),six=num(p.perf6M),year=num(p.perf1Y);
+  return '<button type="button" class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'">'+
+   '<span class="fund-mobile-name">'+esc(p.name||p.isin)+'</span>'+
+   '<b class="'+(one===null?'muted':one>=0?'positive':'negative')+'">'+pct(one)+'</b>'+
+   '<b class="'+(six===null?'muted':six>=0?'positive':'negative')+'">'+pct(six)+'</b>'+
+   '<b class="'+(year===null?'muted':year>=0?'positive':'negative')+'">'+pct(year)+'</b>'+
+   '<span class="fund-mobile-open" aria-hidden="true">›</span>'+
+  '</button>';
+ }
+ function fundMobileList(rows){
+  return '<div class="fund-mobile-compare">'+
+   '<div class="fund-mobile-compare-head">'+mobileSortHead('name','Fondo')+mobileSortHead('perf1M','1M')+mobileSortHead('perf6M','6M')+mobileSortHead('perf1Y','1A')+'<span></span></div>'+
+   '<div class="fund-mobile-rows">'+rows.map(fundMobileRow).join('')+'</div>'+
+  '</div>';
+ }
+ function updateMobileFiltersState(){
+  const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
+  const active=[state.platform!=='all',state.type!=='all',state.provider!=='all',state.region!=='all',state.distribution!=='all',state.maxTer!==null].filter(Boolean).length;
+  button.textContent=active?'Filtros · '+active:'Filtros';
+  button.classList.toggle('active',active>0);
  }
  function renderFundDetail(p){
   const risk=[
@@ -235,10 +332,12 @@
   const rows=filtered();
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
+  const results=rows.length?(nativeFundsView()?fundMobileList(rows):fundTable(rows)):
+    '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
-   '<div class="funds-status"><span>'+rows.length+' productos</span><span>·</span><span>'+esc(stamp)+'</span></div>'+
-   (rows.length?'<div class="fund-grid">'+rows.map(card).join('')+'</div>':
-    '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>');
+   '<div class="funds-status"><span>'+rows.length+' productos</span><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(FUND_COLUMNS.find(([key])=>key===state.sort)?.[1]||state.sort)+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
+   results;
+  updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
  }
  async function load(force=false){
@@ -473,6 +572,11 @@
   openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
  }
  function bind(){
+  q('#fundMobileFiltersToggle')?.addEventListener('click',()=>{
+   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
+   const open=toolbar.classList.toggle('mobile-filters-open');
+   button.setAttribute('aria-expanded',open?'true':'false');
+  });
   q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
@@ -480,9 +584,12 @@
   q('#fundRegion')?.addEventListener('change',e=>{state.region=e.target.value;render()});
   q('#fundDistribution')?.addEventListener('change',e=>{state.distribution=e.target.value;render()});
   q('#fundMaxTer')?.addEventListener('input',e=>{state.maxTer=num(e.target.value);render()});
-  q('#fundSort')?.addEventListener('change',e=>{state.sort=e.target.value;render()});
+  q('#fundSort')?.addEventListener('change',e=>applyFundSortSelect(e.target.value));
   q('#refreshFunds')?.addEventListener('click',()=>load(true));
   document.addEventListener('click',async e=>{
+   const sortButton=e.target.closest&&e.target.closest('[data-fund-sort-col]');
+   if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
+
    const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
    if(asset){
     const mode=asset.dataset.portfolioAsset;
