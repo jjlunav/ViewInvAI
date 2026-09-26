@@ -113,18 +113,27 @@ function profileVisualAnalysisHtml(s,isTr=false){
 function profileDetailRoot(el){
  return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;
 }
-function activateProfileVisualAnalysis(root,s,preferTr=false){
+function activateProfileTabData(root,s,preferTr=false,tab=''){
  if(!root||!s)return;
- const loadKey=stockKey(s)+'|'+(preferTr===true?'tr':'us');
- if(root.dataset.visualAnalysisLoadedKey===loadKey)return;
- root.dataset.visualAnalysisLoadedKey=loadKey;
- requestAnimationFrame(()=>{
-  root.querySelectorAll('[data-profile-panel="chart"] .mini-chart').forEach(el=>{
-   delete el.dataset.loaded;
-   loadMiniChart(el);
+ const market=preferTr===true?'tr':'us';
+ if(tab==='chart'){
+  const loadKey=stockKey(s)+'|'+market;
+  if(root.dataset.profileChartLoadedKey===loadKey)return;
+  root.dataset.profileChartLoadedKey=loadKey;
+  requestAnimationFrame(()=>{
+   root.querySelectorAll('[data-profile-panel="chart"] .mini-chart').forEach(el=>{
+    delete el.dataset.loaded;
+    loadMiniChart(el);
+   });
   });
-  loadAiBrief(root,s,preferTr===true);
- });
+  return;
+ }
+ if(tab==='ai'){
+  const loadKey=stockKey(s)+'|'+market;
+  if(root.dataset.profileAiLoadedKey===loadKey)return;
+  root.dataset.profileAiLoadedKey=loadKey;
+  requestAnimationFrame(()=>loadAiBrief(root,s,preferTr===true));
+ }
 }
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
@@ -160,10 +169,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
     '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
-    (opts.hideActions?'':'<div class="profile-primary-actions">'+
-     profilePortfolioActionHtml(s,isTr)+
-     '<button type="button" class="btn small profile-ai-open" data-ai-chat-stock="'+E(stockKey(s))+'" data-ai-chat-prefer-tr="'+(isTr?'1':'0')+'">✦ Preguntar IA</button>'+
-    '</div>')+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
 }
@@ -201,24 +207,14 @@ function renderQuickProfile(){
  let box=$('#stockQuickDetail');if(!box)return;
  let s=state.profileKey?stockByKey(state.profileKey):null;
  if(!s){closeQuickProfile(false);return}
- delete box.dataset.visualAnalysisLoaded;
- delete box.dataset.visualAnalysisLoadedKey;
+ delete box.dataset.profileChartLoadedKey;
+ delete box.dataset.profileAiLoadedKey;
  box.innerHTML=quickProfileHtml(s);
  requestAnimationFrame(()=>{
   observeTrLivePrices(box);
   pollUsLive();
   window.ViewInvAINativeUI?.syncLayout?.();
  });
-}
-function renderEmbeddedStockDetail(container,key,reason='',preferTr=null){
- let s=stockByKey(key);if(!container||!s)return false;
- let useTr=preferTr===true&&trTradable(s);
- delete container.dataset.visualAnalysisLoaded;
- delete container.dataset.visualAnalysisLoadedKey;
- container.classList.add('stock-profile-page','embedded-stock-profile');
- container.innerHTML=quickProfileHtml(s,{embedded:true,reason,preferTr:useTr});
- requestAnimationFrame(()=>{observeTrLivePrices(container);pollUsLive()});
- return true;
 }
 const aiBriefCache=new Map();
 let aiChatState={key:null,preferTr:false,history:[],busy:false};
