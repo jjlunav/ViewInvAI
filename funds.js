@@ -21,6 +21,9 @@
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
  function money(v,c='EUR'){v=num(v);if(v===null)return'—';try{return v.toLocaleString('es-ES',{style:'currency',currency:c||'EUR',maximumFractionDigits:4})}catch(_){return v.toLocaleString('es-ES',{maximumFractionDigits:4})+' '+c}}
  function dateText(v){if(!v)return'—';let d=new Date(v);return Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES'):'—'}
+ function safeHttpsUrl(v){
+  try{const u=new URL(String(v||''),location.href);return u.protocol==='https:'?u.href:''}catch(_){return''}
+ }
  function ageText(v){
   if(!v)return'Sin fecha';
   let t=new Date(v).getTime();if(!Number.isFinite(t))return'Sin fecha';
@@ -87,7 +90,7 @@
    ['Volatilidad 3A',pct(p.volatility3Y)],['Drawdown máx.',pct(p.maxDrawdown)],['Sharpe 3A',num(p.sharpe3Y)===null?'—':num(p.sharpe3Y).toLocaleString('es-ES',{maximumFractionDigits:2})],
    ['Tracking diff.',pct(p.trackingDifference)],['Patrimonio',num(p.assetsUnderManagement)===null?'—':money(p.assetsUnderManagement,p.currency)]
   ];
-  const sources=(p.sources||[]).map(s=>'<a href="'+esc(s.url||'#')+'" target="_blank" rel="noopener noreferrer">'+esc(s.label||s.url||'Fuente')+'</a>').join(' · ');
+  const sources=(p.sources||[]).map(s=>{const url=safeHttpsUrl(s&&s.url);return url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+esc(s.label||s.url||'Fuente')+'</a>':''}).filter(Boolean).join(' · ');
   return '<details class="fund-more"><summary>Más datos</summary>'+
    compactFacts(p)+
    '<div class="fund-risk-grid">'+risk.map(([k,v])=>'<div><small>'+esc(k)+'</small><strong>'+esc(v)+'</strong></div>').join('')+'</div>'+
