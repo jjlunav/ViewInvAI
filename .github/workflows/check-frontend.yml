@@ -74,6 +74,7 @@ jobs:
           const m=globalThis.ViewInvAIMarketSession;
           if(!m)throw new Error('Market session module did not initialize');
           const parts=(year,month,day,weekday,hour,minute)=>({year:String(year),month:String(month).padStart(2,'0'),day:String(day).padStart(2,'0'),weekday,hour:String(hour).padStart(2,'0'),minute:String(minute).padStart(2,'0')});
+          if(m.usSession(parts(2026,9,26,'Sat',4,20))!=='previous')throw new Error('US weekend must resolve to previous session');
           if(m.usSession(parts(2026,12,25,'Fri',10,0))!=='previous')throw new Error('US Christmas must be closed');
           if(m.usSession(parts(2026,11,27,'Fri',12,30))!=='regular')throw new Error('US Black Friday must still be regular before 13:00 ET');
           if(m.usSession(parts(2026,11,27,'Fri',13,30))!=='postmarket')throw new Error('US Black Friday early close regression');
