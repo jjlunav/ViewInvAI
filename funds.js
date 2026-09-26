@@ -102,7 +102,7 @@
   const valueLabel=p.type==='etf'?'Precio':'VL oficial';
   const stale=ageText(p.valueDate||p.sourceUpdatedAt);
   return '<article class="fund-card" data-fund-isin="'+esc(p.isin)+'">'+
-   '<div class="fund-card-head"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':'FONDO INDEXADO')+'</span><h3>'+esc(p.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div><div class="fund-platforms">'+platformLabel(p)+'</div></div>'+
+   '<div class="fund-card-head"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO')+'</span><h3>'+esc(p.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div><div class="fund-platforms">'+platformLabel(p)+'</div></div>'+
    '<div class="fund-primary-row"><div><small>'+valueLabel+'</small><strong>'+money(value,p.currency)+'</strong><span>'+esc(dateText(p.valueDate))+' · '+esc(stale)+'</span></div>'+
    '<div><small>1 año</small><strong class="'+((num(p.perf1Y)||0)>=0?'positive':'negative')+'">'+pct(p.perf1Y)+'</strong><span>'+esc(p.index||p.category||'')+'</span></div></div>'+
    perfStrip(p)+detail(p)+
@@ -160,7 +160,7 @@
   const pnl=value!==null&&invested!==null?value-invested:null;
   const pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
   return '<article class="fund-position-card">'+
-   '<div class="fund-position-main"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':'FONDO')+'</span><h3>'+esc(p.name||position.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div>'+
+   '<div class="fund-position-main"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO')+'</span><h3>'+esc(p.name||position.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div>'+
    '<div class="fund-position-value"><small>VALOR ACTUAL</small><strong>'+money(value,position.currency||p.currency)+'</strong><span>'+esc(ageText(p.valueDate||p.sourceUpdatedAt))+'</span></div></div>'+
    '<div class="fund-position-metrics">'+
     '<span><small>Participaciones</small><b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span>'+
