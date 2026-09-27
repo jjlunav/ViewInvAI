@@ -46,9 +46,9 @@ const CATALOG_COLUMNS={
   {id:'ticker',label:'Ticker',type:'text',value:s=>s.ticker||'',cell:s=>'<strong class="table-ticker">'+E(s.ticker||'—')+'</strong>'},
   {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>E(s.name||'—')},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.exchange||'',cell:s=>E(s.exchange||'—')},
-  {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>usLivePrice(s)??SP(s,se),cell:(s,se)=>usPriceCell(s,'usd',se)},
+  {id:'priceUsd',label:'Precio USD',type:'number',value:s=>canonicalQuote(s,false).price,cell:(s,se)=>usPriceCell(s,'usd',se)},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>usPriceValues(s,SP(s,se)).eur,cell:(s,se)=>usPriceCell(s,'eur',se)},
-  {id:'change',label:'%',type:'number',value:(s,se)=>usLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),false)},
+  {id:'change',label:'%',type:'number',value:s=>canonicalQuote(s,false).change,cell:(s,se)=>liveChangeHtml(s,SC(s,se),false)},
   {id:'bid',label:'Bid USD',type:'number',value:s=>usLiveBid(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveBidDirection)+'" data-us-bid-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveBid(s),'\u0024',quotePrecision(s,false))+'</span>'},
   {id:'ask',label:'Ask USD',type:'number',value:s=>usLiveAsk(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveAskDirection)+'" data-us-ask-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveAsk(s),'\u0024',quotePrecision(s,false))+'</span>'},
   {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>N(s.usLiveVolume)??SV(s,se),cell:(s,se)=>compactVol(N(s.usLiveVolume)??SV(s,se))},
@@ -85,7 +85,7 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
 const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'}};
-function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:720px)').matches}
+function catalogIsMobile(){return stockCompactListView()}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
 function catalogStorageKey(mode){return 'viewinvai:catalogColumns:'+mode+':v1'}
@@ -164,7 +164,7 @@ function catalogMobileTabs(mode){
 function catalogMobileCell(mode,s,se,colId){
  let col=CATALOG_COLUMNS[mode].find(c=>c.id===colId);
  if(!col)return{label:colId,value:'—',tone:'text'};
- let raw=col.value(s,se),html=col.cell(s,se),value='';
+ let raw=col.value(s,se),value='';
  if(colId==='priceEur'||colId==='priceUsd'){
   let preferTr=mode==='tr',q=canonicalQuote(s,preferTr),sym=colId==='priceEur'?'€':'\u0024';
   value=quoteMoney(colId==='priceEur'?q.eur:q.usd,sym,quotePrecision(s,preferTr,SP(s,se)));
@@ -189,20 +189,15 @@ function catalogMobileCell(mode,s,se,colId){
  return{label:col.label,value,tone:'text'};
 }
 function catalogMobileRow(mode,s,se){
- let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
- let ticker=mode==='tr'?(s.trTicker||s.ticker||'—'):(s.ticker||'—');
- let isin=(mode==='tr'?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—';
- return '<article class="catalog-mobile-line stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+
-  '<div class="catalog-mobile-identity">'+favButton(s,mode==='tr')+'<span class="catalog-mobile-copy"><strong>'+E(s.name||ticker)+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker)+'</i></span></div>'+
-  ids.map(id=>{let cell=catalogMobileCell(mode,s,se,id);return '<span class="catalog-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
-  '<span class="catalog-mobile-open" aria-hidden="true">›</span>'+
- '</article>';
+ const group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
+ const cells=group.key==='general'?null:ids.map(id=>catalogMobileCell(mode,s,se,id));
+ return standardStockCard(s,0,{se,preferTr:mode==='tr',rankLabel:'',cells});
 }
 function catalogMobileList(mode,rows,se){
  let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
  return catalogMobileTabs(mode)+
   '<div class="catalog-mobile-compare">'+
-   '<div class="catalog-mobile-head"><span>Valor / ISIN</span>'+ids.map(id=>'<span>'+E(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)+'</span>').join('')+'<span></span></div>'+
+   '<div class="asset-list-head"><span>Valor / ISIN</span><span>'+E(group.key==='general'?'Precio · variación':group.label)+'</span><span></span></div>'+
    '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
   '</div>';
 }

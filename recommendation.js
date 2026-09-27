@@ -138,7 +138,7 @@ function recommendationCatalystLegacy(s){
 function recommendationEngineInput(s,mode='us',chartAvailable=false){
  let preferTr=mode==='tr',se=currentMarketSession();
  let quote=canonicalQuote(s,preferTr),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
- let quoteAt=preferTr?(N(s&&s.trLiveUpdatedAt)??N(s&&s.trLiveReceivedAt)):(N(s&&s.usLiveReceivedAt)??parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York'));
+ let quoteAt=quote&&quote.live===true?quote.updatedAt:null;
  let now=Date.now();
  return {
   price:quote&&N(quote.price)!==null?N(quote.price):SP(s,se),
@@ -407,32 +407,25 @@ function recommendationMobileCell(key,s,mode,a,signal,quality){
 }
 function recommendationMobileItem(mode,s){
  if(!s)return '<div class="empty-state">No hay una candidata con datos suficientes para este mercado.</div>';
- let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
+ const preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=a.quality||stockDataQuality(s,mode,false);
+ const wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score),group=recommendationGroup();
  if(bucket.armed!==wasArmed)saveRecommendationState();
- let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker),isin=(preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin))||'—';
- let group=recommendationGroup(),marketName=preferTr?'TR / LSX':'EEUU';
- let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
- let events=a.catalyst.events.length?a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join(''):'<div class="reco-event muted">Sin noticia o evento direccional fuerte en las últimas 72 h / próximos 14 días.</div>';
- let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'';
- return '<div class="reco-mobile-item">'+
-  '<article class="reco-mobile-line stock-open-row"'+stockOpenAttrs(s,'Recomendación actual',preferTr)+'>'+
-   '<div class="reco-mobile-identity">'+favButton(s,preferTr)+'<span class="reco-mobile-copy"><strong>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+' · '+E(marketName)+'</i></span></div>'+
-   group.columns.map(([key])=>{let cell=recommendationMobileCell(key,s,mode,a,signal,quality);return '<span class="reco-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
-   '<span class="reco-mobile-open" aria-hidden="true">›</span>'+
-  '</article>'+
-  '<details class="reco-mobile-detail"><summary><span>Tesis IA · factores · noticias</span><i aria-hidden="true">＋</i></summary>'+
-   '<div class="reco-mobile-thesis"><strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p></div>'+
-   '<div class="reco-factors">'+factors+'</div>'+
-   '<div class="reco-events">'+events+'</div>'+
-   (sold?'<div class="reco-mobile-actions">'+sold+'</div>':'')+
-  '</details>'+
- '</div>';
+ const cells=group.key==='general'?null:group.columns.map(([key,label])=>({label,...recommendationMobileCell(key,s,mode,a,signal,quality)}));
+ let contextHtml='';
+ // The AI panel owns this content. General never creates a duplicate disclosure.
+ if(group.key==='ai'){
+  const factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
+  const events=a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join('');
+  contextHtml='<section class="asset-ai-panel"><strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p><div class="reco-factors">'+factors+'</div><div class="reco-events">'+events+'</div>'+
+   (signal.key==='sell'?'<button type="button" class="btn small" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'')+'</section>';
+ }
+ return standardStockCard(s,mode==='us'?0:1,{se:a.se,preferTr,cells,showDetails:false,hint:'Recomendación actual',insight:signal.label,contextHtml});
 }
 function recommendationMobileList(us,tr){
  let group=recommendationGroup();
  return recommendationMobileTabs()+
   '<div class="reco-mobile-compare">'+
-   '<div class="reco-mobile-head"><span>Valor / ISIN</span>'+group.columns.map(([,label])=>'<span>'+E(label)+'</span>').join('')+'<span></span></div>'+
+   '<div class="asset-list-head"><span>Valor / ISIN</span><span>'+E(group.key==='general'?'Precio · variación':group.label)+'</span><span></span></div>'+
    '<div class="reco-mobile-rows">'+recommendationMobileItem('us',us)+recommendationMobileItem('tr',tr)+'</div>'+
   '</div>';
 }

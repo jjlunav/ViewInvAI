@@ -1,0 +1,51 @@
+name: Quote sessions and shared stock rows
+
+on:
+  push:
+    branches: [main, perf/catalogue-and-shared-cards]
+    paths:
+      - 'market-session.js'
+      - 'market.js'
+      - 'stock-list.js'
+      - 'events.js'
+      - 'catalog.js'
+      - 'recommendation.js'
+      - 'stock-interactions.js'
+      - 'tests/quote-sessions.test.cjs'
+      - '.github/workflows/check-quote-sessions.yml'
+  pull_request:
+    paths:
+      - 'market-session.js'
+      - 'market.js'
+      - 'stock-list.js'
+      - 'events.js'
+      - 'catalog.js'
+      - 'recommendation.js'
+      - 'stock-interactions.js'
+      - 'tests/quote-sessions.test.cjs'
+      - '.github/workflows/check-quote-sessions.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  quote-sessions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check market-session.js
+          node --check market.js
+          node --check stock-list.js
+          node --check events.js
+          node --check catalog.js
+          node --check recommendation.js
+          node --check stock-interactions.js
+      - name: Test last valid quote, session chronology and shared row adapters
+        run: node tests/quote-sessions.test.cjs

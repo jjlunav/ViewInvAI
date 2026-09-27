@@ -4,12 +4,20 @@
   function dateKey(year,month,day){
     return String(year).padStart(4,'0')+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
   }
+  const zoneFormatters=new Map(),zoneClockCache=new Map();
   function zoneClock(timeZone,date=new Date()){
-    const parts=new Intl.DateTimeFormat('en-US',{
+    const key=timeZone+'|'+Math.floor(date.getTime()/1000);
+    const cached=zoneClockCache.get(key);if(cached)return cached;
+    let formatter=zoneFormatters.get(timeZone);
+    if(!formatter){formatter=new Intl.DateTimeFormat('en-US',{
       timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',
-      hour:'2-digit',minute:'2-digit',hour12:false
-    }).formatToParts(date);
-    return Object.fromEntries(parts.map(x=>[x.type,x.value]));
+      hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+    });zoneFormatters.set(timeZone,formatter)}
+    const parts=Object.fromEntries(formatter.formatToParts(date).map(x=>[x.type,x.value]));
+    if(parts.hour==='24')parts.hour='00';
+    zoneClockCache.set(key,Object.freeze(parts));
+    if(zoneClockCache.size>512)zoneClockCache.delete(zoneClockCache.keys().next().value);
+    return parts;
   }
   function weekdayOpen(parts){
     return !!parts&&parts.weekday!=='Sat'&&parts.weekday!=='Sun';
@@ -89,7 +97,92 @@
     return minutes>=450&&minutes<calendar.closeMinute;
   }
 
+  // Snapshot pre/post timestamps identify a session bar, not necessarily the
+  // last trade. Keep that precision instead of inventing an exact trade time.
+  const SESSION_ORDER={premarket:0,regular:1,postmarket:2,unknown:3};
+  function finiteNumber(value){
+    if(value===null||value===undefined||value==='')return null;
+    const n=Number(value);return Number.isFinite(n)?n:null;
+  }
+  function usQuoteSession(at){
+    const p=zoneClock('America/New_York',new Date(at)),calendar=usMarketCalendar(p);
+    if(!calendar.open)return'unknown';
+    const seconds=(+p.hour*60 + +p.minute)*60 + +(p.second||0);
+    const close=(calendar.earlyClose?780:960)*60;
+    if(seconds>=240*60&&seconds<570*60)return'premarket';
+    // The closing auction at exactly 16:00 (13:00 on half-days) is regular.
+    if(seconds>=570*60&&seconds<=close)return'regular';
+    if(seconds>close&&seconds<=(calendar.earlyClose?1020:1200)*60)return'postmarket';
+    return'unknown';
+  }
+  function regularSnapshotDay(at){
+    let p=zoneClock('America/New_York',new Date(at));
+    if(usMarketCalendar(p).open&&(+p.hour*60 + +p.minute)>=570)
+      return dateKey(+p.year,+p.month,+p.day);
+    // Walk civil dates at midday to avoid local/UTC and DST boundary errors.
+    let day=new Date(Date.UTC(+p.year,+p.month-1,+p.day,17));
+    for(let i=0;i<14;i++){
+      day.setUTCDate(day.getUTCDate()-1);
+      p=zoneClock('America/New_York',day);
+      if(usMarketCalendar(p).open)return dateKey(+p.year,+p.month,+p.day);
+    }
+    return null;
+  }
+  function selectUsQuoteSessions(samples,nowMs=Date.now()){
+    const now=finiteNumber(nowMs);
+    if(now===null)throw new TypeError('A valid reference time is required');
+    const candidates=[];
+    for(const input of Array.isArray(samples)?samples:[]){
+      if(!input)continue;
+      const price=finiteNumber(input.price),at=finiteNumber(input.at);
+      if(price===null||price<=0||(at!==null&&(at<=0||at>now+60000)))continue;
+      const precision=input.precision||'trade';
+      const session=Object.hasOwn(SESSION_ORDER,input.session)?input.session:(at===null?'unknown':usQuoteSession(at));
+      let day=null;
+      if(at!==null){
+        const p=zoneClock('America/New_York',new Date(at));
+        if(precision==='snapshot'&&session==='regular')day=regularSnapshotDay(at);
+        else{
+          // Ignore impossible weekend/holiday extended-session timestamps.
+          if(session!=='unknown'&&!usMarketCalendar(p).open)continue;
+          day=dateKey(+p.year,+p.month,+p.day);
+        }
+      }
+      candidates.push({...input,price,change:finiteNumber(input.change),at,session,precision,day});
+    }
+    const precisionRank={trade:2,session:1,snapshot:0};
+    const compare=(a,b)=>{
+      // Dated evidence beats an undated observation: download time is not trade time.
+      if(a.day!==b.day)return String(a.day||'').localeCompare(String(b.day||''));
+      if(a.session!==b.session)return SESSION_ORDER[a.session]-SESSION_ORDER[b.session];
+      // A late regular snapshot must not lose to an old live quote from that
+      // morning. Clamp its ordering time to the close; precision stays explicit.
+      if(a.session==='regular'&&a.at&&b.at&&a.precision!==b.precision){
+        const seconds=q=>{
+          const p=zoneClock('America/New_York',new Date(q.at));
+          const date=dateKey(+p.year,+p.month,+p.day);
+          const close=(usMarketCalendar(p).earlyClose?780:960)*60;
+          return q.precision==='snapshot'&&date!==q.day?close:Math.min(close,(+p.hour*60 + +p.minute)*60 + +p.second);
+        };
+        const difference=seconds(a)-seconds(b);if(difference)return difference;
+      }
+      const pa=precisionRank[a.precision]??0,pb=precisionRank[b.precision]??0;
+      if(pa!==pb)return pa-pb;
+      return (a.at||0)-(b.at||0);
+    };
+    candidates.sort(compare);
+    const pick=fn=>candidates.filter(fn).at(-1)||null;
+    const session=usSession(zoneClock('America/New_York',new Date(now)));
+    return {
+      regular:pick(q=>q.session==='regular'),
+      extended:pick(q=>q.day!==null&&(q.session==='premarket'||q.session==='postmarket')),
+      latest:pick(q=>q.day!==null)||pick(q=>q.session==='regular')||(candidates.length?{...candidates.at(-1),session:'unknown'}:null),
+      session,closed:session==='previous'
+    };
+  }
+
   root.ViewInvAIMarketSession=Object.freeze({
-    dateKey,zoneClock,weekdayOpen,usMarketCalendar,usSession,lsxMarketCalendar,lsxOpen
+    dateKey,zoneClock,weekdayOpen,usMarketCalendar,usSession,lsxMarketCalendar,lsxOpen,
+    usQuoteSession,selectUsQuoteSessions
   });
 })(globalThis);

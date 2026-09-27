@@ -183,3 +183,101 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
   grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,.7fr)) 12px;
  }
 }
+
+/* One compact stock row: geometry is shared, native colors remain independent. */
+:is(#view-home,#view-portfolios,#view-entry,#view-recommendation,#view-future,#view-calendar,#view-catalog,#view-catalogUS,#view-alerts) .asset-row,
+.asset-row{
+ --row-text:var(--text);--row-muted:var(--muted);--row-line:var(--line);
+ display:block!important;width:100%!important;min-width:0!important;max-width:none!important;
+ margin:0!important;padding:0!important;border:0!important;border-bottom:1px solid var(--row-line)!important;
+ border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;
+}
+html[data-native-app="1"] .asset-row{
+ --row-text:var(--native-text);--row-muted:var(--native-muted);--row-line:var(--native-line);
+}
+.asset-row .asset-row-main,.asset-list-head{
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 10px;gap:8px;
+ align-items:center;min-width:0;width:100%;padding:7px 0;box-sizing:border-box;
+}
+.asset-row .asset-row-main{cursor:pointer}
+.asset-row .asset-row-main:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.asset-row .asset-row-identity{display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px;min-width:0;align-items:start}
+.asset-row .asset-row-copy{min-width:0;display:grid;gap:3px}
+.asset-row .asset-row-name{
+ margin:0;color:var(--row-text);font-size:12px;line-height:1.2;font-weight:700;
+ white-space:normal;word-break:normal;overflow-wrap:normal;hyphens:none;
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
+.asset-row .asset-row-market{font-size:9px;line-height:1.25;color:var(--row-muted);white-space:normal}
+.asset-row .list-copy-isin,html[data-native-app="1"] .asset-row .list-copy-isin{
+ display:block!important;border:0!important;padding:1px 0!important;min-height:18px!important;width:max-content!important;
+ max-width:100%!important;background:transparent!important;color:var(--row-muted)!important;
+ font-size:9px!important;line-height:1.25!important;text-align:left!important;cursor:pointer;
+ white-space:nowrap!important;text-decoration:underline dotted;text-underline-offset:2px;
+}
+.asset-row .fav-star,html[data-native-app="1"] .asset-row .fav-star{
+ width:22px!important;min-width:22px!important;min-height:28px!important;padding:0!important;margin:0!important;font-size:16px!important;
+}
+.asset-row .asset-row-quote{min-width:0;display:grid;gap:3px}
+.asset-row .asset-quote-line{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:3px;align-items:baseline;min-width:0}
+.asset-row .asset-session{font-size:8px;font-weight:750;color:var(--row-muted);white-space:nowrap}
+.asset-row .asset-money{display:grid;gap:1px;min-width:0;text-align:right}
+.asset-row .asset-money>strong{font-size:17px;line-height:1.12;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--row-text)}
+.asset-row .asset-conversion{font-size:9px;color:var(--row-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.asset-row .asset-change{font-size:10px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.asset-row .asset-quote-extended .asset-money>strong{font-size:14px}
+.asset-row .asset-quote-status{font-size:8.5px;line-height:1.25;color:var(--row-muted);text-align:right}
+.asset-row .asset-no-quote{font-size:12px;color:var(--row-muted);text-align:right}
+.asset-row .asset-row-arrow{justify-self:end;color:var(--row-muted);font-size:19px}
+.asset-row .positive{color:var(--positive,var(--green))!important}
+.asset-row .negative{color:var(--negative,var(--red))!important}
+.asset-row .neutral{color:var(--row-text)!important}
+.asset-row .asset-row-details{margin:0;border:0;border-radius:0;background:transparent}
+.asset-row .asset-row-details>summary,html[data-native-app="1"] .asset-row .asset-row-details>summary{
+ min-height:24px!important;padding:3px 0!important;color:var(--row-muted);font-size:9px;line-height:1.3;
+ text-align:right;cursor:pointer;list-style:none;display:block!important;
+}
+.asset-row .asset-row-details>summary::-webkit-details-marker{display:none}
+.asset-row .asset-row-extra{padding:6px 0 8px;color:var(--row-text);font-size:11px}
+.asset-row .asset-row-extra p{margin:4px 0;line-height:1.35}
+.asset-row .asset-row-metrics{display:flex;gap:6px;min-width:0;justify-content:space-between;flex-wrap:wrap}
+.asset-row .asset-row-metrics>span{display:grid;gap:3px;min-width:0;flex:1 1 40px;text-align:right}
+.asset-row .asset-row-metrics small{font-size:9px;color:var(--row-muted)}
+.asset-row .asset-row-metrics b{font-size:12px;color:var(--row-text);font-variant-numeric:tabular-nums}
+.asset-row .asset-row-context{font-size:10px;line-height:1.4;color:var(--row-muted);padding:0 0 4px;min-width:0}
+.asset-row .portfolio-position-context{padding:2px 0!important;margin:0!important}
+.asset-row .portfolio-position-numbers{display:flex!important;flex-wrap:wrap!important;gap:4px 10px!important;font-size:10px!important}
+.asset-list-head{font-size:9px;line-height:1.3;color:var(--muted);border-bottom:1px solid var(--line)}
+.asset-list-head>span:nth-child(2){text-align:right}
+.stock-card-grid:has(.asset-row),.home-stock-list:has(.asset-row){display:block!important}
+@media(min-width:761px){
+ .asset-row .asset-row-name{font-size:13px}
+ .asset-row .asset-row-main{grid-template-columns:minmax(0,1fr) minmax(180px,1fr) 10px}
+}
+.asset-row .asset-ai-panel{padding:8px 0;font-size:11px;line-height:1.45}
+.asset-row .asset-ai-panel p{margin:4px 0}
+@media(max-width:760px){
+ .radar-pinned-controls{position:sticky;top:0;z-index:30;background:var(--bg);padding:2px 0}
+ .radar-pinned-controls .control-strip{margin:0 0 5px;padding:5px;gap:5px}
+ .radar-pinned-controls #filterDetails:not([open]){display:none}
+ .radar-pinned-controls #filterDetails[open]{max-height:45dvh;overflow-y:auto}
+}
+html[data-native-app="1"] .radar-pinned-controls{position:sticky;top:var(--native-safe-top);z-index:30;background:#061017;padding:2px 0}
+html[data-native-app="1"] .radar-pinned-controls .control-strip{margin:0 0 5px!important;padding:5px!important;gap:5px!important}
+html[data-native-app="1"] .radar-pinned-controls .btn,
+html[data-native-app="1"] .radar-pinned-controls .select,
+html[data-native-app="1"] .radar-pinned-controls .preset-trigger{min-height:32px!important;padding:5px 6px!important;font-size:10.5px!important}
+html[data-native-app="1"] .radar-pinned-controls #filterDetails:not([open]){display:none!important}
+html[data-native-app="1"] .radar-pinned-controls #filterDetails[open]{max-height:45dvh;overflow-y:auto}
+
+/* Sticky controls follow the document scroll, not an accidental body scroller. */
+@media(max-width:760px){
+ html:has(#view-entry.active),body:has(#view-entry.active){overflow-x:clip!important;overflow-y:visible!important}
+}
+html[data-native-app="1"]:has(#view-entry.active),
+html[data-native-app="1"] body:has(#view-entry.active){overflow-x:clip!important;overflow-y:visible!important}
+#fundPortfolioApp.is-hidden,#portfolioApp.is-hidden{display:none!important}
+/* Keep the FX reference on the same line when it fits, never overlap it. */
+.asset-row .asset-money{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:flex-end;gap:1px 4px}
+.asset-row .asset-quote-line[data-asset-session="regular"]{grid-template-columns:minmax(0,1fr) auto}
+.asset-row .asset-quote-line[data-asset-session="regular"]>.asset-session{display:none}

@@ -120,7 +120,7 @@ function initStockInteractions(){
  });
  document.addEventListener('keydown',e=>{
   let row=e.target.closest&&e.target.closest('[data-stock-key]');
-  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('button,a,summary,input,select,textarea'))return;
   e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
  });
 }

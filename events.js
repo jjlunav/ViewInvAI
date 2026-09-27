@@ -74,39 +74,21 @@ function stockEvents(s){
  }
  return out;
 }
-const EVENT_MOBILE_GROUPS=[
- {key:'event',label:'Evento'},
- {key:'market',label:'Mercado'},
- {key:'technical',label:'Técnico'}
-];
-const eventMobileUi={future:'event',calendar:'event'};
-function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+// Lazy access avoids load-order coupling: events.js precedes stock-list.js.
+const EVENT_MOBILE_GROUPS={get values(){return STOCK_MOBILE_GROUPS}};
+function eventCompactListView(){return stockCompactListView()}
 function eventMobileTabs(scope){
- let active=eventMobileUi[scope]||'event';
- return '<nav class="event-mobile-groups" aria-label="Datos del evento">'+EVENT_MOBILE_GROUPS.map(g=>
-  '<button type="button" class="'+(g.key===active?'active':'')+'" data-event-mobile-scope="'+E(scope)+'" data-event-mobile-group="'+E(g.key)+'">'+E(g.label)+'</button>'
- ).join('')+'</nav>';
+ return stockMobileTabs(scope).replaceAll('data-stock-mobile-group','data-event-mobile-group');
 }
 function eventMobileRow(scope,s,event,index,label,when,count=1){
- let preferTr=trTradable(s),group=eventMobileUi[scope]||'event',isin=s.trIsin||s.usIsin||s.isin||'—',ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
- let cols=[];
- if(group==='event'){
-  cols=[label,when];
- }else if(group==='market'){
-  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
-  cols=[quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,SES()))),PC(marketChange(s,SES(),preferTr))];
- }else{
-  cols=[N(s.rsi)===null?'—':'RSI '+F(s.rsi,1),N(s.adx)===null?'—':'ADX '+F(s.adx,1)];
- }
- return '<article class="event-mobile-line stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
-  '<span class="event-mobile-copy"><strong><em>#'+(index+1)+'</em>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+(count>1?' · '+count+' eventos':'')+'</i></span>'+
-  '<span class="event-mobile-cell">'+E(cols[0])+'</span><span class="event-mobile-cell">'+E(cols[1])+'</span><span class="event-mobile-open">›</span>'+
- '</article>';
+ const preferTr=trTradable(s),group=stockMobileGroup(scope),se=SES();
+ const cells=group.key==='general'?null:group.columns.map(([key,label])=>({label,...stockMobileCell(s,key,se,preferTr)}));
+ return standardStockCard(s,index,{se,preferTr,cells,hint:label+' · '+when,
+  contextHtml:'<span>'+E(when)+' · '+E(label)+(count>1?' · '+count+' eventos':'')+'</span>'});
 }
 function eventMobileList(scope,rows){
- let group=eventMobileUi[scope]||'event';
- let heads=group==='event'?['Catalizador','Fecha']:group==='market'?['Precio','Variación']:['RSI','ADX'];
- return eventMobileTabs(scope)+'<div class="event-mobile-compare"><div class="event-mobile-head"><span>Valor / ISIN</span><span>'+heads[0]+'</span><span>'+heads[1]+'</span><span></span></div><div class="event-mobile-rows">'+rows.join('')+'</div></div>';
+ const group=stockMobileGroup(scope);
+ return eventMobileTabs(scope)+'<div class="asset-list-head"><span>Valor / ISIN</span><span>'+E(group.key==='general'?'Precio · variación':group.label)+'</span><span></span></div><div class="stock-mobile-rows">'+rows.join('')+'</div>';
 }
 
 function renderFuture(){
@@ -140,8 +122,8 @@ function initEventViewInteractions(){
  document.addEventListener('click',e=>{
   let tab=e.target.closest&&e.target.closest('[data-event-mobile-group]');
   if(!tab)return;
-  let scope=tab.dataset.eventMobileScope||'future';
-  eventMobileUi[scope]=tab.dataset.eventMobileGroup||'event';
+  let scope=tab.dataset.stockMobileScope||'future',key=tab.dataset.eventMobileGroup;
+  stockMobileUi[scope]=EVENT_MOBILE_GROUPS.values.some(group=>group.key===key)?key:'general';
   if(scope==='future')renderFuture();else renderCalendar();
  });
  ['futureHorizon','futureType','futureTrOnly'].forEach(id=>{
