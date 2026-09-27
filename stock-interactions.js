@@ -5,6 +5,28 @@
  * Loaded after stock-profile.js and stock-charts.js, initialized by bootstrap.js.
  */
 
+function showListCopyToast(text){
+ let el=document.querySelector('.list-copy-toast');
+ if(!el){el=document.createElement('div');el.className='list-copy-toast';document.body.appendChild(el)}
+ el.textContent=text;el.classList.add('show');
+ clearTimeout(showListCopyToast.timer);
+ showListCopyToast.timer=setTimeout(()=>el.classList.remove('show'),1200);
+}
+function copyListIsin(value){
+ value=String(value||'').trim();if(!value||value==='—')return;
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+  navigator.clipboard.writeText(value).then(()=>showListCopyToast('ISIN copiado')).catch(()=>fallbackCopyListIsin(value));
+  return;
+ }
+ fallbackCopyListIsin(value);
+}
+function fallbackCopyListIsin(value){
+ let area=document.createElement('textarea');area.value=value;area.setAttribute('readonly','');
+ area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();
+ try{document.execCommand('copy');showListCopyToast('ISIN copiado')}catch(_){showListCopyToast(value)}
+ area.remove();
+}
+
 function initStockInteractions(){
  $('#aiChatClose')?.addEventListener('click',closeAiChat);
  $('#aiChatBackdrop')?.addEventListener('click',closeAiChat);
@@ -14,6 +36,18 @@ function initStockInteractions(){
  });
 
  document.addEventListener('click',e=>{
+  let isinCopy=e.target.closest&&e.target.closest('[data-copy-isin]');
+  if(isinCopy){
+   e.preventDefault();e.stopPropagation();
+   copyListIsin(isinCopy.dataset.copyIsin||isinCopy.textContent);
+   return;
+  }
+  let recoGroup=e.target.closest&&e.target.closest('[data-reco-mobile-group]');
+  if(recoGroup){
+   e.preventDefault();e.stopPropagation();
+   if(typeof setRecommendationMobileGroup==='function')setRecommendationMobileGroup(recoGroup.dataset.recoMobileGroup||'general');
+   return;
+  }
   let aiOpen=e.target.closest&&e.target.closest('[data-ai-chat-stock]');
   if(aiOpen){
    e.preventDefault();e.stopPropagation();
