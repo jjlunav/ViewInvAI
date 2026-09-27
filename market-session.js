@@ -173,10 +173,12 @@
     candidates.sort(compare);
     const pick=fn=>candidates.filter(fn).at(-1)||null;
     const session=usSession(zoneClock('America/New_York',new Date(now)));
+    const latest=pick(q=>q.day!==null)||pick(q=>q.session==='regular')||(candidates.length?{...candidates.at(-1),session:'unknown'}:null);
+    // PRE/POST is shown only when it is the newest source-dated observation.
+    // A Friday PRE must not sit below the later Friday close on Sunday.
+    const extended=latest&&latest.day!==null&&(latest.session==='premarket'||latest.session==='postmarket')?latest:null;
     return {
-      regular:pick(q=>q.session==='regular'),
-      extended:pick(q=>q.day!==null&&(q.session==='premarket'||q.session==='postmarket')),
-      latest:pick(q=>q.day!==null)||pick(q=>q.session==='regular')||(candidates.length?{...candidates.at(-1),session:'unknown'}:null),
+      regular:pick(q=>q.session==='regular'),extended,latest,
       session,closed:session==='previous'
     };
   }
