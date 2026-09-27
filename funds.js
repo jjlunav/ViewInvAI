@@ -13,15 +13,20 @@
   ['1A','perf1Y'],['3A','perf3Y'],['5A','perf5Y'],['10A','perf10Y'],['Hist.','perfSinceInception']
  ];
  const MOBILE_GROUPS=[
-  {key:'general',label:'General',columns:[['type','Tipo'],['currency','Divisa']]},
   {key:'returns',label:'Rentabilidad',columns:[['perfYtd','YTD'],['perf1Y','1A'],['perf3Y','3A']]},
+  {key:'general',label:'Características',columns:[['type','Tipo'],['currency','Divisa']]},
   {key:'costs',label:'Costes',columns:[['ter','TER'],['trackingDifference','Tracking']]},
   {key:'market',label:'Mercado',columns:[['region','Región'],['index','Índice']]},
   {key:'operations',label:'Operativa',columns:[['distribution','Clase'],['platform','Plataforma']]},
   {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'general'};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',page:0,checkedAt:0,error:''};
+ const PAGE_SIZE=60;
+ const CATALOGUE_TTL_MS=86400000;
+ const CACHE_NAME='viewinvai-public-catalogue-v1';
+ let catalogueRevision=0,filteredCacheKey='',filteredCacheRows=[],searchTimer=null;
+ const productIndex=new Map();
  const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
@@ -131,14 +136,19 @@
   if(!fundLive.observer)fundLive.observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting)subscribeFund(entry.target.dataset.fundLiveIsin)}),{rootMargin:'250px 0px'});
   nodes.forEach(n=>fundLive.observer.observe(n));
  }
+ let portfolioQuoteFrame=0;
  function refreshFundLiveDom(isin=''){
+  if(state.sort==='current'||state.sort==='freshness')filteredCacheKey='';
   document.querySelectorAll('[data-fund-live-isin]').forEach(el=>{
    if(isin&&el.dataset.fundLiveIsin!==isin)return;
-   const p=state.products.find(x=>x.isin===el.dataset.fundLiveIsin);if(!p)return;
+   const p=productIndex.get(el.dataset.fundLiveIsin);if(!p)return;
    const value=el.querySelector('[data-fund-current-value]');if(value)value.textContent=money(fundCurrentValue(p),p.currency);
    const fresh=el.querySelector('.fund-freshness');if(fresh){const x=fundFreshness(p);fresh.className='fund-freshness '+x.kind;fresh.title=x.title;fresh.innerHTML='<i></i>'+esc(x.label)}
   });
-  renderPortfolio();
+  const panel=q('#fundPortfolioApp');
+  if(panel&&!panel.classList.contains('is-hidden')&&q('#view-portfolios.active')&&!portfolioQuoteFrame){
+   portfolioQuoteFrame=requestAnimationFrame(()=>{portfolioQuoteFrame=0;renderPortfolio()});
+  }
  }
  function norm(p){
   const platforms=p&&p.platforms&&typeof p.platforms==='object'?p.platforms:{};
@@ -216,6 +226,9 @@
   render();
  }
  function filtered(){
+  const key=JSON.stringify([catalogueRevision,state.query,state.platform,state.type,state.provider,state.region,state.distribution,state.maxTer,state.sort,state.sortDir]);
+  if(key===filteredCacheKey)return filteredCacheRows;
+  state.page=0;
   const needle=state.query.trim().toLowerCase();
   const rows=state.products.filter(p=>{
    if(state.type!=='all'&&p.type!==state.type)return false;
@@ -227,8 +240,9 @@
    if(!needle)return true;
    return [p.name,p.isin,p.provider,p.index,p.category,p.region].some(v=>String(v||'').toLowerCase().includes(needle));
   });
-  rows.sort(compareFundRows);
-  return rows;
+  filteredCacheKey=key;
+  filteredCacheRows=rows.sort(compareFundRows);
+  return filteredCacheRows;
  }
  function perfStrip(p){
   return '<div class="fund-performance">'+PERIODS.map(([label,key])=>'<span><small>'+label+'</small><b class="'+((num(p[key])||0)>=0?'positive':'negative')+'">'+pct(p[key])+'</b></span>').join('')+'</div>';
@@ -357,7 +371,9 @@
  function updateMobileFiltersState(){
   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
   const active=[state.platform!=='all',state.type!=='all',state.provider!=='all',state.region!=='all',state.distribution!=='all',state.maxTer!==null].filter(Boolean).length;
-  button.textContent=active?'Filtros · '+active:'Filtros';
+  const open=toolbar.classList.contains('mobile-filters-open');
+  button.textContent=(open?'Ocultar filtros':'Filtros')+(active?' · '+active:'');
+  button.setAttribute('aria-expanded',String(open));
   button.classList.toggle('active',active>0);
  }
  function renderFundDetail(p){
@@ -375,52 +391,115 @@
    '<div class="fund-source-line"><span>'+esc(ageText(p.sourceUpdatedAt||p.valueDate))+'</span>'+(sources?'<span>·</span>'+sources:'')+'</div>'+
   '</div>';
  }
+ function cataloguePager(total){
+  const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+  const first=state.page*PAGE_SIZE+1,last=Math.min(total,first+PAGE_SIZE-1);
+  return '<nav class="fund-pagination" aria-label="Páginas del catálogo">'+
+   '<button type="button" class="btn small" data-fund-page="'+(state.page-1)+'"'+(state.page===0?' disabled':'')+'>Anterior</button>'+
+   '<span role="status">'+first+'–'+last+' de '+total+'</span>'+
+   '<button type="button" class="btn small" data-fund-page="'+(state.page+1)+'"'+(state.page>=pages-1?' disabled':'')+'>Siguiente</button></nav>';
+ }
  function render(){
   const box=q('#fundsApp');if(!box)return;
-  if(state.loading){box.innerHTML='<div class="empty-state">Actualizando fondos y ETFs…</div>';return}
+  // Hidden catalogues must not compete with navigation or live stock quotes.
+  if(!q('#view-funds.active'))return;
+  if(!state.loaded&&!state.loading&&!state.error){void load(false);return}
+  if(state.loading&&!state.products.length){box.innerHTML='<div class="empty-state">Cargando fondos y ETFs…</div>';return}
   const rows=filtered();
+  const maxPage=Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1);
+  state.page=Math.max(0,Math.min(maxPage,state.page));
+  const shown=rows.slice(state.page*PAGE_SIZE,(state.page+1)*PAGE_SIZE);
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
-  const results=rows.length?(compactFundsView()?fundMobileList(rows):fundTable(rows)):
-    '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
-  box.innerHTML=
-   '<div class="funds-status"><strong>'+rows.length+' productos</strong><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(fundSortLabel(state.sort))+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
-   results;
+  const warning=state.error?'<div class="fund-load-warning" role="status">'+esc(state.products.length?'No se pudo actualizar. Se conserva el catálogo guardado.':'No se pudo cargar el catálogo. Pulsa Actualizar para reintentarlo.')+'</div>':'';
+  const results=shown.length?(compactFundsView()?fundMobileList(shown):fundTable(shown)):
+   '<div class="empty-state">'+(state.error?'Catálogo no disponible.':'No hay productos que coincidan con los filtros.')+'</div>';
+  if(fundLive.observer)fundLive.observer.disconnect();
+  box.innerHTML='<div class="funds-status"><strong>'+rows.length+' productos</strong><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(fundSortLabel(state.sort))+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
+   warning+results+(rows.length>PAGE_SIZE?cataloguePager(rows.length):'');
   updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
  }
- async function fetchFundCatalogue(url,cache){
-  const r=await fetch(url,{cache});
-  if(!r.ok)throw Error(String(r.status));
-  const data=await r.json();
-  const products=Array.isArray(data&&data.products)?data.products:[];
-  if(!products.length)throw Error('Catálogo de fondos vacío');
-  return data;
+ function validCatalogue(data){
+  return !!(data&&Array.isArray(data.products)&&data.products.some(p=>p&&typeof p.isin==='string'&&p.isin.trim()));
  }
- async function load(force=false){
-  if(state.loading)return;
-  if(state.loaded&&!force){render();return}
-  state.loading=true;render();
+ function cacheKey(){return '/data/funds-cache-v1.json'}
+ async function readCatalogueCache(){
+  if(!root.caches)return null;
   try{
-   let data;
-   try{
-    data=await fetchFundCatalogue(DATA+(force?'?v='+Date.now():''),force?'reload':'no-cache');
-   }catch(remoteError){
-    const native=!!(root.ViewInvAIRuntime&&root.ViewInvAIRuntime.isPackagedNative);
-    if(!native)throw remoteError;
-    console.warn('Remote funds catalogue invalid; using packaged snapshot',remoteError);
-    data=await fetchFundCatalogue(DATA+'?local=1&v='+Date.now(),'no-store');
+   const cache=await root.caches.open(CACHE_NAME),response=await cache.match(cacheKey());
+   if(!response)return null;
+   const saved=await response.json();
+   if(!validCatalogue(saved.data)||!Number.isFinite(saved.checkedAt)||saved.checkedAt>Date.now()+60000)return null;
+   return saved;
+  }catch(_){return null}
+ }
+ async function writeCatalogueCache(data,checkedAt){
+  if(!root.caches)return;
+  try{
+   const cache=await root.caches.open(CACHE_NAME);
+   await cache.put(cacheKey(),new Response(JSON.stringify({data,checkedAt}),{headers:{'Content-Type':'application/json'}}));
+  }catch(e){console.warn('Public catalogue cache unavailable',e)}
+ }
+ function acceptCatalogue(data){
+  if(!validCatalogue(data))throw Error('Catálogo de fondos inválido');
+  productIndex.clear();
+  for(const item of data.products){
+   if(!item||typeof item.isin!=='string'||!item.isin.trim())continue;
+   const product=norm(item);product.isin=product.isin.trim().toUpperCase();
+   productIndex.set(product.isin,product);
+  }
+  state.products=[...productIndex.values()];state.meta=data.meta||{};
+  catalogueRevision++;filteredCacheKey='';
+  const fill=(sel,values,label)=>{
+   const el=q(sel);if(!el)return;const current=el.value||'all';
+   el.innerHTML='<option value="all">'+label+'</option>'+values.filter(v=>typeof v==='string'&&v).sort((a,b)=>a.localeCompare(b,'es')).map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');
+   el.value=[...el.options].some(o=>o.value===current)?current:'all';
+  };
+  fill('#fundProvider',[...new Set(state.products.map(p=>p.provider))],'Todas las gestoras');
+  fill('#fundRegion',[...new Set(state.products.map(p=>p.region))],'Todas las regiones');
+  state.loaded=true;state.error='';
+ }
+ async function fetchFundCatalogue(url,cache){
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+   const response=await fetch(url,{cache,signal:controller.signal});
+   if(!response.ok)throw Error(String(response.status));
+   const data=await response.json();
+   if(!validCatalogue(data))throw Error('Catálogo de fondos vacío');
+   return data;
+  }finally{clearTimeout(timeout)}
+ }
+ let catalogueLoadPromise=null;
+ function load(force=false){
+  if(catalogueLoadPromise)return catalogueLoadPromise;
+  catalogueLoadPromise=loadCatalogue(force).finally(()=>{catalogueLoadPromise=null});
+  return catalogueLoadPromise;
+ }
+ async function loadCatalogue(force=false){
+  if(state.loading)return;
+  if(state.loaded&&!force&&Date.now()-state.checkedAt<CATALOGUE_TTL_MS){render();return}
+  state.loading=true;state.error='';render();
+  try{
+   if(!state.loaded){
+    const saved=await readCatalogueCache();
+    if(saved){acceptCatalogue(saved.data);state.checkedAt=saved.checkedAt;render();
+     if(!force&&Date.now()-saved.checkedAt<CATALOGUE_TTL_MS)return;
+    }
    }
-   state.products=data.products.map(norm).filter(p=>p.isin);
-   state.meta=data.meta||{};
-   const fill=(sel,values,label)=>{const el=q(sel);if(!el)return;const current=el.value||'all';el.innerHTML='<option value="all">'+label+'</option>'+values.filter(Boolean).sort((a,b)=>a.localeCompare(b,'es')).map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');el.value=[...el.options].some(o=>o.value===current)?current:'all'};
-   fill('#fundProvider',[...new Set(state.products.map(p=>p.provider))],'Todas las gestoras');
-   fill('#fundRegion',[...new Set(state.products.map(p=>p.region))],'Todas las regiones');
-   state.loaded=true;
-  }catch(e){
-   console.warn('Funds catalogue loading failed',e);
-   state.products=[];state.meta={};
-  }finally{state.loading=false;render()}
+   let data,remote=true;
+   try{data=await fetchFundCatalogue(DATA+(force?'?v='+Date.now():''),force?'reload':'no-cache')}
+   catch(error){
+    const native=!!(root.ViewInvAIRuntime&&root.ViewInvAIRuntime.isPackagedNative);
+    // Retain the last valid cache on failures instead of clearing the list.
+    if(state.loaded||!native)throw error;
+    data=await fetchFundCatalogue(DATA+'?local=1&v='+Date.now(),'no-store');remote=false;
+   }
+   acceptCatalogue(data);
+   if(remote){state.checkedAt=Date.now();void writeCatalogueCache(data,state.checkedAt)}
+   else{state.checkedAt=0;state.error='offline'}
+  }catch(error){state.error=String(error&&error.message||error);console.warn('Funds catalogue loading failed',error)}
+  finally{state.loading=false;render()}
  }
 
  function api(path,options={}){
@@ -428,7 +507,7 @@
   return root.ViewInvAIAuth.apiFetch(path,options);
  }
  function productForPosition(position){
-  return state.products.find(p=>p.isin===position.isin)||norm({
+  return productIndex.get(String(position.isin||'').toUpperCase())||norm({
    isin:position.isin,name:position.name,type:position.product_type,provider:position.provider,index:position.index_name,
    currency:position.currency,platforms:{tradeRepublic:'unknown',myInvestor:'unknown'}
   });
@@ -639,8 +718,9 @@
    const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
    const open=toolbar.classList.toggle('mobile-filters-open');
    button.setAttribute('aria-expanded',open?'true':'false');
+   updateMobileFiltersState();
   });
-  q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
+  q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');clearTimeout(searchTimer);searchTimer=setTimeout(render,120)});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
   q('#fundProvider')?.addEventListener('change',e=>{state.provider=e.target.value;render()});
@@ -651,6 +731,8 @@
   q('#refreshFunds')?.addEventListener('click',()=>load(true));
   document.addEventListener('click',async e=>{
    if(e.target.closest&&e.target.closest('[data-copy-isin]'))return;
+   const pageButton=e.target.closest&&e.target.closest('[data-fund-page]');
+   if(pageButton){state.page=Math.max(0,Number(pageButton.dataset.fundPage)||0);render();q('#fundsApp')?.scrollIntoView({block:'start'});return}
    const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
    if(mobileGroup){
     state.mobileGroup=mobileGroup.dataset.fundMobileGroup||'general';
@@ -724,9 +806,9 @@
    const mq=root.matchMedia('(max-width:760px)');
    if(typeof mq.addEventListener==='function')mq.addEventListener('change',()=>{if(state.loaded)render()});
   }
-  if(document.querySelector('#view-funds'))load(false);
+  if(document.querySelector('#view-funds.active'))void load(false);
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
+ root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>productIndex.get(String(isin||'').toUpperCase())||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
 })(window);
