@@ -64,6 +64,7 @@ html[data-native-app="1"] #sidebar{
 }
 
 html[data-native-app="1"] .main{
+  position:relative!important;
   width:100%!important;
   min-width:0!important;
   max-width:none!important;
@@ -82,7 +83,7 @@ html[data-native-app="1"] footer{
 
 /* Account control is a native-sized floating avatar, never part of page geometry. */
 html[data-native-app="1"] .floating-account{
-  position:fixed!important;
+  position:absolute!important;
   top:calc(var(--native-safe-top) + 8px)!important;
   right:calc(var(--native-safe-right) + 10px)!important;
   left:auto!important;
@@ -110,6 +111,10 @@ html[data-native-app="1"] .account-avatar{
   width:30px!important;
   height:30px!important;
   font-size:12px!important;
+}
+
+html[data-native-app="1"] .notification-bell{
+  display:none!important;
 }
 
 html[data-native-app="1"] .account-menu{
