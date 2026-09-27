@@ -2,6 +2,9 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ui/progressive-disclosure-0.6.8
 
 permissions:
   contents: read
