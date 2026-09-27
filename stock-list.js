@@ -31,14 +31,43 @@ function listInsightLabel(s,se,preferTr=false){
  if(trendState(s)===true&&marketChange(s,se,preferTr)!==null&&marketChange(s,se,preferTr)>0)return 'IA · tendencia favorable';
  return 'IA · seguimiento';
 }
+// Session fields are US snapshots, even when the surrounding card is LSX.
+function listSessionTimestamp(value,now=Date.now()){
+ if(value===null||value===undefined||value==='')return null;
+ let timestamp=null;
+ if(typeof value==='number'||(typeof value==='string'&&/^\d+(?:\.\d+)?$/.test(value.trim()))){
+  const number=Number(value);
+  timestamp=number<1e12?number*1000:number;
+ }else if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)){
+  timestamp=Date.parse(value);
+ }
+ return Number.isFinite(timestamp)&&timestamp>0&&timestamp<=now+60000?timestamp:null;
+}
+function selectListSessionQuote(s,se,now=Date.now()){
+ const quotes=['premarket','postmarket'].map(session=>({
+  session,price:N(s[session+'Price']),change:N(s[session+'ChangePct']),
+  at:listSessionTimestamp(s[session+'Time'],now)
+ })).filter(q=>q.price!==null&&q.price>0);
+ // An explicit session is not silently replaced by the other session.
+ if(se==='premarket'||se==='postmarket')return quotes.find(q=>q.session===se)||null;
+ if(quotes.length<2)return quotes[0]||null;
+ // Neither the file refresh time nor the current clock dates an old quote.
+ if(quotes.some(q=>q.at===null)||quotes[0].at===quotes[1].at)return null;
+ return quotes.reduce((latest,q)=>q.at>latest.at?q:latest);
+}
 function listSessionQuote(s,se,preferTr=false){
- let price=null,change=null,label='',icon='';
- if(se==='premarket'&&N(s.premarketPrice)!==null){price=s.premarketPrice;change=s.premarketChangePct;label='PRE';icon='☀'}
- else if(se==='postmarket'&&N(s.postmarketPrice)!==null){price=s.postmarketPrice;change=s.postmarketChangePct;label='POST';icon='☾'}
- else if(N(s.premarketPrice)!==null){price=s.premarketPrice;change=s.premarketChangePct;label='PRE';icon='☀'}
- else if(N(s.postmarketPrice)!==null){price=s.postmarketPrice;change=s.postmarketChangePct;label='POST';icon='☾'}
- if(price===null)return '';
- return '<div class="stock-session-quote"><span class="session-icon">'+icon+'</span><small>'+label+'</small><strong>'+snapshotPricePair(s,price,preferTr)+'</strong><span class="'+C(change)+'">'+PC(change)+'</span></div>';
+ const quote=selectListSessionQuote(s,se);
+ if(!quote){
+  const ambiguous=se!=='premarket'&&se!=='postmarket'&&
+   N(s.premarketPrice)>0&&N(s.postmarketPrice)>0;
+  return ambiguous?'<div class="stock-session-quote"><small>PRE / POST</small><span title="No se puede determinar la sesión más reciente. Ambos datos siguen disponibles en la ficha.">Consultar sesiones en ficha</span></div>':'';
+ }
+ const pre=quote.session==='premarket',label=pre?'PRE':'POST',icon=pre?'☀':'☾';
+ const stamp=quote.at===null?'Hora no disponible':new Date(quote.at).toLocaleString('es-ES',{
+  day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'
+ });
+ const title=label+' · EEUU · '+(quote.at===null?stamp:new Date(quote.at).toISOString());
+ return '<div class="stock-session-quote" title="'+E(title)+'"><span class="session-icon" aria-hidden="true">'+icon+'</span><small>'+label+' · EEUU</small><strong>'+snapshotPricePair(s,quote.price,false)+'</strong><span class="'+C(quote.change)+'">'+PC(quote.change)+'</span><small class="stock-session-time">'+E(stamp)+'</small></div>';
 }
 const STOCK_MOBILE_GROUPS=[
  {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
