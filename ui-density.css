@@ -110,12 +110,6 @@ html[data-theme="light"] .portfolio-position-more>summary{color:#516c77}
 html[data-theme="light"] .profile-disclosure>summary b{color:#17313b}
 html[data-theme="light"] .profile-disclosure>summary small{color:#718791}
 
-@media(max-width:760px){
-  .profile-primary-stats .profile-stat-list{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .profile-disclosure>summary{min-height:42px}
-  .reco-disclosures{padding:0 9px 8px}
-}
-
 html[data-native-app="1"] .profile-disclosure,
 html[data-native-app="1"] .reco-disclosure,
 html[data-native-app="1"] .portfolio-position-more{
