@@ -1,0 +1,115 @@
+<!doctype html><html lang="en"><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'">
+<title>ViewInvAI UI continuity regression</title>
+<style>
+body{margin:0;padding:12px;font:14px sans-serif}section{margin:10px 0}.stock-mobile-groups,.portfolio-tabs-track,.profile-tabs{display:flex;width:240px;overflow:auto;white-space:nowrap}.stock-mobile-groups button,.profile-tabs button{flex:0 0 100px}article{margin:4px;border:1px solid}summary{padding:4px}#spacer{height:1200px}
+</style>
+<button id="outside">Outside / modal control</button><div id="homeGroups"></div><div id="entryResults"></div><div id="recommendationResults"></div><div id="portfolioApp"></div><div id="stockQuickDetail"></div><div id="spacer"></div><pre id="test-results">{}</pre>
+<script>
+let user={uid:'account-a'},portfolio={selectedPortfolioId:'p1'};
+let state={profileKey:'NASDAQ:A',profilePreferTr:false};
+const loads=[],opened=[];
+window.ViewInvAIAuth={getUser:()=>user};
+window.ViewInvAIPortfolios={getState:()=>portfolio};
+window.ViewInvAINativeUI={syncLayout(){}};
+function stockByKey(key){return {key}}
+function activateProfileTabData(root,stock,preferTr,tab){loads.push([stock.key,preferTr,tab])}
+function $(selector){return document.querySelector(selector)}
+function openStock(stock){opened.push(stock.key)}
+</script>
+<script src="stock-interactions.js"></script>
+<script>
+(async()=>{
+ const results=[];let finished=false;
+ const tick=()=>new Promise(resolve=>setTimeout(resolve,20));
+ const assert=(ok,message='assertion failed')=>{if(!ok)throw Error(message)};
+ const host=id=>document.getElementById(id);
+ const card=(key='A',market='0',position='',extra='')=>'<article class="investing-stock-card"><div data-stock-key="'+key+'" data-stock-prefer-tr="'+market+'" data-stock-reason="'+extra+'" tabindex="0">'+key+'</div><details class="stock-card-details"><summary>More data</summary><span class="quote">10</span></details>'+(position?'<button data-position-transactions="'+position+'">Operations</button>':'')+'</article>';
+ const tabs=()=>'<nav class="stock-mobile-groups" aria-label="Data groups">'+Array.from({length:8},(_,i)=>'<button data-stock-mobile-group="'+i+'">Group '+i+'</button>').join('')+'</nav>';
+ const profile=()=>'<header>Stock</header><nav class="profile-tabs">'+['general','chart','ai'].map(key=>'<button data-profile-tab="'+key+'" aria-selected="'+(key==='general')+'">'+key+'</button>').join('')+'</nav><div class="unified-profile-body"><section data-profile-panel="general"><details class="profile-disclosure"><summary>Sessions</summary>PRE and POST</details></section><section data-profile-panel="chart" hidden>Chart</section><section data-profile-panel="ai" hidden>AI</section></div>';
+ async function test(name,fn){try{await fn();results.push({name,pass:true})}catch(error){results.push({name,pass:false,error:error.message})}}
+ function resetFocus(){host('outside').focus()}
+ initStockViewContinuity();
+ for(const id of ['homeGroups','entryResults','recommendationResults','portfolioApp']){
+  await test(id+' retains expanded details',async()=>{
+   const h=host(id);h.innerHTML=card();await tick();h.querySelector('details').open=true;h.innerHTML=card();await tick();assert(h.querySelector('details').open);
+  });
+ }
+ await test('closed details remain closed',async()=>{const h=host('entryResults');h.querySelector('details').open=false;h.innerHTML=card();await tick();assert(!h.querySelector('details').open)});
+ await test('reordering keeps state with the instrument, not the rank',async()=>{
+  const h=host('entryResults');h.innerHTML=card('A')+card('B');await tick();h.querySelector('details').open=true;h.innerHTML=card('B')+card('A');await tick();assert(!h.querySelectorAll('details')[0].open&&h.querySelectorAll('details')[1].open);
+ });
+ await test('new instrument does not inherit details',async()=>{const h=host('entryResults');h.innerHTML=card('C');await tick();assert(!h.querySelector('details').open)});
+ await test('same ticker in different markets stays isolated',async()=>{
+  const h=host('entryResults');h.innerHTML=card('A','0')+card('A','1');await tick();h.querySelector('details').open=true;h.innerHTML=card('A','1')+card('A','0');await tick();assert(!h.querySelectorAll('details')[0].open&&h.querySelectorAll('details')[1].open);
+ });
+ await test('duplicate home instruments remain separate by panel',async()=>{
+  const h=host('homeGroups');const html='<section class="home-market-panel popular">'+card()+'</section><section class="home-market-panel positive-panel">'+card()+'</section>';
+  h.innerHTML=html;await tick();h.querySelector('details').open=true;h.innerHTML=html;await tick();assert(h.querySelectorAll('details')[0].open&&!h.querySelectorAll('details')[1].open);
+ });
+ await test('portfolio positions do not share expanded state',async()=>{
+  const h=host('portfolioApp');h.innerHTML=card('A','0','pos1')+card('A','0','pos2');await tick();h.querySelector('details').open=true;h.innerHTML=card('A','0','pos2')+card('A','0','pos1');await tick();assert(!h.querySelectorAll('details')[0].open&&h.querySelectorAll('details')[1].open);
+ });
+ await test('focused disclosure regains focus after refresh',async()=>{
+  const h=host('entryResults');h.innerHTML=card();await tick();h.querySelector('summary').focus();h.innerHTML=card();await tick();assert(document.activeElement===h.querySelector('summary'));
+ });
+ await test('dynamic ranking reason does not break focus identity',async()=>{
+  const h=host('entryResults');h.querySelector('[data-stock-key]').focus();h.innerHTML=card('A','0','','updated reason');await tick();assert(document.activeElement===h.querySelector('[data-stock-key]'));
+ });
+ await test('focus restoration does not move vertical scroll',async()=>{
+  const h=host('entryResults');h.querySelector('summary').focus();window.scrollTo(0,400);const y=window.scrollY;h.innerHTML=card();await tick();assert(window.scrollY===y);window.scrollTo(0,0);
+ });
+ await test('refresh does not steal focus from a modal/outside control',async()=>{
+  const h=host('entryResults');h.querySelector('summary').focus();h.innerHTML=card();host('outside').focus();await tick();assert(document.activeElement===host('outside'));
+ });
+ await test('intentional blur does not restore unwanted focus',async()=>{
+  const h=host('entryResults');h.querySelector('summary').focus();h.querySelector('summary').blur();await tick();h.innerHTML=card();await tick();assert(document.activeElement===document.body);
+ });
+ await test('removed instrument does not move focus to another row',async()=>{
+  const h=host('entryResults');h.querySelector('summary').focus();h.innerHTML=card('Z');await tick();assert(document.activeElement===document.body);
+ });
+ await test('horizontal group scroll survives click-triggered rerender',async()=>{
+  const h=host('entryResults');h.innerHTML=tabs()+card();await tick();const nav=h.querySelector('nav');nav.scrollLeft=260;
+  nav.querySelectorAll('button')[3].addEventListener('click',()=>{h.innerHTML=tabs()+card()},{once:true});nav.querySelectorAll('button')[3].click();await tick();assert(h.querySelector('nav').scrollLeft===260,'scroll='+h.querySelector('nav').scrollLeft);
+ });
+ await test('horizontal portfolio tabs survive a live refresh',async()=>{
+  const h=host('portfolioApp');const html=tabs().replace('stock-mobile-groups','portfolio-tabs-track')+card();h.innerHTML=html;await tick();const nav=h.querySelector('nav');nav.scrollLeft=180;nav.dispatchEvent(new Event('scroll'));h.innerHTML=html;await tick();assert(h.querySelector('nav').scrollLeft===180);
+ });
+ await test('account changes discard presentation state and focus',async()=>{
+  const h=host('portfolioApp');h.innerHTML=card();await tick();h.querySelector('details').open=true;h.querySelector('summary').focus();user={uid:'account-b'};h.innerHTML=card();await tick();assert(!h.querySelector('details').open);assert(document.activeElement===document.body);
+ });
+ await test('selected portfolio changes discard presentation state',async()=>{
+  const h=host('portfolioApp');h.querySelector('details').open=true;portfolio.selectedPortfolioId='p2';h.innerHTML=card();await tick();assert(!h.querySelector('details').open);
+ });
+ await test('profile sessions remain expanded for the same stock',async()=>{
+  const h=host('stockQuickDetail');h.innerHTML=profile();await tick();h.querySelector('details').open=true;h.innerHTML=profile();await tick();assert(h.querySelector('details').open);
+ });
+ await test('chart tab and lazy load survive profile rerender',async()=>{
+  const h=host('stockQuickDetail');h.querySelectorAll('[data-profile-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.profileTab==='chart')));
+  const before=loads.length;h.innerHTML=profile();await tick();assert(h.dataset.profileTab==='chart');assert(!h.querySelector('[data-profile-panel="chart"]').hidden);assert(loads.length===before+1&&loads.at(-1)[2]==='chart');
+ });
+ await test('switching stock resets profile details and selected tab',async()=>{
+  const h=host('stockQuickDetail');state.profileKey='NASDAQ:B';h.innerHTML=profile();await tick();assert(!h.querySelector('details').open);assert(h.querySelector('[data-profile-tab="general"]').getAttribute('aria-selected')==='true');assert(h.dataset.profileTab==='general');
+ });
+ await test('switching stock market does not inherit disclosures',async()=>{
+  const h=host('stockQuickDetail');h.querySelector('details').open=true;state.profilePreferTr=true;h.innerHTML=profile();await tick();assert(!h.querySelector('details').open);
+ });
+ await test('nested quote updates do not reset or restore unrelated UI',async()=>{
+  const h=host('entryResults');h.innerHTML=card();await tick();h.querySelector('details').open=true;resetFocus();h.querySelector('.quote').textContent='12';await tick();assert(h.querySelector('details').open);assert(document.activeElement===host('outside'));
+ });
+ await test('initializing twice does not duplicate observers/lazy loads',async()=>{
+  initStockViewContinuity();const h=host('stockQuickDetail');h.querySelectorAll('[data-profile-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.profileTab==='ai')));const before=loads.length;h.innerHTML=profile();await tick();assert(loads.length===before+1,'loads='+loads.length+' previous='+before);
+ });
+ initStockInteractions();
+ await test('Enter on a nested copy button is not intercepted by stock row',async()=>{
+  const h=host('entryResults');h.innerHTML='<article data-stock-key="A" tabindex="0"><button data-copy-isin="US0000000001">Copy</button></article>';await tick();const event=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});const before=opened.length;h.querySelector('button').dispatchEvent(event);assert(!event.defaultPrevented);assert(opened.length===before);
+ });
+ await test('Enter on a nested input is not intercepted by stock row',async()=>{
+  const h=host('entryResults');h.querySelector('article').innerHTML='<input>';const event=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});const before=opened.length;h.querySelector('input').dispatchEvent(event);assert(!event.defaultPrevented);assert(opened.length===before);
+ });
+ await test('Enter on the stock row still opens its profile once',async()=>{
+  const h=host('entryResults');const event=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});const before=opened.length;h.querySelector('article').dispatchEvent(event);assert(event.defaultPrevented);assert(opened.length===before+1&&opened.at(-1)==='A');
+ });
+ finished=true;host('test-results').textContent=JSON.stringify({finished,results});document.documentElement.dataset.result=results.every(x=>x.pass)?'pass':'fail';
+})().catch(error=>{document.getElementById('test-results').textContent=JSON.stringify({finished:false,results:[{name:'harness',pass:false,error:error.message}]});document.documentElement.dataset.result='fail'});
+</script></html>
