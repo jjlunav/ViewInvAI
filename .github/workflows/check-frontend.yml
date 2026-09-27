@@ -179,6 +179,13 @@ jobs:
           catalog = Path("catalog.js").read_text(encoding="utf-8")
           if "function renderCatalogTable" not in catalog or "function initCatalogInteractions" not in catalog:
               raise SystemExit("catalog.js incompleto")
+          required_catalog_mobile = (
+              "const CATALOG_MOBILE_GROUPS=", "function catalogMobileList",
+              "data-catalog-mobile-group", "function catalogMobileRow"
+          )
+          missing_catalog_mobile = [item for item in required_catalog_mobile if item not in catalog]
+          if missing_catalog_mobile:
+              raise SystemExit("Catalogo movil tabulado incompleto: " + ", ".join(missing_catalog_mobile))
           heatmap = Path("heatmap.js").read_text(encoding="utf-8")
           if "function renderHeatmap" not in heatmap or "function initHeatmapInteractions" not in heatmap:
               raise SystemExit("heatmap.js incompleto")
@@ -188,6 +195,13 @@ jobs:
           stock_list = Path("stock-list.js").read_text(encoding="utf-8")
           if "function standardStockCard" not in stock_list or "function renderHome" not in stock_list or "function renderEntry" not in stock_list or "function initStockListInteractions" not in stock_list:
               raise SystemExit("stock-list.js incompleto")
+          required_stock_mobile = (
+              "const STOCK_MOBILE_GROUPS=", "function stockMobileList",
+              "data-stock-mobile-group", "stockCompactListView()"
+          )
+          missing_stock_mobile = [item for item in required_stock_mobile if item not in stock_list]
+          if missing_stock_mobile:
+              raise SystemExit("Listado movil de acciones incompleto: " + ", ".join(missing_stock_mobile))
           recommendation = Path("recommendation.js").read_text(encoding="utf-8")
           if "function recommendationAnalysis" not in recommendation or "function renderRecommendation" not in recommendation or "function highConvictionRecommendation" not in recommendation:
               raise SystemExit("recommendation.js incompleto")
