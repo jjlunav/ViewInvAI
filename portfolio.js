@@ -300,11 +300,12 @@ function renderPositionRow(p, index = 0) {
         '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
         (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%' + (pnlAbs === null ? '' : ' · ' + (pnlAbs >= 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency)) + '</b> desde entrada</span>') +
       '</div>' +
-      '<div class="portfolio-position-actions">' +
-        '<span class="portfolio-position-signal">' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span>' +
+      '<details class="portfolio-position-more"><summary><span>' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span><i aria-hidden="true">＋</i></summary>' +
+       '<div class="portfolio-position-actions">' +
         '<button type="button" class="portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">Analizar IA</button>' +
         '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
-      '</div>' +
+       '</div>' +
+      '</details>' +
     '</div>';
 
   if (window.ViewInvAI && typeof window.ViewInvAI.renderStandardStockCard === "function") {
