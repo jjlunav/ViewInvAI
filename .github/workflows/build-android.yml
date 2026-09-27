@@ -55,7 +55,13 @@ jobs:
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
           test -s mobile-shell/funds.js
+          test -s mobile-shell/recommendation.js
           test -s mobile-shell/native-runtime.js
+          grep -q 'function recommendationCompactView' mobile-shell/recommendation.js
+          grep -q 'function recommendationMobileList' mobile-shell/recommendation.js
+          grep -q 'data-mobile-view="alerts"' mobile-shell/index.html
+          grep -q 'html\[data-native-app="1"\] .notification-bell' mobile-shell/mobile-app.css
+          grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
           grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
           test -s mobile-shell/data/market.json
