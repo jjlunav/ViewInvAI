@@ -8,7 +8,7 @@ const files = [
   'favicon.svg',
   'styles.css',
   'web-mobile.css',
-  'mobile-app.css',
+  'mobile-app.css',\n  'ui-density.css',
   'native-runtime.js',
   'market-session.js',
   'score-engine.js',
