@@ -1,3 +1,6 @@
+/* Shared semantic aliases used by all compact lists. */
+:root{--positive:var(--green);--negative:var(--red)}
+
 /*
  * ViewInvAI progressive disclosure
  * --------------------------------
@@ -160,4 +163,23 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
   html[data-native-app="1"] .profile-primary-stats .profile-stat-list{
     grid-template-columns:minmax(0,1fr)!important;
   }
+}
+
+/* Paging keeps large catalogues bounded without discarding any products. */
+.fund-pagination{
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ padding:10px 0;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;
+}
+.fund-pagination button{flex:0 0 auto;min-height:40px}
+.fund-pagination button:disabled{opacity:.4;cursor:default}
+.fund-load-warning{padding:8px 0;font-size:11px;color:var(--amber);line-height:1.4}
+@media(max-width:760px){
+ html:not([data-native-app="1"]) #view-funds .fund-mobile-compare-head,
+ html:not([data-native-app="1"]) #view-funds .fund-mobile-row{
+  grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,.8fr)) 12px;
+ }
+ html:not([data-native-app="1"]) #view-funds .fund-mobile-cols-3 .fund-mobile-compare-head,
+ html:not([data-native-app="1"]) #view-funds .fund-mobile-cols-3 .fund-mobile-row{
+  grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,.7fr)) 12px;
+ }
 }
