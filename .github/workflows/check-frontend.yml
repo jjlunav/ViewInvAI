@@ -545,7 +545,9 @@ jobs:
                   toggle.click();
                   if(getComputedStyle(advanced).display==='none')return fail('advanced fund filters did not open');
                   toggle.click();
-                  rows[0].click();
+                  const currentFirstRow=document.querySelector('#fundsApp .fund-mobile-row');
+                  if(!currentFirstRow)return fail('native compact fund row disappeared after tab change');
+                  currentFirstRow.click();
                   const modal=document.querySelector('#fundModal');
                   if(!modal?.classList.contains('open')||!modal.querySelector('.fund-detail-sheet'))return fail('native fund detail did not open');
                   document.querySelector('[data-fund-modal-close]')?.click();
