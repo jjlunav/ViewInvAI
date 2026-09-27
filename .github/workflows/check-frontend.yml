@@ -28,7 +28,7 @@ on:
       - "index.html"
       - "styles.css"
       - "web-mobile.css"
-      - "mobile-app.css"
+      - "mobile-app.css"\n      - "ui-density.css"
       - "mobile-app.js"
       - "worker.js"
       - "package.json"
@@ -115,6 +115,7 @@ jobs:
           shared = Path("styles.css").read_text(encoding="utf-8")
           web_mobile = Path("web-mobile.css").read_text(encoding="utf-8")
           native_css = Path("mobile-app.css").read_text(encoding="utf-8")
+          density_css = Path("ui-density.css").read_text(encoding="utf-8")
           app = Path("app.js").read_text(encoding="utf-8")
           nav = Path("navigation.js").read_text(encoding="utf-8")
           html = Path("index.html").read_text(encoding="utf-8")
@@ -199,12 +200,26 @@ jobs:
               raise SystemExit("funds.js incompleto")
 
           required_assets = (
-              "web-mobile.css", "mobile-app.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
+              "web-mobile.css", "mobile-app.css", "ui-density.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
               "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "funds.js", "bootstrap.js"
           )
           missing_assets = [item for item in required_assets if item not in html]
           if missing_assets:
               raise SystemExit("index.html no carga la arquitectura separada: " + ", ".join(missing_assets))
+
+          if "profileGeneralPrimaryStats" not in profile or "profileDisclosure" not in profile:
+              raise SystemExit("stock-profile.js no aplica divulgacion progresiva")
+          if "stock-card-details" not in stock_list:
+              raise SystemExit("stock-list.js no oculta metricas secundarias")
+          if "reco-disclosure" not in recommendation:
+              raise SystemExit("recommendation.js no oculta factores secundarios")
+          portfolio = Path("portfolio.js").read_text(encoding="utf-8")
+          if "portfolio-position-more" not in portfolio:
+              raise SystemExit("portfolio.js no aplica detalle progresivo")
+          required_density = ("profile-disclosure", "stock-card-details", "reco-disclosure", "portfolio-position-more")
+          missing_density = [item for item in required_density if item not in density_css]
+          if missing_density:
+              raise SystemExit("ui-density.css incompleto: " + ", ".join(missing_density))
 
           print("Arquitectura frontend separada: OK")
           PY
