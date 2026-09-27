@@ -9,6 +9,7 @@ const files = [
   'styles.css',
   'web-mobile.css',
   'mobile-app.css',
+  'ui-density.css',
   'native-runtime.js',
   'market-session.js',
   'score-engine.js',

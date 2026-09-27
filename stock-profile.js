@@ -51,19 +51,26 @@ function profileAiPanel(s,mode='us'){
   '</div>'+
  '</aside>';
 }
-function profileGeneralStats(s,isTr,se){
+function profileGeneralPrimaryStats(s,isTr,se){
  let range=N(s.dayLow)!==null&&N(s.dayHigh)!==null?PR(s.dayLow)+' - '+PR(s.dayHigh):'—';
+ return [
+  profileKpi('Rango día',range,'Mínimo - máximo'),
+  profileKpi('Volumen actual',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
+  profileKpi('Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
+  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
+ ].join('');
+}
+function profileGeneralExtraStats(s,isTr,se){
  let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
  return [
   profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
-  profileKpi('Rango día',range,'Mínimo - máximo'),
   profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
-  profileKpi('Volumen actual',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
   profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones'),
-  profileKpi('Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
-  profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),(s.fundamentalCurrency||'USD')),
-  profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
+  profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),(s.fundamentalCurrency||'USD'))
  ].join('');
+}
+function profileDisclosure(label,body,meta=''){
+ return '<details class="profile-disclosure"><summary><span><b>'+E(label)+'</b>'+(meta?'<small>'+E(meta)+'</small>':'')+'</span><i aria-hidden="true">＋</i></summary><div class="profile-disclosure-body">'+body+'</div></details>';
 }
 function profileFundamentalStats(s){
  let cur=E(s.fundamentalCurrency||'USD');
@@ -194,8 +201,11 @@ function quickProfileHtml(s,opts={}){
  return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
-   '<section class="profile-tab-panel active" data-profile-panel="general">'+profileSessionStrip(s,isTr)+
-   '<section class="profile-section profile-stats-section" id="profile-general"><div class="profile-section-head"><h3>Estadísticas clave</h3><span>Datos de mercado</span></div><div class="profile-stat-list">'+profileGeneralStats(s,isTr,se)+'</div></section></section>'+
+   '<section class="profile-tab-panel active" data-profile-panel="general">'+
+   '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
+   profileDisclosure('Sesiones de mercado',profileSessionStrip(s,isTr),'Premarket · Regular · Postmarket')+
+   profileDisclosure('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización')+
+   '</section>'+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-tab-panel" data-profile-panel="fundamental" hidden><section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section></section>'+
    '<section class="profile-tab-panel" data-profile-panel="technical" hidden><section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section></section>'+

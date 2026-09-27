@@ -51,6 +51,7 @@ jobs:
           npm run mobile:build
           test -s mobile-shell/index.html
           test -s mobile-shell/styles.css
+          test -s mobile-shell/ui-density.css
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
           test -s mobile-shell/funds.js
@@ -115,6 +116,11 @@ jobs:
                   if(!shell||getComputedStyle(shell).position!=='fixed')return fail('pinned stock shell missing');
                   const general=detail.querySelector('[data-profile-panel="general"]'),chart=detail.querySelector('[data-profile-panel="chart"]'),ai=detail.querySelector('[data-profile-panel="ai"]');
                   if(!general||general.hidden||!chart||!chart.hidden||!ai||!ai.hidden)return fail('default stock tab state invalid');
+                  const disclosures=[...detail.querySelectorAll('.profile-disclosure')];
+                  if(disclosures.length<2)return fail('progressive stock disclosure missing');
+                  if(disclosures.some(item=>item.open))return fail('secondary stock data starts expanded');
+                  disclosures[0].querySelector('summary')?.click();
+                  if(!disclosures[0].open)return fail('progressive stock disclosure did not open');
                   if(!detail.querySelector('[data-quote-freshness-key]'))return fail('freshness indicator missing');
                   detail.querySelector('[data-profile-tab="chart"]')?.click();
                   setTimeout(()=>{

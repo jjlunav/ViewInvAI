@@ -1,0 +1,163 @@
+/*
+ * ViewInvAI progressive disclosure
+ * --------------------------------
+ * Keeps the primary decision data visible while moving secondary detail behind
+ * native <details> controls. Shared by web and the Capacitor Android shell.
+ */
+
+.profile-disclosure,
+.stock-card-details,
+.reco-disclosure,
+.portfolio-position-more{
+  border:1px solid rgba(76,100,111,.19);
+  border-radius:10px;
+  background:rgba(255,255,255,.018);
+  overflow:hidden;
+}
+
+.profile-disclosure{margin:8px 0}
+.reco-disclosures{display:grid;gap:7px;padding:0 12px 10px}
+.reco-disclosure{margin:0}
+.stock-card-details{margin:0;border-width:1px 0 0;border-radius:0;background:transparent}
+.portfolio-position-more{margin:6px 0 0;background:rgba(255,255,255,.018)}
+
+.profile-disclosure>summary,
+.stock-card-details>summary,
+.reco-disclosure>summary,
+.portfolio-position-more>summary{
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-height:38px;
+  padding:8px 10px;
+  cursor:pointer;
+  color:#9eb0b8;
+  font-size:9px;
+  font-weight:780;
+  letter-spacing:.18px;
+  user-select:none;
+}
+.profile-disclosure>summary::-webkit-details-marker,
+.stock-card-details>summary::-webkit-details-marker,
+.reco-disclosure>summary::-webkit-details-marker,
+.portfolio-position-more>summary::-webkit-details-marker{display:none}
+.profile-disclosure>summary>span,
+.stock-card-details>summary>span,
+.reco-disclosure>summary>span,
+.portfolio-position-more>summary>span{min-width:0}
+.profile-disclosure>summary span{display:grid;gap:2px}
+.profile-disclosure>summary b{font-size:10px;color:#c8d6dc}
+.profile-disclosure>summary small{font-size:7.5px;font-weight:560;color:#637a84}
+.profile-disclosure>summary i,
+.stock-card-details>summary i,
+.reco-disclosure>summary i,
+.portfolio-position-more>summary i{
+  flex:0 0 auto;
+  font-style:normal;
+  font-size:14px;
+  line-height:1;
+  color:#718995;
+  transition:transform .16s ease;
+}
+.profile-disclosure[open]>summary i,
+.stock-card-details[open]>summary i,
+.reco-disclosure[open]>summary i,
+.portfolio-position-more[open]>summary i{transform:rotate(45deg)}
+.profile-disclosure[open]>summary,
+.reco-disclosure[open]>summary,
+.portfolio-position-more[open]>summary{border-bottom:1px solid rgba(76,100,111,.16)}
+.profile-disclosure-body{padding:4px 0}
+.profile-disclosure-body .profile-session-strip{margin:0;border:0;border-radius:0}
+.profile-disclosure-body .profile-stat-list{padding-top:4px}
+
+.stock-card-details>summary{min-height:30px;padding:5px 10px;color:#6f8791;font-size:8px}
+.stock-card-details .stock-market-line{border-top:1px solid rgba(76,100,111,.12)!important}
+.stock-card-details:not([open]) .stock-market-line{display:none!important}
+
+.reco-disclosure>summary{font-size:9px;color:#9db0b9}
+.reco-disclosure .reco-factors{padding-top:3px}
+.reco-disclosure .reco-events{padding-top:8px}
+
+.portfolio-position-more>summary{
+  min-height:32px;
+  padding:6px 8px;
+  color:#8fa4ad;
+  font-size:8.5px;
+}
+.portfolio-position-more .portfolio-position-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  padding:7px 8px 8px;
+}
+
+.profile-primary-stats{margin-top:8px!important}
+
+html[data-theme="light"] .profile-disclosure,
+html[data-theme="light"] .stock-card-details,
+html[data-theme="light"] .reco-disclosure,
+html[data-theme="light"] .portfolio-position-more{
+  background:#fbfdfe;
+  border-color:#d8e3e7;
+}
+html[data-theme="light"] .profile-disclosure>summary,
+html[data-theme="light"] .stock-card-details>summary,
+html[data-theme="light"] .reco-disclosure>summary,
+html[data-theme="light"] .portfolio-position-more>summary{color:#516c77}
+html[data-theme="light"] .profile-disclosure>summary b{color:#17313b}
+html[data-theme="light"] .profile-disclosure>summary small{color:#718791}
+
+html[data-native-app="1"] .profile-disclosure,
+html[data-native-app="1"] .reco-disclosure,
+html[data-native-app="1"] .portfolio-position-more{
+  border-color:var(--native-line)!important;
+  background:var(--native-surface)!important;
+}
+html[data-native-app="1"] .profile-disclosure{margin:7px 0!important}
+html[data-native-app="1"] .profile-disclosure>summary,
+html[data-native-app="1"] .reco-disclosure>summary,
+html[data-native-app="1"] .portfolio-position-more>summary{
+  min-height:38px!important;
+  padding:7px 9px!important;
+}
+html[data-native-app="1"] .profile-primary-stats{margin:7px 0!important}
+html[data-native-app="1"] .profile-primary-stats .profile-stat-list{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:0 10px!important;
+  padding:0 8px 5px!important;
+}
+html[data-native-app="1"] .profile-primary-stats .profile-stat-row{
+  min-height:42px!important;
+  padding:6px 0!important;
+}
+html[data-native-app="1"] .stock-card-details{
+  border-color:var(--native-line)!important;
+}
+html[data-native-app="1"] .stock-card-details>summary{
+  min-height:31px!important;
+  padding:5px 10px!important;
+}
+html[data-native-app="1"] .stock-card-details .stock-market-line{
+  padding-top:6px!important;
+  padding-bottom:6px!important;
+}
+html[data-native-app="1"] .reco-disclosures{gap:6px!important;padding:0 10px 8px!important}
+html[data-native-app="1"] .portfolio-position-more{margin-top:5px!important}
+html[data-native-app="1"] .portfolio-position-more .portfolio-position-actions{
+  padding:6px!important;
+}
+html[data-native-app="1"] .portfolio-position-more .portfolio-analyze,
+html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
+  min-height:32px!important;
+  padding:5px 8px!important;
+  font-size:9px!important;
+}
+
+@media(max-width:339px){
+  html[data-native-app="1"] .profile-primary-stats .profile-stat-list{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+}

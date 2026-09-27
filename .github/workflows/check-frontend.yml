@@ -29,6 +29,7 @@ on:
       - "styles.css"
       - "web-mobile.css"
       - "mobile-app.css"
+      - "ui-density.css"
       - "mobile-app.js"
       - "worker.js"
       - "package.json"
@@ -115,6 +116,7 @@ jobs:
           shared = Path("styles.css").read_text(encoding="utf-8")
           web_mobile = Path("web-mobile.css").read_text(encoding="utf-8")
           native_css = Path("mobile-app.css").read_text(encoding="utf-8")
+          density_css = Path("ui-density.css").read_text(encoding="utf-8")
           app = Path("app.js").read_text(encoding="utf-8")
           nav = Path("navigation.js").read_text(encoding="utf-8")
           html = Path("index.html").read_text(encoding="utf-8")
@@ -177,15 +179,36 @@ jobs:
           catalog = Path("catalog.js").read_text(encoding="utf-8")
           if "function renderCatalogTable" not in catalog or "function initCatalogInteractions" not in catalog:
               raise SystemExit("catalog.js incompleto")
+          required_catalog_mobile = (
+              "const CATALOG_MOBILE_GROUPS=", "function catalogMobileList",
+              "data-catalog-mobile-group", "function catalogMobileRow"
+          )
+          missing_catalog_mobile = [item for item in required_catalog_mobile if item not in catalog]
+          if missing_catalog_mobile:
+              raise SystemExit("Catalogo movil tabulado incompleto: " + ", ".join(missing_catalog_mobile))
           heatmap = Path("heatmap.js").read_text(encoding="utf-8")
           if "function renderHeatmap" not in heatmap or "function initHeatmapInteractions" not in heatmap:
               raise SystemExit("heatmap.js incompleto")
           events = Path("events.js").read_text(encoding="utf-8")
           if "function stockEvents" not in events or "function renderFuture" not in events or "function renderCalendar" not in events:
               raise SystemExit("events.js incompleto")
+          required_event_mobile = (
+              "const EVENT_MOBILE_GROUPS=", "function eventMobileList",
+              "data-event-mobile-group", "eventCompactListView()"
+          )
+          missing_event_mobile = [item for item in required_event_mobile if item not in events]
+          if missing_event_mobile:
+              raise SystemExit("Listados moviles de eventos incompletos: " + ", ".join(missing_event_mobile))
           stock_list = Path("stock-list.js").read_text(encoding="utf-8")
           if "function standardStockCard" not in stock_list or "function renderHome" not in stock_list or "function renderEntry" not in stock_list or "function initStockListInteractions" not in stock_list:
               raise SystemExit("stock-list.js incompleto")
+          required_stock_mobile = (
+              "const STOCK_MOBILE_GROUPS=", "function stockMobileList",
+              "data-stock-mobile-group", "stockCompactListView()"
+          )
+          missing_stock_mobile = [item for item in required_stock_mobile if item not in stock_list]
+          if missing_stock_mobile:
+              raise SystemExit("Listado movil de acciones incompleto: " + ", ".join(missing_stock_mobile))
           recommendation = Path("recommendation.js").read_text(encoding="utf-8")
           if "function recommendationAnalysis" not in recommendation or "function renderRecommendation" not in recommendation or "function highConvictionRecommendation" not in recommendation:
               raise SystemExit("recommendation.js incompleto")
@@ -197,14 +220,37 @@ jobs:
           funds = Path("funds.js").read_text(encoding="utf-8")
           if "root.ViewInvAIFunds=" not in funds or "/api/fund-portfolios" not in funds or "/api/fund-positions" not in funds:
               raise SystemExit("funds.js incompleto")
+          required_fund_mobile = (
+              "const MOBILE_GROUPS=", "data-fund-mobile-group", "function fundMobileGroup",
+              "function fundMobileCellValue", "function compactFundsView"
+          )
+          missing_fund_mobile = [item for item in required_fund_mobile if item not in funds]
+          if missing_fund_mobile:
+              raise SystemExit("Comparador movil de fondos incompleto: " + ", ".join(missing_fund_mobile))
+          if "General" not in funds or "Rentabilidad" not in funds or "Costes" not in funds or "Ratios" not in funds or "Otros" not in funds:
+              raise SystemExit("Faltan grupos del comparador movil de fondos")
 
           required_assets = (
-              "web-mobile.css", "mobile-app.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
+              "web-mobile.css", "mobile-app.css", "ui-density.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
               "stock-charts.js", "events.js", "stock-list.js", "recommendation.js", "help.js", "stock-profile.js", "catalog.js", "heatmap.js", "stock-interactions.js", "funds.js", "bootstrap.js"
           )
           missing_assets = [item for item in required_assets if item not in html]
           if missing_assets:
               raise SystemExit("index.html no carga la arquitectura separada: " + ", ".join(missing_assets))
+
+          if "profileGeneralPrimaryStats" not in profile or "profileDisclosure" not in profile:
+              raise SystemExit("stock-profile.js no aplica divulgacion progresiva")
+          if "stock-card-details" not in stock_list:
+              raise SystemExit("stock-list.js no oculta metricas secundarias")
+          if "reco-disclosure" not in recommendation:
+              raise SystemExit("recommendation.js no oculta factores secundarios")
+          portfolio = Path("portfolio.js").read_text(encoding="utf-8")
+          if "portfolio-position-more" not in portfolio:
+              raise SystemExit("portfolio.js no aplica detalle progresivo")
+          required_density = ("profile-disclosure", "stock-card-details", "reco-disclosure", "portfolio-position-more")
+          missing_density = [item for item in required_density if item not in density_css]
+          if missing_density:
+              raise SystemExit("ui-density.css incompleto: " + ", ".join(missing_density))
 
           print("Arquitectura frontend separada: OK")
           PY
@@ -429,7 +475,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-native/
+          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
@@ -483,15 +529,25 @@ jobs:
                   const rows=document.querySelectorAll('#fundsApp .fund-mobile-row');
                   if(rows.length!==2)return fail('native compact fund rows missing');
                   if(document.querySelector('#fundsApp .fund-table'))return fail('desktop fund table rendered in native mode');
-                  const head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
-                  if(head.join('|')!=='Fondo|1M|6M|1A')return fail('native fund columns are not compact');
+                  const tabs=[...document.querySelectorAll('#fundsApp [data-fund-mobile-group]')];
+                  if(tabs.length<7)return fail('native fund grouped tabs missing');
+                  const activeTab=document.querySelector('#fundsApp [data-fund-mobile-group].active');
+                  if(!activeTab||activeTab.dataset.fundMobileGroup!=='general')return fail('native fund default group invalid');
+                  let head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Nombre / ISIN|Tipo|Divisa')return fail('native fund general columns invalid');
+                  const returnsTab=document.querySelector('#fundsApp [data-fund-mobile-group="returns"]');
+                  returnsTab?.click();
+                  head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Nombre / ISIN|YTD|1A|3A')return fail('native fund returns columns invalid');
                   const toggle=document.querySelector('#fundMobileFiltersToggle'),advanced=document.querySelector('#fundToolbarAdvanced');
                   if(!toggle||!advanced)return fail('native fund filter drawer missing');
                   if(getComputedStyle(advanced).display!=='none')return fail('advanced fund filters must start hidden');
                   toggle.click();
                   if(getComputedStyle(advanced).display==='none')return fail('advanced fund filters did not open');
                   toggle.click();
-                  rows[0].click();
+                  const currentFirstRow=document.querySelector('#fundsApp .fund-mobile-row');
+                  if(!currentFirstRow)return fail('native compact fund row disappeared after tab change');
+                  currentFirstRow.click();
                   const modal=document.querySelector('#fundModal');
                   if(!modal?.classList.contains('open')||!modal.querySelector('.fund-detail-sheet'))return fail('native fund detail did not open');
                   document.querySelector('[data-fund-modal-close]')?.click();

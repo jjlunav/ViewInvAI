@@ -12,11 +12,21 @@
   ['1M','perf1M'],['3M','perf3M'],['6M','perf6M'],['YTD','perfYtd'],
   ['1A','perf1Y'],['3A','perf3Y'],['5A','perf5Y'],['10A','perf10Y'],['Hist.','perfSinceInception']
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null};
+ const MOBILE_GROUPS=[
+  {key:'general',label:'General',columns:[['type','Tipo'],['currency','Divisa']]},
+  {key:'returns',label:'Rentabilidad',columns:[['perfYtd','YTD'],['perf1Y','1A'],['perf3Y','3A']]},
+  {key:'costs',label:'Costes',columns:[['ter','TER'],['trackingDifference','Tracking']]},
+  {key:'market',label:'Mercado',columns:[['region','Región'],['index','Índice']]},
+  {key:'operations',label:'Operativa',columns:[['distribution','Clase'],['platform','Plataforma']]},
+  {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
+  {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
+ ];
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'general'};
  const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
  function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
+ function compactFundsView(){return nativeFundsView()||!!(root.matchMedia&&root.matchMedia('(max-width:760px)').matches)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
  function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
@@ -171,7 +181,7 @@
   if(key==='platform')return platformSortValue(p);
   if(key==='current')return fundCurrentValue(p);
   if(key==='freshness')return freshnessSortValue(p);
-  if(key==='index'||key==='provider'||key==='distribution'||key==='region')return String(p[key]||'');
+  if(key==='index'||key==='provider'||key==='distribution'||key==='region'||key==='currency'||key==='category')return String(p[key]||'');
   if(key==='type')return String(p.type||'');
   return num(p[key]);
  }
@@ -189,7 +199,7 @@
   if(state.sort===key&&!dir)state.sortDir=state.sortDir==='asc'?'desc':'asc';
   else{
    state.sort=key;
-   state.sortDir=dir||(key==='name'||key==='index'||key==='provider'||key==='distribution'||key==='region'?'asc':'desc');
+   state.sortDir=dir||(key==='name'||key==='index'||key==='provider'||key==='distribution'||key==='region'||key==='currency'||key==='type'?'asc':'desc');
   }
   const select=q('#fundSort');
   if(select){
@@ -287,23 +297,62 @@
  }
  function mobileSortHead(key,label){
   const active=state.sort===key;
-  return '<button type="button" class="fund-mobile-sort'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'">'+esc(label)+(active?'<i aria-hidden="true">'+(state.sortDir==='asc'?'↑':'↓')+'</i>':'')+'</button>';
+  return '<button type="button" class="fund-mobile-sort'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span>'+(active?'<i aria-hidden="true">'+(state.sortDir==='asc'?'↑':'↓')+'</i>':'')+'</button>';
  }
- function fundMobileRow(p){
-  const one=num(p.perf1M),six=num(p.perf6M),year=num(p.perf1Y);
+ function fundMobileGroup(){
+  return MOBILE_GROUPS.find(g=>g.key===state.mobileGroup)||MOBILE_GROUPS[0];
+ }
+ function fundPlatformShort(p){
+  const text=(label,value)=>label+' '+(verified(value)?'✓':rejected(value)?'—':'?');
+  return text('TR',p.platforms.tradeRepublic)+' · '+text('MI',p.platforms.myInvestor);
+ }
+ function fundCompactMoney(v,currency){
+  v=num(v);if(v===null)return'—';
+  try{return v.toLocaleString('es-ES',{notation:'compact',maximumFractionDigits:1})+' '+String(currency||'EUR').toUpperCase()}
+  catch(_){return money(v,currency)}
+ }
+ function fundMobileCellValue(p,key){
+  if(key==='type')return{value:p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo indexado',tone:'text'};
+  if(key==='currency')return{value:p.currency||'—',tone:'text'};
+  if(key==='platform')return{value:fundPlatformShort(p),tone:'text'};
+  if(key==='freshness')return{value:fundFreshness(p).label,tone:'text compact'};
+  if(key==='assetsUnderManagement')return{value:fundCompactMoney(p.assetsUnderManagement,p.currency),tone:'text'};
+  if(key==='ter'){
+   const v=num(p.ter);return{value:v===null?'—':v.toLocaleString('es-ES',{maximumFractionDigits:3})+'%',tone:'number'};
+  }
+  if(key==='sharpe3Y'){
+   const v=num(p.sharpe3Y);return{value:v===null?'—':v.toLocaleString('es-ES',{maximumFractionDigits:2}),tone:'number'};
+  }
+  if(['perfYtd','perf1Y','perf3Y','volatility3Y','maxDrawdown','trackingDifference'].includes(key)){
+   const v=num(p[key]);return{value:pct(v),tone:v===null?'muted':v>=0?'positive':'negative'};
+  }
+  return{value:String(p[key]||'—'),tone:'text'};
+ }
+ function fundMobileTabs(){
+  return '<nav class="fund-mobile-groups" aria-label="Datos a comparar">'+MOBILE_GROUPS.map(g=>
+   '<button type="button" class="'+(g.key===state.mobileGroup?'active':'')+'" data-fund-mobile-group="'+esc(g.key)+'" aria-pressed="'+(g.key===state.mobileGroup?'true':'false')+'">'+esc(g.label)+'</button>'
+  ).join('')+'</nav>';
+ }
+ function fundMobileRow(p,group){
   return '<button type="button" class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'">'+
-   '<span class="fund-mobile-name">'+esc(p.name||p.isin)+'</span>'+
-   '<b class="'+(one===null?'muted':one>=0?'positive':'negative')+'">'+pct(one)+'</b>'+
-   '<b class="'+(six===null?'muted':six>=0?'positive':'negative')+'">'+pct(six)+'</b>'+
-   '<b class="'+(year===null?'muted':year>=0?'positive':'negative')+'">'+pct(year)+'</b>'+
+   '<span class="fund-mobile-name"><strong>'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></span>'+
+   group.columns.map(([key])=>{const cell=fundMobileCellValue(p,key);return '<span class="fund-mobile-cell '+esc(cell.tone)+'">'+esc(cell.value)+'</span>'}).join('')+
    '<span class="fund-mobile-open" aria-hidden="true">›</span>'+
   '</button>';
  }
  function fundMobileList(rows){
-  return '<div class="fund-mobile-compare">'+
-   '<div class="fund-mobile-compare-head">'+mobileSortHead('name','Fondo')+mobileSortHead('perf1M','1M')+mobileSortHead('perf6M','6M')+mobileSortHead('perf1Y','1A')+'<span></span></div>'+
-   '<div class="fund-mobile-rows">'+rows.map(fundMobileRow).join('')+'</div>'+
-  '</div>';
+  const group=fundMobileGroup(),cols=group.columns.length;
+  return fundMobileTabs()+
+   '<div class="fund-mobile-compare fund-mobile-cols-'+cols+'">'+
+    '<div class="fund-mobile-compare-head">'+mobileSortHead('name','Nombre / ISIN')+group.columns.map(([key,label])=>mobileSortHead(key,label)).join('')+'<span></span></div>'+
+    '<div class="fund-mobile-rows">'+rows.map(p=>fundMobileRow(p,group)).join('')+'</div>'+
+   '</div>';
+ }
+ function fundSortLabel(key){
+  const desktop=FUND_COLUMNS.find(([column])=>column===key);
+  if(desktop)return desktop[1];
+  for(const group of MOBILE_GROUPS){const column=group.columns.find(([column])=>column===key);if(column)return column[1]}
+  return key;
  }
  function updateMobileFiltersState(){
   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
@@ -332,10 +381,10 @@
   const rows=filtered();
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
-  const results=rows.length?(nativeFundsView()?fundMobileList(rows):fundTable(rows)):
+  const results=rows.length?(compactFundsView()?fundMobileList(rows):fundTable(rows)):
     '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
-   '<div class="funds-status"><span>'+rows.length+' productos</span><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(FUND_COLUMNS.find(([key])=>key===state.sort)?.[1]||state.sort)+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
+   '<div class="funds-status"><strong>'+rows.length+' productos</strong><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(fundSortLabel(state.sort))+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
    results;
   updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
@@ -587,6 +636,12 @@
   q('#fundSort')?.addEventListener('change',e=>applyFundSortSelect(e.target.value));
   q('#refreshFunds')?.addEventListener('click',()=>load(true));
   document.addEventListener('click',async e=>{
+   const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
+   if(mobileGroup){
+    state.mobileGroup=mobileGroup.dataset.fundMobileGroup||'general';
+    render();
+    return;
+   }
    const sortButton=e.target.closest&&e.target.closest('[data-fund-sort-col]');
    if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
 
@@ -648,7 +703,15 @@
   window.addEventListener('viewinvai:auth-changed',()=>loadPortfolio(true));
   window.addEventListener('viewinvai:account-ready',()=>loadPortfolio(true));
  }
- function init(){bind();if(document.querySelector('#view-funds'))load(false);renderPortfolio()}
+ function init(){
+  bind();
+  if(root.matchMedia){
+   const mq=root.matchMedia('(max-width:760px)');
+   if(typeof mq.addEventListener==='function')mq.addEventListener('change',()=>{if(state.loaded)render()});
+  }
+  if(document.querySelector('#view-funds'))load(false);
+  renderPortfolio();
+ }
 
  root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
 })(window);

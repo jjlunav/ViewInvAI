@@ -75,7 +75,16 @@ const CATALOG_COLUMNS={
   {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
  ]
 };
-const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null}};
+const CATALOG_MOBILE_GROUPS=[
+ {key:'general',label:'General',tr:['priceEur','change'],us:['priceUsd','change']},
+ {key:'volume',label:'Volumen',tr:['volume','relVolume'],us:['volume','relVolume']},
+ {key:'technical',label:'Técnico',tr:['rsi','adx'],us:['rsi','adx']},
+ {key:'trend',label:'Tendencia',tr:['ema20','ema50'],us:['ema20','ema50']},
+ {key:'returns',label:'Rentabilidad',tr:['week','month'],us:['week','month']},
+ {key:'market',label:'Mercado',tr:['bid','ask'],us:['bid','ask']},
+ {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
+];
+const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'}};
 function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:720px)').matches}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
@@ -142,22 +151,60 @@ function catalogFilterMatch(value,filter,type){
 }
 function catalogSortValue(v,type){if(v===null||v===undefined||v==='')return type==='text'?'':-Infinity;return type==='text'?String(v).toLowerCase():Number(v)}
 function catalogActiveFilterCount(mode){return Object.values(catalogState[mode]?.filters||{}).filter(v=>String(v||'').trim()).length}
-function catalogMobileCard(mode,s,se){
- let isTr=mode==='tr',preferTr=isTr;
- let change=isTr?(trLiveChange(s)??SC(s,se)):(usLiveChange(s)??SC(s,se));
- let volume=isTr?SV(s,se):(N(s.usLiveVolume)??SV(s,se)),rv=RV(s,se);
- let meta=isTr?E((s.trExchange||'LSX')+(s.ticker?' · EEUU '+s.ticker:'')):E(s.exchange||'EEUU');
- return '<article class="catalog-mobile-card stock-open-row"'+stockOpenAttrs(s,'',preferTr)+'>'+
-  '<div class="catalog-mobile-card-head">'+favButton(s)+'<div class="catalog-mobile-id"><strong>'+E(isTr?(s.trTicker||s.ticker||'—'):(s.ticker||'—'))+'</strong><span>'+E(s.name||'')+'</span><small>'+meta+'</small></div><span class="catalog-mobile-arrow">›</span></div>'+
-  '<div class="catalog-mobile-quote"><div>'+pricePair(s,SP(s,se),preferTr)+'</div>'+liveChangeHtml(s,change,preferTr)+'</div>'+
-  '<div class="catalog-mobile-spread">'+bidAskHtml(s,preferTr)+'</div>'+
-  '<div class="catalog-mobile-metrics">'+
-   '<div><small>Volumen</small><strong>'+compactVol(volume)+'</strong></div>'+
-   '<div><small>Vol. rel.</small><strong>'+(rv===null?'—':F(rv,2)+'×')+'</strong></div>'+
-   '<div><small>RSI</small><strong>'+F(s.rsi,1)+'</strong></div>'+
-   '<div><small>ADX</small><strong>'+F(s.adx,1)+'</strong></div>'+
-  '</div>'+
+function catalogMobileGroup(mode){
+ let key=catalogState[mode]?.mobileGroup||'general';
+ return CATALOG_MOBILE_GROUPS.find(g=>g.key===key)||CATALOG_MOBILE_GROUPS[0];
+}
+function catalogMobileTabs(mode){
+ let active=catalogMobileGroup(mode).key;
+ return '<nav class="catalog-mobile-groups" aria-label="Datos del catálogo">'+CATALOG_MOBILE_GROUPS.map(g=>
+  '<button type="button" class="'+(g.key===active?'active':'')+'" data-catalog-mobile-group="'+E(g.key)+'" data-catalog-mode="'+mode+'" aria-pressed="'+(g.key===active?'true':'false')+'">'+E(g.label)+'</button>'
+ ).join('')+'</nav>';
+}
+function catalogMobileCell(mode,s,se,colId){
+ let col=CATALOG_COLUMNS[mode].find(c=>c.id===colId);
+ if(!col)return{label:colId,value:'—',tone:'text'};
+ let raw=col.value(s,se),html=col.cell(s,se),value='';
+ if(colId==='priceEur'||colId==='priceUsd'){
+  let preferTr=mode==='tr',q=canonicalQuote(s,preferTr),sym=colId==='priceEur'?'€':'\u0024';
+  value=quoteMoney(colId==='priceEur'?q.eur:q.usd,sym,quotePrecision(s,preferTr,SP(s,se)));
+ }else if(['change','week','month'].includes(colId)){
+  let n=N(raw);value=PC(n);return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
+ }else if(colId==='volume'||colId==='avgVolume'){
+  value=compactVol(raw);
+ }else if(colId==='relVolume'){
+  value=N(raw)===null?'—':F(raw,2)+'×';
+ }else if(colId==='rsi'||colId==='adx'){
+  value=N(raw)===null?'—':F(raw,1);
+ }else if(colId==='ema20'||colId==='ema50'){
+  value=N(raw)===null?'—':PR(raw);
+ }else if(colId==='bid'||colId==='ask'){
+  let preferTr=mode==='tr',sym=preferTr?'€':'\u0024';
+  value=quoteMoney(raw,sym,quotePrecision(s,preferTr));
+ }else if(colId==='earnings'){
+  value=raw?DF(raw):'—';
+ }else{
+  value=String(raw??'—');
+ }
+ return{label:col.label,value,tone:'text'};
+}
+function catalogMobileRow(mode,s,se){
+ let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
+ let ticker=mode==='tr'?(s.trTicker||s.ticker||'—'):(s.ticker||'—');
+ let isin=(mode==='tr'?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—';
+ return '<article class="catalog-mobile-line stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+
+  '<div class="catalog-mobile-identity">'+favButton(s,mode==='tr')+'<span class="catalog-mobile-copy"><strong>'+E(s.name||ticker)+'</strong><small>'+E(isin)+'</small><i>'+E(ticker)+'</i></span></div>'+
+  ids.map(id=>{let cell=catalogMobileCell(mode,s,se,id);return '<span class="catalog-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
+  '<span class="catalog-mobile-open" aria-hidden="true">›</span>'+
  '</article>';
+}
+function catalogMobileList(mode,rows,se){
+ let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
+ return catalogMobileTabs(mode)+
+  '<div class="catalog-mobile-compare">'+
+   '<div class="catalog-mobile-head"><span>Valor / ISIN</span>'+ids.map(id=>'<span>'+E(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)+'</span>').join('')+'<span></span></div>'+
+   '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
+  '</div>';
 }
 function catalogMobileFilters(mode,cols){
  let st=catalogState[mode],active=catalogActiveFilterCount(mode);
@@ -179,8 +226,7 @@ function catalogTable(mode,rows,se){
  let total=rows.length,limit=st.limit,shown=rows.slice(0,limit);
  let more=shown.length<total?'<div class="catalog-more"><button type="button" class="btn ghost catalog-load-more" data-catalog-mode="'+mode+'">Cargar '+Math.min(step,total-shown.length).toLocaleString('es-ES')+' más</button><span>Mostrando '+shown.length.toLocaleString('es-ES')+' de '+total.toLocaleString('es-ES')+'</span></div>':'';
  if(mobile){
-  let cards=shown.map(s=>catalogMobileCard(mode,s,se)).join('');
-  return {html:catalogMobileFilters(mode,cols)+'<div class="catalog-mobile-list">'+(cards||'<div class="empty-state">No hay valores con estos filtros.</div>')+'</div>'+more,count:total,shown:shown.length};
+  return {html:catalogMobileFilters(mode,cols)+(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+more,count:total,shown:shown.length};
  }
  let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" data-help-title="'+E(c.label)+'" data-help="Haz clic para ordenar por '+E(c.label)+'. Vuelve a pulsar para invertir el orden. También puedes arrastrar la cabecera para mover esta columna." class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
  let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" data-help-title="Filtro · '+E(c.label)+'" data-help="Filtra '+E(c.label)+'. Números: &gt;10, &lt;5, 10..30, 250k, 2.5m. Texto: usa | para alternativas." value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 / 10..30':'Filtrar')+'"></th>').join('');
@@ -223,6 +269,12 @@ function initCatalogInteractions(){
   },160);
  });
  document.addEventListener('click',e=>{
+  let mobileGroup=e.target.closest&&e.target.closest('[data-catalog-mobile-group]');
+  if(mobileGroup){
+   let mode=mobileGroup.dataset.catalogMode,key=mobileGroup.dataset.catalogMobileGroup;
+   if(catalogState[mode]){catalogState[mode].mobileGroup=key||'general';renderCatalogTable(mode)}
+   return;
+  }
   let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
   if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
   let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');

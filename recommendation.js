@@ -346,8 +346,10 @@ function recommendationCard(mode,s){
   '<div class="reco-card-head"><div><small>'+E(marketName)+'</small><div class="reco-title">'+favButton(s)+'<strong>'+E(ticker||'—')+'</strong><span>'+E(s.name||'')+'</span></div></div><div class="reco-signal '+signal.key+'"><b>'+E(signal.label)+'</b><span>'+F(a.score,1)+'/100</span></div></div>'+
   '<div class="reco-live">'+bidAskHtml(s,preferTr)+pricePair(s,SP(s,se),preferTr)+liveChangeHtml(s,a.change,preferTr)+'</div>'+
   '<div class="reco-thesis"><strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p></div>'+
-  '<div class="reco-factors">'+factors+'</div>'+
-  '<div class="reco-events"><h4>Noticias y eventos incorporados al análisis</h4>'+events+'</div>'+
+  '<div class="reco-disclosures">'+
+   '<details class="reco-disclosure"><summary><span>Factores del análisis</span><i aria-hidden="true">＋</i></summary><div class="reco-factors">'+factors+'</div></details>'+
+   '<details class="reco-disclosure"><summary><span>Noticias y eventos</span><i aria-hidden="true">＋</i></summary><div class="reco-events"><h4>Incorporados al análisis</h4>'+events+'</div></details>'+
+  '</div>'+
   '<div class="reco-actions"><button type="button" class="btn secondary reco-open" data-reco-open="'+E(stockKey(s))+'" data-reco-prefer-tr="'+(preferTr?'1':'0')+'">Abrir ficha y gráfico</button>'+sold+'</div>'+
   '<div class="reco-foot">Datos '+quality.score+'/100 · '+(window.ViewInvAIScore&&window.ViewInvAIScore.VERSION?E(window.ViewInvAIScore.VERSION)+' · ':'')+'Convicción heurística, no probabilidad estadística. La señal se recalcula con cotización, tendencia, volumen, RSI, ADX, rendimiento, liquidez, noticias y eventos disponibles.</div>'+
   '</article>';
