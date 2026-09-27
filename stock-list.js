@@ -99,7 +99,7 @@ function stockMobileRow(s,i,se,preferTr=false,scope='entry'){
  let group=stockMobileGroup(scope),ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker),isin=s.trIsin||s.usIsin||s.isin||'—';
  let hint=why(s,se,preferTr);
  return '<article class="stock-mobile-line stock-open-row"'+stockOpenAttrs(s,hint,preferTr)+'>'+
-  '<div class="stock-mobile-identity">'+favButton(s,preferTr)+'<span class="stock-mobile-copy"><strong><em>#'+(i+1)+'</em>'+E(s.name||ticker||'—')+'</strong><small>'+E(isin)+'</small><i>'+E(ticker||'—')+'</i></span></div>'+
+  '<div class="stock-mobile-identity">'+favButton(s,preferTr)+'<span class="stock-mobile-copy"><strong><em>#'+(i+1)+'</em>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+'</i></span></div>'+
   group.columns.map(([key])=>{let cell=stockMobileCell(s,key,se,preferTr);return '<span class="stock-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
   '<span class="stock-mobile-open" aria-hidden="true">›</span>'+
  '</article>';

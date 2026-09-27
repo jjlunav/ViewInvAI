@@ -334,6 +334,109 @@ function recommendationNarrative(a){
  if(neg.length)out.push('En contra: '+neg.map(x=>x.label+' ('+F(x.delta,1)+')').join(', ')+'.');
  return out.join(' ')||'Las señales disponibles están equilibradas.';
 }
+const RECO_MOBILE_GROUPS=[
+ {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
+ {key:'ai',label:'IA',columns:[['signal','Señal'],['score','Score']]},
+ {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
+ {key:'trend',label:'Tendencia',columns:[['ema20','EMA20'],['ema50','EMA50']]},
+ {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
+ {key:'events',label:'Eventos',columns:[['events','Eventos'],['nextEvent','Próximo']]},
+ {key:'data',label:'Datos',columns:[['quality','Calidad'],['relVolume','Vol. rel.']]}
+];
+let recommendationMobileGroup='general';
+function recommendationCompactView(){
+ return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches);
+}
+function recommendationGroup(){
+ return RECO_MOBILE_GROUPS.find(g=>g.key===recommendationMobileGroup)||RECO_MOBILE_GROUPS[0];
+}
+function setRecommendationMobileGroup(key){
+ if(!RECO_MOBILE_GROUPS.some(g=>g.key===key))key='general';
+ recommendationMobileGroup=key;
+ renderRecommendation();
+}
+function recommendationMobileTabs(){
+ return '<nav class="reco-mobile-groups" aria-label="Datos de Ideas IA">'+RECO_MOBILE_GROUPS.map(g=>
+  '<button type="button" class="'+(g.key===recommendationMobileGroup?'active':'')+'" data-reco-mobile-group="'+E(g.key)+'" aria-pressed="'+(g.key===recommendationMobileGroup?'true':'false')+'">'+E(g.label)+'</button>'
+ ).join('')+'</nav>';
+}
+function recommendationNextEvent(a){
+ let rows=(a&&a.catalyst&&Array.isArray(a.catalyst.events)?a.catalyst.events:[]).map(x=>x&&x.e).filter(Boolean);
+ if(!rows.length)return null;
+ rows.sort((x,y)=>{
+  let ax=new Date(x.date||0).getTime(),ay=new Date(y.date||0).getTime();
+  if(!Number.isFinite(ax))ax=Number.MAX_SAFE_INTEGER;
+  if(!Number.isFinite(ay))ay=Number.MAX_SAFE_INTEGER;
+  return ax-ay;
+ });
+ return rows[0]||null;
+}
+function recommendationMobileCell(key,s,mode,a,signal,quality){
+ let preferTr=mode==='tr',value='—',tone='text',n=null;
+ if(key==='price'){
+  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
+  value=quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,a.se)));
+ }else if(key==='change'){
+  n=N(a.change);value=PC(n);tone=n===null?'muted':n>=0?'positive':'negative';
+ }else if(key==='signal'){
+  value=signal.label;tone='signal '+signal.key;
+ }else if(key==='score'){
+  value=F(a.score,1)+'/100';tone='score';
+ }else if(key==='rsi'){
+  n=N(s.rsi);value=n===null?'—':F(n,1);
+ }else if(key==='adx'){
+  n=N(s.adx);value=n===null?'—':F(n,1);
+ }else if(key==='ema20'){
+  n=N(s.ema20);value=n===null?'—':PR(n);
+ }else if(key==='ema50'){
+  n=N(s.ema50);value=n===null?'—':PR(n);
+ }else if(key==='bid'){
+  n=preferTr?N(s.trLiveBid):usLiveBid(s);value=quoteMoney(n,preferTr?'€':'\u0024',quotePrecision(s,preferTr));
+ }else if(key==='ask'){
+  n=preferTr?N(s.trLiveAsk):usLiveAsk(s);value=quoteMoney(n,preferTr?'€':'\u0024',quotePrecision(s,preferTr));
+ }else if(key==='events'){
+  value=String(a.catalyst&&a.catalyst.events?a.catalyst.events.length:0);
+ }else if(key==='nextEvent'){
+  let e=recommendationNextEvent(a);value=e?eventWhen(e):'—';
+ }else if(key==='quality'){
+  value=F(quality.score,0)+'/100';
+ }else if(key==='relVolume'){
+  n=RV(s,a.se);value=n===null?'—':F(n,2)+'×';
+ }
+ return{value,tone};
+}
+function recommendationMobileItem(mode,s){
+ if(!s)return '<div class="empty-state">No hay una candidata con datos suficientes para este mercado.</div>';
+ let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
+ if(bucket.armed!==wasArmed)saveRecommendationState();
+ let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker),isin=(preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin))||'—';
+ let group=recommendationGroup(),marketName=preferTr?'TR / LSX':'EEUU';
+ let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
+ let events=a.catalyst.events.length?a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join(''):'<div class="reco-event muted">Sin noticia o evento direccional fuerte en las últimas 72 h / próximos 14 días.</div>';
+ let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'';
+ return '<div class="reco-mobile-item">'+
+  '<article class="reco-mobile-line stock-open-row"'+stockOpenAttrs(s,'Recomendación actual',preferTr)+'>'+
+   '<div class="reco-mobile-identity">'+favButton(s,preferTr)+'<span class="reco-mobile-copy"><strong>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+' · '+E(marketName)+'</i></span></div>'+
+   group.columns.map(([key])=>{let cell=recommendationMobileCell(key,s,mode,a,signal,quality);return '<span class="reco-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
+   '<span class="reco-mobile-open" aria-hidden="true">›</span>'+
+  '</article>'+
+  '<details class="reco-mobile-detail"><summary><span>Tesis IA · factores · noticias</span><i aria-hidden="true">＋</i></summary>'+
+   '<div class="reco-mobile-thesis"><strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p></div>'+
+   '<div class="reco-factors">'+factors+'</div>'+
+   '<div class="reco-events">'+events+'</div>'+
+   (sold?'<div class="reco-mobile-actions">'+sold+'</div>':'')+
+  '</details>'+
+ '</div>';
+}
+function recommendationMobileList(us,tr){
+ let group=recommendationGroup();
+ return recommendationMobileTabs()+
+  '<div class="reco-mobile-compare">'+
+   '<div class="reco-mobile-head"><span>Valor / ISIN</span>'+group.columns.map(([,label])=>'<span>'+E(label)+'</span>').join('')+'<span></span></div>'+
+   '<div class="reco-mobile-rows">'+recommendationMobileItem('us',us)+recommendationMobileItem('tr',tr)+'</div>'+
+  '</div>';
+}
+
 function recommendationCard(mode,s){
  if(!s)return '<article class="recommendation-card empty-state">No hay una candidata con datos suficientes para este mercado.</article>';
  let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
@@ -357,7 +460,7 @@ function recommendationCard(mode,s){
 function renderRecommendation(){
  let box=$('#recommendationResults');if(!box)return;
  let us=pickRecommendation('us'),tr=pickRecommendation('tr');
- box.innerHTML=recommendationCard('us',us)+recommendationCard('tr',tr);
+ box.innerHTML=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us)+recommendationCard('tr',tr));
  let stamp=$('#recommendationUpdated');
  if(stamp)stamp.textContent='Recalculado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});

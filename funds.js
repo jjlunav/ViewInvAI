@@ -334,11 +334,11 @@
   ).join('')+'</nav>';
  }
  function fundMobileRow(p,group){
-  return '<button type="button" class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'">'+
-   '<span class="fund-mobile-name"><strong>'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></span>'+
+  return '<article class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0">'+
+   '<span class="fund-mobile-name"><strong>'+esc(p.name||p.isin)+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+esc(p.isin)+'">'+esc(p.isin)+'</button></span>'+
    group.columns.map(([key])=>{const cell=fundMobileCellValue(p,key);return '<span class="fund-mobile-cell '+esc(cell.tone)+'">'+esc(cell.value)+'</span>'}).join('')+
    '<span class="fund-mobile-open" aria-hidden="true">›</span>'+
-  '</button>';
+  '</article>';
  }
  function fundMobileList(rows){
   const group=fundMobileGroup(),cols=group.columns.length;
@@ -389,15 +389,29 @@
   updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
  }
+ async function fetchFundCatalogue(url,cache){
+  const r=await fetch(url,{cache});
+  if(!r.ok)throw Error(String(r.status));
+  const data=await r.json();
+  const products=Array.isArray(data&&data.products)?data.products:[];
+  if(!products.length)throw Error('Catálogo de fondos vacío');
+  return data;
+ }
  async function load(force=false){
   if(state.loading)return;
   if(state.loaded&&!force){render();return}
   state.loading=true;render();
   try{
-   const r=await fetch(DATA+(force?'?v='+Date.now():''),{cache:force?'reload':'no-cache'});
-   if(!r.ok)throw Error(String(r.status));
-   const data=await r.json();
-   state.products=(Array.isArray(data.products)?data.products:[]).map(norm).filter(p=>p.isin);
+   let data;
+   try{
+    data=await fetchFundCatalogue(DATA+(force?'?v='+Date.now():''),force?'reload':'no-cache');
+   }catch(remoteError){
+    const native=!!(root.ViewInvAIRuntime&&root.ViewInvAIRuntime.isPackagedNative);
+    if(!native)throw remoteError;
+    console.warn('Remote funds catalogue invalid; using packaged snapshot',remoteError);
+    data=await fetchFundCatalogue(DATA+'?local=1&v='+Date.now(),'no-store');
+   }
+   state.products=data.products.map(norm).filter(p=>p.isin);
    state.meta=data.meta||{};
    const fill=(sel,values,label)=>{const el=q(sel);if(!el)return;const current=el.value||'all';el.innerHTML='<option value="all">'+label+'</option>'+values.filter(Boolean).sort((a,b)=>a.localeCompare(b,'es')).map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');el.value=[...el.options].some(o=>o.value===current)?current:'all'};
    fill('#fundProvider',[...new Set(state.products.map(p=>p.provider))],'Todas las gestoras');
@@ -636,6 +650,7 @@
   q('#fundSort')?.addEventListener('change',e=>applyFundSortSelect(e.target.value));
   q('#refreshFunds')?.addEventListener('click',()=>load(true));
   document.addEventListener('click',async e=>{
+   if(e.target.closest&&e.target.closest('[data-copy-isin]'))return;
    const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
    if(mobileGroup){
     state.mobileGroup=mobileGroup.dataset.fundMobileGroup||'general';

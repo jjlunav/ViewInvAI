@@ -193,7 +193,7 @@ function catalogMobileRow(mode,s,se){
  let ticker=mode==='tr'?(s.trTicker||s.ticker||'—'):(s.ticker||'—');
  let isin=(mode==='tr'?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—';
  return '<article class="catalog-mobile-line stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+
-  '<div class="catalog-mobile-identity">'+favButton(s,mode==='tr')+'<span class="catalog-mobile-copy"><strong>'+E(s.name||ticker)+'</strong><small>'+E(isin)+'</small><i>'+E(ticker)+'</i></span></div>'+
+  '<div class="catalog-mobile-identity">'+favButton(s,mode==='tr')+'<span class="catalog-mobile-copy"><strong>'+E(s.name||ticker)+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker)+'</i></span></div>'+
   ids.map(id=>{let cell=catalogMobileCell(mode,s,se,id);return '<span class="catalog-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
   '<span class="catalog-mobile-open" aria-hidden="true">›</span>'+
  '</article>';

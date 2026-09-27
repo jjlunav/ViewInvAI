@@ -2166,3 +2166,37 @@ html,body{font-size:14px}
 }
 .event-mobile-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:9px;line-height:1.25}
 .event-mobile-open{justify-self:end;color:var(--muted);font-size:18px}
+
+/* 0.6.9 compact Ideas IA on mobile web */
+.list-copy-isin{
+ display:block;max-width:100%;padding:0;border:0;background:transparent;color:var(--muted);
+ font:inherit;font-size:8px;line-height:1.2;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ text-decoration:underline dotted;text-underline-offset:2px;cursor:pointer;
+}
+.reco-mobile-groups{display:flex;gap:4px;width:100%;margin:6px 0 4px;overflow-x:auto;scrollbar-width:none}
+.reco-mobile-groups::-webkit-scrollbar{display:none}
+.reco-mobile-groups button{
+ flex:0 0 auto;min-height:34px;padding:6px 8px;border:0;border-bottom:2px solid transparent;background:transparent;
+ color:var(--muted);font-size:9.5px;font-weight:720;white-space:nowrap;
+}
+.reco-mobile-groups button.active{color:var(--text);border-bottom-color:var(--teal)}
+.reco-mobile-compare{width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.reco-mobile-head,.reco-mobile-line{
+ display:grid;grid-template-columns:minmax(150px,1.55fr) repeat(2,minmax(70px,.72fr)) 14px;gap:8px;align-items:center;width:100%;min-width:0;
+}
+.reco-mobile-head{min-height:38px;border-bottom:1px solid var(--line);color:var(--muted);font-size:8px;font-weight:800;text-transform:uppercase}
+.reco-mobile-item{border-bottom:1px solid var(--line)}
+.reco-mobile-line{min-height:74px;padding:9px 0;cursor:pointer}
+.reco-mobile-identity{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;min-width:0}
+.reco-mobile-copy{display:grid;gap:3px;min-width:0}
+.reco-mobile-copy strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:10.5px;line-height:1.22}
+.reco-mobile-copy i{color:var(--muted);font-style:normal;font-size:8px}
+.reco-mobile-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;line-height:1.2;font-weight:650;font-variant-numeric:tabular-nums}
+.reco-mobile-open{justify-self:end;color:var(--muted);font-size:18px}
+.reco-mobile-detail{margin:0;border:0;background:transparent}
+.reco-mobile-detail>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;min-height:34px;padding:5px 7px;color:var(--muted);font-size:8.5px;font-weight:720}
+.reco-mobile-detail>summary::-webkit-details-marker{display:none}
+.reco-mobile-thesis{padding:8px;border-top:1px solid var(--line)}
+.reco-mobile-thesis strong{display:block;margin-bottom:4px;font-size:10px}
+.reco-mobile-thesis p{margin:0;font-size:9px;line-height:1.35;color:var(--muted)}
+.reco-mobile-detail .reco-factors,.reco-mobile-detail .reco-events{padding:6px 8px}

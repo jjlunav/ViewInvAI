@@ -660,6 +660,17 @@ async function r2MarketAssetResponse(env, pathname) {
     const key = pathname.replace(/^\//, "");
     const object = await env.MARKET_DATA_BUCKET.get(key);
     if (!object) return null;
+    let responseBody = object.body;
+    if (pathname.endsWith("funds.json")) {
+      const raw = await object.arrayBuffer();
+      let parsed = null;
+      try { parsed = JSON.parse(new TextDecoder().decode(raw)); } catch (_) {}
+      if (!parsed || !Array.isArray(parsed.products) || parsed.products.length < 10 || !parsed.meta || !parsed.meta.updatedAt) {
+        console.warn("Ignoring invalid R2 funds snapshot; falling back to deployed asset");
+        return null;
+      }
+      responseBody = raw;
+    }
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     if (object.httpEtag) headers.set("ETag", object.httpEtag);
@@ -670,7 +681,7 @@ async function r2MarketAssetResponse(env, pathname) {
         ? "public, max-age=900, must-revalidate"
         : "public, max-age=60, must-revalidate");
     headers.set("X-ViewInvAI-Market-Storage", "r2");
-    return secureResponse(new Response(object.body, { status: 200, headers }), pathname);
+    return secureResponse(new Response(responseBody, { status: 200, headers }), pathname);
   } catch (error) {
     console.warn("R2 market asset fallback", String(error && error.message || error));
     return null;

@@ -244,6 +244,13 @@ jobs:
               raise SystemExit("stock-list.js no oculta metricas secundarias")
           if "reco-disclosure" not in recommendation:
               raise SystemExit("recommendation.js no oculta factores secundarios")
+          required_reco_mobile = ("const RECO_MOBILE_GROUPS=", "function recommendationMobileList", "data-reco-mobile-group")
+          missing_reco_mobile = [item for item in required_reco_mobile if item not in recommendation]
+          if missing_reco_mobile:
+              raise SystemExit("Ideas IA movil incompleto: " + ", ".join(missing_reco_mobile))
+          interactions = Path("stock-interactions.js").read_text(encoding="utf-8")
+          if "data-copy-isin" not in interactions or "function copyListIsin" not in interactions:
+              raise SystemExit("Copia de ISIN no esta cableada")
           portfolio = Path("portfolio.js").read_text(encoding="utf-8")
           if "portfolio-position-more" not in portfolio:
               raise SystemExit("portfolio.js no aplica detalle progresivo")
@@ -262,7 +269,19 @@ jobs:
       - name: Validar sintaxis de carteras
         run: node --check portfolio.js
       - name: Validar sintaxis de fondos y ETFs
-        run: node --check funds.js
+        run: |
+          node --check funds.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("data/funds.json").read_text(encoding="utf-8"))
+          products=data.get("products") if isinstance(data,dict) else None
+          if not isinstance(products,list) or len(products)<100:
+              raise SystemExit(f"Catalogo de fondos insuficiente: {0 if not isinstance(products,list) else len(products)} productos")
+          if not data.get("meta",{}).get("updatedAt"):
+              raise SystemExit("Catalogo de fondos sin fecha de actualizacion")
+          print(f"Catalogo de fondos: {len(products)} productos")
+          PY
       - name: Validar sintaxis backend
         run: node --check backend.js
       - name: Validar migraciones D1

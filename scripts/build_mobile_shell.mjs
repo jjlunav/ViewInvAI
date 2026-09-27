@@ -70,4 +70,8 @@ const localMarket = JSON.parse(await readFile(path.join(out, 'data', 'market.jso
 if (!Array.isArray(localMarket.stocks) || localMarket.stocks.length < 100) {
   throw new Error('Packaged market snapshot is missing or unexpectedly small.');
 }
-console.log('Packaged ViewInvAI mobile shell:', built.length, 'files ·', localMarket.stocks.length, 'stocks');
+const localFunds = JSON.parse(await readFile(path.join(out, 'data', 'funds.json'), 'utf8'));
+if (!Array.isArray(localFunds.products) || localFunds.products.length < 100) {
+  throw new Error('Packaged funds snapshot is missing or unexpectedly small.');
+}
+console.log('Packaged ViewInvAI mobile shell:', built.length, 'files ·', localMarket.stocks.length, 'stocks ·', localFunds.products.length, 'funds/ETFs');
