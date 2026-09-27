@@ -475,7 +475,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-native/
+          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
@@ -529,8 +529,16 @@ jobs:
                   const rows=document.querySelectorAll('#fundsApp .fund-mobile-row');
                   if(rows.length!==2)return fail('native compact fund rows missing');
                   if(document.querySelector('#fundsApp .fund-table'))return fail('desktop fund table rendered in native mode');
-                  const head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
-                  if(head.join('|')!=='Fondo|1M|6M|1A')return fail('native fund columns are not compact');
+                  const tabs=[...document.querySelectorAll('#fundsApp [data-fund-mobile-group]')];
+                  if(tabs.length<7)return fail('native fund grouped tabs missing');
+                  const activeTab=document.querySelector('#fundsApp [data-fund-mobile-group].active');
+                  if(!activeTab||activeTab.dataset.fundMobileGroup!=='general')return fail('native fund default group invalid');
+                  let head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Nombre / ISIN|Tipo|Divisa')return fail('native fund general columns invalid');
+                  const returnsTab=document.querySelector('#fundsApp [data-fund-mobile-group="returns"]');
+                  returnsTab?.click();
+                  head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Nombre / ISIN|YTD|1A|3A')return fail('native fund returns columns invalid');
                   const toggle=document.querySelector('#fundMobileFiltersToggle'),advanced=document.querySelector('#fundToolbarAdvanced');
                   if(!toggle||!advanced)return fail('native fund filter drawer missing');
                   if(getComputedStyle(advanced).display!=='none')return fail('advanced fund filters must start hidden');
