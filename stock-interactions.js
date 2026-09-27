@@ -27,7 +27,142 @@ function fallbackCopyListIsin(value){
  area.remove();
 }
 
+/* Transfer only user-controlled presentation state during one live replacement.
+ * Observe host children, not quote text. Never persist state across accounts,
+ * portfolios or instruments, and never use it to restore business data.
+ */
+let stockViewContinuityInitialized=false;
+function initStockViewContinuity(){
+ if(stockViewContinuityInitialized||typeof MutationObserver!=='function')return;
+ stockViewContinuityInitialized=true;
+ const detailsSelector='details.stock-card-details,details.reco-disclosure,details.portfolio-position-more,details.profile-disclosure';
+ const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.profile-tabs';
+ const controlSelector='summary,button,a,input,select,textarea,[tabindex]';
+ const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','stockQuickDetail']
+  .map(id=>document.getElementById(id)).filter(Boolean);
+ const focusByHost=new WeakMap(),scrollByElement=new WeakMap();
+ const elements=(node,selector)=>node.nodeType===1
+  ?[...(node.matches(selector)?[node]:[]),...node.querySelectorAll(selector)]:[];
+ function scope(host){
+  const user=window.ViewInvAIAuth?.getUser?.();
+  const portfolio=host.id==='portfolioApp'?window.ViewInvAIPortfolios?.getState?.():null;
+  const profile=host.id==='stockQuickDetail'&&typeof state==='object'?state:null;
+  return JSON.stringify([user?.uid??user?.id??null,portfolio?.selectedPortfolioId??null,
+   profile?.profileKey??null,profile?.profilePreferTr??null]);
+ }
+ function cardKey(el){
+  const card=el.closest('.investing-stock-card,.recommendation-card,.portfolio-position,.stock-mobile-line');
+  if(!card)return '';
+  const ref=card.matches('[data-stock-key],[data-open-stock]')?card:
+   card.querySelector('[data-stock-key],[data-open-stock],[data-reco-open]');
+  const position=card.querySelector('[data-position-transactions]');
+  if(!ref&&!position)return '';
+  const data=ref?.dataset||{};
+  return JSON.stringify([data.stockKey||data.openStock||data.recoOpen||'',
+   data.stockPreferTr??data.positionPreferTr??data.recoPreferTr??'',
+   position?.dataset.positionTransactions||'',
+   card.closest('.home-market-panel')?.className||'']);
+ }
+ function detailKey(el){
+  const card=cardKey(el);
+  if(!card&&!el.matches('details.profile-disclosure'))return '';
+  const kind=[...el.classList].filter(c=>['stock-card-details','reco-disclosure','portfolio-position-more','profile-disclosure'].includes(c)).join(' ');
+  return JSON.stringify([card,kind,el.querySelector('summary')?.textContent.trim()||'']);
+ }
+ function controlKey(el){
+  if(el.tagName==='SUMMARY'){
+   const details=el.closest(detailsSelector),key=details&&detailKey(details);
+   return key?'summary:'+key:'';
+  }
+  if(el.id)return 'id:'+el.id;
+  const attrs=[...el.attributes].filter(a=>a.name.startsWith('data-')&&a.name!=='data-stock-reason')
+   .map(a=>[a.name,a.value]).sort((a,b)=>a[0].localeCompare(b[0]));
+  return attrs.length?JSON.stringify([el.tagName,cardKey(el),attrs]):'';
+ }
+ function scrollKey(el){return el.id||JSON.stringify([el.className,el.getAttribute('aria-label')||''])}
+ function captureScroll(host){host.querySelectorAll(scrollSelector).forEach(el=>scrollByElement.set(el,el.scrollLeft))}
+ document.addEventListener('focusin',event=>hosts.forEach(host=>focusByHost.set(host,host.contains(event.target)?event.target:null)));
+ document.addEventListener('pointerdown',event=>hosts.forEach(host=>{
+  if(!host.contains(event.target))focusByHost.set(host,null);
+ }),true);
+ hosts.forEach(host=>{
+  let previousScope=scope(host);
+  host.addEventListener('focusout',event=>{
+   const previous=event.target;
+   queueMicrotask(()=>{
+    if(previous.isConnected&&focusByHost.get(host)===previous&&document.activeElement!==previous)focusByHost.set(host,null);
+   });
+  });
+  host.addEventListener('scroll',event=>{
+   if(event.target.matches?.(scrollSelector))scrollByElement.set(event.target,event.target.scrollLeft);
+  },true);
+  for(const event of ['pointerdown','click','keydown'])host.addEventListener(event,()=>captureScroll(host),true);
+  new MutationObserver(records=>{
+   const currentScope=scope(host),sameScope=currentScope===previousScope;
+   previousScope=currentScope;
+   if(!sameScope){
+    focusByHost.set(host,null);
+    if(host.id==='stockQuickDetail'){
+     const selected=host.querySelector('[data-profile-tab][aria-selected="true"]');
+     if(selected)host.dataset.profileTab=selected.dataset.profileTab;
+     else delete host.dataset.profileTab;
+    }
+    return;
+   }
+   const removed=records.flatMap(record=>[...record.removedNodes]).filter(node=>!node.isConnected);
+   if(!removed.length)return;
+   const openByKey=new Map(),leftByKey=new Map();
+   let activeTab=null;
+   for(const node of removed){
+    for(const details of elements(node,detailsSelector)){
+     const key=detailKey(details);
+     if(key&&!openByKey.has(key))openByKey.set(key,details.open);
+    }
+    for(const scroller of elements(node,scrollSelector)){
+     const key=scrollKey(scroller);
+     if(!leftByKey.has(key))leftByKey.set(key,scrollByElement.get(scroller)??scroller.scrollLeft);
+    }
+    if(host.id==='stockQuickDetail'&&!activeTab){
+     activeTab=elements(node,'[data-profile-tab][aria-selected="true"]')[0]?.dataset.profileTab||null;
+    }
+   }
+   host.querySelectorAll(detailsSelector).forEach(details=>{
+    const key=detailKey(details);
+    if(openByKey.has(key))details.open=openByKey.get(key);
+   });
+   if(activeTab&&host.querySelector('[data-profile-panel="'+CSS.escape(activeTab)+'"]')){
+    host.dataset.profileTab=activeTab;
+    host.querySelectorAll('[data-profile-tab]').forEach(button=>{
+     const active=button.dataset.profileTab===activeTab;
+     button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));
+    });
+    host.querySelectorAll('[data-profile-panel]').forEach(panel=>{
+     const active=panel.dataset.profilePanel===activeTab||(activeTab==='general'&&panel.dataset.profilePanel==='general-extra');
+     panel.hidden=!active;panel.classList.toggle('active',active);
+    });
+    if(['chart','ai'].includes(activeTab)&&typeof stockByKey==='function'&&typeof activateProfileTabData==='function'){
+     const stock=stockByKey(state.profileKey);
+     if(stock)activateProfileTabData(host,stock,state.profilePreferTr===true,activeTab);
+    }
+    window.ViewInvAINativeUI?.syncLayout?.();
+   }
+   host.querySelectorAll(scrollSelector).forEach(scroller=>{
+    const left=leftByKey.get(scrollKey(scroller));
+    if(left!==undefined){scroller.scrollLeft=left;scrollByElement.set(scroller,left)}
+   });
+   const previous=focusByHost.get(host);
+   if(!previous||previous.isConnected||document.activeElement!==document.body)return;
+   if(!removed.some(node=>node===previous||node.contains?.(previous)))return;
+   const key=controlKey(previous);
+   const next=key&&[...host.querySelectorAll(controlSelector)].find(el=>controlKey(el)===key);
+   if(next&&!next.disabled&&next.getClientRects().length)next.focus({preventScroll:true});
+   else focusByHost.set(host,null);
+  }).observe(host,{childList:true});
+ });
+}
+
 function initStockInteractions(){
+ initStockViewContinuity();
  $('#aiChatClose')?.addEventListener('click',closeAiChat);
  $('#aiChatBackdrop')?.addEventListener('click',closeAiChat);
  $('#aiChatForm')?.addEventListener('submit',e=>{
@@ -121,6 +256,7 @@ function initStockInteractions(){
  document.addEventListener('keydown',e=>{
   let row=e.target.closest&&e.target.closest('[data-stock-key]');
   if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+  if(e.target!==row&&e.target.closest('button,a,input,select,textarea,summary,[contenteditable="true"]'))return;
   e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
  });
 }
