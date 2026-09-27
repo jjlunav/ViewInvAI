@@ -99,7 +99,7 @@ function eventMobileRow(scope,s,event,index,label,when,count=1){
   cols=[N(s.rsi)===null?'—':'RSI '+F(s.rsi,1),N(s.adx)===null?'—':'ADX '+F(s.adx,1)];
  }
  return '<article class="event-mobile-line stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
-  '<span class="event-mobile-copy"><strong><em>#'+(index+1)+'</em>'+E(s.name||ticker||'—')+'</strong><small>'+E(isin)+'</small><i>'+E(ticker||'—')+(count>1?' · '+count+' eventos':'')+'</i></span>'+
+  '<span class="event-mobile-copy"><strong><em>#'+(index+1)+'</em>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+(count>1?' · '+count+' eventos':'')+'</i></span>'+
   '<span class="event-mobile-cell">'+E(cols[0])+'</span><span class="event-mobile-cell">'+E(cols[1])+'</span><span class="event-mobile-open">›</span>'+
  '</article>';
 }
