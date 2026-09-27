@@ -199,6 +199,15 @@ jobs:
           funds = Path("funds.js").read_text(encoding="utf-8")
           if "root.ViewInvAIFunds=" not in funds or "/api/fund-portfolios" not in funds or "/api/fund-positions" not in funds:
               raise SystemExit("funds.js incompleto")
+          required_fund_mobile = (
+              "const MOBILE_GROUPS=", "data-fund-mobile-group", "function fundMobileGroup",
+              "function fundMobileCellValue", "function compactFundsView"
+          )
+          missing_fund_mobile = [item for item in required_fund_mobile if item not in funds]
+          if missing_fund_mobile:
+              raise SystemExit("Comparador movil de fondos incompleto: " + ", ".join(missing_fund_mobile))
+          if "General" not in funds or "Rentabilidad" not in funds or "Costes" not in funds or "Ratios" not in funds or "Otros" not in funds:
+              raise SystemExit("Faltan grupos del comparador movil de fondos")
 
           required_assets = (
               "web-mobile.css", "mobile-app.css", "ui-density.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
