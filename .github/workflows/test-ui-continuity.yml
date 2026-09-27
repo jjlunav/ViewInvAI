@@ -1,0 +1,66 @@
+name: Validar sesiones y continuidad UI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "stock-list.js"
+      - "stock-interactions.js"
+      - "scripts/test-session-quotes.mjs"
+      - "scripts/test-ui-continuity.py"
+      - "tests/ui-continuity.html"
+      - ".github/workflows/test-ui-continuity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-continuity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validar sintaxis y cronologia PRE POST
+        run: |
+          node --check stock-list.js
+          node --check stock-interactions.js
+          node scripts/test-session-quotes.mjs
+          python3 -m py_compile scripts/test-ui-continuity.py
+      - name: Preparar navegador de pruebas aislado
+        run: |
+          python3 -m venv "$RUNNER_TEMP/viewinvai-ui-tests"
+          PYTHON="$RUNNER_TEMP/viewinvai-ui-tests/bin/python"
+          "$PYTHON" -m pip install --disable-pip-version-check 'playwright==1.57.0'
+          if ! command -v chromium && ! command -v chromium-browser && ! command -v google-chrome && ! command -v google-chrome-stable; then
+            "$PYTHON" -m playwright install --with-deps chromium
+          fi
+      - name: Probar desplegables foco scroll y cambio de contexto
+        run: |
+          "$RUNNER_TEMP/viewinvai-ui-tests/bin/python" scripts/test-ui-continuity.py
+      - name: Resumen de regresiones
+        if: always()
+        run: |
+          if [ -f ui-regression-results.json ]; then
+            python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          reports = json.loads(Path("ui-regression-results.json").read_text())
+          print("## Pruebas de comportamiento UI (datos sinteticos)")
+          print("No sustituyen la revision visual de la app completa ni una prueba en dispositivo Android real.")
+          for report in reports:
+              passed = sum(bool(item.get("pass")) for item in report.get("results", []))
+              print(f"- {report['mode']} {report['width']} px: {passed}/{len(report.get('results', []))}")
+              for item in report.get("results", []):
+                  if not item.get("pass"):
+                      print(f"  - FAIL: {item['name']}: {item.get('error', '')}")
+          PY
+          fi
