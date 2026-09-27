@@ -2,6 +2,9 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - hotfix/0.6.9-native-regressions
 
 permissions:
   contents: read
