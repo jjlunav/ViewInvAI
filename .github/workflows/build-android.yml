@@ -50,7 +50,8 @@ jobs:
         run: |
           npm run mobile:build
           test -s mobile-shell/index.html
-          test -s mobile-shell/styles.css\n          test -s mobile-shell/ui-density.css
+          test -s mobile-shell/styles.css
+          test -s mobile-shell/ui-density.css
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
           test -s mobile-shell/funds.js
