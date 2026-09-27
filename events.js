@@ -74,6 +74,41 @@ function stockEvents(s){
  }
  return out;
 }
+const EVENT_MOBILE_GROUPS=[
+ {key:'event',label:'Evento'},
+ {key:'market',label:'Mercado'},
+ {key:'technical',label:'Técnico'}
+];
+const eventMobileUi={future:'event',calendar:'event'};
+function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+function eventMobileTabs(scope){
+ let active=eventMobileUi[scope]||'event';
+ return '<nav class="event-mobile-groups" aria-label="Datos del evento">'+EVENT_MOBILE_GROUPS.map(g=>
+  '<button type="button" class="'+(g.key===active?'active':'')+'" data-event-mobile-scope="'+E(scope)+'" data-event-mobile-group="'+E(g.key)+'">'+E(g.label)+'</button>'
+ ).join('')+'</nav>';
+}
+function eventMobileRow(scope,s,event,index,label,when,count=1){
+ let preferTr=trTradable(s),group=eventMobileUi[scope]||'event',isin=s.trIsin||s.usIsin||s.isin||'—',ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ let cols=[];
+ if(group==='event'){
+  cols=[label,when];
+ }else if(group==='market'){
+  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
+  cols=[quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,SES()))),PC(marketChange(s,SES(),preferTr))];
+ }else{
+  cols=[N(s.rsi)===null?'—':'RSI '+F(s.rsi,1),N(s.adx)===null?'—':'ADX '+F(s.adx,1)];
+ }
+ return '<article class="event-mobile-line stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
+  '<span class="event-mobile-copy"><strong><em>#'+(index+1)+'</em>'+E(s.name||ticker||'—')+'</strong><small>'+E(isin)+'</small><i>'+E(ticker||'—')+(count>1?' · '+count+' eventos':'')+'</i></span>'+
+  '<span class="event-mobile-cell">'+E(cols[0])+'</span><span class="event-mobile-cell">'+E(cols[1])+'</span><span class="event-mobile-open">›</span>'+
+ '</article>';
+}
+function eventMobileList(scope,rows){
+ let group=eventMobileUi[scope]||'event';
+ let heads=group==='event'?['Catalizador','Fecha']:group==='market'?['Precio','Variación']:['RSI','ADX'];
+ return eventMobileTabs(scope)+'<div class="event-mobile-compare"><div class="event-mobile-head"><span>Valor / ISIN</span><span>'+heads[0]+'</span><span>'+heads[1]+'</span><span></span></div><div class="event-mobile-rows">'+rows.join('')+'</div></div>';
+}
+
 function renderFuture(){
  let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
  let filtered=(db.events||[]).filter(e=>{
@@ -83,24 +118,32 @@ function renderFuture(){
   return trTradable(s);
  });
  let groups=groupFutureEvents(filtered);
- $('#futureResults').innerHTML=groups.length?groups.slice(0,180).map((g,i)=>{
-  let e=g.first,s=stockForEvent(e)||e;
-  let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=trTradable(s);
-  let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');
-  return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'});
- }).join(''):'<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
+ if(groups.length){
+  let shown=groups.slice(0,180);
+  $('#futureResults').innerHTML=eventCompactListView()
+   ?eventMobileList('future',shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e,count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);return eventMobileRow('future',s,e,i,label,when,count)}))
+   :shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e;let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=trTradable(s);let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'})}).join('');
+ }else $('#futureResults').innerHTML='<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
 function renderCalendar(){
  let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
- $('#calendarResults').innerHTML=rows.length?rows.slice(0,400).map((e,i)=>{
-  let s=stockForEvent(e)||e;
-  let label=EL(e),when=DF(e.date),preferTr=trTradable(s);
-  return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'});
- }).join(''):'<div class="empty-state">Sin eventos o noticias disponibles.</div>';
+ if(rows.length){
+  let shown=rows.slice(0,400);
+  $('#calendarResults').innerHTML=eventCompactListView()
+   ?eventMobileList('calendar',shown.map((e,i)=>{let s=stockForEvent(e)||e,label=EL(e),when=DF(e.date);return eventMobileRow('calendar',s,e,i,label,when,1)}))
+   :shown.map((e,i)=>{let s=stockForEvent(e)||e;let label=EL(e),when=DF(e.date),preferTr=trTradable(s);return standardStockCard(s,i,{se:SES(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'})}).join('');
+ }else $('#calendarResults').innerHTML='<div class="empty-state">Sin eventos o noticias disponibles.</div>';
 }
 
 function initEventViewInteractions(){
+ document.addEventListener('click',e=>{
+  let tab=e.target.closest&&e.target.closest('[data-event-mobile-group]');
+  if(!tab)return;
+  let scope=tab.dataset.eventMobileScope||'future';
+  eventMobileUi[scope]=tab.dataset.eventMobileGroup||'event';
+  if(scope==='future')renderFuture();else renderCalendar();
+ });
  ['futureHorizon','futureType','futureTrOnly'].forEach(id=>{
   $('#'+id)?.addEventListener('change',renderFuture);
  });
