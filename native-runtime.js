@@ -15,6 +15,9 @@
   const absoluteRemoteUrl = value => {
     const raw = String(value || '');
     if (!localNativeOrigin) return raw;
+    if (/^\/?data\/funds\.json\?(?:[^#]*&)?local=1(?:&|#|$)/i.test(raw)) {
+      return raw.replace(/^\//, '').replace(/\?[^#]*/, '');
+    }
     if (/^https?:\/\//i.test(raw) || /^wss?:\/\//i.test(raw)) return raw;
     if (raw.startsWith('/api/')) return BACKEND_ORIGIN + raw;
     if (/^\/data\/funds\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + raw;
