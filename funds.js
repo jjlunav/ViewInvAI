@@ -394,7 +394,7 @@
   if(!r.ok)throw Error(String(r.status));
   const data=await r.json();
   const products=Array.isArray(data&&data.products)?data.products:[];
-  if(products.length<10)throw Error('Catálogo de fondos incompleto: '+products.length+' productos');
+  if(!products.length)throw Error('Catálogo de fondos vacío');
   return data;
  }
  async function load(force=false){
