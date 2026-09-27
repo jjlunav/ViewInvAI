@@ -192,6 +192,13 @@ jobs:
           events = Path("events.js").read_text(encoding="utf-8")
           if "function stockEvents" not in events or "function renderFuture" not in events or "function renderCalendar" not in events:
               raise SystemExit("events.js incompleto")
+          required_event_mobile = (
+              "const EVENT_MOBILE_GROUPS=", "function eventMobileList",
+              "data-event-mobile-group", "eventCompactListView()"
+          )
+          missing_event_mobile = [item for item in required_event_mobile if item not in events]
+          if missing_event_mobile:
+              raise SystemExit("Listados moviles de eventos incompletos: " + ", ".join(missing_event_mobile))
           stock_list = Path("stock-list.js").read_text(encoding="utf-8")
           if "function standardStockCard" not in stock_list or "function renderHome" not in stock_list or "function renderEntry" not in stock_list or "function initStockListInteractions" not in stock_list:
               raise SystemExit("stock-list.js incompleto")
