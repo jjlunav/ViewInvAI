@@ -1880,3 +1880,110 @@ html,body{font-size:14px}
 #view-portfolios .fund-portfolio-toolbar{align-items:flex-start}
 #view-portfolios .fund-position-grid{grid-template-columns:1fr}
 #view-portfolios .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* Funds / ETFs mobile web: same grouped comparison as Android. */
+#view-funds .fund-mobile-filters-toggle{display:inline-flex}
+#view-funds .fund-toolbar{
+ grid-template-columns:minmax(0,1fr) auto;
+ gap:6px;
+}
+#view-funds .fund-search{grid-column:1}
+#view-funds .fund-toolbar-advanced{
+ display:none;
+ grid-column:1/-1;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:6px;
+ padding:7px;
+ border:1px solid var(--line);
+ border-radius:11px;
+}
+#view-funds .fund-toolbar.mobile-filters-open .fund-toolbar-advanced{display:grid}
+#view-funds .fund-table-scroll,
+#view-funds .fund-table-swipe-hint{display:none}
+#view-funds .fund-mobile-compare{display:block;width:100%;min-width:0}
+#view-funds .fund-mobile-groups{
+ display:flex;
+ gap:4px;
+ width:100%;
+ margin:6px 0 5px;
+ overflow-x:auto;
+ scrollbar-width:none;
+}
+#view-funds .fund-mobile-groups::-webkit-scrollbar{display:none}
+#view-funds .fund-mobile-groups button{
+ flex:0 0 auto;
+ min-height:34px;
+ padding:6px 8px;
+ border:0;
+ border-bottom:2px solid transparent;
+ background:transparent;
+ color:var(--muted);
+ font-size:9.5px;
+ font-weight:720;
+ white-space:nowrap;
+}
+#view-funds .fund-mobile-groups button.active{
+ color:var(--text);
+ border-bottom-color:var(--teal);
+}
+#view-funds .fund-mobile-compare-head,
+#view-funds .fund-mobile-row{
+ display:grid;
+ grid-template-columns:minmax(148px,1.55fr) repeat(2,minmax(68px,.72fr)) 14px;
+ gap:8px;
+ align-items:center;
+ width:100%;
+}
+#view-funds .fund-mobile-cols-3 .fund-mobile-compare-head,
+#view-funds .fund-mobile-cols-3 .fund-mobile-row{
+ grid-template-columns:minmax(132px,1.42fr) repeat(3,minmax(58px,.62fr)) 14px;
+}
+#view-funds .fund-mobile-compare-head{
+ min-height:39px;
+ border-bottom:1px solid var(--line);
+}
+#view-funds .fund-mobile-sort{
+ min-width:0;
+ border:0;
+ background:transparent;
+ color:var(--muted);
+ text-align:left;
+ font-size:8px;
+ font-weight:800;
+}
+#view-funds .fund-mobile-sort.active{color:var(--teal)}
+#view-funds .fund-mobile-row{
+ min-height:76px;
+ padding:9px 0;
+ border:0;
+ border-bottom:1px solid var(--line);
+ background:transparent;
+ text-align:left;
+ color:var(--text);
+}
+#view-funds .fund-mobile-name{display:grid;gap:4px;min-width:0}
+#view-funds .fund-mobile-name strong{
+ display:-webkit-box;
+ -webkit-box-orient:vertical;
+ -webkit-line-clamp:3;
+ overflow:hidden;
+ font-size:10.5px;
+ line-height:1.22;
+}
+#view-funds .fund-mobile-name small{
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ color:var(--muted);
+ font-size:8px;
+}
+#view-funds .fund-mobile-cell{
+ min-width:0;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ font-size:9.5px;
+ line-height:1.25;
+ font-variant-numeric:tabular-nums;
+}
+#view-funds .fund-mobile-cell.compact{font-size:8.3px}
+#view-funds .fund-mobile-open{justify-self:end;color:var(--muted)}
