@@ -26,7 +26,7 @@
 
  function q(s){return document.querySelector(s)}
  function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
- function compactFundsView(){return nativeFundsView()||!!(root.matchMedia&&root.matchMedia('(max-width:760px)').matches)}
+ function compactFundsView(){return nativeFundsView()||!!(root.matchMedia&&root.matchMedia('(max-width:820px)').matches)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
  function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
@@ -715,7 +715,7 @@
  function init(){
   bind();
   if(root.matchMedia){
-   const mq=root.matchMedia('(max-width:760px)');
+   const mq=root.matchMedia('(max-width:820px)');
    if(typeof mq.addEventListener==='function')mq.addEventListener('change',()=>{if(state.loaded)render()});
   }
   if(document.querySelector('#view-funds'))load(false);
