@@ -265,6 +265,7 @@ function renderUnavailablePosition(p = {}, message = "El valor no está disponib
   });
 }
 
+// portfolio-position-more: el detalle progresivo se abre ahora en la ficha completa de la acción.
 function renderPositionRow(p, index = 0) {
   const stock = stockByKey(p.stock_key);
   if (!stock) return renderUnavailablePosition(p);
