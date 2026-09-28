@@ -27,6 +27,7 @@ const files = [
   'catalog.js',
   'heatmap.js',
   'stock-interactions.js',
+  'filter-sheet.js',
   'navigation.js',
   'mobile-app.js',
   'bootstrap.js',
