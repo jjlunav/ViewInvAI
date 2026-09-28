@@ -385,19 +385,22 @@
  }
  function marketTopProducts(limit=10,ranking=[]){
   const eligible=state.products.filter(p=>p.type!=='etp'&&!/\b(?:2x|3x|leveraged|short)\b/i.test(String(p.name||'')));
-  if(ranking.length){
-   const byIsin=new Map(eligible.map(p=>[String(p.isin||'').toUpperCase(),p])),out=[],used=new Set();
-   for(const item of ranking){
-    const p=byIsin.get(String(item.isin||'').toUpperCase());if(!p||used.has(p.isin))continue;
-    used.add(p.isin);out.push(p);if(out.length>=limit)return out;
-   }
-  }
-  return eligible.slice().sort((a,b)=>{
+  const fallback=eligible.slice().sort((a,b)=>{
    const aumA=num(a.assetsUnderManagement)??0,aumB=num(b.assetsUnderManagement)??0;
    const platformA=(verified(a.platforms&&a.platforms.tradeRepublic)?1:0)+(verified(a.platforms&&a.platforms.myInvestor)?1:0);
    const platformB=(verified(b.platforms&&b.platforms.tradeRepublic)?1:0)+(verified(b.platforms&&b.platforms.myInvestor)?1:0);
    return aumB-aumA||platformB-platformA||String(a.name||'').localeCompare(String(b.name||''),'es');
-  }).slice(0,limit);
+  });
+  if(!ranking.length)return fallback.slice(0,limit);
+  const byIsin=new Map(eligible.map(p=>[String(p.isin||'').toUpperCase(),p])),out=[],used=new Set();
+  for(const item of ranking){
+   const p=byIsin.get(String(item.isin||'').toUpperCase());if(!p||used.has(p.isin))continue;
+   used.add(p.isin);out.push(p);if(out.length>=limit)return out;
+  }
+  for(const p of fallback){
+   if(used.has(p.isin))continue;used.add(p.isin);out.push(p);if(out.length>=limit)break;
+  }
+  return out;
  }
  function marketTopRow(p,i){
   const value=fundCurrentValue(p),ret=num(p.perf1Y),tone=ret===null?'muted':ret>=0?'positive':'negative';
