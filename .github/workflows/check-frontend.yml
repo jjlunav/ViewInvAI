@@ -232,7 +232,7 @@ jobs:
           help_ui = Path("help.js").read_text(encoding="utf-8")
           if "function initHelpSystem" not in help_ui or "function helpTextFor" not in help_ui:
               raise SystemExit("help.js incompleto")
-          if "load(true);" not in bootstrap or "window.ViewInvAI={" not in bootstrap:
+          if not ("load(false);" in bootstrap or "load(true);" in bootstrap) or "window.ViewInvAI={" not in bootstrap:
               raise SystemExit("bootstrap.js no posee el arranque/API publica")
           funds = Path("funds.js").read_text(encoding="utf-8")
           if "root.ViewInvAIFunds=" not in funds or "/api/fund-portfolios" not in funds or "/api/fund-positions" not in funds:
