@@ -94,13 +94,19 @@ function renderAnalysisSettings(settings=null){
   analysisWatchlistMinutes:['analysis_watchlist_minutes',10,1440,30],
   minBuyConfidence:['min_buy_confidence',60,99,85],
   minSellConfidence:['min_sell_confidence',60,99,80],
-  notifyScoreChange:['notify_score_change',5,60,20]
+  notifyScoreChange:['notify_score_change',5,60,20],
+  newsMinImpact:['news_min_impact',40,100,60]
  };
  for(const [id,[key,min,max,fallback]] of Object.entries(map)){
   let el=$('#'+id);if(!el)continue;
   let raw=accountAnalysisSettings&&accountAnalysisSettings[key];
   el.value=clampSetting(raw,min,max,fallback);
   el.disabled=!accountAnalysisSettings||analysisSettingsBusy;
+ }
+ let newsToggle=$('#notifyNews');
+ if(newsToggle){
+  newsToggle.checked=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news)!==0:true;
+  newsToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  }
  let button=$('#saveAnalysisSettings');if(button)button.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  let status=$('#analysisSettingsStatus');if(status){
@@ -116,7 +122,9 @@ async function saveAnalysisSettings(){
    analysisWatchlistMinutes:clampSetting($('#analysisWatchlistMinutes')?.value,10,1440,30),
    minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
    minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
-   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20)
+   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20),
+   notifyNews:!!$('#notifyNews')?.checked,
+   newsMinImpact:clampSetting($('#newsMinImpact')?.value,40,100,60)
   };
   let response=await window.ViewInvAIAuth.apiFetch('/api/settings',{method:'PATCH',body:JSON.stringify(body)});
   let data=await response.json().catch(()=>({}));
