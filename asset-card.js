@@ -7,7 +7,7 @@
   const cells=options.cells||[],columns=Math.max(1,cells.length),interactive=!!options.openAttrs;
   const identifier=options.isin&&options.isin!=='—'?'<button type="button" class="list-copy-isin" data-copy-isin="'+escape(options.isin)+'" aria-label="Copiar ISIN '+escape(options.isin)+'">'+escape(options.isin)+'</button>':'';
   return '<article class="asset-card" data-card-context="'+escape(options.context||'stock')+'">'+
-   '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" style="--asset-columns:'+columns+'"'+(options.openAttrs||'')+'>'+
+   '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
     '<div class="asset-card-identity">'+(options.leadingHtml||'')+'<div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
     cells.map(cell=>'<div class="asset-card-cell '+escape(cell.tone||'')+'">'+(cell.label?'<small class="asset-card-label">'+escape(cell.label)+'</small>':'')+'<span>'+content(cell)+'</span></div>').join('')+
     '<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>'+
@@ -17,7 +17,7 @@
   '</article>';
  }
  function head(columns,options={}){
-  return '<div class="asset-list-head" style="--asset-columns:'+Math.max(1,columns.length)+'">'+
+  return '<div class="asset-list-head" data-asset-columns="'+Math.max(1,columns.length)+'">'+
    (options.firstHtml||'<span>'+escape(options.firstLabel||'Valor / ISIN')+'</span>')+
    columns.map(cell=>'<span>'+content(typeof cell==='string'?{value:cell}:cell)+'</span>').join('')+'<span></span></div>';
  }

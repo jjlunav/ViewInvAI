@@ -10,6 +10,8 @@
  display:grid;grid-template-columns:minmax(0,1.55fr) repeat(var(--asset-columns,2),minmax(0,.72fr)) 12px;
  align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box;
 }
+[data-asset-columns="1"]{--asset-columns:1}
+[data-asset-columns="3"]{--asset-columns:3}
 .asset-card-row{min-height:74px;padding:8px 6px}
 .asset-card-row[role="button"]{cursor:pointer}
 .asset-card-row[role="button"]:hover{background:color-mix(in srgb,var(--teal) 5%,transparent)}
