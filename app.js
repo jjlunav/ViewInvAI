@@ -250,9 +250,16 @@ function readStockViews(){
 function saveStockViews(){try{localStorage.setItem(STOCK_VIEWS_KEY,JSON.stringify(stockViews))}catch(_){}}
 function recordStockView(key){
  key=String(key||'').toUpperCase();if(!key)return;
- let x=stockViews[key]||{count:0,last:0};x.count=(N(x.count)??0)+1;x.last=Date.now();stockViews[key]=x;saveStockViews();
+ const now=Date.now(),cutoff=now-7*86400000;
+ let x=stockViews[key]||{count:0,last:0,times:[]};
+ let times=Array.isArray(x.times)?x.times.map(Number).filter(t=>Number.isFinite(t)&&t>=cutoff):[];
+ times.push(now);x.times=times.slice(-250);x.count=x.times.length;x.last=now;stockViews[key]=x;saveStockViews();
 }
-function stockViewCount(s){let x=stockViews[stockKey(s)]||{};return Math.max(0,N(x.count)??0)}
+function stockViewCount(s){
+ let x=stockViews[stockKey(s)]||{},cutoff=Date.now()-7*86400000;
+ if(Array.isArray(x.times))return x.times.map(Number).filter(t=>Number.isFinite(t)&&t>=cutoff).length;
+ let last=N(x.last)??0;return last>=cutoff?Math.min(1,Math.max(0,N(x.count)??0)):0;
+}
 
 function stockOpenAttrs(s,reason='',preferTr=null){
  let pref=preferTr===true?'1':preferTr===false?'0':'';
