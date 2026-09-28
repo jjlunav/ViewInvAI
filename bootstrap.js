@@ -69,4 +69,4 @@ window.ViewInvAI={
  highConvictionRecommendation
 };
 setInterval(()=>load(false),DATA_REFRESH_MS);
-load(true);
+load(false);
