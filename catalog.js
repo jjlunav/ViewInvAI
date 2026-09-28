@@ -84,7 +84,7 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'market',label:'Mercado',tr:['bid','ask'],us:['bid','ask']},
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
-const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'}};
+const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'}};
 function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:820px)').matches}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
@@ -207,16 +207,26 @@ function catalogMobileList(mode,rows,se){
    '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
   '</div>';
 }
-function catalogMobileFilters(mode,cols){
- let st=catalogState[mode],active=catalogActiveFilterCount(mode);
+function catalogFilterOptions(mode,key){
+ let rows=db.stocks.filter(s=>mode==='tr'?trTradable(s):market(s,'us'));
+ return [...new Set(rows.map(s=>String(s&&s[key]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es')).slice(0,250);
+}
+function renderCatalogFilterPanel(mode,cols){
+ let st=catalogState[mode],host=$(mode==='tr'?'#catalogFilterPanelTr':'#catalogFilterPanelUs');if(!host)return;
  let inputs=cols.filter(c=>c.id!=='fav').map(c=>
-  '<label><span>'+E(c.label)+'</span><input class="catalog-col-filter" inputmode="'+(c.type==='number'?'decimal':'text')+'" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 o 10..30':c.type==='date'?'24/09/2026':'Contiene…')+'"></label>'
+  '<label><span>'+E(c.label)+'</span><input class="catalog-col-filter input" inputmode="'+(c.type==='number'?'decimal':'text')+'" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 · 10..30':c.type==='date'?'24/09/2026':'Contiene…')+'"></label>'
  ).join('');
- let opts=cols.filter(c=>c.id!=='fav').map(c=>'<option value="'+E(c.id)+'" '+(st.sort===c.id?'selected':'')+'>'+E(c.label)+'</option>').join('');
- return '<div class="catalog-mobile-tools">'+
-   '<div class="catalog-mobile-sort"><label><span>Ordenar</span><select class="select catalog-mobile-sort-select" data-mode="'+mode+'">'+opts+'</select></label><button type="button" class="btn ghost catalog-mobile-sort-dir" data-mode="'+mode+'" aria-label="Cambiar sentido">'+(st.dir>0?'↑':'↓')+'</button></div>'+
-   '<details class="catalog-mobile-filters" '+(active?'open':'')+'><summary><span>Filtros por columna</span><b>'+active+(active===1?' activo':' activos')+'</b></summary><div class="catalog-mobile-filter-grid">'+inputs+'</div></details>'+
-  '</div>';
+ let sectorOpts='<option value="all">Todos</option>'+catalogFilterOptions(mode,'sector').map(v=>'<option '+(st.sector===v?'selected':'')+'>'+E(v)+'</option>').join('');
+ let industryOpts='<option value="all">Todas</option>'+catalogFilterOptions(mode,'industry').map(v=>'<option '+(st.industry===v?'selected':'')+'>'+E(v)+'</option>').join('');
+ let sortOpts=cols.filter(c=>c.id!=='fav').map(c=>'<option value="'+E(c.id)+'" '+(st.sort===c.id?'selected':'')+'>'+E(c.label)+'</option>').join('');
+ host.innerHTML=
+  '<div class="catalog-filter-primary">'+
+   '<label><span>Sector</span><select class="select catalog-sector-filter" data-mode="'+mode+'">'+sectorOpts+'</select></label>'+
+   '<label><span>Industria / tipo</span><select class="select catalog-industry-filter" data-mode="'+mode+'">'+industryOpts+'</select></label>'+
+   '<label><span>Ordenar por</span><select class="select catalog-mobile-sort-select" data-mode="'+mode+'">'+sortOpts+'</select></label>'+
+  '</div>'+
+  '<details class="catalog-column-filters"><summary>Filtros avanzados por dato</summary><div class="catalog-mobile-filter-grid">'+inputs+'</div></details>'+
+  '<div class="filter-actions"><button type="button" class="btn ghost catalog-reset-filter" data-catalog-mode="'+mode+'">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Aplicar filtro</button></div>';
 }
 function catalogTable(mode,rows,se){
  let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
@@ -227,7 +237,7 @@ function catalogTable(mode,rows,se){
  let total=rows.length,limit=st.limit,shown=rows.slice(0,limit);
  let more=shown.length<total?'<div class="catalog-more"><button type="button" class="btn ghost catalog-load-more" data-catalog-mode="'+mode+'">Cargar '+Math.min(step,total-shown.length).toLocaleString('es-ES')+' más</button><span>Mostrando '+shown.length.toLocaleString('es-ES')+' de '+total.toLocaleString('es-ES')+'</span></div>':'';
  if(mobile){
-  return {html:catalogMobileFilters(mode,cols)+(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+more,count:total,shown:shown.length};
+  return {html:(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+more,count:total,shown:shown.length};
  }
  let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" data-help-title="'+E(c.label)+'" data-help="Haz clic para ordenar por '+E(c.label)+'. Vuelve a pulsar para invertir el orden. También puedes arrastrar la cabecera para mover esta columna." class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
  let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" data-help-title="Filtro · '+E(c.label)+'" data-help="Filtra '+E(c.label)+'. Números: &gt;10, &lt;5, 10..30, 250k, 2.5m. Texto: usa | para alternativas." value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 / 10..30':'Filtrar')+'"></th>').join('');
@@ -237,13 +247,14 @@ function catalogTable(mode,rows,se){
 function renderCatalogTable(mode){
  let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
  let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
- let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')).toLowerCase().includes(q)));
- let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;
+ let st=catalogState[mode];
+ let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
+ let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogColumns(mode));
  let count=$(isTr?'#catalogCount':'#catalogUSCount');count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }
 function resetCatalogColumns(mode){
- catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogResetLimit(mode);catalogSaveOrder(mode);renderCatalogTable(mode);
+ catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sector='all';catalogState[mode].industry='all';catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogResetLimit(mode);catalogSaveOrder(mode);renderCatalogTable(mode);
 }
 function renderCatalog(){renderCatalogTable('tr')}
 function renderCatalogUS(){renderCatalogTable('us')}
@@ -253,9 +264,12 @@ function initCatalogInteractions(){
  $('#catalogSearch').addEventListener('input',()=>{catalogResetLimit('tr');clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalog,220)});
  $('#catalogUSSearch').addEventListener('input',()=>{catalogResetLimit('us');clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(renderCatalogUS,220)});
  document.addEventListener('change',e=>{
-  let sort=e.target.closest&&e.target.closest('.catalog-mobile-sort-select');if(!sort)return;
-  let mode=sort.dataset.mode;if(!catalogState[mode])return;
-  catalogState[mode].sort=sort.value;catalogResetLimit(mode);renderCatalogTable(mode);
+  let sort=e.target.closest&&e.target.closest('.catalog-mobile-sort-select');
+  if(sort){let mode=sort.dataset.mode;if(catalogState[mode]){catalogState[mode].sort=sort.value;catalogResetLimit(mode);renderCatalogTable(mode)}return}
+  let sector=e.target.closest&&e.target.closest('.catalog-sector-filter');
+  if(sector){let mode=sector.dataset.mode;if(catalogState[mode]){catalogState[mode].sector=sector.value;catalogResetLimit(mode);renderCatalogTable(mode)}return}
+  let industry=e.target.closest&&e.target.closest('.catalog-industry-filter');
+  if(industry){let mode=industry.dataset.mode;if(catalogState[mode]){catalogState[mode].industry=industry.value;catalogResetLimit(mode);renderCatalogTable(mode)}return}
  });
  
  let catalogFilterTimer=null;
@@ -276,10 +290,8 @@ function initCatalogInteractions(){
    if(catalogState[mode]){catalogState[mode].mobileGroup=key||'general';renderCatalogTable(mode)}
    return;
   }
-  let reset=e.target.closest&&e.target.closest('.catalog-reset-columns');
+  let reset=e.target.closest&&e.target.closest('.catalog-reset-columns,.catalog-clear-filters,.catalog-reset-filter');
   if(reset){e.preventDefault();resetCatalogColumns(reset.dataset.catalogMode);return}
-  let clear=e.target.closest&&e.target.closest('.catalog-clear-filters');
-  if(clear){e.preventDefault();let mode=clear.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].filters={};catalogResetLimit(mode);renderCatalogTable(mode)}return}
   let more=e.target.closest&&e.target.closest('.catalog-load-more');
   if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||catalogPageSize())+catalogPageSize();renderCatalogTable(mode)}return}
   let sortDir=e.target.closest&&e.target.closest('.catalog-mobile-sort-dir');
