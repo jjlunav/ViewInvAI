@@ -444,7 +444,8 @@
  }
  async function load(force=false){
   if(state.loading)return;
-  if(state.loaded&&!force){render();return}
+  if(state.loaded&&!force){render();return true}
+  let ok=true;
   state.loading=true;render();
   try{
    let data;
@@ -463,9 +464,11 @@
    fill('#fundRegion',[...new Set(state.products.map(p=>p.region))],'Todas las regiones');
    state.loaded=true;
   }catch(e){
+   ok=false;
    console.warn('Funds catalogue loading failed',e);
    state.products=[];state.meta={};
   }finally{state.loading=false;render()}
+  return ok;
  }
 
  function api(path,options={}){
