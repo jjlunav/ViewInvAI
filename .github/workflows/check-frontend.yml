@@ -176,6 +176,17 @@ jobs:
           interactions = Path("stock-interactions.js").read_text(encoding="utf-8")
           if "function initStockInteractions" not in interactions or "data-stock-key" not in interactions:
               raise SystemExit("stock-interactions.js incompleto")
+          required_continuity = (
+              "function initStockViewContinuity", "MutationObserver",
+              ".stock-mobile-groups", ".reco-mobile-groups", ".portfolio-tabs-track",
+              ".event-mobile-groups", ".catalog-mobile-groups", ".fund-mobile-groups",
+              "'homeGroups'", "'entryResults'", "'recommendationResults'", "'portfolioApp'",
+              "'fundPortfolioApp'", "'fundsApp'", "'futureResults'", "'calendarResults'",
+              "'catalogResults'", "'catalogUSResults'"
+          )
+          missing_continuity = [item for item in required_continuity if item not in interactions]
+          if missing_continuity:
+              raise SystemExit("Continuidad de listas incompleta: " + ", ".join(missing_continuity))
           catalog = Path("catalog.js").read_text(encoding="utf-8")
           if "function renderCatalogTable" not in catalog or "function initCatalogInteractions" not in catalog:
               raise SystemExit("catalog.js incompleto")
@@ -585,15 +596,23 @@ jobs:
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=390,844 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=10000 --dump-dom 'http://127.0.0.1:4174/?native=1' > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
-          if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
-            echo "::error::Smoke nativo falló"
-            grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true
-            tail -100 /tmp/viewinvai-native-chrome.log || true
-            exit 1
-          fi
-          if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|NATIVE_SMOKE_FAIL' /tmp/viewinvai-native-chrome.log; then
-            cat /tmp/viewinvai-native-chrome.log
-            exit 1
-          fi
-          echo "Presentación nativa 390px: OK"
+          for SPEC in "360:800" "390:844" "412:915"; do
+            WIDTH="${SPEC%%:*}"
+            HEIGHT="${SPEC##*:}"
+            PROFILE="/tmp/viewinvai-native-profile-${WIDTH}"
+            DOM="/tmp/viewinvai-native-dom-${WIDTH}.html"
+            LOG="/tmp/viewinvai-native-chrome-${WIDTH}.log"
+            rm -rf "$PROFILE"
+            "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="${WIDTH},${HEIGHT}" --force-device-scale-factor=1 --user-data-dir="$PROFILE" --virtual-time-budget=10000 --dump-dom 'http://127.0.0.1:4174/?native=1' > "$DOM" 2>"$LOG"
+            if ! grep -q 'data-native-smoke="ok"' "$DOM"; then
+              echo "::error::Smoke nativo falló a ${WIDTH}px"
+              grep -o 'data-native-smoke-error="[^"]*"' "$DOM" || true
+              tail -100 "$LOG" || true
+              exit 1
+            fi
+            if grep -Eqi 'Uncaught|ReferenceError|TypeError|SyntaxError|NATIVE_SMOKE_FAIL' "$LOG"; then
+              cat "$LOG"
+              exit 1
+            fi
+            echo "Presentación nativa ${WIDTH}px: OK"
+          done

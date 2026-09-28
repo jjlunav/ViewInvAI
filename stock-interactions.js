@@ -28,6 +28,7 @@ function fallbackCopyListIsin(value){
 }
 
 function initStockInteractions(){
+ initStockViewContinuity();
  $('#aiChatClose')?.addEventListener('click',closeAiChat);
  $('#aiChatBackdrop')?.addEventListener('click',closeAiChat);
  $('#aiChatForm')?.addEventListener('submit',e=>{
@@ -120,7 +121,112 @@ function initStockInteractions(){
  });
  document.addEventListener('keydown',e=>{
   let row=e.target.closest&&e.target.closest('[data-stock-key]');
-  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('.fav-star,.catalog-col-filter'))return;
+  if(!row||!['Enter',' '].includes(e.key)||e.target.closest('button,a,input,select,textarea,summary,.catalog-col-filter'))return;
   e.preventDefault();let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+ });
+}
+
+/* Preserve presentation state only across a render-host replacement.
+ * No quote observation, persistent cache, form-value cache or cross-account state.
+ */
+let stockViewContinuityInitialized=false;
+function initStockViewContinuity(){
+ if(stockViewContinuityInitialized||typeof MutationObserver!=='function')return;
+ stockViewContinuityInitialized=true;
+ const detailsSelector='details.stock-card-details,details.reco-disclosure,details.reco-mobile-detail,details.portfolio-position-more,details.catalog-mobile-filters';
+ const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups,.event-mobile-groups,.catalog-mobile-groups,.fund-mobile-groups';
+ const controlSelector='summary,button,a,input,select,textarea,[tabindex]';
+ const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','fundPortfolioApp','fundsApp','futureResults','calendarResults','catalogResults','catalogUSResults']
+  .map(id=>document.getElementById(id)).filter(Boolean);
+ const focusByHost=new WeakMap(),scrollByElement=new WeakMap();
+ const elements=(node,selector)=>node.nodeType===1
+  ?[...(node.matches(selector)?[node]:[]),...node.querySelectorAll(selector)]:[];
+ function accountKey(){
+  try{
+   const user=window.ViewInvAIAuth?.getUser?.();
+   return String(user?.uid??user?.id??'');
+  }catch(_){return '';}
+ }
+ function cardKey(el){
+  const card=el.closest('.investing-stock-card,.recommendation-card,.stock-mobile-line,.reco-mobile-line,.event-mobile-line,.catalog-mobile-line,.portfolio-position,.fund-mobile-row');
+  if(!card)return '';
+  const selector='[data-stock-key],[data-open-stock],[data-reco-open],[data-fund-detail],[data-fund-isin]';
+  const ref=card.matches(selector)?card:card.querySelector(selector);
+  if(!ref)return '';
+  const data=ref.dataset;
+  const position=card.querySelector('[data-position-transactions]');
+  return JSON.stringify([
+   data.stockKey||data.openStock||data.recoOpen||data.fundDetail||data.fundIsin||'',
+   data.stockPreferTr??data.positionPreferTr??data.recoPreferTr??'',
+   position?.dataset.positionTransactions||'',
+   card.closest('.home-market-panel')?.className||''
+  ]);
+ }
+ function detailKey(el){
+  const key=cardKey(el);
+  if(key){
+   const card=el.closest('.investing-stock-card,.recommendation-card,.stock-mobile-line,.reco-mobile-line,.event-mobile-line,.catalog-mobile-line,.portfolio-position,.fund-mobile-row');
+   const index=[...card.querySelectorAll(detailsSelector)].indexOf(el);
+   return JSON.stringify(['card',key,el.dataset.uiStateKey||el.className,index]);
+  }
+  const host=hosts.find(item=>item.contains(el));
+  if(!host)return '';
+  const index=[...host.querySelectorAll(detailsSelector)].indexOf(el);
+  return JSON.stringify(['host',host.id,el.id||el.className,index]);
+ }
+ function controlKey(el){
+  if(el.tagName==='SUMMARY'){
+   const details=el.closest(detailsSelector),key=details&&detailKey(details);
+   return key?'summary:'+key:'';
+  }
+  if(el.id)return 'id:'+el.id;
+  const attrs=[...el.attributes].filter(a=>a.name.startsWith('data-')&&a.name!=='data-stock-reason')
+   .map(a=>[a.name,a.value]).sort((a,b)=>a[0].localeCompare(b[0]));
+  return attrs.length?JSON.stringify([el.tagName,cardKey(el),attrs]):'';
+ }
+ function scrollKey(el){
+  return el.id||JSON.stringify([el.className,el.getAttribute('aria-label')||'',el.closest('.home-market-panel')?.className||'']);
+ }
+ document.addEventListener('focusin',event=>{
+  hosts.forEach(host=>focusByHost.set(host,host.contains(event.target)?event.target:null));
+ });
+ hosts.forEach(host=>{
+  let owner=accountKey();
+  host.addEventListener('scroll',event=>{
+   if(event.target.matches?.(scrollSelector))scrollByElement.set(event.target,event.target.scrollLeft);
+  },true);
+  new MutationObserver(records=>{
+   const currentOwner=accountKey();
+   if(currentOwner!==owner){owner=currentOwner;focusByHost.set(host,null);return;}
+   const removed=records.flatMap(record=>[...record.removedNodes]);
+   if(!removed.length)return;
+   const openByKey=new Map(),leftByKey=new Map();
+   for(const node of removed){
+    for(const details of elements(node,detailsSelector)){
+     const key=detailKey(details);
+     if(key&&!openByKey.has(key))openByKey.set(key,details.open);
+    }
+    for(const scroller of elements(node,scrollSelector)){
+     const key=scrollKey(scroller);
+     if(!leftByKey.has(key))leftByKey.set(key,scrollByElement.get(scroller)??scroller.scrollLeft);
+    }
+   }
+   if(openByKey.size)host.querySelectorAll(detailsSelector).forEach(details=>{
+    const key=detailKey(details);
+    if(openByKey.has(key))details.open=openByKey.get(key);
+   });
+   if(leftByKey.size)host.querySelectorAll(scrollSelector).forEach(scroller=>{
+    const left=leftByKey.get(scrollKey(scroller));
+    if(left!==undefined){scroller.scrollLeft=left;scrollByElement.set(scroller,left);}
+   });
+   const previous=focusByHost.get(host);
+   if(!previous||previous.isConnected||document.activeElement!==document.body)return;
+   if(!removed.some(node=>node===previous||node.contains?.(previous)))return;
+   const key=controlKey(previous);
+   const next=key&&[...host.querySelectorAll(controlSelector)].find(el=>controlKey(el)===key);
+   // Do not move focus to an inactive view or a closed disclosure.
+   if(next&&next.getClientRects().length)next.focus({preventScroll:true});
+   else focusByHost.set(host,null);
+  }).observe(host,{childList:true});
  });
 }
