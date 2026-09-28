@@ -345,12 +345,11 @@ function homeMoveStocks(desc=true,limit=10){
 function homeStockRow(s,i,kind){
  let preferTr=trTradable(s),se=homeSession();
  let hint=kind==='views'?'Visto esta semana':(kind==='active'?'Atención y popularidad de mercado':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
- let insight=kind==='views'?'Visto esta semana':kind==='active'?'Atención de mercado':kind==='gainers'?'Subida · '+SN(se):'Bajada · '+SN(se);
  let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
  return standardStockCard(s,i,{
   se,preferTr,hint,context:'home',className:'home-investing-card',
-  detailsHtml:'',subtitle:[ticker,exchange,insight].filter(Boolean).join(' · ')
+  detailsHtml:'',subtitle:[ticker,exchange].filter(Boolean).join(' · ')
  });
 }
 function homePanel(title,subtitle,stocks,kind,tone){
