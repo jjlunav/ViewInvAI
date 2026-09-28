@@ -2396,3 +2396,78 @@ html[data-native-app="1"] .reco-mobile-compare{width:100%!important;border-top:1
 @media(max-width:380px){
 
 }
+
+
+/* 2026-09-28 native polish: safe headings and denser portfolio chrome. */
+html[data-native-app="1"] .view>.page-heading{
+ padding-right:100px!important;
+}
+html[data-native-app="1"] .view>.page-heading .heading-actions{
+ position:absolute!important;
+ right:44px!important;
+ top:2px!important;
+}
+html[data-native-app="1"] .view>.page-heading>.section-help{
+ position:absolute!important;
+ right:44px!important;
+ top:2px!important;
+}
+html[data-native-app="1"] .view>.page-heading h1{
+ display:flex!important;
+ align-items:center!important;
+ flex-wrap:wrap!important;
+ gap:6px!important;
+ min-width:0!important;
+}
+html[data-native-app="1"] .view>.page-heading .heading-badge{margin-left:0!important;flex:0 0 auto!important}
+html[data-native-app="1"] .main{
+ padding-bottom:calc(var(--native-nav-h) + 28px)!important;
+}
+html[data-native-app="1"] .view{
+ padding-bottom:calc(var(--native-nav-h) + 24px)!important;
+}
+html[data-native-app="1"] .stock-mobile-groups,
+html[data-native-app="1"] .catalog-mobile-groups,
+html[data-native-app="1"] .reco-mobile-groups,
+html[data-native-app="1"] .event-mobile-groups{
+ padding-right:18px!important;
+ scroll-padding-inline:8px 18px!important;
+ overscroll-behavior-x:contain!important;
+ scroll-snap-type:x proximity!important;
+}
+html[data-native-app="1"] .stock-mobile-groups button,
+html[data-native-app="1"] .catalog-mobile-groups button,
+html[data-native-app="1"] .reco-mobile-groups button,
+html[data-native-app="1"] .event-mobile-groups button{scroll-snap-align:start!important}
+html[data-native-app="1"] #view-portfolios .portfolio-asset-switch button.active{
+ background:rgba(80,220,181,.16)!important;
+ color:#9cf0d3!important;
+ box-shadow:inset 0 0 0 1px rgba(80,220,181,.42)!important;
+}
+html[data-native-app="1"] #view-portfolios [data-portfolio-asset-panel].is-hidden{display:none!important}
+html[data-native-app="1"] #view-portfolios .portfolio-workbar{
+ grid-template-columns:minmax(0,1fr) auto!important;
+ gap:6px!important;
+ position:relative!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-tabs-wrap{grid-column:1/-1!important}
+html[data-native-app="1"] #view-portfolios .portfolio-add-current,
+html[data-native-app="1"] #view-portfolios .portfolio-history{
+ min-height:36px!important;height:36px!important;font-size:10px!important;padding:6px 10px!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-add-current{grid-column:1!important;width:100%!important}
+html[data-native-app="1"] #view-portfolios .portfolio-history{grid-column:2!important;min-width:82px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-refresh{
+ position:absolute!important;right:0!important;top:0!important;
+ width:34px!important;min-width:34px!important;height:34px!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-summary-bar{
+ grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ gap:4px!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-summary-bar>div{padding:5px 6px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-summary-bar small{font-size:7px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-summary-bar strong{font-size:10px!important}
+@media(max-width:360px){
+ html[data-native-app="1"] #view-portfolios .portfolio-summary-bar{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}

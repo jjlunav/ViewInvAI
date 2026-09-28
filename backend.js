@@ -1218,6 +1218,7 @@ function recentEvents(snapshot, stock, limit = 12) {
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
     .slice(0, limit)
     .map(e => ({
+      id: trimText(e.id || "", 160),
       date: e.date || null,
       eventKind: e.eventKind || (e.type === "news" ? "news" : "event"),
       type: e.type || e.eventKind || "event",
@@ -1229,6 +1230,7 @@ function recentEvents(snapshot, stock, limit = 12) {
       sourceCount: finiteNumber(e.sourceCount),
       independentSourceCount: finiteNumber(e.independentSourceCount),
       corroborated: e.corroborated === true,
+      source: trimText(e.source || "", 120),
       url: trimText(e.url || e.sourceUrl || "", 500)
     }));
 }
@@ -1467,6 +1469,49 @@ async function analysisSettingsForUser(env, userId) {
   };
 }
 
+async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const candidates = (events || [])
+    .filter(event => {
+      const when = new Date(event && event.date || 0).getTime();
+      const impact = finiteNumber(event && event.impactScore) ?? 0;
+      return event && event.eventKind === "news" && Number.isFinite(when) && when >= cutoff && impact >= 60;
+    })
+    .sort((a,b) => (finiteNumber(b.impactScore) ?? 0) - (finiteNumber(a.impactScore) ?? 0) || new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 3);
+
+  const created = [];
+  for (const event of candidates) {
+    const message = trimText(event.title || event.fact || "Noticia relacionada con el valor.", 500);
+    if (!message) continue;
+    const duplicate = await env.DB.prepare(
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND message=? LIMIT 1"
+    ).bind(target.user_id, target.stock_key, message).first();
+    if (duplicate) continue;
+
+    const impact = finiteNumber(event.impactScore) ?? 0;
+    const severity = impact >= 85 ? "high" : impact >= 70 ? "warning" : "info";
+    const id = uid("al_");
+    const source = trimText(event.source || event.verification || "", 120);
+    const title = "Noticia · " + target.ticker;
+    const body = source ? message + " · " + source : message;
+    const now = nowIso();
+
+    await env.DB.prepare(
+      "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(
+      id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "",
+      "stock-news", severity, title, body, snapshotId || null, now
+    ).run();
+
+    const alert = { id, alert_type: "stock-news", severity, title, message: body };
+    try { await dispatchPushAlert(env, alert, target); }
+    catch (error) { console.warn("News push dispatch failed", String(error && error.message || error)); }
+    created.push(id);
+  }
+  return created;
+}
+
 async function maybeCreateAlert(env, target, stock, current, previous) {
   const previousCompatible = previous && String(previous.engine || "").startsWith("viewinvai-score/");
   const previousScore = previousCompatible ? finiteNumber(previous.score) : null;
@@ -1563,6 +1608,7 @@ async function analyzeTarget(env, target, services) {
   ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
 
   await maybeCreateAlert(env, target, stock, current, previous);
+  await maybeCreateNewsAlerts(env, target, stock, events, snapshotId);
 
   return {
     id: snapshotId,

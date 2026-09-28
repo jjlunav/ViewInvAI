@@ -44,8 +44,8 @@ const STOCK_MOBILE_GROUPS=[
  {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
  {key:'volume',label:'Volumen',columns:[['volume','Volumen'],['relVolume','Vol. rel.']]},
  {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
- {key:'trend',label:'Tendencia',columns:[['ema20','EMA20'],['ema50','EMA50']]},
- {key:'returns',label:'Rentabilidad',columns:[['week','1 sem.'],['month','1 mes']]},
+ {key:'trend',label:'Tend.',columns:[['ema20','EMA20'],['ema50','EMA50']]},
+ {key:'returns',label:'Rentab.',columns:[['week','1 sem.'],['month','1 mes']]},
  {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
  {key:'other',label:'Otros',columns:[['exchange','Mercado'],['earnings','Resultados']]}
 ];
@@ -127,7 +127,8 @@ function standardStockCard(s,i=0,opts={}){
   subtitle:opts.subtitle||[ticker,preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU')].filter(Boolean).join(' · '),
   leadingHtml:favButton(s,preferTr),cells,
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
-  detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',actionsHtml:opts.actionsHtml
+  detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
+  metaHtml:opts.metaHtml,actionsHtml:opts.actionsHtml,className:opts.className
  });
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
@@ -243,7 +244,12 @@ function homeStockRow(s,i,kind){
  let preferTr=trTradable(s),views=stockViewCount(s);
  let hint=kind==='views'?(views?views+' '+(views===1?'vista':'vistas'):'Más vista'):(kind==='gainers'?'Mejor rendimiento diario':'Peor rendimiento diario');
  let insight=kind==='views'?'IA · interés de usuarios':kind==='gainers'?'IA · momentum positivo':'IA · presión vendedora';
- return standardStockCard(s,i,{se:'regular',preferTr,hint,insight,className:'home-investing-card'});
+ let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
+ return standardStockCard(s,i,{
+  se:'regular',preferTr,hint,context:'home',className:'home-investing-card',
+  detailsHtml:'',subtitle:[ticker,exchange,insight].filter(Boolean).join(' · ')
+ });
 }
 function homePanel(title,subtitle,stocks,kind,tone){
  return '<section class="home-market-panel '+tone+'"><header><div><h2>'+E(title)+'</h2><p>'+E(subtitle)+'</p></div><span>'+stocks.length+'</span></header>'+
