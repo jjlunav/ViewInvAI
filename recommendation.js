@@ -44,8 +44,9 @@ function recommendationEligible(s,mode){
 function recommendationTechnicalLegacy(s,mode){
  let preferTr=mode==='tr',se=currentMarketSession(),score=50,factors=[];
  let add=(label,delta,note)=>{delta=Math.round(Number(delta||0)*10)/10;score+=delta;factors.push({label,delta,note})};
- let ch=preferTr?(trLiveChange(s)??FC(s,se)):FC(s,se),rv=RV(s,se),adx=N(s.adx),rsi=N(s.rsi);
- let p=N(s.price),ema20=N(s.ema20),ema50=N(s.ema50),week=N(s.perfWeek),month=N(s.perfMonth),vol=SV(s,se),sp=spreadPct(s,preferTr);
+ let displayQuote=verifiedDisplayQuote(s,preferTr,se);
+ let ch=N(displayQuote.change),rv=RV(s,se),adx=N(s.adx),rsi=N(s.rsi);
+ let p=N(displayQuote.price),ema20=N(s.ema20),ema50=N(s.ema50),week=N(s.perfWeek),month=N(s.perfMonth),vol=SV(s,se),sp=spreadPct(s,preferTr);
 
  if(ch===null)add('Momentum',-5,'Variación actual no disponible');
  else if(ch<0)add('Momentum',Math.max(-18,ch*1.2),'Movimiento '+PC(ch));
@@ -272,7 +273,7 @@ async function highConvictionRecommendation(mode){
  let s=pickRecommendation(mode);
  if(!s)return null;
  let a=recommendationAnalysis(s,mode),chart=await recommendationChartAnalysis(s,mode);
- let se=a.se,vol=SV(s,se),price=N(s.price),ema20=N(s.ema20),ema50=N(s.ema50);
+ let se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
  let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
  let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
  let dataQuality=stockDataQuality(s,mode,chart.available);
