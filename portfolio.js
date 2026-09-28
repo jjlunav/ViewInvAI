@@ -278,32 +278,29 @@ function renderPositionRow(p, index = 0) {
   const pnlAbs = qty !== null && avg !== null && currentEntryPrice !== null ? (currentEntryPrice - avg) * qty : null;
   const pnlPct = avg !== null && avg > 0 && currentEntryPrice !== null ? (currentEntryPrice / avg - 1) * 100 : null;
   const [signalLabel] = signalInfo(p.last_signal);
+  const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
 
-  const context =
-    '<div class="portfolio-position-context">' +
-      '<div class="portfolio-position-numbers">' +
-        '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-        '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
-        '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
-        (pnlPct === null ? '' : '<span class="' + (pnlPct >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlPct >= 0 ? '+' : '') + formatNumber(pnlPct, 2) + '%' + (pnlAbs === null ? '' : ' · ' + (pnlAbs >= 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency)) + '</b> desde entrada</span>') +
-      '</div>' +
-      '<details class="portfolio-position-more"><summary><span>' + esc(signalLabel) + (num(p.last_confidence) === null ? '' : ' · ' + Math.round(num(p.last_confidence)) + '%') + '</span><i aria-hidden="true">＋</i></summary>' +
-       '<div class="portfolio-position-actions">' +
-        '<button type="button" class="portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">Analizar IA</button>' +
-        '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
-       '</div>' +
-      '</details>' +
+  const meta =
+    '<div class="portfolio-position-strip">' +
+      '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
+      '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
+      '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
+      (pnlAbs === null ? '' : '<span class="' + (pnlAbs >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlAbs > 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency) + '</b></span>') +
+      '<button type="button" class="portfolio-meta-action portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">IA</button>' +
+      '<button type="button" class="portfolio-meta-action portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
     '</div>';
 
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
-    subtitle: (p.ticker || stock.ticker || "") + " · " + formatNumber(qty, 4) + " uds. · " + signalLabel,
+    className: "portfolio-position-card",
+    subtitle: [p.ticker || stock.ticker || "", signalLabel].filter(Boolean).join(" · "),
     cells: [
       {label: "Precio", value: formatMoney(currentEntryPrice, entryCurrency)},
-      {label: "P&L", value: pnlAbs === null ? "—" : formatMoney(pnlAbs, entryCurrency) + " · " + formatNumber(pnlPct, 2) + "%", tone: pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative"}
+      {label: "P&L", value: pnlPct === null ? "—" : (pnlPct > 0 ? "+" : "") + formatNumber(pnlPct, 2) + "%", tone: pnlTone}
     ],
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
-    detailsHtml: context, detailsLabel: "Posición · operaciones · IA"
+    detailsHtml: "",
+    metaHtml: meta
   });
 }
 
