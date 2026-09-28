@@ -186,9 +186,9 @@ function entryUniverseMatch(s){
  return market(s,'us')&&!trTradable(s);
 }
 function entrySessionForPreset(){
- if(state.preset==='postmarketExplosion')return'postmarket';
- if(state.preset==='premarketExplosion')return'premarket';
- return SES();
+ // Presets alter thresholds/sorting, never the clock. All screens share the
+ // same market session unless the user explicitly changes the session control.
+ return state.session==='auto'?currentMarketSession():state.session;
 }
 function previousSessionChange(s,se){
  if(se==='premarket')return N(s.previousPremarketChangePct);
