@@ -198,7 +198,9 @@ function emergingSignal(s,se){
 function entry(){
  let q=state.filters,se=entrySessionForPreset(),preferTr=state.entryMarket==='tr',emerging=state.preset==='emerging';
  let a=db.stocks.filter(entryUniverseMatch).filter(s=>{
-  let ch=marketChange(s,se,preferTr);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
+  let displayQuote=verifiedDisplayQuote(s,preferTr,se);
+  if(N(displayQuote&&displayQuote.price)===null)return false;
+  let ch=N(displayQuote&&displayQuote.change);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
 
   let rv=RV(s,se);if(q.minRelVolume>0&&(rv===null||rv<q.minRelVolume))return false;
   let adx=N(s.adx);if(q.minAdx>0&&(adx===null||adx<q.minAdx))return false;
@@ -218,7 +220,7 @@ function entry(){
    let ax=emergingSignal(x,se),ay=emergingSignal(y,se);
    if(ay.score!==ax.score)return ay.score-ax.score;
   }
-  let ax=marketChange(x,se,preferTr),by=marketChange(y,se,preferTr),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
+  let ax=N(verifiedDisplayQuote(x,preferTr,se).change),by=N(verifiedDisplayQuote(y,preferTr,se).change),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
   if(bv!==av)return bv-av;
   return String(x.ticker||'').localeCompare(String(y.ticker||''));
  });
