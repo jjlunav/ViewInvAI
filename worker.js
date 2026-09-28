@@ -708,6 +708,58 @@ async function loadChartForBackend(stock, target) {
   return fetchNasdaqChart(ticker);
 }
 
+
+let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
+async function socialTrendingResponse(){
+  const cached=publicMarketCache.social;
+  if(cached.value&&Date.now()-cached.at<300000)return jsonResponse(cached.value,200,{"Cache-Control":"public, max-age=120"});
+  try{
+    const r=await fetch("https://api.stocktwits.com/api/2/trending/symbols.json",{headers:{"User-Agent":"ViewInvAI/1.0","Accept":"application/json"}});
+    if(!r.ok)throw Error("Stocktwits "+r.status);
+    const data=await r.json(),raw=Array.isArray(data&&data.symbols)?data.symbols:[];
+    const symbols=raw.slice(0,30).map((x,i)=>({
+      symbol:String(x&&x.symbol||x&&x.symbol_obj&&x.symbol_obj.symbol||"").toUpperCase(),
+      rank:i+1,
+      title:String(x&&x.title||x&&x.symbol_obj&&x.symbol_obj.title||"")
+    })).filter(x=>x.symbol);
+    const payload={symbols,source:"Stocktwits trending",updatedAt:new Date().toISOString()};
+    publicMarketCache.social={at:Date.now(),value:payload};
+    return jsonResponse(payload,200,{"Cache-Control":"public, max-age=120"});
+  }catch(error){
+    return jsonResponse({symbols:[],source:"unavailable",updatedAt:new Date().toISOString()},200,{"Cache-Control":"public, max-age=60"});
+  }
+}
+async function indicesLiveResponse(){
+  const cached=publicMarketCache.indices;
+  if(cached.value&&Date.now()-cached.at<60000)return jsonResponse(cached.value,200,{"Cache-Control":"public, max-age=30"});
+  const tickers=["SP:SPX","NASDAQ:NDX","DJ:DJI","NASDAQ:IXIC","TVC:RUT","TVC:VIX","XETR:DAX","TVC:CAC40","TVC:UKX","TVC:NI225"];
+  try{
+    const r=await fetch("https://scanner.tradingview.com/global/scan",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","User-Agent":"Mozilla/5.0"},
+      body:JSON.stringify({symbols:{tickers,query:{types:[]}},columns:["name","description","close","change","currency","exchange"]})
+    });
+    if(!r.ok)throw Error("TradingView "+r.status);
+    const data=await r.json();
+    const indices=(Array.isArray(data&&data.data)?data.data:[]).map(row=>{
+      const d=row.d||[],s=String(row.s||"");
+      return{
+        symbol:d[0]||s.split(":").pop(),
+        name:d[1]||d[0]||s,
+        price:Number.isFinite(Number(d[2]))?Number(d[2]):null,
+        change:Number.isFinite(Number(d[3]))?Number(d[3]):null,
+        currency:d[4]||"",
+        exchange:d[5]||s.split(":")[0]||""
+      };
+    }).filter(x=>x.symbol);
+    const payload={indices,source:"TradingView",updatedAt:new Date().toISOString()};
+    publicMarketCache.indices={at:Date.now(),value:payload};
+    return jsonResponse(payload,200,{"Cache-Control":"public, max-age=30"});
+  }catch(error){
+    return jsonResponse({indices:[],source:"unavailable",updatedAt:new Date().toISOString()},200,{"Cache-Control":"public, max-age=30"});
+  }
+}
+
 function isBackendApiPath(pathname) {
   return pathname === "/api/backend/status" ||
     pathname === "/api/me" ||
@@ -722,6 +774,7 @@ function isBackendApiPath(pathname) {
     pathname === "/api/ai" || pathname.startsWith("/api/ai/") ||
     pathname === "/api/alerts" || pathname.startsWith("/api/alerts/") ||
     pathname === "/api/settings" ||
+    pathname === "/api/notification-preferences" ||
     pathname === "/api/devices" || pathname.startsWith("/api/devices/");
 }
 
@@ -753,6 +806,14 @@ export default {
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend
       }));
+    }
+    if (url.pathname === "/api/social-trending") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await socialTrendingResponse());
+    }
+    if (url.pathname === "/api/indices-live") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await indicesLiveResponse());
     }
     if (url.pathname === "/api/tr-live") {
       return proxyTradeRepublic(request);
