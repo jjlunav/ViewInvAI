@@ -285,29 +285,13 @@ function renderPositionRow(p, index = 0) {
   const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
   const priceTone = market.change === null ? "muted" : market.change >= 0 ? "positive" : "negative";
 
-  const meta =
-    '<div class="portfolio-position-strip">' +
-      '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-      '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
-      '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
-      (market.fallback ? '<span>EEUU ref.</span>' : '') +
-      (pnlAbs === null ? '' : '<span class="' + (pnlAbs >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlAbs > 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency) + '</b></span>') +
-      '<button type="button" class="portfolio-meta-action portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">IA</button>' +
-      '<button type="button" class="portfolio-meta-action portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
-    '</div>';
-
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
-    subtitle: [p.ticker || stock.ticker || "", signalLabel].filter(Boolean).join(" · "),
-    cells: [
-      {label: "Precio", value: formatMoney(currentEntryPrice, entryCurrency), tone: priceTone},
-      {label: "P&L", value: pnlPct === null ? "—" : (pnlPct > 0 ? "+" : "") + formatNumber(pnlPct, 2) + "%", tone: pnlTone}
-    ],
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
-    detailsHtml: "",
-    metaHtml: meta
+    detailsHtml: ""
   });
+
 }
 
 function renderPositionRowSafe(p, index = 0) {
@@ -1456,7 +1440,9 @@ function bind() {
     }
 
     if (event.target.closest?.(".portfolio-refresh")) {
-      loadAll();
+      const stamp=()=>state.positions.map(x=>String(x.updated_at||x.id||'')).join('|');
+      if(window.ViewInvAIRefreshFeedback)await window.ViewInvAIRefreshFeedback.run(()=>loadAll(),stamp);
+      else await loadAll();
       return;
     }
 
