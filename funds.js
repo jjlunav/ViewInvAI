@@ -373,6 +373,29 @@
    '<div class="fund-source-line"><span>'+esc(ageText(p.sourceUpdatedAt||p.valueDate))+'</span>'+(sources?'<span>·</span>'+sources:'')+'</div>'+
   '</div>';
  }
+
+ function marketTopProducts(limit=10){
+  return state.products.slice().sort((a,b)=>{
+   const aumA=num(a.assetsUnderManagement)??0,aumB=num(b.assetsUnderManagement)??0;
+   const platformA=(a.tradeRepublicVerified?1:0)+(a.myInvestorVerified?1:0),platformB=(b.tradeRepublicVerified?1:0)+(b.myInvestorVerified?1:0);
+   return aumB-aumA||platformB-platformA||(num(b.perf1Y)??-Infinity)-(num(a.perf1Y)??-Infinity);
+  }).slice(0,limit);
+ }
+ function marketTopRow(p,i){
+  const value=fundCurrentValue(p),ret=num(p.perf1Y),tone=ret===null?'muted':ret>=0?'positive':'negative';
+  const type=p.type==='fund'?'Fondo indexado':p.type==='etf'?'ETF':'ETP';
+  return root.ViewInvAICards.render({context:'funds-market',title:p.name||p.isin,rank:'#'+(i+1),isin:p.isin,
+   subtitle:[type,p.provider,p.indexName].filter(Boolean).join(' · '),
+   openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
+   cells:[{label:'Valor',value:money(value,p.currency),tone},{label:'1 año',value:pct(ret),tone}]});
+ }
+ async function renderMarketTop10(target,limit=10){
+  const box=typeof target==='string'?q(target):target;if(!box)return;
+  if(!state.loaded)await load(false);
+  const rows=marketTopProducts(limit);
+  box.innerHTML=rows.length?'<div class="market-board-list fund-market-top">'+rows.map(marketTopRow).join('')+'</div>':'<div class="empty-state">No hay fondos verificados disponibles.</div>';
+ }
+
  function render(){
   const box=q('#fundsApp');if(!box)return;
   if(state.loading){box.innerHTML='<div class="empty-state">Actualizando fondos y ETFs…</div>';return}
@@ -762,5 +785,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
+ root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
 })(window);
