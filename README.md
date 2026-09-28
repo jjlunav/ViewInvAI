@@ -8,6 +8,14 @@ ViewInvAI es una plataforma de observación y análisis de acciones orientada a 
 
 ViewInvAI comparte datos y lógica entre web y Android, pero mantiene presentaciones independientes. El frontend común está dividido por responsabilidad (`app.js`, `stock-charts.js`, `stock-profile.js`, `navigation.js`) y arranca desde un único `bootstrap.js`. `styles.css` contiene la base web, `web-mobile.css` el responsive del navegador y `mobile-app.css` / `mobile-app.js` la interfaz exclusiva de la APK. Los cambios visuales de Android no deben implementarse como parches responsive dentro del CSS web.
 
+### Tarjeta única de los menús
+
+`asset-card.js` y `asset-card.css` definen una única fila compacta para web y Android. Inicio, Ideas IA, Radar, eventos, catálogos móviles, avisos y carteras suministran únicamente sus datos, columnas y acciones. `standardStockCard` adapta las acciones a ese componente; los fondos conservan su modelo por ISIN y usan la misma presentación. Las tablas comparativas de escritorio siguen siendo tablas.
+
+Carteras muestra una acción por fila, con precio y P&L visibles. Pulsar la fila abre el detalle global; los botones de favorito, copia del ISIN y operaciones conservan acciones independientes.
+
+Los cambios de código en `main` activan la publicación web existente de Cloudflare y la compilación de una APK en GitHub Actions. La APK empaqueta los mismos archivos compartidos y utiliza un `versionCode` creciente por compilación. Los cambios de datos no disparan una compilación de Android. La instalación de la nueva APK en cada dispositivo sigue siendo necesaria.
+
 ### Ficha única de activo
 
 Todas las entradas a una acción (Inicio, Radar, Ideas IA, Carteras, Avisos y Catálogos) abren el mismo detalle global. No deben crearse fichas específicas por menú ni renderizadores alternativos. La plantilla vive en `stock-profile.js` y cambia únicamente los datos y el mercado preferido del activo. Las secciones General, Gráfico, Noticias, Fundamental, Técnico e IA son pestañas reales y cargan el contenido pesado bajo demanda.

@@ -133,7 +133,7 @@ let stockViewContinuityInitialized=false;
 function initStockViewContinuity(){
  if(stockViewContinuityInitialized||typeof MutationObserver!=='function')return;
  stockViewContinuityInitialized=true;
- const detailsSelector='details.stock-card-details,details.reco-disclosure,details.reco-mobile-detail,details.portfolio-position-more,details.catalog-mobile-filters';
+ const detailsSelector='details.asset-card-details,details.stock-card-details,details.reco-disclosure,details.reco-mobile-detail,details.portfolio-position-more,details.catalog-mobile-filters';
  const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups,.event-mobile-groups,.catalog-mobile-groups,.fund-mobile-groups';
  const controlSelector='summary,button,a,input,select,textarea,[tabindex]';
  const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','fundPortfolioApp','fundsApp','futureResults','calendarResults','catalogResults','catalogUSResults']
@@ -148,7 +148,7 @@ function initStockViewContinuity(){
   }catch(_){return '';}
  }
  function cardKey(el){
-  const card=el.closest('.investing-stock-card,.recommendation-card,.stock-mobile-line,.reco-mobile-line,.event-mobile-line,.catalog-mobile-line,.portfolio-position,.fund-mobile-row');
+  const card=el.closest('.asset-card');
   if(!card)return '';
   const selector='[data-stock-key],[data-open-stock],[data-reco-open],[data-fund-detail],[data-fund-isin]';
   const ref=card.matches(selector)?card:card.querySelector(selector);
@@ -165,7 +165,7 @@ function initStockViewContinuity(){
  function detailKey(el){
   const key=cardKey(el);
   if(key){
-   const card=el.closest('.investing-stock-card,.recommendation-card,.stock-mobile-line,.reco-mobile-line,.event-mobile-line,.catalog-mobile-line,.portfolio-position,.fund-mobile-row');
+   const card=el.closest('.asset-card');
    const index=[...card.querySelectorAll(detailsSelector)].indexOf(el);
    return JSON.stringify(['card',key,el.dataset.uiStateKey||el.className,index]);
   }

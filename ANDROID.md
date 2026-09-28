@@ -22,9 +22,9 @@ La aplicación se divide en tres capas:
    - `mobile-app.css`: geometría y diseño exclusivos de la APK;
    - `mobile-app.js`: métricas de viewport, safe areas, cabecera de acción y comportamiento visual nativo.
 
-La APK abre producción con `?native=1`. Ese modo activa `data-native-app="1"` en el elemento `html` y evita cargar `web-mobile.css`.
+La APK empaqueta el frontend en `mobile-shell` y lo carga localmente. El proceso `npm run mobile:build` activa `data-native-app="1"` y evita cargar `web-mobile.css`; las APIs y datos online usan el backend de producción. Los recursos visuales nuevos requieren compilar e instalar una APK nueva.
 
-El objetivo es que web y Android compartan información y comportamiento de negocio, pero no dependan del mismo layout.
+Web y Android comparten información y lógica. Las tarjetas de los menús comparten además `asset-card.js` y `asset-card.css`, que se empaquetan sin duplicar código. La navegación y el resto del layout nativo siguen en `mobile-app.css`.
 
 ## Regla de desarrollo
 
@@ -59,7 +59,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ## GitHub Actions
 
-El workflow `.github/workflows/build-android.yml` genera automáticamente un APK instalable.
+El workflow `.github/workflows/build-android.yml` genera una APK instalable al cambiar código en `main`, o mediante ejecución manual. El artefacto incluye versión y número de compilación, y el `versionCode` aumenta en cada ejecución. Conserva la firma estable de Firebase. La APK se descarga desde el artefacto `ViewInvAI-Android-debug` de GitHub Actions y debe instalarse en el dispositivo; no se instala silenciosamente.
 
 El workflow de frontend prueba por separado:
 
@@ -82,4 +82,4 @@ Android recibe del mismo servicio que la web:
 - análisis y señales;
 - cambios del backend compartido.
 
-Los cambios de UI nativa se publican como recursos frontend separados y no modifican la presentación de la web.
+Los cambios de la tarjeta compartida se aplican en ambas plataformas. Los cambios específicos de navegación o disposición nativa siguen aislados en sus archivos Android.

@@ -1,0 +1,64 @@
+/* Shared card geometry. Menus supply data and actions, never a second layout. */
+.asset-card{
+ --asset-text:var(--native-text,var(--text));
+ --asset-muted:var(--native-muted,var(--muted));
+ --asset-line:var(--native-line,var(--line));
+ width:100%;min-width:0;margin:0;border:0;border-bottom:1px solid var(--asset-line);
+ border-radius:0;background:transparent;color:var(--asset-text);box-shadow:none;
+}
+.asset-card-row,.asset-list-head{
+ display:grid;grid-template-columns:minmax(0,1.55fr) repeat(var(--asset-columns,2),minmax(0,.72fr)) 12px;
+ align-items:center;gap:8px;width:100%;min-width:0;box-sizing:border-box;
+}
+[data-asset-columns="1"]{--asset-columns:1}
+[data-asset-columns="3"]{--asset-columns:3}
+.asset-card-row{min-height:74px;padding:8px 6px}
+.asset-card-row[role="button"]{cursor:pointer}
+.asset-card-row[role="button"]:hover{background:color-mix(in srgb,var(--teal) 5%,transparent)}
+.asset-card-row:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.asset-card-identity{display:flex;align-items:center;gap:6px;min-width:0}
+.asset-card-copy{display:grid;gap:3px;min-width:0;flex:1}
+.asset-card-copy>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:11px;line-height:1.22;font-weight:750}
+.asset-card-copy em{margin-right:4px;color:var(--asset-muted);font-size:8px;font-style:normal}
+.asset-card-copy>small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--asset-muted);font-size:8px;line-height:1.2}
+.asset-card .list-copy-isin{display:block;max-width:100%;padding:0;border:0;background:transparent;color:var(--asset-muted);font:inherit;font-size:8px;line-height:1.2;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:underline dotted;text-underline-offset:2px;cursor:pointer}
+.asset-card .fav-star{flex:0 0 22px;width:22px;min-width:22px;height:30px;padding:0}
+.asset-card-cell{min-width:0;overflow-wrap:anywhere;font-size:10px;line-height:1.25;font-weight:650;font-variant-numeric:tabular-nums}
+.asset-card-label{display:block;color:var(--asset-muted);font-size:8px;font-weight:500;margin-bottom:3px}
+.asset-card-cell .table-price-wrap{display:block;min-width:0}
+.asset-card-cell .table-price-cell,.asset-card-cell .quote-change{font:inherit;white-space:normal}
+.asset-card-cell .quote-updated{display:block;margin-top:3px;color:var(--asset-muted);font-size:7px;line-height:1.2;white-space:normal}
+.asset-card-cell.positive,.asset-card-cell.buy{color:var(--positive)}
+.asset-card-cell.negative,.asset-card-cell.sell{color:var(--negative)}
+.asset-card-cell.muted{color:var(--asset-muted)}
+.asset-card-cell.watch,.asset-card-cell.wait{color:var(--amber,#d9c96a)}
+.asset-card-open{justify-self:end;color:var(--asset-muted);font-size:18px}
+.asset-list-head{min-height:34px;padding:5px 6px;border-bottom:1px solid var(--line);color:var(--muted);font-size:8px;font-weight:750;text-transform:uppercase}
+.asset-list-head~div .asset-card-label{display:none}
+.asset-card-details{margin:0;border:0;background:transparent}
+.asset-card-details>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;padding:5px 6px;color:var(--asset-muted);font-size:8.5px;line-height:1.3;font-weight:650;cursor:pointer}
+.asset-card-details>summary::-webkit-details-marker{display:none}
+.asset-card-details>summary i{font-style:normal;font-size:13px}
+.asset-card-details[open]>summary i{transform:rotate(45deg)}
+.asset-card-detail-body{padding:8px;border-top:1px solid var(--asset-line);font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.asset-card-detail-body p{margin:4px 0;color:var(--asset-muted)}
+.asset-card-metrics,.asset-card-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 0}
+.asset-card-metrics span{color:var(--asset-muted)}
+.asset-card-metrics b{color:var(--asset-text)}
+.asset-card-actions{padding:6px}
+.asset-card .quote-spread{max-width:100%;flex-wrap:wrap}
+.asset-card .reco-factors,.asset-card .reco-events{min-width:0;max-width:100%}
+.asset-card .portfolio-position-context{display:block;min-width:0}
+.asset-card .portfolio-position-numbers,.asset-card .portfolio-position-actions{flex-wrap:wrap}
+.asset-card .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* Container sizing belongs to the shared system too. */
+#homeGroups .home-stock-list{display:block!important;padding:0 6px!important;gap:0!important}
+.stock-list.stock-card-grid{display:grid!important;align-items:start!important;align-content:start!important;justify-content:start!important;border:0!important;background:transparent!important;overflow:visible!important;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),420px))!important;gap:10px!important}
+.stock-list.stock-card-grid>nav,.stock-list.stock-card-grid>[class$="-compare"]{grid-column:1/-1}
+#view-portfolios .portfolio-position-list.stock-list,#view-portfolios .fund-position-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;overflow:visible!important}
+#recommendationResults{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),420px));gap:10px}
+#recommendationResults>nav,#recommendationResults>.reco-mobile-compare{grid-column:1/-1}
+@media(max-width:760px){
+ .stock-list.stock-card-grid,#view-portfolios .portfolio-position-list.stock-list,#recommendationResults{grid-template-columns:minmax(0,1fr)!important}
+ .asset-card-row,.asset-list-head{gap:6px}
+}

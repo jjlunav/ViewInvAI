@@ -15,6 +15,9 @@ on:
       - "heatmap.js"
       - "events.js"
       - "stock-list.js"
+      - "asset-card.js"
+      - "asset-card.css"
+      - "scripts/smoke_asset_cards.js"
       - "recommendation.js"
       - "help.js"
       - "bootstrap.js"
@@ -70,6 +73,7 @@ jobs:
           node --check heatmap.js
           node --check events.js
           node --check stock-list.js
+          node --check asset-card.js
           node --check recommendation.js
           node --check help.js
           node --check bootstrap.js
@@ -265,11 +269,14 @@ jobs:
           portfolio = Path("portfolio.js").read_text(encoding="utf-8")
           if "portfolio-position-more" not in portfolio:
               raise SystemExit("portfolio.js no aplica detalle progresivo")
-          required_density = ("profile-disclosure", "stock-card-details", "reco-disclosure", "portfolio-position-more")
+          required_density = ("profile-disclosure", "reco-disclosure", "portfolio-position-more")
           missing_density = [item for item in required_density if item not in density_css]
           if missing_density:
               raise SystemExit("ui-density.css incompleto: " + ", ".join(missing_density))
 
+          cards_css = Path("asset-card.css").read_text(encoding="utf-8")
+          if ".asset-card-details" not in cards_css or "asset-card.js" not in html or "asset-card.css" not in html:
+              raise SystemExit("Falta el componente de tarjeta compartida")
           print("Arquitectura frontend separada: OK")
           PY
 
@@ -400,7 +407,7 @@ jobs:
           fi
           rm -rf /tmp/viewinvai-smoke /tmp/viewinvai-smoke-profile
           mkdir -p /tmp/viewinvai-smoke/data /tmp/viewinvai-smoke-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
           cat > /tmp/viewinvai-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"premarketPrice":9.8,"premarketChangePct":3,"premarketVolume":20000,"postmarketPrice":10.2,"postmarketChangePct":4,"postmarketVolume":30000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin","usLivePrice":10.1,"usLiveChangePct":6,"usLiveReceivedAt":1790445600000,"usLiveTimestamp":1790445600000,"usLiveIsRealTime":true,"usLiveSource":"smoke"}],"events":[]}
           JSON
@@ -412,16 +419,18 @@ jobs:
           p=Path("/tmp/viewinvai-smoke/index.html")
           html=p.read_text(encoding="utf-8")
           inject=r'''
+          <script src="smoke_asset_cards.js"></script>
           <script>
           (() => {
             const fail = m => { document.documentElement.dataset.smoke='fail'; document.documentElement.dataset.smokeError=String(m); console.error('SMOKE_FAIL',m); };
             const started=Date.now();
-            const wait=()=> {
+            const wait=async()=> {
               try {
-                if(!window.ViewInvAI || !window.ViewInvAIFunds || !window.ViewInvAI.getAllStocks().length){
+                if(!window.ViewInvAI || !window.ViewInvAIPortfolios || !window.ViewInvAIFunds || !window.ViewInvAI.getAllStocks().length){
                   if(Date.now()-started<7000)return setTimeout(wait,100);
                   return fail('runtime did not initialize');
                 }
+                await window.checkAssetCards();
                 const stock=window.ViewInvAI.getAllStocks()[0], key=window.ViewInvAI.getStockKey(stock);
                 if(!window.ViewInvAI.openStockByKey(key,'Smoke',true))return fail('global stock detail did not open');
                 setTimeout(()=>{
@@ -488,7 +497,7 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=1024,768 --user-data-dir=/tmp/viewinvai-smoke-profile --virtual-time-budget=10000 --dump-dom http://127.0.0.1:4173/ > /tmp/viewinvai-smoke-dom.html 2>/tmp/viewinvai-smoke-chrome.log
           if ! grep -q 'data-smoke="ok"' /tmp/viewinvai-smoke-dom.html; then
             echo "::error::Smoke web falló"
-            grep -o 'data-smoke-error="[^"]*"' /tmp/viewinvai-smoke-dom.html || true
+            head -c 4000 /tmp/viewinvai-smoke-dom.html || true
             tail -100 /tmp/viewinvai-smoke-chrome.log || true
             exit 1
           fi
@@ -505,7 +514,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp index.html market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
@@ -517,6 +526,7 @@ jobs:
           p=Path("/tmp/viewinvai-native/index.html")
           html=p.read_text(encoding="utf-8")
           inject=r'''
+          <script src="smoke_asset_cards.js"></script>
           <script>
           (() => {
             const fail=m=>{document.documentElement.dataset.nativeSmoke='fail';document.documentElement.dataset.nativeSmokeError=String(m);console.error('NATIVE_SMOKE_FAIL',m)};
@@ -542,12 +552,13 @@ jobs:
                 },100);
               },250);
             };
-            const wait=()=>{
+            const wait=async()=>{
               try{
-                if(!window.ViewInvAI||!window.ViewInvAIFunds||!window.ViewInvAI.getAllStocks().length){
+                if(!window.ViewInvAI||!window.ViewInvAIPortfolios||!window.ViewInvAIFunds||!window.ViewInvAI.getAllStocks().length){
                   if(Date.now()-started<7000)return setTimeout(wait,100);
                   return fail('native runtime did not initialize');
                 }
+                await window.checkAssetCards();
                 const more=document.querySelector('[data-mobile-more]');
                 more?.click();
                 const fundsItem=document.querySelector('.mobile-more-item[data-mobile-view="funds"]');
@@ -556,7 +567,7 @@ jobs:
                 window.ViewInvAIFunds.load(true).then(()=>{
                   const fundView=document.querySelector('#view-funds');
                   if(!fundView?.classList.contains('active'))return fail('native funds view did not open');
-                  const rows=document.querySelectorAll('#fundsApp .fund-mobile-row');
+                  const rows=document.querySelectorAll('#fundsApp .asset-card-row');
                   if(rows.length!==2)return fail('native compact fund rows missing');
                   if(document.querySelector('#fundsApp .fund-table'))return fail('desktop fund table rendered in native mode');
                   const tabs=[...document.querySelectorAll('#fundsApp [data-fund-mobile-group]')];
@@ -575,7 +586,7 @@ jobs:
                   toggle.click();
                   if(getComputedStyle(advanced).display==='none')return fail('advanced fund filters did not open');
                   toggle.click();
-                  const currentFirstRow=document.querySelector('#fundsApp .fund-mobile-row');
+                  const currentFirstRow=document.querySelector('#fundsApp .asset-card-row');
                   if(!currentFirstRow)return fail('native compact fund row disappeared after tab change');
                   currentFirstRow.click();
                   const modal=document.querySelector('#fundModal');
@@ -606,7 +617,7 @@ jobs:
             "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="${WIDTH},${HEIGHT}" --force-device-scale-factor=1 --user-data-dir="$PROFILE" --virtual-time-budget=10000 --dump-dom 'http://127.0.0.1:4174/?native=1' > "$DOM" 2>"$LOG"
             if ! grep -q 'data-native-smoke="ok"' "$DOM"; then
               echo "::error::Smoke nativo falló a ${WIDTH}px"
-              grep -o 'data-native-smoke-error="[^"]*"' "$DOM" || true
+              head -c 4000 "$DOM" || true
               tail -100 "$LOG" || true
               exit 1
             fi

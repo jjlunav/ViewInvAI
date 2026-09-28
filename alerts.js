@@ -60,13 +60,13 @@
   badge.classList.toggle('is-hidden',!(state.unread>0));
   status.textContent=state.unread>0?(state.unread+' sin leer'):(state.history.length?state.history.length+' guardados':'Sin avisos nuevos');
   list.innerHTML=state.history.length?state.history.map(item=>{
-   let actionable=item.stockKey?' actionable" role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0'):'"';
-   let name=item.name?'<div class="notification-stock-name">'+esc(item.name)+'</div>':'';
-   let meta=[item.ticker,item.market,item.score?('convicción '+fmt(item.score,0)+'/100'):''].filter(Boolean).join(' · ');
-   return '<article class="notification-item recommendation'+actionable+'>'+
-    '<div class="notification-item-head"><strong>'+esc(item.title||'COMPRA')+'</strong><time>'+esc(formatTime(item.createdAt))+'</time></div>'+
-    name+'<p>'+esc(item.message||'')+'</p><small>'+esc(meta)+(item.stockKey?' · Toca para abrir análisis':'')+'</small>'+
-   '</article>';
+   return window.ViewInvAICards.render({
+    context:'alerts',title:item.name||item.ticker||item.title||'Aviso',subtitle:[item.ticker,item.market].filter(Boolean).join(' · '),
+    openAttrs:item.stockKey?' role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0')+'"':'',
+    cells:[{label:'Señal',value:item.title||'COMPRA'},{label:'Hora',value:formatTime(item.createdAt)}],
+    detailsLabel:'Motivo del aviso',detailsHtml:'<p>'+esc(item.message||'')+'</p>'+(item.score?'<p>Convicción '+fmt(item.score,0)+'/100</p>':'')
+   });
+
   }).join(''):'<div class="notification-empty">No hay compras de alta convicción recientes.</div>';
  }
 

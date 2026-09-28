@@ -1,10 +1,28 @@
 name: Build ViewInvAI Android APK
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "*.js"
+      - "*.css"
+      - "*.html"
+      - "*.svg"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "scripts/build_mobile_shell.mjs"
+      - "scripts/apply_android_branding.py"
+      - "firebase/google-services.json"
+      - ".github/workflows/build-android.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -52,6 +70,8 @@ jobs:
           test -s mobile-shell/index.html
           test -s mobile-shell/styles.css
           test -s mobile-shell/ui-density.css
+          test -s mobile-shell/asset-card.js
+          test -s mobile-shell/asset-card.css
           test -s mobile-shell/stock-profile.js
           test -s mobile-shell/portfolio.js
           test -s mobile-shell/funds.js
@@ -191,7 +211,7 @@ jobs:
           if not m:
               raise SystemExit(f"Unsupported version format: {version}")
           major, minor, patch = map(int, m.groups())
-          version_code = major * 10000 + minor * 100 + patch
+          version_code = 1000000 + int(__import__("os").environ["GITHUB_RUN_NUMBER"])
           if version_code <= 0:
               raise SystemExit("Android versionCode must be positive")
 
@@ -342,7 +362,7 @@ jobs:
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
           mkdir -p dist
-          APK="dist/ViewInvAI-v${VERSION}-debug.apk"
+          APK="dist/ViewInvAI-v${VERSION}-build${GITHUB_RUN_NUMBER}-debug.apk"
           cp android/app/build/outputs/apk/debug/app-debug.apk "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
 

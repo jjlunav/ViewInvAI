@@ -88,25 +88,15 @@ function eventMobileTabs(scope){
  ).join('')+'</nav>';
 }
 function eventMobileRow(scope,s,event,index,label,when,count=1){
- let preferTr=trTradable(s),group=eventMobileUi[scope]||'event',isin=s.trIsin||s.usIsin||s.isin||'—',ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
- let cols=[];
- if(group==='event'){
-  cols=[label,when];
- }else if(group==='market'){
-  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
-  cols=[quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,SES()))),PC(marketChange(s,SES(),preferTr))];
- }else{
-  cols=[N(s.rsi)===null?'—':'RSI '+F(s.rsi,1),N(s.adx)===null?'—':'ADX '+F(s.adx,1)];
- }
- return '<article class="event-mobile-line stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
-  '<span class="event-mobile-copy"><strong><em>#'+(index+1)+'</em>'+E(s.name||ticker||'—')+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker||'—')+(count>1?' · '+count+' eventos':'')+'</i></span>'+
-  '<span class="event-mobile-cell">'+E(cols[0])+'</span><span class="event-mobile-cell">'+E(cols[1])+'</span><span class="event-mobile-open">›</span>'+
- '</article>';
+ let preferTr=trTradable(s),group=eventMobileUi[scope]||'event',cells;
+ if(group==='event')cells=[{label:'Catalizador',value:label},{label:'Fecha',value:when}];
+ else cells=(group==='market'?[['price','Precio'],['change','Variación']]:[['rsi','RSI'],['adx','ADX']]).map(([key,label])=>({...stockMobileCell(s,key,SES(),preferTr),label}));
+ return standardStockCard(s,index,{preferTr,context:scope,hint:label+' · '+when,cells,detailsHtml:'',subtitle:[preferTr?(s.trTicker||s.ticker):s.ticker,count>1?count+' eventos':''].filter(Boolean).join(' · ')});
 }
 function eventMobileList(scope,rows){
  let group=eventMobileUi[scope]||'event';
  let heads=group==='event'?['Catalizador','Fecha']:group==='market'?['Precio','Variación']:['RSI','ADX'];
- return eventMobileTabs(scope)+'<div class="event-mobile-compare"><div class="event-mobile-head"><span>Valor / ISIN</span><span>'+heads[0]+'</span><span>'+heads[1]+'</span><span></span></div><div class="event-mobile-rows">'+rows.join('')+'</div></div>';
+ return eventMobileTabs(scope)+'<div class="event-mobile-compare">'+window.ViewInvAICards.head(heads)+'<div class="event-mobile-rows">'+rows.join('')+'</div></div>';
 }
 
 function renderFuture(){

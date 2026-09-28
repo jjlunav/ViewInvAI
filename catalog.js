@@ -190,19 +190,13 @@ function catalogMobileCell(mode,s,se,colId){
 }
 function catalogMobileRow(mode,s,se){
  let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
- let ticker=mode==='tr'?(s.trTicker||s.ticker||'—'):(s.ticker||'—');
- let isin=(mode==='tr'?(s.trIsin||s.isin):(s.usIsin||s.isin))||'—';
- return '<article class="catalog-mobile-line stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+
-  '<div class="catalog-mobile-identity">'+favButton(s,mode==='tr')+'<span class="catalog-mobile-copy"><strong>'+E(s.name||ticker)+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+E(isin)+'">'+E(isin)+'</button><i>'+E(ticker)+'</i></span></div>'+
-  ids.map(id=>{let cell=catalogMobileCell(mode,s,se,id);return '<span class="catalog-mobile-cell '+E(cell.tone)+'">'+E(cell.value)+'</span>'}).join('')+
-  '<span class="catalog-mobile-open" aria-hidden="true">›</span>'+
- '</article>';
+ return standardStockCard(s,0,{se,preferTr:mode==='tr',context:'catalog',rankLabel:'',detailsHtml:'',cells:ids.map(id=>catalogMobileCell(mode,s,se,id))});
 }
 function catalogMobileList(mode,rows,se){
  let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
  return catalogMobileTabs(mode)+
   '<div class="catalog-mobile-compare">'+
-   '<div class="catalog-mobile-head"><span>Valor / ISIN</span>'+ids.map(id=>'<span>'+E(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)+'</span>').join('')+'<span></span></div>'+
+   window.ViewInvAICards.head(ids.map(id=>CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id))+
    '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
   '</div>';
 }

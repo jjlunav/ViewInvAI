@@ -9,97 +9,30 @@
 
 /* <= 760px */
 @media(max-width:760px){
-.stock-list.stock-card-grid{
-  grid-template-columns:minmax(0,1fr)!important;
-  gap:7px!important
- }
- .stock-list.stock-card-grid>.investing-stock-card{
-  max-width:none!important
- }
- .investing-stock-card .investing-stock-row{
-  grid-template-columns:minmax(0,1fr) minmax(128px,142px) 10px!important;
-  gap:6px!important;
-  min-height:72px!important;
-  padding:9px 9px!important
- }
- .investing-stock-card .investing-stock-name-row{
-  gap:5px!important
- }
- .investing-stock-card .investing-stock-copy .stock-name{
-  font-size:14px!important
- }
- .investing-stock-card .investing-stock-meta{
-  gap:4px!important;
-  font-size:9.5px!important
- }
- .investing-stock-card .stock-ai-chip{
-  padding:3px 6px!important;
-  font-size:8.5px!important
- }
- .investing-stock-card .investing-stock-right{
-  min-width:0!important
- }
- .investing-stock-card .stock-list-price .price-pair>strong{
-  font-size:16px!important
- }
- .investing-stock-card .stock-list-price .price-pair>small:not(.quote-updated){
-  font-size:9px!important
- }
- .investing-stock-card .stock-list-price .quote-updated{
-  font-size:7.5px!important
- }
- .investing-stock-card .investing-stock-right>.quote-change{
-  font-size:12px!important
- }
- .investing-stock-card .stock-session-quote{
-  gap:3px!important
- }
- .investing-stock-card .stock-session-quote small{
-  min-height:15px!important;
-  padding:2px 4px!important;
-  font-size:8px!important
- }
- .investing-stock-card .stock-session-quote strong,
- .investing-stock-card .stock-session-quote>span:last-child{
-  font-size:9px!important
- }
- .investing-stock-card .stock-market-line{
-  display:grid!important;
-  grid-template-columns:auto minmax(0,1fr)!important;
-  gap:6px!important;
-  padding:5px 9px!important
- }
- .investing-stock-card .stock-market-line .quote-spread{
-  display:grid!important;
-  grid-template-columns:repeat(2,minmax(58px,1fr))!important
- }
- .investing-stock-card .stock-market-line .quote-side{
-  min-width:58px!important;
-  padding:3px 5px!important
- }
- .investing-stock-card .stock-market-line .quote-side small{
-  font-size:7.5px!important
- }
- .investing-stock-card .stock-market-line .quote-side strong{
-  font-size:10px!important
- }
- .investing-stock-card .stock-list-metrics{
-  grid-template-columns:repeat(2,auto)!important;
-  gap:4px 8px!important;
-  font-size:8.5px!important
- }
- .investing-stock-card .stock-list-metrics b{
-  font-size:9px!important
- }
- .investing-stock-card .stock-context-line{
-  padding:5px 9px!important;
-  font-size:8.5px!important
- }
- #view-portfolios .portfolio-card-grid>.portfolio-investing-card{
-  min-width:0!important;
-  width:100%!important;
-  max-width:none!important
- }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
 
 /* <= 720px */
@@ -459,27 +392,16 @@
   border-radius:0!important;
   box-shadow:none!important
  }
- .investing-stock-row{
-  grid-template-columns:minmax(0,1fr) minmax(116px,auto);
-  gap:9px;
-  padding:13px 14px!important;
-  min-height:94px
- }
- .investing-stock-row>.open-arrow{display:none}
- .investing-stock-copy .stock-name{
-  font-size:17px!important;
-  white-space:normal;
-  display:-webkit-box;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical
- }
- .investing-stock-meta{font-size:9px}
+
+
+
+
  .stock-ai-chip{font-size:8px;padding:4px 8px}
- .investing-stock-right{min-width:112px;gap:3px}
+
  .stock-list-price .price-pair>strong{font-size:19px!important}
  .stock-list-price .price-pair>small:not(.quote-updated){display:none}
- .investing-stock-right .quote-updated{display:none!important}
- .investing-stock-right>.quote-change{font-size:12px!important}
+
+
  .stock-session-quote{gap:4px}
  .stock-session-quote strong{font-size:10px}
  .stock-market-line{
@@ -906,9 +828,7 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
  #view-portfolios .portfolio-position-list.stock-list{
    grid-template-columns:1fr!important
  }
- #view-portfolios .portfolio-investing-card{
-   max-width:none!important
- }
+
 
 .stock-profile-page .unified-stock-header{
   width:100%!important;
@@ -961,11 +881,7 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
   display:grid!important;
   grid-template-columns:1fr!important
  }
- #view-portfolios .portfolio-card-grid>.portfolio-investing-card{
-  min-width:0!important;
-  width:100%!important;
-  max-width:none!important
- }
+
 
 html,
   body,
@@ -1773,19 +1689,9 @@ html,body{font-size:14px}
     grid-template-columns:1fr!important;
     gap:7px!important
   }
-  #view-portfolios .portfolio-investing-card{
-    max-width:none!important;
-    border-left:1px solid #213842!important;
-    border-right:1px solid #213842!important;
-    border-radius:11px!important
-  }
-  #view-portfolios .portfolio-investing-card .investing-stock-row{
-    padding:10px!important;
-    grid-template-columns:minmax(0,1fr) minmax(104px,auto)!important
-  }
-  #view-portfolios .portfolio-investing-card .investing-stock-row>.open-arrow{
-    display:none!important
-  }
+
+
+
 }
 
 /* <= 620px */
@@ -1827,24 +1733,10 @@ html,body{font-size:14px}
     padding:9px 10px!important
   }
 
-.investing-stock-card .investing-stock-row{
-  grid-template-columns:minmax(0,1fr) 124px 9px!important
- }
- .investing-stock-card .investing-stock-copy .stock-name{
-  font-size:13.5px!important
- }
- .investing-stock-card .stock-list-price .price-pair{
-  grid-template-columns:1fr!important;
-  grid-template-areas:"main" "secondary" "updated"!important;
-  justify-items:end!important;
-  row-gap:1px!important
- }
- .investing-stock-card .stock-list-price .price-pair>strong{
-  font-size:15.5px!important
- }
- .investing-stock-card .stock-session-quote .session-icon{
-  display:none!important
- }
+
+
+
+
 }
 
 /* <= 380px */
@@ -1926,22 +1818,9 @@ html,body{font-size:14px}
  color:var(--text);
  border-bottom-color:var(--teal);
 }
-#view-funds .fund-mobile-compare-head,
-#view-funds .fund-mobile-row{
- display:grid;
- grid-template-columns:minmax(148px,1.55fr) repeat(2,minmax(68px,.72fr)) 14px;
- gap:8px;
- align-items:center;
- width:100%;
-}
-#view-funds .fund-mobile-cols-3 .fund-mobile-compare-head,
-#view-funds .fund-mobile-cols-3 .fund-mobile-row{
- grid-template-columns:minmax(132px,1.42fr) repeat(3,minmax(58px,.62fr)) 14px;
-}
-#view-funds .fund-mobile-compare-head{
- min-height:39px;
- border-bottom:1px solid var(--line);
-}
+
+
+
 #view-funds .fund-mobile-sort{
  min-width:0;
  border:0;
@@ -1952,41 +1831,13 @@ html,body{font-size:14px}
  font-weight:800;
 }
 #view-funds .fund-mobile-sort.active{color:var(--teal)}
-#view-funds .fund-mobile-row{
- min-height:76px;
- padding:9px 0;
- border:0;
- border-bottom:1px solid var(--line);
- background:transparent;
- text-align:left;
- color:var(--text);
-}
-#view-funds .fund-mobile-name{display:grid;gap:4px;min-width:0}
-#view-funds .fund-mobile-name strong{
- display:-webkit-box;
- -webkit-box-orient:vertical;
- -webkit-line-clamp:3;
- overflow:hidden;
- font-size:10.5px;
- line-height:1.22;
-}
-#view-funds .fund-mobile-name small{
- overflow:hidden;
- text-overflow:ellipsis;
- white-space:nowrap;
- color:var(--muted);
- font-size:8px;
-}
-#view-funds .fund-mobile-cell{
- min-width:0;
- overflow:hidden;
- text-overflow:ellipsis;
- font-size:9.5px;
- line-height:1.25;
- font-variant-numeric:tabular-nums;
-}
-#view-funds .fund-mobile-cell.compact{font-size:8.3px}
-#view-funds .fund-mobile-open{justify-self:end;color:var(--muted)}
+
+
+
+
+
+
+
 
 /* Compact tabbed lists for mobile web */
 .stock-mobile-groups,
@@ -2025,83 +1876,17 @@ html,body{font-size:14px}
  border-top:1px solid var(--line);
  border-bottom:1px solid var(--line);
 }
-.stock-mobile-head,
-.stock-mobile-line,
-.catalog-mobile-head,
-.catalog-mobile-line{
- display:grid;
- grid-template-columns:minmax(150px,1.55fr) repeat(2,minmax(70px,.72fr)) 14px;
- gap:8px;
- align-items:center;
- width:100%;
- min-width:0;
-}
-.stock-mobile-head,
-.catalog-mobile-head{
- min-height:38px;
- border-bottom:1px solid var(--line);
- color:var(--muted);
- font-size:8px;
- font-weight:800;
- text-transform:uppercase;
-}
-.stock-mobile-line,
-.catalog-mobile-line{
- min-height:72px;
- padding:9px 0;
- border-bottom:1px solid var(--line);
- background:transparent;
- cursor:pointer;
-}
-.stock-mobile-identity,
-.catalog-mobile-identity{
- display:grid;
- grid-template-columns:auto minmax(0,1fr);
- gap:6px;
- min-width:0;
-}
-.stock-mobile-copy,
-.catalog-mobile-copy{display:grid;gap:3px;min-width:0}
-.stock-mobile-copy strong,
-.catalog-mobile-copy strong{
- display:-webkit-box;
- -webkit-box-orient:vertical;
- -webkit-line-clamp:2;
- overflow:hidden;
- font-size:10.5px;
- line-height:1.22;
-}
-.stock-mobile-copy strong em{
- margin-right:5px;
- color:var(--muted);
- font-style:normal;
- font-size:8px;
-}
-.stock-mobile-copy small,
-.catalog-mobile-copy small{
- overflow:hidden;
- text-overflow:ellipsis;
- white-space:nowrap;
- color:var(--muted);
- font-size:8px;
-}
-.stock-mobile-copy i,
-.catalog-mobile-copy i{
- color:var(--muted);
- font-style:normal;
- font-size:8px;
-}
-.stock-mobile-cell,
-.catalog-mobile-cell{
- min-width:0;
- overflow:hidden;
- text-overflow:ellipsis;
- font-size:9.5px;
- line-height:1.25;
- font-variant-numeric:tabular-nums;
-}
-.stock-mobile-open,
-.catalog-mobile-open{justify-self:end;color:var(--muted);font-size:18px}
+
+
+
+
+
+
+
+
+
+
+
 .catalog-mobile-card{display:none!important}
 
 /* Compact event/calendar rows on mobile web */
@@ -2127,52 +1912,16 @@ html,body{font-size:14px}
 }
 .event-mobile-groups button.active{color:var(--text);border-bottom-color:var(--teal)}
 .event-mobile-compare{width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.event-mobile-head,
-.event-mobile-line{
- display:grid;
- grid-template-columns:minmax(148px,1.55fr) repeat(2,minmax(70px,.72fr)) 14px;
- gap:8px;
- align-items:center;
- width:100%;
- min-width:0;
-}
-.event-mobile-head{
- min-height:38px;
- border-bottom:1px solid var(--line);
- color:var(--muted);
- font-size:8px;
- font-weight:800;
- text-transform:uppercase;
-}
-.event-mobile-line{min-height:72px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
-.event-mobile-copy{display:grid;gap:3px;min-width:0}
-.event-mobile-copy strong{
- display:-webkit-box;
- -webkit-box-orient:vertical;
- -webkit-line-clamp:2;
- overflow:hidden;
- font-size:10.5px;
- line-height:1.22;
-}
-.event-mobile-copy strong em{margin-right:5px;color:var(--muted);font-style:normal;font-size:8px}
-.event-mobile-copy small,
-.event-mobile-copy i{
- overflow:hidden;
- text-overflow:ellipsis;
- white-space:nowrap;
- color:var(--muted);
- font-size:8px;
- font-style:normal;
-}
-.event-mobile-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:9px;line-height:1.25}
-.event-mobile-open{justify-self:end;color:var(--muted);font-size:18px}
+
+
+
+
+
+
+
+
 
 /* 0.6.9 compact Ideas IA on mobile web */
-.list-copy-isin{
- display:block;max-width:100%;padding:0;border:0;background:transparent;color:var(--muted);
- font:inherit;font-size:8px;line-height:1.2;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
- text-decoration:underline dotted;text-underline-offset:2px;cursor:pointer;
-}
 .reco-mobile-groups{display:flex;gap:4px;width:100%;margin:6px 0 4px;overflow-x:auto;scrollbar-width:none}
 .reco-mobile-groups::-webkit-scrollbar{display:none}
 .reco-mobile-groups button{
@@ -2181,22 +1930,3 @@ html,body{font-size:14px}
 }
 .reco-mobile-groups button.active{color:var(--text);border-bottom-color:var(--teal)}
 .reco-mobile-compare{width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.reco-mobile-head,.reco-mobile-line{
- display:grid;grid-template-columns:minmax(150px,1.55fr) repeat(2,minmax(70px,.72fr)) 14px;gap:8px;align-items:center;width:100%;min-width:0;
-}
-.reco-mobile-head{min-height:38px;border-bottom:1px solid var(--line);color:var(--muted);font-size:8px;font-weight:800;text-transform:uppercase}
-.reco-mobile-item{border-bottom:1px solid var(--line)}
-.reco-mobile-line{min-height:74px;padding:9px 0;cursor:pointer}
-.reco-mobile-identity{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;min-width:0}
-.reco-mobile-copy{display:grid;gap:3px;min-width:0}
-.reco-mobile-copy strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:10.5px;line-height:1.22}
-.reco-mobile-copy i{color:var(--muted);font-style:normal;font-size:8px}
-.reco-mobile-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;line-height:1.2;font-weight:650;font-variant-numeric:tabular-nums}
-.reco-mobile-open{justify-self:end;color:var(--muted);font-size:18px}
-.reco-mobile-detail{margin:0;border:0;background:transparent}
-.reco-mobile-detail>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;min-height:34px;padding:5px 7px;color:var(--muted);font-size:8.5px;font-weight:720}
-.reco-mobile-detail>summary::-webkit-details-marker{display:none}
-.reco-mobile-thesis{padding:8px;border-top:1px solid var(--line)}
-.reco-mobile-thesis strong{display:block;margin-bottom:4px;font-size:10px}
-.reco-mobile-thesis p{margin:0;font-size:9px;line-height:1.35;color:var(--muted)}
-.reco-mobile-detail .reco-factors,.reco-mobile-detail .reco-events{padding:6px 8px}

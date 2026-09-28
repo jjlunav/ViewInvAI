@@ -701,7 +701,7 @@ async function pollFxLive(){
 }
 let entryAutoSortTimer=null;
 function entryDomOrder(){
- return [...document.querySelectorAll('#entryResults .stock-card')].map(card=>{
+ return [...document.querySelectorAll('#entryResults .asset-card')].map(card=>{
   let row=card.querySelector('[data-stock-key]');
   return row&&row.dataset.stockKey||'';
  }).filter(Boolean).join('|');
