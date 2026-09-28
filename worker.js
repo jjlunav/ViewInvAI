@@ -855,8 +855,9 @@ function fundBaseScore(p){
   if(p.type==="etp"||/\b(?:2x|3x|leveraged|short|crude oil|natural gas|commodity)\b/i.test(name))return-Infinity;
   const aum=Number(p.assetsUnderManagement)||0;
   let score=aum>0?Math.min(55,Math.log10(aum+1)*7):0;
-  if(p.platforms&&p.platforms.tradeRepublic==="verified")score+=9;
-  if(p.platforms&&p.platforms.myInvestor==="verified")score+=9;
+  const tr=p.platforms&&p.platforms.tradeRepublic,mi=p.platforms&&p.platforms.myInvestor;
+  if(tr===true||tr==="verified"||tr==="yes")score+=9;
+  if(mi===true||mi==="verified"||mi==="yes")score+=9;
   if(/msci world|ftse all.world|s&p 500|sp 500|msci emerging|stoxx europe|euro stoxx|nasdaq 100|global/i.test(name))score+=12;
   return score;
 }
