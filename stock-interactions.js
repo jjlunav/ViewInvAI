@@ -134,9 +134,9 @@ function initStockViewContinuity(){
  if(stockViewContinuityInitialized||typeof MutationObserver!=='function')return;
  stockViewContinuityInitialized=true;
  const detailsSelector='details.stock-card-details,details.reco-disclosure,details.portfolio-position-more';
- const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups';
+ const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups,.event-mobile-groups,.catalog-mobile-groups,.fund-mobile-groups';
  const controlSelector='summary,button,a,input,select,textarea,[tabindex]';
- const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','futureResults','calendarResults']
+ const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','fundPortfolioApp','fundsApp','futureResults','calendarResults','catalogResults','catalogUSResults']
   .map(id=>document.getElementById(id)).filter(Boolean);
  const focusByHost=new WeakMap(),scrollByElement=new WeakMap();
  const elements=(node,selector)=>node.nodeType===1
