@@ -2475,7 +2475,7 @@ html[data-native-app="1"] #view-portfolios .portfolio-summary-bar strong{font-si
 /* Final native density pass: phone and tablet share the same compact information system. */
 html[data-native-app="1"] .view>.page-heading{
  position:relative!important;
- padding:1px 100px 6px 0!important;
+ padding:1px 112px 6px 0!important;
  margin-bottom:6px!important;
  min-height:34px!important;
 }
