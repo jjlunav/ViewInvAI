@@ -13,15 +13,15 @@
   ['1A','perf1Y'],['3A','perf3Y'],['5A','perf5Y'],['10A','perf10Y'],['Hist.','perfSinceInception']
  ];
  const MOBILE_GROUPS=[
-  {key:'general',label:'General',columns:[['type','Tipo'],['currency','Divisa']]},
   {key:'returns',label:'Rentabilidad',columns:[['perfYtd','YTD'],['perf1Y','1A'],['perf3Y','3A']]},
+  {key:'general',label:'Tipo',columns:[['type','Tipo'],['currency','Divisa']]},
   {key:'costs',label:'Costes',columns:[['ter','TER'],['trackingDifference','Tracking']]},
   {key:'market',label:'Mercado',columns:[['region','Región'],['index','Índice']]},
   {key:'operations',label:'Operativa',columns:[['distribution','Clase'],['platform','Plataforma']]},
   {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'general'};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns'};
  const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
