@@ -483,7 +483,12 @@
             <label><span>Confianza compra</span><input id="minBuyConfidence" class="input" type="number" min="60" max="99" step="1" value="85"><small>%</small></label>
             <label><span>Confianza salida</span><input id="minSellConfidence" class="input" type="number" min="60" max="99" step="1" value="80"><small>%</small></label>
             <label><span>Cambio de score</span><input id="notifyScoreChange" class="input" type="number" min="5" max="60" step="1" value="20"><small>puntos</small></label>
+            <label><span>Impacto mínimo noticia</span><input id="newsMinImpact" class="input" type="number" min="40" max="100" step="5" value="60"><small>/100</small></label>
           </div>
+          <label class="settings-inline-toggle" for="notifyNews">
+            <input id="notifyNews" type="checkbox" checked>
+            <span><strong>Noticias de mis acciones</strong><small>Avisar de noticias relevantes de posiciones y favoritos, con deduplicación y fuente.</small></span>
+          </label>
           <div class="settings-save-row">
             <strong id="analysisSettingsStatus">Inicia sesión para sincronizar estos ajustes.</strong>
             <button type="button" class="btn small" id="saveAnalysisSettings" disabled>Guardar</button>
