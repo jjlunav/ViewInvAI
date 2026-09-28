@@ -453,10 +453,21 @@ async function load(force=false){
    }catch(_){}
   }
   let url=force?DATA+'?v='+Date.now():DATA;
-  let r=await fetch(url,{cache:force?'reload':'no-cache'});
-  if(!r.ok)throw Error(r.status);
-  let j=await r.json();
-  if(!Array.isArray(j.stocks))throw Error('formato');
+  let r,j;
+  try{
+   r=await fetch(url,{cache:force?'reload':'no-cache'});
+   if(!r.ok)throw Error(String(r.status));
+   j=await r.json();
+   if(!Array.isArray(j.stocks))throw Error('formato');
+  }catch(remoteError){
+   const native=!!(window.ViewInvAIRuntime&&window.ViewInvAIRuntime.isPackagedNative);
+   if(!native)throw remoteError;
+   console.warn('Remote market snapshot unavailable; using packaged fallback',remoteError);
+   r=await fetch(DATA+'?local=1&v='+Date.now(),{cache:'no-store'});
+   if(!r.ok)throw Error('fallback '+r.status);
+   j=await r.json();
+   if(!Array.isArray(j.stocks))throw Error('fallback formato');
+  }
   let stamp=String((j.meta&&j.meta.updatedAt)||'');
   if(!force&&stamp&&stamp===lastDataStamp)return;
   lastDataStamp=stamp;
