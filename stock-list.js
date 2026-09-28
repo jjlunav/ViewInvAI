@@ -50,7 +50,7 @@ const STOCK_MOBILE_GROUPS=[
  {key:'other',label:'Otros',columns:[['exchange','Mercado'],['earnings','Resultados']]}
 ];
 const stockMobileUi={entry:'general'};
-function stockCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+function stockCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
 function stockMobileGroup(scope='entry'){
  let key=stockMobileUi[scope]||'general';
  return STOCK_MOBILE_GROUPS.find(g=>g.key===key)||STOCK_MOBILE_GROUPS[0];
