@@ -24,6 +24,7 @@ on:
       - "market-session.js"
       - "score-engine.js"
       - "alerts.js"
+      - "stock-notifications.js"
       - "auth.js"
       - "portfolio.js"
       - "funds.js"
@@ -78,6 +79,7 @@ jobs:
           node --check help.js
           node --check bootstrap.js
           node --check mobile-app.js
+          node --check stock-notifications.js
           node - <<'NODE'
           require('./market-session.js');
           const m=globalThis.ViewInvAIMarketSession;
