@@ -116,8 +116,8 @@ function standardStockCard(s,i=0,opts={}){
  let se=opts.se||SES(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
  let cells=opts.cells||[
-  {label:'Precio',html:preferTr?trPriceCell(s,'eur',se):usPriceCell(s,'usd',se)},
-  {label:'Variación',html:entryChangeHtml(s,se,preferTr)}
+  Object.assign({label:'Precio'},stockMobileCell(s,'price',se,preferTr)),
+  Object.assign({label:'Variación'},stockMobileCell(s,'change',se,preferTr))
  ];
  let details=opts.detailsHtml;
  if(details===undefined){
