@@ -119,6 +119,49 @@ function canonicalQuote(s,preferTr=false){
  };
 }
 
+/*
+ * Quote used by compact lists.
+ * If a verified LSX last price has not arrived yet, never fabricate an EUR/LSX
+ * quote. Fall back to the verified US quote/snapshot and label it explicitly.
+ * This keeps price and percentage on the same source while avoiding fake data.
+ */
+function verifiedDisplayQuote(s,preferTr=false,se=SES()){
+ let exact=canonicalQuote(s,preferTr);
+ if(N(exact&&exact.price)!==null){
+  return Object.assign({},exact,{fallback:false,requestedMarket:preferTr?'tr':'us'});
+ }
+ if(preferTr){
+  let us=canonicalQuote(s,false),price=N(us&&us.price);
+  if(price===null)price=SP(s,se);
+  if(price!==null){
+   let fx=eurUsd(),change=N(us&&us.change);
+   if(change===null)change=marketChange(s,se,false);
+   return Object.assign({},us,{
+    market:'us',
+    requestedMarket:'tr',
+    nativeCurrency:'USD',
+    price,
+    usd:price,
+    eur:price!==null&&fx?price/fx:null,
+    change,
+    fallback:true,
+    source:(us&&us.source?us.source:'Snapshot EEUU')+' · referencia; LSX sin cotización'
+   });
+  }
+ }
+ let price=N(exact&&exact.price);
+ if(price===null)price=SP(s,se);
+ if(price!==null){
+  let fx=eurUsd(),change=N(exact&&exact.change);
+  if(change===null)change=marketChange(s,se,false);
+  return Object.assign({},exact,{
+   price,usd:price,eur:price!==null&&fx?price/fx:null,change,
+   fallback:!(exact&&exact.live),requestedMarket:'us'
+  });
+ }
+ return Object.assign({},exact,{fallback:false,requestedMarket:preferTr?'tr':'us'});
+}
+
 const quoteClockFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const quoteZoneParts=new Map();
 function zonedWallTimeToEpoch(y,mo,d,h,mi,se,tz='America/New_York'){
