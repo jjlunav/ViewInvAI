@@ -1573,7 +1573,8 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
 }
 
 async function maybeCreateAlert(env, target, stock, current, previous) {
-  const previousCompatible = previous && String(previous.engine || "").startsWith("viewinvai-score/");
+  const previousEngine = previous ? String(previous.engine || "") : "";
+  const previousCompatible = previous && (previousEngine.startsWith("viewinvai-score/") || previousEngine.startsWith("viewinvai-hybrid/"));
   const previousScore = previousCompatible ? finiteNumber(previous.score) : null;
   const delta = previousScore === null ? 0 : current.score - previousScore;
   const settings = await analysisSettingsForUser(env, target.user_id);
