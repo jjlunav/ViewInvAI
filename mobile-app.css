@@ -2576,3 +2576,9 @@ html[data-native-app="1"] .asset-card-cell.positive,
 html[data-native-app="1"] .positive{color:var(--positive)!important}
 html[data-native-app="1"] .asset-card-cell.negative,
 html[data-native-app="1"] .negative{color:var(--negative)!important}
+
+
+html[data-native-app="1"] .entry-filter-launch{display:flex!important;align-items:center;justify-content:space-between;gap:8px;margin:0 0 3px!important;min-height:32px}
+html[data-native-app="1"] .entry-inline-status{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden;color:var(--native-muted);font-size:8px;white-space:nowrap}
+html[data-native-app="1"] #view-entry .page-heading .lead{display:none}
+html[data-native-app="1"] .market-quick-toggle{border-radius:11px 11px 0 0!important;min-width:52px!important;height:26px!important}
