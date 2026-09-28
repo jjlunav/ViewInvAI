@@ -80,7 +80,7 @@ const EVENT_MOBILE_GROUPS=[
  {key:'technical',label:'Técnico'}
 ];
 const eventMobileUi={future:'event',calendar:'event'};
-function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
 function eventMobileTabs(scope){
  let active=eventMobileUi[scope]||'event';
  return '<nav class="event-mobile-groups" aria-label="Datos del evento">'+EVENT_MOBILE_GROUPS.map(g=>
