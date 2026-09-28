@@ -171,15 +171,20 @@ $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 
 function toggleMarketQuick(force){
- const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),button=$('#marketQuickToggle');
+ const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),button=$('#marketQuickToggle'),nav=$('#mobileBottomNav');
  if(!sheet||!backdrop||!button)return;
  const open=typeof force==='boolean'?force:!sheet.classList.contains('open');
  sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
  button.setAttribute('aria-expanded',open?'true':'false');button.textContent=open?'⌄':'⌃';
- const close=$('#marketQuickClose');if(close)close.textContent=open?'⌄':'⌃';
+ if(open){
+  button.classList.add('inside-sheet');
+  sheet.insertBefore(button,sheet.firstChild);
+ }else{
+  button.classList.remove('inside-sheet');
+  if(nav&&nav.parentNode)nav.parentNode.insertBefore(button,nav);
+ }
  document.body.classList.toggle('market-quick-open',open);
  if(open&&typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
 }
-$('#marketQuickClose')?.addEventListener('click',()=>toggleMarketQuick(false));
 $('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));
