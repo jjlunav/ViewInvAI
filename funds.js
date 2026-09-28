@@ -374,11 +374,29 @@
   '</div>';
  }
 
- function marketTopProducts(limit=10){
-  return state.products.slice().sort((a,b)=>{
+ let marketPopularity={at:0,items:[]};
+ async function fetchMarketPopularity(force=false){
+  if(!force&&marketPopularity.at&&Date.now()-marketPopularity.at<60*60000)return marketPopularity.items;
+  try{
+   const r=await fetch('/api/attention-ranking?kind=funds',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+   const data=await r.json();marketPopularity={at:Date.now(),items:Array.isArray(data.items)?data.items:[]};
+  }catch(e){console.warn('Fund popularity ranking unavailable',e)}
+  return marketPopularity.items;
+ }
+ function marketTopProducts(limit=10,ranking=[]){
+  const eligible=state.products.filter(p=>p.type!=='etp'&&!/\b(?:2x|3x|leveraged|short)\b/i.test(String(p.name||'')));
+  if(ranking.length){
+   const byIsin=new Map(eligible.map(p=>[String(p.isin||'').toUpperCase(),p])),out=[],used=new Set();
+   for(const item of ranking){
+    const p=byIsin.get(String(item.isin||'').toUpperCase());if(!p||used.has(p.isin))continue;
+    used.add(p.isin);out.push(p);if(out.length>=limit)return out;
+   }
+  }
+  return eligible.slice().sort((a,b)=>{
    const aumA=num(a.assetsUnderManagement)??0,aumB=num(b.assetsUnderManagement)??0;
-   const platformA=(a.tradeRepublicVerified?1:0)+(a.myInvestorVerified?1:0),platformB=(b.tradeRepublicVerified?1:0)+(b.myInvestorVerified?1:0);
-   return aumB-aumA||platformB-platformA||(num(b.perf1Y)??-Infinity)-(num(a.perf1Y)??-Infinity);
+   const platformA=(verified(a.platforms&&a.platforms.tradeRepublic)?1:0)+(verified(a.platforms&&a.platforms.myInvestor)?1:0);
+   const platformB=(verified(b.platforms&&b.platforms.tradeRepublic)?1:0)+(verified(b.platforms&&b.platforms.myInvestor)?1:0);
+   return aumB-aumA||platformB-platformA||String(a.name||'').localeCompare(String(b.name||''),'es');
   }).slice(0,limit);
  }
  function marketTopRow(p,i){
@@ -392,8 +410,9 @@
  async function renderMarketTop10(target,limit=10){
   const box=typeof target==='string'?q(target):target;if(!box)return;
   if(!state.loaded)await load(false);
-  const rows=marketTopProducts(limit);
-  box.innerHTML=rows.length?'<div class="market-board-list fund-market-top">'+rows.map(marketTopRow).join('')+'</div>':'<div class="empty-state">No hay fondos verificados disponibles.</div>';
+  const ranking=await fetchMarketPopularity(false);
+  const rows=marketTopProducts(limit,ranking);
+  box.innerHTML=rows.length?'<div class="market-board-list fund-market-top">'+rows.map(marketTopRow).join('')+'</div>':'<div class="empty-state">Ranking de fondos y ETFs en actualización.</div>';
  }
 
  function render(){
@@ -693,7 +712,11 @@
   q('#fundDistribution')?.addEventListener('change',e=>{state.distribution=e.target.value;render()});
   q('#fundMaxTer')?.addEventListener('input',e=>{state.maxTer=num(e.target.value);render()});
   q('#fundSort')?.addEventListener('change',e=>applyFundSortSelect(e.target.value));
-  q('#refreshFunds')?.addEventListener('click',()=>load(true));
+  q('#refreshFunds')?.addEventListener('click',()=>{
+   const stamp=()=>String(state.meta&&state.meta.updatedAt||'');
+   if(root.ViewInvAIRefreshFeedback)root.ViewInvAIRefreshFeedback.run(()=>load(true),stamp);
+   else load(true);
+  });
   document.addEventListener('click',async e=>{
    if(e.target.closest&&e.target.closest('[data-copy-isin]'))return;
    const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
