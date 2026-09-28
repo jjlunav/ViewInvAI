@@ -41,7 +41,8 @@ document.addEventListener('visibilitychange',()=>{
  else{syncScreenWakeLock();load(false);pollUsLive();scheduleLiveViewRefresh(0)}
 });
 setInterval(clock,1000);
-setInterval(()=>{if(state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},5000);
+setInterval(()=>{if(!document.hidden&&state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},60000);
+setTimeout(()=>window.ViewInvAIMarketBoard?.refreshSocialTrending?.(false),0);
 window.ViewInvAI={
  openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
  getStockByKey:key=>stockByKey(key),
