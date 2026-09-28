@@ -44,8 +44,8 @@ const STOCK_MOBILE_GROUPS=[
  {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
  {key:'volume',label:'Volumen',columns:[['volume','Volumen'],['relVolume','Vol. rel.']]},
  {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
- {key:'trend',label:'Tendencia',columns:[['ema20','EMA20'],['ema50','EMA50']]},
- {key:'returns',label:'Rentabilidad',columns:[['week','1 sem.'],['month','1 mes']]},
+ {key:'trend',label:'Tend.',columns:[['ema20','EMA20'],['ema50','EMA50']]},
+ {key:'returns',label:'Rentab.',columns:[['week','1 sem.'],['month','1 mes']]},
  {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
  {key:'other',label:'Otros',columns:[['exchange','Mercado'],['earnings','Resultados']]}
 ];
