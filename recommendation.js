@@ -345,7 +345,7 @@ const RECO_MOBILE_GROUPS=[
 ];
 let recommendationMobileGroup='general';
 function recommendationCompactView(){
- return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches);
+ return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches);
 }
 function recommendationGroup(){
  return RECO_MOBILE_GROUPS.find(g=>g.key===recommendationMobileGroup)||RECO_MOBILE_GROUPS[0];
