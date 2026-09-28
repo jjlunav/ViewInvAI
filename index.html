@@ -39,10 +39,10 @@
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
-      <button class="nav-item active" data-view="home"><span>⌂</span>Inicio</button>
-      <button class="nav-item" data-view="portfolios"><span>★</span>Carteras</button>
+      <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
+      <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
-      <button class="nav-item" data-view="recommendation"><span>◎</span>Ideas IA</button>
+      <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Pulso IA</button>
       <button class="nav-item" data-view="entry"><span>◈</span>Radar de entrada</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
@@ -70,15 +70,21 @@
     <section class="view active" id="view-home">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Inicio <span class="heading-badge ai-badge">MERCADO</span></h1>
-          <p class="lead">Una vista rápida de las acciones que más consultas y de los mejores y peores rendimientos de la sesión diaria.</p>
+          <h1>Mercados <span class="heading-badge ai-badge">EN DIRECTO</span></h1>
+          <p class="lead">Movimientos destacados de las fuentes verificadas de ViewInvAI.</p>
         </div>
-        <div class="heading-actions"><button class="btn icon-btn" id="refreshHome" title="Actualizar">↻</button></div>
       </div>
-      <div class="home-summary-line">
+      <nav class="market-board-tabs compact-tabs" aria-label="Vista de mercados">
+        <button type="button" class="tab active" data-market-board="active">Más activos</button>
+        <button type="button" class="tab" data-market-board="gainers">Subidas</button>
+        <button type="button" class="tab" data-market-board="losers">Bajadas</button>
+        <button type="button" class="tab" data-market-board="funds">Fondos / ETFs</button>
+        <button type="button" class="tab" data-market-board="indices">Índices</button>
+      </nav>
+      <div class="home-summary-line market-status-line">
         <span id="homeSession">Sesión regular</span><span>·</span><span id="homeUpdated">Actualizando…</span>
       </div>
-      <div id="homeGroups" class="home-dashboard"></div>
+      <div id="homeGroups" class="home-dashboard market-board"></div>
     </section>
 
     <section class="view" id="view-entry">
@@ -90,6 +96,16 @@
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="entry" aria-label="Ayuda sobre Radar de entrada">?</button><button class="btn icon-btn" id="refreshEntry" title="Actualizar">↻</button></div>
       </div>
 
+      <div class="market-tabs compact-tabs entry-market-tabs" data-tab-group="entryMarket">
+        <button class="tab active" data-tab="tr">Trade Republic</button>
+        <button class="tab" data-tab="us">EEUU / NASDAQ</button>
+      </div>
+      <div class="entry-filter-launch">
+        <button type="button" class="filter-icon-button" data-filter-sheet-target="#entryFilterPanel" data-filter-sheet-title="Filtro · Radar de entrada" aria-label="Abrir filtro" title="Filtro">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="entryFilterLabel">Filtro</span>
+        </button>
+      </div>
+      <div id="entryFilterPanel" class="filter-sheet-source entry-filter-source">
       <div class="control-strip">
         <select id="sessionSelect" class="select">
           <option value="auto">Sesión automática</option>
@@ -126,16 +142,10 @@
             <option value="custom">Personalizado guardado</option>
           </select>
         </div>
-        <button class="btn secondary" id="applyFilters">Aplicar</button>
-        <button class="btn" id="toggleFilters">Filtros</button>
+        <button class="btn secondary" id="applyFilters" data-filter-sheet-apply>Aplicar filtro</button>
       </div>
 
-      <div class="market-tabs compact-tabs" data-tab-group="entryMarket">
-        <button class="tab active" data-tab="tr">Trade Republic</button>
-        <button class="tab" data-tab="us">Resto EEUU</button>
-      </div>
-
-      <details class="filter-panel compact-details" id="filterDetails">
+      <details class="filter-panel compact-details" id="filterDetails" open>
         <summary>Configurar criterio</summary>
         <div class="filters-grid">
           <div class="criterion-field" title="Variación porcentual mínima exigida en la sesión seleccionada. El porcentaje que ves en cada resultado es exactamente el que se usa para este filtro.">
@@ -186,6 +196,7 @@
           <button class="btn secondary" id="saveCustomFilters">Guardar personalizado</button>
         </div>
       </details>
+      </div>
 
       <div class="status-line">
         <span id="entrySessionText">Sesión automática</span>
@@ -200,13 +211,13 @@
     <section class="view" id="view-recommendation">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Recomendación actual <span class="heading-badge ai-badge">IA · DECISIÓN</span></h1>
-          <p class="lead">Muestra una candidata actual de EEUU y otra de Trade Republic seleccionadas mediante análisis multifactor, con la señal vigente, los factores a favor y en contra, las noticias/eventos considerados y el seguimiento de la tesis hasta la salida.</p>
+          <h1>Pulso IA <span class="heading-badge ai-badge">✹ ALTA CONVICCIÓN</span></h1>
+          <p class="lead">Entradas inmediatas que superan la validación multifactor de alta convicción. Si ninguna cumple, Pulso IA no fuerza una compra.</p>
         </div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="recommendation" aria-label="Ayuda sobre Recomendación actual">?</button><button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button></div>
       </div>
       <div class="recommendation-intro">
-        <strong>Análisis adaptativo y explicable</strong>
+        <strong>Entrada inmediata · validación estricta</strong>
         <span>Combina momentum, volumen relativo, ADX, RSI, EMA20/EMA50, rendimiento, liquidez/spread y noticias/eventos. No fuerza una compra: si la convicción no supera el umbral, mostrará VIGILAR o ESPERAR.</span>
       </div>
       <div class="status-line"><span id="recommendationUpdated">pendiente</span></div>
@@ -242,8 +253,10 @@
       </div>
       <div class="fund-toolbar">
         <input id="fundSearch" class="fund-search" type="search" placeholder="Nombre, ISIN, índice o gestora" autocomplete="off">
-        <button type="button" class="btn fund-mobile-filters-toggle" id="fundMobileFiltersToggle" aria-expanded="false" aria-controls="fundToolbarAdvanced">Filtros</button>
-        <div class="fund-toolbar-advanced" id="fundToolbarAdvanced">
+        <button type="button" class="filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Fondos y ETFs" aria-label="Abrir filtros" title="Filtros">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>
+        </button>
+        <div class="fund-toolbar-advanced filter-sheet-source" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
           <option value="tr">Trade Republic</option>
@@ -280,7 +293,7 @@
         </select>
         </div>
       </div>
-      <div class="fund-data-note">Fondos tradicionales: valor liquidativo diario. ETFs: cotización de mercado. La disponibilidad por plataforma solo se marca como verificada cuando existe una fuente contrastable.</div>
+      <div class="fund-data-note compact" id="fundMetaStatus"><span id="fundProductCount">0 productos</span><span>·</span><span id="fundUpdatedAt">Actualizando…</span></div>
       <div id="fundsApp"><div class="empty-state">Cargando fondos y ETFs…</div></div>
     </section>
 
@@ -371,7 +384,22 @@
     </section>
 
     <section class="view" id="view-calendar">
-      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Consulta cronológicamente resultados, eventos clínicos, corporativos y regulatorios, además de noticias y catalizadores asociados a las acciones cargadas.</p></div><button type="button" class="section-help" data-help-section="calendar" aria-label="Ayuda sobre Calendario y noticias">?</button></div>
+      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Noticias y catalizadores por fecha, sector e industria.</p></div><button type="button" class="section-help" data-help-section="calendar" aria-label="Ayuda sobre Calendario y noticias">?</button></div>
+      <div class="calendar-filter-launch">
+        <button type="button" class="filter-icon-button" data-filter-sheet-target="#calendarFilterPanel" data-filter-sheet-title="Filtros · Calendario y noticias" aria-label="Abrir filtros" title="Filtros">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="calendarFilterLabel">Filtro</span>
+        </button>
+      </div>
+      <div id="calendarFilterPanel" class="filter-sheet-source calendar-filter-panel">
+        <label><span>Desde</span><input id="calendarDateFrom" class="input" type="date"></label>
+        <label><span>Hasta</span><input id="calendarDateTo" class="input" type="date"></label>
+        <label><span>Catalizador</span><select id="calendarCatalyst" class="select"><option value="all">Todos</option></select></label>
+        <label><span>Sector / industria</span><select id="calendarSector" class="select"><option value="all">Todos</option></select></label>
+        <div class="filter-actions">
+          <button type="button" class="btn ghost" id="calendarResetFilter">Rehacer filtro</button>
+          <button type="button" class="btn secondary" id="calendarApplyFilter" data-filter-sheet-apply>Aplicar filtro</button>
+        </div>
+      </div>
       <div id="calendarResults" class="stock-list stock-card-grid"></div>
     </section>
 
@@ -379,13 +407,12 @@
       <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Consulta únicamente instrumentos confirmados como negociables en Trade Republic/LSX, con ticker LSX resuelto, identificación por ISIN/WKN y su referencia estadounidense cuando existe.</p></div><button type="button" class="section-help" data-help-section="catalog" aria-label="Ayuda sobre Catálogo Trade Republic">?</button></div>
       <div id="catalogDetail" class="stock-profile is-hidden"></div>
       <div id="catalogBrowse">
-        <div class="catalog-toolbar">
-          <input id="catalogSearch" class="input grow" placeholder="Buscar en cualquier columna del catálogo TR">
-          <button type="button" class="btn ghost catalog-reset-columns" data-catalog-mode="tr">Restablecer columnas</button>
-          <button type="button" class="btn ghost catalog-clear-filters" data-catalog-mode="tr">Limpiar filtros</button>
+        <div class="catalog-toolbar compact-search-toolbar">
+          <input id="catalogSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
+          <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelTr" data-filter-sheet-title="Filtros · Trade Republic" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
           <span id="catalogCount" class="count-pill">0</span>
         </div>
-        <div class="catalog-help">Haz clic en una cabecera para ordenar · arrástrala para cambiar su posición · usa la segunda fila para filtrar (ej.: &gt;20, &lt;5, 10..30).</div>
+        <div id="catalogFilterPanelTr" class="catalog-filter-panel filter-sheet-source"></div>
         <div id="catalogResults" class="catalog-sheet-wrap"></div>
       </div>
     </section>
@@ -394,13 +421,12 @@
       <div class="page-heading compact-heading"><div><h1>Catálogo EEUU</h1><p class="lead">Consulta el universo de acciones y ADR de Nasdaq, NYSE, AMEX y NYSE Arca cargado en ViewInvAI, con búsqueda, ordenación, filtros y columnas configurables.</p></div><button type="button" class="section-help" data-help-section="catalogUS" aria-label="Ayuda sobre Catálogo EEUU">?</button></div>
       <div id="catalogUSDetail" class="stock-profile is-hidden"></div>
       <div id="catalogUSBrowse">
-        <div class="catalog-toolbar">
-          <input id="catalogUSSearch" class="input grow" placeholder="Buscar en cualquier columna del catálogo EEUU">
-          <button type="button" class="btn ghost catalog-reset-columns" data-catalog-mode="us">Restablecer columnas</button>
-          <button type="button" class="btn ghost catalog-clear-filters" data-catalog-mode="us">Limpiar filtros</button>
+        <div class="catalog-toolbar compact-search-toolbar">
+          <input id="catalogUSSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
+          <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelUs" data-filter-sheet-title="Filtros · Estados Unidos" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
           <span id="catalogUSCount" class="count-pill">0</span>
         </div>
-        <div class="catalog-help">Haz clic en una cabecera para ordenar · arrástrala para cambiar su posición · usa la segunda fila para filtrar (ej.: &gt;20, &lt;5, 10..30).</div>
+        <div id="catalogFilterPanelUs" class="catalog-filter-panel filter-sheet-source"></div>
         <div id="catalogUSResults" class="catalog-sheet-wrap"></div>
       </div>
     </section>
@@ -585,10 +611,17 @@
       </div>
     </aside>
 
+    <div class="market-quick-backdrop" id="marketQuickBackdrop" aria-hidden="true"></div>
+    <aside class="market-quick-sheet" id="marketQuickSheet" aria-label="Resumen rápido de mercado" aria-hidden="true">
+      <div class="market-quick-handle" aria-hidden="true"></div>
+      <header><strong>Resumen rápido</strong><button type="button" id="marketQuickClose" aria-label="Cerrar">×</button></header>
+      <div id="marketQuickContent"></div>
+    </aside>
+    <button type="button" class="market-quick-toggle" id="marketQuickToggle" aria-label="Abrir resumen rápido" aria-expanded="false">⌃</button>
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
-      <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌂</span><small>Inicio</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>★</span><small>Carteras</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="recommendation"><span>◎</span><small>Ideas IA</small></button>
+      <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌁</span><small>Mercados</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>▣</span><small>Carteras</small></button>
+      <button type="button" class="mobile-nav-item ai-pulse-nav" data-mobile-view="recommendation"><span>✹</span><small>Pulso IA</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Radar</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
@@ -611,7 +644,8 @@
 <script src="catalog.js?v=20260928r1"></script>
 <script src="heatmap.js?v=20260925r1"></script>
 <script src="stock-interactions.js?v=20260928r1"></script>
-<script src="navigation.js?v=20260925r4"></script>
+<script src="filter-sheet.js?v=20260928r1"></script>
+<script src="navigation.js?v=20260928r1"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
 <script src="funds.js?v=20260928r1"></script>
 <script src="bootstrap.js?v=20260928r1"></script>
