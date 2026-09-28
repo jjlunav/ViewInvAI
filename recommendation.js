@@ -137,12 +137,12 @@ function recommendationCatalystLegacy(s){
 }
 function recommendationEngineInput(s,mode='us',chartAvailable=false){
  let preferTr=mode==='tr',se=currentMarketSession();
- let quote=canonicalQuote(s,preferTr),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
+ let quote=verifiedDisplayQuote(s,preferTr,se),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
  let quoteAt=preferTr?(N(s&&s.trLiveUpdatedAt)??N(s&&s.trLiveReceivedAt)):(N(s&&s.usLiveReceivedAt)??parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York'));
  let now=Date.now();
  return {
   price:quote&&N(quote.price)!==null?N(quote.price):SP(s,se),
-  change:marketChange(s,se,preferTr),
+  change:quote&&N(quote.change)!==null?N(quote.change):marketChange(s,se,false),
   volume:SV(s,se),
   avgVolume:N(s&&s.avgVolume),
   relVolume:RV(s,se),
