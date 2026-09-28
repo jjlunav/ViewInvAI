@@ -85,7 +85,7 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
 const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'}};
-function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:720px)').matches}
+function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:820px)').matches}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
 function catalogStorageKey(mode){return 'viewinvai:catalogColumns:'+mode+':v1'}
