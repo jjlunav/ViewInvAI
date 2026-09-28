@@ -497,7 +497,7 @@ jobs:
           "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=1024,768 --user-data-dir=/tmp/viewinvai-smoke-profile --virtual-time-budget=10000 --dump-dom http://127.0.0.1:4173/ > /tmp/viewinvai-smoke-dom.html 2>/tmp/viewinvai-smoke-chrome.log
           if ! grep -q 'data-smoke="ok"' /tmp/viewinvai-smoke-dom.html; then
             echo "::error::Smoke web falló"
-            grep -o 'data-smoke-error="[^"]*"' /tmp/viewinvai-smoke-dom.html || true
+            head -c 4000 /tmp/viewinvai-smoke-dom.html || true
             tail -100 /tmp/viewinvai-smoke-chrome.log || true
             exit 1
           fi
@@ -617,7 +617,7 @@ jobs:
             "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="${WIDTH},${HEIGHT}" --force-device-scale-factor=1 --user-data-dir="$PROFILE" --virtual-time-budget=10000 --dump-dom 'http://127.0.0.1:4174/?native=1' > "$DOM" 2>"$LOG"
             if ! grep -q 'data-native-smoke="ok"' "$DOM"; then
               echo "::error::Smoke nativo falló a ${WIDTH}px"
-              grep -o 'data-native-smoke-error="[^"]*"' "$DOM" || true
+              head -c 4000 "$DOM" || true
               tail -100 "$LOG" || true
               exit 1
             fi
