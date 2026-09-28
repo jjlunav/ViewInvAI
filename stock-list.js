@@ -130,7 +130,7 @@ function activeSessionMeta(s,se){
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||SES(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=[regularQuoteCell(s,preferTr),regularChangeCell(s)];
+ let cells=Array.isArray(opts.cells)&&opts.cells.length?opts.cells:[regularQuoteCell(s,preferTr),regularChangeCell(s)];
  let sessionMeta=activeSessionMeta(s,se);
  let details=opts.detailsHtml;
  if(details===undefined){
