@@ -103,9 +103,11 @@ function renderFuture(){
  let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
  let filtered=(db.events||[]).filter(e=>{
   if(!futureWindowEvent(e,h,now)||(t!=='all'&&e.type!==t))return false;
-  if(!tr)return true;
   let s=stockForEvent(e);
-  return trTradable(s);
+  if(!s)return false;
+  if(tr&&!trTradable(s))return false;
+  let q=verifiedDisplayQuote(s,trTradable(s),SES());
+  return N(q&&q.price)!==null;
  });
  let groups=groupFutureEvents(filtered);
  if(groups.length){
