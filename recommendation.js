@@ -338,7 +338,7 @@ const RECO_MOBILE_GROUPS=[
  {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
  {key:'ai',label:'IA',columns:[['signal','Señal'],['score','Score']]},
  {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
- {key:'trend',label:'Tendencia',columns:[['ema20','EMA20'],['ema50','EMA50']]},
+ {key:'trend',label:'Tend.',columns:[['ema20','EMA20'],['ema50','EMA50']]},
  {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
  {key:'events',label:'Eventos',columns:[['events','Eventos'],['nextEvent','Próximo']]},
  {key:'data',label:'Datos',columns:[['quality','Calidad'],['relVolume','Vol. rel.']]}
