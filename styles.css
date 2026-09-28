@@ -6928,3 +6928,89 @@ html[data-theme="light"] .tr-native-axis{
 .alert-page-status span{color:var(--muted);font-size:9px;line-height:1.35}
 .alert-page-list{border-top:1px solid var(--line)}
 .alert-page-empty{padding:12px 8px!important}
+
+/* 2026-09-28 · unified mobile controls, filters and market drawer */
+.filter-sheet-source{display:none}
+.filter-sheet-source.in-filter-sheet{display:block!important}
+.shared-filter-sheet{position:fixed;inset:0;z-index:7600;pointer-events:none;visibility:hidden}
+.shared-filter-sheet.open{pointer-events:auto;visibility:visible}
+.shared-filter-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.64);opacity:0;transition:opacity .16s}
+.shared-filter-sheet.open .shared-filter-backdrop{opacity:1}
+.shared-filter-panel{position:absolute;left:50%;top:50%;width:min(720px,calc(100vw - 28px));max-height:min(82vh,760px);overflow:hidden;transform:translate(-50%,-47%) scale(.98);opacity:0;border:1px solid #294552;border-radius:16px;background:#08151d;box-shadow:0 28px 80px rgba(0,0,0,.55);transition:.16s}
+.shared-filter-sheet.open .shared-filter-panel{transform:translate(-50%,-50%) scale(1);opacity:1}
+.shared-filter-handle{display:none}
+.shared-filter-panel>header{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #203a45}
+.shared-filter-panel>header strong{font-size:12px}
+.shared-filter-panel>header button{width:32px;height:32px;border:0;border-radius:50%;background:#10242d;color:#cbdbe1;font-size:20px}
+.shared-filter-body{max-height:calc(min(82vh,760px) - 48px);overflow:auto;padding:10px}
+.filter-sheet-open{overflow:hidden}
+.filter-icon-button,.portfolio-icon-action{display:inline-grid;place-items:center;flex:0 0 auto;width:34px;height:34px;min-width:34px;padding:0;border:1px solid #294752;border-radius:9px;background:#0c1c24;color:#a9bec7;cursor:pointer}
+.filter-icon-button svg{width:16px;height:16px;fill:currentColor}
+.filter-icon-button>span{display:none}
+.filter-icon-button:hover,.portfolio-icon-action:hover{border-color:#4f7a87;background:#102933;color:#eff8fa}
+.entry-filter-launch,.calendar-filter-launch{display:flex;justify-content:flex-end;margin:4px 0 6px}
+.entry-filter-source .control-strip{margin:0 0 7px!important}
+.entry-filter-source .filter-panel{display:block!important;margin:0!important}
+.entry-filter-source .filter-panel>summary{display:none}
+.catalog-filter-panel,.calendar-filter-panel{display:grid;gap:8px}
+.catalog-filter-primary,.calendar-filter-panel{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.catalog-filter-primary{display:grid;gap:7px}
+.catalog-filter-panel label,.calendar-filter-panel label{display:grid;gap:4px;color:#8ba2ac;font-size:9px}
+.catalog-column-filters{margin-top:5px;border:1px solid #233c47;border-radius:10px;overflow:hidden}
+.catalog-column-filters>summary{padding:8px 9px;cursor:pointer;font-size:9px;font-weight:750}
+.catalog-column-filters .catalog-mobile-filter-grid{padding:7px}
+.filter-actions{display:flex!important;justify-content:flex-end!important;gap:6px!important;margin-top:8px!important}
+.compact-search-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) 34px auto!important;gap:6px!important;align-items:center!important}
+.catalog-filter-row{display:none!important}
+.catalog-help{display:none!important}
+.fund-toolbar{grid-template-columns:minmax(0,1fr) 34px!important}
+.fund-toolbar-advanced{display:none!important}
+.fund-toolbar-advanced.in-filter-sheet{display:grid!important}
+.fund-data-note.compact{display:flex!important;align-items:center;gap:5px;margin:2px 0 5px!important;padding:0!important;border:0!important;background:transparent!important;color:#718994!important;font-size:8px!important}
+.portfolio-workbar{grid-template-columns:minmax(0,1fr) auto!important}
+.portfolio-tabs-wrap{gap:4px!important}
+.portfolio-icon-action{width:32px;height:32px;min-width:32px;font-size:14px}
+.portfolio-tabs-edit,.portfolio-tab-add{position:static!important}
+.portfolio-inline-tools{display:flex!important;align-items:center;gap:4px!important;margin-bottom:6px!important}
+.portfolio-inline-tools .portfolio-tabs-track{flex:1 1 auto}
+.fund-plan-strip{display:flex;gap:5px;overflow:auto;padding:4px 0 7px;scrollbar-width:none}
+.fund-plan-strip span{white-space:nowrap;padding:4px 7px;border:1px solid #24404b;border-radius:999px;background:#0a1921;color:#859ca6;font-size:8px}
+.fund-plan-strip b{color:#cae0e6}
+.market-board-tabs{margin:0 0 5px!important}
+.market-board-list{display:grid;border:1px solid #1d333d;border-radius:12px;overflow:hidden}
+.market-board-list .asset-card{border-radius:0!important;border-left:0!important;border-right:0!important;border-top:0!important}
+.market-board-list .asset-card:last-child{border-bottom:0!important}
+.market-quick-toggle{display:none}
+.market-quick-sheet,.market-quick-backdrop{display:none}
+.pulse-empty{display:grid!important;gap:4px!important}
+.pulse-empty strong{font-size:11px}.pulse-empty span{font-size:8px;color:#78909a;line-height:1.35}
+.ai-nav-item span:first-child{color:#a88cff!important}
+.floating-account{position:absolute!important;top:8px!important;right:12px!important}
+
+@media(max-width:820px){
+ .view{padding-left:8px!important;padding-right:8px!important}
+ .shared-filter-panel{left:7px;right:7px;top:auto;bottom:calc(var(--native-nav-h,64px) + env(safe-area-inset-bottom,0px) + 6px);width:auto;max-height:78vh;transform:translateY(24px);border-radius:16px 16px 10px 10px}
+ .shared-filter-sheet.open .shared-filter-panel{transform:translateY(0)}
+ .shared-filter-handle{display:block;width:38px;height:4px;margin:6px auto 0;border-radius:999px;background:#39515d}
+ .shared-filter-panel>header{height:42px}
+ .shared-filter-body{max-height:calc(78vh - 48px);padding:7px}
+ .filter-icon-button{width:32px;height:32px;min-width:32px}
+ .filter-icon-button>span{display:inline;font-size:8px;font-weight:750;margin-left:4px}
+ .entry-filter-launch .filter-icon-button,.calendar-filter-launch .filter-icon-button{width:auto;padding:0 8px;display:flex}
+ .market-quick-toggle{display:grid;place-items:center;position:fixed;left:50%;bottom:calc(var(--native-nav-h,64px) + env(safe-area-inset-bottom,0px) - 5px);z-index:6150;transform:translateX(-50%);width:38px;height:22px;border:1px solid #2e4b57;border-bottom:0;border-radius:13px 13px 0 0;background:#0d1d25;color:#a9bdc5;font-size:15px}
+ .market-quick-backdrop{display:block;position:fixed;inset:0;z-index:6050;background:rgba(0,0,0,.58);opacity:0;visibility:hidden;transition:.15s}
+ .market-quick-backdrop.open{opacity:1;visibility:visible}
+ .market-quick-sheet{display:block;position:fixed;left:5px;right:5px;bottom:calc(var(--native-nav-h,64px) + env(safe-area-inset-bottom,0px) + 2px);z-index:6100;max-height:66vh;overflow:auto;padding:5px 7px 10px;border:1px solid #294450;border-radius:17px 17px 5px 5px;background:#07151c;box-shadow:0 -20px 50px rgba(0,0,0,.48);transform:translateY(calc(100% + 80px));transition:.18s}
+ .market-quick-sheet.open{transform:translateY(0)}
+ .market-quick-handle{width:38px;height:4px;margin:2px auto 5px;border-radius:999px;background:#354e59}
+ .market-quick-sheet>header{display:flex;align-items:center;justify-content:space-between;padding:3px 2px 6px}
+ .market-quick-sheet>header strong{font-size:10px}.market-quick-sheet>header button{width:27px;height:27px;border:0;border-radius:50%;background:#10242d;color:#c5d6dc}
+ .market-quick-sheet section{margin:0 0 8px}.market-quick-sheet h3{margin:4px 2px;font-size:9px;color:#8fa6b0}
+ .market-quick-sheet .asset-card-row{min-height:48px!important}
+ .floating-account{position:absolute!important;top:6px!important;right:8px!important}
+ .account-copy{display:none!important}.account-button{width:32px!important;height:32px!important;min-height:32px!important;padding:2px!important;border:0!important;background:transparent!important}
+ .account-avatar{width:28px!important;height:28px!important}
+ .compact-search-toolbar .count-pill{display:none!important}
+ .catalog-filter-primary,.calendar-filter-panel{grid-template-columns:1fr 1fr}
+ .portfolio-workbar>.portfolio-refresh{display:none!important}
+}
