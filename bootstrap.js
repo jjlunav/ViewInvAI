@@ -51,6 +51,7 @@ window.ViewInvAI={
  getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),
  getCanonicalQuote:(stock,preferTr=false)=>canonicalQuote(stock,preferTr),
  observeLiveQuotes:(root=document)=>{observeTrLivePrices(root||document);setTimeout(pollUsLive,0);},
+ renderAssetCard:options=>window.ViewInvAICards.render(options),
  renderStandardStockCard:(stock,options={})=>standardStockCard(stock,Number(options.index)||0,options||{}),
  renderPricePair:(stock,preferTr=false)=>pricePair(stock,SP(stock,currentMarketSession()),preferTr),
  renderLiveChange:(stock,preferTr=false)=>liveChangeHtml(stock,SC(stock,currentMarketSession()),preferTr),

@@ -6,6 +6,8 @@ const out = path.join(root, 'mobile-shell');
 
 const files = [
   'favicon.svg',
+  'asset-card.js',
+  'asset-card.css',
   'styles.css',
   'web-mobile.css',
   'mobile-app.css',

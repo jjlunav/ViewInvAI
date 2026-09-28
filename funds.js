@@ -334,17 +334,15 @@
   ).join('')+'</nav>';
  }
  function fundMobileRow(p,group){
-  return '<article class="fund-mobile-row" data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0">'+
-   '<span class="fund-mobile-name"><strong>'+esc(p.name||p.isin)+'</strong><button type="button" class="list-copy-isin" data-copy-isin="'+esc(p.isin)+'">'+esc(p.isin)+'</button></span>'+
-   group.columns.map(([key])=>{const cell=fundMobileCellValue(p,key);return '<span class="fund-mobile-cell '+esc(cell.tone)+'">'+esc(cell.value)+'</span>'}).join('')+
-   '<span class="fund-mobile-open" aria-hidden="true">›</span>'+
-  '</article>';
+  return root.ViewInvAICards.render({context:'funds',title:p.name||p.isin,isin:p.isin,
+   openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
+   cells:group.columns.map(([key,label])=>({...fundMobileCellValue(p,key),label}))});
  }
  function fundMobileList(rows){
   const group=fundMobileGroup(),cols=group.columns.length;
   return fundMobileTabs()+
    '<div class="fund-mobile-compare fund-mobile-cols-'+cols+'">'+
-    '<div class="fund-mobile-compare-head">'+mobileSortHead('name','Nombre / ISIN')+group.columns.map(([key,label])=>mobileSortHead(key,label)).join('')+'<span></span></div>'+
+    root.ViewInvAICards.head(group.columns.map(([key,label])=>({html:mobileSortHead(key,label)})),{firstHtml:mobileSortHead('name','Nombre / ISIN')})+
     '<div class="fund-mobile-rows">'+rows.map(p=>fundMobileRow(p,group)).join('')+'</div>'+
    '</div>';
  }
@@ -445,19 +443,15 @@
   const invested=units!==null&&avg!==null?units*avg:null;
   const pnl=value!==null&&invested!==null?value-invested:null;
   const pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
-  return '<article class="fund-position-card">'+
-   '<div class="fund-position-main"><div><span class="fund-kind">'+(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO')+'</span><h3>'+esc(p.name||position.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div>'+
-   '<div class="fund-position-value"><small>VALOR ACTUAL</small><strong>'+money(value,position.currency||p.currency)+'</strong>'+freshnessHtml(p)+'</div></div>'+
-   '<div class="fund-position-metrics">'+
-    '<span><small>Participaciones</small><b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span>'+
-    '<span><small>Media</small><b>'+money(avg,position.currency||p.currency)+'</b></span>'+
-    '<span><small>P&L</small><b class="'+((pnl||0)>=0?'positive':'negative')+'">'+(pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)))+'</b></span>'+
-    '<span><small>Plataforma</small><b>'+esc(position.platform||'—')+'</b></span>'+
-   '</div>'+
-   '<details class="fund-more"><summary>Detalles</summary>'+compactFacts(p)+perfStrip(p)+'</details>'+
-   '<div class="fund-card-actions"><button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button></div>'+
-  '</article>';
+  return root.ViewInvAICards.render({context:'fund-portfolio',title:p.name||position.name||p.isin,isin:p.isin,
+   subtitle:(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo')+' · '+(position.platform||'—'),
+   openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
+   cells:[{label:'Valor actual',value:money(value,position.currency||p.currency)},{label:'P&L',value:pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)),tone:pnl===null?'muted':pnl>=0?'positive':'negative'}],
+   detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Media <b>'+money(avg,position.currency||p.currency)+'</b></span></div>'+compactFacts(p)+perfStrip(p),
+   actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
+  });
  }
+
  function renderPortfolio(){
   const box=q('#fundPortfolioApp');if(!box)return;
   account.user=root.ViewInvAIAuth?.getUser?.()||account.user;

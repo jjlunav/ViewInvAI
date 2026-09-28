@@ -254,33 +254,20 @@ function renderPortfolioCard(p) {
   '</button>';
 }
 
+function renderUnavailablePosition(p = {}, message = "El valor no está disponible en el catálogo actual") {
+  const currency = p.currency || (Number(p.prefer_tr) === 1 ? "EUR" : "USD");
+  return window.ViewInvAICards.render({
+    context: "portfolio", title: p.name || "Posición guardada", subtitle: p.ticker || p.stock_key || "—",
+    cells: [{label: "Cantidad", value: formatNumber(p.quantity, 4)}, {label: "Media", value: formatMoney(p.avg_price, currency)}],
+    detailsLabel: "Posición sin cotización", detailsHtml: "<p>" + esc(message) + "</p>",
+    actionsHtml: '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
+      '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p.id) + '">Editar posición</button>'
+  });
+}
+
 function renderPositionRow(p, index = 0) {
   const stock = stockByKey(p.stock_key);
-  if (!stock) {
-    const qty = num(p.quantity);
-    const avg = num(p.avg_price);
-    const preferTr = Number(p.prefer_tr) === 1;
-    const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
-    const ticker = p.ticker || String(p.stock_key || "").split(":").pop() || "—";
-    const name = p.name || "Posición guardada";
-    return '<article class="portfolio-position portfolio-position-missing">' +
-      '<div class="portfolio-position-main">' +
-        '<div class="portfolio-position-id"><strong>' + esc(ticker) + '</strong><span>' + esc(name) + '</span></div>' +
-        '<div class="portfolio-position-quote"><strong>Sin cotización</strong></div>' +
-      '</div>' +
-      '<div class="portfolio-position-context">' +
-        '<div class="portfolio-position-numbers">' +
-          '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-          '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
-        '</div>' +
-        '<div class="portfolio-position-actions">' +
-          '<span class="portfolio-position-signal">El valor no está disponible en el catálogo actual</span>' +
-          '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
-          '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p.id) + '">Editar posición</button>' +
-        '</div>' +
-      '</div>' +
-    '</article>';
-  }
+  if (!stock) return renderUnavailablePosition(p);
   const preferTr = Number(p.prefer_tr) === 1;
   const market = currentMarket(stock, preferTr);
   const qty = num(p.quantity);
@@ -308,23 +295,18 @@ function renderPositionRow(p, index = 0) {
       '</details>' +
     '</div>';
 
-  if (window.ViewInvAI && typeof window.ViewInvAI.renderStandardStockCard === "function") {
-    return window.ViewInvAI.renderStandardStockCard(stock, {
-      index,
-      preferTr,
-      hint: "Cartera · posición activa",
-      insight: "IA · " + signalLabel.toLowerCase(),
-      rankLabel: "#" + (index + 1),
-      className: "portfolio-investing-card",
-      openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
-      contextHtml: context
-    });
-  }
-
-  return '<article class="portfolio-position" data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
-    '<div class="portfolio-position-main"><div class="portfolio-position-id"><strong>' + esc(p.ticker || "—") + '</strong><span>' + esc(p.name || stock.name || "") + '</span></div>' +
-    '<div class="portfolio-position-quote">' + quotePairHtml(stock, preferTr) + changeHtml(market.change) + '</div></div>' + context + '</article>';
+  return window.ViewInvAI.renderStandardStockCard(stock, {
+    index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
+    subtitle: (p.ticker || stock.ticker || "") + " · " + formatNumber(qty, 4) + " uds. · " + signalLabel,
+    cells: [
+      {label: "Precio", value: formatMoney(currentEntryPrice, entryCurrency)},
+      {label: "P&L", value: pnlAbs === null ? "—" : formatMoney(pnlAbs, entryCurrency) + " · " + formatNumber(pnlPct, 2) + "%", tone: pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative"}
+    ],
+    openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
+    detailsHtml: context, detailsLabel: "Posición · operaciones · IA"
+  });
 }
+
 function renderPositionRowSafe(p, index = 0) {
   try {
     const html = renderPositionRow(p, index);
@@ -337,28 +319,7 @@ function renderPositionRowSafe(p, index = 0) {
       stockKey: p && p.stock_key,
       error
     });
-    const ticker = p && (p.ticker || String(p.stock_key || "").split(":").pop()) || "—";
-    const name = p && p.name || "Posición guardada";
-    const qty = num(p && p.quantity);
-    const avg = num(p && p.avg_price);
-    const currency = String(p && p.currency || (Number(p && p.prefer_tr) === 1 ? "EUR" : "USD")).toUpperCase();
-    return '<article class="portfolio-position portfolio-position-render-error">' +
-      '<div class="portfolio-position-main">' +
-        '<div class="portfolio-position-id"><strong>' + esc(ticker) + '</strong><span>' + esc(name) + '</span></div>' +
-        '<div class="portfolio-position-quote"><strong>Posición activa</strong></div>' +
-      '</div>' +
-      '<div class="portfolio-position-context">' +
-        '<div class="portfolio-position-numbers">' +
-          '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
-          '<span>Media <b>' + formatMoney(avg, currency) + '</b></span>' +
-        '</div>' +
-        '<div class="portfolio-position-actions">' +
-          '<span class="portfolio-position-signal">No se pudo dibujar la cotización, pero la posición sigue disponible</span>' +
-          '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p && p.id || "") + '">Operaciones</button>' +
-          '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p && p.id || "") + '">Editar posición</button>' +
-        '</div>' +
-      '</div>' +
-    '</article>';
+    return renderUnavailablePosition(p || {}, "No se pudo dibujar la cotización, pero la posición sigue disponible");
   }
 }
 
@@ -373,7 +334,7 @@ function portfolioContextHtml(selected, positions) {
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “Añadir posición” para empezar.</div>';
     return summary +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
-        '<div class="portfolio-position-list stock-list portfolio-card-grid">' + rows + '</div>' +
+        '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
       '</section>';
   } catch (error) {
     console.error("Portfolio context render failed", {
@@ -385,20 +346,21 @@ function portfolioContextHtml(selected, positions) {
       '<div class="portfolio-empty-state compact">No se pudo dibujar el resumen de la cartera.</div>';
     return '<div class="portfolio-render-warning">El resumen no se ha podido actualizar, pero tus posiciones siguen disponibles.</div>' +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
-        '<div class="portfolio-position-list stock-list portfolio-card-grid">' + rows + '</div>' +
+        '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
       '</section>';
   }
 }
 
 function renderWatchRow(w) {
-  const stock = stockByKey(w.stock_key);
-  const market = currentMarket(stock);
-  return '<article class="portfolio-watch-row" data-open-stock="' + esc(w.stock_key) + '">' +
-    '<div class="portfolio-watch-id"><span class="portfolio-watch-star">★</span><div><strong>' + esc(w.ticker || "—") + '</strong><span>' + esc(w.name || (stock && stock.name) || "") + '</span></div></div>' +
-    '<div class="portfolio-watch-quote"><strong>' + formatMoney(market.price, market.currency) + '</strong>' + changeHtml(market.change) + '</div>' +
-    analysisBadge(w) +
-    '<button type="button" class="portfolio-analyze compact" data-analyze-type="watchlist" data-analyze-id="' + esc(w.id) + '">IA</button>' +
-  '</article>';
+  const stock = stockByKey(w.stock_key), market = currentMarket(stock);
+  return window.ViewInvAICards.render({
+    context: "watchlist", title: w.name || stock?.name || w.ticker, subtitle: w.ticker,
+    isin: stock?.isin || stock?.trIsin,
+    openAttrs: ' data-open-stock="' + esc(w.stock_key) + '" role="button" tabindex="0"',
+    cells: [{label:"Precio",value:formatMoney(market.price,market.currency)},{label:"Variación",html:changeHtml(market.change)}],
+    detailsLabel: "Seguimiento IA", detailsHtml: analysisBadge(w),
+    actionsHtml:'<button type="button" class="portfolio-analyze compact" data-analyze-type="watchlist" data-analyze-id="' + esc(w.id) + '">IA</button>'
+  });
 }
 
 function renderApp() {
@@ -1636,7 +1598,7 @@ function bind() {
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") { closePortfolioTabOverflow(); closeModal(); return; }
     const row = event.target.closest?.("[data-open-stock]");
-    if (row && (event.key === "Enter" || event.key === " ")) {
+    if (row && !event.target.closest("button,a,input,select,textarea,summary") && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       const pref = row.dataset.positionPreferTr;
       openStockInline(row.dataset.openStock, pref === "1" ? true : pref === "0" ? false : null);
