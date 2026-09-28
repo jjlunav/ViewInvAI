@@ -94,7 +94,9 @@ function restoreUiState(){
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
   if(x&&V[x.view])state.currentView=x.view;
   if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
-  if(x&&['auto','premarket','regular','postmarket','previous'].includes(x.session))state.session=x.session;
+  // Every fresh web/APK session starts from the canonical US market clock.
+  // A manual Radar override remains valid only until the next app launch.
+  state.session='auto';
   let restoredPreset=x&&x.preset==='afterhours'?'postmarketExplosion':x&&x.preset;
   if(restoredPreset&&(P[restoredPreset]||restoredPreset==='custom'))state.preset=restoredPreset;
 
@@ -511,10 +513,49 @@ function clock(){
  let se=currentMarketSession();
  if(se!==lastLeaderSession){
   lastLeaderSession=se;
-  if(db.stocks.length){renderMarketLeaders();renderFavorites()}
+  if(db.stocks.length){
+   renderMarketLeaders();renderFavorites();
+   if(!document.body.classList.contains('stock-detail-open')&&['home','portfolios','calendar','future','recommendation'].includes(state.currentView))renderCurrentView();
+  }
  }
 }
 
+let refreshFeedbackTimer=null;
+function refreshFeedbackElement(){
+ let el=$('#refreshFeedbackBanner');
+ if(el)return el;
+ el=document.createElement('div');
+ el.id='refreshFeedbackBanner';
+ el.className='refresh-feedback-banner';
+ el.setAttribute('role','status');
+ el.setAttribute('aria-live','polite');
+ document.body.appendChild(el);
+ return el;
+}
+function showRefreshFeedback(message,tone='ok'){
+ let el=refreshFeedbackElement();
+ clearTimeout(refreshFeedbackTimer);
+ el.textContent=message;
+ el.dataset.tone=tone;
+ el.classList.add('show');
+ refreshFeedbackTimer=setTimeout(()=>el.classList.remove('show'),1900);
+}
+async function runRefreshFeedback(action,getStamp=null){
+ const before=typeof getStamp==='function'?String(getStamp()||''):'';
+ showRefreshFeedback('Actualizando…','loading');
+ try{
+  const result=await action();
+  const after=typeof getStamp==='function'?String(getStamp()||''):'';
+  const unchanged=!!(before&&after&&before===after);
+  showRefreshFeedback(unchanged?'Ya estaba actualizado':'Actualizado',unchanged?'same':'ok');
+  return result;
+ }catch(error){
+  console.warn('Manual refresh failed',error);
+  showRefreshFeedback('No se pudo actualizar','error');
+  return null;
+ }
+}
+window.ViewInvAIRefreshFeedback={show:showRefreshFeedback,run:runRefreshFeedback};
 
 $('#mobileMenu')?.addEventListener('click',()=>$('#sidebar')?.classList.toggle('open'));
-['refreshHome','refreshEntry','refreshFuture','refreshRecommendation','refreshHeatmap'].forEach(id=>$('#'+id).addEventListener('click',()=>load(true)));
+['refreshHome','refreshEntry','refreshFuture','refreshRecommendation','refreshHeatmap'].forEach(id=>$('#'+id)?.addEventListener('click',()=>runRefreshFeedback(()=>load(true),()=>lastDataStamp)));
