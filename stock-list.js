@@ -100,31 +100,45 @@ function stockMobileCell(s,key,se,preferTr=false){
  return{value:text,tone};
 }
 function stockMobileRow(s,i,se,preferTr=false,scope='entry'){
- let group=stockMobileGroup(scope);
- return standardStockCard(s,i,{se,preferTr,context:scope,detailsHtml:'',cells:group.columns.map(([key,label])=>({...stockMobileCell(s,key,se,preferTr),label}))});
+ return standardStockCard(s,i,{se,preferTr,context:scope,detailsHtml:''});
 }
 function stockMobileList(rows,se,preferTr=false,scope='entry'){
- let group=stockMobileGroup(scope);
- return stockMobileTabs(scope)+
-  '<div class="stock-mobile-compare">'+
-   window.ViewInvAICards.head(group.columns.map(([,label])=>label))+
-   '<div class="stock-mobile-rows">'+rows.map((s,i)=>stockMobileRow(s,i,se,preferTr,scope)).join('')+'</div>'+
-  '</div>';
+ return '<div class="stock-mobile-rows unified-asset-list">'+rows.map((s,i)=>stockMobileRow(s,i,se,preferTr,scope)).join('')+'</div>';
+}
+
+function regularQuoteCell(s,preferTr=false){
+ const price=preferTr?(N(s.trLivePrice)??N(s.price)):N(s.price);
+ return{label:'Precio',value:price===null?'—':quoteMoney(price,preferTr?'€':'\u0024',quotePrecision(s,preferTr)),tone:C(s.changePct)};
+}
+function regularChangeCell(s){
+ const ch=N(s.changePct);return{label:'Regular',value:PC(ch),tone:ch===null?'muted':C(ch)};
+}
+function activeSessionMeta(s,se){
+ if(se==='premarket'){
+  let p=N(s.premarketPrice),ch=N(s.premarketChangePct);
+  if(p===null&&ch===null)return'';
+  return '<span class="asset-session-meta '+C(ch)+'"><b aria-hidden="true">☀</b><span>PRE</span><strong>'+PR(p)+'</strong><em>'+PC(ch)+'</em></span>';
+ }
+ if(se==='postmarket'){
+  let p=N(s.postmarketPrice),ch=N(s.postmarketChangePct);
+  if(p===null&&ch===null)return'';
+  return '<span class="asset-session-meta '+C(ch)+'"><b aria-hidden="true">☾</b><span>POST</span><strong>'+PR(p)+'</strong><em>'+PC(ch)+'</em></span>';
+ }
+ return '';
 }
 
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||SES(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=opts.cells||[
-  Object.assign({label:'Precio'},stockMobileCell(s,'price',se,preferTr)),
-  Object.assign({label:'Variación'},stockMobileCell(s,'change',se,preferTr))
- ];
+ let cells=[regularQuoteCell(s,preferTr),regularChangeCell(s)];
+ let sessionMeta=activeSessionMeta(s,se);
  let details=opts.detailsHtml;
  if(details===undefined){
   let rv=RV(s,se);
   details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+bidAskHtml(s,preferTr)+
    '<div class="asset-card-metrics"><span>Vol <b>'+compactVol(SV(s,se))+'</b></span><span>RV <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
  }
+ let contextMeta=opts.metaHtml||'';
  return window.ViewInvAICards.render({
   context:opts.context||state.currentView||'stock',title:s.name||ticker||'—',rank,
   isin:preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin),
@@ -132,7 +146,7 @@ function standardStockCard(s,i=0,opts={}){
   leadingHtml:favButton(s,preferTr),cells,
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
-  metaHtml:opts.metaHtml,actionsHtml:opts.actionsHtml,className:opts.className
+  metaHtml:sessionMeta+contextMeta,actionsHtml:opts.actionsHtml,className:opts.className
  });
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
@@ -262,33 +276,62 @@ function entry(){
  return[ranked.slice(0,maxResults).map(x=>x.s),se];
 }
 
+function homeSession(){
+ let se=currentMarketSession();return['premarket','regular','postmarket'].includes(se)?se:'regular';
+}
 function homeDailyChange(s){
- let preferTr=trTradable(s);
- return marketChange(s,currentMarketSession(),preferTr);
+ let se=homeSession();
+ if(se==='premarket')return N(s.premarketChangePct);
+ if(se==='postmarket')return N(s.postmarketChangePct);
+ return N(s.changePct);
 }
 function homeUniverse(){
  return (db.stocks||[]).filter(s=>stockKey(s)&&(N(s.price)!==null||trTradable(s)));
 }
-function homePopularStocks(limit=5){
+function homeUserViewedStocks(limit=10){
  let universe=homeUniverse(),ranked=universe.filter(s=>stockViewCount(s)>0).sort((a,b)=>stockViewCount(b)-stockViewCount(a)||((stockViews[stockKey(b)]?.last||0)-(stockViews[stockKey(a)]?.last||0)));
- let used=new Set(ranked.map(stockKey));
- if(ranked.length<limit){
-  let fallback=universe.filter(s=>!used.has(stockKey(s))).sort((a,b)=>(SV(b,'regular')??N(b.avgVolume)??0)-(SV(a,'regular')??N(a.avgVolume)??0));
-  ranked.push(...fallback.slice(0,limit-ranked.length));
- }
  return ranked.slice(0,limit);
 }
-function homeMoveStocks(desc=true,limit=5){
- return homeUniverse().map(s=>({s,ch:homeDailyChange(s)})).filter(x=>x.ch!==null).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
+let socialTrendingSymbols=[],socialTrendingAt=0,socialTrendingLoading=false;
+async function refreshSocialTrending(force=false){
+ if(socialTrendingLoading)return;
+ if(!force&&socialTrendingAt&&Date.now()-socialTrendingAt<300000)return;
+ socialTrendingLoading=true;
+ try{
+  let r=await fetch('/api/social-trending',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  let data=await r.json();socialTrendingSymbols=Array.isArray(data.symbols)?data.symbols:[];socialTrendingAt=Date.now();
+  if(state.currentView==='home'&&marketBoardMode==='active')renderHome();
+ }catch(e){console.warn('Social trending unavailable',e)}
+ finally{socialTrendingLoading=false}
+}
+function homeActiveStocks(limit=10){
+ const universe=homeUniverse(),byTicker=new Map();
+ for(const s of universe){for(const t of [s.ticker,s.trTicker])if(t)byTicker.set(String(t).toUpperCase(),s)}
+ const out=[],used=new Set();
+ for(const row of socialTrendingSymbols){
+  const ticker=String(row.symbol||row.ticker||'').toUpperCase(),s=byTicker.get(ticker);if(!s)continue;
+  const k=stockKey(s);if(used.has(k))continue;used.add(k);out.push(s);if(out.length>=limit)break;
+ }
+ if(out.length<limit){
+  const fallback=universe.filter(s=>!used.has(stockKey(s))).map(s=>({s,score:(stockViewCount(s)*15)+(RV(s,homeSession())??0)*8+Math.log10(Math.max(1,SV(s,homeSession())??N(s.avgVolume)??1))}))
+   .sort((a,b)=>b.score-a.score).map(x=>x.s);
+  out.push(...fallback.slice(0,limit-out.length));
+ }
+ return out.slice(0,limit);
+}
+function homeMoveStocks(desc=true,limit=10){
+ let se=homeSession();
+ return homeUniverse().map(s=>({s,ch:se==='premarket'?N(s.premarketChangePct):se==='postmarket'?N(s.postmarketChangePct):N(s.changePct)}))
+  .filter(x=>x.ch!==null&&(desc?x.ch>0:x.ch<0)).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
 function homeStockRow(s,i,kind){
- let preferTr=trTradable(s),views=stockViewCount(s);
- let hint=kind==='views'?(views?views+' '+(views===1?'vista':'vistas'):'Más vista'):(kind==='gainers'?'Mejor rendimiento diario':'Peor rendimiento diario');
- let insight=kind==='views'?'IA · interés de usuarios':kind==='gainers'?'IA · momentum positivo':'IA · presión vendedora';
+ let preferTr=trTradable(s),views=stockViewCount(s),se=homeSession();
+ let hint=kind==='views'?(views?views+' '+(views===1?'vista':'vistas')+' esta semana':'Vista esta semana'):(kind==='active'?'Tendencia social / atención':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
+ let insight=kind==='views'?'Tus visitas · 7 días':kind==='active'?'Atención social y actividad':kind==='gainers'?'Subida · '+SN(se):'Bajada · '+SN(se);
  let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
  return standardStockCard(s,i,{
-  se:'regular',preferTr,hint,context:'home',className:'home-investing-card',
+  se,preferTr,hint,context:'home',className:'home-investing-card',
   detailsHtml:'',subtitle:[ticker,exchange,insight].filter(Boolean).join(' · ')
  });
 }
@@ -297,28 +340,46 @@ function homePanel(title,subtitle,stocks,kind,tone){
   '<div class="home-stock-list">'+(stocks.length?stocks.map((s,i)=>homeStockRow(s,i,kind)).join(''):'<div class="home-empty">Sin datos disponibles todavía.</div>')+'</div></section>';
 }
 let marketBoardMode='active';
-function marketBoardStocks(mode='active',limit=18){
+function marketBoardStocks(mode='active',limit=10){
  if(mode==='gainers')return homeMoveStocks(true,limit);
  if(mode==='losers')return homeMoveStocks(false,limit);
- return homeUniverse().map(s=>({s,ch:Math.abs(homeDailyChange(s)??0),vol:SV(s,'regular')??0}))
-  .sort((a,b)=>b.ch-a.ch||b.vol-a.vol).slice(0,limit).map(x=>x.s);
+ return homeActiveStocks(limit);
 }
 function renderMarketQuickSheet(){
  let box=$('#marketQuickContent');if(!box)return;
- let views=homePopularStocks(4),up=homeMoveStocks(true,4),down=homeMoveStocks(false,4);
- box.innerHTML='<section><h3>Más vistas</h3>'+views.map((s,i)=>homeStockRow(s,i,'views')).join('')+'</section>'+
-  '<section><h3>Subidas</h3>'+up.map((s,i)=>homeStockRow(s,i,'gainers')).join('')+'</section>'+
-  '<section><h3>Bajadas</h3>'+down.map((s,i)=>homeStockRow(s,i,'losers')).join('')+'</section>';
+ let views=homeUserViewedStocks(10);
+ box.innerHTML='<section class="weekly-viewed-section"><h3>Más visitados esta semana</h3>'+(views.length?views.map((s,i)=>homeStockRow(s,i,'views')).join(''):'<div class="empty-state compact">Todavía no has visitado suficientes activos esta semana.</div>')+'</section>';
+}
+async function renderIndicesTop10(box){
+ box.innerHTML='<div class="empty-state compact">Actualizando índices…</div>';
+ try{
+  let r=await fetch('/api/indices-live',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  let data=await r.json(),rows=Array.isArray(data.indices)?data.indices.slice(0,10):[];
+  box.innerHTML=rows.length?'<div class="market-board-list">'+rows.map((x,i)=>{
+   let ch=N(x.change),tone=ch===null?'muted':C(ch);
+   return window.ViewInvAICards.render({context:'indices',title:x.name||x.symbol||'Índice',rank:'#'+(i+1),subtitle:[x.symbol,x.exchange].filter(Boolean).join(' · '),
+    cells:[{label:'Precio',value:PR(x.price),tone},{label:'Variación',value:PC(ch),tone}],className:'index-compact-card'});
+  }).join('')+'</div>':'<div class="empty-state">No hay datos verificados de índices en este momento.</div>';
+ }catch(e){box.innerHTML='<div class="empty-state">No se pudieron actualizar los índices ahora mismo.</div>'}
 }
 function renderHome(){
  let box=$('#homeGroups');if(!box)return;
- let rows=marketBoardStocks(marketBoardMode,18);
- box.innerHTML=rows.length
-  ?'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'views')).join('')+'</div>'
-  :'<div class="empty-state">No hay datos de mercado disponibles.</div>';
- if($('#homeSession'))$('#homeSession').textContent='Sesión regular · '+homeUniverse().length+' acciones';
+ if(marketBoardMode==='funds'){
+  box.innerHTML='<div class="empty-state compact">Cargando Top 10 de fondos y ETFs…</div>';
+  window.ViewInvAIFunds?.renderMarketTop10?.(box,10);
+ }else if(marketBoardMode==='indices'){
+  renderIndicesTop10(box);
+ }else{
+  let rows=marketBoardStocks(marketBoardMode,10);
+  box.innerHTML=rows.length
+   ?'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'active')).join('')+'</div>'
+   :'<div class="empty-state">No hay datos de mercado disponibles.</div>';
+ }
+ let se=homeSession();
+ if($('#homeSession'))$('#homeSession').textContent=SN(se)+' · Top 10';
  if($('#homeUpdated'))$('#homeUpdated').textContent=db.meta.updatedAt?'Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Actualizando…';
  renderMarketQuickSheet();
+ if(marketBoardMode==='active')setTimeout(()=>refreshSocialTrending(false),0);
 }
 
 function renderEntry(){
@@ -334,17 +395,13 @@ function renderEntry(){
   :'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>';
 }
 
+window.ViewInvAIMarketBoard={refreshSocialTrending,renderMarketQuickSheet};
+
 function initStockListInteractions(){
  document.addEventListener('click',e=>{
   let board=e.target.closest&&e.target.closest('[data-market-board]');
   if(!board)return;
   let mode=board.dataset.marketBoard;
-  if(mode==='funds'){show('funds');return}
-  if(mode==='indices'){
-   marketBoardMode='active';
-   let box=$('#homeGroups');if(box)box.innerHTML='<div class="empty-state">No hay todavía un feed de índices verificado configurado. No se muestran cifras inventadas.</div>';
-   document.querySelectorAll('[data-market-board]').forEach(b=>b.classList.toggle('active',b===board));return;
-  }
   marketBoardMode=mode||'active';
   document.querySelectorAll('[data-market-board]').forEach(b=>b.classList.toggle('active',b===board));
   renderHome();
