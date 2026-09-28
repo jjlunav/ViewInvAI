@@ -561,6 +561,7 @@ function openPositionPicker() {
 
 async function loadAll({ syncFavorites = false } = {}) {
   if (!state.user || state.loading) return;
+  let ok = true;
   state.loading = true;
   renderApp();
   try {
@@ -575,6 +576,7 @@ async function loadAll({ syncFavorites = false } = {}) {
     syncPortfolioStars();
     window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{}}));
   } catch (error) {
+    ok = false;
     console.warn("Portfolio loading failed", error);
     toast(error.message || "No se pudieron cargar las carteras.", true);
   } finally {
@@ -583,6 +585,7 @@ async function loadAll({ syncFavorites = false } = {}) {
     const summaryPortfolioId = state.selectedPortfolioId;
     if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});
   }
+  return ok;
 }
 
 async function createPortfolio(payload) {
