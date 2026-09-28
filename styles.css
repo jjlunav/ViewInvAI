@@ -6921,13 +6921,3 @@ html[data-theme="light"] .tr-native-axis{
  transition:opacity .16s ease,transform .16s ease;box-shadow:0 8px 24px rgba(0,0,0,.28)
 }
 .list-copy-toast.show{opacity:1;transform:translate(-50%,0)}
-
-
-.settings-inline-toggle{
- display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 11px;
- border:1px solid var(--line);border-radius:10px;background:var(--panel-2);cursor:pointer
-}
-.settings-inline-toggle>input{width:17px;height:17px;accent-color:var(--accent);flex:0 0 auto}
-.settings-inline-toggle>span{display:grid;gap:2px;min-width:0}
-.settings-inline-toggle strong{font-size:10px}
-.settings-inline-toggle small{color:var(--muted);font-size:8.5px;line-height:1.35}
