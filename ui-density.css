@@ -161,3 +161,192 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
     grid-template-columns:minmax(0,1fr)!important;
   }
 }
+
+/* Narrow stock profiles share one density layout. The existing platform files
+   still own positioning, safe areas, themes and the measured native sticky shell.
+   No quote, timestamp, action or metric is removed to achieve the compact view. */
+@media(max-width:760px){
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .unified-stock-header-inner{
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr) auto!important;
+    grid-template-areas:"back title actions" "live live live"!important;
+    align-items:center!important;
+    gap:5px 7px!important;
+    min-width:0!important;
+    min-height:0!important;
+    padding:6px 10px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-back-cell{grid-area:back!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-back-inline{
+    min-width:40px!important;
+    min-height:36px!important;
+    height:auto!important;
+    padding:5px 6px!important;
+    font-size:10px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-title{
+    grid-area:title!important;
+    min-width:0!important;
+    gap:5px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-title>div:last-child{min-width:0!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-title h2{
+    margin:0!important;
+    font-size:19px!important;
+    line-height:1.1!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-title p{
+    display:block!important;
+    margin:2px 0 0!important;
+    font-size:10px!important;
+    line-height:1.2!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-actions{
+    grid-area:actions!important;
+    display:flex!important;
+    flex-wrap:wrap!important;
+    align-items:center!important;
+    width:auto!important;
+    max-width:96px!important;
+    min-width:0!important;
+    margin:0!important;
+    gap:4px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-actions .btn{
+    width:100%!important;
+    min-width:0!important;
+    min-height:36px!important;
+    height:auto!important;
+    padding:5px 6px!important;
+    font-size:10px!important;
+    line-height:1.15!important;
+    white-space:normal!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live{
+    grid-area:live!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    grid-template-areas:"label label" "main main" "spread freshness"!important;
+    align-items:center!important;
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+    padding:0!important;
+    gap:3px 6px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live>small:first-child{
+    grid-area:label!important;
+    margin:0!important;
+    font-size:9px!important;
+    line-height:1.2!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live-main{
+    grid-area:main!important;
+    display:flex!important;
+    flex-wrap:wrap!important;
+    align-items:baseline!important;
+    min-width:0!important;
+    gap:4px 8px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .price-pair{
+    display:flex!important;
+    flex-wrap:wrap!important;
+    align-items:baseline!important;
+    min-width:0!important;
+    max-width:100%!important;
+    gap:3px 6px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .price-pair>strong{
+    font-size:24px!important;
+    line-height:1.1!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .price-pair>small{
+    font-size:10px!important;
+    line-height:1.2!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .quote-change{font-size:12px!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live>.quote-spread{
+    grid-area:spread!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+    padding:0!important;
+    gap:4px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .quote-side{
+    min-width:0!important;
+    padding:4px 5px!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-live .quote-side strong{font-size:11px!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-quote-freshness{
+    grid-area:freshness!important;
+    display:flex!important;
+    flex-wrap:wrap!important;
+    min-width:0!important;
+    margin:0!important;
+    font-size:10px!important;
+    line-height:1.2!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-tabs{
+    min-height:0!important;
+    gap:2px!important;
+    margin:0!important;
+    padding:0 8px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-tabs button{
+    flex:0 0 auto!important;
+    min-height:36px!important;
+    height:auto!important;
+    padding:7px 9px!important;
+    font-size:11px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats{margin:6px 0!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-section-head{
+    min-height:0!important;
+    margin:0!important;
+    padding:7px 8px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-list{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:0 10px!important;
+    padding:0 8px 5px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-row{
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:flex-start!important;
+    justify-content:flex-start!important;
+    min-width:0!important;
+    min-height:0!important;
+    padding:7px 0!important;
+    gap:3px!important;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-row>div{display:contents!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-row span{order:0;font-size:11px!important}
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-row>strong{
+    order:1;
+    max-width:100%!important;
+    font-size:13px!important;
+    text-align:left!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere;
+  }
+  html :is(#stockQuickDetail,.stock-profile-page,.stock-profile,.portfolio-inline-stock) .profile-primary-stats .profile-stat-row small{
+    order:2;
+    font-size:10px!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere;
+  }
+}
