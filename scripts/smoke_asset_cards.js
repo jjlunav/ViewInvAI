@@ -52,9 +52,10 @@ window.checkAssetCards = async function () {
   Object.assign(ps,saved);portfolio.render();view.style.display=display;
  }
  renderHome();
+ await new Promise(resolve=>setTimeout(resolve,30));
  const disclosure=document.querySelector('#homeGroups .asset-card-details');
  if(disclosure){
-  disclosure.open=true;
+  disclosure.querySelector("summary").click();
   await new Promise(resolve=>setTimeout(resolve,30));
   renderHome();
   await new Promise(resolve=>setTimeout(resolve,30));
