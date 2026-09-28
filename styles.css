@@ -7014,3 +7014,33 @@ html[data-theme="light"] .tr-native-axis{
  .catalog-filter-primary,.calendar-filter-panel{grid-template-columns:1fr 1fr}
  .portfolio-workbar>.portfolio-refresh{display:none!important}
 }
+
+
+/* 2026-09-29 · compact-card/session/filter/refresh corrections */
+.filter-sheet-source:not(.in-filter-sheet),
+#view-calendar .calendar-filter-panel.filter-sheet-source:not(.in-filter-sheet),
+#view-funds .fund-toolbar-advanced.filter-sheet-source:not(.in-filter-sheet),
+#view-entry .entry-filter-source.filter-sheet-source:not(.in-filter-sheet),
+.catalog-filter-panel.filter-sheet-source:not(.in-filter-sheet){display:none!important}
+.refresh-feedback-banner{
+ position:fixed;left:50%;top:max(12px,env(safe-area-inset-top,0px));z-index:9000;
+ transform:translate(-50%,-18px);opacity:0;pointer-events:none;
+ min-width:170px;max-width:calc(100vw - 28px);padding:9px 13px;border:1px solid var(--line);
+ border-radius:999px;background:rgba(8,21,29,.96);color:var(--text);text-align:center;
+ font-size:10px;font-weight:780;box-shadow:0 12px 34px rgba(0,0,0,.35);transition:.18s
+}
+.refresh-feedback-banner.show{opacity:1;transform:translate(-50%,0)}
+.refresh-feedback-banner[data-tone="error"]{border-color:rgba(239,98,98,.6);color:var(--negative)}
+.refresh-feedback-banner[data-tone="loading"]{border-color:rgba(89,180,232,.48)}
+.refresh-feedback-banner[data-tone="same"]{color:var(--muted)}
+.asset-session-price{display:block;font-weight:820;white-space:nowrap}
+.asset-session-change{display:block;margin-top:1px;font-size:.82em;font-weight:800;white-space:nowrap}
+.asset-session-change.positive{color:var(--positive)!important}
+.asset-session-change.negative{color:var(--negative)!important}
+.market-quick-sheet>header{justify-content:center!important;text-align:center!important}
+.market-quick-toggle.inside-sheet{
+ position:sticky!important;top:0!important;left:50%!important;bottom:auto!important;
+ display:grid!important;margin:-5px auto 3px!important;transform:translateX(-50%)!important;
+ z-index:2!important;border-radius:0 0 12px 12px!important;border-top:0!important;border-bottom:1px solid #2e4b57!important
+}
+.weekly-viewed-section>h3{display:none!important}
