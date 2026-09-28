@@ -118,8 +118,37 @@ function renderFuture(){
  }else $('#futureResults').innerHTML='<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
+const calendarFilter={from:'',to:'',catalyst:'all',sector:'all'};
+function calendarEventType(e){
+ return String(e&&e.type||e&&e.eventKind||'otro').trim()||'otro';
+}
+function calendarStockSector(e){
+ let s=stockForEvent(e);
+ return String((s&&s.sector)||(s&&s.industry)||'').trim();
+}
+function syncCalendarFilterOptions(){
+ let cat=$('#calendarCatalyst'),sector=$('#calendarSector');if(!cat||!sector)return;
+ let cats=[...new Set((db.events||[]).map(calendarEventType).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+ let sectors=[...new Set((db.events||[]).map(calendarStockSector).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+ let cv=calendarFilter.catalyst,sv=calendarFilter.sector;
+ cat.innerHTML='<option value="all">Todos</option>'+cats.map(v=>'<option value="'+E(v)+'" '+(v===cv?'selected':'')+'>'+E(v)+'</option>').join('');
+ sector.innerHTML='<option value="all">Todos</option>'+sectors.map(v=>'<option value="'+E(v)+'" '+(v===sv?'selected':'')+'>'+E(v)+'</option>').join('');
+}
+function calendarFilteredRows(){
+ let from=calendarFilter.from?new Date(calendarFilter.from+'T00:00:00').getTime():null;
+ let to=calendarFilter.to?new Date(calendarFilter.to+'T23:59:59').getTime():null;
+ return [...(db.events||[])].filter(e=>{
+  let t=new Date(e.date||0).getTime();if(!Number.isFinite(t))return false;
+  if(from!==null&&t<from)return false;if(to!==null&&t>to)return false;
+  if(calendarFilter.catalyst!=='all'&&calendarEventType(e)!==calendarFilter.catalyst)return false;
+  if(calendarFilter.sector!=='all'&&calendarStockSector(e)!==calendarFilter.sector)return false;
+  return true;
+ }).sort((x,y)=>new Date(y.date)-new Date(x.date));
+}
 function renderCalendar(){
- let rows=[...(db.events||[])].sort((x,y)=>new Date(y.date)-new Date(x.date));
+ syncCalendarFilterOptions();
+ let rows=calendarFilteredRows();
+ let label=$('#calendarFilterLabel');if(label)label.textContent=(calendarFilter.from||calendarFilter.to||calendarFilter.catalyst!=='all'||calendarFilter.sector!=='all')?'Cambiar filtro':'Filtro';
  if(rows.length){
   let shown=rows.slice(0,400);
   $('#calendarResults').innerHTML=eventCompactListView()
@@ -138,5 +167,18 @@ function initEventViewInteractions(){
  });
  ['futureHorizon','futureType','futureTrOnly'].forEach(id=>{
   $('#'+id)?.addEventListener('change',renderFuture);
+ });
+ $('#calendarApplyFilter')?.addEventListener('click',()=>{
+  calendarFilter.from=$('#calendarDateFrom')?.value||'';
+  calendarFilter.to=$('#calendarDateTo')?.value||'';
+  calendarFilter.catalyst=$('#calendarCatalyst')?.value||'all';
+  calendarFilter.sector=$('#calendarSector')?.value||'all';
+  renderCalendar();
+ });
+ $('#calendarResetFilter')?.addEventListener('click',()=>{
+  calendarFilter.from='';calendarFilter.to='';calendarFilter.catalyst='all';calendarFilter.sector='all';
+  if($('#calendarDateFrom'))$('#calendarDateFrom').value='';
+  if($('#calendarDateTo'))$('#calendarDateTo').value='';
+  syncCalendarFilterOptions();renderCalendar();
  });
 }
