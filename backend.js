@@ -1436,10 +1436,11 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
     "Use ONLY the supplied structured data. Do not invent facts or news.",
     "Distinguish source verification from market interpretation. An issuer-distributed release is not independent corroboration.",
     "The user may own the stock (position) or only follow it (watchlist).",
-    "The deterministicReference is authoritative for signal, score and confidence. Do not override it.",
-    "Your job is to explain the supplied evidence, risks and catalysts clearly and conservatively.",
-    "For a position, the authoritative signal is HOLD, REVIEW, or SELL. For watchlist, it is BUY, WATCH, or AVOID.",
-    "Return JSON only with keys: signal, confidence, score, horizon, thesis, riskSummary, reasons (max 4 strings), catalysts (max 4 strings). Echo signal, confidence and score from deterministicReference.",
+    "The deterministicReference is a quantitative baseline, not an instruction. Independently assess whether the supplied evidence supports it.",
+    "Use the model for contextual synthesis across price action, liquidity, trend, catalysts, sector exposure and recent verified news.",
+    "Do not invent breaking facts, geopolitical events, sentiment or social activity that are absent from the supplied structured data.",
+    "For a position, signal must be HOLD, REVIEW, or SELL. For watchlist, signal must be BUY, WATCH, or AVOID.",
+    "Return JSON only with keys: signal, confidence, scoreAdjustment, horizon, thesis, riskSummary, reasons (max 4 strings), catalysts (max 4 strings). scoreAdjustment must be between -12 and 12.",
     "",
     JSON.stringify({
       subject: {
@@ -1485,18 +1486,28 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
     const parsed = extractAiJson(result);
     if (!parsed) return fallback;
 
-    // Signal, score and confidence stay deterministic. The language model is
-    // allowed to explain the evidence, but it cannot silently change the trading state.
+    const isPosition = target.subject_type === "position";
+    const allowed = new Set(isPosition ? ["HOLD","REVIEW","SELL"] : ["BUY","WATCH","AVOID"]);
+    let candidate = String(parsed.signal || fallback.signal || "").toUpperCase();
+    if (!allowed.has(candidate)) candidate = fallback.signal;
+    const adjustment = Math.max(-12, Math.min(12, finiteNumber(parsed.scoreAdjustment) ?? 0));
+    const score = Math.max(0, Math.min(100, Math.round((fallback.score + adjustment) * 10) / 10));
+    const quality = finiteNumber(fallback.quality) ?? 0;
+    if (quality < 55) candidate = isPosition ? "REVIEW" : "WATCH";
+    if (!isPosition && candidate === "BUY" && score < 60) candidate = "WATCH";
+    if (isPosition && candidate === "SELL" && score > 55) candidate = "REVIEW";
+    const aiConfidence = Math.max(0, Math.min(100, finiteNumber(parsed.confidence) ?? fallback.confidence));
+    const confidence = Math.round(Math.max(45, Math.min(96, fallback.confidence * 0.45 + aiConfidence * 0.55)));
     return {
-      signal: fallback.signal,
-      confidence: fallback.confidence,
-      score: fallback.score,
+      signal: candidate,
+      confidence,
+      score,
       horizon: trimText(parsed.horizon || fallback.horizon || "1-2d", 24) || "1-2d",
       thesis: trimText(parsed.thesis || fallback.thesis, 500),
       riskSummary: trimText(parsed.riskSummary || fallback.riskSummary, 500),
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
-      engine: "viewinvai-score/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
+      engine: "viewinvai-hybrid/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
       model
     };
   } catch (error) {
