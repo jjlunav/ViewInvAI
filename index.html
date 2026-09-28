@@ -101,6 +101,7 @@
         <button class="tab" data-tab="us">EEUU / NASDAQ</button>
       </div>
       <div class="entry-filter-launch">
+        <div class="entry-inline-status"><span id="entrySessionText">Sesión automática</span><span>·</span><span id="entryCount">0 candidatas</span><span>·</span><span id="entryUpdated">pendiente</span></div>
         <button type="button" class="filter-icon-button" data-filter-sheet-target="#entryFilterPanel" data-filter-sheet-title="Filtro · Radar de entrada" aria-label="Abrir filtro" title="Filtro">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="entryFilterLabel">Filtro</span>
         </button>
@@ -198,13 +199,6 @@
       </details>
       </div>
 
-      <div class="status-line">
-        <span id="entrySessionText">Sesión automática</span>
-        <span>·</span>
-        <span id="entryCount">0 candidatas</span>
-        <span>·</span>
-        <span id="entryUpdated">pendiente</span>
-      </div>
       <div id="entryResults" class="stock-list stock-card-grid"></div>
     </section>
 
@@ -614,7 +608,7 @@
     <div class="market-quick-backdrop" id="marketQuickBackdrop" aria-hidden="true"></div>
     <aside class="market-quick-sheet" id="marketQuickSheet" aria-label="Resumen rápido de mercado" aria-hidden="true">
       <div class="market-quick-handle" aria-hidden="true"></div>
-      <header><strong>Resumen rápido</strong><button type="button" id="marketQuickClose" aria-label="Cerrar">×</button></header>
+      <header><strong>Más visitados esta semana</strong><button type="button" id="marketQuickClose" aria-label="Cerrar">⌄</button></header>
       <div id="marketQuickContent"></div>
     </aside>
     <button type="button" class="market-quick-toggle" id="marketQuickToggle" aria-label="Abrir resumen rápido" aria-expanded="false">⌃</button>
@@ -637,19 +631,20 @@
 <script src="stock-charts.js?v=20260925r2"></script>
 <script src="events.js?v=20260928r2"></script>
 <script src="asset-card.js?v=20260928r1"></script>
-<script src="stock-list.js?v=20260928r2"></script>
-<script src="recommendation.js?v=20260928r2"></script>
+<script src="stock-list.js?v=20260928r4"></script>
+<script src="recommendation.js?v=20260928r4"></script>
 <script src="help.js?v=20260925r1"></script>
-<script src="stock-profile.js?v=20260927r1"></script>
+<script src="stock-profile.js?v=20260928r4"></script>
 <script src="catalog.js?v=20260928r2"></script>
 <script src="heatmap.js?v=20260925r1"></script>
 <script src="stock-interactions.js?v=20260928r1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20260928r1"></script>
+<script src="navigation.js?v=20260928r4"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20260928r2"></script>
-<script src="bootstrap.js?v=20260928r1"></script>
+<script src="funds.js?v=20260928r4"></script>
+<script src="bootstrap.js?v=20260928r4"></script>
 <script src="alerts.js?v=20260928r1"></script>
+<script src="stock-notifications.js?v=20260928r1"></script>
 <script type="module" src="auth.js?v=20260925r7"></script>
 <script type="module" src="portfolio.js?v=20260928r2"></script>
 </body>
