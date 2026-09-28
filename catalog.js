@@ -166,9 +166,16 @@ function catalogMobileCell(mode,s,se,colId){
  if(!col)return{label:colId,value:'—',tone:'text'};
  let raw=col.value(s,se),html=col.cell(s,se),value='';
  if(colId==='priceEur'||colId==='priceUsd'){
-  let preferTr=mode==='tr',q=canonicalQuote(s,preferTr),sym=colId==='priceEur'?'€':'\u0024';
-  value=quoteMoney(colId==='priceEur'?q.eur:q.usd,sym,quotePrecision(s,preferTr,SP(s,se)));
- }else if(['change','week','month'].includes(colId)){
+  let preferTr=mode==='tr',q=verifiedDisplayQuote(s,preferTr,se),n=N(q&&q.price),change=N(q&&q.change);
+  let sym=q&&q.nativeCurrency==='EUR'?'€':'\u0024';
+  value=quoteMoney(n,sym,quotePrecision(s,q&&q.nativeCurrency==='EUR',SP(s,se)));
+  let tone=n===null?'muted':change===null?'text':change>=0?'positive':'negative';
+  let source=q&&q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
+  return{label:col.label,value,tone,html:'<span class="asset-price-value">'+E(value)+'</span>'+source};
+ }else if(colId==='change'){
+  let q=verifiedDisplayQuote(s,mode==='tr',se),n=N(q&&q.change);value=PC(n);
+  return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
+ }else if(['week','month'].includes(colId)){
   let n=N(raw);value=PC(n);return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
  }else if(colId==='volume'||colId==='avgVolume'){
   value=compactVol(raw);
