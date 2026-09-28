@@ -659,7 +659,7 @@ function watchPayload(body) {
 async function handleMe(request, env, user, json) {
   if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
   const settings = await env.DB.prepare(
-    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,notify_news,news_min_impact FROM user_settings WHERE user_id=?"
   ).bind(user.id).first();
   return json({ user, settings: settings || null }, 200, { "Cache-Control": "no-store" });
 }
@@ -1218,6 +1218,7 @@ function recentEvents(snapshot, stock, limit = 12) {
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
     .slice(0, limit)
     .map(e => ({
+      id: trimText(e.id || "", 160),
       date: e.date || null,
       eventKind: e.eventKind || (e.type === "news" ? "news" : "event"),
       type: e.type || e.eventKind || "event",
@@ -1229,6 +1230,7 @@ function recentEvents(snapshot, stock, limit = 12) {
       sourceCount: finiteNumber(e.sourceCount),
       independentSourceCount: finiteNumber(e.independentSourceCount),
       corroborated: e.corroborated === true,
+      source: trimText(e.source || "", 120),
       url: trimText(e.url || e.sourceUrl || "", 500)
     }));
 }
@@ -1456,15 +1458,63 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
 
 async function analysisSettingsForUser(env, userId) {
   const row = await env.DB.prepare(
-    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,notify_news,news_min_impact FROM user_settings WHERE user_id=?"
   ).bind(userId).first();
   return {
     positionsMinutes: Math.max(5, Math.min(240, Math.round(finiteNumber(row && row.analysis_positions_minutes) ?? 10))),
     watchlistMinutes: Math.max(10, Math.min(1440, Math.round(finiteNumber(row && row.analysis_watchlist_minutes) ?? 30))),
     minBuyConfidence: Math.max(60, Math.min(99, Math.round(finiteNumber(row && row.min_buy_confidence) ?? 85))),
     minSellConfidence: Math.max(60, Math.min(99, Math.round(finiteNumber(row && row.min_sell_confidence) ?? 80))),
-    notifyScoreChange: Math.max(5, Math.min(60, Math.round(finiteNumber(row && row.notify_score_change) ?? 20)))
+    notifyScoreChange: Math.max(5, Math.min(60, Math.round(finiteNumber(row && row.notify_score_change) ?? 20))),
+    notifyNews: row ? Number(row.notify_news) !== 0 : true,
+    newsMinImpact: Math.max(40, Math.min(100, Math.round(finiteNumber(row && row.news_min_impact) ?? 60)))
   };
+}
+
+async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
+  const settings = await analysisSettingsForUser(env, target.user_id);
+  if (!settings.notifyNews) return [];
+
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const candidates = (events || [])
+    .filter(event => {
+      const when = new Date(event && event.date || 0).getTime();
+      const impact = finiteNumber(event && event.impactScore) ?? 0;
+      return event && event.eventKind === "news" && Number.isFinite(when) && when >= cutoff && impact >= settings.newsMinImpact;
+    })
+    .sort((a,b) => (finiteNumber(b.impactScore) ?? 0) - (finiteNumber(a.impactScore) ?? 0) || new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 3);
+
+  const created = [];
+  for (const event of candidates) {
+    const message = trimText(event.title || event.fact || "Noticia relacionada con el valor.", 500);
+    if (!message) continue;
+    const duplicate = await env.DB.prepare(
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND message=? LIMIT 1"
+    ).bind(target.user_id, target.stock_key, message).first();
+    if (duplicate) continue;
+
+    const impact = finiteNumber(event.impactScore) ?? 0;
+    const severity = impact >= 85 ? "high" : impact >= 70 ? "warning" : "info";
+    const id = uid("al_");
+    const source = trimText(event.source || event.verification || "", 120);
+    const title = "Noticia · " + target.ticker;
+    const body = source ? message + " · " + source : message;
+    const now = nowIso();
+
+    await env.DB.prepare(
+      "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(
+      id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "",
+      "stock-news", severity, title, body, snapshotId || null, now
+    ).run();
+
+    const alert = { id, alert_type: "stock-news", severity, title, message: body };
+    try { await dispatchPushAlert(env, alert, target); }
+    catch (error) { console.warn("News push dispatch failed", String(error && error.message || error)); }
+    created.push(id);
+  }
+  return created;
 }
 
 async function maybeCreateAlert(env, target, stock, current, previous) {
@@ -1563,6 +1613,7 @@ async function analyzeTarget(env, target, services) {
   ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
 
   await maybeCreateAlert(env, target, stock, current, previous);
+  await maybeCreateNewsAlerts(env, target, stock, events, snapshotId);
 
   return {
     id: snapshotId,
@@ -1602,7 +1653,7 @@ async function subjectForUser(env, userId, subjectType, subjectId) {
 
 async function handleSettings(request, env, user, json) {
   const existing = await env.DB.prepare(
-    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,notify_news,news_min_impact FROM user_settings WHERE user_id=?"
   ).bind(user.id).first();
 
   if (request.method === "GET") return json({ settings: existing || null });
@@ -1614,15 +1665,17 @@ async function handleSettings(request, env, user, json) {
     watchlist: Math.max(10, Math.min(1440, Math.round(finiteNumber(body.analysisWatchlistMinutes) ?? finiteNumber(existing && existing.analysis_watchlist_minutes) ?? 30))),
     buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(existing && existing.min_buy_confidence) ?? 85))),
     sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(existing && existing.min_sell_confidence) ?? 80))),
-    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(existing && existing.notify_score_change) ?? 20)))
+    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(existing && existing.notify_score_change) ?? 20))),
+    notifyNews: body.notifyNews === undefined ? (existing ? Number(existing.notify_news) !== 0 : true) : body.notifyNews !== false,
+    newsMinImpact: Math.max(40, Math.min(100, Math.round(finiteNumber(body.newsMinImpact) ?? finiteNumber(existing && existing.news_min_impact) ?? 60)))
   };
   const now = nowIso();
   await env.DB.prepare(
-    "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
-  ).bind(user.id, next.positions, next.watchlist, next.buy, next.sell, next.change, now, now).run();
+    "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,notify_news,news_min_impact,created_at,updated_at) " +
+    "VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,notify_news=excluded.notify_news,news_min_impact=excluded.news_min_impact,updated_at=excluded.updated_at"
+  ).bind(user.id, next.positions, next.watchlist, next.buy, next.sell, next.change, next.notifyNews ? 1 : 0, next.newsMinImpact, now, now).run();
   return json({ settings: await env.DB.prepare(
-    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
+    "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,notify_news,news_min_impact FROM user_settings WHERE user_id=?"
   ).bind(user.id).first() });
 }
 
