@@ -6921,3 +6921,10 @@ html[data-theme="light"] .tr-native-axis{
  transition:opacity .16s ease,transform .16s ease;box-shadow:0 8px 24px rgba(0,0,0,.28)
 }
 .list-copy-toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* Alert page is informative even when no signal meets every gate. */
+.alert-page-status{display:grid;gap:3px;margin:8px 0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.alert-page-status strong{font-size:11px}
+.alert-page-status span{color:var(--muted);font-size:9px;line-height:1.35}
+.alert-page-list{border-top:1px solid var(--line)}
+.alert-page-empty{padding:12px 8px!important}
