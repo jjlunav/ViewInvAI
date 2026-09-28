@@ -160,6 +160,11 @@ function refreshProfilePortfolioActions(s){
   if(next)button.replaceWith(next);
  });
 }
+
+function profileNotificationActionHtml(s,isTr=false){
+ return '<button type="button" class="profile-notification-bell" data-stock-notifications="'+E(stockKey(s))+'" data-stock-notifications-tr="'+(isTr?'1':'0')+'" title="Configurar notificaciones" aria-label="Configurar notificaciones para '+E(s.name||s.ticker||'este valor')+'">🔔</button>';
+}
+
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -176,7 +181,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
     '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
-    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+'</div>')+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
 }
