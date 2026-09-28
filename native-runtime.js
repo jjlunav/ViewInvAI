@@ -15,15 +15,14 @@
   const absoluteRemoteUrl = value => {
     const raw = String(value || '');
     if (!localNativeOrigin) return raw;
-    if (/^\/?data\/funds\.json\?(?:[^#]*&)?local=1(?:&|#|$)/i.test(raw)) {
+    if (/^\/?data\/(?:funds|market|market-version)\.json\?(?:[^#]*&)?local=1(?:&|#|$)/i.test(raw)) {
       return raw.replace(/^\//, '').replace(/\?[^#]*/, '');
     }
     if (/^https?:\/\//i.test(raw) || /^wss?:\/\//i.test(raw)) return raw;
     if (raw.startsWith('/api/')) return BACKEND_ORIGIN + raw;
-    if (/^\/data\/funds\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + raw;
+    if (/^\/data\/(?:funds|market|market-version)\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + raw;
     if (raw.startsWith('/data/')) return raw.slice(1);
-    if (/^data\/funds\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + '/' + raw;
-    if (/^data\/market(?:-version)?\.json(?:[?#].*)?$/i.test(raw)) return raw;
+    if (/^data\/(?:funds|market|market-version)\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + '/' + raw;
     return raw;
   };
 
