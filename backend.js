@@ -1732,6 +1732,111 @@ async function handleSettings(request, env, user, json) {
   ).bind(user.id).first() });
 }
 
+
+let notificationSchemaReady=false;
+async function ensureNotificationPreferenceSchema(env){
+  if(notificationSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS notification_preferences ("+
+    "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0,"+
+    "news_enabled INTEGER NOT NULL DEFAULT 1,pulse_enabled INTEGER NOT NULL DEFAULT 1,radar_enabled INTEGER NOT NULL DEFAULT 0,price_up_enabled INTEGER NOT NULL DEFAULT 0,price_down_enabled INTEGER NOT NULL DEFAULT 0,"+
+    "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',"+
+    "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_user_stock ON notification_preferences(user_id,stock_key,prefer_tr)").run();
+  notificationSchemaReady=true;
+}
+
+async function handleNotificationPreferences(request,env,user,json,url){
+  await ensureNotificationPreferenceSchema(env);
+  const stockKey=trimText(url.searchParams.get("stockKey"),120).toUpperCase();
+  const preferTr=booleanInt(url.searchParams.get("preferTr"));
+  if(request.method==="GET"){
+    const rows=stockKey
+      ?await env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=? LIMIT 1").bind(user.id,stockKey,preferTr).all()
+      :await env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id=? ORDER BY updated_at DESC").bind(user.id).all();
+    return json({preferences:rows.results||[]});
+  }
+  if(request.method==="PUT"||request.method==="POST"){
+    const body=await readJson(request),key=trimText(body.stockKey,120).toUpperCase();
+    if(!key)return json({error:"stockKey is required"},400);
+    const pt=booleanInt(body.preferTr),now=nowIso();
+    const existing=await env.DB.prepare("SELECT id,anchor_price FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=?").bind(user.id,key,pt).first();
+    const id=existing&&existing.id?existing.id:uid("np_");
+    const anchorPrice=finiteNumber(body.anchorPrice)??finiteNumber(existing&&existing.anchor_price);
+    const up=Math.max(.5,Math.min(50,finiteNumber(body.priceUpStep)??3));
+    const down=Math.max(.5,Math.min(50,finiteNumber(body.priceDownStep)??3));
+    await env.DB.prepare(
+      "INSERT INTO notification_preferences (id,user_id,stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,anchor_price,created_at,updated_at) "+
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,stock_key,prefer_tr) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,news_enabled=excluded.news_enabled,pulse_enabled=excluded.pulse_enabled,radar_enabled=excluded.radar_enabled,price_up_enabled=excluded.price_up_enabled,price_down_enabled=excluded.price_down_enabled,price_up_step=excluded.price_up_step,price_down_step=excluded.price_down_step,anchor_price=COALESCE(notification_preferences.anchor_price,excluded.anchor_price),updated_at=excluded.updated_at"
+    ).bind(id,user.id,key,trimText(body.ticker,24).toUpperCase(),trimText(body.name,160),pt,booleanInt(body.newsEnabled),booleanInt(body.pulseEnabled),booleanInt(body.radarEnabled),booleanInt(body.priceUpEnabled),booleanInt(body.priceDownEnabled),up,down,anchorPrice,now,now).run();
+    const pref=await env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=?").bind(user.id,key,pt).first();
+    return json({preference:pref},existing?200:201);
+  }
+  if(request.method==="DELETE"){
+    if(!stockKey)return json({error:"stockKey is required"},400);
+    await env.DB.prepare("DELETE FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=?").bind(user.id,stockKey,preferTr).run();
+    return json({deleted:true});
+  }
+  return json({error:"Method not allowed"},405);
+}
+
+async function sendPreferenceAlert(env,pref,type,severity,title,message){
+  const id=uid("al_"),now=nowIso();
+  await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .bind(id,pref.user_id,pref.stock_key,pref.ticker,pref.name||"",type,severity,title,message,now).run();
+  await dispatchPushAlert(env,{id,alert_type:type,severity,title,message},pref);
+}
+
+async function scanNotificationPreferences(env,services){
+  await ensureNotificationPreferenceSchema(env);
+  const rows=await env.DB.prepare("SELECT * FROM notification_preferences ORDER BY updated_at ASC LIMIT 24").all();
+  if(!(rows.results||[]).length)return{processed:0};
+  const snapshot=await services.loadMarketSnapshot(env),results=[];
+  for(const pref of rows.results||[]){
+    try{
+      const stock=findStock(snapshot,pref);if(!stock)continue;
+      const price=finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+      let anchorPrice=finiteNumber(pref.anchor_price);
+      if(anchorPrice===null&&price!==null){
+        anchorPrice=price;
+        await env.DB.prepare("UPDATE notification_preferences SET anchor_price=?,updated_at=? WHERE id=?").bind(anchorPrice,nowIso(),pref.id).run();
+      }
+      let upBucket=Number(pref.last_up_bucket)||0,downBucket=Number(pref.last_down_bucket)||0;
+      if(anchorPrice&&price!==null){
+        const pct=(price/anchorPrice-1)*100,upStep=Math.max(.5,finiteNumber(pref.price_up_step)??3),downStep=Math.max(.5,finiteNumber(pref.price_down_step)??3);
+        const nextUp=Math.floor(Math.max(0,pct)/upStep),nextDown=Math.floor(Math.max(0,-pct)/downStep);
+        if(Number(pref.price_up_enabled)===1&&nextUp>upBucket){
+          await sendPreferenceAlert(env,pref,"price-up","info","Subida · "+pref.ticker,"Ha superado +"+(nextUp*upStep).toFixed(1)+"% desde que activaste el aviso.");
+          upBucket=nextUp;
+        }
+        if(Number(pref.price_down_enabled)===1&&nextDown>downBucket){
+          await sendPreferenceAlert(env,pref,"price-down","warning","Bajada · "+pref.ticker,"Ha superado -"+(nextDown*downStep).toFixed(1)+"% desde que activaste el aviso.");
+          downBucket=nextDown;
+        }
+      }
+      const events=recentEvents(snapshot,stock,16);
+      if(Number(pref.news_enabled)===1)await maybeCreateNewsAlerts(env,pref,stock,events,null);
+      let pulseState=String(pref.last_pulse_state||""),radarState=String(pref.last_radar_state||"");
+      if(Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1){
+        const target={...pref,subject_type:"watchlist",subject_id:pref.id,avg_price:null,quantity:null,currency:Number(pref.prefer_tr)===1?"EUR":"USD"};
+        const fallback=deterministicAssessment(target,stock,{available:false},events);
+        let current=fallback;
+        if(fallback.score>=50)current=await aiAssessment(env,target,stock,{available:false},events,fallback);
+        const nextPulse=current.signal==="BUY"&&current.confidence>=70&&current.score>=60?"BUY":"";
+        const nextRadar=current.score>=58&&["BUY","WATCH"].includes(current.signal)?"RADAR":"";
+        if(Number(pref.pulse_enabled)===1&&nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
+        if(Number(pref.radar_enabled)===1&&nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
+        pulseState=nextPulse;radarState=nextRadar;
+      }
+      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,updated_at=? WHERE id=?")
+        .bind(upBucket,downBucket,pulseState,radarState,nowIso(),pref.id).run();
+      results.push(pref.id);
+    }catch(error){console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error))}
+  }
+  return{processed:results.length};
+}
+
 async function handleDevices(request, env, user, json, parts) {
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
@@ -1967,6 +2072,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
+    if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);
@@ -2041,5 +2147,7 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
     }
   }
 
-  return { processed: results.length, results };
+  let preferences={processed:0};
+  try{preferences=await scanNotificationPreferences(env,services)}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
+  return { processed: results.length, results, preferences };
 }
