@@ -32,6 +32,7 @@ const files = [
   'mobile-app.js',
   'bootstrap.js',
   'alerts.js',
+  'stock-notifications.js',
   'funds.js',
   'auth.js',
   'portfolio.js'
