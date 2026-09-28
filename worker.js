@@ -760,6 +760,147 @@ async function indicesLiveResponse(){
   }
 }
 
+
+let attentionSchemaReady=false;
+async function ensureAttentionSchema(env){
+  if(attentionSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS public_attention_rankings ("+
+    "kind TEXT PRIMARY KEY,payload_json TEXT NOT NULL,updated_at TEXT NOT NULL)"
+  ).run();
+  attentionSchemaReady=true;
+}
+async function loadFundsSnapshotForRanking(env){
+  let response=await r2MarketAssetResponse(env,"/data/funds.json");
+  if(!response)response=await env.ASSETS.fetch(new Request("https://viewinvai.local/data/funds.json"));
+  if(!response.ok)throw new Error("Funds snapshot unavailable");
+  const data=await response.json();
+  return data&&Array.isArray(data.products)?data:{products:[],meta:{}};
+}
+async function readAttentionRanking(env,kind){
+  await ensureAttentionSchema(env);
+  const row=await env.DB.prepare("SELECT payload_json,updated_at FROM public_attention_rankings WHERE kind=?").bind(kind).first();
+  if(!row)return null;
+  try{
+    const payload=JSON.parse(row.payload_json||"{}");
+    payload.updatedAt=payload.updatedAt||row.updated_at;
+    return payload;
+  }catch(_){return null}
+}
+async function writeAttentionRanking(env,kind,payload){
+  await ensureAttentionSchema(env);
+  const now=new Date().toISOString(),json=JSON.stringify({...payload,kind,updatedAt:now});
+  await env.DB.prepare(
+    "INSERT INTO public_attention_rankings (kind,payload_json,updated_at) VALUES (?,?,?) "+
+    "ON CONFLICT(kind) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at"
+  ).bind(kind,json,now).run();
+  return JSON.parse(json);
+}
+function textNewsCount(xml){
+  const m=String(xml||"").match(/<item\b/gi);
+  return m?m.length:0;
+}
+async function googleNewsCount(query){
+  try{
+    const url="https://news.google.com/rss/search?q="+encodeURIComponent(query+" when:1d")+"&hl=en-US&gl=US&ceid=US:en";
+    const r=await fetch(url,{headers:{"User-Agent":"Mozilla/5.0 ViewInvAI/1.0"}});
+    if(!r.ok)return 0;
+    return Math.min(100,textNewsCount(await r.text()));
+  }catch(_){return 0}
+}
+async function fetchStocktwitsTrend(){
+  try{
+    const r=await fetch("https://api.stocktwits.com/api/2/trending/symbols.json",{headers:{"User-Agent":"ViewInvAI/1.0","Accept":"application/json"}});
+    if(!r.ok)return[];
+    const data=await r.json(),raw=Array.isArray(data&&data.symbols)?data.symbols:[];
+    return raw.map((x,i)=>({symbol:String(x&&x.symbol||x&&x.symbol_obj&&x.symbol_obj.symbol||"").toUpperCase(),rank:i+1})).filter(x=>x.symbol);
+  }catch(_){return[]}
+}
+async function fetchYahooTrending(){
+  try{
+    const r=await fetch("https://query1.finance.yahoo.com/v1/finance/trending/US?count=40",{headers:{"User-Agent":"Mozilla/5.0 ViewInvAI/1.0","Accept":"application/json"}});
+    if(!r.ok)return[];
+    const data=await r.json(),quotes=data&&data.finance&&data.finance.result&&data.finance.result[0]&&data.finance.result[0].quotes;
+    return (Array.isArray(quotes)?quotes:[]).map((x,i)=>({symbol:String(x&&x.symbol||"").toUpperCase(),rank:i+1})).filter(x=>x.symbol);
+  }catch(_){return[]}
+}
+function recentCompanyNewsScore(snapshot,stock){
+  const now=Date.now(),ticker=String(stock.ticker||"").toUpperCase(),isin=String(stock.isin||stock.usIsin||"").toUpperCase();
+  let count=0;
+  for(const e of snapshot.events||[]){
+    if(e.eventKind!=="news")continue;
+    const t=new Date(e.date||0).getTime();if(!Number.isFinite(t)||now-t>48*3600000)continue;
+    if((ticker&&String(e.ticker||"").toUpperCase()===ticker)||(isin&&String(e.isin||"").toUpperCase()===isin))count++;
+  }
+  return Math.min(10,count);
+}
+async function buildStockAttentionRanking(env){
+  const snapshot=await loadMarketSnapshotForBackend(env);
+  const [st,yh]=await Promise.all([fetchStocktwitsTrend(),fetchYahooTrending()]);
+  const stScore=new Map(st.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
+  const yhScore=new Map(yh.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
+  const rows=(snapshot.stocks||[]).map(s=>{
+    const symbol=String(s.ticker||"").toUpperCase();
+    const social=(stScore.get(symbol)||0)*2.2+(yhScore.get(symbol)||0)*1.7;
+    const news=recentCompanyNewsScore(snapshot,s)*5;
+    const rv=Number(s.relVolume);const volume=Number(s.volume||s.avgVolume||0);
+    const activity=(Number.isFinite(rv)?Math.min(5,rv)*4:0)+(volume>0?Math.min(18,Math.log10(volume+1)*2):0);
+    return{stockKey:String(s.tvSymbol||((s.exchange||"")+":"+symbol)).toUpperCase(),symbol,name:s.name||symbol,score:Math.round((social+news+activity)*100)/100,
+      signals:{stocktwits:stScore.has(symbol),yahooTrending:yhScore.has(symbol),news48h:recentCompanyNewsScore(snapshot,s),relativeVolume:Number.isFinite(rv)?rv:null}};
+  }).filter(x=>x.symbol).sort((a,b)=>b.score-a.score).slice(0,30);
+  return writeAttentionRanking(env,"stocks",{items:rows,sources:["Stocktwits Trending","Yahoo Finance Trending","ViewInvAI verified news","TradingView market activity"]});
+}
+function fundBaseScore(p){
+  const name=String(p.name||"").toLowerCase();
+  if(p.type==="etp"||/\b(?:2x|3x|leveraged|short|crude oil|natural gas|commodity)\b/i.test(name))return-Infinity;
+  const aum=Number(p.assetsUnderManagement)||0;
+  let score=aum>0?Math.min(55,Math.log10(aum+1)*7):0;
+  if(p.platforms&&p.platforms.tradeRepublic==="verified")score+=9;
+  if(p.platforms&&p.platforms.myInvestor==="verified")score+=9;
+  if(/msci world|ftse all.world|s&p 500|sp 500|msci emerging|stoxx europe|euro stoxx|nasdaq 100|global/i.test(name))score+=12;
+  return score;
+}
+async function buildFundAttentionRanking(env){
+  const data=await loadFundsSnapshotForRanking(env);
+  const candidates=(data.products||[]).map(p=>({p,base:fundBaseScore(p)})).filter(x=>Number.isFinite(x.base)).sort((a,b)=>b.base-a.base).slice(0,24);
+  const counts=await Promise.all(candidates.map(x=>googleNewsCount('"'+String(x.p.name||"").slice(0,90)+'" ETF fund')));
+  const rows=candidates.map((x,i)=>({isin:String(x.p.isin||"").toUpperCase(),name:x.p.name||x.p.isin,
+    score:Math.round((x.base+Math.min(30,counts[i]*1.5))*100)/100,signals:{news24h:counts[i],aum:Number(x.p.assetsUnderManagement)||null}}))
+    .sort((a,b)=>b.score-a.score).slice(0,10);
+  return writeAttentionRanking(env,"funds",{items:rows,sources:["Google News RSS","Fund AUM","Trade Republic availability","MyInvestor availability"]});
+}
+const INDEX_ATTENTION=[
+ ["SPX","S&P 500"],["NDX","Nasdaq 100"],["DJI","Dow Jones"],["IXIC","Nasdaq Composite"],["RUT","Russell 2000"],
+ ["VIX","VIX"],["DAX","DAX"],["CAC40","CAC 40"],["UKX","FTSE 100"],["NI225","Nikkei 225"]
+];
+async function buildIndexAttentionRanking(env){
+  const counts=await Promise.all(INDEX_ATTENTION.map(x=>googleNewsCount('"'+x[1]+'" index market')));
+  const rows=INDEX_ATTENTION.map((x,i)=>({symbol:x[0],name:x[1],score:counts[i],signals:{news24h:counts[i]}}))
+    .sort((a,b)=>b.score-a.score).slice(0,10);
+  return writeAttentionRanking(env,"indices",{items:rows,sources:["Google News RSS"]});
+}
+async function refreshAttentionRankings(env,{force=false}={}){
+  const now=Date.now();
+  const stock=await readAttentionRanking(env,"stocks"),funds=await readAttentionRanking(env,"funds"),indices=await readAttentionRanking(env,"indices");
+  const age=x=>x&&x.updatedAt?now-new Date(x.updatedAt).getTime():Infinity;
+  const jobs=[];
+  if(force||age(stock)>30*60000)jobs.push(buildStockAttentionRanking(env));
+  if(force||age(funds)>24*3600000)jobs.push(buildFundAttentionRanking(env));
+  if(force||age(indices)>12*3600000)jobs.push(buildIndexAttentionRanking(env));
+  return Promise.allSettled(jobs);
+}
+async function attentionRankingResponse(env,request){
+  const url=new URL(request.url),kind=String(url.searchParams.get("kind")||"stocks").toLowerCase();
+  if(!["stocks","funds","indices"].includes(kind))return jsonResponse({error:"Invalid ranking kind"},400);
+  let payload=await readAttentionRanking(env,kind);
+  if(!payload){
+    if(kind==="stocks")payload=await buildStockAttentionRanking(env);
+    else if(kind==="funds")payload=await buildFundAttentionRanking(env);
+    else payload=await buildIndexAttentionRanking(env);
+  }
+  return jsonResponse(payload,200,{"Cache-Control":kind==="stocks"?"public, max-age=300":"public, max-age=1800"});
+}
+
 function isBackendApiPath(pathname) {
   return pathname === "/api/backend/status" ||
     pathname === "/api/me" ||
@@ -807,6 +948,10 @@ export default {
         loadChart: loadChartForBackend
       }));
     }
+    if (url.pathname === "/api/attention-ranking") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await attentionRankingResponse(env,request));
+    }
     if (url.pathname === "/api/social-trending") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await socialTrendingResponse());
@@ -850,12 +995,15 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(
+    ctx.waitUntil(Promise.allSettled([
       runScheduledPortfolioAnalysis(env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend
-      }).catch(error => console.error("Scheduled portfolio analysis failed", String(error && error.stack || error)))
-    );
+      }),
+      refreshAttentionRankings(env)
+    ]).then(results=>{
+      for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
+    }));
   }
 };
