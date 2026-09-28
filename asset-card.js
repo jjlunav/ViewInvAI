@@ -6,12 +6,13 @@
  function render(options={}){
   const cells=options.cells||[],columns=Math.max(1,cells.length),interactive=!!options.openAttrs;
   const identifier=options.isin&&options.isin!=='—'?'<button type="button" class="list-copy-isin" data-copy-isin="'+escape(options.isin)+'" aria-label="Copiar ISIN '+escape(options.isin)+'">'+escape(options.isin)+'</button>':'';
-  return '<article class="asset-card" data-card-context="'+escape(options.context||'stock')+'">'+
+  return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
     '<div class="asset-card-identity">'+(options.leadingHtml||'')+'<div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
     cells.map(cell=>'<div class="asset-card-cell '+escape(cell.tone||'')+'">'+(cell.label?'<small class="asset-card-label">'+escape(cell.label)+'</small>':'')+'<span>'+content(cell)+'</span></div>').join('')+
     '<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>'+
    '</div>'+
+   (options.metaHtml?'<div class="asset-card-meta">'+options.metaHtml+'</div>':'')+
    (options.detailsHtml?'<details class="asset-card-details '+escape(options.detailsClass||'')+'"><summary><span>'+escape(options.detailsLabel||'Más datos')+'</span><i aria-hidden="true">＋</i></summary><div class="asset-card-detail-body">'+options.detailsHtml+'</div></details>':'')+
    (options.actionsHtml?'<div class="asset-card-actions">'+options.actionsHtml+'</div>':'')+
   '</article>';
