@@ -22,7 +22,7 @@
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
  const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns'};
- const account={user:null,portfolios:[],positions:[],selectedPortfolioId:null,loading:false};
+ const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
  function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
@@ -379,6 +379,8 @@
   const rows=filtered();
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
+  const productCount=q('#fundProductCount');if(productCount)productCount.textContent=rows.length.toLocaleString('es-ES')+' productos';
+  const updatedAt=q('#fundUpdatedAt');if(updatedAt)updatedAt.textContent=stamp;
   const results=rows.length?(compactFundsView()?fundMobileList(rows):fundTable(rows)):
     '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
@@ -452,6 +454,31 @@
   });
  }
 
+ function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
+ function planSummaryHtml(portfolioId){
+  const plans=fundPlans(portfolioId);if(!plans.length)return'';
+  return '<div class="fund-plan-strip">'+plans.slice(0,4).map(p=>'<span><b>'+esc(p.label||p.isin||'Aportación')+'</b> '+(num(p.amount)===null?'variable':money(p.amount,p.currency||'EUR'))+(p.day_of_month?' · día '+p.day_of_month:'')+'</span>').join('')+'</div>';
+ }
+ async function openFundPlanForm(position=null){
+  const selected=selectedFundPortfolio();if(!selected)return;
+  const product=position?productForPosition(position):null;
+  openModal('Programación de aportaciones','<form id="fundPlanForm" class="portfolio-form">'+
+   '<input type="hidden" name="positionId" value="'+esc(position&&position.id||'')+'"><input type="hidden" name="isin" value="'+esc(position&&position.isin||'')+'">'+
+   '<label><span>Fondo / concepto</span><input name="label" maxlength="160" value="'+esc(product&&product.name||'Aportación periódica')+'" required></label>'+
+   '<div class="portfolio-form-grid"><label><span>Tipo</span><select name="kind"><option value="monthly">Aportación periódica</option><option value="saveback">Saveback</option><option value="roundup">Round up</option><option value="variable">Variable / manual</option></select></label>'+
+   '<label><span>Importe</span><input name="amount" type="number" min="0" step="0.01" placeholder="Ej. 50"></label></div>'+
+   '<div class="portfolio-form-grid"><label><span>Día del mes</span><input name="day" type="number" min="1" max="31" placeholder="Ej. 5"></label><label><span>Divisa</span><input name="currency" value="'+esc(position&&position.currency||selected.base_currency||'EUR')+'"></label></div>'+
+   '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Ej. Trade Republic · 50 € cada mes"></label>'+
+   '<button type="submit" class="btn">Guardar programación</button></form>');
+ }
+ async function openFundPortfolioHistory(portfolioId){
+  openModal('Historial · fondos y ETFs','<div class="portfolio-loading compact"><span></span><p>Cargando operaciones…</p></div>');
+  try{
+   const r=await api('/api/fund-transactions?portfolioId='+encodeURIComponent(portfolioId));
+   const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo cargar el historial.');
+   q('#fundModalBody').innerHTML='<div class="transaction-history">'+fundTransactionRowsHtml(data.transactions||[],'EUR')+'</div>';
+  }catch(e){q('#fundModalBody').innerHTML='<div class="portfolio-empty-state compact">'+esc(e.message||'No se pudo cargar el historial.')+'</div>'}
+ }
  function renderPortfolio(){
   const box=q('#fundPortfolioApp');if(!box)return;
   account.user=root.ViewInvAIAuth?.getUser?.()||account.user;
@@ -476,13 +503,18 @@
   }
   const pnl=complete?total-invested:null,pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
   box.innerHTML=
-   '<div class="fund-portfolio-toolbar"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div><button type="button" class="btn small" data-fund-new-portfolio>＋ Cartera</button></div>'+
+   '<div class="fund-portfolio-toolbar portfolio-inline-tools"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-new-portfolio title="Nueva cartera" aria-label="Nueva cartera">＋</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-edit="'+esc(selected.id)+'" title="Editar cartera" aria-label="Editar cartera">✎</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-history="'+esc(selected.id)+'" title="Historial" aria-label="Historial">◷</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-plan title="Programar aportación" aria-label="Programar aportación">▦</button>'+
+   '</div>'+
    '<div class="portfolio-summary-bar">'+
     '<div><small>CARTERA</small><strong>'+esc(selected.name)+'</strong></div>'+
     '<div><small>VALOR ACTUAL</small><strong>'+(complete?money(total,selected.base_currency||'EUR'):'—')+'</strong></div>'+
     '<div><small>P&L</small><strong class="'+((pnl||0)>=0?'pnl-up':'pnl-down')+'">'+(pnl===null?'—':money(pnl,selected.base_currency||'EUR')+(pnlPct===null?'':' · '+pct(pnlPct)))+'</strong></div>'+
     '<div><small>POSICIONES</small><strong>'+rows.length+'</strong></div>'+
-   '</div>'+
+   '</div>'+planSummaryHtml(selected.id)+
    (rows.length?'<div class="fund-position-grid">'+rows.map(fundPositionCard).join('')+'</div>':'<div class="portfolio-empty-state compact">Todavía no hay fondos en esta cartera. Añádelos desde el menú Fondos y ETFs.</div>');
  }
  async function loadPortfolio(force=false){
@@ -491,11 +523,12 @@
   if(account.loading&&!force)return;
   account.loading=true;renderPortfolio();
   try{
-   const [pr,ps]=await Promise.all([api('/api/fund-portfolios'),api('/api/fund-positions')]);
-   const pd=await pr.json().catch(()=>({})),sd=await ps.json().catch(()=>({}));
+   const [pr,ps,pl]=await Promise.all([api('/api/fund-portfolios'),api('/api/fund-positions'),api('/api/fund-plans')]);
+   const pd=await pr.json().catch(()=>({})),sd=await ps.json().catch(()=>({})),ld=await pl.json().catch(()=>({}));
    if(!pr.ok)throw Error(pd.error||'No se pudieron cargar las carteras de fondos.');
    if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
-   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];
+   if(!pl.ok)throw Error(ld.error||'No se pudieron cargar los planes de aportación.');
+   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
   }catch(e){console.warn('Fund portfolio loading failed',e)}
   finally{account.loading=false;renderPortfolio()}
@@ -629,11 +662,6 @@
   openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
  }
  function bind(){
-  q('#fundMobileFiltersToggle')?.addEventListener('click',()=>{
-   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
-   const open=toolbar.classList.toggle('mobile-filters-open');
-   button.setAttribute('aria-expanded',open?'true':'false');
-  });
   q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
@@ -666,6 +694,10 @@
    const select=e.target.closest&&e.target.closest('[data-fund-portfolio-select]');
    if(select){account.selectedPortfolioId=select.dataset.fundPortfolioSelect;renderPortfolio();return}
    if(e.target.closest?.('[data-fund-new-portfolio]')){createFundPortfolio();return}
+   const hist=e.target.closest&&e.target.closest('[data-fund-portfolio-history]');if(hist){await openFundPortfolioHistory(hist.dataset.fundPortfolioHistory);return}
+   const plan=e.target.closest&&e.target.closest('[data-fund-plan]');if(plan){await openFundPlanForm();return}
+   const editPortfolio=e.target.closest&&e.target.closest('[data-fund-portfolio-edit]');
+   if(editPortfolio){const p=account.portfolios.find(x=>String(x.id)===String(editPortfolio.dataset.fundPortfolioEdit));if(p)openModal('Editar cartera de fondos','<form id="fundPortfolioEditForm" data-id="'+esc(p.id)+'" class="portfolio-form"><label><span>Nombre</span><input name="name" value="'+esc(p.name)+'" required></label><label><span>Plataforma</span><input name="platform" value="'+esc(p.platform||'')+'"></label><button class="btn" type="submit">Guardar</button></form>');return}
    if(e.target.closest?.('[data-fund-modal-close]')||e.target.id==='fundModalBackdrop'){closeModal();return}
    const detailButton=e.target.closest&&e.target.closest('[data-fund-detail]');
    if(detailButton){
@@ -700,6 +732,14 @@
   document.addEventListener('submit',async e=>{
    if(e.target.id==='fundPositionForm'){e.preventDefault();try{await savePosition(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la posición.')+'</div>')}return}
    if(e.target.id==='fundTransactionForm'){e.preventDefault();try{await saveFundTransaction(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la operación.')+'</div>')}return}
+   if(e.target.id==='fundPlanForm'){
+    e.preventDefault();const fd=new FormData(e.target),selected=selectedFundPortfolio();
+    try{const r=await api('/api/fund-plans',{method:'POST',body:JSON.stringify({fundPortfolioId:selected.id,fundPositionId:String(fd.get('positionId')||''),isin:String(fd.get('isin')||''),label:String(fd.get('label')||''),kind:String(fd.get('kind')||'monthly'),amount:num(fd.get('amount')),dayOfMonth:num(fd.get('day')),currency:String(fd.get('currency')||'EUR'),notes:String(fd.get('notes')||'')})});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la programación.');closeModal();await loadPortfolio(true)}catch(err){q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message)+'</div>')}return
+   }
+   if(e.target.id==='fundPortfolioEditForm'){
+    e.preventDefault();const fd=new FormData(e.target),id=e.target.dataset.id;
+    try{const r=await api('/api/fund-portfolios/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name:String(fd.get('name')||''),platform:String(fd.get('platform')||'')})});if(!r.ok)throw Error('No se pudo editar la cartera.');closeModal();await loadPortfolio(true)}catch(err){q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message)+'</div>')}return
+   }
    if(e.target.id==='fundPortfolioForm'){
     e.preventDefault();const fd=new FormData(e.target);
     try{
