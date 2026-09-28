@@ -269,51 +269,64 @@ async function recommendationChartAnalysis(s,mode){
  recommendationChartCache.set(key,{at:Date.now(),value:result});
  return result;
 }
+
+const pulseAiCache=new Map();
+async function pulseAiValidate(result){
+ if(!result||!result.s)return result;
+ let cacheKey=result.mode+':'+stockKey(result.s)+':'+String(db.meta&&db.meta.updatedAt||'');
+ let cached=pulseAiCache.get(cacheKey);if(cached&&Date.now()-cached.at<120000)return Object.assign({},result,cached.value);
+ const auth=window.ViewInvAIAuth;
+ if(!auth||!auth.getUser?.()||!auth.apiFetch)return result;
+ try{
+  const s=result.s,preferTr=result.mode==='tr',quote=verifiedDisplayQuote(s,preferTr,currentMarketSession());
+  const response=await auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
+   stockKey:stockKey(s),ticker:s.ticker||s.trTicker||'',isin:preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin),preferTr,
+   question:'Pulso IA: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
+   live:{price:N(quote.price),changePct:N(quote.change),source:quote.source||'',bid:preferTr?N(s.trLiveBid):usLiveBid(s),ask:preferTr?N(s.trLiveAsk):usLiveAsk(s)}
+  })});
+  if(!response.ok)return result;
+  const ai=await response.json(),aiSignal=String(ai.signal||'').toUpperCase(),confidence=N(ai.confidence)??0;
+  const hardSafe=result.dataQuality&&result.dataQuality.score>=65&&result.gates.volume&&result.gates.spread&&result.gates.catalyst;
+  const eligible=hardSafe&&aiSignal==='COMPRAR'&&confidence>=70&&result.score>=68;
+  const value={eligible,ai,aiValidated:true,reasons:[...(result.reasons||[]),...(Array.isArray(ai.keyPoints)?ai.keyPoints.slice(0,2):[])]};
+  pulseAiCache.set(cacheKey,{at:Date.now(),value});return Object.assign({},result,value);
+ }catch(e){console.warn('Pulse AI validation failed',e);return result}
+}
+
+const highConvictionRuntimeCache=new Map();
 async function highConvictionRecommendation(mode){
+ let cacheKey=mode+':'+String(db.meta&&db.meta.updatedAt||'');
+ let cached=highConvictionRuntimeCache.get(cacheKey);if(cached&&Date.now()-cached.at<120000)return cached.value;
  let candidates=db.stocks
   .filter(s=>recommendationEligible(s,mode)&&!recommendationSoldRecently(mode,stockKey(s)))
   .map(s=>({s,a:recommendationAnalysis(s,mode)}))
-  .filter(x=>(x.a.quality&&N(x.a.quality.score)!==null?N(x.a.quality.score):0)>=55)
+  .filter(x=>(x.a.quality&&N(x.a.quality.score)!==null?N(x.a.quality.score):0)>=50)
   .sort((a,b)=>b.a.score-a.a.score)
-  .slice(0,16);
- let best=null;
- for(let row of candidates){
-  let s=row.s,a=row.a,chart=await recommendationChartAnalysis(s,mode);
-  let se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
+  .slice(0,8);
+ const withCharts=await Promise.all(candidates.map(async row=>({row,chart:await recommendationChartAnalysis(row.s,mode)})));
+ let ranked=withCharts.map(({row,chart})=>{
+  let s=row.s,a=row.a,se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
   let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
   let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
   let dataQuality=stockDataQuality(s,mode,chart.available);
   let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
   let gates={
-   score:a.score>=82,
-   combined:combined>=88,
-   chart:chart.available&&chart.confirmed,
-   trend:trendOk,
-   volume:vol!==null&&vol>=75000,
-   relVolume:a.rv!==null&&a.rv>=1.25,
-   adx:a.adx!==null&&a.adx>=25,
-   rsi:a.rsi!==null&&a.rsi>=42&&a.rsi<=72,
-   spread:a.spread===null||a.spread<=3.5,
-   momentum:a.change!==null&&a.change>=.5&&a.change<=20,
-   catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
-   quality:dataQuality.score>=70
+   score:a.score>=68,combined:combined>=68,chart:chart.available?chart.confirmed:true,trend:trendOk,
+   volume:vol!==null&&vol>=50000,relVolume:a.rv===null||a.rv>=1,adx:a.adx===null||a.adx>=18,
+   rsi:a.rsi===null||(a.rsi>=38&&a.rsi<=78),spread:a.spread===null||a.spread<=4.5,
+   momentum:a.change!==null&&a.change>=-.5&&a.change<=25,catalyst:a.catalyst.delta>=-3&&!severeNegative,
+   quality:dataQuality.score>=60
   };
-  let eligible=Object.values(gates).every(Boolean);
-  let reasons=[];
-  if(chart.confirmed)reasons.push('gráfico confirmado');
-  if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');
-  if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
-  if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
-  if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
-  let result={s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
-  if(!best||result.score>best.score)best=result;
-  if(eligible){
-   let bucket=recommendationBucket(mode);
-   bucket.key=stockKey(s);bucket.selectedAt=Date.now();bucket.armed=true;saveRecommendationState();
-   return result;
-  }
+  let reasons=[];if(chart.confirmed)reasons.push('gráfico confirmado');if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
+  return{s,mode,eligible:false,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
+ }).sort((a,b)=>b.score-a.score);
+ let best=ranked[0]||null;
+ if(best)best=await pulseAiValidate(best);
+ if(best&&best.eligible){
+  let bucket=recommendationBucket(mode);bucket.key=stockKey(best.s);bucket.selectedAt=Date.now();bucket.armed=true;saveRecommendationState();
  }
- return best?Object.assign({},best,{eligible:false}):null;
+ highConvictionRuntimeCache.set(cacheKey,{at:Date.now(),value:best});
+ return best;
 }
 function recommendationSignal(score,bucket,qualityScore=100){
  if(qualityScore<55)return{key:'wait',label:'ESPERAR',text:'Faltan datos suficientes para emitir una señal fuerte.'};
@@ -453,6 +466,12 @@ async function renderRecommendation(){
  let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
  let us=usResult&&usResult.eligible?usResult.s:null,tr=trResult&&trResult.eligible?trResult.s:null;
  box.innerHTML=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us)+recommendationCard('tr',tr));
+ if(!us&&!tr){
+  const best=[usResult,trResult].filter(Boolean).sort((a,b)=>(b.score||0)-(a.score||0))[0];
+  if(best&&best.aiValidated&&best.ai){
+   box.insertAdjacentHTML('beforeend','<div class="pulse-ai-explanation"><strong>IA: sin entrada confirmada</strong><span>'+E(best.ai.summary||'La candidata más fuerte todavía no supera la validación completa.')+'</span></div>');
+  }
+ }
  let stamp=$('#recommendationUpdated');
  if(stamp)stamp.textContent='Recalculado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
