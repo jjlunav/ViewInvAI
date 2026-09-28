@@ -7,10 +7,10 @@
 
 const NAV_ORDER=['home','portfolios','funds','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
 const NAV_META={
- home:{icon:'⌂',short:'Inicio',desc:'Resumen de mercado'},
+ home:{icon:'⌁',short:'Mercados',desc:'Mercados y movimientos'},
  entry:{icon:'◈',short:'Radar',desc:'Entradas y filtros'},
- recommendation:{icon:'◎',short:'Ideas IA',desc:'Lectura multifactor'},
- portfolios:{icon:'★',short:'Carteras',desc:'Posiciones y seguimiento'},
+ recommendation:{icon:'✹',short:'Pulso IA',desc:'Alta convicción inmediata'},
+ portfolios:{icon:'▣',short:'Carteras',desc:'Posiciones y seguimiento'},
  funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
  alerts:{icon:'●',short:'Avisos',desc:'Señales de alta convicción'},
  catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
@@ -115,6 +115,7 @@ function showExitBackBanner(){
  exitBackTimer=setTimeout(()=>{el.classList.remove('visible');el.setAttribute('aria-hidden','true')},1050);
 }
 function closeTransientUiForBack(){
+ let quick=$('#marketQuickSheet');if(quick&&quick.classList.contains('open')){toggleMarketQuick(false);return true}
  let more=$('#mobileMoreSheet');if(more&&more.classList.contains('open')){closeMobileMore();return true}
  let notification=$('#notificationCenter');if(notification&&notification.classList.contains('open')){$('#notificationClose')?.click();return true}
  let help=$('#hoverHelpBanner');if(help&&help.classList.contains('visible')){hideHelpBanner();return true}
@@ -156,6 +157,21 @@ document.addEventListener('click',e=>{
  }
  let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
  if(mobileMore){e.preventDefault();toggleMobileMore();return}
+ let quick=e.target.closest&&e.target.closest('#marketQuickToggle');
+ if(quick){e.preventDefault();toggleMarketQuick();return}
 });
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
+
+function toggleMarketQuick(force){
+ const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),button=$('#marketQuickToggle');
+ if(!sheet||!backdrop||!button)return;
+ const open=typeof force==='boolean'?force:!sheet.classList.contains('open');
+ sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);
+ sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
+ button.setAttribute('aria-expanded',open?'true':'false');button.textContent=open?'⌄':'⌃';
+ document.body.classList.toggle('market-quick-open',open);
+ if(open&&typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
+}
+$('#marketQuickClose')?.addEventListener('click',()=>toggleMarketQuick(false));
+$('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));

@@ -270,36 +270,50 @@ async function recommendationChartAnalysis(s,mode){
  return result;
 }
 async function highConvictionRecommendation(mode){
- let s=pickRecommendation(mode);
- if(!s)return null;
- let a=recommendationAnalysis(s,mode),chart=await recommendationChartAnalysis(s,mode);
- let se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
- let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
- let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
- let dataQuality=stockDataQuality(s,mode,chart.available);
- let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
- let gates={
-  score:a.score>=82,
-  combined:combined>=88,
-  chart:chart.available&&chart.confirmed,
-  trend:trendOk,
-  volume:vol!==null&&vol>=75000,
-  relVolume:a.rv!==null&&a.rv>=1.25,
-  adx:a.adx!==null&&a.adx>=25,
-  rsi:a.rsi!==null&&a.rsi>=42&&a.rsi<=72,
-  spread:a.spread===null||a.spread<=3.5,
-  momentum:a.change!==null&&a.change>=.5&&a.change<=20,
-  catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
-  quality:dataQuality.score>=70
- };
- let eligible=Object.values(gates).every(Boolean);
- let reasons=[];
- if(chart.confirmed)reasons.push('gráfico confirmado');
- if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');
- if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
- if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
- if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
- return{s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
+ let candidates=db.stocks
+  .filter(s=>recommendationEligible(s,mode)&&!recommendationSoldRecently(mode,stockKey(s)))
+  .map(s=>({s,a:recommendationAnalysis(s,mode)}))
+  .filter(x=>(x.a.quality&&N(x.a.quality.score)!==null?N(x.a.quality.score):0)>=55)
+  .sort((a,b)=>b.a.score-a.a.score)
+  .slice(0,16);
+ let best=null;
+ for(let row of candidates){
+  let s=row.s,a=row.a,chart=await recommendationChartAnalysis(s,mode);
+  let se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
+  let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
+  let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
+  let dataQuality=stockDataQuality(s,mode,chart.available);
+  let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
+  let gates={
+   score:a.score>=82,
+   combined:combined>=88,
+   chart:chart.available&&chart.confirmed,
+   trend:trendOk,
+   volume:vol!==null&&vol>=75000,
+   relVolume:a.rv!==null&&a.rv>=1.25,
+   adx:a.adx!==null&&a.adx>=25,
+   rsi:a.rsi!==null&&a.rsi>=42&&a.rsi<=72,
+   spread:a.spread===null||a.spread<=3.5,
+   momentum:a.change!==null&&a.change>=.5&&a.change<=20,
+   catalyst:a.catalyst.delta>=-1.5&&!severeNegative,
+   quality:dataQuality.score>=70
+  };
+  let eligible=Object.values(gates).every(Boolean);
+  let reasons=[];
+  if(chart.confirmed)reasons.push('gráfico confirmado');
+  if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');
+  if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));
+  if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
+  if(a.catalyst.events&&a.catalyst.events.length)reasons.push('noticias/eventos revisados');
+  let result={s,mode,eligible,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
+  if(!best||result.score>best.score)best=result;
+  if(eligible){
+   let bucket=recommendationBucket(mode);
+   bucket.key=stockKey(s);bucket.selectedAt=Date.now();bucket.armed=true;saveRecommendationState();
+   return result;
+  }
+ }
+ return best?Object.assign({},best,{eligible:false}):null;
 }
 function recommendationSignal(score,bucket,qualityScore=100){
  if(qualityScore<55)return{key:'wait',label:'ESPERAR',text:'Faltan datos suficientes para emitir una señal fuerte.'};
@@ -417,7 +431,7 @@ function recommendationMobileList(us,tr){
 }
 
 function recommendationCard(mode,s,group=null){
- if(!s)return '<div class="empty-state">No hay una candidata con datos suficientes para este mercado.</div>';
+ if(!s)return '<div class="empty-state pulse-empty"><strong>Sin entrada de alta convicción ahora mismo</strong><span>ViewInvAI no fuerza una compra si no se alinean gráfico, tendencia, volumen, RSI/ADX, liquidez, catalizadores y calidad de datos.</span></div>';
  let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
  if(bucket.armed!==wasArmed)saveRecommendationState();
  let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
@@ -433,9 +447,11 @@ function recommendationCard(mode,s,group=null){
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+signal.label+' · '+F(a.score,1)+'/100',
   detailsHtml:details,detailsLabel:'Tesis IA · factores · noticias',detailsClass:'reco-mobile-detail',actionsHtml:sold});
 }
-function renderRecommendation(){
+async function renderRecommendation(){
  let box=$('#recommendationResults');if(!box)return;
- let us=pickRecommendation('us'),tr=pickRecommendation('tr');
+ box.innerHTML='<div class="empty-state">Validando entradas de alta convicción…</div>';
+ let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
+ let us=usResult&&usResult.eligible?usResult.s:null,tr=trResult&&trResult.eligible?trResult.s:null;
  box.innerHTML=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us)+recommendationCard('tr',tr));
  let stamp=$('#recommendationUpdated');
  if(stamp)stamp.textContent='Recalculado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');

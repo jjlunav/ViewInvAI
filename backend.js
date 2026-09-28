@@ -393,7 +393,13 @@ async function ensureFundSchema(env) {
       "id TEXT PRIMARY KEY,fund_portfolio_id TEXT NOT NULL,fund_position_id TEXT NOT NULL,user_id TEXT NOT NULL,isin TEXT NOT NULL,side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),units REAL NOT NULL CHECK(units>0),price REAL NOT NULL CHECK(price>=0),fees REAL NOT NULL DEFAULT 0 CHECK(fees>=0),currency TEXT NOT NULL DEFAULT 'EUR',executed_at TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
       "FOREIGN KEY(fund_portfolio_id) REFERENCES fund_portfolios(id) ON DELETE CASCADE,FOREIGN KEY(fund_position_id) REFERENCES fund_positions(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
     ),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_transactions_user_date ON fund_transactions(user_id,executed_at DESC,created_at DESC)")
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_transactions_user_date ON fund_transactions(user_id,executed_at DESC,created_at DESC)"),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS fund_contribution_plans (" +
+      "id TEXT PRIMARY KEY,fund_portfolio_id TEXT NOT NULL,fund_position_id TEXT,user_id TEXT NOT NULL,isin TEXT NOT NULL DEFAULT '',label TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL DEFAULT 'monthly',amount REAL,currency TEXT NOT NULL DEFAULT 'EUR',day_of_month INTEGER,frequency TEXT NOT NULL DEFAULT 'monthly',enabled INTEGER NOT NULL DEFAULT 1,notes TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "FOREIGN KEY(fund_portfolio_id) REFERENCES fund_portfolios(id) ON DELETE CASCADE,FOREIGN KEY(fund_position_id) REFERENCES fund_positions(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+    ),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_plans_user ON fund_contribution_plans(user_id,fund_portfolio_id,enabled)")
   ]);
   fundSchemaReady = true;
 }
@@ -896,6 +902,49 @@ async function handleTransactions(request, env, user, json, parts, url) {
   return json({ error: "Method not allowed" }, 405);
 }
 
+
+async function handleFundPlans(request, env, user, json, parts, url) {
+  await ensureFundSchema(env);
+  const id=parts[1]||"";
+  if(request.method==="GET"&&!id){
+    const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
+    const stmt=portfolioId
+      ? env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? AND fund_portfolio_id=? ORDER BY enabled DESC,day_of_month ASC,created_at ASC").bind(user.id,portfolioId)
+      : env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? ORDER BY enabled DESC,created_at ASC").bind(user.id);
+    const rows=await stmt.all();return json({plans:rows.results||[]});
+  }
+  if(request.method==="POST"&&!id){
+    const body=await readJson(request);
+    const portfolioId=trimText(body.fundPortfolioId,80);
+    if(!portfolioId||!(await oneFundPortfolio(env,user.id,portfolioId)))return json({error:"Fund portfolio not found"},404);
+    const amount=finiteNumber(body.amount),day=Math.round(finiteNumber(body.dayOfMonth)||0);
+    if(amount!==null&&amount<0)return json({error:"amount cannot be negative"},400);
+    if(day<0||day>31)return json({error:"dayOfMonth must be between 1 and 31"},400);
+    const now=nowIso(),idNew=uid("fplan_");
+    await env.DB.prepare(
+      "INSERT INTO fund_contribution_plans (id,fund_portfolio_id,fund_position_id,user_id,isin,label,kind,amount,currency,day_of_month,frequency,enabled,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(idNew,portfolioId,trimText(body.fundPositionId,80)||null,user.id,trimText(body.isin,24).toUpperCase(),trimText(body.label,160),trimText(body.kind,30)||"monthly",amount,String(body.currency||"EUR").toUpperCase(),day||null,trimText(body.frequency,30)||"monthly",body.enabled===false?0:1,trimText(body.notes,1000),now,now).run();
+    return json({plan:await env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE id=? AND user_id=?").bind(idNew,user.id).first()},201);
+  }
+  if(!id)return json({error:"Fund plan id required"},400);
+  const existing=await env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if(!existing)return json({error:"Fund plan not found"},404);
+  if(request.method==="PATCH"){
+    const body=await readJson(request);
+    const amount=body.amount!==undefined?finiteNumber(body.amount):finiteNumber(existing.amount);
+    const day=body.dayOfMonth!==undefined?Math.round(finiteNumber(body.dayOfMonth)||0):Number(existing.day_of_month||0);
+    if(amount!==null&&amount<0)return json({error:"amount cannot be negative"},400);
+    if(day<0||day>31)return json({error:"dayOfMonth must be between 1 and 31"},400);
+    await env.DB.prepare("UPDATE fund_contribution_plans SET label=?,kind=?,amount=?,currency=?,day_of_month=?,frequency=?,enabled=?,notes=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(body.label!==undefined?trimText(body.label,160):existing.label,body.kind!==undefined?trimText(body.kind,30):existing.kind,amount,body.currency!==undefined?String(body.currency||"EUR").toUpperCase():existing.currency,day||null,body.frequency!==undefined?trimText(body.frequency,30):existing.frequency,body.enabled!==undefined?(body.enabled?1:0):existing.enabled,body.notes!==undefined?trimText(body.notes,1000):existing.notes,nowIso(),id,user.id).run();
+    return json({plan:await env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE id=? AND user_id=?").bind(id,user.id).first()});
+  }
+  if(request.method==="DELETE"){
+    await env.DB.prepare("DELETE FROM fund_contribution_plans WHERE id=? AND user_id=?").bind(id,user.id).run();
+    return json({deleted:true});
+  }
+  return json({error:"Method not allowed"},405);
+}
 
 async function handleFundPortfolios(request, env, user, json, parts) {
   await ensureFundSchema(env);
@@ -1901,6 +1950,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);
+    if (root === "fund-plans") return handleFundPlans(request, env, user, json, parts, url);
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);

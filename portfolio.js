@@ -392,13 +392,13 @@ function renderApp() {
         '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">' +
           state.portfolios.map(renderPortfolioCard).join('') +
         '</div>' +
-        '<button type="button" class="portfolio-tab portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>' +
+        '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>' +
         '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>' +
-        '<button type="button" class="portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar orden de carteras" title="Editar orden">✎</button>' +
+        '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>' +
+        '<button type="button" class="portfolio-icon-action portfolio-history"' + (selected ? ' data-portfolio-history="' + esc(selected.id) + '"' : ' disabled') + ' aria-label="Historial" title="Historial">◷</button>' +
+        '<button type="button" class="portfolio-icon-action portfolio-add-current"' + (selected ? '' : ' disabled') + ' aria-label="Añadir posición" title="Añadir posición">⊕</button>' +
         '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>' +
       '</div>' +
-      '<button type="button" class="btn small portfolio-add-current"' + (selected ? '' : ' disabled') + '>＋ Añadir posición</button>' +
-      '<button type="button" class="btn small portfolio-history"' + (selected ? ' data-portfolio-history="' + esc(selected.id) + '"' : ' disabled') + '>Historial</button>' +
       '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>' +
     '</div>' +
     '<div id="portfolioContext" class="portfolio-context">' +
