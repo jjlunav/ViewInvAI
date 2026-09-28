@@ -10,6 +10,7 @@
  let centerTimer=null;
  let evaluating=false;
  let seeded=false;
+ let lastScan={at:0,results:[],best:null,error:''};
  let state=readState();
 
  function q(s){return document.querySelector(s)}
@@ -82,11 +83,40 @@
 
  function pushNotice(payload){
   let item=Object.assign({id:uid(),kind:'recommendation',createdAt:nowIso()},payload);
-  state.history.unshift(item);state.unread=(state.unread||0)+1;saveState();renderCenter();setCenterOpen(true,{auto:true});
+  state.history.unshift(item);state.unread=(state.unread||0)+1;saveState();renderCenter();renderAlertPage();setCenterOpen(true,{auto:true});
  }
 
+ function gateLabel(key){
+  return ({score:'score base',combined:'score combinado',chart:'gráfico intradía',trend:'tendencia',volume:'volumen',relVolume:'volumen relativo',adx:'ADX',rsi:'RSI',spread:'spread',momentum:'momentum',catalyst:'noticias/eventos',quality:'calidad de datos'})[key]||key;
+ }
+ function renderAlertPage(){
+  let status=q('#alertPageStatus'),list=q('#alertPageList');if(!status||!list)return;
+  if(!state.enabled){
+   status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar compras de alta convicción.</span>';
+  }else if(evaluating){
+   status.innerHTML='<strong>Analizando mercado…</strong><span>Contrastando gráfico, tendencia, volumen, RSI/ADX, liquidez, noticias y eventos.</span>';
+  }else if(lastScan.error){
+   status.innerHTML='<strong>No se pudo completar el último análisis</strong><span>'+esc(lastScan.error)+'</span>';
+  }else if(lastScan.best){
+   let best=lastScan.best,s=best.s||{},ticker=(best.mode==='tr'&&s.trTicker)||s.ticker||'—';
+   let failed=Object.entries(best.gates||{}).filter(([,ok])=>!ok).map(([key])=>gateLabel(key));
+   status.innerHTML=best.eligible
+    ?'<strong>Señal válida · '+esc(ticker)+'</strong><span>Score '+fmt(best.score,1)+'/100 · cumple todos los criterios.</span>'
+    :'<strong>Sin compra de alta convicción ahora</strong><span>Mejor candidata: '+esc(ticker)+' · '+fmt(best.score,1)+'/100. Falta: '+esc(failed.slice(0,5).join(', ')||'confirmación completa')+'.</span>';
+  }else{
+   status.innerHTML='<strong>Sin compra de alta convicción ahora</strong><span>No hay una candidata con datos suficientes que cumpla simultáneamente todos los criterios. Esto no se interpreta como señal de compra.</span>';
+  }
+  list.innerHTML=state.history.length?state.history.slice(0,20).map(item=>window.ViewInvAICards.render({
+   context:'alerts',title:item.name||item.ticker||item.title||'Aviso',subtitle:[item.ticker,item.market].filter(Boolean).join(' · '),
+   openAttrs:item.stockKey?' role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0')+'"':'',
+   cells:[{label:'Señal',value:item.title||'COMPRA',tone:'buy'},{label:'Score',value:item.score?fmt(item.score,0)+'/100':'—'}],
+   metaHtml:'<span>'+esc(formatTime(item.createdAt))+'</span>',
+   detailsHtml:''
+  })).join(''):'<div class="notification-empty alert-page-empty">Todavía no hay compras registradas. La pantalla seguirá mostrando el resultado del último análisis aunque no exista señal.</div>';
+ }
  function renderSettings(){
   let el=q('#autoAlertHighConviction');if(el)el.checked=state.enabled!==false;
+  renderAlertPage();
  }
 
  function openAlertStock(el){
@@ -99,18 +129,20 @@
  }
 
  async function evaluate(){
-  if(evaluating||!state.enabled)return;
-  if(!window.ViewInvAI||typeof window.ViewInvAI.highConvictionRecommendation!=='function')return;
-  evaluating=true;
+  if(evaluating||!state.enabled){renderAlertPage();return}
+  if(!window.ViewInvAI||typeof window.ViewInvAI.highConvictionRecommendation!=='function'){renderAlertPage();return}
+  evaluating=true;renderAlertPage();
   try{
    let results=await Promise.allSettled([
     window.ViewInvAI.highConvictionRecommendation('tr'),
     window.ViewInvAI.highConvictionRecommendation('us')
    ]);
-   let candidates=results.filter(x=>x.status==='fulfilled'&&x.value&&x.value.eligible).map(x=>x.value);
-   candidates.sort((a,b)=>(b.score||0)-(a.score||0)||(a.mode==='tr'?-1:1));
+   let all=results.filter(x=>x.status==='fulfilled'&&x.value).map(x=>x.value);
+   all.sort((a,b)=>(b.score||0)-(a.score||0)||(a.mode==='tr'?-1:1));
+   lastScan={at:Date.now(),results:all,best:all[0]||null,error:''};
+   let candidates=all.filter(x=>x.eligible);
    let best=candidates[0]||null;
-   if(!best){state.activeKey=null;saveState();seeded=true;return}
+   if(!best){state.activeKey=null;saveState();seeded=true;renderAlertPage();return}
 
    let s=best.s,stock=typeof stockKey==='function'?stockKey(s):(s.tvSymbol||s.ticker||s.trTicker||''),key=best.mode+':'+stock;
    let previous=state.activeKey;state.activeKey=key;
@@ -134,16 +166,18 @@
     });
    }else saveState();
    seeded=true;
-  }catch(e){console.warn('High-conviction alert warning',e)}
-  finally{evaluating=false}
+  }catch(e){
+   console.warn('High-conviction alert warning',e);
+   lastScan={at:Date.now(),results:[],best:null,error:e&&e.message?e.message:'Error de análisis'};
+  }finally{evaluating=false;renderAlertPage()}
  }
 
  function initEvents(){
   q('#notificationBell')?.addEventListener('click',()=>setCenterOpen(!q('#notificationCenter')?.classList.contains('open')));
   q('#notificationClose')?.addEventListener('click',()=>setCenterOpen(false));
-  q('#notificationClear')?.addEventListener('click',()=>{state.history=[];state.unread=0;saveState();renderCenter()});
+  q('#notificationClear')?.addEventListener('click',()=>{state.history=[];state.unread=0;saveState();renderCenter();renderAlertPage()});
   q('#autoAlertHighConviction')?.addEventListener('change',e=>{
-   state.enabled=!!e.target.checked;state.activeKey=null;seeded=false;saveState();
+   state.enabled=!!e.target.checked;state.activeKey=null;seeded=false;saveState();renderAlertPage();
    if(state.enabled)setTimeout(evaluate,100);
   });
   document.addEventListener('click',e=>{
@@ -163,6 +197,6 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)evaluate()});
  }
 
- window.AppAlerts={evaluate,renderSettings,pushNotice,setCenterOpen};
+ window.AppAlerts={evaluate,renderSettings,renderAlertPage,pushNotice,setCenterOpen};
  init();
 })();

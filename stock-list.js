@@ -50,7 +50,7 @@ const STOCK_MOBILE_GROUPS=[
  {key:'other',label:'Otros',columns:[['exchange','Mercado'],['earnings','Resultados']]}
 ];
 const stockMobileUi={entry:'general'};
-function stockCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+function stockCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
 function stockMobileGroup(scope='entry'){
  let key=stockMobileUi[scope]||'general';
  return STOCK_MOBILE_GROUPS.find(g=>g.key===key)||STOCK_MOBILE_GROUPS[0];
@@ -64,10 +64,14 @@ function stockMobileTabs(scope='entry'){
 function stockMobileCell(s,key,se,preferTr=false){
  let v=null,text='—',tone='text';
  if(key==='price'){
-  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
-  text=quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,se)));
+  let q=verifiedDisplayQuote(s,preferTr,se),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
+  v=N(q.change);text=quoteMoney(q.price,sym,quotePrecision(s,q.nativeCurrency==='EUR',SP(s,se)));
+  tone=N(q.price)===null?'muted':v===null?'text':v>=0?'positive':'negative';
+  let source=q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
+  return{value:text,tone,html:'<span class="asset-price-value">'+E(text)+'</span>'+source};
  }else if(key==='change'){
-  v=marketChange(s,se,preferTr);text=PC(v);tone=v===null?'muted':v>=0?'positive':'negative';
+  let q=verifiedDisplayQuote(s,preferTr,se);v=N(q.change);
+  text=PC(v);tone=v===null?'muted':v>=0?'positive':'negative';
  }else if(key==='volume'){
   text=compactVol(preferTr?SV(s,se):(N(s.usLiveVolume)??SV(s,se)));
  }else if(key==='relVolume'){
@@ -93,7 +97,7 @@ function stockMobileCell(s,key,se,preferTr=false){
  }else if(key==='earnings'){
   text=s.earningsDate?DF(s.earningsDate):'—';
  }
- return{value:text,tone,...(key==='price'?{html:preferTr?trPriceCell(s,'eur',se):usPriceCell(s,'usd',se)}:key==='change'?{html:entryChangeHtml(s,se,preferTr)}:{})};
+ return{value:text,tone};
 }
 function stockMobileRow(s,i,se,preferTr=false,scope='entry'){
  let group=stockMobileGroup(scope);
@@ -112,8 +116,8 @@ function standardStockCard(s,i=0,opts={}){
  let se=opts.se||SES(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
  let cells=opts.cells||[
-  {label:'Precio',html:preferTr?trPriceCell(s,'eur',se):usPriceCell(s,'usd',se)},
-  {label:'Variación',html:entryChangeHtml(s,se,preferTr)}
+  Object.assign({label:'Precio'},stockMobileCell(s,'price',se,preferTr)),
+  Object.assign({label:'Variación'},stockMobileCell(s,'change',se,preferTr))
  ];
  let details=opts.detailsHtml;
  if(details===undefined){
@@ -194,7 +198,9 @@ function emergingSignal(s,se){
 function entry(){
  let q=state.filters,se=entrySessionForPreset(),preferTr=state.entryMarket==='tr',emerging=state.preset==='emerging';
  let a=db.stocks.filter(entryUniverseMatch).filter(s=>{
-  let ch=marketChange(s,se,preferTr);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
+  let displayQuote=verifiedDisplayQuote(s,preferTr,se);
+  if(N(displayQuote&&displayQuote.price)===null)return false;
+  let ch=N(displayQuote&&displayQuote.change);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
 
   let rv=RV(s,se);if(q.minRelVolume>0&&(rv===null||rv<q.minRelVolume))return false;
   let adx=N(s.adx);if(q.minAdx>0&&(adx===null||adx<q.minAdx))return false;
@@ -214,7 +220,7 @@ function entry(){
    let ax=emergingSignal(x,se),ay=emergingSignal(y,se);
    if(ay.score!==ax.score)return ay.score-ax.score;
   }
-  let ax=marketChange(x,se,preferTr),by=marketChange(y,se,preferTr),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
+  let ax=N(verifiedDisplayQuote(x,preferTr,se).change),by=N(verifiedDisplayQuote(y,preferTr,se).change),av=ax===null?-Infinity:ax,bv=by===null?-Infinity:by;
   if(bv!==av)return bv-av;
   return String(x.ticker||'').localeCompare(String(y.ticker||''));
  });

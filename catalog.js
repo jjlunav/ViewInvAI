@@ -85,7 +85,7 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
 const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},order:null,limit:null,mobileGroup:'general'}};
-function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:720px)').matches}
+function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:820px)').matches}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
 function catalogStorageKey(mode){return 'viewinvai:catalogColumns:'+mode+':v1'}
@@ -166,9 +166,16 @@ function catalogMobileCell(mode,s,se,colId){
  if(!col)return{label:colId,value:'—',tone:'text'};
  let raw=col.value(s,se),html=col.cell(s,se),value='';
  if(colId==='priceEur'||colId==='priceUsd'){
-  let preferTr=mode==='tr',q=canonicalQuote(s,preferTr),sym=colId==='priceEur'?'€':'\u0024';
-  value=quoteMoney(colId==='priceEur'?q.eur:q.usd,sym,quotePrecision(s,preferTr,SP(s,se)));
- }else if(['change','week','month'].includes(colId)){
+  let preferTr=mode==='tr',q=verifiedDisplayQuote(s,preferTr,se),n=N(q&&q.price),change=N(q&&q.change);
+  let sym=q&&q.nativeCurrency==='EUR'?'€':'\u0024';
+  value=quoteMoney(n,sym,quotePrecision(s,q&&q.nativeCurrency==='EUR',SP(s,se)));
+  let tone=n===null?'muted':change===null?'text':change>=0?'positive':'negative';
+  let source=q&&q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
+  return{label:col.label,value,tone,html:'<span class="asset-price-value">'+E(value)+'</span>'+source};
+ }else if(colId==='change'){
+  let q=verifiedDisplayQuote(s,mode==='tr',se),n=N(q&&q.change);value=PC(n);
+  return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
+ }else if(['week','month'].includes(colId)){
   let n=N(raw);value=PC(n);return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
  }else if(colId==='volume'||colId==='avgVolume'){
   value=compactVol(raw);
@@ -196,7 +203,7 @@ function catalogMobileList(mode,rows,se){
  let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
  return catalogMobileTabs(mode)+
   '<div class="catalog-mobile-compare">'+
-   window.ViewInvAICards.head(ids.map(id=>CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id))+
+   window.ViewInvAICards.head(ids.map(id=>['priceEur','priceUsd'].includes(id)?'Precio':(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)))+
    '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
   '</div>';
 }

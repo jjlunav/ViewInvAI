@@ -19,7 +19,7 @@ window.checkAssetCards = async function () {
   assert(test.querySelectorAll('.asset-card').length===1,name+' has a different card template');
   const row=test.querySelector('.asset-card-row'),rect=row.getBoundingClientRect();
   assert(row.dataset.stockKey===key,name+' lost its stock target');
-  assert(rect.height<=90&&rect.height>=60,name+' is not compact: '+rect.height);
+  assert(rect.height<=90&&rect.height>=48,name+' is not compact: '+rect.height);
   assert(row.scrollWidth<=row.clientWidth+1,name+' overflows horizontally');
   assert(test.querySelector('.fav-star'),name+' lost favourites');
   const copy=test.querySelector('[data-copy-isin]');

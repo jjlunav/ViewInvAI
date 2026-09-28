@@ -242,8 +242,13 @@ jobs:
           missing_fund_mobile = [item for item in required_fund_mobile if item not in funds]
           if missing_fund_mobile:
               raise SystemExit("Comparador movil de fondos incompleto: " + ", ".join(missing_fund_mobile))
-          if "General" not in funds or "Rentabilidad" not in funds or "Costes" not in funds or "Ratios" not in funds or "Otros" not in funds:
+          if "label:'Tipo'" not in funds or "Rentabilidad" not in funds or "Costes" not in funds or "Ratios" not in funds or "Otros" not in funds:
               raise SystemExit("Faltan grupos del comparador movil de fondos")
+          mobile_groups_pos = funds.find("const MOBILE_GROUPS=")
+          first_returns = funds.find("{key:'returns'", mobile_groups_pos)
+          first_general = funds.find("{key:'general'", mobile_groups_pos)
+          if mobile_groups_pos < 0 or first_returns < 0 or first_general < 0 or first_returns > first_general:
+              raise SystemExit("Rentabilidad debe ser la primera pestaña móvil de fondos")
 
           required_assets = (
               "web-mobile.css", "mobile-app.css", "ui-density.css", "settings.js", "market.js", "navigation.js", "mobile-app.js",
@@ -277,6 +282,26 @@ jobs:
           cards_css = Path("asset-card.css").read_text(encoding="utf-8")
           if ".asset-card-details" not in cards_css or "asset-card.js" not in html or "asset-card.css" not in html:
               raise SystemExit("Falta el componente de tarjeta compartida")
+
+          # Regresiones críticas de móvil/tablet y veracidad de cotizaciones.
+          if "function verifiedDisplayQuote" not in market:
+              raise SystemExit("Falta la cotización verificada con fallback explícito")
+          if "verifiedDisplayQuote(s,preferTr,se)" not in stock_list:
+              raise SystemExit("Las listas compactas no usan la cotización verificada")
+          if "displayQuote&&displayQuote.price" not in stock_list:
+              raise SystemExit("Radar puede volver a mostrar filas sin precio verificable")
+          if "getDisplayQuote" not in bootstrap:
+              raise SystemExit("Carteras no pueden consumir la cotización verificada")
+          alerts = Path("alerts.js").read_text(encoding="utf-8")
+          if "function renderAlertPage" not in alerts or 'id="alertPageStatus"' not in html or 'id="alertPageList"' not in html:
+              raise SystemExit("Avisos puede volver a quedar como pantalla negra")
+          native_runtime = Path("native-runtime.js").read_text(encoding="utf-8")
+          if "funds|market|market-version" not in native_runtime or "?local=1" not in app:
+              raise SystemExit("La APK no prioriza snapshot remoto con fallback local")
+          if "max-width:820px" not in stock_list or "max-width:820px" not in recommendation:
+              raise SystemExit("Las listas compactas no cubren tablet")
+          if ".asset-quote-source" not in cards_css:
+              raise SystemExit("El fallback EEUU debe quedar identificado visualmente")
           print("Arquitectura frontend separada: OK")
           PY
 
@@ -573,13 +598,14 @@ jobs:
                   const tabs=[...document.querySelectorAll('#fundsApp [data-fund-mobile-group]')];
                   if(tabs.length<7)return fail('native fund grouped tabs missing');
                   const activeTab=document.querySelector('#fundsApp [data-fund-mobile-group].active');
-                  if(!activeTab||activeTab.dataset.fundMobileGroup!=='general')return fail('native fund default group invalid');
+                  if(!activeTab||activeTab.dataset.fundMobileGroup!=='returns')return fail('native fund default group must be returns');
                   let head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
-                  if(head.join('|')!=='Nombre / ISIN|Tipo|Divisa')return fail('native fund general columns invalid');
-                  const returnsTab=document.querySelector('#fundsApp [data-fund-mobile-group="returns"]');
-                  returnsTab?.click();
-                  head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
                   if(head.join('|')!=='Nombre / ISIN|YTD|1A|3A')return fail('native fund returns columns invalid');
+                  const typeTab=document.querySelector('#fundsApp [data-fund-mobile-group="general"]');
+                  if(!typeTab||typeTab.textContent.trim()!=='Tipo')return fail('native fund Tipo tab missing');
+                  typeTab.click();
+                  head=[...document.querySelectorAll('#fundsApp .fund-mobile-sort')].map(x=>x.textContent.replace(/[↑↓]/g,'').trim());
+                  if(head.join('|')!=='Nombre / ISIN|Tipo|Divisa')return fail('native fund type columns invalid');
                   const toggle=document.querySelector('#fundMobileFiltersToggle'),advanced=document.querySelector('#fundToolbarAdvanced');
                   if(!toggle||!advanced)return fail('native fund filter drawer missing');
                   if(getComputedStyle(advanced).display!=='none')return fail('advanced fund filters must start hidden');

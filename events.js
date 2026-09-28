@@ -80,7 +80,7 @@ const EVENT_MOBILE_GROUPS=[
  {key:'technical',label:'Técnico'}
 ];
 const eventMobileUi={future:'event',calendar:'event'};
-function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:760px)').matches)}
+function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
 function eventMobileTabs(scope){
  let active=eventMobileUi[scope]||'event';
  return '<nav class="event-mobile-groups" aria-label="Datos del evento">'+EVENT_MOBILE_GROUPS.map(g=>
@@ -103,9 +103,11 @@ function renderFuture(){
  let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
  let filtered=(db.events||[]).filter(e=>{
   if(!futureWindowEvent(e,h,now)||(t!=='all'&&e.type!==t))return false;
-  if(!tr)return true;
   let s=stockForEvent(e);
-  return trTradable(s);
+  if(!s)return false;
+  if(tr&&!trTradable(s))return false;
+  let q=verifiedDisplayQuote(s,trTradable(s),SES());
+  return N(q&&q.price)!==null;
  });
  let groups=groupFutureEvents(filtered);
  if(groups.length){
