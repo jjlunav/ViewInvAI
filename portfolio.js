@@ -131,8 +131,10 @@ function signalInfo(signal) {
 
 function currentMarket(stock, preferTr = false) {
   if (!stock) return { price: null, change: null, currency: preferTr ? "EUR" : "USD", eur: null, usd: null, source: "", updatedAt: null };
-  if (window.ViewInvAI && typeof window.ViewInvAI.getCanonicalQuote === "function") {
-    const quote = window.ViewInvAI.getCanonicalQuote(stock, !!preferTr) || {};
+  if (window.ViewInvAI && (typeof window.ViewInvAI.getDisplayQuote === "function" || typeof window.ViewInvAI.getCanonicalQuote === "function")) {
+    const quote = (typeof window.ViewInvAI.getDisplayQuote === "function"
+      ? window.ViewInvAI.getDisplayQuote(stock, !!preferTr)
+      : window.ViewInvAI.getCanonicalQuote(stock, !!preferTr)) || {};
     return {
       price: num(quote.price),
       change: num(quote.change),
@@ -141,7 +143,8 @@ function currentMarket(stock, preferTr = false) {
       usd: num(quote.usd),
       source: quote.source || "",
       updatedAt: quote.updatedAt || null,
-      live: quote.live === true
+      live: quote.live === true,
+      fallback: quote.fallback === true
     };
   }
   if (preferTr) {
@@ -280,12 +283,14 @@ function renderPositionRow(p, index = 0) {
   const pnlPct = avg !== null && avg > 0 && currentEntryPrice !== null ? (currentEntryPrice / avg - 1) * 100 : null;
   const [signalLabel] = signalInfo(p.last_signal);
   const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
+  const priceTone = market.change === null ? "muted" : market.change >= 0 ? "positive" : "negative";
 
   const meta =
     '<div class="portfolio-position-strip">' +
       '<span>' + (qty === null ? "Cantidad —" : formatNumber(qty, 4) + " uds.") + '</span>' +
       '<span>Media <b>' + formatMoney(avg, entryCurrency) + '</b></span>' +
       '<span>Valor <b>' + formatMoney(currentValue, entryCurrency) + '</b></span>' +
+      (market.fallback ? '<span>EEUU ref.</span>' : '') +
       (pnlAbs === null ? '' : '<span class="' + (pnlAbs >= 0 ? 'pnl-up' : 'pnl-down') + '"><b>' + (pnlAbs > 0 ? '+' : '') + formatMoney(pnlAbs, entryCurrency) + '</b></span>') +
       '<button type="button" class="portfolio-meta-action portfolio-analyze" data-analyze-type="position" data-analyze-id="' + esc(p.id) + '">IA</button>' +
       '<button type="button" class="portfolio-meta-action portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
@@ -296,7 +301,7 @@ function renderPositionRow(p, index = 0) {
     className: "portfolio-position-card",
     subtitle: [p.ticker || stock.ticker || "", signalLabel].filter(Boolean).join(" · "),
     cells: [
-      {label: "Precio", value: formatMoney(currentEntryPrice, entryCurrency)},
+      {label: "Precio", value: formatMoney(currentEntryPrice, entryCurrency), tone: priceTone},
       {label: "P&L", value: pnlPct === null ? "—" : (pnlPct > 0 ? "+" : "") + formatNumber(pnlPct, 2) + "%", tone: pnlTone}
     ],
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
