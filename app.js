@@ -498,6 +498,7 @@ async function load(force=false){
  }catch(e){
   console.error(e);
   if(!db.stocks.length)document.querySelectorAll('.stock-list').forEach(x=>x.innerHTML='<div class="empty-state">No se pudieron cargar los datos de mercado. Reintenta en unos instantes.</div>')
+  return {refreshFailed:true};
  }finally{
   loading=false
  }
@@ -545,6 +546,10 @@ async function runRefreshFeedback(action,getStamp=null){
  showRefreshFeedback('Actualizando…','loading');
  try{
   const result=await action();
+  if(result===false||(result&&result.refreshFailed)){
+   showRefreshFeedback('No se pudo actualizar','error');
+   return result;
+  }
   const after=typeof getStamp==='function'?String(getStamp()||''):'';
   const unchanged=!!(before&&after&&before===after);
   showRefreshFeedback(unchanged?'Ya estaba actualizado':'Actualizado',unchanged?'same':'ok');
