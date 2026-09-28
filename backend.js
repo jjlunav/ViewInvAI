@@ -1796,7 +1796,17 @@ async function scanNotificationPreferences(env,services){
   for(const pref of rows.results||[]){
     try{
       const stock=findStock(snapshot,pref);if(!stock)continue;
-      const price=finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+      const needsAnalysis=Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1;
+      let chart={available:false},chartRaw=null;
+      if(Number(pref.prefer_tr)===1||needsAnalysis){
+        try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
+        catch(error){console.warn("Notification chart unavailable",pref.id,String(error&&error.message||error))}
+      }
+      // A TR/LSX alert must never be evaluated from the US quote. Use the exact
+      // LSX chart/ticker when available; otherwise wait instead of mixing markets.
+      const price=Number(pref.prefer_tr)===1
+        ?(chart&&chart.available?finiteNumber(chart.last):null)
+        :finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
       let anchorPrice=finiteNumber(pref.anchor_price);
       if(anchorPrice===null&&price!==null){
         anchorPrice=price;
@@ -1818,11 +1828,11 @@ async function scanNotificationPreferences(env,services){
       const events=recentEvents(snapshot,stock,16);
       if(Number(pref.news_enabled)===1)await maybeCreateNewsAlerts(env,pref,stock,events,null);
       let pulseState=String(pref.last_pulse_state||""),radarState=String(pref.last_radar_state||"");
-      if(Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1){
+      if(needsAnalysis){
         const target={...pref,subject_type:"watchlist",subject_id:pref.id,avg_price:null,quantity:null,currency:Number(pref.prefer_tr)===1?"EUR":"USD"};
-        const fallback=deterministicAssessment(target,stock,{available:false},events);
+        const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
-        if(fallback.score>=50)current=await aiAssessment(env,target,stock,{available:false},events,fallback);
+        if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
         const nextPulse=current.signal==="BUY"&&current.confidence>=70&&current.score>=60?"BUY":"";
         const nextRadar=current.score>=58&&["BUY","WATCH"].includes(current.signal)?"RADAR":"";
         if(Number(pref.pulse_enabled)===1&&nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
