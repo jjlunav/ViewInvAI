@@ -447,9 +447,8 @@ function initStockListInteractions(){
   let opt=$('.preset-option[data-value="'+value+'"]');
   if(opt){$('#presetLabel').textContent=opt.querySelector('span').textContent;document.querySelectorAll('.preset-option').forEach(x=>x.classList.toggle('active',x===opt))}
   state.filters=value==='custom'?(savedCustomPreset()||Object.assign({},state.filters)):preset(value);
-  if(state.preset==='postmarketExplosion'){state.session='postmarket';$('#sessionSelect').value='postmarket'}
-  else if(state.preset==='premarketExplosion'){state.session='premarket';$('#sessionSelect').value='premarket'}
-  else if(state.preset==='emerging'){state.session='auto';$('#sessionSelect').value='auto'}
+  // A preset changes screening thresholds only. It must never silently
+  // switch the market clock and make Radar disagree with Mercados.
   toUI(state.filters);lockAllCriteria();saveUiState();renderEntry();setTimeout(pollUsLive,0);
  }
  $('#presetSelect').addEventListener('change',e=>setPreset(e.target.value));
