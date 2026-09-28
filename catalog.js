@@ -203,7 +203,7 @@ function catalogMobileList(mode,rows,se){
  let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
  return catalogMobileTabs(mode)+
   '<div class="catalog-mobile-compare">'+
-   window.ViewInvAICards.head(ids.map(id=>CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id))+
+   window.ViewInvAICards.head(ids.map(id=>['priceEur','priceUsd'].includes(id)?'Precio':(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)))+
    '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
   '</div>';
 }
