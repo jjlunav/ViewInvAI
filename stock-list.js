@@ -106,39 +106,54 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
  return '<div class="stock-mobile-rows unified-asset-list">'+rows.map((s,i)=>stockMobileRow(s,i,se,preferTr,scope)).join('')+'</div>';
 }
 
-function regularQuoteCell(s,preferTr=false){
- const price=preferTr?(N(s.trLivePrice)??N(s.price)):N(s.price);
- return{label:'Precio',value:price===null?'—':quoteMoney(price,preferTr?'€':'\u0024',quotePrecision(s,preferTr)),tone:C(s.changePct)};
+function regularQuoteCell(s){
+ const price=N(s.price),ch=N(s.changePct);
+ return{label:'Precio REG',value:price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price)),tone:ch===null?'muted':C(ch)};
 }
 function regularChangeCell(s){
- const ch=N(s.changePct);return{label:'Regular',value:PC(ch),tone:ch===null?'muted':C(ch)};
+ const ch=N(s.changePct);return{label:'Variación',value:PC(ch),tone:ch===null?'muted':C(ch)};
 }
-function activeSessionMeta(s,se){
+function sessionCompactCell(s,se=currentMarketSession()){
+ let label='REG',price=N(s.price),change=N(s.changePct);
  if(se==='premarket'){
-  let p=N(s.premarketPrice),ch=N(s.premarketChangePct);
-  if(p===null&&ch===null)return'';
-  return '<span class="asset-session-meta '+C(ch)+'"><b aria-hidden="true">☀</b><span>PRE</span><strong>'+PR(p)+'</strong><em>'+PC(ch)+'</em></span>';
+  label='PRE';price=N(s.premarketPrice);change=N(s.premarketChangePct);
+  if(change===null&&price!==null&&N(s.price)>0)change=(price/N(s.price)-1)*100;
+ }else if(se==='postmarket'){
+  label='POST';price=N(s.postmarketPrice);change=N(s.postmarketChangePct);
+  if(change===null&&price!==null&&N(s.price)>0)change=(price/N(s.price)-1)*100;
+ }else if(se==='regular'){
+  price=usLivePrice(s)??N(s.price);change=usLiveChange(s)??N(s.changePct);
+ }else{
+  label='CIERRE';
+ }
+ const tone=change===null?'muted':C(change);
+ const priceText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
+ return{label,value:priceText+' · '+PC(change),tone,
+  html:'<span class="asset-session-price">'+E(priceText)+'</span><small class="asset-session-change '+tone+'">'+E(PC(change))+'</small>'};
+}
+function effectiveSessionChange(s,se=currentMarketSession()){
+ if(se==='premarket'){
+  let ch=N(s.premarketChangePct),p=N(s.premarketPrice),r=N(s.price);
+  return ch!==null?ch:(p!==null&&r>0?(p/r-1)*100:null);
  }
  if(se==='postmarket'){
-  let p=N(s.postmarketPrice),ch=N(s.postmarketChangePct);
-  if(p===null&&ch===null)return'';
-  return '<span class="asset-session-meta '+C(ch)+'"><b aria-hidden="true">☾</b><span>POST</span><strong>'+PR(p)+'</strong><em>'+PC(ch)+'</em></span>';
+  let ch=N(s.postmarketChangePct),p=N(s.postmarketPrice),r=N(s.price);
+  return ch!==null?ch:(p!==null&&r>0?(p/r-1)*100:null);
  }
- return '';
+ if(se==='regular')return usLiveChange(s)??N(s.changePct);
+ return N(s.changePct);
 }
 
 function standardStockCard(s,i=0,opts={}){
- let se=opts.se||SES(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ let se=opts.se||currentMarketSession(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=Array.isArray(opts.cells)&&opts.cells.length?opts.cells:[regularQuoteCell(s,preferTr),regularChangeCell(s)];
- let sessionMeta=activeSessionMeta(s,se);
+ let cells=[regularQuoteCell(s),regularChangeCell(s),sessionCompactCell(s,se)];
  let details=opts.detailsHtml;
  if(details===undefined){
   let rv=RV(s,se);
   details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+bidAskHtml(s,preferTr)+
    '<div class="asset-card-metrics"><span>Vol <b>'+compactVol(SV(s,se))+'</b></span><span>RV <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
  }
- let contextMeta=opts.metaHtml||'';
  return window.ViewInvAICards.render({
   context:opts.context||state.currentView||'stock',title:s.name||ticker||'—',rank,
   isin:preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin),
@@ -146,7 +161,7 @@ function standardStockCard(s,i=0,opts={}){
   leadingHtml:favButton(s,preferTr),cells,
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
-  metaHtml:sessionMeta+contextMeta,actionsHtml:opts.actionsHtml,className:opts.className
+  metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,className:opts.className
  });
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
@@ -279,12 +294,7 @@ function entry(){
 function homeSession(){
  let se=currentMarketSession();return['premarket','regular','postmarket'].includes(se)?se:'regular';
 }
-function homeDailyChange(s){
- let se=homeSession();
- if(se==='premarket')return N(s.premarketChangePct);
- if(se==='postmarket')return N(s.postmarketChangePct);
- return N(s.changePct);
-}
+function homeDailyChange(s){return effectiveSessionChange(s,homeSession())}
 function homeUniverse(){
  return (db.stocks||[]).filter(s=>stockKey(s)&&(N(s.price)!==null||trTradable(s)));
 }
@@ -292,42 +302,50 @@ function homeUserViewedStocks(limit=10){
  let universe=homeUniverse(),ranked=universe.filter(s=>stockViewCount(s)>0).sort((a,b)=>stockViewCount(b)-stockViewCount(a)||((stockViews[stockKey(b)]?.last||0)-(stockViews[stockKey(a)]?.last||0)));
  return ranked.slice(0,limit);
 }
-let socialTrendingSymbols=[],socialTrendingAt=0,socialTrendingLoading=false;
-async function refreshSocialTrending(force=false){
- if(socialTrendingLoading)return;
- if(!force&&socialTrendingAt&&Date.now()-socialTrendingAt<300000)return;
- socialTrendingLoading=true;
+let attentionRankingRows=[],attentionRankingAt=0,attentionRankingLoading=false;
+async function refreshAttentionRanking(force=false){
+ if(attentionRankingLoading)return;
+ if(!force&&attentionRankingAt&&Date.now()-attentionRankingAt<15*60000)return;
+ attentionRankingLoading=true;
  try{
-  let r=await fetch('/api/social-trending',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
-  let data=await r.json();socialTrendingSymbols=Array.isArray(data.symbols)?data.symbols:[];socialTrendingAt=Date.now();
+  let r=await fetch('/api/attention-ranking?kind=stocks',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  let data=await r.json();attentionRankingRows=Array.isArray(data.items)?data.items:[];attentionRankingAt=Date.now();
   if(state.currentView==='home'&&marketBoardMode==='active')renderHome();
- }catch(e){console.warn('Social trending unavailable',e)}
- finally{socialTrendingLoading=false}
+ }catch(e){console.warn('Precomputed stock attention ranking unavailable',e)}
+ finally{attentionRankingLoading=false}
 }
+async function refreshSocialTrending(force=false){return refreshAttentionRanking(force)}
 function homeActiveStocks(limit=10){
- const universe=homeUniverse(),byTicker=new Map();
- for(const s of universe){for(const t of [s.ticker,s.trTicker])if(t)byTicker.set(String(t).toUpperCase(),s)}
+ const universe=homeUniverse(),byTicker=new Map(),byKey=new Map();
+ for(const s of universe){
+  byKey.set(stockKey(s),s);
+  for(const t of [s.ticker,s.trTicker])if(t)byTicker.set(String(t).toUpperCase(),s);
+ }
  const out=[],used=new Set();
- for(const row of socialTrendingSymbols){
-  const ticker=String(row.symbol||row.ticker||'').toUpperCase(),s=byTicker.get(ticker);if(!s)continue;
+ for(const row of attentionRankingRows){
+  const key=String(row.stockKey||'').toUpperCase(),ticker=String(row.symbol||row.ticker||'').toUpperCase();
+  const s=byKey.get(key)||byTicker.get(ticker);if(!s)continue;
   const k=stockKey(s);if(used.has(k))continue;used.add(k);out.push(s);if(out.length>=limit)break;
  }
  if(out.length<limit){
-  const fallback=universe.filter(s=>!used.has(stockKey(s))).map(s=>({s,score:(stockViewCount(s)*15)+(RV(s,homeSession())??0)*8+Math.log10(Math.max(1,SV(s,homeSession())??N(s.avgVolume)??1))}))
-   .sort((a,b)=>b.score-a.score).map(x=>x.s);
+  const now=Date.now();
+  const fallback=universe.filter(s=>!used.has(stockKey(s))).map(s=>{
+   const news=stockEvents(s).filter(e=>e.eventKind==='news'&&now-new Date(e.date||0).getTime()<=48*3600000).length;
+   return{s,score:news*25+(RV(s,homeSession())??0)*3};
+  }).sort((a,b)=>b.score-a.score).map(x=>x.s);
   out.push(...fallback.slice(0,limit-out.length));
  }
  return out.slice(0,limit);
 }
 function homeMoveStocks(desc=true,limit=10){
  let se=homeSession();
- return homeUniverse().map(s=>({s,ch:se==='premarket'?N(s.premarketChangePct):se==='postmarket'?N(s.postmarketChangePct):N(s.changePct)}))
+ return homeUniverse().map(s=>({s,ch:effectiveSessionChange(s,se)}))
   .filter(x=>x.ch!==null&&(desc?x.ch>0:x.ch<0)).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
 function homeStockRow(s,i,kind){
- let preferTr=trTradable(s),views=stockViewCount(s),se=homeSession();
- let hint=kind==='views'?(views?views+' '+(views===1?'vista':'vistas')+' esta semana':'Vista esta semana'):(kind==='active'?'Tendencia social / atención':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
- let insight=kind==='views'?'Tus visitas · 7 días':kind==='active'?'Atención social y actividad':kind==='gainers'?'Subida · '+SN(se):'Bajada · '+SN(se);
+ let preferTr=trTradable(s),se=homeSession();
+ let hint=kind==='views'?'Visto esta semana':(kind==='active'?'Atención y popularidad de mercado':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
+ let insight=kind==='views'?'Visto esta semana':kind==='active'?'Atención de mercado':kind==='gainers'?'Subida · '+SN(se):'Bajada · '+SN(se);
  let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
  return standardStockCard(s,i,{
@@ -348,18 +366,27 @@ function marketBoardStocks(mode='active',limit=10){
 function renderMarketQuickSheet(){
  let box=$('#marketQuickContent');if(!box)return;
  let views=homeUserViewedStocks(10);
- box.innerHTML='<section class="weekly-viewed-section"><h3>Más visitados esta semana</h3>'+(views.length?views.map((s,i)=>homeStockRow(s,i,'views')).join(''):'<div class="empty-state compact">Todavía no has visitado suficientes activos esta semana.</div>')+'</section>';
+ box.innerHTML='<section class="weekly-viewed-section">'+(views.length?views.map((s,i)=>homeStockRow(s,i,'views')).join(''):'<div class="empty-state compact">Todavía no has visitado activos esta semana.</div>')+'</section>';
 }
 async function renderIndicesTop10(box){
  box.innerHTML='<div class="empty-state compact">Actualizando índices…</div>';
  try{
-  let r=await fetch('/api/indices-live',{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
-  let data=await r.json(),rows=Array.isArray(data.indices)?data.indices.slice(0,10):[];
+  let [liveResp,rankResp]=await Promise.all([
+   fetch('/api/indices-live',{cache:'no-store'}),
+   fetch('/api/attention-ranking?kind=indices',{cache:'no-store'}).catch(()=>null)
+  ]);
+  if(!liveResp.ok)throw Error(String(liveResp.status));
+  let data=await liveResp.json(),rows=Array.isArray(data.indices)?data.indices:[];
+  if(rankResp&&rankResp.ok){
+   let ranking=await rankResp.json(),order=new Map((ranking.items||[]).map((x,i)=>[String(x.symbol||'').toUpperCase(),i]));
+   rows=rows.slice().sort((a,b)=>(order.get(String(a.symbol||'').toUpperCase())??999)-(order.get(String(b.symbol||'').toUpperCase())??999));
+  }
+  rows=rows.slice(0,10);
   box.innerHTML=rows.length?'<div class="market-board-list">'+rows.map((x,i)=>{
    let ch=N(x.change),tone=ch===null?'muted':C(ch);
    return window.ViewInvAICards.render({context:'indices',title:x.name||x.symbol||'Índice',rank:'#'+(i+1),subtitle:[x.symbol,x.exchange].filter(Boolean).join(' · '),
     cells:[{label:'Precio',value:PR(x.price),tone},{label:'Variación',value:PC(ch),tone}],className:'index-compact-card'});
-  }).join('')+'</div>':'<div class="empty-state">No hay datos verificados de índices en este momento.</div>';
+  }).join('')+'</div>':'<div class="empty-state">Ranking de índices en actualización.</div>';
  }catch(e){box.innerHTML='<div class="empty-state">No se pudieron actualizar los índices ahora mismo.</div>'}
 }
 function renderHome(){
@@ -395,7 +422,7 @@ function renderEntry(){
   :'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>';
 }
 
-window.ViewInvAIMarketBoard={refreshSocialTrending,renderMarketQuickSheet};
+window.ViewInvAIMarketBoard={refreshSocialTrending,refreshAttentionRanking,renderMarketQuickSheet};
 
 function initStockListInteractions(){
  document.addEventListener('click',e=>{
