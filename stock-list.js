@@ -64,10 +64,14 @@ function stockMobileTabs(scope='entry'){
 function stockMobileCell(s,key,se,preferTr=false){
  let v=null,text='—',tone='text';
  if(key==='price'){
-  let q=canonicalQuote(s,preferTr),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
-  text=quoteMoney(q.price,sym,quotePrecision(s,preferTr,SP(s,se)));
+  let q=verifiedDisplayQuote(s,preferTr,se),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
+  v=N(q.change);text=quoteMoney(q.price,sym,quotePrecision(s,q.nativeCurrency==='EUR',SP(s,se)));
+  tone=N(q.price)===null?'muted':v===null?'text':v>=0?'positive':'negative';
+  let source=q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
+  return{value:text,tone,html:'<span class="asset-price-value">'+E(text)+'</span>'+source};
  }else if(key==='change'){
-  v=marketChange(s,se,preferTr);text=PC(v);tone=v===null?'muted':v>=0?'positive':'negative';
+  let q=verifiedDisplayQuote(s,preferTr,se);v=N(q.change);
+  text=PC(v);tone=v===null?'muted':v>=0?'positive':'negative';
  }else if(key==='volume'){
   text=compactVol(preferTr?SV(s,se):(N(s.usLiveVolume)??SV(s,se)));
  }else if(key==='relVolume'){
@@ -93,7 +97,7 @@ function stockMobileCell(s,key,se,preferTr=false){
  }else if(key==='earnings'){
   text=s.earningsDate?DF(s.earningsDate):'—';
  }
- return{value:text,tone,...(key==='price'?{html:preferTr?trPriceCell(s,'eur',se):usPriceCell(s,'usd',se)}:key==='change'?{html:entryChangeHtml(s,se,preferTr)}:{})};
+ return{value:text,tone};
 }
 function stockMobileRow(s,i,se,preferTr=false,scope='entry'){
  let group=stockMobileGroup(scope);
