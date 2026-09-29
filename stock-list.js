@@ -475,10 +475,10 @@ function initStockListInteractions(){
  });
  $('#toggleFilters')?.addEventListener('click',()=>window.ViewInvAIFilterSheet?.open?.('#entryFilterPanel','Filtro · Radar de entrada'));
  $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
- $('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
+ $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
   state.entryMarket=b.dataset.tab;
   if(state.entryMarket==='tr'&&(state.preset==='premarketExplosion'||state.preset==='postmarketExplosion'))setPreset('intraday');
-  $('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
+  $$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
   syncEntryVenueControls();saveUiState();renderEntry();setTimeout(pollUsLive,0);
  }));
 }
