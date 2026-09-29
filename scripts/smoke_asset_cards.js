@@ -24,6 +24,8 @@ window.checkAssetCards = async function () {
   assert(test.querySelector('.fav-star'),name+' lost favourites');
   assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost REG quote');
   assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' compact row lost REG/extended quote');
+  const ext=test.querySelector('.asset-extended-price')?.textContent||'';
+  assert(!/10[.,]20|9[.,]80/.test(ext),name+' extended line shows the extended absolute price instead of the move');
   assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
   const copy=test.querySelector('[data-copy-isin]');
   if(copy){copy.click();assert(!document.body.classList.contains('stock-detail-open'),name+' copy opened the detail')}

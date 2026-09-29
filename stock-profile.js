@@ -168,12 +168,11 @@ function profileNotificationActionHtml(s,isTr=false){
 function profileHeroQuoteHtml(s,se=currentMarketSession()){
  const regularPrice=N(s.price),regularChange=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=regularPrice===null?'—':quoteMoney(regularPrice,'\u0024',quotePrecision(s,false,regularPrice));
- const extendedText=ext.price===null?'—':quoteMoney(ext.price,'\u0024',quotePrecision(s,false,ext.price));
- return '<div class="profile-quote-stack">'+
-   '<div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div>'+
-   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+E(extendedText)+'</strong><b>'+PC(ext.change)+'</b></div>'+
-  '</div>';
+ const deltaText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,regularPrice));
+ return '<div class="profile-quote-stack"><div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div>'+
+   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div></div>';
 }
+
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;

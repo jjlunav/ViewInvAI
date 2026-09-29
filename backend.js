@@ -1707,6 +1707,26 @@ async function subjectForUser(env, userId, subjectType, subjectId) {
   return null;
 }
 
+
+let stockPortfolioGoalSchemaReady=false;
+async function ensureStockPortfolioGoalSchema(env){
+  if(stockPortfolioGoalSchemaReady)return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS stock_portfolio_goals (user_id TEXT PRIMARY KEY,target_profit_eur REAL NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)").run();
+  stockPortfolioGoalSchemaReady=true;
+}
+async function handlePortfolioGoal(request,env,user,json){
+  await ensureStockPortfolioGoalSchema(env);
+  if(request.method==="GET"){const goal=await env.DB.prepare("SELECT user_id,target_profit_eur,created_at,updated_at FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();return json({goal:goal||null})}
+  if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
+    const body=await readJson(request),raw=finiteNumber(body.targetProfitEur);if(raw===null||raw<=0)return json({error:"targetProfitEur must be greater than zero"},400);
+    const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso(),existing=await env.DB.prepare("SELECT user_id FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();
+    await env.DB.prepare("INSERT INTO stock_portfolio_goals (user_id,target_profit_eur,created_at,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET target_profit_eur=excluded.target_profit_eur,updated_at=excluded.updated_at").bind(user.id,target,now,now).run();
+    const goal=await env.DB.prepare("SELECT user_id,target_profit_eur,created_at,updated_at FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();return json({goal},existing?200:201);
+  }
+  if(request.method==="DELETE"){await env.DB.prepare("DELETE FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).run();return json({goal:null,deleted:true})}
+  return json({error:"Method not allowed"},405);
+}
+
 async function handleSettings(request, env, user, json) {
   const existing = await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -2084,6 +2104,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
+    if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);

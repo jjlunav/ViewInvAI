@@ -103,18 +103,14 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
 }
 
 function extendedSessionDisplay(s,se=currentMarketSession()){
- const usePost=se==='postmarket'||se==='previous';
- const icon=usePost?'☾':'☀';
- const price=N(usePost?s.postmarketPrice:s.premarketPrice);
- let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
- const regular=N(s.price);
- if(change===null&&price!==null&&regular>0)change=(price/regular-1)*100;
- return{icon,price,change,tone:change===null?'muted':C(change)};
+ const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾':'☀',price=N(usePost?s.postmarketPrice:s.premarketPrice);let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
+ const regular=N(s.price);if(change===null&&price!==null&&regular>0)change=(price/regular-1)*100;const delta=price!==null&&regular!==null?price-regular:null;
+ return{icon,price,delta,change,tone:change===null?'muted':C(change)};
 }
 function regularQuoteCell(s,se=currentMarketSession()){
  const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
- const extendedText=ext.price===null?'—':quoteMoney(ext.price,'\u0024',quotePrecision(s,false,ext.price));
+ const extendedText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,price));
  return{
   label:'Precio',
   value:regularText,
@@ -475,3 +471,11 @@ function initStockListInteractions(){
  $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
  $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
 }
+
+function radarCoachCandidates(limit=10,excluded=[]){
+ const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),se=currentMarketSession();
+ return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,'us'))return null;const a=entryOpportunityAnalysis(stock,se,false);
+   return{stock,preferTr:trTradable(stock),score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a}})
+  .filter(Boolean).filter(row=>row.quality>=45&&row.score>=58).sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
+}
+window.ViewInvAIRadarCoach={rankCandidates:radarCoachCandidates};

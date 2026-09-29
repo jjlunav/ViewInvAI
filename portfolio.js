@@ -5,6 +5,9 @@ const state = {
   watchlist: [],
   portfolioTransactionSummaries: {},
   selectedPortfolioId: null,
+  primaryTab: "portfolio",
+  goal: null,
+  goalCandidateCache: { at: 0, key: "", rows: [] },
   loading: false
 };
 
@@ -12,6 +15,7 @@ const PORTFOLIO_UI_KEY = "viewinvai:portfolioUi:v2";
 try {
   const saved = JSON.parse(localStorage.getItem(PORTFOLIO_UI_KEY) || "{}");
   state.selectedPortfolioId = saved && saved.selectedPortfolioId || null;
+  state.primaryTab = saved && saved.primaryTab === "goal" ? "goal" : "portfolio";
 } catch (_) {}
 
 const $ = selector => document.querySelector(selector);
@@ -19,7 +23,8 @@ const $ = selector => document.querySelector(selector);
 function savePortfolioUi() {
   try {
     localStorage.setItem(PORTFOLIO_UI_KEY, JSON.stringify({
-      selectedPortfolioId: state.selectedPortfolioId || null
+      selectedPortfolioId: state.selectedPortfolioId || null,
+      primaryTab: state.primaryTab === "goal" ? "goal" : "portfolio"
     }));
   } catch (_) {}
 }
@@ -350,52 +355,157 @@ function renderWatchRow(w) {
   });
 }
 
-function renderApp() {
-  const box = $("#portfolioApp");
-  if (!box) return;
-  if (!state.user) return renderLoggedOut(box);
-  if (state.loading) return renderLoading(box);
 
-  state.portfolios.sort((a, b) => {
-    const ao = num(a.sort_order) ?? 0, bo = num(b.sort_order) ?? 0;
-    return ao - bo || String(a.created_at || "").localeCompare(String(b.created_at || ""));
-  });
-
-  if (!state.selectedPortfolioId && state.portfolios.length) state.selectedPortfolioId = state.portfolios[0].id;
-  if (state.selectedPortfolioId && !state.portfolios.some(p => String(p.id ?? "") === String(state.selectedPortfolioId ?? ""))) {
-    state.selectedPortfolioId = state.portfolios[0] ? state.portfolios[0].id : null;
-  }
-
-  const selected = state.portfolios.find(p => String(p.id ?? "") === String(state.selectedPortfolioId ?? "")) || null;
-  const positions = selected ? portfolioPositions(selected.id) : [];
-  savePortfolioUi();
-
-  box.innerHTML =
-    '<div class="portfolio-workbar">' +
-      '<div class="portfolio-tabs-wrap">' +
-        '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">' +
-          state.portfolios.map(renderPortfolioCard).join('') +
-        '</div>' +
-        '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>' +
-        '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>' +
-        '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>' +
-        '<button type="button" class="portfolio-icon-action portfolio-history"' + (selected ? ' data-portfolio-history="' + esc(selected.id) + '"' : ' disabled') + ' aria-label="Historial" title="Historial">◷</button>' +
-        '<button type="button" class="portfolio-icon-action portfolio-add-current"' + (selected ? '' : ' disabled') + ' aria-label="Añadir posición" title="Añadir posición">⊕</button>' +
-        '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>' +
-      '</div>' +
-      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>' +
-    '</div>' +
-    '<div id="portfolioContext" class="portfolio-context">' +
-      portfolioContextHtml(selected, positions) +
-    '</div>';
-
-  requestAnimationFrame(() => {
-    updatePortfolioTabOverflow();
-    if (window.ViewInvAI && typeof window.ViewInvAI.observeLiveQuotes === "function") {
-      window.ViewInvAI.observeLiveQuotes(box);
-    }
-  });
+function portfolioPrimaryTabsHtml() {
+  return '<nav class="portfolio-primary-tabs" aria-label="Vista principal de cartera">' +
+    '<button type="button" class="' + (state.primaryTab === "portfolio" ? 'active' : '') + '" data-portfolio-main-tab="portfolio">Cartera</button>' +
+    '<button type="button" class="' + (state.primaryTab === "goal" ? 'active' : '') + '" data-portfolio-main-tab="goal">Objetivo de la cartera</button>' +
+  '</nav>';
 }
+function portfolioStockKey(stock) {
+  return stock && window.ViewInvAI && typeof window.ViewInvAI.getStockKey === "function"
+    ? String(window.ViewInvAI.getStockKey(stock) || "").trim().toUpperCase()
+    : String(stock && (stock.tvSymbol || stock.ticker || stock.trTicker) || "").trim().toUpperCase();
+}
+function portfolioUsdToEurRate() {
+  for (const p of state.positions) {
+    const stock = stockByKey(p.stock_key); if (!stock) continue;
+    const m = currentMarket(stock, Number(p.prefer_tr) === 1);
+    if (num(m.usd) !== null && num(m.eur) !== null && Number(m.usd) !== 0) return Number(m.eur) / Number(m.usd);
+  }
+  const stocks = window.ViewInvAI && typeof window.ViewInvAI.getAllStocks === "function" ? window.ViewInvAI.getAllStocks() : [];
+  for (const stock of stocks.slice(0,80)) {
+    const m=currentMarket(stock,false);
+    if(num(m.usd)!==null&&num(m.eur)!==null&&Number(m.usd)!==0)return Number(m.eur)/Number(m.usd);
+  }
+  return null;
+}
+function portfolioGoalPositionSnapshot(p,fxUsdEur){
+  const stock=stockByKey(p.stock_key),qty=num(p.quantity);if(!stock||qty===null)return null;
+  const preferTr=Number(p.prefer_tr)===1,market=currentMarket(stock,preferTr);
+  let unitEur=num(market.eur);if(unitEur===null&&String(market.currency||"").toUpperCase()==="EUR")unitEur=num(market.price);
+  const avg=num(p.avg_price),entryCurrency=String(p.currency||(preferTr?"EUR":"USD")).toUpperCase();
+  let avgEur=avg;if(avg!==null&&entryCurrency==="USD")avgEur=fxUsdEur===null?null:avg*fxUsdEur;else if(avg!==null&&entryCurrency!=="EUR")avgEur=null;
+  const valueEur=unitEur===null?null:qty*unitEur,costEur=avgEur===null?null:qty*avgEur,pnlEur=valueEur!==null&&costEur!==null?valueEur-costEur:null;
+  return{p,stock,qty,preferTr,market,unitEur,avgEur,valueEur,costEur,pnlEur};
+}
+function portfolioGoalMetrics(){
+  const fxUsdEur=portfolioUsdToEurRate(),rows=state.positions.filter(p=>Number(p.active)!==0).map(p=>portfolioGoalPositionSnapshot(p,fxUsdEur)).filter(Boolean);
+  let currentValue=0,openPnl=0,currentComplete=true,pnlComplete=true;
+  for(const row of rows){if(row.valueEur===null)currentComplete=false;else currentValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
+  let realizedPnl=0,realizedKnown=state.portfolios.length===0||state.portfolios.every(p=>!!state.portfolioTransactionSummaries[String(p.id)]);
+  for(const summary of Object.values(state.portfolioTransactionSummaries||{})){
+    for(const [currency,data] of Object.entries(summary&&summary.currencies||{})){
+      const v=num(data&&data.realizedPnl);if(v===null)continue;
+      if(currency==="EUR")realizedPnl+=v;else if(currency==="USD"&&fxUsdEur!==null)realizedPnl+=v*fxUsdEur;else realizedKnown=false;
+    }
+  }
+  const totalPnl=pnlComplete?openPnl+realizedPnl:null,target=num(state.goal&&state.goal.target_profit_eur);
+  return{rows,fxUsdEur,currentValue:currentComplete?currentValue:null,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,
+    remaining:target!==null&&totalPnl!==null?target-totalPnl:null,progress:target&&totalPnl!==null?Math.max(0,Math.min(100,totalPnl/target*100)):0};
+}
+function coachPriceLevels(stock,preferTr,score){
+  const market=currentMarket(stock,preferTr),price=num(market.price),change=Math.abs(num(market.change)||0);
+  if(price===null||price<=0)return{stop:null,take:null,stopPct:null,takePct:null,currency:market.currency||"EUR"};
+  const stopPct=Math.max(4.5,Math.min(12,5.5+change*.35+(score<50?1.5:0))),takePct=Math.max(8,Math.min(25,stopPct*(score>=70?2:1.7)));
+  return{stop:price*(1-stopPct/100),take:price*(1+takePct/100),stopPct,takePct,currency:market.currency||(preferTr?"EUR":"USD")};
+}
+function portfolioCoachPositionRows(metrics){
+  const total=num(metrics.currentValue)||0;
+  return metrics.rows.map(row=>{
+    const pulse=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.analyzeStock==="function"?window.ViewInvAIPulseCoach.analyzeStock(row.stock,row.preferTr):null;
+    const score=num(pulse&&pulse.score)??num(row.p.last_score)??50,quality=num(pulse&&pulse.quality)??0,currentWeight=total>0&&row.valueEur!==null?row.valueEur/total*100:0;
+    const backendSignal=String(row.p.last_signal||"").toUpperCase();let cap=score>=75?30:score>=60?25:score>=50?20:10,targetWeight=Math.min(currentWeight,cap);
+    if(backendSignal==="SELL"||score<=35)targetWeight=0;else if(backendSignal==="REVIEW"||score<50)targetWeight=Math.min(currentWeight,10);
+    if(currentWeight>45)targetWeight=Math.min(targetWeight,score>=70?30:20);
+    const reducePct=currentWeight>0?Math.max(0,(currentWeight-targetWeight)/currentWeight*100):0,units=row.qty*reducePct/100,released=row.valueEur===null?0:row.valueEur*reducePct/100;
+    const action=reducePct>=95?"SALIR":reducePct>=8?"REDUCIR":"MANTENER",reasons=[];
+    if(backendSignal)reasons.push("señal IA "+signalInfo(backendSignal)[0].toLowerCase());if(currentWeight>35)reasons.push("concentración "+formatNumber(currentWeight,1)+"%");
+    reasons.push("score "+formatNumber(score,0)+"/100");if(quality)reasons.push("datos "+formatNumber(quality,0)+"/100");
+    const levels=action==="SALIR"?{stop:null,take:null,stopPct:null,takePct:null,currency:row.market.currency||"EUR"}:coachPriceLevels(row.stock,row.preferTr,score);
+    return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,action,reasons,levels};
+  }).sort((a,b)=>b.released-a.released||a.score-b.score);
+}
+function portfolioCoachCandidates(metrics,positionRows){
+  const excluded=new Set(metrics.rows.map(x=>portfolioStockKey(x.stock))),cacheKey=[...excluded].sort().join("|");
+  if(state.goalCandidateCache.key===cacheKey&&Date.now()-state.goalCandidateCache.at<60000)return state.goalCandidateCache.rows;
+  const merged=new Map(),ingest=(rows,source)=>{
+    for(const row of Array.isArray(rows)?rows:[]){const stock=row.stock||row.s;if(!stock)continue;const key=portfolioStockKey(stock);if(!key||excluded.has(key))continue;
+      const old=merged.get(key)||{stock,preferTr:!!row.preferTr,pulseScore:null,radarScore:null,quality:0,sources:[]};
+      if(source==="Pulso IA")old.pulseScore=num(row.score);else old.radarScore=num(row.score);old.quality=Math.max(old.quality||0,num(row.quality)||0);if(!old.sources.includes(source))old.sources.push(source);merged.set(key,old)}
+  };
+  try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(10,[...excluded])||[],"Pulso IA")}catch(_){}
+  try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(10,[...excluded])||[],"Radar")}catch(_){}
+  const released=positionRows.reduce((sum,row)=>sum+(num(row.released)||0),0),currentValue=num(metrics.currentValue)||0;
+  const rows=[...merged.values()].map(row=>{const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);return{...row,score:scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?3:0)):0}})
+    .filter(row=>row.score>=62&&row.quality>=45).sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,5)
+    .map((row,index,arr)=>({...row,allocation:released>0?Math.min(released/Math.min(3,arr.length),currentValue*.15):0,levels:coachPriceLevels(row.stock,row.preferTr,row.score)}));
+  state.goalCandidateCache={at:Date.now(),key:cacheKey,rows};return rows;
+}
+function goalPositionPlanHtml(row){
+  const tone=row.action==="SALIR"?"bad":row.action==="REDUCIR"?"warn":"good";
+  const unitText=row.action==="MANTENER"?"Sin reducción propuesta":row.action==="SALIR"?"Revisar salida total de "+formatNumber(row.qty,4)+" uds.":"Reducir aprox. "+formatNumber(row.units,4)+" uds. ("+formatNumber(row.reducePct,0)+"%)";
+  const levels=row.levels.stop!==null?'<span>Stop orientativo <b>'+formatMoney(row.levels.stop,row.levels.currency)+'</b> · Take profit <b>'+formatMoney(row.levels.take,row.levels.currency)+'</b></span>':'<span>Si se decide salir, no se propone mantener un stop/take artificial.</span>';
+  return '<article class="portfolio-goal-action '+tone+'" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
+    '<div class="goal-action-head"><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(row.p.ticker||row.stock.ticker||'')+'</small></div><b>'+row.action+'</b></div>'+
+    '<div class="goal-action-grid"><span>Exposición <b>'+formatNumber(row.currentWeight,1)+'% → '+formatNumber(row.targetWeight,1)+'%</b></span><span>'+unitText+'</span>'+levels+'</div><p>'+esc(row.reasons.join(" · "))+'</p></article>';
+}
+function goalCandidateHtml(row){
+  const key=portfolioStockKey(row.stock),alloc=row.allocation>0?'Capital liberado orientativo: <b>'+formatMoney(row.allocation,"EUR")+'</b>':'Sin rotación forzada: vigilar hasta disponer de capital o mejorar la señal.';
+  const levels=row.levels.stop!==null?'Stop <b>'+formatMoney(row.levels.stop,row.levels.currency)+'</b> · Take profit <b>'+formatMoney(row.levels.take,row.levels.currency)+'</b>':'Niveles pendientes de cotización válida.';
+  return '<article class="portfolio-goal-candidate" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0"><div><strong>'+
+    esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc([row.stock.ticker||row.stock.trTicker,row.sources.join(" + ")].filter(Boolean).join(" · "))+'</small></div><b class="goal-candidate-score">'+
+    formatNumber(row.score,0)+'/100</b><p>'+alloc+'</p><p>'+levels+'</p></article>';
+}
+function portfolioGoalViewHtml(){
+  const metrics=portfolioGoalMetrics(),positionRows=portfolioCoachPositionRows(metrics),candidates=portfolioCoachCandidates(metrics,positionRows),target=metrics.target;
+  const totalTone=metrics.totalPnl===null?"":metrics.totalPnl>=0?"pnl-up":"pnl-down",targetValue=target===null?"":String(Math.round(target*100)/100);
+  const planHtml=positionRows.length?positionRows.map(goalPositionPlanHtml).join(""):'<div class="portfolio-empty-state compact">Añade posiciones a la cartera de acciones para que el entrenador pueda construir un plan.</div>';
+  const candidatesHtml=candidates.length?candidates.map(goalCandidateHtml).join(""):'<div class="portfolio-empty-state compact">Ahora mismo Pulso IA y Radar no aportan una alternativa suficientemente sólida como para forzar una rotación.</div>';
+  return '<section class="portfolio-goal-view"><div class="portfolio-goal-hero"><div><small>ENTRENADOR DE INVERSIÓN</small><h2>Objetivo de la cartera</h2><p>Un único objetivo para toda tu cartera de acciones. ViewInvAI ajusta el plan con las señales de cartera, Pulso IA y Radar; no ejecuta órdenes automáticamente.</p></div>'+
+    '<form id="portfolioGoalForm" class="portfolio-goal-form"><label><span>Objetivo de rentabilidad</span><div><input name="targetProfitEur" type="number" min="1" step="10" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button></form></div>'+
+    (target===null?'<div class="portfolio-goal-empty"><strong>Marca cuánto beneficio quieres alcanzar.</strong><span>Por ejemplo, 1.000 €. El objetivo es modificable en cualquier momento.</span></div>':
+    '<div class="portfolio-goal-metrics"><div><small>OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>RESULTADO ACTUAL</small><strong class="'+totalTone+'">'+
+    (metrics.totalPnl===null?'—':(metrics.totalPnl>0?'+':'')+formatMoney(metrics.totalPnl,"EUR"))+'</strong></div><div><small>FALTA</small><strong>'+
+    (metrics.remaining===null?'—':formatMoney(Math.max(0,metrics.remaining),"EUR"))+'</strong></div><div><small>VALOR CARTERA</small><strong>'+
+    (metrics.currentValue===null?'—':formatMoney(metrics.currentValue,"EUR"))+'</strong></div></div>'+
+    '<div class="portfolio-goal-progress"><div><span>Progreso hacia el objetivo</span><b>'+formatNumber(metrics.progress,1)+'%</b></div><i><em style="width:'+Math.max(0,Math.min(100,metrics.progress))+'%"></em></i></div>'+
+    '<div class="portfolio-goal-toolbar"><span>Plan calculado sobre las posiciones actuales y señales disponibles.</span><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Recalcular</button></div>'+
+    '<section class="portfolio-goal-section"><header><div><small>PLAN DE EXPOSICIÓN</small><h3>Qué revisar en tus posiciones</h3></div></header><div class="portfolio-goal-actions">'+planHtml+'</div></section>'+
+    '<section class="portfolio-goal-section"><header><div><small>PULSO IA + RADAR</small><h3>Alternativas para estudiar</h3></div></header><div class="portfolio-goal-candidates">'+candidatesHtml+'</div></section>'+
+    '<p class="portfolio-goal-note">Los niveles de stop, take profit y exposición son orientativos y se recalculan con el mercado. El motor puede recomendar no hacer nada si la alternativa no mejora suficientemente el perfil de riesgo.</p>')+'</section>';
+}
+async function savePortfolioGoal(targetProfitEur){
+  const response=await api("/api/portfolio-goal",{method:"PUT",body:JSON.stringify({targetProfitEur})}),data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");state.goal=data.goal||null;state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();return state.goal;
+}
+async function refreshGoalSummaries(){
+  await Promise.all(state.portfolios.map(p=>refreshPortfolioTransactionSummary(p.id).catch(()=>null)));
+  if(state.primaryTab==="goal")renderApp();
+}
+
+function renderApp() {
+  const box=$("#portfolioApp");if(!box)return;if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
+  state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
+  if(!state.selectedPortfolioId&&state.portfolios.length)state.selectedPortfolioId=state.portfolios[0].id;
+  if(state.selectedPortfolioId&&!state.portfolios.some(p=>String(p.id??"")===String(state.selectedPortfolioId??"")))state.selectedPortfolioId=state.portfolios[0]?state.portfolios[0].id:null;
+  savePortfolioUi();
+  if(state.primaryTab==="goal"){
+    box.innerHTML=portfolioPrimaryTabsHtml()+portfolioGoalViewHtml();
+    requestAnimationFrame(()=>{if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box)});
+    return;
+  }
+  const selected=state.portfolios.find(p=>String(p.id??"")===String(state.selectedPortfolioId??""))||null,positions=selected?portfolioPositions(selected.id):[];
+  box.innerHTML=portfolioPrimaryTabsHtml()+'<div class="portfolio-workbar"><div class="portfolio-tabs-wrap"><div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+
+    state.portfolios.map(renderPortfolioCard).join('')+'</div><button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>'+
+    '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>'+
+    '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
+    '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
+    '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">⊕</button><div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div></div>'+
+    '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button></div><div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>';
+  requestAnimationFrame(()=>{updatePortfolioTabOverflow();if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box)});
+}
+
 async function fetchJson(path) {
   const response = await api(path);
   const data = await response.json().catch(() => ({}));
@@ -565,14 +675,10 @@ async function loadAll({ syncFavorites = false } = {}) {
   state.loading = true;
   renderApp();
   try {
-    const [portfolios, positions, watchlist] = await Promise.all([
-      fetchJson("/api/portfolios"),
-      fetchJson("/api/positions"),
-      fetchJson("/api/watchlist")
+    const [portfolios, positions, watchlist, goalData] = await Promise.all([
+      fetchJson("/api/portfolios"),fetchJson("/api/positions"),fetchJson("/api/watchlist"),fetchJson("/api/portfolio-goal").catch(()=>({goal:null}))
     ]);
-    state.portfolios = portfolios.portfolios || [];
-    state.positions = positions.positions || [];
-    state.watchlist = watchlist.watchlist || [];
+    state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];state.goal=goalData.goal||null;
     syncPortfolioStars();
     window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{}}));
   } catch (error) {
@@ -1310,6 +1416,11 @@ async function savePositionForm(form) {
 
 function bind() {
   document.addEventListener("click", async event => {
+    const mainTab=event.target.closest?.("[data-portfolio-main-tab]");
+    if(mainTab){state.primaryTab=mainTab.dataset.portfolioMainTab==="goal"?"goal":"portfolio";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();if(state.primaryTab==="goal")refreshGoalSummaries().catch(()=>{});return}
+    const goalRefresh=event.target.closest?.("[data-goal-refresh-plan]");
+    if(goalRefresh){goalRefresh.disabled=true;state.goalCandidateCache={at:0,key:"",rows:[]};const stamp=()=>state.positions.map(x=>String(x.updated_at||x.last_analysis_at||x.id||'')).join('|');
+      try{if(window.ViewInvAIRefreshFeedback)await window.ViewInvAIRefreshFeedback.run(()=>loadAll(),stamp);else await loadAll();await refreshGoalSummaries()}finally{if(goalRefresh.isConnected)goalRefresh.disabled=false}return}
     const login = event.target.closest?.(".portfolio-google-login");
     if (login) {
       window.ViewInvAIAuth?.signIn();
@@ -1538,6 +1649,10 @@ function bind() {
   });
 
   document.addEventListener("submit", async event => {
+    if(event.target.id==="portfolioGoalForm"){event.preventDefault();const form=event.target,fd=new FormData(form),target=num(fd.get("targetProfitEur"));
+      if(target===null||target<=0){toast("Indica un objetivo de rentabilidad mayor que 0 €.",true);return}
+      const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;
+      try{await savePortfolioGoal(target);toast("Objetivo actualizado")}catch(error){toast(error.message||"No se pudo guardar el objetivo.",true)}finally{if(button&&button.isConnected)button.disabled=false}return}
     if (event.target.id === "newPortfolioForm") {
       event.preventDefault();
       const form = event.target;
@@ -1605,6 +1720,8 @@ function bind() {
       state.watchlist = [];
       state.portfolioTransactionSummaries = {};
       state.selectedPortfolioId = null;
+      state.goal = null;
+      state.goalCandidateCache = { at:0,key:"",rows:[] };
       renderApp();
     } else {
       loadAll();
@@ -1623,10 +1740,12 @@ function bind() {
 
   window.addEventListener("viewinvai:quote-updated", event => {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
+    state.goalCandidateCache={at:0,key:"",rows:[]};
     clearTimeout(renderApp.quoteTimer);
     renderApp.quoteTimer = setTimeout(renderApp, 180);
   });
   window.addEventListener("viewinvai:fx-updated", () => {
+    state.goalCandidateCache={at:0,key:"",rows:[]};
     clearTimeout(renderApp.quoteTimer);
     renderApp.quoteTimer = setTimeout(renderApp, 180);
   });
