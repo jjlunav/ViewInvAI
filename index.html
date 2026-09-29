@@ -15,7 +15,7 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260929r12">
+  <link rel="stylesheet" href="styles.css?v=20260929r13">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
@@ -81,10 +81,11 @@
         <button type="button" class="tab" data-market-board="funds">Fondos / ETFs</button>
         <button type="button" class="tab" data-market-board="indices">Índices</button>
       </nav>
-      <div class="home-summary-line market-status-line">
-        <span id="homeSession">Sesión regular</span><span>·</span><span id="homeUpdated">Actualizando…</span>
-      </div>
+      <nav id="marketBoardSourceTabs" class="market-board-source-tabs compact-tabs" aria-label="Mercado o plataforma"></nav>
       <div id="homeGroups" class="home-dashboard market-board"></div>
+      <div class="home-summary-line market-status-line">
+        <span id="homeSession">Sesión regular · EEUU · Top 10</span><span>·</span><span id="homeUpdated">Actualizando…</span>
+      </div>
     </section>
 
     <section class="view" id="view-entry">
@@ -630,7 +631,7 @@
 <script src="stock-charts.js?v=20260925r2"></script>
 <script src="events.js?v=20260929r4"></script>
 <script src="asset-card.js?v=20260928r1"></script>
-<script src="stock-list.js?v=20260929r11"></script>
+<script src="stock-list.js?v=20260929r12"></script>
 <script src="recommendation.js?v=20260929r8"></script>
 <script src="help.js?v=20260925r1"></script>
 <script src="stock-profile.js?v=20260929r10"></script>
@@ -640,7 +641,7 @@
 <script src="filter-sheet.js?v=20260928r1"></script>
 <script src="navigation.js?v=20260929r1"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20260929r7"></script>
+<script src="funds.js?v=20260929r8"></script>
 <script src="bootstrap.js?v=20260928r4"></script>
 <script src="alerts.js?v=20260928r1"></script>
 <script src="stock-notifications.js?v=20260929r2"></script>

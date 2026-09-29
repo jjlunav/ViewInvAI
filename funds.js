@@ -411,8 +411,13 @@
   }catch(e){console.warn('Fund popularity ranking unavailable',e)}
   return marketPopularity.items;
  }
- function marketTopProducts(limit=10,ranking=[]){
-  const eligible=state.products.filter(p=>p.type!=='etp'&&!/\b(?:2x|3x|leveraged|short)\b/i.test(String(p.name||'')));
+ function marketTopProducts(limit=10,ranking=[],platform='all'){
+  const eligible=state.products.filter(p=>{
+   if(p.type==='etp'||/\b(?:2x|3x|leveraged|short)\b/i.test(String(p.name||'')))return false;
+   if(platform==='tr')return verified(p.platforms&&p.platforms.tradeRepublic);
+   if(platform==='mi')return verified(p.platforms&&p.platforms.myInvestor);
+   return true;
+  });
   const fallback=eligible.slice().sort((a,b)=>{
    const aumA=num(a.assetsUnderManagement)??0,aumB=num(b.assetsUnderManagement)??0;
    const platformA=(verified(a.platforms&&a.platforms.tradeRepublic)?1:0)+(verified(a.platforms&&a.platforms.myInvestor)?1:0);
@@ -438,12 +443,14 @@
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
    cells:[{label:'Valor',value:money(value,p.currency),tone},{label:'1 año',value:pct(ret),tone}]});
  }
- async function renderMarketTop10(target,limit=10){
+ async function renderMarketTop10(target,limit=10,platform='all'){
   const box=typeof target==='string'?q(target):target;if(!box)return;
   if(!state.loaded)await load(false);
   const ranking=await fetchMarketPopularity(false);
-  const rows=marketTopProducts(limit,ranking);
-  box.innerHTML=rows.length?'<div class="market-board-list fund-market-top">'+rows.map(marketTopRow).join('')+'</div>':'<div class="empty-state">Ranking de fondos y ETFs en actualización.</div>';
+  const rows=marketTopProducts(limit,ranking,platform);
+  box.innerHTML=rows.length?'<div class="market-board-list fund-market-top">'+rows.map(marketTopRow).join('')+'</div>':'<div class="empty-state">No hay fondos o ETFs verificados para esta plataforma.</div>';
+  const updated=q('#homeUpdated'),at=state.meta&&state.meta.updatedAt;
+  if(updated)updated.textContent=at?'Datos '+new Date(at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Actualizando…';
  }
 
  function render(){
