@@ -32,6 +32,7 @@ function listInsightLabel(s,se,preferTr=false){
  return 'IA · seguimiento';
 }
 function listSessionQuote(s,se,preferTr=false){
+ if(preferTr)return '';
  const ext=extendedSessionDisplay(s,se);
  if(ext.price===null)return '';
  return '<div class="stock-session-quote"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+snapshotPricePair(s,ext.price,false)+'</strong><span class="'+ext.tone+'">'+PC(ext.change)+'</span></div>';
@@ -103,31 +104,30 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
 }
 
 function extendedSessionDisplay(s,se=currentMarketSession()){
- const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun',price=N(usePost?s.postmarketPrice:s.premarketPrice);let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
- const regular=N(s.price);if(change===null&&price!==null&&regular>0)change=(price/regular-1)*100;const delta=price!==null&&regular!==null?price-regular:null;
- return{icon,iconClass,price,delta,change,tone:change===null?'muted':C(change)};
+ const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun',price=N(usePost?s.postmarketPrice:s.premarketPrice);
+ const regular=N(s.price),delta=price!==null&&regular!==null?price-regular:null;
+ const change=price!==null&&regular>0?(price/regular-1)*100:null;
+ return{icon,iconClass,price,regular,delta,change,tone:change===null?'muted':C(change),kind:usePost?'postmarket':'premarket'};
 }
-function regularQuoteCell(s,se=currentMarketSession()){
+function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
+ if(preferTr&&trTradable(s)){
+  const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
+  return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price">'+E(text)+'</span>'};
+ }
  const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
  const extendedText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,price));
- return{
-  label:'Precio',
-  value:regularText,
-  tone:change===null?'muted':C(change),
-  html:'<span class="asset-regular-price">'+E(regularText)+'</span>'+
-       '<small class="asset-extended-price '+ext.tone+'"><span class="asset-session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><span>'+E(extendedText)+'</span></small>'
- };
+ return{label:'Regular',value:regularText,tone:change===null?'muted':C(change),
+  html:'<span class="asset-regular-price">'+E(regularText)+'</span>'+(ext.price===null?'':'<small class="asset-extended-price '+ext.tone+'"><span class="asset-session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><span>'+E(extendedText)+'</span></small>')};
 }
-function regularChangeCell(s,se=currentMarketSession()){
+function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
+ if(preferTr&&trTradable(s)){
+  const change=N(canonicalQuote(s,true).change);
+  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change">'+E(PC(change))+'</span>'};
+ }
  const change=N(s.changePct),ext=extendedSessionDisplay(s,se);
- return{
-  label:'Variación',
-  value:PC(change),
-  tone:change===null?'muted':C(change),
-  html:'<span class="asset-regular-change">'+E(PC(change))+'</span>'+
-       '<small class="asset-extended-change '+ext.tone+'">'+E(PC(ext.change))+'</small>'
- };
+ return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),
+  html:'<span class="asset-regular-change">'+E(PC(change))+'</span>'+(ext.price===null?'':'<small class="asset-extended-change '+ext.tone+'">'+E(PC(ext.change))+'</small>')};
 }
 
 function effectiveSessionChange(s,se=currentMarketSession()){
@@ -146,7 +146,7 @@ function effectiveSessionChange(s,se=currentMarketSession()){
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||currentMarketSession(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=[regularQuoteCell(s,se),regularChangeCell(s,se)];
+ let cells=[regularQuoteCell(s,se,preferTr),regularChangeCell(s,se,preferTr)];
  let details=opts.detailsHtml;
  if(details===undefined){
   let rv=RV(s,se);
@@ -185,8 +185,7 @@ function entryUniverseMatch(s){
  return market(s,'us')&&!trTradable(s);
 }
 function entrySessionForPreset(){
- // Presets alter thresholds/sorting, never the clock. All screens share the
- // same market session unless the user explicitly changes the session control.
+ if(state.entryMarket==='tr')return 'regular';
  return state.session==='auto'?currentMarketSession():state.session;
 }
 function previousSessionChange(s,se){
@@ -226,7 +225,7 @@ function emergingSignal(s,se){
 const entryOpportunityScores=new Map();
 let entryCandidatePoolCount=0;
 function entryOpportunityAnalysis(s,se,preferTr=false){
- const quote=verifiedDisplayQuote(s,preferTr,se);
+ const quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se);
  const input={
   price:N(quote&&quote.price),
   change:N(quote&&quote.change),
@@ -269,7 +268,7 @@ function entryOpportunityWhy(s,se,preferTr=false,pos=1){
 function entry(){
  let q=state.filters,se=entrySessionForPreset(),preferTr=state.entryMarket==='tr',emerging=state.preset==='emerging';
  let pool=db.stocks.filter(entryUniverseMatch).filter(s=>{
-  let displayQuote=verifiedDisplayQuote(s,preferTr,se);
+  let displayQuote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se);
   if(N(displayQuote&&displayQuote.price)===null)return false;
   let ch=N(displayQuote&&displayQuote.change);if(ch===null||ch<q.minChange)return false;if(q.maxChange>0&&ch>q.maxChange)return false;
   let rv=RV(s,se);if(q.minRelVolume>0&&(rv===null||rv<q.minRelVolume))return false;
@@ -342,7 +341,7 @@ function homeMoveStocks(desc=true,limit=10){
   .filter(x=>x.ch!==null&&(desc?x.ch>0:x.ch<0)).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
 function homeStockRow(s,i,kind){
- let preferTr=trTradable(s),se=homeSession();
+ let preferTr=false,se=homeSession();
  let hint=kind==='views'?'Visto esta semana':(kind==='active'?'Atención y popularidad de mercado':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
  let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
@@ -407,9 +406,16 @@ function renderHome(){
  if(marketBoardMode==='active')setTimeout(()=>refreshSocialTrending(false),0);
 }
 
+function syncEntryVenueControls(){
+ const isTr=state.entryMarket==='tr',session=$('#sessionSelect');
+ if(session)session.classList.toggle('is-hidden',isTr);
+ document.querySelectorAll('.preset-option[data-value="premarketExplosion"],.preset-option[data-value="postmarketExplosion"]').forEach(el=>{el.hidden=isTr});
+ const native=$('#presetSelect');if(native)Array.from(native.options).forEach(o=>{if(o.value==='premarketExplosion'||o.value==='postmarketExplosion')o.disabled=isTr});
+}
 function renderEntry(){
+ syncEntryVenueControls();
  let [a,se]=entry();
- $('#entrySessionText').textContent=(state.entryMarket==='tr'?'Trade Republic':'Resto EEUU')+' · '+SN(se);
+ $('#entrySessionText').textContent=state.entryMarket==='tr'?'Trade Republic / LSX · sesión única':('EEUU · '+SN(se));
  $('#entryCount').textContent=a.length+' seleccionadas · '+entryCandidatePoolCount+' analizadas';
  $('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';
  let shown=a;
@@ -469,7 +475,12 @@ function initStockListInteractions(){
  });
  $('#toggleFilters')?.addEventListener('click',()=>window.ViewInvAIFilterSheet?.open?.('#entryFilterPanel','Filtro · Radar de entrada'));
  $$('.field-lock').forEach(btn=>btn.addEventListener('click',()=>{let id=btn.dataset.target,input=$('#'+id);lockCriterion(id,!input.readOnly);if(!input.readOnly){input.focus();input.select()}}));
- $$('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{state.entryMarket=b.dataset.tab;$$('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));saveUiState();renderEntry();setTimeout(pollUsLive,0)}));
+ $('[data-tab-group="entryMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
+  state.entryMarket=b.dataset.tab;
+  if(state.entryMarket==='tr'&&(state.preset==='premarketExplosion'||state.preset==='postmarketExplosion'))setPreset('intraday');
+  $('[data-tab-group="entryMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
+  syncEntryVenueControls();saveUiState();renderEntry();setTimeout(pollUsLive,0);
+ }));
 }
 
 function radarCoachCandidates(limit=10,excluded=[]){

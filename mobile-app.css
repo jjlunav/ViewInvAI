@@ -2649,11 +2649,15 @@ html[data-native-app="1"] .asset-card-row[data-asset-columns="3"] .asset-card-la
 }
 
 
-/* 2026-09-29 · native REG + persistent extended quote sizing */
-html[data-native-app="1"] .profile-quote-stack{display:grid!important;gap:2px!important;min-width:0!important}
+/* 2026-09-29 · native venue-aware quote sizing */
+html[data-native-app="1"] .profile-quote-stack{display:flex!important;align-items:baseline!important;gap:8px!important;min-width:0!important;max-width:100%!important}
 html[data-native-app="1"] .profile-quote-regular,
-html[data-native-app="1"] .profile-quote-extended{display:flex!important;align-items:baseline!important;gap:5px!important;min-width:0!important}
-html[data-native-app="1"] .profile-quote-regular>strong{font-size:18px!important}
-html[data-native-app="1"] .profile-quote-regular>b{font-size:10px!important}
-html[data-native-app="1"] .profile-quote-extended>strong,
+html[data-native-app="1"] .profile-quote-extended,
+html[data-native-app="1"] .profile-quote-lsx{display:flex!important;align-items:baseline!important;gap:4px!important;min-width:0!important}
+html[data-native-app="1"] .profile-quote-stack-us .profile-quote-extended{padding-right:7px!important}
+html[data-native-app="1"] .profile-quote-regular>strong,
+html[data-native-app="1"] .profile-quote-lsx>strong{font-size:18px!important}
+html[data-native-app="1"] .profile-quote-regular>b,
+html[data-native-app="1"] .profile-quote-lsx>b{font-size:10px!important}
+html[data-native-app="1"] .profile-quote-extended>strong{font-size:9px!important}
 html[data-native-app="1"] .profile-quote-extended>b{font-size:8px!important}

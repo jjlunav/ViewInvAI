@@ -338,10 +338,8 @@ function usPriceCell(s,which,se){
  return '<span class="table-price-wrap"><span class="table-price-cell'+(cls?' '+cls:'')+'" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,false)+'</small></span>';
 }
 function liveChangeHtml(s,fallback,preferTr=false){
- let trActive=preferTr&&trTradable(s)&&trMarketOpen(),value=trActive?(trLiveChange(s)??N(fallback)):(preferTr?marketChange(s,currentMarketSession(),true):(usLiveChange(s)??N(fallback)));
- let attrs=trActive
-  ?' data-tr-live-change-key="'+E(stockKey(s))+'"'
-  :(!preferTr?' data-us-live-change-key="'+E(stockKey(s))+'"':'');
+ let trExact=preferTr&&trTradable(s),value=trExact?trLiveChange(s):(usLiveChange(s)??N(fallback));
+ let attrs=trExact?' data-tr-live-change-key="'+E(stockKey(s))+'"':' data-us-live-change-key="'+E(stockKey(s))+'"';
  return '<span class="quote-change '+C(value)+'"'+attrs+'>'+PC(value)+'</span>';
 }
 
@@ -367,11 +365,8 @@ function FC(s,se=SES()){
  return se==='regular'?(usLiveChange(s)??SC(s,se)):SC(s,se);
 }
 function marketChange(s,se=SES(),preferTr=false){
- // LSX has its own live move while its exchange is open. Outside LSX hours,
- // fall back to the selected US session instead of presenting a stale German move as current.
- if(preferTr&&trMarketOpen()){
-  let live=trLiveChange(s);if(live!==null)return live;
- }
+ // Venue invariant: selecting LSX never substitutes a US pre/post move.
+ if(preferTr&&trTradable(s))return trLiveChange(s);
  return FC(s,se);
 }
 function RV(s,se=SES()){

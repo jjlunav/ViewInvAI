@@ -20,13 +20,11 @@ function profileTabs(){
   '<button type="button" role="tab" aria-selected="false" class="profile-tab-ai" data-profile-tab="ai">✦ IA ViewInvAI</button>'+
  '</nav>';
 }
-function profileSessionStrip(s,isTr=false){
- let prefix=isTr?'EEUU · ':'';
- // These three session fields come from the US exchange feed. Even on an LSX
- // profile they stay USD-native and EUR is only the current FX conversion.
- let regular='<div class="profile-session-cell"><span>'+prefix+'Regular</span><strong>'+snapshotPricePair(s,s.price,false)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Vol '+compactVol(s.volume)+'</small></div>';
- let pre='<div class="profile-session-cell"><span>'+prefix+'Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+C(s.premarketChangePct)+'">'+PC(s.premarketChangePct)+'</b><small>Vol '+compactVol(s.premarketVolume)+'</small></div>';
- let post='<div class="profile-session-cell"><span>'+prefix+'Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+C(s.postmarketChangePct)+'">'+PC(s.postmarketChangePct)+'</b><small>Vol '+compactVol(s.postmarketVolume)+'</small></div>';
+function profileSessionStrip(s){
+ const preExt=extendedSessionDisplay(s,'premarket'),postExt=extendedSessionDisplay(s,'postmarket');
+ let regular='<div class="profile-session-cell"><span>EEUU · Regular</span><strong>'+snapshotPricePair(s,s.price,false)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Variación vs cierre previo · Vol '+compactVol(s.volume)+'</small></div>';
+ let pre='<div class="profile-session-cell"><span>EEUU · Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+preExt.tone+'">'+PC(preExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.premarketVolume)+'</small></div>';
+ let post='<div class="profile-session-cell"><span>EEUU · Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+postExt.tone+'">'+PC(postExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
 }
 function profileAiPanel(s,mode='us'){
@@ -53,15 +51,17 @@ function profileAiPanel(s,mode='us'){
 }
 function profileGeneralPrimaryStats(s,isTr,se){
  let range=N(s.dayLow)!==null&&N(s.dayHigh)!==null?PR(s.dayLow)+' - '+PR(s.dayHigh):'—';
+ const ref=isTr?' · referencia del subyacente':'';
  return [
-  profileKpi('Rango día',range,'Mínimo - máximo'),
-  profileKpi('Volumen actual',compactVol(!isTr&&N(s.usLiveVolume)!==null?s.usLiveVolume:SV(s,se)),'Media '+compactVol(s.avgVolume)),
-  profileKpi('Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'),
+  profileKpi(isTr?'Rango EEUU':'Rango día',range,'Mínimo - máximo'+ref),
+  profileKpi(isTr?'Volumen EEUU':'Volumen actual',compactVol(N(s.usLiveVolume)??SV(s,se)),'Media '+compactVol(s.avgVolume)+ref),
+  profileKpi(isTr?'Vol. relativo EEUU':'Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'+ref),
   profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
  ].join('');
 }
 function profileGeneralExtraStats(s,isTr,se){
- let currentPrice=pricePair(s,SP(s,se),isTr),currentChange=liveChangeHtml(s,SC(s,se),isTr);
+ let currentPrice=pricePair(s,SP(s,se),isTr),exactTr=isTr?canonicalQuote(s,true):null;
+ let currentChange=isTr?'<span class="quote-change '+C(exactTr.change)+'">'+PC(exactTr.change)+'</span>':liveChangeHtml(s,SC(s,se),false);
  return [
   profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
   profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
@@ -165,12 +165,17 @@ function profileNotificationActionHtml(s,isTr=false){
  return '<button type="button" class="profile-notification-bell" data-stock-notifications="'+E(stockKey(s))+'" data-stock-notifications-tr="'+(isTr?'1':'0')+'" title="Configurar notificaciones" aria-label="Configurar notificaciones para '+E(s.name||s.ticker||'este valor')+'">🔔</button>';
 }
 
-function profileHeroQuoteHtml(s,se=currentMarketSession()){
+function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
+ if(isTr){
+  const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
+  return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx"><strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
+ }
  const regularPrice=N(s.price),regularChange=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=regularPrice===null?'—':quoteMoney(regularPrice,'\u0024',quotePrecision(s,false,regularPrice));
  const deltaText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,regularPrice));
- return '<div class="profile-quote-stack"><div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div>'+
-   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div></div>';
+ return '<div class="profile-quote-stack profile-quote-stack-us">'+
+  (ext.price===null?'':'<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div>')+
+  '<div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div></div>';
 }
 
 function profileHeroHtml(s,isTr=false,opts={}){
@@ -185,7 +190,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-    '<div class="profile-live"><small>Regular + sesión extendida</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'Sesión extendida vs regular · regular detrás')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
@@ -214,7 +219,7 @@ function quickProfileHtml(s,opts={}){
    profileBodyTabsHtml()+
    '<section class="profile-tab-panel active" data-profile-panel="general">'+
    '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
-   profileDisclosure('Sesiones de mercado',profileSessionStrip(s,isTr),'Premarket · Regular · Postmarket')+
+   (isTr?'':profileDisclosure('Sesiones de mercado',profileSessionStrip(s),'Premarket · Regular · Postmarket · solo EEUU'))+
    profileDisclosure('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización')+
    '</section>'+
    profileVisualAnalysisHtml(s,isTr)+

@@ -7072,13 +7072,16 @@ html[data-theme="light"] .tr-native-axis{
 .weekly-viewed-section>h3{display:none!important}
 
 
-/* 2026-09-29 · full profile mirrors REG + persistent sun/moon quote */
-.profile-quote-stack{display:grid;gap:3px;min-width:0}
-.profile-quote-regular,.profile-quote-extended{display:flex;align-items:baseline;gap:7px;min-width:0}
-.profile-quote-regular>strong{font-size:22px;line-height:1;font-weight:820;color:#eef5f7;white-space:nowrap}
-.profile-quote-regular>b{font-size:12px;font-weight:850;white-space:nowrap}
-.profile-quote-extended{gap:5px;font-size:9px}
-.profile-quote-extended>strong,.profile-quote-extended>b{font-size:9px;font-weight:780;white-space:nowrap}
+/* 2026-09-29 · venue-aware profile quote: extended move first, regular second */
+.profile-quote-stack{display:flex;align-items:baseline;gap:12px;min-width:0}
+.profile-quote-regular,.profile-quote-extended,.profile-quote-lsx{display:flex;align-items:baseline;gap:7px;min-width:0;white-space:nowrap}
+.profile-quote-stack-us .profile-quote-extended{order:1;padding-right:12px;border-right:1px solid var(--line)}
+.profile-quote-stack-us .profile-quote-regular{order:2}
+.profile-quote-regular>strong,.profile-quote-lsx>strong{font-size:22px;line-height:1;font-weight:820;color:#eef5f7;white-space:nowrap}
+.profile-quote-regular>b,.profile-quote-lsx>b{font-size:12px;font-weight:850;white-space:nowrap}
+.profile-quote-extended{gap:5px;font-size:11px}
+.profile-quote-extended>strong{font-size:13px;font-weight:820;white-space:nowrap}
+.profile-quote-extended>b{font-size:11px;font-weight:820;white-space:nowrap}
 .profile-quote-extended.positive>strong,.profile-quote-extended.positive>b{color:var(--positive)!important}
 .profile-quote-extended.negative>strong,.profile-quote-extended.negative>b{color:var(--negative)!important}
 .profile-quote-extended.muted>strong,.profile-quote-extended.muted>b{color:var(--muted)!important}
