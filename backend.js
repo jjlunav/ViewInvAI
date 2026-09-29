@@ -1865,12 +1865,16 @@ async function analyzeTarget(env, target, services) {
     console.warn("Chart analysis unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
-  let directNews=[];
+  let directNews=[],officialEvents=[];
+  if(services.loadOfficialEvents){
+    try{officialEvents=await services.loadOfficialEvents(stock,target)}
+    catch(error){console.warn("Official analysis events unavailable",String(error&&error.message||error))}
+  }
   if(services.loadNews){
     try{directNews=await services.loadNews(stock,target)}
     catch(error){console.warn("Direct news analysis unavailable",String(error&&error.message||error))}
   }
-  const events = mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
+  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),officialEvents,24),directNews,24);
   const fallback = deterministicAssessment(target, stock, chart, events);
   const current = await aiAssessment(env, target, stock, chart, events, fallback);
 
@@ -2147,9 +2151,13 @@ async function ensureNotificationPreferenceSchema(env){
     "CREATE TABLE IF NOT EXISTS notification_preferences ("+
     "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0,"+
     "news_enabled INTEGER NOT NULL DEFAULT 1,pulse_enabled INTEGER NOT NULL DEFAULT 1,radar_enabled INTEGER NOT NULL DEFAULT 0,price_up_enabled INTEGER NOT NULL DEFAULT 0,price_down_enabled INTEGER NOT NULL DEFAULT 0,"+
-    "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',"+
+    "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',last_ai_scan_at TEXT,"+
     "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
+  const prefColumns=await env.DB.prepare("PRAGMA table_info(notification_preferences)").all();
+  if(!(prefColumns.results||[]).some(row=>String(row.name||"")==="last_ai_scan_at")){
+    await env.DB.prepare("ALTER TABLE notification_preferences ADD COLUMN last_ai_scan_at TEXT").run();
+  }
   await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_user_stock ON notification_preferences(user_id,stock_key,prefer_tr)").run();
   notificationSchemaReady=true;
 }
@@ -2209,9 +2217,12 @@ async function scanNotificationPreferences(env,services){
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       if(!global.enabled)continue;
       const stock=findStock(snapshot,pref);if(!stock)continue;
-      const needsAnalysis=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
+      const signalConfigured=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
+      const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
+      const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
+      const trPriceConfigured=Number(pref.prefer_tr)===1&&global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
       let chart={available:false},chartRaw=null;
-      if(Number(pref.prefer_tr)===1||needsAnalysis){
+      if(trPriceConfigured||aiDue){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
         catch(error){console.warn("Notification chart unavailable",pref.id,String(error&&error.message||error))}
       }
@@ -2238,18 +2249,24 @@ async function scanNotificationPreferences(env,services){
           downBucket=nextDown;
         }
       }
-      let directNews=[];
-      if(global.newsEvents&&Number(pref.news_enabled)===1&&services.loadNews){
-        try{directNews=await services.loadNews(stock,pref)}
-        catch(error){console.warn("Notification news unavailable",pref.id,String(error&&error.message||error))}
+      let directNews=[],officialEvents=[];
+      if(global.newsEvents&&Number(pref.news_enabled)===1){
+        if(services.loadOfficialEvents){
+          try{officialEvents=await services.loadOfficialEvents(stock,pref)}
+          catch(error){console.warn("Official notification events unavailable",pref.id,String(error&&error.message||error))}
+        }
+        if(services.loadNews){
+          try{directNews=await services.loadNews(stock,pref)}
+          catch(error){console.warn("Notification news unavailable",pref.id,String(error&&error.message||error))}
+        }
       }
-      const events=mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
+      const events=mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),officialEvents,24),directNews,24);
       if(global.newsEvents&&Number(pref.news_enabled)===1){
         await maybeCreateNewsAlerts(env,pref,stock,events,null);
         await maybeCreateEventAlerts(env,pref,stock,events,null);
       }
       let pulseState=String(pref.last_pulse_state||""),radarState=String(pref.last_radar_state||"");
-      if(needsAnalysis){
+      if(aiDue){
         const target={...pref,subject_type:"watchlist",subject_id:pref.id,avg_price:null,quantity:null,currency:Number(pref.prefer_tr)===1?"EUR":"USD"};
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
@@ -2260,8 +2277,9 @@ async function scanNotificationPreferences(env,services){
         if(global.radar&&Number(pref.radar_enabled)===1&&nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
         pulseState=nextPulse;radarState=nextRadar;
       }
-      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,updated_at=? WHERE id=?")
-        .bind(upBucket,downBucket,pulseState,radarState,nowIso(),pref.id).run();
+      const scanNow=nowIso();
+      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
+        .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
       results.push(pref.id);
     }catch(error){console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error))}
   }
