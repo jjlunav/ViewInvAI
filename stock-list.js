@@ -34,7 +34,7 @@ function listInsightLabel(s,se,preferTr=false){
 function listSessionQuote(s,se,preferTr=false){
  const ext=extendedSessionDisplay(s,se);
  if(ext.price===null)return '';
- return '<div class="stock-session-quote"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+snapshotPricePair(s,ext.price,false)+'</strong><span class="'+ext.tone+'">'+PC(ext.change)+'</span></div>';
+ return '<div class="stock-session-quote"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+snapshotPricePair(s,ext.price,false)+'</strong><span class="'+ext.tone+'">'+PC(ext.change)+'</span></div>';
 }
 
 const STOCK_MOBILE_GROUPS=[
@@ -103,9 +103,9 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
 }
 
 function extendedSessionDisplay(s,se=currentMarketSession()){
- const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾':'☀',price=N(usePost?s.postmarketPrice:s.premarketPrice);let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
+ const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun',price=N(usePost?s.postmarketPrice:s.premarketPrice);let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
  const regular=N(s.price);if(change===null&&price!==null&&regular>0)change=(price/regular-1)*100;const delta=price!==null&&regular!==null?price-regular:null;
- return{icon,price,delta,change,tone:change===null?'muted':C(change)};
+ return{icon,iconClass,price,delta,change,tone:change===null?'muted':C(change)};
 }
 function regularQuoteCell(s,se=currentMarketSession()){
  const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
@@ -116,7 +116,7 @@ function regularQuoteCell(s,se=currentMarketSession()){
   value:regularText,
   tone:change===null?'muted':C(change),
   html:'<span class="asset-regular-price">'+E(regularText)+'</span>'+
-       '<small class="asset-extended-price '+ext.tone+'"><span class="asset-session-icon" aria-hidden="true">'+ext.icon+'</span><span>'+E(extendedText)+'</span></small>'
+       '<small class="asset-extended-price '+ext.tone+'"><span class="asset-session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><span>'+E(extendedText)+'</span></small>'
  };
 }
 function regularChangeCell(s,se=currentMarketSession()){

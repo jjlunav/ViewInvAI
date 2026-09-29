@@ -170,7 +170,7 @@ function profileHeroQuoteHtml(s,se=currentMarketSession()){
  const regularText=regularPrice===null?'—':quoteMoney(regularPrice,'\u0024',quotePrecision(s,false,regularPrice));
  const deltaText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,regularPrice));
  return '<div class="profile-quote-stack"><div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div>'+
-   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div></div>';
+   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div></div>';
 }
 
 function profileHeroHtml(s,isTr=false,opts={}){

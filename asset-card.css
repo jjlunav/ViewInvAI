@@ -168,7 +168,9 @@
 .asset-extended-price,.asset-extended-change{margin-top:2px;min-height:10px;font-size:7.5px;line-height:1.05;font-weight:780;white-space:nowrap}
 .asset-extended-price{display:flex;align-items:center;gap:3px}
 .asset-extended-change{display:block}
-.asset-session-icon,.stock-session-quote .session-icon{font-size:9px;line-height:1;color:#d5a94c}
+.asset-session-icon,.stock-session-quote .session-icon{font-size:9px;line-height:1;font-family:Arial,Helvetica,sans-serif;font-variant-emoji:text}
+.asset-session-icon.session-icon-sun,.session-icon.session-icon-sun{color:#f2c94c!important;-webkit-text-stroke:0 transparent;text-shadow:none!important}
+.asset-session-icon.session-icon-moon,.session-icon.session-icon-moon{color:#fff!important;-webkit-text-stroke:.55px #000;paint-order:stroke fill;text-shadow:-.35px 0 #000,.35px 0 #000,0 -.35px #000,0 .35px #000!important}
 .asset-extended-price.positive,.asset-extended-change.positive{color:var(--positive)!important}
 .asset-extended-price.negative,.asset-extended-change.negative{color:var(--negative)!important}
 .asset-extended-price.muted,.asset-extended-change.muted{color:var(--asset-muted)!important}
