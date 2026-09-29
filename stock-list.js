@@ -148,11 +148,9 @@ function standardStockCard(s,i=0,opts={}){
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
  let cells=[regularQuoteCell(s,se,preferTr),regularChangeCell(s,se,preferTr)];
  let details=opts.detailsHtml;
- if(details===undefined){
-  let rv=RV(s,se),ref=preferTr?' EEUU':'';
-  details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+
-   '<div class="asset-card-metrics"><span>Vol'+ref+' <b>'+compactVol(SV(s,se))+'</b></span><span>RV'+ref+' <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
- }
+ // Compact lists stay compact: tapping the row opens the shared full stock profile.
+ // A caller may still opt into details explicitly for a specialized non-navigation use.
+ if(details===undefined)details='';
  return window.ViewInvAICards.render({
   context:opts.context||state.currentView||'stock',title:s.name||ticker||'—',rank,
   isin:preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin),
