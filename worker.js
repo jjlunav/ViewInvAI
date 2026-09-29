@@ -915,6 +915,7 @@ function isBackendApiPath(pathname) {
     pathname === "/api/alerts" || pathname.startsWith("/api/alerts/") ||
     pathname === "/api/settings" ||
     pathname === "/api/notification-preferences" ||
+    pathname === "/api/portfolio-goal" ||
     pathname === "/api/devices" || pathname.startsWith("/api/devices/");
 }
 

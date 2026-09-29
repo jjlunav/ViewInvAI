@@ -286,6 +286,10 @@ jobs:
               raise SystemExit("Falta el componente de tarjeta compartida")
 
           # Regresiones críticas de móvil/tablet y veracidad de cotizaciones.
+          worker = Path("worker.js").read_text(encoding="utf-8")
+          if 'pathname === "/api/portfolio-goal"' not in worker:
+              raise SystemExit("Worker no enruta /api/portfolio-goal al backend")
+
           if "function verifiedDisplayQuote" not in market:
               raise SystemExit("Falta la cotización verificada con fallback explícito")
           if "preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se)" not in stock_list:

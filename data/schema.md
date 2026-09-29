@@ -12,3 +12,8 @@ Cada objeto representa un evento futuro. Mantener separados:
 - `hypothesis`: posible impacto, explícitamente presentado como hipótesis.
 
 Para la vista Trade Republic, usar `tradeRepublicVerified: true` únicamente cuando la disponibilidad se haya verificado.
+
+
+## D1 v2
+
+See docs/d1-architecture-v2.md for the normalized instrument/listing/venue/broker model and session persistence rules.
