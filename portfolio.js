@@ -138,9 +138,11 @@ function signalInfo(signal) {
 function currentMarket(stock, preferTr = false) {
   if (!stock) return { price: null, change: null, currency: preferTr ? "EUR" : "USD", eur: null, usd: null, source: "", updatedAt: null };
   if (window.ViewInvAI && (typeof window.ViewInvAI.getDisplayQuote === "function" || typeof window.ViewInvAI.getCanonicalQuote === "function")) {
-    const quote = (typeof window.ViewInvAI.getDisplayQuote === "function"
-      ? window.ViewInvAI.getDisplayQuote(stock, !!preferTr)
-      : window.ViewInvAI.getCanonicalQuote(stock, !!preferTr)) || {};
+    const quote = (preferTr && typeof window.ViewInvAI.getCanonicalQuote === "function"
+      ? window.ViewInvAI.getCanonicalQuote(stock, true)
+      : typeof window.ViewInvAI.getDisplayQuote === "function"
+        ? window.ViewInvAI.getDisplayQuote(stock, false)
+        : window.ViewInvAI.getCanonicalQuote(stock, false)) || {};
     return {
       price: num(quote.price),
       change: num(quote.change),
