@@ -34,6 +34,11 @@ on:
       - "requirements*.txt"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".assetsignore"
+      - "firebase/google-services.json"
+      - "SECURITY.md"
+      - ".github/CODEOWNERS"
   pull_request:
     branches: [main]
   schedule:
@@ -259,6 +264,55 @@ jobs:
           for label, pattern in secrets.items():
               if re.search(pattern, all_text):
                   raise SystemExit("Posible secreto embebido: " + label)
+
+          # Protecciones adicionales para un repositorio publico. Las claves de
+          # configuracion cliente de Firebase pueden ser publicas, pero solo se
+          # permiten en los dos ficheros de cliente conocidos.
+          tracked = subprocess.run(
+              ["git", "ls-files"], check=True, capture_output=True, text=True
+          ).stdout.splitlines()
+          forbidden_names = [
+              re.compile(r"(^|/)\.env(?:\.|$)", re.I),
+              re.compile(r"(^|/)(?:service[-_]?account|firebase[-_]?admin).*\.json$", re.I),
+              re.compile(r"\.(?:jks|keystore|p12|pfx|pem|key|p8)$", re.I),
+          ]
+          allowed_client_config = {"auth.js", "firebase/google-services.json"}
+          for path in tracked:
+              if any(pattern.search(path) for pattern in forbidden_names):
+                  raise SystemExit("Fichero sensible versionado: " + path)
+
+          extra_secrets = {
+              "Google API key fuera de configuracion cliente": r"\bAIza[0-9A-Za-z_-]{20,}\b",
+              "npm token": r"\bnpm_[A-Za-z0-9]{20,}\b",
+              "Slack webhook": r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{20,}",
+              "Firebase service account": r'"type"\s*:\s*"service_account"',
+              "Firebase private key id": r'"private_key_id"\s*:\s*"[0-9a-fA-F]{16,}"',
+              "Cloudflare token literal": r"(?:CLOUDFLARE_API_TOKEN|CF_API_TOKEN|CLOUDFLARE_TOKEN)\s*[:=]\s*[\"'][^\"'$\\n]{16,}[\"']",
+              "Credentialed database URL": r"(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^\s:/]+:[^\s@/]+@",
+          }
+          for path in tracked:
+              p = Path(path)
+              if not p.is_file():
+                  continue
+              try:
+                  text = p.read_text(encoding="utf-8")
+              except UnicodeDecodeError:
+                  continue
+              for label, pattern in extra_secrets.items():
+                  if label.startswith("Google API key") and path in allowed_client_config:
+                      continue
+                  if re.search(pattern, text, re.I):
+                      raise SystemExit(f"Posible secreto embebido ({label}) en {path}")
+
+          gitignore = Path(".gitignore").read_text(encoding="utf-8")
+          required_ignores = [
+              ".env", ".dev.vars", ".wrangler/", "*.pem", "*.key",
+              "*.p12", "*.pfx", "*.jks", "*.keystore",
+              "service-account*.json", "firebase-admin*.json",
+          ]
+          for required in required_ignores:
+              if required not in gitignore:
+                  raise SystemExit("Falta proteccion sensible en .gitignore: " + required)
 
           # Revisa tambien el historial de codigo, excluyendo market.json porque
           # se actualiza continuamente y no contiene credenciales.
