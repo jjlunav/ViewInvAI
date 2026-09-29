@@ -110,7 +110,10 @@ function renderAnalysisSettings(settings=null){
  let globalStatus=$('#globalNotificationSettingsStatus');
  if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para cambiar estos avisos.';
  if(accountAnalysisSettings){
+  window.ViewInvAINotificationSettings={newsEvents,pulseAi};
   window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{newsEvents,pulseAi}}));
+ }else{
+  window.ViewInvAINotificationSettings=null;
  }
  let button=$('#saveAnalysisSettings');if(button)button.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  let status=$('#analysisSettingsStatus');if(status){
