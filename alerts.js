@@ -84,7 +84,15 @@
 
  function pushNotice(payload){
   let item=Object.assign({id:uid(),kind:'recommendation',createdAt:nowIso()},payload);
-  state.history.unshift(item);state.unread=(state.unread||0)+1;saveState();renderCenter();renderAlertPage();setCenterOpen(true,{auto:true});
+  let id=String(item.id||'');
+  if(id){
+   let existing=state.history.findIndex(row=>String(row&&row.id||'')===id);
+   if(existing>=0){
+    state.history[existing]=Object.assign({},state.history[existing],item);
+    saveState();renderCenter();renderAlertPage();setCenterOpen(true,{auto:true});return state.history[existing];
+   }
+  }
+  state.history.unshift(item);state.unread=(state.unread||0)+1;saveState();renderCenter();renderAlertPage();setCenterOpen(true,{auto:true});return item;
  }
 
  function gateLabel(key){
@@ -186,6 +194,25 @@
   q('#autoAlertHighConviction')?.addEventListener('change',e=>{
    state.enabled=!!e.target.checked;state.activeKey=null;seeded=false;saveState();renderAlertPage();
    if(state.enabled)setTimeout(evaluate,100);
+  });
+  window.addEventListener('viewinvai:push-received',e=>{
+   const raw=e&&e.detail||{},notification=raw.notification||raw||{},data=notification.data||raw.data||{};
+   const title=String(notification.title||data.title||'ViewInvAI');
+   const message=String(notification.body||notification.message||data.body||'');
+   const stockKey=String(data.stockKey||data.stock_key||'');
+   const preferTr=String(data.preferTr||data.prefer_tr||'')==='1'||data.preferTr===true;
+   pushNotice({
+    id:String(data.alertId||data.alert_id||notification.id||uid()),
+    kind:String(data.alertType||data.alert_type||'push'),
+    severity:String(data.severity||'info'),
+    title,
+    message,
+    ticker:String(data.ticker||''),
+    stockKey,
+    preferTr,
+    market:preferTr?'TR / LSX':'EEUU',
+    createdAt:nowIso()
+   });
   });
   window.addEventListener('viewinvai:notification-settings',e=>{
    let detail=e&&e.detail||{};
