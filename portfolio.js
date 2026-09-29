@@ -654,7 +654,9 @@ function renderApp() {
   const positions=selected?portfolioPositions(selected.id):[];
   savePortfolioUi();
 
-  state.goal=selected?state.goals[String(selected.id)]||null:null;
+  const mappedGoal=selected?state.goals[String(selected.id)]||null:null;
+  if(mappedGoal)state.goal=mappedGoal;
+  else if(!state.goal||state.goal.portfolio_id)state.goal=null;
   box.innerHTML=portfolioWorkbarHtml(selected)+portfolioPrimaryTabsHtml(selected)+
     (state.primaryTab==="goal"
       ? portfolioGoalViewHtml()
