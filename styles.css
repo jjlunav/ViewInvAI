@@ -7159,3 +7159,15 @@ html[data-theme="light"] .tr-native-axis{
 .portfolio-goal-form-status{grid-column:1/-1;min-height:14px;color:var(--muted);font-size:7.5px;text-align:right}
 .portfolio-goal-form-status.error,.portfolio-goal-error{color:var(--negative)}
 .portfolio-goal-error{padding:8px 10px;border:1px solid color-mix(in srgb,var(--negative) 45%,var(--line));border-radius:8px;background:color-mix(in srgb,var(--negative) 8%,var(--panel));font-size:8px}
+
+
+/* Portfolio asset panels are mutually exclusive by construction. */
+#view-portfolios[data-portfolio-asset-mode="stocks"] #fundPortfolioApp,
+#view-portfolios[data-portfolio-asset-mode="funds"] #portfolioApp{
+ display:none!important;
+ visibility:hidden!important;
+}
+#view-portfolios[data-portfolio-asset-mode="stocks"] #portfolioApp,
+#view-portfolios[data-portfolio-asset-mode="funds"] #fundPortfolioApp{
+ visibility:visible;
+}

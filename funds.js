@@ -25,6 +25,32 @@
  const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
+ function setPortfolioAssetMode(mode,loadFunds=true){
+  mode=mode==='funds'?'funds':'stocks';
+  const view=q('#view-portfolios');
+  if(view)view.dataset.portfolioAssetMode=mode;
+  document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
+   const active=b.dataset.portfolioAsset===mode;
+   b.classList.toggle('active',active);
+   b.setAttribute('aria-selected',active?'true':'false');
+   b.tabIndex=active?0:-1;
+  });
+  document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>{
+   const active=p.dataset.portfolioAssetPanel===mode;
+   p.classList.toggle('is-hidden',!active);
+   p.hidden=!active;
+   p.setAttribute('aria-hidden',active?'false':'true');
+   if(active)p.style.removeProperty('display');
+   else p.style.setProperty('display','none','important');
+  });
+  if(mode==='funds'){
+   root.ViewInvAIPortfolios?.setGoalVisible?.(false);
+   if(loadFunds)loadPortfolio(false);
+  }else{
+   root.ViewInvAIPortfolios?.render?.();
+  }
+  return mode;
+ }
  function nativeFundsView(){return document.documentElement.dataset.nativeApp==='1'}
  function compactFundsView(){return nativeFundsView()||!!(root.matchMedia&&root.matchMedia('(max-width:820px)').matches)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -735,26 +761,7 @@
    if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
 
    const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
-   if(asset){
-    const mode=asset.dataset.portfolioAsset;
-    document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
-     const active=b.dataset.portfolioAsset===mode;
-     b.classList.toggle('active',active);
-     b.setAttribute('aria-selected',active?'true':'false');
-     b.tabIndex=active?0:-1;
-    });
-    document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>{
-     const active=p.dataset.portfolioAssetPanel===mode;
-     p.classList.toggle('is-hidden',!active);
-     p.hidden=!active;
-     p.setAttribute('aria-hidden',active?'false':'true');
-    });
-    if(mode==='funds'){
-     root.ViewInvAIPortfolios?.setGoalVisible?.(false);
-     loadPortfolio(false);
-    }else root.ViewInvAIPortfolios?.render?.();
-    return;
-   }
+   if(asset){setPortfolioAssetMode(asset.dataset.portfolioAsset,true);return}
    if(e.target.closest?.('[data-fund-login]')){root.ViewInvAIAuth?.signIn?.();return}
    const select=e.target.closest&&e.target.closest('[data-fund-portfolio-select]');
    if(select){account.selectedPortfolioId=select.dataset.fundPortfolioSelect;renderPortfolio();return}
@@ -825,6 +832,7 @@
  }
  function init(){
   bind();
+  setPortfolioAssetMode('stocks',false);
   if(root.matchMedia){
    const mq=root.matchMedia('(max-width:820px)');
    if(typeof mq.addEventListener==='function')mq.addEventListener('change',()=>{if(state.loaded)render()});
@@ -833,5 +841,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
+ root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
 })(window);

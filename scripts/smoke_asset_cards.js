@@ -54,6 +54,12 @@ window.checkAssetCards = async function () {
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
   assert(assetTabs.length===2&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
   assert(view.querySelector('[data-portfolio-goal-toggle] svg'),'portfolio goal does not use the target SVG icon');
+  const fundsApi=window.ViewInvAIFunds,stockPanel=document.querySelector('#portfolioApp'),fundPanel=document.querySelector('#fundPortfolioApp');
+  assert(fundsApi&&typeof fundsApi.setPortfolioAssetMode==='function','portfolio asset mode controller is missing');
+  fundsApi.setPortfolioAssetMode('funds',false);
+  assert(stockPanel.hidden&&stockPanel.classList.contains('is-hidden')&&!fundPanel.hidden&&!fundPanel.classList.contains('is-hidden'),'stock and fund portfolio panels are visible at the same time');
+  fundsApi.setPortfolioAssetMode('stocks',false);
+  assert(!stockPanel.hidden&&!stockPanel.classList.contains('is-hidden')&&fundPanel.hidden&&fundPanel.classList.contains('is-hidden'),'portfolio panels did not return to stocks-only mode');
   ps.primaryTab='goal';portfolio.render();
   assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle].active'),'goal toolbar control did not become active');
   assert(view.querySelector('.portfolio-goal-view'),'goal view did not render inside stocks');

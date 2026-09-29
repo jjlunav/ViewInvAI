@@ -193,7 +193,7 @@ function defaultJson(payload, status = 200) {
 }
 
 function apiGuard(request) {
-  const allowed = new Set(["GET", "POST", "PATCH", "DELETE"]);
+  const allowed = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
   if (!allowed.has(request.method)) return { status: 405, error: "Method not allowed" };
   const url = new URL(request.url);
   const origin = String(request.headers.get("Origin") || "");
@@ -201,7 +201,7 @@ function apiGuard(request) {
   if (origin && origin !== url.origin && !nativeOrigin) return { status: 403, error: "Forbidden" };
   const site = (request.headers.get("Sec-Fetch-Site") || "").toLowerCase();
   if (!nativeOrigin && site && !["same-origin", "none"].includes(site)) return { status: 403, error: "Forbidden" };
-  if (["POST", "PATCH", "DELETE"].includes(request.method)) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
     const type = String(request.headers.get("Content-Type") || "").toLowerCase();
     if (request.method !== "DELETE" && type && !type.startsWith("application/json")) {
       return { status: 415, error: "Content-Type must be application/json" };

@@ -509,7 +509,7 @@ function portfolioGoalViewHtml(){
     '<p class="portfolio-goal-note">Los stops, take profit y contribuciones son escenarios orientativos, no resultados previstos. Una distancia grande al objetivo no aumenta automáticamente el riesgo ni obliga a operar.</p>')+'</section>';
 }
 async function savePortfolioGoal(targetProfitEur){
-  const response=await api("/api/portfolio-goal",{method:"PUT",body:JSON.stringify({targetProfitEur})}),data=await response.json().catch(()=>({}));
+  const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({targetProfitEur})}),data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
   state.goal=data.goal||null;state.goalError="";state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();return state.goal;
 }
