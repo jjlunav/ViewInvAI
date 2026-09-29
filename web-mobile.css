@@ -2084,3 +2084,37 @@ html,body{font-size:14px}
  .asset-card-row[data-asset-columns="3"] .asset-session-change{line-height:1.05!important;white-space:nowrap!important}
  .asset-card-row[data-asset-columns="3"] .asset-card-open{font-size:14px!important}
  .asset-card-row[data-asset-columns="3"] .fav-star{width:18px!important;min-width:18px!important;height:24px!important;font-size:14px!important}
+
+
+/* Central Pulso IA mobile action */
+@media(max-width:820px){
+ .mobile-bottom-nav{overflow:visible!important}
+ .mobile-nav-item[data-mobile-view="recommendation"]{
+  position:relative!important;
+  transform:translateY(-10px)!important;
+  min-height:62px!important;
+  border-radius:18px!important;
+  background:linear-gradient(180deg,rgba(96,128,255,.24),rgba(93,88,224,.10))!important;
+  color:#c9d4ff!important;
+  border:1px solid rgba(129,153,255,.34)!important;
+  box-shadow:0 8px 24px rgba(57,71,171,.28)!important;
+  overflow:visible!important;
+ }
+ .mobile-nav-item[data-mobile-view="recommendation"]::before{
+  content:"";
+  position:absolute;
+  inset:-7px;
+  z-index:-1;
+  border-radius:22px;
+  background:conic-gradient(from 0deg,transparent 0 8%,rgba(151,174,255,.32) 9% 11%,transparent 12% 22%,rgba(151,174,255,.24) 23% 25%,transparent 26% 100%);
+  filter:blur(.2px);
+  opacity:.9;
+ }
+ .mobile-nav-item[data-mobile-view="recommendation"]>span{font-size:25px!important;line-height:1!important}
+ .mobile-nav-item[data-mobile-view="recommendation"]>small{font-size:9px!important;font-weight:850!important}
+ .mobile-nav-item[data-mobile-view="recommendation"].active{
+  color:#eef1ff!important;
+  background:linear-gradient(180deg,rgba(111,137,255,.42),rgba(89,83,224,.20))!important;
+  border-color:rgba(165,183,255,.62)!important;
+ }
+}
