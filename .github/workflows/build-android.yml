@@ -144,13 +144,10 @@ jobs:
                   if(!shell||getComputedStyle(shell).position!=='fixed')return fail('pinned stock shell missing');
                   const general=detail.querySelector('[data-profile-panel="general"]'),chart=detail.querySelector('[data-profile-panel="chart"]'),ai=detail.querySelector('[data-profile-panel="ai"]');
                   if(!general||general.hidden||!chart||!chart.hidden||!ai||!ai.hidden)return fail('default stock tab state invalid');
-                  const disclosures=[...detail.querySelectorAll('.profile-disclosure')];
                   if(!detail.querySelector('.profile-quote-lsx')||detail.querySelector('.profile-quote-extended'))return fail('TR detail mixed LSX with US extended session');
-                  if([...detail.querySelectorAll('.profile-disclosure summary')].some(x=>/Sesiones de mercado/i.test(x.textContent||'')))return fail('TR detail exposes US pre/post sessions');
-                  if(disclosures.length<1)return fail('progressive stock disclosure missing');
-                  if(disclosures.some(item=>item.open))return fail('secondary stock data starts expanded');
-                  disclosures[0].querySelector('summary')?.click();
-                  if(!disclosures[0].open)return fail('progressive stock disclosure did not open');
+                  if(!detail.querySelector('.profile-market-extra'))return fail('fixed market data missing from General');
+                  if(detail.querySelector('.profile-market-sessions'))return fail('TR detail exposes US pre/post sessions');
+                  if(detail.querySelector('[data-profile-panel="general"] details'))return fail('General market data is still collapsible');
                   if(!detail.querySelector('[data-quote-freshness-key]'))return fail('freshness indicator missing');
                   detail.querySelector('[data-profile-tab="chart"]')?.click();
                   setTimeout(()=>{

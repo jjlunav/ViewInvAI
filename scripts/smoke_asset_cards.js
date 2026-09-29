@@ -22,8 +22,16 @@ window.checkAssetCards = async function () {
   test.innerHTML=quickProfileHtml(trStock,{preferTr:true});
   assert(test.querySelector('.profile-quote-lsx'),'TR profile hero does not use the LSX-only quote');
   assert(!test.querySelector('.profile-quote-extended'),'TR profile hero leaked US extended session');
-  assert(![...test.querySelectorAll('.profile-disclosure summary')].some(x=>/Sesiones de mercado/i.test(x.textContent||'')),'TR profile exposes US pre/post disclosure');
+  assert(test.querySelector('.profile-market-extra'),'TR profile does not keep market data permanently visible');
+  assert(!test.querySelector('.profile-market-sessions'),'TR profile exposes US pre/post sessions');
+  assert(!test.querySelector('[data-profile-panel="general"] details'),'TR general tab still contains collapsible market information');
  }
+ test.innerHTML=quickProfileHtml(stock,{preferTr:false});
+ assert(test.querySelector('.profile-market-sessions'),'US profile does not keep session data permanently visible');
+ assert(test.querySelector('.profile-market-extra'),'US profile does not keep market data permanently visible');
+ assert(!test.querySelector('[data-profile-panel="general"] details'),'US general tab still contains collapsible market information');
+ assert(test.querySelector('.profile-market-sessions .profile-session-strip'),'US session values are not visible in General');
+
  const relativeFixture=extendedSessionDisplay({price:100,premarketPrice:101,premarketChangePct:9},'premarket');
  assert(Math.abs(relativeFixture.change-1)<0.0001,'extended percentage is not calculated versus regular price');
 

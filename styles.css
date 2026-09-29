@@ -7271,3 +7271,13 @@ html[data-theme="light"] .tr-native-axis{
  .profile-ai-catalyst strong{font-size:12px!important}
  .profile-ai-catalyst span{font-size:10px!important}
 }
+
+/* 2026-09-29 · General tab market information is always visible, never collapsible */
+.profile-fixed-market{overflow:hidden}
+.profile-fixed-market-body{min-width:0}
+.profile-fixed-market.profile-market-sessions .profile-session-strip{
+ margin:10px 12px 12px!important
+}
+.profile-fixed-market.profile-market-extra .profile-stat-list{
+ padding-top:4px!important
+}

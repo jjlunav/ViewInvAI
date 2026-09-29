@@ -69,8 +69,10 @@ function profileGeneralExtraStats(s,isTr,se){
   profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),(s.fundamentalCurrency||'USD'))
  ].join('');
 }
-function profileDisclosure(label,body,meta=''){
- return '<details class="profile-disclosure"><summary><span><b>'+E(label)+'</b>'+(meta?'<small>'+E(meta)+'</small>':'')+'</span><i aria-hidden="true">＋</i></summary><div class="profile-disclosure-body">'+body+'</div></details>';
+function profileFixedMarketSection(label,body,meta='',className=''){
+ return '<section class="profile-section profile-stats-section profile-fixed-market '+E(className)+'">'+
+  '<div class="profile-section-head"><h3>'+E(label)+'</h3>'+(meta?'<span>'+E(meta)+'</span>':'')+'</div>'+
+  '<div class="profile-fixed-market-body">'+body+'</div></section>';
 }
 function profileFundamentalStats(s){
  let cur=E(s.fundamentalCurrency||'USD');
@@ -219,8 +221,8 @@ function quickProfileHtml(s,opts={}){
    profileBodyTabsHtml()+
    '<section class="profile-tab-panel active" data-profile-panel="general">'+
    '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
-   (isTr?'':profileDisclosure('Sesiones de mercado',profileSessionStrip(s),'Premarket · Regular · Postmarket · solo EEUU'))+
-   profileDisclosure('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización')+
+   (isTr?'':profileFixedMarketSection('Sesiones de mercado',profileSessionStrip(s),'Premarket · Regular · Postmarket · solo EEUU','profile-market-sessions'))+
+   profileFixedMarketSection('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización','profile-market-extra')+
    '</section>'+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-tab-panel" data-profile-panel="fundamental" hidden><section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section></section>'+
