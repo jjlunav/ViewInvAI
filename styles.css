@@ -7785,3 +7785,41 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 .settings-status-row.is-disabled{opacity:.5}
 .settings-status-row.is-disabled .settings-switch{pointer-events:none}
 .settings-master-notification-row{border-color:color-mix(in srgb,var(--accent, #5b8cff) 32%,transparent)}
+
+
+/* Portfolio AI strategy planner */
+#view-portfolios .portfolio-goal-form{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(180px,1fr))!important;
+ align-items:end!important;
+ gap:10px!important;
+ width:min(720px,100%)!important;
+}
+#view-portfolios .portfolio-goal-form label{min-width:0!important}
+#view-portfolios .portfolio-goal-form select{
+ width:100%!important;
+ min-height:44px!important;
+ padding:8px 10px!important;
+ border:1px solid var(--line)!important;
+ border-radius:8px!important;
+ background:var(--bg)!important;
+ color:var(--text)!important;
+ font-size:16px!important;
+ font-weight:750!important;
+}
+#view-portfolios .portfolio-goal-form .btn{min-height:44px!important}
+#view-portfolios .portfolio-goal-strategy{
+ grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+@media(max-width:820px){
+ #view-portfolios .portfolio-goal-form{
+  grid-template-columns:1fr!important;
+  width:100%!important;
+ }
+ #view-portfolios .portfolio-goal-strategy{
+  grid-template-columns:1fr 1fr!important;
+ }
+}
+@media(max-width:480px){
+ #view-portfolios .portfolio-goal-strategy{grid-template-columns:1fr!important}
+}
