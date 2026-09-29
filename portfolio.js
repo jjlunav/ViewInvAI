@@ -125,7 +125,9 @@ function portfolioMarketPreferTr(portfolio){
   return portfolioMarketScope(portfolio)==="tr";
 }
 function portfolioGoalTarget(){
-  return num(selectedPortfolioGoal()&&selectedPortfolioGoal().target_value_eur);
+  const goal=selectedPortfolioGoal()||state.goal||null;
+  if(!goal)return null;
+  return num(goal.target_value_eur!==undefined?goal.target_value_eur:goal.target_profit_eur);
 }
 
 function portfolioStockKeys() {
@@ -576,7 +578,7 @@ function portfolioGoalViewHtml(){
     :'El objetivo está alcanzado o no hay suficiente información de valoración para calcular la distancia.';
   return '<section class="portfolio-goal-view" data-goal-portfolio="'+esc(portfolio.id)+'">'+
     '<div class="portfolio-goal-hero"><div><small>MOTOR IA · '+esc(portfolio.name)+' · '+esc(marketLabel)+'</small><h2>Objetivo IA de '+esc(portfolio.name)+'</h2><p>El motor trabaja únicamente con esta cartera y con acciones compatibles con su mercado. Compara lo que ya tienes con Pulso IA, Radar y catalizadores para proponer mantener, reducir o estudiar una rotación. No ejecuta órdenes ni puede garantizar alcanzar el objetivo.</p></div>'+
-      '<form id="portfolioGoalForm" class="portfolio-goal-form" data-portfolio-id="'+esc(portfolio.id)+'"><label><span>Valor objetivo de la cartera</span><div><input name="targetValueEur" type="number" min="1" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
+      '<form id="portfolioGoalForm" class="portfolio-goal-form" data-portfolio-id="'+esc(portfolio.id)+'"><label><span>Valor objetivo de la cartera</span><div><input name="targetValueEur" type="number" min="1" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><input name="targetProfitEur" class="portfolio-goal-legacy-input" type="number" min="1" step="0.01" value="'+esc(targetValue)+'" hidden aria-hidden="true" tabindex="-1"><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-empty"><strong>Indica a qué valor quieres llevar esta cartera.</strong><span>Ejemplo: si hoy vale 90 € y marcas 1.000 €, el motor medirá la distancia desde esos 90 € y buscará alternativas compatibles con '+esc(marketLabel)+'.</span></div>':
     '<div class="portfolio-goal-metrics"><div><small>VALOR OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>CAPITAL ACTUAL</small><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong></div><div><small>FALTA PARA EL OBJETIVO</small><strong>'+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+'</strong></div><div><small>CRECIMIENTO NECESARIO</small><strong>'+(metrics.requiredMultiple===null?'—':'×'+formatNumber(metrics.requiredMultiple,2))+'</strong></div></div>'+
