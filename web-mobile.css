@@ -2118,3 +2118,11 @@ html,body{font-size:14px}
   border-color:rgba(165,183,255,.62)!important;
  }
 }
+
+/* Narrow portfolio goal layout belongs to web-mobile.css, not shared styles. */
+@media(max-width:480px){
+ #view-portfolios .portfolio-goal-strategy{grid-template-columns:1fr!important}
+}
+@media(max-width:430px){
+ #view-portfolios .portfolio-goal-metrics{grid-template-columns:1fr!important}
+}
