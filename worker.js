@@ -1274,12 +1274,100 @@ async function loadClinicalEventsForBackend(stock,target){
   }
 }
 
+function fdaStatusInfo(code){
+  const map={
+    AP:{label:"Aprobación",kind:"approved",impact:92},
+    TA:{label:"Aprobación tentativa",kind:"tentative_approval",impact:76},
+    CR:{label:"Complete Response",kind:"complete_response",impact:90},
+    NA:{label:"No aprobable",kind:"not_approvable",impact:90},
+    WD:{label:"Retirada",kind:"withdrawn",impact:82},
+    AE:{label:"Aprobable",kind:"approvable",impact:70}
+  };
+  return map[String(code||"").toUpperCase()]||{label:"Actualización regulatoria",kind:"regulatory_update",impact:64};
+}
+function fdaSubmissionDate(value){
+  const raw=String(value||"").trim();
+  if(/^\d{8}$/.test(raw))return new Date(raw.slice(0,4)+"-"+raw.slice(4,6)+"-"+raw.slice(6,8)+"T12:00:00Z");
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return new Date(raw+"T12:00:00Z");
+  return null;
+}
+async function loadFdaEventsForBackend(stock,target,env){
+  const sector=String(stock&&stock.sector||"")+" "+String(stock&&stock.industry||"");
+  if(!/health|biotech|biolog|pharma|therapeut|medical/i.test(sector))return[];
+  const company=String(stock&&stock.name||target&&target.name||"").trim(),query=clinicalCompanyQuery(company);
+  if(!query)return[];
+  const now=Date.now(),cacheKey="fda:"+query.toLowerCase(),cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<6*60*60*1000)return cached.rows;
+  try{
+    const url=new URL("https://api.fda.gov/drug/drugsfda.json");
+    url.searchParams.set("search",'sponsor_name:"'+query.replace(/"/g,"")+'"');
+    url.searchParams.set("limit","30");
+    const apiKey=String(env&&env.OPENFDA_API_KEY||"").trim();
+    if(apiKey)url.searchParams.set("api_key",apiKey);
+    const response=await fetch(url.toString(),{headers:{"Accept":"application/json","User-Agent":"ViewInvAI/0.6.18 market-research"}});
+    if(response.status===404){backendOfficialEventCache.set(cacheKey,{at:now,rows:[]});return[]}
+    if(!response.ok)throw new Error("openFDA "+response.status);
+    const payload=await response.json(),rows=[],cutoff=now-8*86400000;
+    for(const application of Array.isArray(payload&&payload.results)?payload.results:[]){
+      const sponsor=String(application&&application.sponsor_name||"").trim();
+      if(!clinicalSponsorMatches(company,sponsor))continue;
+      const applicationNumber=String(application&&application.application_number||"").trim(),digits=applicationNumber.replace(/\D/g,"");
+      const eventUrl=digits?"https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo="+encodeURIComponent(digits):"https://www.accessdata.fda.gov/scripts/cder/daf/";
+      const productNames=[];
+      for(const product of Array.isArray(application&&application.products)?application.products:[]){
+        const name=String(product&&product.brand_name||"").trim();
+        if(name&&!productNames.includes(name))productNames.push(name);
+      }
+      const productLabel=productNames.slice(0,3).join(", ");
+      for(const submission of Array.isArray(application&&application.submissions)?application.submissions:[]){
+        const when=fdaSubmissionDate(submission&&submission.submission_status_date);
+        if(!when||!Number.isFinite(when.getTime())||when.getTime()<cutoff||when.getTime()>now+86400000)continue;
+        const code=String(submission&&submission.submission_status||"").trim().toUpperCase(),status=fdaStatusInfo(code),
+          submissionType=String(submission&&submission.submission_type||"").trim().toUpperCase(),
+          submissionNumber=String(submission&&submission.submission_number||"").trim(),
+          detail=String(submission&&submission.submission_class_code_description||submission&&submission.submission_public_notes||"").trim(),
+          ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
+        let title="FDA · "+status.label+(productLabel?" · "+productLabel:"");
+        let fact=sponsor+" figura como sponsor oficial en Drugs@FDA. La submission "+((submissionType||submissionNumber)?submissionType+submissionNumber:"registrada")+" recibió estado "+(code||"sin código")+" ("+status.label+") el "+when.toISOString().slice(0,10)+".";
+        if(detail)fact+=" "+detail.slice(0,320);
+        rows.push({
+          id:"fda:"+applicationNumber+":"+submissionType+":"+submissionNumber+":"+when.toISOString().slice(0,10),
+          eventKind:"news",
+          type:"medical",
+          ticker,
+          name:company,
+          exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+          date:when.toISOString(),
+          title:title.slice(0,240),
+          fact:fact.slice(0,800),
+          impact:"Una decisión regulatoria de FDA puede alterar materialmente expectativas y volatilidad; el registro no predice la reacción bursátil.",
+          impactScore:status.impact,
+          verification:"Registro oficial FDA / Drugs@FDA · sponsor validado",
+          source:"FDA / Drugs@FDA",
+          sourceFamily:"fda",
+          official:true,
+          sourceCount:1,
+          independentSourceCount:0,
+          corroborated:false,
+          url:eventUrl
+        });
+      }
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows});
+    return rows;
+  }catch(error){
+    console.warn("Followed-stock FDA events unavailable",company,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
 async function loadAllOfficialEventsForBackend(stock,target,env){
-  const [sec,clinical]=await Promise.all([
+  const [sec,clinical,fda]=await Promise.all([
     loadOfficialEventsForBackend(stock,target,env),
-    loadClinicalEventsForBackend(stock,target)
+    loadClinicalEventsForBackend(stock,target),
+    loadFdaEventsForBackend(stock,target,env)
   ]);
-  return [...sec,...clinical];
+  return [...sec,...clinical,...fda];
 }
 
 
