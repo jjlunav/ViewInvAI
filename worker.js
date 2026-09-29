@@ -1069,8 +1069,10 @@ async function loadNewsForBackend(stock,target){
     if(!response.ok)throw new Error("TradingView news "+response.status);
     const payload=await response.json();
     const rows=(Array.isArray(payload&&payload.items)?payload.items:[]).slice(0,12).map(item=>{
-      const published=new Date(item&&item.published||0);
-      if(!Number.isFinite(published.getTime()))return null;
+      const rawPublished=item&&item.published;
+      const numericPublished=typeof rawPublished==="number"?rawPublished:Number.NaN;
+      const published=new Date(Number.isFinite(numericPublished)&&numericPublished>0&&numericPublished<1e12?numericPublished*1000:(rawPublished||0));
+      if(!Number.isFinite(published.getTime())||published.getTime()<=0)return null;
       const title=String(item&&item.title||"").trim();
       if(!title)return null;
       let link=String(item&&item.link||"").trim();
