@@ -1,79 +1,128 @@
 /*
  * ViewInvAI events
  * ----------------
- * Shared event/news normalization plus Future Potential and Calendar views.
+ * Shared event/news normalization plus one fused Future Potential view.
  */
-
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
-function safeExternalUrl(value){
- try{
-  let u=new URL(String(value||''));
-  return u.protocol==='https:'?u.href:'';
- }catch(_){return''}
-}
-function EU(e){let u=safeExternalUrl(e.url);return u?'<a class="event-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">Abrir noticia / fuente ↗</a>':''}
+function safeExternalUrl(value){try{let u=new URL(String(value||''));return u.protocol==='https:'?u.href:''}catch(_){return''}}
 function eventTime(e){
  let d=e&&e.date?new Date(e.date):null;
  if(d&&!isNaN(d)){
   let parts=new Intl.DateTimeFormat('es-ES',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
-  let p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
-  let utcH=d.getUTCHours(),utcM=d.getUTCMinutes(),utcS=d.getUTCSeconds();
+  let p=Object.fromEntries(parts.map(x=>[x.type,x.value])),utcH=d.getUTCHours(),utcM=d.getUTCMinutes(),utcS=d.getUTCSeconds();
   if(e.eventKind==='news'||utcH||utcM||utcS)return p.hour+':'+p.minute+' NY';
  }
  let code=N(e&&e.timeCode);
- if(code!==null&&code>60&&code<86400){
-  let h=Math.floor(code/3600),m=Math.floor((code%3600)/60);
-  if(h>=0&&h<24)return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' NY';
- }
+ if(code!==null&&code>60&&code<86400){let h=Math.floor(code/3600),m=Math.floor((code%3600)/60);if(h>=0&&h<24)return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' NY'}
  return '';
 }
 function eventWhen(e){let t=eventTime(e);return DF(e.date)+(t?' · '+t:'')}
 function eventSources(e){
  let src=Array.isArray(e.sources)&&e.sources.length?e.sources:(e.source?[{name:e.source,url:e.url}]:[]);
  if(!src.length)return '';
- let linksHtml=src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url),kind=E(s.kind||'');return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"'+(kind?' title="'+kind+'"':'')+' href="'+E(u)+'">'+name+' ↗</a>':'<span'+(kind?' title="'+kind+'"':'')+'>'+name+'</span>'}).join('');
- return '<div class="event-sources"><span class="verification">'+E(e.verification||'Fuente validada')+'</span>'+linksHtml+'</div>';
+ return '<div class="event-sources">'+src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url);return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">'+name+' ↗</a>':'<span>'+name+'</span>'}).join('')+'</div>';
 }
 function eventItem(e){
  let kind=e.eventKind==='news'?'Noticia':'Evento previsto',label=EL(e);
  return '<div class="event-item"><div class="event-item-head"><div><strong>'+E(label)+'</strong><span>'+E(kind)+'</span></div><time>'+E(eventWhen(e))+'</time></div><div class="event-title">'+E(e.title||e.fact||'Catalizador detectado')+'</div>'+(e.fact&&e.fact!==e.title?'<div class="event-context">'+E(e.fact)+'</div>':'')+'<div class="event-impact"><strong>Por qué importa:</strong> '+E(e.hypothesis||'Puede aumentar la volatilidad; no implica una dirección concreta.')+'</div>'+eventSources(e)+'</div>';
 }
-function futureWindowEvent(e,h,now){
- let d=new Date(e.date).getTime();
- if(!Number.isFinite(d))return false;
- let end=now+h*864e5;
- if(e.eventKind==='news'){
-  let today=new Date();today.setHours(0,0,0,0);
-  return d>=today.getTime()&&d<=now+3600e3;
- }
- return d>=now-3600e3&&d<=end;
-}
-function groupFutureEvents(events){
- let map=new Map();
- for(let e of events){
-  let key=(e.exchange||'')+':'+(e.ticker||'');
-  if(!map.has(key))map.set(key,[]);
-  map.get(key).push(e);
- }
- return [...map.entries()].map(([key,items])=>{
-  items.sort((a,b)=>new Date(a.date)-new Date(b.date)||((b.impactScore||0)-(a.impactScore||0)));
-  return {key,items,first:items[0],maxImpact:Math.max(...items.map(x=>N(x.impactScore)||0))};
- }).sort((a,b)=>new Date(a.first.date)-new Date(b.first.date)||b.maxImpact-a.maxImpact);
-}
-
-
 function stockEvents(s){
  if(!s)return[];
  let refs=new Set();
  for(let value of [s.isin,s.usIsin,s.trIsin]){let ref=isinRef(value);if(ref)refs.add(ref)}
  let exact=tickerRef(s.ticker,s.exchange),any=tickerRef(s.ticker,'*');if(exact)refs.add(exact);if(any)refs.add(any);
  let out=[],seen=new Set();
- for(let ref of refs)for(let event of (eventIndexByRef.get(ref)||[])){
-  if(seen.has(event))continue;seen.add(event);out.push(event);
- }
+ for(let ref of refs)for(let event of (eventIndexByRef.get(ref)||[])){if(seen.has(event))continue;seen.add(event);out.push(event)}
  return out;
 }
+function futureSectorForEvent(e){let s=stockForEvent(e);return String((s&&s.sector)||(s&&s.industry)||'Sin sector').trim()||'Sin sector'}
+function syncFutureSectorOptions(){
+ let select=document.querySelector('#futureSector');if(!select)return;
+ let current=select.value||'all';
+ let values=[...new Set((db.events||[]).map(futureSectorForEvent).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+ select.innerHTML='<option value="all">Todos los sectores</option>'+values.map(v=>'<option value="'+E(v)+'">'+E(v)+'</option>').join('');
+ if(values.includes(current))select.value=current;else select.value='all';
+}
+function futureWindowEvent(e,h,now,from,to){
+ let time=new Date(e.date||0).getTime();if(!Number.isFinite(time))return false;
+ if(from!==null&&time<from)return false;if(to!==null&&time>to)return false;
+ if(from!==null||to!==null)return true;
+ if(e.eventKind==='news')return time>=now-24*3600e3&&time<=now+3600e3;
+ return time>=now-3600e3&&time<=now+h*864e5;
+}
+function groupFutureEvents(events){
+ let map=new Map();
+ for(let e of events){let key=(e.exchange||'')+':'+(e.ticker||'');if(!map.has(key))map.set(key,[]);map.get(key).push(e)}
+ return [...map.entries()].map(([key,items])=>{
+  items.sort((a,b)=>new Date(a.date)-new Date(b.date)||((b.impactScore||0)-(a.impactScore||0)));
+  const future=items.filter(e=>new Date(e.date).getTime()>=Date.now()-3600e3);
+  const first=future[0]||items.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+  return{key,items,first,maxImpact:Math.max(...items.map(x=>N(x.impactScore)||0))};
+ }).sort((a,b)=>{
+  const af=new Date(a.first.date).getTime(),bf=new Date(b.first.date).getTime();
+  const an=af>=Date.now()-3600e3,bn=bf>=Date.now()-3600e3;
+  if(an!==bn)return an?-1:1;
+  return an?af-bf:bf-af||b.maxImpact-a.maxImpact;
+ });
+}
+function futureRow(group,index,trOnly){
+ let e=group.first,s=stockForEvent(e)||e,preferTr=trOnly&&trTradable(s),key=stockKey(s),label=EL(e),when=eventWhen(e);
+ let q=canonicalQuote(s,preferTr),price=N(q&&q.price),change=preferTr?trLiveChange(s):(usLiveChange(s)??SC(s,currentMarketSession()));
+ let priceHtml=preferTr&&trTradable(s)
+  ?'<span class="future-price" data-tr-live-key="'+E(key)+'">'+pricePairInner(s,price,true)+'</span>'
+  :'<span class="future-price">'+pricePair(s,price,false)+'</span>';
+ let changeHtml=preferTr&&trTradable(s)
+  ?'<span class="future-change '+C(change)+'" data-tr-live-change-key="'+E(key)+'">'+PC(change)+'</span>'
+  :'<span class="future-change '+C(change)+'">'+PC(change)+'</span>';
+ let details=group.items.map(eventItem).join('');
+ return '<article class="future-list-item">'+
+  '<div class="future-list-row stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
+   '<div class="future-identity">'+favButton(s,preferTr)+'<div><strong><em>#'+(index+1)+'</em>'+E(s.name||s.ticker||'—')+'</strong><small>'+E([preferTr?(s.trTicker||s.ticker):s.ticker,preferTr?(s.trExchange||'LSX'):s.exchange].filter(Boolean).join(' · '))+'</small></div></div>'+
+   '<div class="future-catalyst"><small>CATALIZADOR</small><strong>'+E(label)+'</strong><span title="'+E(e.title||e.fact||'')+'">'+E(e.title||e.fact||label)+'</span></div>'+
+   '<div class="future-when"><small>FECHA</small><strong>'+E(when)+'</strong>'+(group.items.length>1?'<span>'+group.items.length+' eventos/noticias</span>':'')+'</div>'+
+   '<div class="future-quote"><small>PRECIO</small>'+priceHtml+'</div>'+
+   '<div class="future-move"><small>VARIACIÓN</small>'+changeHtml+'</div>'+
+   '<span class="future-open">›</span>'+
+  '</div>'+
+  '<details class="future-row-details"><summary>Más información del catalizador</summary><div>'+details+'</div></details>'+
+ '</article>';
+}
+function renderFuture(){
+ const horizon=+document.querySelector('#futureHorizon')?.value||14,type=document.querySelector('#futureType')?.value||'all',sector=document.querySelector('#futureSector')?.value||'all',trOnly=!!document.querySelector('#futureTrOnly')?.checked,now=Date.now();
+ const fromValue=document.querySelector('#futureDateFrom')?.value||'',toValue=document.querySelector('#futureDateTo')?.value||'';
+ const from=fromValue?new Date(fromValue+'T00:00:00').getTime():null,to=toValue?new Date(toValue+'T23:59:59').getTime():null;
+ syncFutureSectorOptions();
+ let filtered=(db.events||[]).filter(e=>{
+  if(!futureWindowEvent(e,horizon,now,from,to))return false;
+  if(type!=='all'&&e.type!==type)return false;
+  if(sector!=='all'&&futureSectorForEvent(e)!==sector)return false;
+  let s=stockForEvent(e);if(!s)return false;
+  if(trOnly){
+   if(!trTradable(s))return false;
+   if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s));
+  }
+  return true;
+ });
+ let groups=groupFutureEvents(filtered).slice(0,180),box=document.querySelector('#futureResults');
+ if(!box)return;
+ box.innerHTML=groups.length?groups.map((g,i)=>futureRow(g,i,trOnly)).join(''):'<div class="empty-state">No hay catalizadores o noticias que cumplan estos filtros.</div>';
+ requestAnimationFrame(()=>observeTrLivePrices(box));
+}
+function initEventViewInteractions(){
+ ['futureHorizon','futureType','futureSector','futureDateFrom','futureDateTo','futureTrOnly'].forEach(id=>document.querySelector('#'+id)?.addEventListener('change',renderFuture));
+ document.querySelector('#futureResetFilters')?.addEventListener('click',()=>{
+  const horizon=document.querySelector('#futureHorizon'),type=document.querySelector('#futureType'),sector=document.querySelector('#futureSector'),from=document.querySelector('#futureDateFrom'),to=document.querySelector('#futureDateTo'),tr=document.querySelector('#futureTrOnly');
+  if(horizon)horizon.value='14';if(type)type.value='all';if(sector)sector.value='all';if(from)from.value='';if(to)to.value='';if(tr)tr.checked=true;renderFuture();
+ });
+}
+
+
+/*
+ * Compatibility surface for the old Calendar renderer.
+ * Calendar is intentionally fused into Potencial futuro; these helpers keep
+ * old mobile/smoke/history callers routed to the single fused data model.
+ */
 const EVENT_MOBILE_GROUPS=[
  {key:'event',label:'Evento'},
  {key:'market',label:'Mercado'},
@@ -92,89 +141,7 @@ function eventMobileRow(scope,s,event,index,label,when,count=1,preferTr=false){
  return standardStockCard(s,index,{se:currentMarketSession(),preferTr,context:scope,hint:label+' · '+when,detailsHtml:'',metaHtml:meta});
 }
 function eventMobileList(scope,rows){
- return '<div class="event-mobile-rows unified-asset-list">'+rows.join('')+'</div>';
+ return '<div class="event-mobile-rows unified-asset-list">'+(Array.isArray(rows)?rows.join(''):'')+'</div>';
 }
+function renderCalendar(){return renderFuture()}
 
-function renderFuture(){
- let h=+$('#futureHorizon').value,t=$('#futureType').value,tr=$('#futureTrOnly').checked,now=Date.now();
- let filtered=(db.events||[]).filter(e=>{
-  if(!futureWindowEvent(e,h,now)||(t!=='all'&&e.type!==t))return false;
-  let s=stockForEvent(e);
-  if(!s)return false;
-  if(tr&&!trTradable(s))return false;
-  let q=tr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,SES());
-  return N(q&&q.price)!==null;
- });
- let groups=groupFutureEvents(filtered);
- if(groups.length){
-  let shown=groups.slice(0,180);
-  $('#futureResults').innerHTML=eventCompactListView()
-   ?eventMobileList('future',shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e,count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);return eventMobileRow('future',s,e,i,label,when,count,tr)}))
-   :shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e;let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=tr;let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'})}).join('');
- }else $('#futureResults').innerHTML='<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
-}
-
-const calendarFilter={from:'',to:'',catalyst:'all',sector:'all'};
-function calendarEventType(e){
- return String(e&&e.type||e&&e.eventKind||'otro').trim()||'otro';
-}
-function calendarStockSector(e){
- let s=stockForEvent(e);
- return String((s&&s.sector)||(s&&s.industry)||'').trim();
-}
-function syncCalendarFilterOptions(){
- let cat=$('#calendarCatalyst'),sector=$('#calendarSector');if(!cat||!sector)return;
- let cats=[...new Set((db.events||[]).map(calendarEventType).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
- let sectors=[...new Set((db.events||[]).map(calendarStockSector).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
- let cv=calendarFilter.catalyst,sv=calendarFilter.sector;
- cat.innerHTML='<option value="all">Todos</option>'+cats.map(v=>'<option value="'+E(v)+'" '+(v===cv?'selected':'')+'>'+E(v)+'</option>').join('');
- sector.innerHTML='<option value="all">Todos</option>'+sectors.map(v=>'<option value="'+E(v)+'" '+(v===sv?'selected':'')+'>'+E(v)+'</option>').join('');
-}
-function calendarFilteredRows(){
- let from=calendarFilter.from?new Date(calendarFilter.from+'T00:00:00').getTime():null;
- let to=calendarFilter.to?new Date(calendarFilter.to+'T23:59:59').getTime():null;
- return [...(db.events||[])].filter(e=>{
-  let t=new Date(e.date||0).getTime();if(!Number.isFinite(t))return false;
-  if(from!==null&&t<from)return false;if(to!==null&&t>to)return false;
-  if(calendarFilter.catalyst!=='all'&&calendarEventType(e)!==calendarFilter.catalyst)return false;
-  if(calendarFilter.sector!=='all'&&calendarStockSector(e)!==calendarFilter.sector)return false;
-  return true;
- }).sort((x,y)=>new Date(y.date)-new Date(x.date));
-}
-function renderCalendar(){
- syncCalendarFilterOptions();
- let rows=calendarFilteredRows();
- let label=$('#calendarFilterLabel');if(label)label.textContent=(calendarFilter.from||calendarFilter.to||calendarFilter.catalyst!=='all'||calendarFilter.sector!=='all')?'Cambiar filtro':'Filtro';
- if(rows.length){
-  let shown=rows.slice(0,400);
-  $('#calendarResults').innerHTML=eventCompactListView()
-   ?eventMobileList('calendar',shown.map((e,i)=>{let s=stockForEvent(e)||e,label=EL(e),when=DF(e.date);return eventMobileRow('calendar',s,e,i,label,when,1,false)}))
-   :shown.map((e,i)=>{let s=stockForEvent(e)||e;let label=EL(e),when=DF(e.date),preferTr=false;return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'})}).join('');
- }else $('#calendarResults').innerHTML='<div class="empty-state">Sin eventos o noticias disponibles.</div>';
-}
-
-function initEventViewInteractions(){
- document.addEventListener('click',e=>{
-  let tab=e.target.closest&&e.target.closest('[data-event-mobile-group]');
-  if(!tab)return;
-  let scope=tab.dataset.eventMobileScope||'future';
-  eventMobileUi[scope]=tab.dataset.eventMobileGroup||'event';
-  if(scope==='future')renderFuture();else renderCalendar();
- });
- ['futureHorizon','futureType','futureTrOnly'].forEach(id=>{
-  $('#'+id)?.addEventListener('change',renderFuture);
- });
- $('#calendarApplyFilter')?.addEventListener('click',()=>{
-  calendarFilter.from=$('#calendarDateFrom')?.value||'';
-  calendarFilter.to=$('#calendarDateTo')?.value||'';
-  calendarFilter.catalyst=$('#calendarCatalyst')?.value||'all';
-  calendarFilter.sector=$('#calendarSector')?.value||'all';
-  renderCalendar();
- });
- $('#calendarResetFilter')?.addEventListener('click',()=>{
-  calendarFilter.from='';calendarFilter.to='';calendarFilter.catalyst='all';calendarFilter.sector='all';
-  if($('#calendarDateFrom'))$('#calendarDateFrom').value='';
-  if($('#calendarDateTo'))$('#calendarDateTo').value='';
-  syncCalendarFilterOptions();renderCalendar();
- });
-}

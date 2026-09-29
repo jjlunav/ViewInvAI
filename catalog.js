@@ -12,7 +12,7 @@ const CATALOG_COLUMNS={
   {id:'fav',label:'★',type:'html',value:s=>favorites.has(stockKey(s))?1:0,cell:s=>favButton(s)},
   {id:'tickerTr',label:'Ticker TR',type:'text',value:s=>s.trTicker||'',cell:s=>'<strong class="table-ticker">'+E(s.trTicker||'—')+'</strong>'},
   {id:'tickerUs',label:'Ticker EEUU',type:'text',value:s=>s.ticker||'',cell:s=>'<span class="table-us-ticker">'+E(s.ticker||'—')+'</span>'},
-  {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>E(s.name||'—')},
+  {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>'<span class="catalog-name-cell" title="'+E(s.name||'')+'">'+E(s.name||'—')+'</span>'},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.trExchange||'LSX',cell:s=>E(s.trExchange||'LSX')},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).eur,cell:(s,se)=>trPriceCell(s,'eur',se)},
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).usd,cell:(s,se)=>trPriceCell(s,'usd',se)},
@@ -36,7 +36,7 @@ const CATALOG_COLUMNS={
  us:[
   {id:'fav',label:'★',type:'html',value:s=>favorites.has(stockKey(s))?1:0,cell:s=>favButton(s)},
   {id:'ticker',label:'Ticker',type:'text',value:s=>s.ticker||'',cell:s=>'<strong class="table-ticker">'+E(s.ticker||'—')+'</strong>'},
-  {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>E(s.name||'—')},
+  {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>'<span class="catalog-name-cell" title="'+E(s.name||'')+'">'+E(s.name||'—')+'</span>'},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.exchange||'',cell:s=>E(s.exchange||'—')},
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>usLivePrice(s)??SP(s,se),cell:(s,se)=>usPriceCell(s,'usd',se)},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>usPriceValues(s,SP(s,se)).eur,cell:(s,se)=>usPriceCell(s,'eur',se)},
@@ -75,7 +75,43 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'returns',label:'Rentabilidad',tr:['week','month'],us:['week','month']},
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
-const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'}};
+const catalogState={
+ tr:{sort:'tickerTr',dir:1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'},
+ us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'}
+};
+const CATALOG_DEFAULT_WIDTHS={
+ fav:42,tickerTr:92,tickerUs:92,ticker:92,name:320,exchange:90,priceEur:108,priceUsd:108,change:82,bid:92,ask:92,
+ volume:105,avgVolume:118,relVolume:110,rsi:72,adx:72,ema20:92,ema50:92,week:82,month:82,wkn:96,isin:132,feed:118,
+ earnings:104,premarketPrice:102,premarketChange:82,premarketVolume:100,regularPrice:108,regularChange:88,postmarketPrice:102,
+ postmarketChange:82,postmarketVolume:100,tr:118,updated:132
+};
+function catalogPrefScope(mode){return 'catalog:'+mode}
+function catalogDefaultWidths(mode){
+ const out={};for(const c of CATALOG_COLUMNS[mode])out[c.id]=CATALOG_DEFAULT_WIDTHS[c.id]||110;return out;
+}
+function catalogApplyPreferences(mode,prefs){
+ if(!catalogState[mode]||!prefs||typeof prefs!=='object')return;
+ const ids=CATALOG_COLUMNS[mode].map(c=>c.id);
+ if(Array.isArray(prefs.order)){
+  const saved=prefs.order.filter(id=>ids.includes(id));
+  catalogState[mode].order=[...saved,...ids.filter(id=>!saved.includes(id))];
+ }
+ const defaults=catalogDefaultWidths(mode),incoming=prefs.widths&&typeof prefs.widths==='object'?prefs.widths:{};
+ catalogState[mode].widths={...defaults};
+ for(const id of ids){
+  const n=Number(incoming[id]);if(Number.isFinite(n))catalogState[mode].widths[id]=Math.max(42,Math.min(620,Math.round(n)));
+ }
+}
+function catalogLayoutPreferences(mode){
+ return{order:[...catalogLoadOrder(mode)],widths:{...catalogWidths(mode)}};
+}
+function catalogWidths(mode){
+ if(catalogState[mode].widths)return catalogState[mode].widths;
+ const prefs=window.ViewInvAIUiPreferences?.get?.(catalogPrefScope(mode),{})||{};
+ catalogApplyPreferences(mode,prefs);
+ if(!catalogState[mode].widths)catalogState[mode].widths=catalogDefaultWidths(mode);
+ return catalogState[mode].widths;
+}
 function catalogIsMobile(){return window.matchMedia&&window.matchMedia('(max-width:820px)').matches}
 function catalogPageSize(){return catalogIsMobile()?CATALOG_MOBILE_PAGE_SIZE:CATALOG_PAGE_SIZE}
 function catalogResetLimit(mode){if(catalogState[mode])catalogState[mode].limit=catalogPageSize()}
@@ -83,12 +119,18 @@ function catalogStorageKey(mode){return 'viewinvai:catalogColumns:'+mode+':v1'}
 function catalogLoadOrder(mode){
  if(catalogState[mode].order)return catalogState[mode].order;
  let ids=CATALOG_COLUMNS[mode].map(c=>c.id),saved=[];
- try{saved=JSON.parse(localStorage.getItem(catalogStorageKey(mode))||'[]')}catch(_){}
+ const prefs=window.ViewInvAIUiPreferences?.get?.(catalogPrefScope(mode),{})||{};
+ if(Array.isArray(prefs.order))saved=prefs.order;
+ else try{saved=JSON.parse(localStorage.getItem(catalogStorageKey(mode))||'[]')}catch(_){}
  saved=Array.isArray(saved)?saved.filter(x=>ids.includes(x)):[];
  catalogState[mode].order=[...saved,...ids.filter(x=>!saved.includes(x))];
  return catalogState[mode].order;
 }
-function catalogSaveOrder(mode){try{localStorage.setItem(catalogStorageKey(mode),JSON.stringify(catalogState[mode].order||[]))}catch(_){}}
+function catalogSaveLayout(mode){
+ try{localStorage.setItem(catalogStorageKey(mode),JSON.stringify(catalogState[mode].order||[]))}catch(_){}
+ window.ViewInvAIUiPreferences?.save?.(catalogPrefScope(mode),catalogLayoutPreferences(mode));
+}
+function catalogSaveOrder(mode){catalogSaveLayout(mode)}
 function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
 function catalogSession(mode){
  if(mode==='tr')return 'regular';
@@ -229,10 +271,12 @@ function catalogTable(mode,rows,se){
  if(mobile){
   return {html:(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+more,count:total,shown:shown.length};
  }
- let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" data-help-title="'+E(c.label)+'" data-help="Haz clic para ordenar por '+E(c.label)+'. Vuelve a pulsar para invertir el orden. También puedes arrastrar la cabecera para mover esta columna." class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i></th>').join('');
+ let widths=catalogWidths(mode);
+ let colgroup='<colgroup>'+cols.map(c=>'<col data-catalog-col-width="'+E(c.id)+'" style="width:'+Math.round(widths[c.id]||110)+'px">').join('')+'</colgroup>';
+ let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" data-help-title="'+E(c.label)+'" data-help="Haz clic para ordenar; arrastra para mover la columna; usa el borde derecho para cambiar su ancho." class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i><button type="button" class="catalog-column-resizer" data-catalog-resize="'+E(c.id)+'" data-mode="'+mode+'" aria-label="Cambiar ancho de '+E(c.label)+'" title="Arrastra para cambiar el ancho"></button></th>').join('');
  let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" data-help-title="Filtro · '+E(c.label)+'" data-help="Filtra '+E(c.label)+'. Números: &gt;10, &lt;5, 10..30, 250k, 2.5m. Texto: usa | para alternativas." value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 / 10..30':'Filtrar')+'"></th>').join('');
  let body=shown.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
- return {html:'<div class="catalog-table-wrap"><table class="catalog-table" data-mode="'+mode+'"><thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table></div>'+more,count:total,shown:shown.length};
+ return {html:'<div class="catalog-table-wrap"><table class="catalog-table catalog-resizable-table" data-mode="'+mode+'">'+colgroup+'<thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table></div>'+more,count:total,shown:shown.length};
 }
 function renderCatalogTable(mode){
  let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
@@ -244,7 +288,7 @@ function renderCatalogTable(mode){
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }
 function resetCatalogColumns(mode){
- catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].filters={};catalogState[mode].sector='all';catalogState[mode].industry='all';catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogResetLimit(mode);catalogSaveOrder(mode);renderCatalogTable(mode);
+ catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].widths=catalogDefaultWidths(mode);catalogState[mode].filters={};catalogState[mode].sector='all';catalogState[mode].industry='all';catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogResetLimit(mode);catalogSaveLayout(mode);renderCatalogTable(mode);
 }
 function renderCatalog(){renderCatalogTable('tr')}
 function renderCatalogUS(){renderCatalogTable('us')}
@@ -286,6 +330,7 @@ function initCatalogInteractions(){
   if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||catalogPageSize())+catalogPageSize();renderCatalogTable(mode)}return}
   let sortDir=e.target.closest&&e.target.closest('.catalog-mobile-sort-dir');
   if(sortDir){e.preventDefault();let mode=sortDir.dataset.mode;if(catalogState[mode]){catalogState[mode].dir*=-1;catalogResetLimit(mode);renderCatalogTable(mode)}return}
+  if(e.target.closest&&e.target.closest('.catalog-column-resizer'))return;
   let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
   if(!th)return;
   let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
@@ -304,6 +349,39 @@ function initCatalogInteractions(){
   let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||!draggedCatalogCol||th.dataset.mode!==draggedCatalogCol.mode)return;e.preventDefault();
   let mode=draggedCatalogCol.mode,order=[...catalogLoadOrder(mode)],from=order.indexOf(draggedCatalogCol.id),to=order.indexOf(th.dataset.catalogCol);
   if(from<0||to<0||from===to)return;
-  order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveOrder(mode);renderCatalogTable(mode);
+  order.splice(from,1);order.splice(to,0,draggedCatalogCol.id);catalogState[mode].order=order;catalogSaveLayout(mode);renderCatalogTable(mode);
+ });
+ let catalogResize=null;
+ document.addEventListener('pointerdown',e=>{
+  const handle=e.target.closest&&e.target.closest('.catalog-column-resizer');if(!handle)return;
+  e.preventDefault();e.stopPropagation();
+  const mode=handle.dataset.mode,id=handle.dataset.catalogResize,th=handle.closest('th');if(!catalogState[mode]||!id||!th)return;
+  catalogResize={mode,id,startX:e.clientX,startWidth:th.getBoundingClientRect().width};
+  handle.setPointerCapture?.(e.pointerId);
+  document.body.classList.add('column-resizing');
+ });
+ document.addEventListener('pointermove',e=>{
+  if(!catalogResize)return;
+  const {mode,id,startX,startWidth}=catalogResize,next=Math.max(42,Math.min(620,Math.round(startWidth+e.clientX-startX)));
+  catalogWidths(mode)[id]=next;
+  const table=document.querySelector('.catalog-table[data-mode="'+mode+'"]'),col=table&&table.querySelector('col[data-catalog-col-width="'+id+'"]');
+  if(col)col.style.width=next+'px';
+ });
+ document.addEventListener('pointerup',()=>{
+  if(!catalogResize)return;
+  const mode=catalogResize.mode;catalogResize=null;document.body.classList.remove('column-resizing');catalogSaveLayout(mode);
+ });
+ ['tr','us'].forEach(mode=>{
+  const current=catalogLayoutPreferences(mode);
+  window.ViewInvAIUiPreferences?.load?.(catalogPrefScope(mode),current).then(prefs=>{
+   catalogApplyPreferences(mode,prefs);
+   if((mode==='tr'&&state.currentView==='catalog')||(mode==='us'&&state.currentView==='catalogUS'))renderCatalogTable(mode);
+  }).catch(()=>{});
+ });
+ window.addEventListener('viewinvai:ui-preferences',event=>{
+  const scope=String(event.detail&&event.detail.scope||'');
+  const mode=scope==='catalog:tr'?'tr':scope==='catalog:us'?'us':'';
+  if(!mode)return;catalogApplyPreferences(mode,event.detail.preferences||{});
+  if((mode==='tr'&&state.currentView==='catalog')||(mode==='us'&&state.currentView==='catalogUS'))renderCatalogTable(mode);
  });
 }

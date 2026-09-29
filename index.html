@@ -15,7 +15,7 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260929r13">
+  <link rel="stylesheet" href="styles.css?v=20260929r18">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
@@ -40,16 +40,15 @@
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
       <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
-      <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
-      <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
       <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Pulso IA</button>
       <button class="nav-item" data-view="entry"><span>◈</span>Radar de entrada</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
+      <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
+      <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
-      <button class="nav-item" data-view="calendar"><span>▦</span>Calendario y noticias</button>
       <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
     </nav>
 
@@ -251,6 +250,7 @@
         <button type="button" class="filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Fondos y ETFs" aria-label="Abrir filtros" title="Filtros">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>
         </button>
+        <button type="button" class="btn ghost compact fund-reset-columns" id="fundResetColumns" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
         <div class="fund-toolbar-advanced filter-sheet-source" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
@@ -295,61 +295,32 @@
     <section class="view" id="view-heatmap">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Mapa de calor</h1>
-          <p class="lead">Vista visual del mercado agrupada por sectores. El tamaño de cada acción representa su capitalización bursátil cuando está disponible y el color refleja la variación de la sesión seleccionada.</p>
+          <h1>Mapa de calor <span class="heading-badge">TRADINGVIEW</span></h1>
+          <p class="lead">S&P 500 agrupado por sectores. El tamaño representa capitalización y el color la variación diaria, usando el widget oficial de TradingView.</p>
         </div>
-        <div class="heading-actions"><button type="button" class="section-help" data-help-section="heatmap" aria-label="Ayuda sobre Mapa de calor">?</button><button class="btn icon-btn" id="refreshHeatmap" title="Actualizar">↻</button></div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="heatmap" aria-label="Ayuda sobre Mapa de calor">?</button><button class="btn icon-btn" id="refreshHeatmap" title="Recargar mapa">↻</button></div>
       </div>
-      <div class="heatmap-toolbar">
-        <div class="heatmap-market-stack">
-          <div class="market-tabs compact-tabs heatmap-market-tabs" data-tab-group="heatmapMarket">
-            <button class="tab active" data-tab="tr">Trade Republic</button>
-            <button class="tab" data-tab="us">EEUU</button>
-          </div>
-          <div id="heatmapSectorTabs" class="heatmap-sector-tabs" aria-label="Sectores del mapa"></div>
-        </div>
-        <select id="heatmapSession" class="select">
-          <option value="auto">Sesión automática</option>
-          <option value="premarket">Premarket</option>
-          <option value="regular">Sesión regular</option>
-          <option value="postmarket">Postmarket</option>
-        </select>
-        <select id="heatmapLimit" class="select">
-          <option value="100">Top 100 por capitalización</option>
-          <option value="250" selected>Top 250 por capitalización</option>
-          <option value="500">Top 500 por capitalización</option>
-        </select>
-        <div class="heatmap-legend" aria-label="Leyenda del mapa de calor">
-          <span class="heat-legend loss-strong">≤ -5%</span>
-          <span class="heat-legend loss">-2%</span>
-          <span class="heat-legend flat">0%</span>
-          <span class="heat-legend gain">+2%</span>
-          <span class="heat-legend gain-strong">≥ +5%</span>
-        </div>
-      </div>
-      <div class="status-line">
-        <span id="heatmapSessionText">Sesión automática</span>
-        <span>·</span>
-        <span id="heatmapCount">0 acciones</span>
-        <span>·</span>
-        <span id="heatmapUpdated">pendiente</span>
-      </div>
-      <div id="heatmapResults" class="heatmap-board"><div class="empty-state">Cargando mapa de calor…</div></div>
+      <div id="heatmapResults" class="tradingview-heatmap-shell"><div class="empty-state">Cargando mapa de calor oficial de TradingView…</div></div>
     </section>
 
     <section class="view" id="view-future">
       <div class="page-heading compact-heading">
-        <div><h1>Potencial futuro <span class="heading-badge ai-badge">IA · CATALIZADORES</span></h1><p class="lead">Localiza acciones con catalizadores próximos o noticias recientes capaces de aumentar la volatilidad antes del movimiento. Puedes limitar por horizonte temporal, tipo de evento y disponibilidad confirmada en Trade Republic.</p></div>
+        <div><h1>Potencial futuro <span class="heading-badge ai-badge">IA · CATALIZADORES</span></h1><p class="lead">Fusiona oportunidades, calendario y noticias en un único listado por acción: qué catalizador tiene, cuándo puede ocurrir, cotización actual y variación.</p></div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="future" aria-label="Ayuda sobre Potencial futuro">?</button><button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button></div>
       </div>
-      <div class="control-strip">
+      <div class="future-filter-bar">
         <select id="futureHorizon" class="select"><option value="1">1 día</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
-        <select id="futureType" class="select"><option value="all">Todo tipo de catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
+        <select id="futureType" class="select"><option value="all">Todos los catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
+        <select id="futureSector" class="select"><option value="all">Todos los sectores</option></select>
+        <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
+        <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
         <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
+        <button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button>
       </div>
-      <div id="futureResults" class="stock-list stock-card-grid"></div>
+      <div id="futureResults" class="future-list"></div>
     </section>
 
+    <section class="view legacy-calendar-view" id="view-calendar" hidden aria-hidden="true"><div id="calendarResults" hidden></div></section>
 
     <section class="view" id="view-alerts">
       <div class="page-heading compact-heading">
@@ -378,26 +349,6 @@
       <div id="alertPageList" class="stock-list alert-page-list"></div>
     </section>
 
-    <section class="view" id="view-calendar">
-      <div class="page-heading compact-heading"><div><h1>Calendario y noticias</h1><p class="lead">Noticias y catalizadores por fecha, sector e industria.</p></div><button type="button" class="section-help" data-help-section="calendar" aria-label="Ayuda sobre Calendario y noticias">?</button></div>
-      <div class="calendar-filter-launch">
-        <button type="button" class="filter-icon-button" data-filter-sheet-target="#calendarFilterPanel" data-filter-sheet-title="Filtros · Calendario y noticias" aria-label="Abrir filtros" title="Filtros">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="calendarFilterLabel">Filtro</span>
-        </button>
-      </div>
-      <div id="calendarFilterPanel" class="filter-sheet-source calendar-filter-panel">
-        <label><span>Desde</span><input id="calendarDateFrom" class="input" type="date"></label>
-        <label><span>Hasta</span><input id="calendarDateTo" class="input" type="date"></label>
-        <label><span>Catalizador</span><select id="calendarCatalyst" class="select"><option value="all">Todos</option></select></label>
-        <label><span>Sector / industria</span><select id="calendarSector" class="select"><option value="all">Todos</option></select></label>
-        <div class="filter-actions">
-          <button type="button" class="btn ghost" id="calendarResetFilter">Rehacer filtro</button>
-          <button type="button" class="btn secondary" id="calendarApplyFilter" data-filter-sheet-apply>Aplicar filtro</button>
-        </div>
-      </div>
-      <div id="calendarResults" class="stock-list stock-card-grid"></div>
-    </section>
-
     <section class="view" id="view-catalog">
       <div class="page-heading compact-heading"><div><h1>Catálogo Trade Republic</h1><p class="lead">Consulta únicamente instrumentos confirmados como negociables en Trade Republic/LSX, con ticker LSX resuelto, identificación por ISIN/WKN y su referencia estadounidense cuando existe.</p></div><button type="button" class="section-help" data-help-section="catalog" aria-label="Ayuda sobre Catálogo Trade Republic">?</button></div>
       <div id="catalogDetail" class="stock-profile is-hidden"></div>
@@ -405,6 +356,7 @@
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
           <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelTr" data-filter-sheet-title="Filtros · Trade Republic" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
+          <button type="button" class="btn ghost compact catalog-reset-columns" data-catalog-mode="tr" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
           <span id="catalogCount" class="count-pill">0</span>
         </div>
         <div id="catalogFilterPanelTr" class="catalog-filter-panel filter-sheet-source"></div>
@@ -419,6 +371,7 @@
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogUSSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
           <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelUs" data-filter-sheet-title="Filtros · Estados Unidos" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
+          <button type="button" class="btn ghost compact catalog-reset-columns" data-catalog-mode="us" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
           <span id="catalogUSCount" class="count-pill">0</span>
         </div>
         <div id="catalogFilterPanelUs" class="catalog-filter-panel filter-sheet-source"></div>
@@ -599,7 +552,6 @@
       <div class="mobile-more-grid">
         <button type="button" class="mobile-more-item" data-mobile-view="heatmap"><span>▦</span><b>Mapa de calor</b><small>Visión rápida por sectores</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="future"><span>✦</span><b>Potencial futuro</b><small>Catalizadores próximos</small></button>
-        <button type="button" class="mobile-more-item" data-mobile-view="calendar"><span>▣</span><b>Calendario</b><small>Noticias y eventos</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="catalogUS"><span>▥</span><b>Catálogo EEUU</b><small>Nasdaq, NYSE y AMEX</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="alerts"><span>🔔</span><b>Avisos</b><small>Alertas y notificaciones</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="settings"><span>⚙</span><b>Ajustes</b><small>Preferencias del dispositivo</small></button>
@@ -625,27 +577,28 @@
 </div>
 <script src="market-session.js?v=20260925r1"></script>
 <script src="score-engine.js?v=20260925r3"></script>
-<script src="app.js?v=20260929r2"></script>
-<script src="settings.js?v=20260925r1"></script>
+<script src="app.js?v=20260929r3"></script>
+<script src="settings.js?v=20260929r2"></script>
+<script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20260929r2"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
-<script src="events.js?v=20260929r4"></script>
+<script src="events.js?v=20260929r8"></script>
 <script src="asset-card.js?v=20260928r1"></script>
-<script src="stock-list.js?v=20260929r12"></script>
-<script src="recommendation.js?v=20260929r8"></script>
+<script src="stock-list.js?v=20260929r13"></script>
+<script src="recommendation.js?v=20260929r9"></script>
 <script src="help.js?v=20260925r1"></script>
 <script src="stock-profile.js?v=20260929r10"></script>
-<script src="catalog.js?v=20260929r4"></script>
-<script src="heatmap.js?v=20260929r2"></script>
+<script src="catalog.js?v=20260929r6"></script>
+<script src="heatmap.js?v=20260929r3"></script>
 <script src="stock-interactions.js?v=20260928r1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20260929r1"></script>
+<script src="navigation.js?v=20260929r3"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20260929r8"></script>
+<script src="funds.js?v=20260929r10"></script>
 <script src="bootstrap.js?v=20260928r4"></script>
 <script src="alerts.js?v=20260928r1"></script>
 <script src="stock-notifications.js?v=20260929r2"></script>
 <script type="module" src="auth.js?v=20260925r7"></script>
-<script type="module" src="portfolio.js?v=20260929r10"></script>
+<script type="module" src="portfolio.js?v=20260929r14"></script>
 </body>
 </html>

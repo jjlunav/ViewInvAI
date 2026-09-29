@@ -112,7 +112,7 @@ function extendedSessionDisplay(s,se=currentMarketSession()){
 function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
-  return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price">'+E(text)+'</span>'};
+  return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price" data-tr-live-key="'+E(stockKey(s))+'">'+pricePairInner(s,price,true)+'</span>'};
  }
  const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
@@ -123,7 +123,7 @@ function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
 function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){
   const change=N(canonicalQuote(s,true).change);
-  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change">'+E(PC(change))+'</span>'};
+  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change '+C(change)+'" data-tr-live-change-key="'+E(stockKey(s))+'">'+E(PC(change))+'</span>'};
  }
  const change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),
@@ -545,10 +545,15 @@ function initStockListInteractions(){
  }));
 }
 
-function radarCoachCandidates(limit=10,excluded=[]){
- const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),se=currentMarketSession();
- return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,'us'))return null;const a=entryOpportunityAnalysis(stock,se,false);
-   return{stock,preferTr:trTradable(stock),score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a}})
-  .filter(Boolean).filter(row=>row.quality>=45&&row.score>=58).sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
+function radarCoachCandidates(limit=10,excluded=[],marketMode='us'){
+ const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),preferTr=marketMode==='tr',se=preferTr?'regular':currentMarketSession();
+ let rows=(db.stocks||[]).map(stock=>{
+   const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,preferTr?'tr':'us'))return null;
+   const useTr=preferTr&&trLivePrice(stock)!==null,a=entryOpportunityAnalysis(stock,se,useTr);
+   return{stock,preferTr,score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a,provisionalVenue:preferTr&&!useTr}
+  }).filter(Boolean).filter(row=>row.quality>=42&&row.score>=55)
+   .sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
+ if(preferTr&&typeof ensureTrLiveKey==='function')rows.forEach(row=>ensureTrLiveKey(stockKey(row.stock)));
+ return rows;
 }
 window.ViewInvAIRadarCoach={rankCandidates:radarCoachCandidates};

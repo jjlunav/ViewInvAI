@@ -7387,3 +7387,395 @@ html[data-theme="light"] .tr-native-axis{
     margin-top:6px;
   }
 }
+
+
+/* 2026-09-29 · Carteras centered navigation, readable AI goal plan */
+#view-portfolios .portfolio-asset-switch{
+  width:min(100%,820px);
+  max-width:820px;
+  margin:0 auto 12px!important;
+  justify-content:center;
+}
+#view-portfolios .portfolio-primary-tabs{
+  width:min(100%,820px);
+  max-width:820px;
+  margin:0 auto 12px!important;
+  justify-content:center;
+}
+#view-portfolios .portfolio-asset-switch button,
+#view-portfolios .portfolio-primary-tabs .tab{
+  min-width:150px;
+  padding:10px 18px!important;
+  font-size:13px!important;
+}
+#view-portfolios .portfolio-position-list .asset-card-row{
+  min-height:64px!important;
+}
+#view-portfolios .portfolio-position-list .asset-card-copy>strong{font-size:13px!important}
+#view-portfolios .portfolio-position-list .asset-card-copy>small,
+#view-portfolios .portfolio-position-list .list-copy-isin{font-size:9px!important}
+#view-portfolios .portfolio-position-list .asset-card-cell{font-size:12px!important}
+#view-portfolios .portfolio-position-list .asset-card-label{font-size:8.5px!important}
+
+#view-portfolios .portfolio-goal-view{
+  width:100%;
+  max-width:1440px;
+  margin:0 auto;
+}
+#view-portfolios .portfolio-goal-hero{
+  padding:18px 20px!important;
+  gap:24px!important;
+}
+#view-portfolios .portfolio-goal-hero small{font-size:9px!important}
+#view-portfolios .portfolio-goal-hero h2{font-size:24px!important;line-height:1.1!important;margin:5px 0 7px!important}
+#view-portfolios .portfolio-goal-hero p{max-width:900px;font-size:12px!important;line-height:1.5!important}
+#view-portfolios .portfolio-goal-form label>span{font-size:9px!important}
+#view-portfolios .portfolio-goal-form input{font-size:16px!important;min-height:44px!important}
+#view-portfolios .portfolio-goal-form .btn{min-height:44px!important;font-size:12px!important}
+#view-portfolios .portfolio-goal-metrics{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:8px!important;
+}
+#view-portfolios .portfolio-goal-metrics>div{padding:12px 14px!important}
+#view-portfolios .portfolio-goal-metrics small{font-size:8.5px!important}
+#view-portfolios .portfolio-goal-metrics strong{font-size:16px!important}
+#view-portfolios .portfolio-goal-progress{padding:10px 12px!important}
+#view-portfolios .portfolio-goal-progress span,
+#view-portfolios .portfolio-goal-progress b{font-size:9.5px!important}
+#view-portfolios .portfolio-goal-strategy{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:10px 0;
+}
+#view-portfolios .portfolio-goal-strategy>div{
+  padding:11px 13px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel);
+}
+#view-portfolios .portfolio-goal-strategy small{display:block;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.07em}
+#view-portfolios .portfolio-goal-strategy strong{display:block;margin-top:3px;font-size:12px}
+#view-portfolios .portfolio-goal-toolbar{padding:9px 2px!important}
+#view-portfolios .portfolio-goal-toolbar>span{font-size:9.5px!important;line-height:1.45!important}
+#view-portfolios .portfolio-goal-section{margin-top:14px!important}
+#view-portfolios .portfolio-goal-section header small{font-size:8px!important}
+#view-portfolios .portfolio-goal-section header h3{font-size:18px!important;margin-top:3px!important}
+#view-portfolios .portfolio-goal-actions,
+#view-portfolios .portfolio-goal-candidates{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:9px!important;
+}
+#view-portfolios .portfolio-goal-action,
+#view-portfolios .portfolio-goal-candidate{
+  min-height:0!important;
+  padding:12px 13px!important;
+  border-radius:10px!important;
+}
+#view-portfolios .goal-action-head strong,
+#view-portfolios .goal-candidate-head strong{font-size:13px!important}
+#view-portfolios .goal-action-head small,
+#view-portfolios .goal-candidate-head small{font-size:8.5px!important}
+#view-portfolios .goal-action-head>b,
+#view-portfolios .goal-candidate-action{
+  font-size:9px!important;
+  padding:4px 7px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--accent);
+}
+#view-portfolios .goal-action-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:8px!important;
+  margin-top:8px!important;
+}
+#view-portfolios .goal-action-grid span,
+#view-portfolios .portfolio-goal-action p,
+#view-portfolios .portfolio-goal-candidate p{font-size:9.5px!important;line-height:1.45!important}
+#view-portfolios .goal-candidate-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+#view-portfolios .goal-candidate-kpis{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px 12px;
+  margin:9px 0;
+}
+#view-portfolios .goal-candidate-kpis span{font-size:8.5px;color:var(--muted)}
+#view-portfolios .goal-candidate-kpis b{display:block;margin-top:2px;color:var(--text);font-size:10px}
+#view-portfolios .goal-candidate-catalyst{color:var(--text)!important;font-weight:650}
+#view-portfolios .portfolio-goal-note{font-size:8.5px!important;padding:10px 12px!important}
+
+@media(max-width:820px){
+  #view-portfolios .portfolio-asset-switch,
+  #view-portfolios .portfolio-primary-tabs{width:100%;max-width:100%;justify-content:flex-start}
+  #view-portfolios .portfolio-asset-switch button,
+  #view-portfolios .portfolio-primary-tabs .tab{min-width:0;flex:1 1 50%;font-size:10px!important;padding:8px!important}
+  #view-portfolios .portfolio-goal-strategy{grid-template-columns:1fr}
+  #view-portfolios .portfolio-goal-actions,
+  #view-portfolios .portfolio-goal-candidates{grid-template-columns:1fr!important}
+  #view-portfolios .goal-action-grid{grid-template-columns:1fr!important}
+  #view-portfolios .portfolio-goal-metrics{grid-template-columns:1fr 1fr!important}
+}
+
+
+/* 2026-09-29 · Fused Future Potential list */
+#view-future .future-filter-bar{
+ display:flex;
+ align-items:end;
+ flex-wrap:wrap;
+ gap:8px;
+ padding:10px 12px;
+ margin-bottom:10px;
+ border:1px solid var(--line);
+ border-radius:12px;
+ background:var(--panel);
+}
+#view-future .future-filter-bar .select{min-height:38px;font-size:11px}
+#view-future .future-date-filter{display:grid;gap:3px}
+#view-future .future-date-filter>span{font-size:8px;font-weight:800;color:var(--muted);letter-spacing:.05em}
+#view-future .future-date-filter .input{min-height:38px;font-size:10px}
+#view-future .check-inline{min-height:38px;padding:0 8px;font-size:10px}
+#view-future .future-list{display:grid;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+#view-future .future-list-item{background:var(--panel);border-bottom:1px solid var(--line)}
+#view-future .future-list-item:last-child{border-bottom:0}
+#view-future .future-list-row{
+ display:grid;
+ grid-template-columns:minmax(260px,1.45fr) minmax(240px,1.25fr) minmax(150px,.75fr) minmax(130px,.62fr) minmax(105px,.52fr) 18px;
+ gap:14px;
+ align-items:center;
+ min-height:72px;
+ padding:9px 14px;
+ cursor:pointer;
+}
+#view-future .future-list-row:hover{background:color-mix(in srgb,var(--panel) 78%,var(--accent) 7%)}
+#view-future .future-identity{display:flex;align-items:center;gap:10px;min-width:0}
+#view-future .future-identity>div{display:grid;gap:3px;min-width:0}
+#view-future .future-identity strong{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-future .future-identity strong em{margin-right:5px;color:var(--muted);font-size:8px;font-style:normal}
+#view-future .future-identity small{font-size:8.5px;color:var(--muted)}
+#view-future .future-catalyst,#view-future .future-when,#view-future .future-quote,#view-future .future-move{display:grid;gap:3px;min-width:0}
+#view-future .future-list-row>div>small{font-size:7.5px;font-weight:800;color:var(--muted);letter-spacing:.05em}
+#view-future .future-catalyst strong,#view-future .future-when strong{font-size:11px}
+#view-future .future-catalyst span,#view-future .future-when span{font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-future .future-price .price-pair>strong{font-size:13px!important}
+#view-future .future-price .price-pair>small{font-size:8px!important}
+#view-future .future-change{font-size:12px;font-weight:850}
+#view-future .future-open{font-size:19px;color:var(--muted)}
+#view-future .future-row-details{border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+#view-future .future-row-details>summary{padding:6px 14px;font-size:8.5px;color:var(--muted);cursor:pointer}
+#view-future .future-row-details>div{padding:0 14px 10px}
+#view-future .event-item{padding:10px 0}
+#view-future .event-item+.event-item{border-top:1px solid var(--line)}
+#view-future .event-title{font-size:10.5px}
+#view-future .event-context,#view-future .event-impact,#view-future .event-sources{font-size:9px}
+
+/* Official TradingView heatmap: one-screen board */
+#view-heatmap{
+ max-width:none!important;
+ width:100%!important;
+ height:100vh!important;
+ overflow:hidden!important;
+ padding:12px 14px 8px!important;
+ display:flex!important;
+ flex-direction:column!important;
+}
+#view-heatmap>.page-heading{flex:0 0 auto;margin-bottom:8px!important}
+#view-heatmap>.page-heading h1{font-size:22px!important}
+#view-heatmap .tradingview-heatmap-shell{
+ flex:1 1 auto;
+ min-height:0;
+ width:100%;
+ overflow:hidden;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:#070d11;
+}
+#view-heatmap .viewinvai-tv-heatmap,
+#view-heatmap .tradingview-widget-container__widget{
+ width:100%!important;
+ height:100%!important;
+ min-height:0!important;
+}
+#view-heatmap .viewinvai-tv-heatmap{display:flex;flex-direction:column}
+#view-heatmap .tradingview-widget-container__widget{flex:1 1 auto}
+#view-heatmap .tradingview-widget-copyright{flex:0 0 20px;text-align:right;padding:2px 7px;font-size:9px}
+#view-heatmap .tradingview-widget-copyright a{text-decoration:none}
+
+@media(max-width:1050px){
+ #view-future .future-list-row{grid-template-columns:minmax(220px,1.3fr) minmax(190px,1fr) minmax(130px,.7fr) minmax(110px,.6fr) minmax(90px,.5fr) 16px;gap:8px;padding:8px 10px}
+}
+@media(max-width:820px){
+ #view-future .future-filter-bar{padding:7px;gap:6px}
+ #view-future .future-filter-bar>*{flex:1 1 calc(50% - 6px);min-width:0}
+ #view-future .future-list{border-radius:8px}
+ #view-future .future-list-row{
+  grid-template-columns:minmax(0,1.7fr) minmax(100px,.75fr) minmax(75px,.55fr) 14px;
+  gap:6px;min-height:60px;padding:7px 8px;
+ }
+ #view-future .future-catalyst{grid-column:1/3;grid-row:2}
+ #view-future .future-when{grid-column:3;grid-row:1/3}
+ #view-future .future-quote{grid-column:2;grid-row:1}
+ #view-future .future-move{display:none}
+ #view-future .future-open{grid-column:4;grid-row:1/3}
+ #view-future .future-identity strong{font-size:10.5px}
+ #view-future .future-catalyst strong,#view-future .future-when strong{font-size:9px}
+ #view-heatmap{height:calc(100vh - 62px)!important;padding:7px 6px 4px!important}
+ #view-heatmap>.page-heading{margin-bottom:5px!important}
+ #view-heatmap>.page-heading h1{font-size:16px!important}
+ #view-heatmap>.page-heading .lead{display:none!important}
+}
+
+
+/* 2026-09-29 · User-configurable catalog columns */
+.catalog-table-wrap,.fund-table-scroll{overflow:auto!important}
+.catalog-resizable-table,.fund-resizable-table{
+ table-layout:fixed!important;
+ width:max-content!important;
+ min-width:100%!important;
+}
+.catalog-resizable-table th[data-catalog-col],
+.fund-resizable-table th[data-fund-column]{position:relative!important}
+.catalog-column-resizer,.fund-column-resizer{
+ position:absolute;
+ z-index:5;
+ top:0;
+ right:-4px;
+ width:8px;
+ height:100%;
+ padding:0!important;
+ margin:0!important;
+ border:0!important;
+ border-radius:0!important;
+ background:transparent!important;
+ cursor:col-resize;
+ touch-action:none;
+}
+.catalog-column-resizer:hover,.fund-column-resizer:hover,
+body.column-resizing .catalog-column-resizer,
+body.column-resizing .fund-column-resizer{background:rgba(95,220,185,.28)!important}
+body.column-resizing{cursor:col-resize!important;user-select:none!important}
+.catalog-table th.drag-over,.fund-table th.drag-over{box-shadow:inset 3px 0 0 var(--accent)}
+.catalog-table th.dragging,.fund-table th.dragging{opacity:.55}
+.catalog-resizable-table td,
+.catalog-resizable-table th,
+.fund-resizable-table td,
+.fund-resizable-table th{overflow:hidden;text-overflow:ellipsis}
+.catalog-name-cell{
+ display:block;
+ width:100%;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+}
+.fund-table-fund-main{min-width:0!important}
+.fund-table-fund-main>strong{
+ display:block;
+ overflow:hidden;
+ white-space:nowrap;
+ text-overflow:ellipsis;
+}
+.catalog-table td[data-col="name"]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+/* 2026-09-29 · Portfolio general readability */
+#view-portfolios .portfolio-workbar{margin-bottom:10px!important}
+#view-portfolios .portfolio-tab{min-height:40px!important;padding:7px 11px!important}
+#view-portfolios .portfolio-tab strong{font-size:12.5px!important}
+#view-portfolios .portfolio-tab>span{font-size:9px!important;min-width:23px!important;height:23px!important}
+#view-portfolios .portfolio-icon-action,
+#view-portfolios .portfolio-tabs-more,
+#view-portfolios .portfolio-refresh{width:38px!important;min-width:38px!important;height:38px!important}
+#view-portfolios .portfolio-summary-bar{
+ gap:9px!important;
+ padding:10px!important;
+ margin-bottom:11px!important;
+}
+#view-portfolios .portfolio-summary-bar>div{
+ min-width:150px!important;
+ padding:9px 12px!important;
+}
+#view-portfolios .portfolio-summary-bar small{font-size:9px!important}
+#view-portfolios .portfolio-summary-bar strong{font-size:15px!important}
+
+
+/* 2026-09-29 · Per-portfolio AI objective engine */
+#view-portfolios .portfolio-selected-nav{
+ display:grid;
+ grid-template-columns:minmax(0,820px) minmax(240px,320px);
+ justify-content:center;
+ align-items:center;
+ gap:12px;
+ margin:2px auto 12px;
+}
+#view-portfolios .portfolio-selected-nav .portfolio-primary-tabs{
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+}
+#view-portfolios .portfolio-market-scope{
+ min-height:48px;
+ display:grid;
+ grid-template-columns:auto 1fr auto;
+ align-items:center;
+ gap:8px;
+ padding:7px 11px;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ color:var(--text);
+ cursor:pointer;
+ text-align:left;
+}
+#view-portfolios .portfolio-market-scope>span{font-size:9px;font-weight:850;color:var(--muted);letter-spacing:.05em}
+#view-portfolios .portfolio-market-scope>strong{font-size:12.5px}
+#view-portfolios .portfolio-market-scope>em{font-style:normal;font-size:9px;color:var(--accent)}
+#view-portfolios .portfolio-market-scope.unresolved{border-color:color-mix(in srgb,var(--warning) 55%,var(--line))}
+#view-portfolios .portfolio-goal-hero small{font-size:11px!important}
+#view-portfolios .portfolio-goal-hero h2{font-size:28px!important;line-height:1.08!important}
+#view-portfolios .portfolio-goal-hero p{font-size:14px!important;line-height:1.55!important}
+#view-portfolios .portfolio-goal-form label>span{font-size:10px!important}
+#view-portfolios .portfolio-goal-form input{font-size:18px!important}
+#view-portfolios .portfolio-goal-form .btn{font-size:13px!important}
+#view-portfolios .portfolio-goal-metrics small{font-size:10px!important}
+#view-portfolios .portfolio-goal-metrics strong{font-size:19px!important}
+#view-portfolios .portfolio-goal-progress span,
+#view-portfolios .portfolio-goal-progress b{font-size:11px!important}
+#view-portfolios .portfolio-goal-distance{
+ display:grid;
+ grid-template-columns:auto 1fr;
+ gap:14px;
+ align-items:start;
+ padding:12px 14px;
+ border:1px solid color-mix(in srgb,var(--accent) 26%,var(--line));
+ border-radius:10px;
+ background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+}
+#view-portfolios .portfolio-goal-distance strong{font-size:13px}
+#view-portfolios .portfolio-goal-distance span{font-size:12px;line-height:1.5;color:var(--muted)}
+#view-portfolios .portfolio-goal-strategy small{font-size:9.5px!important}
+#view-portfolios .portfolio-goal-strategy strong{font-size:14px!important}
+#view-portfolios .portfolio-goal-toolbar>span{font-size:11.5px!important}
+#view-portfolios .portfolio-goal-section header small{font-size:9.5px!important}
+#view-portfolios .portfolio-goal-section header h3{font-size:21px!important}
+#view-portfolios .goal-action-head strong,
+#view-portfolios .goal-candidate-head strong{font-size:15px!important}
+#view-portfolios .goal-action-head small,
+#view-portfolios .goal-candidate-head small{font-size:10px!important}
+#view-portfolios .goal-action-head>b,
+#view-portfolios .goal-candidate-action{font-size:10.5px!important}
+#view-portfolios .goal-action-grid span,
+#view-portfolios .portfolio-goal-action p,
+#view-portfolios .portfolio-goal-candidate p{font-size:11px!important;line-height:1.5!important}
+#view-portfolios .goal-candidate-kpis span{font-size:10px!important}
+#view-portfolios .goal-candidate-kpis b{font-size:12px!important}
+#view-portfolios .portfolio-goal-note{font-size:10.5px!important;line-height:1.5!important}
+.portfolio-form-note{margin:0 0 8px;color:var(--muted);font-size:11px;line-height:1.45}
+@media(max-width:900px){
+ #view-portfolios .portfolio-selected-nav{grid-template-columns:1fr}
+ #view-portfolios .portfolio-market-scope{width:100%}
+ #view-portfolios .portfolio-goal-distance{grid-template-columns:1fr;gap:4px}
+}
+
+
+/* Legacy Calendar compatibility node: routes are fused into Potencial futuro. */
+#view-calendar.legacy-calendar-view{display:none!important}
