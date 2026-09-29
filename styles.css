@@ -7675,3 +7675,24 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  text-overflow:ellipsis;
 }
 .catalog-table td[data-col="name"]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+/* 2026-09-29 · Portfolio general readability */
+#view-portfolios .portfolio-workbar{margin-bottom:10px!important}
+#view-portfolios .portfolio-tab{min-height:40px!important;padding:7px 11px!important}
+#view-portfolios .portfolio-tab strong{font-size:12.5px!important}
+#view-portfolios .portfolio-tab>span{font-size:9px!important;min-width:23px!important;height:23px!important}
+#view-portfolios .portfolio-icon-action,
+#view-portfolios .portfolio-tabs-more,
+#view-portfolios .portfolio-refresh{width:38px!important;min-width:38px!important;height:38px!important}
+#view-portfolios .portfolio-summary-bar{
+ gap:9px!important;
+ padding:10px!important;
+ margin-bottom:11px!important;
+}
+#view-portfolios .portfolio-summary-bar>div{
+ min-width:150px!important;
+ padding:9px 12px!important;
+}
+#view-portfolios .portfolio-summary-bar small{font-size:9px!important}
+#view-portfolios .portfolio-summary-bar strong{font-size:15px!important}
