@@ -70,11 +70,11 @@ window.checkAssetCards = async function () {
   if(portfolioHasExtended)assert(rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio US position lost available extended quote');
   assert(rows[1].querySelector('.asset-venue-price'),'portfolio TR position does not use the LSX quote cell');
   assert(!rows[1].querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
-  assert(!view.querySelector('.portfolio-primary-tabs'),'obsolete portfolio/goal primary tabs remain');
-  assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle]'),'goal control is not inside the stock portfolio toolbar');
+  const primaryTabs=view.querySelector('.portfolio-primary-tabs');
+  assert(primaryTabs&&primaryTabs.querySelectorAll('[data-portfolio-primary]').length===2,'portfolio/goal main tabs are missing');
+  assert(primaryTabs.querySelector('[data-portfolio-primary="portfolio"].active'),'portfolio main tab is not active');
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
   assert(assetTabs.length===2&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
-  assert(view.querySelector('[data-portfolio-goal-toggle] svg'),'portfolio goal does not use the target SVG icon');
   const fundsApi=window.ViewInvAIFunds,stockPanel=document.querySelector('#portfolioApp'),fundPanel=document.querySelector('#fundPortfolioApp');
   assert(fundsApi&&typeof fundsApi.setPortfolioAssetMode==='function','portfolio asset mode controller is missing');
   fundsApi.setPortfolioAssetMode('funds',false);
@@ -82,7 +82,7 @@ window.checkAssetCards = async function () {
   fundsApi.setPortfolioAssetMode('stocks',false);
   assert(!stockPanel.hidden&&!stockPanel.classList.contains('is-hidden')&&fundPanel.hidden&&fundPanel.classList.contains('is-hidden'),'portfolio panels did not return to stocks-only mode');
   ps.primaryTab='goal';portfolio.render();
-  assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle].active'),'goal toolbar control did not become active');
+  assert(view.querySelector('.portfolio-primary-tabs [data-portfolio-primary="goal"].active'),'goal main tab did not become active');
   assert(view.querySelector('.portfolio-goal-view'),'goal view did not render inside stocks');
   const goalInput=view.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
   assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
