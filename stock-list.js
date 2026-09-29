@@ -112,7 +112,7 @@ function extendedSessionDisplay(s,se=currentMarketSession()){
 function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
-  return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price">'+E(text)+'</span>'};
+  return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price" data-tr-live-key="'+E(stockKey(s))+'">'+pricePairInner(s,price,true)+'</span>'};
  }
  const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  const regularText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
@@ -123,7 +123,7 @@ function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
 function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){
   const change=N(canonicalQuote(s,true).change);
-  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change">'+E(PC(change))+'</span>'};
+  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change '+C(change)+'" data-tr-live-change-key="'+E(stockKey(s))+'">'+E(PC(change))+'</span>'};
  }
  const change=N(s.changePct),ext=extendedSessionDisplay(s,se);
  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),

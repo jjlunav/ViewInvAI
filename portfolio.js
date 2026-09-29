@@ -435,6 +435,31 @@ function portfolioCoachPositionRows(metrics){
     return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,action,reasons,levels};
   }).sort((a,b)=>b.released-a.released||a.score-b.score);
 }
+function portfolioGoalCatalyst(stock){
+  let events=[];
+  try{events=typeof stockEvents==="function"?stockEvents(stock):[]}catch(_){events=[]}
+  const now=Date.now(),future=events.filter(event=>{
+    const t=new Date(event&&event.date||0).getTime();
+    return Number.isFinite(t)&&t>=now-3600000&&t<=now+60*86400000;
+  }).sort((a,b)=>new Date(a.date)-new Date(b.date)||((num(b.impactScore)||0)-(num(a.impactScore)||0)));
+  const recentNews=events.filter(event=>event&&event.eventKind==="news").sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const event=future[0]||recentNews[0]||null;
+  if(!event)return{label:"Sin catalizador próximo verificado",when:"",impact:0,days:null,title:""};
+  const timestamp=new Date(event.date||0).getTime(),days=Number.isFinite(timestamp)?Math.max(0,(timestamp-now)/86400000):null;
+  let label="";
+  try{label=typeof EL==="function"?EL(event):String(event.type||"Catalizador")}catch(_){label=String(event.type||"Catalizador")}
+  let when="";
+  try{when=typeof eventWhen==="function"?eventWhen(event):String(event.date||"")}catch(_){when=String(event.date||"")}
+  return{label,when,impact:Math.max(0,Math.min(100,num(event.impactScore)||50)),days,title:String(event.title||event.fact||"")};
+}
+function portfolioGoalVelocityScore(stock,score,quality){
+  const catalyst=portfolioGoalCatalyst(stock),days=num(catalyst.days);
+  const timeBonus=days===null?0:days<=1?14:days<=3?11:days<=7?8:days<=14?5:2;
+  const catalystBonus=catalyst.impact*.08;
+  const value=Math.min(100,(num(score)||0)*.72+(num(quality)||0)*.14+catalystBonus+timeBonus);
+  return{score:value,catalyst};
+}
+
 function portfolioCoachCandidates(metrics,positionRows){
   const excluded=new Set(metrics.rows.map(x=>portfolioStockKey(x.stock))),goalReached=num(metrics.remaining)!==null&&metrics.remaining<=0;
   const cacheKey=[...excluded].sort().join("|")+"|"+String(Math.round(num(metrics.remaining)||0));
@@ -457,9 +482,10 @@ function portfolioCoachCandidates(metrics,positionRows){
   const rows=[...merged.values()].map(row=>{
     const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);
     const score=scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?3:0)):0;
-    return{...row,score};
+    const velocity=portfolioGoalVelocityScore(row.stock,score,row.quality);
+    return{...row,score,velocityScore:velocity.score,catalyst:velocity.catalyst};
   }).filter(row=>row.score>=64&&row.quality>=50)
-    .sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,5)
+    .sort((a,b)=>b.velocityScore-a.velocityScore||b.score-a.score||b.quality-a.quality).slice(0,5)
     .map((row,index,arr)=>{
       const slots=Math.max(1,Math.min(3,arr.length)),perSlot=released>0?released/slots:0;
       const allocation=Math.min(perSlot,currentValue*allocationCapPct);
@@ -483,9 +509,11 @@ function goalCandidateHtml(row){
   const alloc=row.allocation>0?'Capital a estudiar: <b>'+formatMoney(row.allocation,"EUR")+'</b>':'Sin capital liberado: mantener en vigilancia, no forzar compra.';
   const levels=row.levels.stop!==null?'Stop orientativo <b>'+formatMoney(row.levels.stop,row.levels.currency)+'</b> · Take profit <b>'+formatMoney(row.levels.take,row.levels.currency)+'</b>':'Niveles pendientes de cotización válida.';
   const contribution=row.potentialGain>0?'Si alcanzara ese take profit, aportaría aproximadamente <b>'+formatMoney(row.potentialGain,"EUR")+'</b> ('+formatNumber(row.goalShare,1)+'% de lo que falta).':'La oportunidad se muestra por calidad, no como promesa de rentabilidad.';
-  return '<article class="portfolio-goal-candidate" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0"><div><strong>'+
-    esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc([row.stock.ticker||row.stock.trTicker,row.sources.join(" + ")].filter(Boolean).join(" · "))+'</small></div><b class="goal-candidate-score">'+
-    formatNumber(row.score,0)+'/100</b><p>'+alloc+'</p><p>'+levels+'</p><p>'+contribution+'</p></article>';
+  const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),action=row.allocation>0?"COMPRAR / ROTAR":"VIGILAR";
+  return '<article class="portfolio-goal-candidate" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
+    '<div class="goal-candidate-head"><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc([row.stock.ticker||row.stock.trTicker,row.sources.join(" + ")].filter(Boolean).join(" · "))+'</small></div><b class="goal-candidate-action">'+action+'</b></div>'+
+    '<div class="goal-candidate-kpis"><span>Velocidad IA <b>'+formatNumber(row.velocityScore,0)+'/100</b></span><span>Convicción <b>'+formatNumber(row.score,0)+'/100</b></span><span>Catalizador <b>'+esc(catalyst.label)+'</b></span><span>Cuándo <b>'+esc(catalyst.when||"Sin fecha")+'</b></span></div>'+
+    (catalyst.title?'<p class="goal-candidate-catalyst">'+esc(catalyst.title)+'</p>':'')+'<p>'+alloc+'</p><p>'+levels+'</p><p>'+contribution+'</p></article>';
 }
 function portfolioGoalViewHtml(){
   const metrics=portfolioGoalMetrics(),positionRows=portfolioCoachPositionRows(metrics),candidates=portfolioCoachCandidates(metrics,positionRows),target=metrics.target;
@@ -496,7 +524,7 @@ function portfolioGoalViewHtml(){
   else candidatesHtml=candidates.length?candidates.map(goalCandidateHtml).join(""):'<div class="portfolio-empty-state compact">Pulso IA y Radar no ofrecen ahora mismo una alternativa suficientemente sólida. El plan correcto puede ser no hacer nada.</div>';
   const errorHtml=state.goalError?'<div class="portfolio-goal-error" role="alert">'+esc(state.goalError)+'</div>':'';
   return '<section class="portfolio-goal-view">'+
-    '<div class="portfolio-goal-hero"><div><small>ENTRENADOR DE INVERSIÓN</small><h2>Objetivo de la cartera</h2><p>El objetivo sí condiciona el plan: mide cuánto falta, prioriza el riesgo de concentración y estima cuánto podría aportar una rotación si alcanzara sus niveles orientativos. No ejecuta órdenes automáticamente.</p></div>'+
+    '<div class="portfolio-goal-hero"><div><small>MOTOR IA · RUTA AL OBJETIVO</small><h2>Objetivo de la cartera</h2><p>La IA revisa posiciones, señales, calidad de datos y catalizadores para proponer qué mantener, reducir o vender y dónde estudiar una rotación del capital con el objetivo de avanzar más rápido, sin aumentar el riesgo de forma automática. ViewInvAI no ejecuta órdenes.</p></div>'+
       '<form id="portfolioGoalForm" class="portfolio-goal-form"><label><span>Objetivo de rentabilidad</span><div><input name="targetProfitEur" type="number" min="0.01" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-empty"><strong>Marca cuánto beneficio quieres alcanzar.</strong><span>Por ejemplo, 1.000 €. Se usa como referencia global de la cartera de acciones y puedes modificarlo cuando quieras.</span></div>':
@@ -505,9 +533,10 @@ function portfolioGoalViewHtml(){
     (metrics.remaining===null?'—':formatMoney(Math.max(0,metrics.remaining),"EUR"))+'</strong></div><div><small>VALOR CARTERA</small><strong>'+
     (metrics.currentValue===null?'—':formatMoney(metrics.currentValue,"EUR"))+'</strong></div></div>'+
     '<div class="portfolio-goal-progress"><div><span>Progreso hacia el objetivo</span><b>'+formatNumber(metrics.progress,1)+'%</b></div><i><em style="width:'+Math.max(0,Math.min(100,metrics.progress))+'%"></em></i></div>'+
-    '<div class="portfolio-goal-toolbar"><span>El plan usa el estado real de tus posiciones y las últimas señales IA disponibles.</span><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar cartera</button></div>'+
-    '<section class="portfolio-goal-section"><header><div><small>PLAN DE EXPOSICIÓN</small><h3>Qué revisar en tus posiciones</h3></div></header><div class="portfolio-goal-actions">'+planHtml+'</div></section>'+
-    '<section class="portfolio-goal-section"><header><div><small>PULSO IA + RADAR</small><h3>Alternativas para estudiar</h3></div></header><div class="portfolio-goal-candidates">'+candidatesHtml+'</div></section>'+
+    '<div class="portfolio-goal-strategy"><div><small>PRIORIDAD</small><strong>Velocidad ajustada por riesgo</strong></div><div><small>MOTOR</small><strong>Pulso IA + Radar + catalizadores</strong></div><div><small>REVISIÓN</small><strong>Rotar solo si mejora la oportunidad</strong></div></div>'+
+    '<div class="portfolio-goal-toolbar"><span>El motor compara el coste de oportunidad de mantener una posición frente a candidatas con mayor convicción y catalizadores más próximos.</span><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar cartera</button></div>'+
+    '<section class="portfolio-goal-section"><header><div><small>PASO 1 · LIBERAR CAPITAL DÉBIL</small><h3>Rotaciones propuestas en tus posiciones</h3></div></header><div class="portfolio-goal-actions">'+planHtml+'</div></section>'+
+    '<section class="portfolio-goal-section"><header><div><small>PASO 2 · REASIGNAR CAPITAL</small><h3>Compras candidatas para avanzar al objetivo</h3></div></header><div class="portfolio-goal-candidates">'+candidatesHtml+'</div></section>'+
     '<p class="portfolio-goal-note">Los stops, take profit y contribuciones son escenarios orientativos, no resultados previstos. Una distancia grande al objetivo no aumenta automáticamente el riesgo ni obliga a operar.</p>')+'</section>';
 }
 async function savePortfolioGoal(targetProfitEur){
