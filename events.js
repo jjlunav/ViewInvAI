@@ -24,8 +24,9 @@ function eventSources(e){
  return '<div class="event-sources">'+src.map(s=>{let name=E(s.name||'Fuente'),u=safeExternalUrl(s.url);return u?'<a target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+E(u)+'">'+name+' ↗</a>':'<span>'+name+'</span>'}).join('')+'</div>';
 }
 function eventItem(e){
- let kind=e.eventKind==='news'?'Noticia':'Evento previsto',label=EL(e);
- return '<div class="event-item"><div class="event-item-head"><div><strong>'+E(label)+'</strong><span>'+E(kind)+'</span></div><time>'+E(eventWhen(e))+'</time></div><div class="event-title">'+E(e.title||e.fact||'Catalizador detectado')+'</div>'+(e.fact&&e.fact!==e.title?'<div class="event-context">'+E(e.fact)+'</div>':'')+'<div class="event-impact"><strong>Por qué importa:</strong> '+E(e.hypothesis||'Puede aumentar la volatilidad; no implica una dirección concreta.')+'</div>'+eventSources(e)+'</div>';
+ let kind=e.eventKind==='news'?'Noticia':'Evento previsto',label=EL(e),official=e.official===true||['sec','fda','clinicaltrials'].includes(String(e.sourceFamily||'').toLowerCase())||/oficial|official|sec \/ edgar|clinicaltrials|fda/i.test(String(e.verification||''));
+ let verification=e.verification?'<div class="event-verification '+(official?'official':'')+'"><strong>'+(official?'Fuente oficial verificada':'Verificación')+':</strong> '+E(e.verification)+'</div>':'';
+ return '<div class="event-item'+(official?' official-source':'')+'"><div class="event-item-head"><div><strong>'+E(label)+'</strong><span>'+E(kind)+(official?' · OFICIAL':'')+'</span></div><time>'+E(eventWhen(e))+'</time></div><div class="event-title">'+E(e.title||e.fact||'Catalizador detectado')+'</div>'+(e.fact&&e.fact!==e.title?'<div class="event-context">'+E(e.fact)+'</div>':'')+'<div class="event-impact"><strong>Por qué importa:</strong> '+E(e.hypothesis||e.impact||'Puede aumentar la volatilidad; no implica una dirección concreta.')+'</div>'+verification+eventSources(e)+'</div>';
 }
 function stockEvents(s){
  if(!s)return[];
