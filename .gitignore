@@ -3,3 +3,4 @@ android/
 *.apk
 *.aab
 .DS_Store
+data/market-catalog-delta.json

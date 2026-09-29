@@ -58,6 +58,61 @@ jobs:
             -H "Authorization: Bearer ${MARKET_PUBLISH_TOKEN}" \
             -H "Content-Type: application/json" \
             --data-binary @data/market-version.json
+          if [ -s data/market-catalog-delta.json ]; then
+            python - <<'PY'
+          import json
+          import os
+          import time
+
+          import requests
+
+          path = "data/market-catalog-delta.json"
+          with open(path, "r", encoding="utf-8") as fh:
+              delta = json.load(fh)
+
+          stocks = delta.get("stocks") or []
+          if not stocks:
+              print("Catálogo D1 sin cambios.")
+              raise SystemExit(0)
+
+          base_url = os.environ["MARKET_PUBLISH_URL"]
+          token = os.environ["MARKET_PUBLISH_TOKEN"]
+          separator = "&" if "?" in base_url else "?"
+          url = base_url + separator + "kind=catalog"
+          headers = {
+              "Authorization": "Bearer " + token,
+              "Content-Type": "application/json",
+          }
+
+          chunk_size = 100
+          total = len(stocks)
+          for offset in range(0, total, chunk_size):
+              payload = {
+                  "generation": delta["generation"],
+                  "updatedAt": delta["updatedAt"],
+                  "stocks": stocks[offset:offset + chunk_size],
+              }
+              last_error = None
+              for attempt in range(1, 4):
+                  try:
+                      response = requests.put(url, headers=headers, json=payload, timeout=45)
+                      response.raise_for_status()
+                      result = response.json()
+                      print(
+                          f"Catálogo D1 {min(offset + chunk_size, total)}/{total}: "
+                          f"{result.get('rows', 0)} filas, "
+                          f"{result.get('tradeRepublicProducts', 0)} productos TR."
+                      )
+                      last_error = None
+                      break
+                  except Exception as exc:
+                      last_error = exc
+                      if attempt < 3:
+                          time.sleep(attempt * 2)
+              if last_error is not None:
+                  raise last_error
+          PY
+          fi
       - name: Publicar datos actualizados
         env:
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -597,8 +597,307 @@ function safeSecretEqual(actual, expected) {
   return diff === 0;
 }
 
+
+const MARKET_CATALOG_GENERATION = "identity-v1";
+const MARKET_CATALOG_BATCH_SIZE = 25;
+const MARKET_CATALOG_STATEMENT_BATCH_SIZE = 50;
+
+function catalogVenueId(exchange) {
+  const value = String(exchange || "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+  if (value === "NASDAQ") return "venue:nasdaq";
+  if (value === "NYSE") return "venue:nyse";
+  if (value === "AMEX") return "venue:amex";
+  if (value === "NYSEARCA") return "venue:nyse-arca";
+  return "";
+}
+
+function catalogText(value, maxLength = 240) {
+  return String(value == null ? "" : value).trim().slice(0, maxLength);
+}
+
+function catalogIsin(value) {
+  const isin = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{2}[A-Z0-9]{10}$/.test(isin) ? isin : "";
+}
+
+function catalogRows(result) {
+  return result && Array.isArray(result.results) ? result.results : [];
+}
+
+async function runCatalogStatements(env, statements) {
+  for (let offset = 0; offset < statements.length; offset += MARKET_CATALOG_STATEMENT_BATCH_SIZE) {
+    await env.DB.batch(statements.slice(offset, offset + MARKET_CATALOG_STATEMENT_BATCH_SIZE));
+  }
+}
+
+async function syncMarketCatalogChunk(env, inputRows, generation) {
+  const rows = (Array.isArray(inputRows) ? inputRows : []).map(stock => {
+    const ticker = safeStockSymbol(stock && stock.ticker);
+    const tvSymbol = catalogText(stock && stock.tvSymbol, 96).toUpperCase();
+    const venueId = catalogVenueId(stock && stock.exchange);
+    const usIsin = catalogIsin(stock && stock.usIsin);
+    const trIsin = catalogIsin(stock && stock.trIsin);
+    const trTicker = safeStockSymbol(stock && stock.trTicker);
+    const tradeRepublicVerified = Boolean(
+      stock && stock.tradeRepublicVerified === true &&
+      stock.tradeRepublicTradable === true &&
+      trIsin &&
+      trTicker
+    );
+    return {
+      raw: stock || {},
+      ticker,
+      tvSymbol,
+      venueId,
+      usIsin,
+      trIsin,
+      trTicker,
+      tradeRepublicVerified
+    };
+  }).filter(row => row.ticker && row.tvSymbol && row.venueId);
+
+  if (!rows.length) return { rows: 0, statements: 0, tradeRepublicProducts: 0, conflicts: 0 };
+
+  const tvSymbols = [...new Set(rows.map(row => row.tvSymbol))];
+  const isins = [...new Set(rows.map(row => row.usIsin).filter(Boolean))];
+  const listingTickers = [...new Set(rows.flatMap(row => [row.ticker, row.trTicker]).filter(Boolean))];
+
+  const tvMap = new Map();
+  if (tvSymbols.length) {
+    const placeholders = tvSymbols.map(() => "?").join(",");
+    const result = await env.DB.prepare(
+      "SELECT external_id,instrument_id,listing_id FROM provider_mappings " +
+      "WHERE source_id='source:tradingview' AND entity_type='listing' AND external_id IN (" + placeholders + ")"
+    ).bind(...tvSymbols).all();
+    for (const item of catalogRows(result)) tvMap.set(String(item.external_id || "").toUpperCase(), item);
+  }
+
+  const isinMap = new Map();
+  if (isins.length) {
+    const placeholders = isins.map(() => "?").join(",");
+    const result = await env.DB.prepare(
+      "SELECT value,instrument_id FROM instrument_identifiers WHERE scheme='ISIN' AND value IN (" + placeholders + ")"
+    ).bind(...isins).all();
+    for (const item of catalogRows(result)) isinMap.set(String(item.value || "").toUpperCase(), String(item.instrument_id || ""));
+  }
+
+  const listingMap = new Map();
+  if (listingTickers.length) {
+    const placeholders = listingTickers.map(() => "?").join(",");
+    const result = await env.DB.prepare(
+      "SELECT id,instrument_id,venue_id,ticker FROM listings " +
+      "WHERE venue_id IN ('venue:nasdaq','venue:nyse','venue:amex','venue:nyse-arca','venue:lsx') " +
+      "AND ticker IN (" + placeholders + ")"
+    ).bind(...listingTickers).all();
+    for (const item of catalogRows(result)) {
+      listingMap.set(String(item.venue_id || "") + "|" + String(item.ticker || "").toUpperCase(), item);
+    }
+  }
+
+  const statements = [];
+  let tradeRepublicProducts = 0;
+  let conflicts = 0;
+
+  for (const row of rows) {
+    const stock = row.raw;
+    const existingTv = tvMap.get(row.tvSymbol);
+    const usKey = row.venueId + "|" + row.ticker;
+    const existingUsListing = listingMap.get(usKey);
+
+    let instrumentId =
+      (existingTv && String(existingTv.instrument_id || "")) ||
+      (existingUsListing && String(existingUsListing.instrument_id || "")) ||
+      (row.usIsin && isinMap.get(row.usIsin)) ||
+      "";
+    if (!instrumentId) instrumentId = "instrument:" + crypto.randomUUID();
+    if (row.usIsin && !isinMap.has(row.usIsin)) isinMap.set(row.usIsin, instrumentId);
+
+    const usListingId =
+      (existingTv && String(existingTv.listing_id || "")) ||
+      (existingUsListing && String(existingUsListing.id || "")) ||
+      ("listing:" + crypto.randomUUID());
+
+    const assetType = catalogText(stock.instrumentType || "stock", 32).toLowerCase() || "stock";
+    const name = catalogText(stock.name || row.ticker, 240) || row.ticker;
+    const currency = catalogText(stock.currency || "USD", 12).toUpperCase() || "USD";
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO instruments " +
+      "(id,asset_type,name,short_name,sector,industry,country_code,base_currency,active,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(id) DO UPDATE SET asset_type=excluded.asset_type,name=excluded.name,short_name=excluded.short_name," +
+      "sector=excluded.sector,industry=excluded.industry,country_code=excluded.country_code,base_currency=excluded.base_currency," +
+      "active=1,updated_at=CURRENT_TIMESTAMP"
+    ).bind(
+      instrumentId,
+      assetType,
+      name,
+      row.ticker,
+      catalogText(stock.sector, 160),
+      catalogText(stock.industry, 160),
+      "US",
+      currency
+    ));
+
+    if (row.usIsin) {
+      statements.push(env.DB.prepare(
+        "INSERT INTO instrument_identifiers (id,instrument_id,scheme,value,is_primary,created_at) " +
+        "VALUES (?,?,?,?,1,CURRENT_TIMESTAMP) " +
+        "ON CONFLICT(scheme,value) DO UPDATE SET instrument_id=excluded.instrument_id,is_primary=1"
+      ).bind("identifier:isin:" + row.usIsin, instrumentId, "ISIN", row.usIsin));
+    }
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO listings (id,instrument_id,venue_id,ticker,currency,is_primary,active,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(venue_id,ticker) DO UPDATE SET instrument_id=excluded.instrument_id,currency=excluded.currency," +
+      "is_primary=1,active=1,updated_at=CURRENT_TIMESTAMP"
+    ).bind(usListingId, instrumentId, row.venueId, row.ticker, currency));
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO provider_mappings " +
+      "(id,source_id,entity_type,instrument_id,listing_id,external_id,external_symbol,metadata_json,active,created_at,updated_at) " +
+      "VALUES (?,'source:tradingview','listing',?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(source_id,entity_type,external_id) DO UPDATE SET instrument_id=excluded.instrument_id," +
+      "listing_id=excluded.listing_id,external_symbol=excluded.external_symbol,metadata_json=excluded.metadata_json," +
+      "active=1,updated_at=CURRENT_TIMESTAMP"
+    ).bind(
+      "provider-map:tradingview:" + row.tvSymbol,
+      instrumentId,
+      usListingId,
+      row.tvSymbol,
+      row.ticker,
+      JSON.stringify({ generation })
+    ));
+
+    listingMap.set(usKey, { id: usListingId, instrument_id: instrumentId, venue_id: row.venueId, ticker: row.ticker });
+    tvMap.set(row.tvSymbol, { external_id: row.tvSymbol, instrument_id: instrumentId, listing_id: usListingId });
+
+    if (!row.tradeRepublicVerified) {
+      if (row.trIsin) {
+        statements.push(env.DB.prepare(
+          "UPDATE broker_products SET tradable=0,verified=0,updated_at=CURRENT_TIMESTAMP " +
+          "WHERE broker_id='broker:trade-republic' AND external_id=?"
+        ).bind(row.trIsin));
+        statements.push(env.DB.prepare(
+          "UPDATE broker_listings SET tradable=0,verified=0,updated_at=CURRENT_TIMESTAMP " +
+          "WHERE broker_id='broker:trade-republic' AND external_id=?"
+        ).bind(row.trIsin));
+        statements.push(env.DB.prepare(
+          "UPDATE provider_mappings SET active=0,updated_at=CURRENT_TIMESTAMP " +
+          "WHERE source_id='source:trade-republic' AND entity_type='listing' AND external_id=?"
+        ).bind(row.trIsin + ":LSX"));
+      }
+      continue;
+    }
+
+    const trKey = "venue:lsx|" + row.trTicker;
+    const existingTrListing = listingMap.get(trKey);
+    if (existingTrListing && String(existingTrListing.instrument_id || "") !== instrumentId) {
+      conflicts += 1;
+      console.warn("Catalog sync skipped conflicting LSX listing", row.trTicker, row.trIsin);
+      continue;
+    }
+
+    const trListingId = existingTrListing && String(existingTrListing.id || "")
+      ? String(existingTrListing.id)
+      : "listing:" + crypto.randomUUID();
+    const trMetadata = JSON.stringify({
+      generation,
+      isin: row.trIsin,
+      wkn: catalogText(stock.trWkn, 32),
+      nameAtExchange: catalogText(stock.trNameAtExchange, 240)
+    });
+
+    statements.push(env.DB.prepare(
+      "UPDATE broker_products SET tradable=0,verified=0,updated_at=CURRENT_TIMESTAMP " +
+      "WHERE broker_id='broker:trade-republic' AND external_id=? AND (listing_id IS NULL OR listing_id<>?)"
+    ).bind(row.trIsin, trListingId));
+    statements.push(env.DB.prepare(
+      "UPDATE broker_listings SET tradable=0,verified=0,updated_at=CURRENT_TIMESTAMP " +
+      "WHERE broker_id='broker:trade-republic' AND external_id=? AND listing_id<>?"
+    ).bind(row.trIsin, trListingId));
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO listings (id,instrument_id,venue_id,ticker,currency,is_primary,active,created_at,updated_at) " +
+      "VALUES (?,?,'venue:lsx',?,'EUR',0,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(venue_id,ticker) DO UPDATE SET instrument_id=excluded.instrument_id,currency='EUR'," +
+      "active=1,updated_at=CURRENT_TIMESTAMP"
+    ).bind(trListingId, instrumentId, row.trTicker));
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO provider_mappings " +
+      "(id,source_id,entity_type,instrument_id,listing_id,external_id,external_symbol,metadata_json,active,created_at,updated_at) " +
+      "VALUES (?,'source:trade-republic','listing',?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(source_id,entity_type,external_id) DO UPDATE SET instrument_id=excluded.instrument_id," +
+      "listing_id=excluded.listing_id,external_symbol=excluded.external_symbol,metadata_json=excluded.metadata_json," +
+      "active=1,updated_at=CURRENT_TIMESTAMP"
+    ).bind(
+      "provider-map:trade-republic:" + row.trIsin + ":lsx",
+      instrumentId,
+      trListingId,
+      row.trIsin + ":LSX",
+      row.trTicker,
+      trMetadata
+    ));
+
+    const brokerListingId = "broker-listing:trade-republic:" + trListingId;
+    statements.push(env.DB.prepare(
+      "INSERT INTO broker_listings " +
+      "(id,broker_id,listing_id,tradable,verified,external_id,metadata_json,verified_at,created_at,updated_at) " +
+      "VALUES (?,'broker:trade-republic',?,1,1,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(broker_id,listing_id) DO UPDATE SET tradable=1,verified=1,external_id=excluded.external_id," +
+      "metadata_json=excluded.metadata_json,verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP"
+    ).bind(brokerListingId, trListingId, row.trIsin, trMetadata));
+
+    statements.push(env.DB.prepare(
+      "INSERT INTO broker_products " +
+      "(id,broker_id,instrument_id,listing_id,product_code,external_id,product_mode,currency,tradable,verified,metadata_json,verified_at,created_at,updated_at) " +
+      "VALUES (?,'broker:trade-republic',?,?,?,?,'exchange','EUR',1,1,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(broker_id,listing_id) WHERE listing_id IS NOT NULL DO UPDATE SET instrument_id=excluded.instrument_id," +
+      "product_code=excluded.product_code,external_id=excluded.external_id,product_mode='exchange',currency='EUR'," +
+      "tradable=1,verified=1,metadata_json=excluded.metadata_json,verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP"
+    ).bind(
+      "broker-product:trade-republic:" + trListingId,
+      instrumentId,
+      trListingId,
+      row.trTicker,
+      row.trIsin,
+      trMetadata
+    ));
+
+    listingMap.set(trKey, { id: trListingId, instrument_id: instrumentId, venue_id: "venue:lsx", ticker: row.trTicker });
+    tradeRepublicProducts += 1;
+  }
+
+  await runCatalogStatements(env, statements);
+  return { rows: rows.length, statements: statements.length, tradeRepublicProducts, conflicts };
+}
+
+async function syncMarketCatalogToD1(env, payload) {
+  if (!env.DB) throw new Error("D1 backend not configured");
+  if (!payload || payload.generation !== MARKET_CATALOG_GENERATION || !Array.isArray(payload.stocks)) {
+    throw new Error("Invalid market catalog payload");
+  }
+  if (payload.stocks.length > 250) throw new Error("Market catalog chunk too large");
+
+  const total = { rows: 0, statements: 0, tradeRepublicProducts: 0, conflicts: 0 };
+  for (let offset = 0; offset < payload.stocks.length; offset += MARKET_CATALOG_BATCH_SIZE) {
+    const result = await syncMarketCatalogChunk(
+      env,
+      payload.stocks.slice(offset, offset + MARKET_CATALOG_BATCH_SIZE),
+      payload.generation
+    );
+    total.rows += result.rows;
+    total.statements += result.statements;
+    total.tradeRepublicProducts += result.tradeRepublicProducts;
+    total.conflicts += result.conflicts;
+  }
+  return total;
+}
+
 async function publishMarketToR2(request, env) {
-  if (!env.MARKET_DATA_BUCKET || !String(env.MARKET_PUBLISH_TOKEN || "").trim()) {
+  if (!String(env.MARKET_PUBLISH_TOKEN || "").trim()) {
     return jsonResponse({ error: "Market publishing is not configured" }, 503, { "Cache-Control": "no-store" });
   }
   if (request.method !== "PUT" && request.method !== "POST") {
@@ -615,10 +914,15 @@ async function publishMarketToR2(request, env) {
   const key = kind === "snapshot" ? "data/market.json" :
     kind === "version" ? "data/market-version.json" :
     kind === "funds" ? "data/funds.json" : "";
-  if (!key) return jsonResponse({ error: "Invalid market asset kind" }, 400, { "Cache-Control": "no-store" });
+  if (!key && kind !== "catalog") {
+    return jsonResponse({ error: "Invalid market asset kind" }, 400, { "Cache-Control": "no-store" });
+  }
 
   const announced = Number(request.headers.get("Content-Length") || 0);
-  const maxBytes = kind === "snapshot" ? 24 * 1024 * 1024 : kind === "funds" ? 12 * 1024 * 1024 : 64 * 1024;
+  const maxBytes = kind === "snapshot" ? 24 * 1024 * 1024 :
+    kind === "funds" ? 12 * 1024 * 1024 :
+    kind === "catalog" ? 2 * 1024 * 1024 :
+    64 * 1024;
   if (announced > maxBytes) return jsonResponse({ error: "Payload too large" }, 413, { "Cache-Control": "no-store" });
 
   const body = await request.arrayBuffer();
@@ -638,6 +942,28 @@ async function publishMarketToR2(request, env) {
   }
   if (kind === "version" && (!parsed || !parsed.updatedAt)) {
     return jsonResponse({ error: "Invalid market version" }, 400, { "Cache-Control": "no-store" });
+  }
+  if (kind === "catalog") {
+    if (!parsed || parsed.generation !== MARKET_CATALOG_GENERATION || !Array.isArray(parsed.stocks) || !parsed.updatedAt) {
+      return jsonResponse({ error: "Invalid market catalog" }, 400, { "Cache-Control": "no-store" });
+    }
+    try {
+      const synced = await syncMarketCatalogToD1(env, parsed);
+      return jsonResponse({
+        ok: true,
+        kind: "catalog",
+        generation: parsed.generation,
+        updatedAt: parsed.updatedAt,
+        ...synced
+      }, 200, { "Cache-Control": "no-store" });
+    } catch (error) {
+      console.error("Market catalog D1 sync failed", String(error && error.stack || error));
+      return jsonResponse({ error: "Market catalog sync failed" }, 500, { "Cache-Control": "no-store" });
+    }
+  }
+
+  if (!env.MARKET_DATA_BUCKET) {
+    return jsonResponse({ error: "Market storage is not configured" }, 503, { "Cache-Control": "no-store" });
   }
 
   await env.MARKET_DATA_BUCKET.put(key, body, {
