@@ -407,7 +407,9 @@ function portfolioUsdToEurRate() {
 }
 function portfolioGoalPositionSnapshot(p,fxUsdEur){
   const stock=stockByKey(p.stock_key),qty=num(p.quantity);if(!stock||qty===null)return null;
-  const preferTr=Number(p.prefer_tr)===1,market=currentMarket(stock,preferTr);
+  const preferTr=Number(p.prefer_tr)===1;
+  if(preferTr&&window.ViewInvAI?.ensureTrLiveKey)window.ViewInvAI.ensureTrLiveKey(portfolioStockKey(stock));
+  const market=currentMarket(stock,preferTr);
   let unitEur=num(market.eur);if(unitEur===null&&String(market.currency||"").toUpperCase()==="EUR")unitEur=num(market.price);
   const avg=num(p.avg_price),entryCurrency=String(p.currency||(preferTr?"EUR":"USD")).toUpperCase();
   let avgEur=avg;if(avg!==null&&entryCurrency==="USD")avgEur=fxUsdEur===null?null:avg*fxUsdEur;else if(avg!==null&&entryCurrency!=="EUR")avgEur=null;
@@ -553,9 +555,10 @@ function goalCandidateHtml(row){
   const levels=row.levels.stop!==null?'Stop orientativo <b>'+formatMoney(row.levels.stop,row.levels.currency)+'</b> · Take profit <b>'+formatMoney(row.levels.take,row.levels.currency)+'</b>':'Niveles pendientes de cotización válida.';
   const contribution=row.potentialGain>0?'Si alcanzara ese take profit, aportaría aproximadamente <b>'+formatMoney(row.potentialGain,"EUR")+'</b> ('+formatNumber(row.goalShare,1)+'% de lo que falta).':'La oportunidad se muestra por calidad, no como promesa de rentabilidad.';
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),action=row.allocation>0?(row.rotationScenario?"ROTACIÓN A ESTUDIAR":"COMPRAR / ROTAR"):"VIGILAR",marketLabel=row.preferTr?"TR / LSX":"EEUU";
+  const quote=currentMarket(row.stock,row.preferTr),quoteText=quote.price===null?"Esperando cotización":formatMoney(quote.price,quote.currency);
   return '<article class="portfolio-goal-candidate" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<div class="goal-candidate-head"><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc([row.preferTr?(row.stock.trTicker||row.stock.ticker):row.stock.ticker,marketLabel,row.sources.join(" + ")].filter(Boolean).join(" · "))+'</small></div><b class="goal-candidate-action">'+action+'</b></div>'+
-    '<div class="goal-candidate-kpis"><span>Velocidad IA <b>'+formatNumber(row.velocityScore,0)+'/100</b></span><span>Convicción <b>'+formatNumber(row.score,0)+'/100</b></span><span>Catalizador <b>'+esc(catalyst.label)+'</b></span><span>Cuándo <b>'+esc(catalyst.when||"Sin fecha")+'</b></span></div>'+
+    '<div class="goal-candidate-kpis"><span>Velocidad IA <b>'+formatNumber(row.velocityScore,0)+'/100</b></span><span>Convicción <b>'+formatNumber(row.score,0)+'/100</b></span><span>Precio '+esc(marketLabel)+' <b>'+esc(quoteText)+'</b></span><span>Catalizador <b>'+esc(catalyst.label)+'</b></span><span>Cuándo <b>'+esc(catalyst.when||"Sin fecha")+'</b></span></div>'+
     (catalyst.title?'<p class="goal-candidate-catalyst">'+esc(catalyst.title)+'</p>':'')+'<p>'+alloc+'</p><p>'+levels+'</p><p>'+contribution+'</p></article>';
 }
 function portfolioGoalViewHtml(){
@@ -1320,10 +1323,13 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
     : (preferTr ? 'EUR' : String(stock.currency || 'USD').toUpperCase());
   if (openedAt) openedAt.value = existing && existing.opened_at ? String(existing.opened_at).slice(0,10) : localDateValue();
   if (notes) notes.value = existing?.notes || '';
-  if (save) save.textContent = existing ? 'Guardar cambios' : 'Guardar posición';
-  if (mode) mode.textContent = existing
-    ? 'Posición existente · modifica los datos o usa Operaciones para compras/ventas parciales.'
-    : 'Nueva posición en esta cartera.';
+  const incompatible=scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker));
+  if(save){save.textContent=existing?'Guardar cambios':'Guardar posición';save.disabled=incompatible}
+  if(mode)mode.textContent=incompatible
+    ?'Esta acción no está verificada para Trade Republic / LSX y no puede añadirse a esta cartera.'
+    :existing
+      ?'Posición existente · modifica los datos o usa Operaciones para compras/ventas parciales.'
+      :'Nueva posición en esta cartera · '+portfolioMarketLabel(scope)+'.';
 }
 
 function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null) {

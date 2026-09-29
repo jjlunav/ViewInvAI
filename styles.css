@@ -7775,3 +7775,7 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  #view-portfolios .portfolio-market-scope{width:100%}
  #view-portfolios .portfolio-goal-distance{grid-template-columns:1fr;gap:4px}
 }
+
+
+/* Legacy Calendar compatibility node: routes are fused into Potencial futuro. */
+#view-calendar.legacy-calendar-view{display:none!important}
