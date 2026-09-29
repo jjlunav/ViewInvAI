@@ -20,7 +20,7 @@ const NAV_META={
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
  settings:{icon:'⚙',short:'Ajustes',desc:'Preferencias y avisos'}
 };
-const PRIMARY_MOBILE_VIEWS=['home','recommendation','entry','portfolios'];
+const PRIMARY_MOBILE_VIEWS=['home','entry','recommendation','portfolios'];
 
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
 function navigationIconHtml(v){let m=NAV_META[v]||{};return m.iconHtml||E(m.icon||'')}
