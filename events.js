@@ -121,14 +121,27 @@ function initEventViewInteractions(){
 /*
  * Compatibility surface for the old Calendar renderer.
  * Calendar is intentionally fused into Potencial futuro; these helpers keep
- * shared mobile/history checks and older callers routed to the single view.
+ * old mobile/smoke/history callers routed to the single fused data model.
  */
-const EVENT_MOBILE_GROUPS=[{key:'fused',label:'Catalizadores',columns:[]}];
-function eventCompactListView(){return !!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
-function eventMobileList(groups=[],trOnly=false){
- return '<div class="event-mobile-groups" data-event-mobile-group="fused">'+
-  (Array.isArray(groups)?groups.map((group,index)=>futureRow(group,index,trOnly)).join(''):'')+
- '</div>';
+const EVENT_MOBILE_GROUPS=[
+ {key:'event',label:'Evento'},
+ {key:'market',label:'Mercado'},
+ {key:'technical',label:'Técnico'}
+];
+const eventMobileUi={future:'event',calendar:'event'};
+function eventCompactListView(){return document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
+function eventMobileTabs(scope){
+ let active=eventMobileUi[scope]||'event';
+ return '<nav class="event-mobile-groups" aria-label="Datos del evento">'+EVENT_MOBILE_GROUPS.map(g=>
+  '<button type="button" class="'+(g.key===active?'active':'')+'" data-event-mobile-scope="'+E(scope)+'" data-event-mobile-group="'+E(g.key)+'">'+E(g.label)+'</button>'
+ ).join('')+'</nav>';
+}
+function eventMobileRow(scope,s,event,index,label,when,count=1,preferTr=false){
+ let meta='<div class="asset-event-meta"><strong>'+E(label)+'</strong><span>'+E(when)+'</span>'+(count>1?'<em>'+count+' eventos</em>':'')+'</div>';
+ return standardStockCard(s,index,{se:currentMarketSession(),preferTr,context:scope,hint:label+' · '+when,detailsHtml:'',metaHtml:meta});
+}
+function eventMobileList(scope,rows){
+ return '<div class="event-mobile-rows unified-asset-list">'+(Array.isArray(rows)?rows.join(''):'')+'</div>';
 }
 function renderCalendar(){return renderFuture()}
 
