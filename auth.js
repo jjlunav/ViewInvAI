@@ -96,6 +96,10 @@ async function bindPushListeners(plugin) {
     openPushStock(event && event.notification);
   });
   await plugin.addListener("notificationReceived", event => {
+    const notification = event && event.notification ? event.notification : (event || {});
+    const title = String(notification.title || "ViewInvAI");
+    const body = String(notification.body || notification.message || "");
+    showToast(body ? title + " · " + body : title);
     window.dispatchEvent(new CustomEvent("viewinvai:push-received", { detail: event || {} }));
   });
 }

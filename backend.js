@@ -2578,6 +2578,38 @@ async function cleanupOldBackendData(env) {
   ]);
 }
 
+async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[]){
+  if(!services.loadMarketSnapshot||(!services.loadNews&&!services.loadOfficialEvents))return{processed:0,alerts:0};
+  const raw=[...(positionRows||[]),...(watchRows||[])],seen=new Set(),tracked=[];
+  for(const row of raw){
+    const key=[String(row&&row.user_id||""),String(row&&row.stock_key||""),Number(row&&row.prefer_tr)===1?"1":"0"].join("|");
+    if(!row||!row.user_id||!row.stock_key||seen.has(key))continue;
+    seen.add(key);tracked.push(row);
+  }
+  const snapshot=await services.loadMarketSnapshot(env),globalByUser=new Map();
+  let processed=0,alerts=0;
+  for(const target of tracked.slice(0,60)){
+    try{
+      let global=globalByUser.get(target.user_id);
+      if(!global){global=await globalNotificationSettingsForUser(env,target.user_id);globalByUser.set(target.user_id,global)}
+      if(!global.enabled||!global.newsEvents)continue;
+      const stock=findStock(snapshot,target);if(!stock)continue;
+      const [officialResult,newsResult]=await Promise.allSettled([
+        services.loadOfficialEvents?services.loadOfficialEvents(stock,target):Promise.resolve([]),
+        services.loadNews?services.loadNews(stock,target):Promise.resolve([])
+      ]);
+      const official=officialResult.status==="fulfilled"?officialResult.value:[],news=newsResult.status==="fulfilled"?newsResult.value:[];
+      const events=mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),official,24),news,24);
+      const newsIds=await maybeCreateNewsAlerts(env,target,stock,events,null);
+      const eventIds=await maybeCreateEventAlerts(env,target,stock,events,null);
+      processed++;alerts+=newsIds.length+eventIds.length;
+    }catch(error){
+      console.warn("Tracked news/event scan failed",target&&target.subject_id,String(error&&error.message||error));
+    }
+  }
+  return{processed,alerts};
+}
+
 export async function runScheduledPortfolioAnalysis(env, services = {}) {
   if (!env.DB || !services.loadMarketSnapshot || !services.loadChart) {
     return { skipped: true, reason: "backend-not-configured" };
@@ -2628,7 +2660,9 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
     }
   }
 
-  let preferences={processed:0};
+  let trackedNews={processed:0,alerts:0},preferences={processed:0};
+  try{trackedNews=await scanTrackedNewsAndEvents(env,services,positionRows.results||[],watchRows.results||[])}
+  catch(error){console.warn("Tracked news/event sweep failed",String(error&&error.message||error))}
   try{preferences=await scanNotificationPreferences(env,services)}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
-  return { processed: results.length, results, preferences };
+  return { processed: results.length, results, trackedNews, preferences };
 }
