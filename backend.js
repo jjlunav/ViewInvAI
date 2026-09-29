@@ -2205,6 +2205,19 @@ async function scanNotificationPreferences(env,services){
 
 async function handleDevices(request, env, user, json, parts) {
   const id = parts[1] || "";
+  if (request.method === "POST" && id === "test") {
+    const settings=await globalNotificationSettingsForUser(env,user.id);
+    if(!settings.enabled)return json({error:"Las notificaciones globales están desactivadas.",code:"notifications-disabled"},409);
+    const devices=await env.DB.prepare("SELECT id,platform,app_version,enabled,last_seen_at FROM devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC").bind(user.id).all();
+    if(!(devices.results||[]).length)return json({error:"No hay ningún dispositivo push activo registrado.",code:"no-active-device"},409);
+    const alertId=uid("al_"),now=nowIso(),title="ViewInvAI · prueba de notificación",message="Si ves este aviso, el canal push de esta instalación está funcionando.";
+    await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .bind(alertId,user.id,"","","","push-test","info",title,message,now).run();
+    const result=await dispatchPushAlert(env,{id:alertId,alert_type:"push-test",severity:"info",title,message},{user_id:user.id,stock_key:"",ticker:"",prefer_tr:0});
+    if(!result.configured)return json({error:"El servidor push no está configurado.",code:"push-backend-not-configured",result},503);
+    if(result.sent<1)return json({error:"No se pudo entregar la notificación a ningún dispositivo activo.",code:"push-not-delivered",result},502);
+    return json({ok:true,sent:result.sent,devices:(devices.results||[]).length,alertId});
+  }
   if (request.method === "GET" && !id) {
     const rows = await env.DB.prepare(
       "SELECT id,platform,app_version,enabled,last_seen_at,created_at,updated_at FROM devices WHERE user_id=? ORDER BY last_seen_at DESC"
