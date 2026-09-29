@@ -1958,9 +1958,18 @@ async function ensurePortfolioGoalSchema(env){
   await ensurePortfolioMarketSchema(env);
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS portfolio_goals ("+
-    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,target_value_eur REAL NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,target_value_eur REAL NOT NULL,target_date TEXT,monthly_contribution_eur REAL NOT NULL DEFAULT 0,risk_profile TEXT NOT NULL DEFAULT 'balanced',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
     "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
+  const goalColumns=await env.DB.prepare("PRAGMA table_info(portfolio_goals)").all();
+  const goalColumnNames=new Set((goalColumns.results||[]).map(row=>String(row.name||"")));
+  for(const [name,sql] of [
+    ["target_date","ALTER TABLE portfolio_goals ADD COLUMN target_date TEXT"],
+    ["monthly_contribution_eur","ALTER TABLE portfolio_goals ADD COLUMN monthly_contribution_eur REAL NOT NULL DEFAULT 0"],
+    ["risk_profile","ALTER TABLE portfolio_goals ADD COLUMN risk_profile TEXT NOT NULL DEFAULT 'balanced'"]
+  ]){
+    if(!goalColumnNames.has(name))await env.DB.prepare(sql).run();
+  }
   try{
     const legacy=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_portfolio_goals'").first();
     if(legacy){
@@ -1980,12 +1989,12 @@ async function handlePortfolioGoal(request,env,user,json,url){
     if(portfolioId){
       if(!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
       const goal=await env.DB.prepare(
-        "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+        "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
       ).bind(portfolioId,user.id).first();
       return json({goal:goal||null});
     }
     const rows=await env.DB.prepare(
-      "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE user_id=? ORDER BY updated_at DESC"
+      "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE user_id=? ORDER BY updated_at DESC"
     ).bind(user.id).all();
     return json({goals:rows.results||[]});
   }
@@ -1995,13 +2004,27 @@ async function handlePortfolioGoal(request,env,user,json,url){
     const raw=finiteNumber(body.targetValueEur!==undefined?body.targetValueEur:body.targetProfitEur);
     if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
     const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
-    const existing=await env.DB.prepare("SELECT portfolio_id FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+    const existing=await env.DB.prepare(
+      "SELECT portfolio_id,target_date,monthly_contribution_eur,risk_profile FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+    ).bind(portfolioId,user.id).first();
+    const rawDate=body.targetDate!==undefined?trimText(body.targetDate,10):(existing&&existing.target_date||"");
+    let targetDate=rawDate||null;
+    if(targetDate&&!/^\d{4}-\d{2}-\d{2}$/.test(targetDate))return json({error:"targetDate must use YYYY-MM-DD"},400);
+    if(targetDate){
+      const parsed=new Date(targetDate+"T23:59:59Z");
+      if(!Number.isFinite(parsed.getTime()))return json({error:"targetDate is invalid"},400);
+      if(parsed.getTime()<Date.now()-86400000)return json({error:"targetDate must not be in the past"},400);
+    }
+    const contributionRaw=body.monthlyContributionEur!==undefined?finiteNumber(body.monthlyContributionEur):finiteNumber(existing&&existing.monthly_contribution_eur);
+    const monthlyContribution=Math.max(0,Math.min(1000000,Math.round((contributionRaw||0)*100)/100));
+    const requestedRisk=String(body.riskProfile!==undefined?body.riskProfile:(existing&&existing.risk_profile||"balanced")).trim().toLowerCase();
+    const riskProfile=["conservative","balanced","aggressive"].includes(requestedRisk)?requestedRisk:"balanced";
     await env.DB.prepare(
-      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,created_at,updated_at) VALUES (?,?,?,?,?) "+
-      "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,updated_at=excluded.updated_at"
-    ).bind(portfolioId,user.id,target,now,now).run();
+      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) "+
+      "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,target_date=excluded.target_date,monthly_contribution_eur=excluded.monthly_contribution_eur,risk_profile=excluded.risk_profile,updated_at=excluded.updated_at"
+    ).bind(portfolioId,user.id,target,targetDate,monthlyContribution,riskProfile,now,now).run();
     const goal=await env.DB.prepare(
-      "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+      "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
     ).bind(portfolioId,user.id).first();
     return json({goal},existing?200:201);
   }
