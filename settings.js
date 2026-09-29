@@ -30,15 +30,52 @@ function syncDeviceSettingsUi(){
  else setWakeLockStatus('Pendiente de activar');
 }
 
-let pushBackendConfigured=null;
+let pushBackendConfigured=null,backendSourceStatus=null;
+function sourceStatusText(source,key){
+ if(!source)return{label:'Sin información',mode:'error'};
+ if(source.configured===false){
+  const missing=source.requiredConfig?(' · falta '+source.requiredConfig):'';
+  return{label:'Pendiente'+missing,mode:'error'};
+ }
+ if(key==='fda'&&source.enhancedConfig===false)return{label:'Integrada · clave opcional no configurada',mode:'active'};
+ return{label:'Integrada',mode:'active'};
+}
+function renderSourceSettingsStatus(){
+ const sources=backendSourceStatus&&backendSourceStatus.sources||{};
+ const rows={
+  sourceStatusTradeRepublic:['tradeRepublic'],
+  sourceStatusNasdaq:['nasdaq'],
+  sourceStatusSec:['sec'],
+  sourceStatusClinical:['clinicalTrials'],
+  sourceStatusFda:['fda'],
+  sourceStatusPush:['push']
+ };
+ for(const [id,[key]] of Object.entries(rows)){
+  const el=$('#'+id);if(!el)continue;
+  const info=sourceStatusText(sources[key],key);
+  el.textContent=info.label;
+  el.classList.toggle('active',info.mode==='active');
+  el.classList.toggle('error',info.mode==='error');
+ }
+ const cadence=$('#sourceStatusCadence');
+ if(cadence){
+  const minutes=Number(backendSourceStatus&&backendSourceStatus.alertsCadenceMinutes);
+  cadence.textContent=Number.isFinite(minutes)&&minutes>0?'Barrido rápido · '+minutes+' min':'Cadencia no disponible';
+ }
+}
 async function refreshPushBackendStatus(){
  try{
   let response=await fetch('/api/backend/status',{cache:'no-store'});
   if(!response.ok)return;
   let data=await response.json();
+  backendSourceStatus=data||null;
   pushBackendConfigured=data&&data.push===true;
   renderPushSettingsStatus();
- }catch(_){}
+  renderSourceSettingsStatus();
+ }catch(_){
+  backendSourceStatus=null;
+  renderSourceSettingsStatus();
+ }
 }
 function renderPushSettingsStatus(detail=null){
  let status=$('#pushNotificationStatus'),button=$('#enablePushNotifications');
@@ -282,6 +319,7 @@ function initSettings(){
  refreshPushBackendStatus();
  setTimeout(()=>{
   renderPushSettingsStatus();
+  renderSourceSettingsStatus();
   refreshPushBackendStatus();
  },700);
 }
