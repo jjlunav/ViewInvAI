@@ -12,6 +12,7 @@
  let seeded=false;
  let lastScan={at:0,results:[],best:null,error:''};
  let state=readState();
+ let globalNotifications={newsEvents:true,pulseAi:true};
 
  function q(s){return document.querySelector(s)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -93,6 +94,8 @@
   let status=q('#alertPageStatus'),list=q('#alertPageList');if(!status||!list)return;
   if(!state.enabled){
    status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar compras de alta convicción.</span>';
+  }else if(globalNotifications.pulseAi===false){
+   status.innerHTML='<strong>Pulso IA global desactivado</strong><span>Puedes volver a activar estas notificaciones desde Settings.</span>';
   }else if(evaluating){
    status.innerHTML='<strong>Analizando mercado…</strong><span>Contrastando gráfico, tendencia, volumen, RSI/ADX, liquidez, noticias y eventos.</span>';
   }else if(lastScan.error){
@@ -129,7 +132,9 @@
  }
 
  async function evaluate(){
-  if(evaluating||!state.enabled){renderAlertPage();return}
+  const accountGlobal=window.ViewInvAINotificationSettings;
+  if(accountGlobal&&typeof accountGlobal==='object')globalNotifications=Object.assign(globalNotifications,accountGlobal);
+  if(evaluating||!state.enabled||globalNotifications.pulseAi===false){renderAlertPage();return}
   if(!window.ViewInvAI||typeof window.ViewInvAI.highConvictionRecommendation!=='function'){renderAlertPage();return}
   evaluating=true;renderAlertPage();
   try{
@@ -180,6 +185,18 @@
    state.enabled=!!e.target.checked;state.activeKey=null;seeded=false;saveState();renderAlertPage();
    if(state.enabled)setTimeout(evaluate,100);
   });
+  window.addEventListener('viewinvai:notification-settings',e=>{
+   let detail=e&&e.detail||{};
+   globalNotifications={
+    newsEvents:detail.newsEvents!==false,
+    pulseAi:detail.pulseAi!==false
+   };
+   if(globalNotifications.pulseAi===false){
+    state.activeKey=null;seeded=false;saveState();
+   }
+   renderAlertPage();
+   if(globalNotifications.pulseAi!==false&&state.enabled)setTimeout(evaluate,100);
+  });
   document.addEventListener('click',e=>{
    let item=e.target.closest&&e.target.closest('[data-alert-stock-key]');if(item)openAlertStock(item);
   });
@@ -191,6 +208,9 @@
  }
 
  function init(){
+  if(window.ViewInvAINotificationSettings&&typeof window.ViewInvAINotificationSettings==='object'){
+   globalNotifications=Object.assign(globalNotifications,window.ViewInvAINotificationSettings);
+  }
   renderCenter();renderSettings();initEvents();
   setTimeout(evaluate,1800);
   setInterval(()=>{if(!document.hidden)evaluate()},30000);
