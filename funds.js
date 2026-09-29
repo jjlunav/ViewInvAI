@@ -27,7 +27,7 @@
  function q(s){return document.querySelector(s)}
  function setPortfolioAssetMode(mode,loadFunds=true){
   mode=mode==='funds'?'funds':'stocks';
-  const view=q('#view-portfolios');
+  const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp');
   if(view)view.dataset.portfolioAssetMode=mode;
   document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
    const active=b.dataset.portfolioAsset===mode;
@@ -35,14 +35,16 @@
    b.setAttribute('aria-selected',active?'true':'false');
    b.tabIndex=active?0:-1;
   });
-  document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>{
-   const active=p.dataset.portfolioAssetPanel===mode;
-   p.classList.toggle('is-hidden',!active);
-   p.hidden=!active;
-   p.setAttribute('aria-hidden',active?'false':'true');
-   if(active)p.style.removeProperty('display');
-   else p.style.setProperty('display','none','important');
-  });
+  const show=(panel,active)=>{
+   if(!panel)return;
+   panel.classList.toggle('is-hidden',!active);
+   panel.hidden=!active;
+   panel.inert=!active;
+   panel.setAttribute('aria-hidden',active?'false':'true');
+   panel.style.setProperty('display',active?'block':'none','important');
+  };
+  show(stockPanel,mode==='stocks');
+  show(fundPanel,mode==='funds');
   if(mode==='funds'){
    root.ViewInvAIPortfolios?.setGoalVisible?.(false);
    if(loadFunds)loadPortfolio(false);
@@ -555,6 +557,12 @@
  }
  function renderPortfolio(){
   const box=q('#fundPortfolioApp');if(!box)return;
+  const view=q('#view-portfolios');
+  if(view&&view.dataset.portfolioAssetMode==='funds'){
+   const stocks=q('#portfolioApp');
+   if(stocks){stocks.hidden=true;stocks.inert=true;stocks.setAttribute('aria-hidden','true');stocks.style.setProperty('display','none','important')}
+   box.hidden=false;box.inert=false;box.setAttribute('aria-hidden','false');box.style.setProperty('display','block','important');
+  }
   account.user=root.ViewInvAIAuth?.getUser?.()||account.user;
   if(!account.user){
    box.innerHTML='<div class="portfolio-empty-state"><h2>Cartera de fondos</h2><p>Inicia sesión con Google para sincronizar tus fondos y ETFs entre web y Android.</p><button type="button" class="btn" data-fund-login>Entrar con Google</button></div>';

@@ -70,6 +70,9 @@ window.checkAssetCards = async function () {
   liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');
+  assert(!document.querySelector('#stockQuickDetail .unified-stock-header .quote-spread'),'profile hero leaked BID/ASK');
+  const generalBidAsk=[...document.querySelectorAll('#stockQuickDetail [data-profile-panel="general"] .profile-stat-row')].some(el=>/BID\s*\/\s*ASK/i.test(el.textContent||''));
+  assert(generalBidAsk,'General tab lost BID/ASK');
   closeQuickProfile(false);
  }finally{
   Object.assign(ps,saved);portfolio.render();view.style.display=display;

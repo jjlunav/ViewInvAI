@@ -185,7 +185,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-    '<div class="profile-live"><small>Regular + sesión extendida</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se)+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    '<div class="profile-live"><small>Regular + sesión extendida</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';

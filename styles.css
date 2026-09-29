@@ -7171,3 +7171,100 @@ html[data-theme="light"] .tr-native-axis{
 #view-portfolios[data-portfolio-asset-mode="funds"] #fundPortfolioApp{
  visibility:visible;
 }
+
+
+/* 2026-09-29 · desktop profile readability + strict portfolio separation */
+/* Only one portfolio family may exist visually at a time. */
+#view-portfolios[data-portfolio-asset-mode="stocks"] > #portfolioApp{display:block!important;visibility:visible!important}
+#view-portfolios[data-portfolio-asset-mode="stocks"] > #fundPortfolioApp{display:none!important;visibility:hidden!important}
+#view-portfolios[data-portfolio-asset-mode="funds"] > #portfolioApp{display:none!important;visibility:hidden!important}
+#view-portfolios[data-portfolio-asset-mode="funds"] > #fundPortfolioApp{display:block!important;visibility:visible!important}
+
+/* BID/ASK belongs to General > Más datos de mercado, never the compact hero. */
+.investing-profile-header .profile-live>.quote-spread{display:none!important}
+
+/* Desktop browser profile: readable at normal browser zoom without wasting the viewport. */
+@media(min-width:1100px){
+ .stock-profile-page{
+  width:min(1500px,calc(100% - 42px))!important;
+  gap:14px!important;
+  margin:10px auto 38px!important
+ }
+ .investing-profile-header{
+  gap:26px!important;
+  padding:20px 6px 22px!important
+ }
+ .investing-profile-header .profile-market{
+  font-size:10px!important;
+  letter-spacing:.75px!important
+ }
+ .investing-profile-header .profile-title h2{
+  font-size:31px!important;
+  letter-spacing:-.55px!important
+ }
+ .investing-profile-header .profile-title p{
+  font-size:15px!important
+ }
+ .investing-profile-header .profile-live{
+  min-width:270px!important;
+  grid-template-areas:
+   "label label"
+   "price change"
+   "updated updated"!important;
+  gap:5px 12px!important
+ }
+ .investing-profile-header .profile-live>small:first-child{font-size:9px!important}
+ .investing-profile-header .profile-live>.price-pair>strong{font-size:36px!important}
+ .investing-profile-header .profile-live>.positive,
+ .investing-profile-header .profile-live>.negative{font-size:16px!important}
+ .investing-profile-header .profile-primary-actions .btn{
+  min-height:42px!important;
+  padding:10px 14px!important;
+  font-size:13px!important
+ }
+ .profile-notification-bell{min-width:42px!important;min-height:42px!important;font-size:18px!important}
+
+ .profile-tabs{min-height:54px!important}
+ .profile-tabs button{
+  min-height:53px!important;
+  padding:0 17px!important;
+  font-size:13px!important
+ }
+
+ .profile-section-head{min-height:48px!important;padding:11px 15px!important}
+ .profile-section-head h3,.profile-section>h3{font-size:14px!important}
+ .profile-section-head span{font-size:10px!important}
+
+ .profile-stat-list{column-gap:40px!important;padding:4px 18px 10px!important}
+ .profile-stat-row{min-height:62px!important;padding:10px 0!important;gap:18px!important}
+ .profile-stat-row>div>span{font-size:13px!important}
+ .profile-stat-row>div>small{font-size:10px!important}
+ .profile-stat-row>strong{font-size:15px!important}
+ .profile-stat-row>strong .price-pair>strong{font-size:16px!important}
+ .profile-stat-row>strong .price-pair>small{font-size:9px!important}
+
+ .profile-disclosure>summary{
+  min-height:50px!important;
+  padding:11px 14px!important
+ }
+ .profile-disclosure>summary b{font-size:13px!important}
+ .profile-disclosure>summary small{font-size:10px!important}
+
+ .profile-session-strip{margin:12px 0 15px!important}
+ .profile-session-cell{gap:5px 14px!important;padding:14px 16px!important}
+ .profile-session-cell>span{font-size:10px!important}
+ .profile-session-cell>strong{font-size:16px!important}
+ .profile-session-cell>b{font-size:14px!important}
+ .profile-session-cell>small{font-size:10px!important}
+
+ .profile-main-grid{grid-template-columns:minmax(0,1fr) 360px!important;gap:16px!important}
+ .profile-ai-head h3{font-size:15px!important}
+ .profile-ai-head small{font-size:9px!important}
+ .profile-ai-state b{font-size:13px!important}
+ .profile-ai-state span{font-size:10px!important}
+ .profile-ai-columns h4{font-size:10px!important}
+ .profile-ai-columns li,.profile-ai-columns li b{font-size:10px!important}
+ .profile-ai-catalyst small{font-size:9px!important}
+ .profile-ai-catalyst strong{font-size:12px!important}
+ .profile-ai-catalyst span{font-size:10px!important}
+}
