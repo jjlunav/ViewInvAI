@@ -436,8 +436,8 @@ function recommendationMobileCell(key,s,mode,a,signal,quality){
  return{value,tone};
 }
 function recommendationMobileItem(mode,result){
- let s=result&&result.s?result.s:null;
- return recommendationCard(mode,s,null,result);
+ let isResult=!!(result&&result.s),s=isResult?result.s:result;
+ return recommendationCard(mode,s||null,null,isResult?result:null);
 }
 function recommendationMobileList(usResult,trResult){
  return '<div class="reco-mobile-rows unified-asset-list">'+recommendationMobileItem('us',usResult)+recommendationMobileItem('tr',trResult)+'</div>';
