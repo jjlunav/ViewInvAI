@@ -59,12 +59,28 @@ function profileGeneralPrimaryStats(s,isTr,se){
   profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
  ].join('');
 }
+function profileQuoteFreshness(q){
+ const raw=q&&q.updatedAt;
+ if(!raw)return 'Sin hora fiable';
+ const t=typeof raw==='number'?raw:new Date(raw).getTime();
+ if(!Number.isFinite(t))return 'Sin hora fiable';
+ const age=Math.max(0,Date.now()-t),seconds=Math.round(age/1000);
+ if(seconds<60)return 'hace '+seconds+' s';
+ const minutes=Math.round(seconds/60);
+ if(minutes<60)return 'hace '+minutes+' min';
+ const hours=Math.round(minutes/60);
+ return 'hace '+hours+' h';
+}
 function profileGeneralExtraStats(s,isTr,se){
- let currentPrice=pricePair(s,SP(s,se),isTr),exactTr=isTr?canonicalQuote(s,true):null;
- let currentChange=isTr?'<span class="quote-change '+C(exactTr.change)+'">'+PC(exactTr.change)+'</span>':liveChangeHtml(s,SC(s,se),false);
+ let currentPrice=pricePair(s,SP(s,se),isTr),quote=canonicalQuote(s,isTr),exactTr=isTr?quote:null;
+ let currentChange=isTr?'<span class="quote-change '+C(exactTr&&exactTr.change)+'">'+PC(exactTr&&exactTr.change)+'</span>':liveChangeHtml(s,SC(s,se),false);
+ let source=String(quote&&quote.source|| (isTr?'Trade Republic / LSX':'EEUU')).trim()||'—';
+ let quality=quote&&quote.fallback?'Referencia / fallback':quote&&quote.live===true?'Live':'Último dato disponible';
  return [
   profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
   profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
+  profileKpi('Fuente cotización',E(source),E(quality)),
+  profileKpi('Actualización',E(profileQuoteFreshness(quote)),quote&&quote.updatedAt?E(new Date(quote.updatedAt).toLocaleString('es-ES')):'Sin sello temporal'),
   profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones'),
   profileKpi('Capitalización',N(s.marketCap)===null?'—':compactVol(s.marketCap),(s.fundamentalCurrency||'USD'))
  ].join('');
