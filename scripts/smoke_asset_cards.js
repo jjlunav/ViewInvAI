@@ -65,7 +65,11 @@ window.checkAssetCards = async function () {
   assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
   const row=rows[0].querySelector('[data-open-stock]');
   assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
-  assert(rows[0].querySelector('.asset-regular-price')&&rows[0].querySelector('.asset-regular-change')&&rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio does not use the shared compact stock row');
+  assert(rows[0].querySelector('.asset-regular-price')&&rows[0].querySelector('.asset-regular-change'),'portfolio US position does not use the shared compact stock row');
+  const portfolioHasExtended=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
+  if(portfolioHasExtended)assert(rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio US position lost available extended quote');
+  assert(rows[1].querySelector('.asset-venue-price'),'portfolio TR position does not use the LSX quote cell');
+  assert(!rows[1].querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
   assert(!view.querySelector('.portfolio-primary-tabs'),'obsolete portfolio/goal primary tabs remain');
   assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle]'),'goal control is not inside the stock portfolio toolbar');
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
