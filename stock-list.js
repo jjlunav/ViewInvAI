@@ -127,7 +127,7 @@ function extendedSessionDisplay(s,se=currentMarketSession()){
  if(!quote)return{icon:'',iconClass:'',price:null,regular,delta:null,change:null,tone:'muted',kind:null,at:null};
  const usePost=quote.kind==='postmarket',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun';
  const price=quote.price,delta=price!==null&&regular!==null?price-regular:null;
- const change=quote.change!==null?quote.change:(price!==null&&regular>0?(price/regular-1)*100:null);
+ const change=price!==null&&regular>0?(price/regular-1)*100:null;
  return{icon,iconClass,price,regular,delta,change,tone:change===null?'muted':C(change),kind:quote.kind,at:quote.at};
 }
 function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
