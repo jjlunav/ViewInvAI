@@ -26,6 +26,14 @@ TR_URLS = [
 ]
 OUT = Path("data/market.json")
 VERSION_OUT = Path("data/market-version.json")
+CATALOG_DELTA_OUT = Path("data/market-catalog-delta.json")
+CATALOG_SYNC_GENERATION = "identity-v1"
+CATALOG_IDENTITY_FIELDS = (
+    "tvSymbol", "ticker", "name", "instrumentType", "exchange", "currency",
+    "sector", "industry", "usIsin", "trIsin", "isinLinkVerified",
+    "tradeRepublicVerified", "tradeRepublicTradable", "trTicker", "trExchange",
+    "trNameAtExchange", "trWkn", "trActive",
+)
 TR_PDF_MAX_BYTES = 50 * 1024 * 1024
 TR_PDF_MAX_PAGES = 5000
 NEWS_SYMBOL_LIMIT = 60
@@ -1467,6 +1475,45 @@ def attach_previous_snapshot(stocks, previous, now):
             attached += 1
     return attached
 
+def catalog_identity_row(stock):
+    row = {}
+    for key in CATALOG_IDENTITY_FIELDS:
+        if key in stock:
+            row[key] = stock[key]
+    return row
+
+
+def write_catalog_delta(stocks, previous, now):
+    previous_meta = previous.get("meta") or {}
+    full_backfill = previous_meta.get("catalogSyncGeneration") != CATALOG_SYNC_GENERATION
+    previous_rows = {
+        row.get("tvSymbol"): catalog_identity_row(row)
+        for row in previous.get("stocks") or []
+        if row.get("tvSymbol")
+    }
+
+    changed = []
+    for stock in stocks:
+        row = catalog_identity_row(stock)
+        symbol = row.get("tvSymbol")
+        if not symbol:
+            continue
+        if full_backfill or previous_rows.get(symbol) != row:
+            changed.append(row)
+
+    payload = {
+        "generation": CATALOG_SYNC_GENERATION,
+        "updatedAt": now.isoformat(),
+        "fullBackfill": full_backfill,
+        "stocks": changed,
+    }
+    CATALOG_DELTA_OUT.parent.mkdir(parents=True, exist_ok=True)
+    CATALOG_DELTA_OUT.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    )
+    return len(changed), full_backfill
+
+
 def main():
     previous = {}
     if OUT.exists():
@@ -1526,6 +1573,8 @@ def main():
         for key in list(s):
             if s[key] is None or s[key] == "":
                 del s[key]
+
+    catalog_delta_count, catalog_full_backfill = write_catalog_delta(stocks, previous, now)
 
     events = []
 
@@ -1601,6 +1650,9 @@ def main():
             "fdaUpdatedAt": fda_updated_at,
             "fdaRefreshed": fda_refreshed,
             "fdaApiKeyConfigured": bool(OPENFDA_API_KEY),
+            "catalogSyncGeneration": CATALOG_SYNC_GENERATION,
+            "catalogDeltaCount": catalog_delta_count,
+            "catalogFullBackfill": catalog_full_backfill,
             "notes": "Datos públicos o diferidos según proveedor. Las noticias se agrupan por hecho y solo se publican si proceden de una fuente financiera reputada o primaria. SEC/EDGAR se consulta directamente cuando SEC_USER_AGENT está configurado. ClinicalTrials.gov se consulta directamente para ensayos con lead sponsor validado y solo se publican fechas con día exacto; una fecha de finalización de estudio no se presenta como fecha garantizada de resultados. FDA/Drugs@FDA se usa para acciones regulatorias ya registradas y nunca para inventar futuras fechas PDUFA. Las fuentes múltiples se conservan como contraste. ChatGPT no se usa como fuente primaria.",
         },
         "stocks": stocks,
@@ -1612,6 +1664,8 @@ def main():
         "updatedAt": obj["meta"]["updatedAt"],
         "stocks": len(stocks),
         "events": len(events),
+        "catalogSyncGeneration": CATALOG_SYNC_GENERATION,
+        "catalogDeltaCount": catalog_delta_count,
     }, ensure_ascii=False, separators=(",", ":")))
 
     # Diagnostic summary for the frontend "Impulso intradía" preset.
