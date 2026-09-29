@@ -1186,6 +1186,103 @@ async function loadOfficialEventsForBackend(stock,target,env){
 }
 
 
+function normalizedCompanyTokens(value){
+  const generic=new Set(["inc","incorporated","corp","corporation","co","company","ltd","limited","plc","holdings","holding","group","sa","ag","nv","se","and","the","bio","biotech","biotechnology","pharma","pharmaceutical","pharmaceuticals","therapeutics","therapeutic","medical","health","sciences","science"]);
+  return String(value||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(token=>token.length>1&&!generic.has(token));
+}
+function clinicalSponsorMatches(company,sponsor){
+  const left=normalizedCompanyTokens(company),right=new Set(normalizedCompanyTokens(sponsor));
+  if(!left.length||!right.size)return false;
+  const matches=left.filter(token=>right.has(token)).length;
+  return matches>=Math.min(2,left.length)||left.some(token=>token.length>=6&&right.has(token));
+}
+function clinicalCompanyQuery(name){
+  return normalizedCompanyTokens(name).slice(0,3).join(" ");
+}
+function clinicalDate(value){
+  const raw=String(value||"").trim();
+  if(!/^\d{4}-\d{2}(-\d{2})?$/.test(raw))return null;
+  const normalized=raw.length===7?raw+"-01":raw;
+  const parsed=new Date(normalized+"T12:00:00Z");
+  return Number.isFinite(parsed.getTime())?parsed:null;
+}
+function clinicalPhase(phases){
+  const list=(Array.isArray(phases)?phases:[]).map(x=>String(x||"").toUpperCase());
+  if(list.includes("PHASE3"))return{label:"Fase 3",impact:68};
+  if(list.includes("PHASE2"))return{label:"Fase 2",impact:58};
+  if(list.includes("PHASE1")||list.includes("EARLY_PHASE1"))return{label:"Fase 1",impact:46};
+  if(list.includes("PHASE4"))return{label:"Fase 4",impact:50};
+  return{label:"Ensayo clínico",impact:42};
+}
+async function loadClinicalEventsForBackend(stock,target){
+  const sector=String(stock&&stock.sector||"")+" "+String(stock&&stock.industry||"");
+  if(!/health|biotech|biolog|pharma|therapeut|medical/i.test(sector))return[];
+  const company=String(stock&&stock.name||target&&target.name||"").trim(),query=clinicalCompanyQuery(company);
+  if(!query)return[];
+  const now=Date.now(),cacheKey="clinical:"+query.toLowerCase(),cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<6*60*60*1000)return cached.rows;
+  try{
+    const url=new URL("https://clinicaltrials.gov/api/v2/studies");
+    url.searchParams.set("query.lead",query);
+    url.searchParams.set("filter.overallStatus","RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING|ENROLLING_BY_INVITATION");
+    url.searchParams.set("pageSize","40");
+    url.searchParams.set("format","json");
+    const response=await fetch(url.toString(),{headers:{"Accept":"application/json","User-Agent":"ViewInvAI/0.6.18"}});
+    if(!response.ok)throw new Error("ClinicalTrials.gov "+response.status);
+    const payload=await response.json(),rows=[];
+    const start=now-86400000,end=now+120*86400000;
+    for(const study of Array.isArray(payload&&payload.studies)?payload.studies:[]){
+      const protocol=study&&study.protocolSection||{},identification=protocol.identificationModule||{},sponsors=protocol.sponsorCollaboratorsModule||{},
+        lead=sponsors.leadSponsor||{},leadName=String(lead.name||"").trim(),leadClass=String(lead.class||"").toUpperCase();
+      if(leadClass&&leadClass!=="INDUSTRY")continue;
+      if(!clinicalSponsorMatches(company,leadName))continue;
+      const status=protocol.statusModule||{},primary=status.primaryCompletionDateStruct||{},completion=status.completionDateStruct||{},
+        dateStruct=primary.date?primary:completion,when=clinicalDate(dateStruct.date);
+      if(!when||when.getTime()<start||when.getTime()>end)continue;
+      const nct=String(identification.nctId||"").trim();
+      if(!nct)continue;
+      const phase=clinicalPhase(protocol.designModule&&protocol.designModule.phases||[]),dateKind=primary.date?"finalización primaria":"finalización del estudio",
+        estimated=String(dateStruct.type||"").toUpperCase()==="ESTIMATED",brief=String(identification.briefTitle||"").trim(),
+        ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase(),eventUrl="https://clinicaltrials.gov/study/"+encodeURIComponent(nct);
+      rows.push({
+        id:"clinicaltrials:"+nct+":"+dateKind.replace(/\s+/g,"-"),
+        eventKind:"scheduled",
+        type:"medical",
+        ticker,
+        name:company,
+        exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+        date:when.toISOString(),
+        title:"ClinicalTrials.gov · "+dateKind+" · "+phase.label,
+        fact:leadName+" figura como lead sponsor. ClinicalTrials.gov marca "+when.toISOString().slice(0,10)+" como fecha "+(estimated?"estimada":"registrada")+" de "+dateKind+(brief?" para "+brief+".":"."),
+        impact:"La fecha puede aumentar la atención sobre el programa, pero no anticipa el resultado del estudio.",
+        impactScore:phase.impact,
+        verification:"Registro oficial ClinicalTrials.gov · lead sponsor validado",
+        source:"ClinicalTrials.gov",
+        sourceFamily:"clinicaltrials",
+        official:true,
+        sourceCount:1,
+        independentSourceCount:0,
+        corroborated:false,
+        url:eventUrl
+      });
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows});
+    return rows;
+  }catch(error){
+    console.warn("Followed-stock clinical events unavailable",company,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
+async function loadAllOfficialEventsForBackend(stock,target,env){
+  const [sec,clinical]=await Promise.all([
+    loadOfficialEventsForBackend(stock,target,env),
+    loadClinicalEventsForBackend(stock,target)
+  ]);
+  return [...sec,...clinical];
+}
+
+
 
 let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
 async function socialTrendingResponse(){
@@ -1425,7 +1522,7 @@ export default {
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
         loadNews: loadNewsForBackend,
-        loadOfficialEvents: (stock,target) => loadOfficialEventsForBackend(stock,target,env)
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -1481,7 +1578,7 @@ export default {
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
         loadNews: loadNewsForBackend,
-        loadOfficialEvents: (stock,target) => loadOfficialEventsForBackend(stock,target,env)
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
       }),
       refreshAttentionRankings(env)
     ]).then(results=>{
