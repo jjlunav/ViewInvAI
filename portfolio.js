@@ -347,7 +347,7 @@ function portfolioContextHtml(selected, positions) {
 function renderWatchRow(w) {
   const stock = stockByKey(w.stock_key);
   if (!stock) return "";
-  const preferTr = !!(w.prefer_tr || stock.trTicker);
+  const preferTr = Number(w.prefer_tr) === 1;
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index:0, preferTr, context:"watchlist", hint:"Seguimiento", rankLabel:"",
     openAttrs:' data-open-stock="' + esc(w.stock_key) + '" role="button" tabindex="0"',
