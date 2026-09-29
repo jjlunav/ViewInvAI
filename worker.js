@@ -1055,7 +1055,7 @@ async function loadNewsForBackend(stock,target){
   const symbol=String(stock&&stock.tvSymbol||((stock&&stock.exchange||target&&target.exchange||"")+":"+ticker)).trim().toUpperCase();
   if(!ticker||!symbol)return[];
   const cacheKey=symbol,now=Date.now(),cached=backendNewsCache.get(cacheKey);
-  if(cached&&now-cached.at<5*60*1000)return cached.rows;
+  if(cached&&now-cached.at<60*1000)return cached.rows;
   try{
     const url=new URL("https://news-headlines.tradingview.com/v2/headlines");
     url.searchParams.set("client","web");
@@ -1129,7 +1129,7 @@ async function loadOfficialEventsForBackend(stock,target,env){
   const userAgent=String(env&&env.SEC_USER_AGENT||"").trim();
   if(!userAgent)return events;
   const cik=cikDigits.padStart(10,"0").slice(-10),cacheKey="sec:"+cik,cached=backendOfficialEventCache.get(cacheKey);
-  if(cached&&now-cached.at<10*60*1000)return cached.rows;
+  if(cached&&now-cached.at<60*1000)return cached.rows;
   try{
     const response=await fetch("https://data.sec.gov/submissions/CIK"+cik+".json",{headers:{
       "Accept":"application/json",
@@ -1606,16 +1606,19 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(Promise.allSettled([
+    const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
+    const minute=new Date(scheduledAt).getUTCMinutes();
+    const tasks=[
       runScheduledPortfolioAnalysis(env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
-      }),
-      refreshAttentionRankings(env)
-    ]).then(results=>{
+      })
+    ];
+    if(minute%5===0)tasks.push(refreshAttentionRankings(env));
+    ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
     }));
   }
