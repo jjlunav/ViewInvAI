@@ -301,9 +301,10 @@ function portfolioPositions(portfolioId) {
 function portfolioSummaryHtml(portfolio, positions) {
   if (!portfolio) return "";
   const baseCurrency = String(portfolio.base_currency || "EUR").toUpperCase();
+  const cashBalance = Math.max(0,num(portfolio.cash_balance)||0);
   const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
-  if (!positions.length && !txSummary) return "";
-  let currentValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0;
+  if (!positions.length && !txSummary && cashBalance<=0) return "";
+  let positionsValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0;
   for (const p of positions) {
     const stock = stockByKey(p.stock_key);
     const qty = num(p.quantity);
@@ -313,7 +314,7 @@ function portfolioSummaryHtml(portfolio, positions) {
     const market = currentMarket(stock, preferTr);
     const currentUnit = marketValueInCurrency(market, baseCurrency);
     if (currentUnit === null) currentComplete = false;
-    else currentValue += qty * currentUnit;
+    else positionsValue += qty * currentUnit;
 
     const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
     const avg = num(p.avg_price);
@@ -321,7 +322,8 @@ function portfolioSummaryHtml(portfolio, positions) {
     else invested += qty * avg;
   }
 
-  const openPnl = currentComplete && costComplete ? currentValue - invested : null;
+  const totalValue = currentComplete ? positionsValue + cashBalance : null;
+  const openPnl = currentComplete && costComplete ? positionsValue - invested : null;
   const openPnlPct = openPnl !== null && invested > 0 ? openPnl / invested * 100 : null;
   const currencySummary = txSummary && txSummary.currencies && txSummary.currencies[baseCurrency] || null;
   const realizedPnl = currencySummary ? num(currencySummary.realizedPnl) : null;
@@ -332,7 +334,8 @@ function portfolioSummaryHtml(portfolio, positions) {
 
   return '<div class="portfolio-summary-bar">' +
     '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
-    '<div><small>VALOR ACTUAL</small><strong>' + (currentComplete ? formatMoney(currentValue, baseCurrency) : '—') + '</strong></div>' +
+    '<div><small>VALOR TOTAL</small><strong>' + (totalValue!==null ? formatMoney(totalValue, baseCurrency) : '—') + '</strong></div>' +
+    '<div><small>EFECTIVO</small><strong>' + formatMoney(cashBalance, baseCurrency) + '</strong></div>' +
     pnlHtml('ABIERTO', openPnl, openPnlPct === null ? '' : ' · ' + (openPnlPct >= 0 ? '+' : '') + formatNumber(openPnlPct, 2) + '%') +
     pnlHtml('REALIZADO', realizedPnl) +
     pnlHtml('TOTAL', totalPnl) +
@@ -474,6 +477,13 @@ function portfolioUsdToEurRate() {
   }
   return null;
 }
+function portfolioCashEur(portfolio,fxUsdEur){
+  const cash=Math.max(0,num(portfolio&&portfolio.cash_balance)||0),currency=String(portfolio&&portfolio.base_currency||"EUR").toUpperCase();
+  if(cash===0)return 0;
+  if(currency==="EUR")return cash;
+  if(currency==="USD"&&num(fxUsdEur)!==null)return cash*num(fxUsdEur);
+  return null;
+}
 function portfolioGoalPositionSnapshot(p,fxUsdEur){
   const stock=stockByKey(p.stock_key),qty=num(p.quantity);if(!stock||qty===null)return null;
   const preferTr=Number(p.prefer_tr)===1;
@@ -489,8 +499,10 @@ function portfolioGoalMetrics(){
   const portfolio=selectedPortfolio();
   if(!portfolio)return{portfolio:null,rows:[],currentValue:null,totalPnl:null,target:null,remaining:null,progress:0,goalPressure:0,requiredMultiple:null,requiredReturnPct:null,marketScope:"auto"};
   const fxUsdEur=portfolioUsdToEurRate(),positions=portfolioPositions(portfolio.id),rows=positions.map(p=>portfolioGoalPositionSnapshot(p,fxUsdEur)).filter(Boolean);
-  let currentValue=0,openPnl=0,currentComplete=true,pnlComplete=true;
-  for(const row of rows){if(row.valueEur===null)currentComplete=false;else currentValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
+  let investedValue=0,openPnl=0,currentComplete=true,pnlComplete=true;
+  for(const row of rows){if(row.valueEur===null)currentComplete=false;else investedValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
+  const cashEur=portfolioCashEur(portfolio,fxUsdEur);
+  if(cashEur===null)currentComplete=false;
   let realizedPnl=0,realizedKnown=true;
   const summary=state.portfolioTransactionSummaries[String(portfolio.id)]||null;
   if(summary){
@@ -499,14 +511,14 @@ function portfolioGoalMetrics(){
       if(currency==="EUR")realizedPnl+=v;else if(currency==="USD"&&fxUsdEur!==null)realizedPnl+=v*fxUsdEur;else realizedKnown=false;
     }
   }
-  const totalPnl=pnlComplete&&realizedKnown?openPnl+realizedPnl:null,goalConfig=portfolioGoalConfig(),target=goalConfig.target,capital=currentComplete?currentValue:null;
+  const totalPnl=pnlComplete&&realizedKnown?openPnl+realizedPnl:null,goalConfig=portfolioGoalConfig(),target=goalConfig.target,capital=currentComplete?investedValue+(cashEur||0):null;
   const remaining=target!==null&&capital!==null?target-capital:null;
   const progress=target&&capital!==null?Math.max(0,Math.min(100,capital/target*100)):0;
   const requiredMultiple=target!==null&&capital!==null&&capital>0?target/capital:null;
   const requiredReturnPct=requiredMultiple!==null?(requiredMultiple-1)*100:null;
   const goalPressure=remaining!==null&&remaining>0&&capital>0?Math.max(0,Math.min(1,remaining/capital)):0;
   const plan=portfolioGoalPlanMetrics(capital,target,goalConfig.targetDate,goalConfig.monthlyContribution,goalConfig.riskProfile);
-  return{portfolio,rows,fxUsdEur,currentValue:capital,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,plan};
+  return{portfolio,rows,fxUsdEur,currentValue:capital,investedValue:currentComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,plan};
 }
 
 function coachPriceLevels(stock,preferTr,score){
@@ -591,8 +603,9 @@ function portfolioCoachCandidates(metrics,positionRows){
   try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(25,[...excluded],marketScope)||[],"Pulso IA")}catch(_){}
   try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(25,[...excluded],marketScope)||[],"Radar")}catch(_){}
   const released=goalReached?0:positionRows.reduce((sum,row)=>sum+(num(row.released)||0),0),currentValue=num(metrics.currentValue)||0,remaining=Math.max(0,num(metrics.remaining)||0);
+  const cashAvailable=goalReached?0:Math.max(0,num(metrics.cashEur)||0);
   const goalPressure=Math.max(0,Math.min(1,num(metrics.goalPressure)||0));
-  const rotationPool=goalReached?0:(released>0?released:currentValue*Math.max(.15,Math.min(.35,.18+goalPressure*.17)));
+  const rotationPool=goalReached?0:cashAvailable+released;
   const allocationCapPct=Math.max(.08,Math.min(.35,.10+goalPressure*.25));
   const rows=[...merged.values()].map(row=>{
     const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);
@@ -607,7 +620,7 @@ function portfolioCoachCandidates(metrics,positionRows){
       const levels=coachPriceLevels(row.stock,row.preferTr,row.score);
       const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
       const goalShare=remaining>0?Math.min(100,potentialGain/remaining*100):0;
-      return{...row,allocation,levels,potentialGain,goalShare,rotationScenario:released<=0&&allocation>0};
+      return{...row,allocation,levels,potentialGain,goalShare,cashScenario:cashAvailable>0&&allocation>0,rotationScenario:cashAvailable<=0&&released>0&&allocation>0};
     });
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows};return rows;
 }
@@ -622,10 +635,10 @@ function goalPositionPlanHtml(row){
 }
 function goalCandidateHtml(row){
   const key=portfolioStockKey(row.stock);
-  const alloc=row.allocation>0?(row.rotationScenario?'Escenario de rotación a estudiar: <b>'+formatMoney(row.allocation,"EUR")+'</b>':'Capital liberado a reasignar: <b>'+formatMoney(row.allocation,"EUR")+'</b>'):'Sin capital asignado en este escenario.';
+  const alloc=row.allocation>0?(row.cashScenario?'Efectivo disponible a asignar: <b>'+formatMoney(row.allocation,"EUR")+'</b>':row.rotationScenario?'Capital liberado por la estrategia a reasignar: <b>'+formatMoney(row.allocation,"EUR")+'</b>':'Capital disponible a estudiar: <b>'+formatMoney(row.allocation,"EUR")+'</b>'):'Sin efectivo libre ni capital liberado: se mantiene en vigilancia sin asignación ficticia.';
   const levels=row.levels.stop!==null?'Stop orientativo <b>'+formatMoney(row.levels.stop,row.levels.currency)+'</b> · Take profit <b>'+formatMoney(row.levels.take,row.levels.currency)+'</b>':'Niveles pendientes de cotización válida.';
   const contribution=row.potentialGain>0?'Si alcanzara ese take profit, aportaría aproximadamente <b>'+formatMoney(row.potentialGain,"EUR")+'</b> ('+formatNumber(row.goalShare,1)+'% de lo que falta).':'La oportunidad se muestra por calidad, no como promesa de rentabilidad.';
-  const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),action=row.allocation>0?(row.rotationScenario?"ROTACIÓN A ESTUDIAR":"COMPRAR / ROTAR"):"VIGILAR",marketLabel=row.preferTr?"TR / LSX":"EEUU";
+  const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),action=row.allocation>0?(row.rotationScenario?"ROTACIÓN A ESTUDIAR":"COMPRA A ESTUDIAR"):"VIGILAR",marketLabel=row.preferTr?"TR / LSX":"EEUU";
   const quote=currentMarket(row.stock,row.preferTr),quoteText=quote.price===null?"Esperando cotización":formatMoney(quote.price,quote.currency);
   return '<article class="portfolio-goal-candidate" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<div class="goal-candidate-head"><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc([row.preferTr?(row.stock.trTicker||row.stock.ticker):row.stock.ticker,marketLabel,row.sources.join(" + ")].filter(Boolean).join(" · "))+'</small></div><b class="goal-candidate-action">'+action+'</b></div>'+
@@ -662,7 +675,7 @@ function portfolioGoalViewHtml(){
         '<input name="targetProfitEur" class="portfolio-goal-legacy-input" type="number" min="1" step="0.01" value="'+esc(targetValue)+'" hidden aria-hidden="true" tabindex="-1"><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar estrategia')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-empty"><strong>Indica a qué valor quieres llevar esta cartera.</strong><span>Ejemplo: si hoy vale 90 € y marcas 1.000 €, el motor medirá la distancia desde esos 90 € y buscará alternativas compatibles con '+esc(marketLabel)+'.</span></div>':
-    '<div class="portfolio-goal-metrics"><div><small>VALOR OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>CAPITAL ACTUAL</small><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong></div><div><small>FALTA PARA EL OBJETIVO</small><strong>'+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+'</strong></div><div><small>CRECIMIENTO NECESARIO</small><strong>'+(metrics.requiredMultiple===null?'—':'×'+formatNumber(metrics.requiredMultiple,2))+'</strong></div></div>'+
+    '<div class="portfolio-goal-metrics"><div><small>VALOR OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>CAPITAL ACTUAL</small><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong></div><div><small>EFECTIVO DISPONIBLE</small><strong>'+(metrics.cashEur===null?'—':formatMoney(metrics.cashEur,"EUR"))+'</strong></div><div><small>FALTA PARA EL OBJETIVO</small><strong>'+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+'</strong></div><div><small>CRECIMIENTO NECESARIO</small><strong>'+(metrics.requiredMultiple===null?'—':'×'+formatNumber(metrics.requiredMultiple,2))+'</strong></div></div>'+
     '<div class="portfolio-goal-progress"><div><span>Progreso por valor de cartera</span><b>'+formatNumber(metrics.progress,1)+'%</b></div><i><em style="width:'+Math.max(0,Math.min(100,metrics.progress))+'%"></em></i></div>'+
     '<div class="portfolio-goal-distance"><strong>Distancia al objetivo</strong><span>'+esc(growthText)+'</span></div>'+
     '<div class="portfolio-goal-strategy"><div><small>MERCADO</small><strong>'+esc(marketLabel)+'</strong></div><div><small>HORIZONTE</small><strong>'+(plan.months===null?'Sin fecha':plan.months+' meses')+'</strong></div><div><small>APORTACIONES</small><strong>'+formatMoney(plan.monthly,"EUR")+'/mes</strong></div><div><small>APORTE ORIENTATIVO</small><strong>'+(plan.requiredMonthlyContribution===null?'—':formatMoney(plan.requiredMonthlyContribution,"EUR")+'/mes')+'</strong></div><div><small>PERFIL</small><strong>'+esc(plan.riskBand.label)+'</strong></div><div><small>VIABILIDAD</small><strong>'+esc(plan.feasibility)+'</strong></div><div><small>MOTOR</small><strong>Pulso IA + Radar + catalizadores</strong></div></div>'+
@@ -1317,6 +1330,7 @@ function openNewPortfolioModal() {
       '<label><span>Bróker</span><input name="broker" maxlength="80" placeholder="Trade Republic, IBKR…"></label>' +
       '<label><span>Mercado de la cartera</span><select name="marketScope" required><option value="auto">Detectar por posiciones</option><option value="tr">Trade Republic / LSX</option><option value="us">EEUU (NASDAQ / NYSE / AMEX)</option></select></label>' +
       '<label><span>Divisa base</span><select name="baseCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label>' +
+      '<label><span>Efectivo disponible</span><input name="cashBalance" type="number" min="0" step="0.01" inputmode="decimal" value="0" placeholder="0"></label>' +
       '<button type="submit" class="btn">Crear cartera</button>' +
     '</form>'
   );
@@ -1325,8 +1339,8 @@ function openNewPortfolioModal() {
 
 function openPortfolioMarketModal(portfolioId){
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));if(!portfolio)return;
-  const scope=String(portfolio.market_scope||"auto");
-  openModal("Mercado · "+portfolio.name,
+  const scope=String(portfolio.market_scope||"auto"),cash=Math.max(0,num(portfolio.cash_balance)||0),currency=String(portfolio.base_currency||"EUR").toUpperCase();
+  openModal("Mercado y efectivo · "+portfolio.name,
     '<form id="portfolioMarketForm" class="portfolio-form" data-portfolio-id="'+esc(portfolio.id)+'">'+
       '<p class="portfolio-form-note">Este ajuste limita tanto las posiciones nuevas como las recomendaciones del Objetivo IA.</p>'+
       '<label><span>Mercado permitido</span><select name="marketScope">'+
@@ -1334,16 +1348,17 @@ function openPortfolioMarketModal(portfolioId){
         '<option value="tr"'+(scope==="tr"?' selected':'')+'>Trade Republic / LSX</option>'+
         '<option value="us"'+(scope==="us"?' selected':'')+'>EEUU (NASDAQ / NYSE / AMEX)</option>'+
       '</select></label>'+
-      '<button type="submit" class="btn">Guardar mercado</button>'+
+      '<label><span>Efectivo disponible ('+esc(currency)+')</span><input name="cashBalance" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(String(Math.round(cash*100)/100))+'"></label>'+
+      '<button type="submit" class="btn">Guardar configuración</button>'+
     '</form>'
   );
 }
 async function savePortfolioMarket(form){
-  const portfolioId=form.dataset.portfolioId,fd=new FormData(form),marketScope=String(fd.get("marketScope")||"auto");
-  const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({marketScope})});
+  const portfolioId=form.dataset.portfolioId,fd=new FormData(form),marketScope=String(fd.get("marketScope")||"auto"),cashBalance=Math.max(0,num(fd.get("cashBalance"))||0);
+  const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({marketScope,cashBalance})});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el mercado.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
-  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();toast("Mercado de la cartera actualizado");
+  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();toast("Configuración de la cartera actualizada");
 }
 
 function stockFormPayload(stock, form) {
@@ -1987,7 +2002,8 @@ function bind() {
           name: String(fd.get("name") || ""),
           broker: String(fd.get("broker") || ""),
           marketScope: String(fd.get("marketScope") || "auto"),
-          baseCurrency: String(fd.get("baseCurrency") || "EUR")
+          baseCurrency: String(fd.get("baseCurrency") || "EUR"),
+          cashBalance: Math.max(0,num(fd.get("cashBalance"))||0)
         });
         const pendingKey = form.dataset.pendingStockKey;
         const pendingPref = form.dataset.pendingPreferTr;
