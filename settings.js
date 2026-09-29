@@ -83,6 +83,24 @@ async function retryPushRegistration(){
  }
 }
 
+async function testPushNotification(){
+ let auth=window.ViewInvAIAuth,button=$('#testPushNotification'),status=$('#pushNotificationStatus');
+ if(!auth?.getUser?.()){if(status)status.textContent='Inicia sesión primero';return}
+ if(button){button.disabled=true;button.textContent='Enviando…'}
+ try{
+  const registered=await auth.ensurePushRegistration?.(true);
+  if(!registered)throw Error('No se pudo registrar este dispositivo para push.');
+  const response=await auth.apiFetch('/api/devices/test',{method:'POST',body:'{}'});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error||'La prueba push ha fallado.');
+  if(status){status.textContent='Prueba enviada · '+String(data.sent||1)+' dispositivo';status.classList.add('active');status.classList.remove('error')}
+ }catch(error){
+  if(status){status.textContent=error&&error.message?error.message:'La prueba push ha fallado.';status.classList.add('error');status.classList.remove('active')}
+ }finally{
+  if(button){button.disabled=false;button.textContent='Enviar prueba'}
+ }
+}
+
 let accountAnalysisSettings=null,analysisSettingsBusy=false;
 function clampSetting(value,min,max,fallback){
  let n=Math.round(Number(value));return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
@@ -239,6 +257,7 @@ function initSettings(){
 
  $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
  $('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
+ $('#testPushNotification')?.addEventListener('click',testPushNotification);
  ['globalNotificationsEnabled','globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPrice','globalNotifyPortfolio'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
