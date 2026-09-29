@@ -34,6 +34,12 @@ on:
       - "requirements*.txt"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".assetsignore"
+      - "firebase/google-services.json"
+      - "wrangler.jsonc"
+      - "SECURITY.md"
+      - ".github/CODEOWNERS"
   pull_request:
     branches: [main]
   schedule:
