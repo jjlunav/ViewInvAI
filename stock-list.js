@@ -449,6 +449,36 @@ function renderHome(){
  if(marketBoardMode==='active')setTimeout(()=>refreshSocialTrending(false),0);
 }
 
+const radarLiveContextAt=new Map();
+let radarLiveContextBusy=false,radarRerenderTimer=null;
+async function refreshRadarLiveContext(stocks){
+ if(radarLiveContextBusy||state.currentView!=='entry'||!window.ViewInvAI?.mergeLiveEvents)return;
+ const now=Date.now(),targets=(Array.isArray(stocks)?stocks:[]).slice(0,5).filter(stock=>{
+  const key=stockKey(stock),last=radarLiveContextAt.get(key)||0;
+  return key&&now-last>=120000;
+ });
+ if(!targets.length)return;
+ radarLiveContextBusy=true;
+ try{
+  let added=0;
+  for(const stock of targets){
+   const key=stockKey(stock);radarLiveContextAt.set(key,now);
+   const ticker=String(stock.ticker||stock.trTicker||'').trim(),exchange=String(stock.exchange||'').trim();
+   if(!ticker)continue;
+   try{
+    const response=await fetch('/api/stock-events-live?ticker='+encodeURIComponent(ticker)+'&exchange='+encodeURIComponent(exchange),{cache:'no-store'});
+    if(!response.ok)continue;
+    const data=await response.json();
+    added+=window.ViewInvAI.mergeLiveEvents(data.events||[])||0;
+   }catch(error){console.warn('Radar live context unavailable',ticker,error)}
+  }
+  if(added&&state.currentView==='entry'){
+   clearTimeout(radarRerenderTimer);
+   radarRerenderTimer=setTimeout(()=>renderEntry(),120);
+  }
+ }finally{radarLiveContextBusy=false}
+}
+
 function syncEntryVenueControls(){
  const isTr=state.entryMarket==='tr',session=$('#sessionSelect');
  if(session)session.classList.toggle('is-hidden',isTr);
@@ -467,6 +497,7 @@ function renderEntry(){
     ?stockMobileList(shown,se,state.entryMarket==='tr','entry')
     :shown.map((s,i)=>card(s,i,se,false,entryOpportunityWhy(s,se,state.entryMarket==='tr',i+1),state.entryMarket==='tr')).join(''))
   :'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>';
+ if(shown.length)setTimeout(()=>refreshRadarLiveContext(shown),0);
 }
 
 window.ViewInvAIMarketBoard={refreshSocialTrending,refreshAttentionRanking,renderMarketQuickSheet};
@@ -474,7 +505,13 @@ window.ViewInvAIMarketBoard={refreshSocialTrending,refreshAttentionRanking,rende
 
 let homeTrBoardRerenderTimer=null;
 window.addEventListener('viewinvai:quote-updated',event=>{
- if(!event||!event.detail||event.detail.market!=='tr')return;
+ if(!event||!event.detail)return;
+ if(state.currentView==='entry'){
+  clearTimeout(radarRerenderTimer);
+  radarRerenderTimer=setTimeout(()=>renderEntry(),280);
+  return;
+ }
+ if(event.detail.market!=='tr')return;
  if(state.currentView!=='home'||currentMarketBoardSource()!=='tr')return;
  if(!['gainers','losers'].includes(marketBoardMode))return;
  clearTimeout(homeTrBoardRerenderTimer);
