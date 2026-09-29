@@ -116,3 +116,19 @@ function initEventViewInteractions(){
   if(horizon)horizon.value='14';if(type)type.value='all';if(sector)sector.value='all';if(from)from.value='';if(to)to.value='';if(tr)tr.checked=true;renderFuture();
  });
 }
+
+
+/*
+ * Compatibility surface for the old Calendar renderer.
+ * Calendar is intentionally fused into Potencial futuro; these helpers keep
+ * shared mobile/history checks and older callers routed to the single view.
+ */
+const EVENT_MOBILE_GROUPS=[{key:'fused',label:'Catalizadores',columns:[]}];
+function eventCompactListView(){return !!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches)}
+function eventMobileList(groups=[],trOnly=false){
+ return '<div class="event-mobile-groups" data-event-mobile-group="fused">'+
+  (Array.isArray(groups)?groups.map((group,index)=>futureRow(group,index,trOnly)).join(''):'')+
+ '</div>';
+}
+function renderCalendar(){return renderFuture()}
+
