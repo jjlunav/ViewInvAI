@@ -511,9 +511,9 @@ function portfolioCoachPositionRows(metrics){
     const quality=num(pulse&&pulse.quality)??0,currentWeight=total>0&&row.valueEur!==null?row.valueEur/total*100:0;
     const backendSignal=String(row.p.last_signal||"").toUpperCase();
     let targetWeight=currentWeight;
+    const maxWeight=metrics.plan&&metrics.plan.riskBand?metrics.plan.riskBand.maxPosition:28;
     if(backendSignal==="SELL"||score<=35)targetWeight=0;
     else if(backendSignal==="REVIEW"||score<48)targetWeight=Math.min(currentWeight,12);
-    const maxWeight=metrics.plan&&metrics.plan.riskBand?metrics.plan.riskBand.maxPosition:28;
     else if(currentWeight>maxWeight+12)targetWeight=Math.min(currentWeight,score>=70?maxWeight:maxWeight*.8);
     else if(currentWeight>maxWeight&&score<65)targetWeight=Math.min(currentWeight,maxWeight);
     if(goalReached&&backendSignal==="HOLD"&&score>=55)targetWeight=Math.min(targetWeight,currentWeight);
