@@ -8,12 +8,12 @@
   source=document.createElement('form');source.id='stockNotificationPanel';source.className='filter-sheet-source stock-notification-source';
   source.innerHTML=
    '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span><small id="stockNotificationGlobalStatus"></small></div>'+
-   '<label class="notification-pref-row"><input type="checkbox" name="news" checked><span><b>Noticias y eventos relevantes</b><small>Resultados, regulación, contratos, financiación y catalizadores verificados.</small></span></label>'+
-   '<label class="notification-pref-row"><input type="checkbox" name="pulse" checked><span><b>Entrada en Pulso IA</b><small>Aviso cuando la IA confirme una entrada de alta convicción.</small></span></label>'+
-   '<label class="notification-pref-row"><input type="checkbox" name="radar"><span><b>Entrada en Radar</b><small>Aviso cuando pase los criterios de oportunidad del Radar.</small></span></label>'+
+   '<label class="notification-pref-row"><span><b>Noticias y eventos relevantes</b><small>Resultados, regulación, contratos, financiación y catalizadores verificados.</small></span><span class="settings-switch"><input type="checkbox" name="news" checked><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Entrada en Pulso IA</b><small>Aviso cuando la IA confirme una entrada de alta convicción.</small></span><span class="settings-switch"><input type="checkbox" name="pulse" checked><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Entrada en Radar</b><small>Aviso cuando pase los criterios de oportunidad del Radar.</small></span><span class="settings-switch"><input type="checkbox" name="radar"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
    '<div class="notification-price-grid">'+
-    '<label><span><input type="checkbox" name="priceUp"> Subida por tramos</span><input name="priceUpStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label>'+
-    '<label><span><input type="checkbox" name="priceDown"> Bajada por tramos</span><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label>'+
+    '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Subida por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceUp"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceUpStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
+    '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Bajada por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceDown"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
    '</div>'+
    '<p class="notification-pref-note">Los tramos se miden desde el precio al activar el aviso. Si eliges 3%, recibirás un nuevo aviso al cruzar 3%, 6%, 9%… en cada dirección.</p>'+
    '<div class="notification-pref-actions"><button type="button" class="btn ghost" data-notification-disable>Desactivar todas</button><button type="submit" class="btn" data-filter-sheet-apply>Guardar</button></div>'+
@@ -97,7 +97,7 @@
   try{
    const r=await api().apiFetch('/api/notification-preferences?stockKey='+encodeURIComponent(current.key)+'&preferTr='+(current.preferTr?'1':'0'),{method:'DELETE'});
    if(!r.ok)throw Error('No se pudieron desactivar.');
-   fill(null);setStatus('Notificaciones desactivadas');
+   fill({news_enabled:0,pulse_enabled:0,radar_enabled:0,price_up_enabled:0,price_down_enabled:0,price_up_step:3,price_down_step:3});setStatus('Notificaciones desactivadas');
   }catch(err){setStatus(err.message||'No se pudieron desactivar.',true)}
  }
  document.addEventListener('click',e=>{
