@@ -156,3 +156,22 @@
  .asset-card-row[data-asset-columns="3"] .asset-card-open{font-size:14px!important}
  .asset-card-row[data-asset-columns="3"] .fav-star{width:18px!important;min-width:18px!important;height:24px!important;font-size:14px!important}
 }
+
+
+/* 2026-09-29 · universal REG + persistent extended-session compact row */
+.asset-card-row[data-asset-columns="2"]{
+ grid-template-columns:minmax(0,1.62fr) minmax(68px,.72fr) minmax(54px,.58fr) 9px!important;
+ gap:5px!important;min-height:48px!important;padding-top:3px!important;padding-bottom:3px!important
+}
+.asset-card-row[data-asset-columns="2"] .asset-card-cell{align-self:center!important;min-width:0!important}
+.asset-regular-price,.asset-regular-change{display:block;white-space:nowrap;font-weight:820;line-height:1.05}
+.asset-extended-price,.asset-extended-change{margin-top:2px;min-height:10px;font-size:7.5px;line-height:1.05;font-weight:780;white-space:nowrap}
+.asset-extended-price{display:flex;align-items:center;gap:3px}
+.asset-extended-change{display:block}
+.asset-session-icon,.stock-session-quote .session-icon{font-size:9px;line-height:1;color:#d5a94c}
+.asset-extended-price.positive,.asset-extended-change.positive{color:var(--positive)!important}
+.asset-extended-price.negative,.asset-extended-change.negative{color:var(--negative)!important}
+.asset-extended-price.muted,.asset-extended-change.muted{color:var(--asset-muted)!important}
+.asset-event-meta{display:flex;align-items:center;gap:6px;min-width:0;padding:1px 4px 4px;color:var(--asset-muted);font-size:7px}
+.asset-event-meta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--asset-text)}
+.asset-event-meta span,.asset-event-meta em{white-space:nowrap;font-style:normal}

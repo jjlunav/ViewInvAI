@@ -7044,3 +7044,15 @@ html[data-theme="light"] .tr-native-axis{
  z-index:2!important;border-radius:0 0 12px 12px!important;border-top:0!important;border-bottom:1px solid #2e4b57!important
 }
 .weekly-viewed-section>h3{display:none!important}
+
+
+/* 2026-09-29 · full profile mirrors REG + persistent sun/moon quote */
+.profile-quote-stack{display:grid;gap:3px;min-width:0}
+.profile-quote-regular,.profile-quote-extended{display:flex;align-items:baseline;gap:7px;min-width:0}
+.profile-quote-regular>strong{font-size:22px;line-height:1;font-weight:820;color:#eef5f7;white-space:nowrap}
+.profile-quote-regular>b{font-size:12px;font-weight:850;white-space:nowrap}
+.profile-quote-extended{gap:5px;font-size:9px}
+.profile-quote-extended>strong,.profile-quote-extended>b{font-size:9px;font-weight:780;white-space:nowrap}
+.profile-quote-extended.positive>strong,.profile-quote-extended.positive>b{color:var(--positive)!important}
+.profile-quote-extended.negative>strong,.profile-quote-extended.negative>b{color:var(--negative)!important}
+.profile-quote-extended.muted>strong,.profile-quote-extended.muted>b{color:var(--muted)!important}

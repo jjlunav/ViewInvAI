@@ -32,21 +32,17 @@ function listInsightLabel(s,se,preferTr=false){
  return 'IA · seguimiento';
 }
 function listSessionQuote(s,se,preferTr=false){
- let price=null,change=null,label='',icon='';
- if(se==='premarket'&&N(s.premarketPrice)!==null){price=s.premarketPrice;change=s.premarketChangePct;label='PRE';icon='☀'}
- else if(se==='postmarket'&&N(s.postmarketPrice)!==null){price=s.postmarketPrice;change=s.postmarketChangePct;label='POST';icon='☾'}
- else if(N(s.premarketPrice)!==null){price=s.premarketPrice;change=s.premarketChangePct;label='PRE';icon='☀'}
- else if(N(s.postmarketPrice)!==null){price=s.postmarketPrice;change=s.postmarketChangePct;label='POST';icon='☾'}
- if(price===null)return '';
- return '<div class="stock-session-quote"><span class="session-icon">'+icon+'</span><small>'+label+'</small><strong>'+snapshotPricePair(s,price,preferTr)+'</strong><span class="'+C(change)+'">'+PC(change)+'</span></div>';
+ const ext=extendedSessionDisplay(s,se);
+ if(ext.price===null)return '';
+ return '<div class="stock-session-quote"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+snapshotPricePair(s,ext.price,false)+'</strong><span class="'+ext.tone+'">'+PC(ext.change)+'</span></div>';
 }
+
 const STOCK_MOBILE_GROUPS=[
  {key:'general',label:'General',columns:[['price','Precio'],['change','Variación']]},
  {key:'volume',label:'Volumen',columns:[['volume','Volumen'],['relVolume','Vol. rel.']]},
  {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
  {key:'trend',label:'Tend.',columns:[['ema20','EMA20'],['ema50','EMA50']]},
  {key:'returns',label:'Rentab.',columns:[['week','1 sem.'],['month','1 mes']]},
- {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
  {key:'other',label:'Otros',columns:[['exchange','Mercado'],['earnings','Resultados']]}
 ];
 const stockMobileUi={entry:'general'};
@@ -106,31 +102,38 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
  return '<div class="stock-mobile-rows unified-asset-list">'+rows.map((s,i)=>stockMobileRow(s,i,se,preferTr,scope)).join('')+'</div>';
 }
 
-function regularQuoteCell(s){
- const price=N(s.price),ch=N(s.changePct);
- return{label:'Precio REG',value:price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price)),tone:ch===null?'muted':C(ch)};
+function extendedSessionDisplay(s,se=currentMarketSession()){
+ const usePost=se==='postmarket'||se==='previous';
+ const icon=usePost?'☾':'☀';
+ const price=N(usePost?s.postmarketPrice:s.premarketPrice);
+ let change=N(usePost?s.postmarketChangePct:s.premarketChangePct);
+ const regular=N(s.price);
+ if(change===null&&price!==null&&regular>0)change=(price/regular-1)*100;
+ return{icon,price,change,tone:change===null?'muted':C(change)};
 }
-function regularChangeCell(s){
- const ch=N(s.changePct);return{label:'Variación',value:PC(ch),tone:ch===null?'muted':C(ch)};
+function regularQuoteCell(s,se=currentMarketSession()){
+ const price=N(s.price),change=N(s.changePct),ext=extendedSessionDisplay(s,se);
+ const regularText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
+ const extendedText=ext.price===null?'—':quoteMoney(ext.price,'\u0024',quotePrecision(s,false,ext.price));
+ return{
+  label:'Precio',
+  value:regularText,
+  tone:change===null?'muted':C(change),
+  html:'<span class="asset-regular-price">'+E(regularText)+'</span>'+
+       '<small class="asset-extended-price '+ext.tone+'"><span class="asset-session-icon" aria-hidden="true">'+ext.icon+'</span><span>'+E(extendedText)+'</span></small>'
+ };
 }
-function sessionCompactCell(s,se=currentMarketSession()){
- let label='REG',price=N(s.price),change=N(s.changePct);
- if(se==='premarket'){
-  label='PRE';price=N(s.premarketPrice);change=N(s.premarketChangePct);
-  if(change===null&&price!==null&&N(s.price)>0)change=(price/N(s.price)-1)*100;
- }else if(se==='postmarket'){
-  label='POST';price=N(s.postmarketPrice);change=N(s.postmarketChangePct);
-  if(change===null&&price!==null&&N(s.price)>0)change=(price/N(s.price)-1)*100;
- }else if(se==='regular'){
-  price=usLivePrice(s)??N(s.price);change=usLiveChange(s)??N(s.changePct);
- }else{
-  label='CIERRE';
- }
- const tone=change===null?'muted':C(change);
- const priceText=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
- return{label,value:priceText+' · '+PC(change),tone,
-  html:'<span class="asset-session-price">'+E(priceText)+'</span><small class="asset-session-change '+tone+'">'+E(PC(change))+'</small>'};
+function regularChangeCell(s,se=currentMarketSession()){
+ const change=N(s.changePct),ext=extendedSessionDisplay(s,se);
+ return{
+  label:'Variación',
+  value:PC(change),
+  tone:change===null?'muted':C(change),
+  html:'<span class="asset-regular-change">'+E(PC(change))+'</span>'+
+       '<small class="asset-extended-change '+ext.tone+'">'+E(PC(ext.change))+'</small>'
+ };
 }
+
 function effectiveSessionChange(s,se=currentMarketSession()){
  if(se==='premarket'){
   let ch=N(s.premarketChangePct),p=N(s.premarketPrice),r=N(s.price);
@@ -147,11 +150,11 @@ function effectiveSessionChange(s,se=currentMarketSession()){
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||currentMarketSession(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=[regularQuoteCell(s),regularChangeCell(s),sessionCompactCell(s,se)];
+ let cells=[regularQuoteCell(s,se),regularChangeCell(s,se)];
  let details=opts.detailsHtml;
  if(details===undefined){
   let rv=RV(s,se);
-  details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+bidAskHtml(s,preferTr)+
+  details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+
    '<div class="asset-card-metrics"><span>Vol <b>'+compactVol(SV(s,se))+'</b></span><span>RV <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
  }
  return window.ViewInvAICards.render({

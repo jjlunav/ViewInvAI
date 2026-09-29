@@ -88,15 +88,12 @@ function eventMobileTabs(scope){
  ).join('')+'</nav>';
 }
 function eventMobileRow(scope,s,event,index,label,when,count=1){
- let preferTr=trTradable(s),group=eventMobileUi[scope]||'event',cells;
- if(group==='event')cells=[{label:'Catalizador',value:label},{label:'Fecha',value:when}];
- else cells=(group==='market'?[['price','Precio'],['change','Variación']]:[['rsi','RSI'],['adx','ADX']]).map(([key,label])=>({...stockMobileCell(s,key,SES(),preferTr),label}));
- return standardStockCard(s,index,{preferTr,context:scope,hint:label+' · '+when,cells,detailsHtml:'',subtitle:[preferTr?(s.trTicker||s.ticker):s.ticker,count>1?count+' eventos':''].filter(Boolean).join(' · ')});
+ let preferTr=trTradable(s);
+ let meta='<div class="asset-event-meta"><strong>'+E(label)+'</strong><span>'+E(when)+'</span>'+(count>1?'<em>'+count+' eventos</em>':'')+'</div>';
+ return standardStockCard(s,index,{se:currentMarketSession(),preferTr,context:scope,hint:label+' · '+when,detailsHtml:'',metaHtml:meta});
 }
 function eventMobileList(scope,rows){
- let group=eventMobileUi[scope]||'event';
- let heads=group==='event'?['Catalizador','Fecha']:group==='market'?['Precio','Variación']:['RSI','ADX'];
- return eventMobileTabs(scope)+'<div class="event-mobile-compare">'+window.ViewInvAICards.head(heads)+'<div class="event-mobile-rows">'+rows.join('')+'</div></div>';
+ return '<div class="event-mobile-rows unified-asset-list">'+rows.join('')+'</div>';
 }
 
 function renderFuture(){

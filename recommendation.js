@@ -369,7 +369,6 @@ const RECO_MOBILE_GROUPS=[
  {key:'ai',label:'IA',columns:[['signal','Señal'],['score','Score']]},
  {key:'technical',label:'Técnico',columns:[['rsi','RSI'],['adx','ADX']]},
  {key:'trend',label:'Tend.',columns:[['ema20','EMA20'],['ema50','EMA50']]},
- {key:'market',label:'Mercado',columns:[['bid','BID'],['ask','ASK']]},
  {key:'events',label:'Eventos',columns:[['events','Eventos'],['nextEvent','Próximo']]},
  {key:'data',label:'Datos',columns:[['quality','Calidad'],['relVolume','Vol. rel.']]}
 ];
@@ -453,7 +452,7 @@ function recommendationCard(mode,s,group=null,pulseResult=null){
  let events=a.catalyst.events.length?a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join(''):'<p>Sin noticia o evento direccional fuerte en las últimas 72 h / próximos 14 días.</p>';
  let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'';
  let aiSummary=ai?'<div class="pulse-ai-result"><strong>Motor híbrido IA + cuantitativo</strong><p>'+E(ai.summary||ai.answer||'Evaluación completada.')+'</p><small>Confianza IA '+F(ai.confidence,0)+'/100 · score cuantitativo '+F(pulseResult&&pulseResult.score,1)+'/100</small></div>':'';
- let details=aiSummary+'<strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p>'+quoteFreshnessHtml(s,preferTr)+bidAskHtml(s,preferTr)+
+ let details=aiSummary+'<strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p>'+quoteFreshnessHtml(s,preferTr)+
   '<details class="reco-disclosure"><summary>Factores del análisis</summary><div class="reco-factors">'+factors+'</div></details>'+
   '<details class="reco-disclosure"><summary>Noticias y eventos</summary><div class="reco-events">'+events+'</div></details>'+
   '<p>Datos '+quality.score+'/100 · '+(ai?'Síntesis IA contrastada con reglas cuantitativas y calidad de datos.':'Evaluación cuantitativa de respaldo; la IA se activa con sesión iniciada.')+'</p>';

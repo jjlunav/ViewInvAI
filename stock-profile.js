@@ -165,13 +165,19 @@ function profileNotificationActionHtml(s,isTr=false){
  return '<button type="button" class="profile-notification-bell" data-stock-notifications="'+E(stockKey(s))+'" data-stock-notifications-tr="'+(isTr?'1':'0')+'" title="Configurar notificaciones" aria-label="Configurar notificaciones para '+E(s.name||s.ticker||'este valor')+'">🔔</button>';
 }
 
+function profileHeroQuoteHtml(s,se=currentMarketSession()){
+ const regularPrice=N(s.price),regularChange=N(s.changePct),ext=extendedSessionDisplay(s,se);
+ const regularText=regularPrice===null?'—':quoteMoney(regularPrice,'\u0024',quotePrecision(s,false,regularPrice));
+ const extendedText=ext.price===null?'—':quoteMoney(ext.price,'\u0024',quotePrecision(s,false,ext.price));
+ return '<div class="profile-quote-stack">'+
+   '<div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div>'+
+   '<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon" aria-hidden="true">'+ext.icon+'</span><strong>'+E(extendedText)+'</strong><b>'+PC(ext.change)+'</b></div>'+
+  '</div>';
+}
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let currentChange=liveChangeHtml(s,SC(s,se),isTr);
- let trFresh=isTr&&trMarketOpen()&&N(s.trLiveReceivedAt)!==null&&Date.now()-N(s.trLiveReceivedAt)<60000;
- let liveLabel=isTr?(trFresh?'LSX · EN DIRECTO':trMarketOpen()?'LSX · ÚLTIMO DATO':'LSX · MERCADO CERRADO'):'EEUU · '+(s.usLiveIsRealTime?'NASDAQ ACTUAL':'ÚLTIMO DATO');
  let back='';
  if(opts.backKind==='portfolio')back='<button type="button" class="profile-back-inline" data-portfolio-detail-close>← Atrás</button>';
  else if(opts.backKind==='profile')back='<button type="button" class="profile-back-inline" data-profile-back="'+E(opts.backView||state.currentView)+'">← Atrás</button>';
@@ -180,11 +186,12 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-    '<div class="profile-live"><small>'+E(liveLabel)+'</small><div class="profile-live-main">'+pricePair(s,SP(s,se),isTr)+currentChange+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    '<div class="profile-live"><small>Regular + sesión extendida</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se)+'</div>'+bidAskHtml(s,isTr)+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
 }
+
 function nativeProfileChrome(){
  return document.documentElement.dataset.nativeApp==='1';
 }

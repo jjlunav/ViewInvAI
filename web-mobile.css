@@ -1037,7 +1037,12 @@ html,
   .stock-profile-page .unified-stock-header .quote-spread{
     display:none!important
   }
-  .stock-profile-page .unified-stock-header .profile-live-main{
+  .stock-profile-page .profile-quote-stack{display:grid!important;gap:2px!important;min-width:0!important}
+ .stock-profile-page .profile-quote-regular,.stock-profile-page .profile-quote-extended{display:flex!important;align-items:baseline!important;gap:5px!important;min-width:0!important}
+ .stock-profile-page .profile-quote-regular>strong{font-size:18px!important}
+ .stock-profile-page .profile-quote-regular>b{font-size:10px!important}
+ .stock-profile-page .profile-quote-extended>strong,.stock-profile-page .profile-quote-extended>b{font-size:8px!important}
+ .stock-profile-page .unified-stock-header .profile-live-main{
     display:flex!important;
     flex-wrap:wrap!important;
     align-items:baseline!important;

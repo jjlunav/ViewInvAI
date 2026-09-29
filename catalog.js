@@ -81,7 +81,6 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'technical',label:'Técnico',tr:['rsi','adx'],us:['rsi','adx']},
  {key:'trend',label:'Tendencia',tr:['ema20','ema50'],us:['ema20','ema50']},
  {key:'returns',label:'Rentabilidad',tr:['week','month'],us:['week','month']},
- {key:'market',label:'Mercado',tr:['bid','ask'],us:['bid','ask']},
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
 const catalogState={tr:{sort:'tickerTr',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'},us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,limit:null,mobileGroup:'general'}};
@@ -196,17 +195,12 @@ function catalogMobileCell(mode,s,se,colId){
  return{label:col.label,value,tone:'text'};
 }
 function catalogMobileRow(mode,s,se){
- let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
- return standardStockCard(s,0,{se,preferTr:mode==='tr',context:'catalog',rankLabel:'',detailsHtml:'',cells:ids.map(id=>catalogMobileCell(mode,s,se,id))});
+ return standardStockCard(s,0,{se,preferTr:mode==='tr',context:'catalog',rankLabel:'',detailsHtml:''});
 }
 function catalogMobileList(mode,rows,se){
- let group=catalogMobileGroup(mode),ids=mode==='tr'?group.tr:group.us;
- return catalogMobileTabs(mode)+
-  '<div class="catalog-mobile-compare">'+
-   window.ViewInvAICards.head(ids.map(id=>['priceEur','priceUsd'].includes(id)?'Precio':(CATALOG_COLUMNS[mode].find(c=>c.id===id)?.label||id)))+
-   '<div class="catalog-mobile-rows">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>'+
-  '</div>';
+ return '<div class="catalog-mobile-rows unified-asset-list">'+rows.map(s=>catalogMobileRow(mode,s,se)).join('')+'</div>';
 }
+
 function catalogFilterOptions(mode,key){
  let rows=db.stocks.filter(s=>mode==='tr'?trTradable(s):market(s,'us'));
  return [...new Set(rows.map(s=>String(s&&s[key]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es')).slice(0,250);

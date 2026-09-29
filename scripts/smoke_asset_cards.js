@@ -22,6 +22,9 @@ window.checkAssetCards = async function () {
   assert(rect.height<=90&&rect.height>=48,name+' is not compact: '+rect.height);
   assert(row.scrollWidth<=row.clientWidth+1,name+' overflows horizontally');
   assert(test.querySelector('.fav-star'),name+' lost favourites');
+  assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost REG quote');
+  assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' compact row lost REG/extended quote');
+  assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
   const copy=test.querySelector('[data-copy-isin]');
   if(copy){copy.click();assert(!document.body.classList.contains('stock-detail-open'),name+' copy opened the detail')}
  }

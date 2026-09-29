@@ -339,13 +339,13 @@ function portfolioContextHtml(selected, positions) {
 }
 
 function renderWatchRow(w) {
-  const stock = stockByKey(w.stock_key), market = currentMarket(stock);
-  return window.ViewInvAICards.render({
-    context: "watchlist", title: w.name || stock?.name || w.ticker, subtitle: w.ticker,
-    isin: stock?.isin || stock?.trIsin,
-    openAttrs: ' data-open-stock="' + esc(w.stock_key) + '" role="button" tabindex="0"',
-    cells: [{label:"Precio",value:formatMoney(market.price,market.currency)},{label:"Variación",html:changeHtml(market.change)}],
-    detailsLabel: "Seguimiento IA", detailsHtml: analysisBadge(w),
+  const stock = stockByKey(w.stock_key);
+  if (!stock) return "";
+  const preferTr = !!(w.prefer_tr || stock.trTicker);
+  return window.ViewInvAI.renderStandardStockCard(stock, {
+    index:0, preferTr, context:"watchlist", hint:"Seguimiento", rankLabel:"",
+    openAttrs:' data-open-stock="' + esc(w.stock_key) + '" role="button" tabindex="0"',
+    detailsHtml:"",
     actionsHtml:'<button type="button" class="portfolio-analyze compact" data-analyze-type="watchlist" data-analyze-id="' + esc(w.id) + '">IA</button>'
   });
 }

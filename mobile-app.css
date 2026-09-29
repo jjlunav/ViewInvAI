@@ -2647,3 +2647,13 @@ html[data-native-app="1"] .asset-card-row[data-asset-columns="3"] .asset-card-la
  .asset-card-row[data-asset-columns="3"] .asset-card-open{font-size:14px!important}
  .asset-card-row[data-asset-columns="3"] .fav-star{width:18px!important;min-width:18px!important;height:24px!important;font-size:14px!important}
 }
+
+
+/* 2026-09-29 · native REG + persistent extended quote sizing */
+html[data-native-app="1"] .profile-quote-stack{display:grid!important;gap:2px!important;min-width:0!important}
+html[data-native-app="1"] .profile-quote-regular,
+html[data-native-app="1"] .profile-quote-extended{display:flex!important;align-items:baseline!important;gap:5px!important;min-width:0!important}
+html[data-native-app="1"] .profile-quote-regular>strong{font-size:18px!important}
+html[data-native-app="1"] .profile-quote-regular>b{font-size:10px!important}
+html[data-native-app="1"] .profile-quote-extended>strong,
+html[data-native-app="1"] .profile-quote-extended>b{font-size:8px!important}
