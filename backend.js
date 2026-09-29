@@ -161,8 +161,11 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
 }
 
 async function dispatchPushAlert(env, alert, target) {
+  if (!env.DB) return { configured: false, sent: 0 };
+  const globalNotifications = await globalNotificationSettingsForUser(env, target.user_id);
+  if (!globalNotifications.enabled) return { configured: true, sent: 0, disabled: true };
   const auth = await fcmAccessToken(env);
-  if (!auth || !env.DB) return { configured: false, sent: 0 };
+  if (!auth) return { configured: false, sent: 0 };
 
   const rows = await env.DB.prepare(
     "SELECT id,push_token,platform FROM devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC LIMIT 20"
@@ -694,6 +697,7 @@ async function handleMe(request, env, user, json) {
     min_sell_confidence: 80,
     notify_score_change: 20
   }, analysis || {}, {
+    notifications_enabled: notifications.enabled ? 1 : 0,
     notify_news_events: notifications.newsEvents ? 1 : 0,
     notify_pulse_ai: notifications.pulseAi ? 1 : 0
   });
@@ -1586,18 +1590,23 @@ async function ensureGlobalNotificationSettingsSchema(env){
   if(globalNotificationSettingsSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_notification_settings ("+
-    "user_id TEXT PRIMARY KEY,news_events_enabled INTEGER NOT NULL DEFAULT 1,pulse_ai_enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "user_id TEXT PRIMARY KEY,notifications_enabled INTEGER NOT NULL DEFAULT 1,news_events_enabled INTEGER NOT NULL DEFAULT 1,pulse_ai_enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
     "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
+  const columns=await env.DB.prepare("PRAGMA table_info(user_notification_settings)").all();
+  if(!(columns.results||[]).some(row=>String(row.name||"")==="notifications_enabled")){
+    await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1").run();
+  }
   globalNotificationSettingsSchemaReady=true;
 }
 
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT news_events_enabled,pulse_ai_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT notifications_enabled,news_events_enabled,pulse_ai_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   return {
+    enabled: row ? Number(row.notifications_enabled)!==0 : true,
     newsEvents: row ? Number(row.news_events_enabled)!==0 : true,
     pulseAi: row ? Number(row.pulse_ai_enabled)!==0 : true
   };
@@ -1702,6 +1711,7 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
   const delta = previousScore === null ? 0 : current.score - previousScore;
   const settings = await analysisSettingsForUser(env, target.user_id);
   const globalNotifications = notificationSettings || await globalNotificationSettingsForUser(env, target.user_id);
+  if (!globalNotifications.enabled) return null;
   let should = false;
   let type = "analysis-change";
   let severity = "info";
@@ -1794,7 +1804,7 @@ async function analyzeTarget(env, target, services) {
 
   const notificationSettings=await globalNotificationSettingsForUser(env,target.user_id);
   await maybeCreateAlert(env,target,stock,current,previous,notificationSettings);
-  if(notificationSettings.newsEvents){
+  if(notificationSettings.enabled&&notificationSettings.newsEvents){
     await maybeCreateNewsAlerts(env,target,stock,events,snapshotId);
     await maybeCreateEventAlerts(env,target,stock,events,snapshotId);
   }
@@ -1911,6 +1921,7 @@ async function handleSettings(request, env, user, json) {
     min_sell_confidence:80,
     notify_score_change:20
   },existing||{},{
+    notifications_enabled:notifications.enabled?1:0,
     notify_news_events:notifications.newsEvents?1:0,
     notify_pulse_ai:notifications.pulseAi?1:0
   });
@@ -1925,6 +1936,7 @@ async function handleSettings(request, env, user, json) {
     buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(current.min_buy_confidence) ?? 85))),
     sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(current.min_sell_confidence) ?? 80))),
     change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(current.notify_score_change) ?? 20))),
+    enabled: body.notificationsEnabled === undefined ? Number(current.notifications_enabled)!==0 : booleanInt(body.notificationsEnabled)===1,
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
     pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1
   };
@@ -1935,14 +1947,15 @@ async function handleSettings(request, env, user, json) {
       "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
     ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
     env.DB.prepare(
-      "INSERT INTO user_notification_settings (user_id,news_events_enabled,pulse_ai_enabled,created_at,updated_at) VALUES (?,?,?,?,?) " +
-      "ON CONFLICT(user_id) DO UPDATE SET news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,next.newsEvents?1:0,next.pulseAi?1:0,now,now)
+      "INSERT INTO user_notification_settings (user_id,notifications_enabled,news_events_enabled,pulse_ai_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,now,now)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
   ).bind(user.id).first();
   return json({settings:Object.assign({},saved||{},{
+    notifications_enabled:next.enabled?1:0,
     notify_news_events:next.newsEvents?1:0,
     notify_pulse_ai:next.pulseAi?1:0
   })});
@@ -2038,10 +2051,13 @@ async function handleNotificationPreferences(request,env,user,json,url){
 }
 
 async function sendPreferenceAlert(env,pref,type,severity,title,message){
+  const global=await globalNotificationSettingsForUser(env,pref.user_id);
+  if(!global.enabled)return null;
   const id=uid("al_"),now=nowIso();
   await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
     .bind(id,pref.user_id,pref.stock_key,pref.ticker,pref.name||"",type,severity,title,message,now).run();
   await dispatchPushAlert(env,{id,alert_type:type,severity,title,message},pref);
+  return id;
 }
 
 async function scanNotificationPreferences(env,services){
@@ -2053,6 +2069,7 @@ async function scanNotificationPreferences(env,services){
     try{
       let global=globalByUser.get(pref.user_id);
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
+      if(!global.enabled)continue;
       const stock=findStock(snapshot,pref);if(!stock)continue;
       const needsAnalysis=(global.pulseAi&&Number(pref.pulse_enabled)===1)||Number(pref.radar_enabled)===1;
       let chart={available:false},chartRaw=null;
