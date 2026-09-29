@@ -288,8 +288,10 @@ jobs:
           # Regresiones críticas de móvil/tablet y veracidad de cotizaciones.
           if "function verifiedDisplayQuote" not in market:
               raise SystemExit("Falta la cotización verificada con fallback explícito")
-          if "verifiedDisplayQuote(s,preferTr,se)" not in stock_list:
-              raise SystemExit("Las listas compactas no usan la cotización verificada")
+          if "preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se)" not in stock_list:
+              raise SystemExit("Las listas compactas no separan LSX exacto de la cotización EEUU")
+          if "if(preferTr)return '';" not in stock_list:
+              raise SystemExit("Las tarjetas TR pueden volver a mostrar pre/post de EEUU")
           if "displayQuote&&displayQuote.price" not in stock_list:
               raise SystemExit("Radar puede volver a mostrar filas sin precio verificable")
           if "getDisplayQuote" not in bootstrap:
