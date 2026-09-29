@@ -35,8 +35,10 @@ window.checkAssetCards = async function () {
   assert(rect.height<=90&&rect.height>=48,name+' is not compact: '+rect.height);
   assert(row.scrollWidth<=row.clientWidth+1,name+' overflows horizontally');
   assert(test.querySelector('.fav-star'),name+' lost favourites');
-  assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost REG quote');
-  assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' compact row lost REG/extended quote');
+  assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost primary quote');
+  const isTrRow=!!test.querySelector('.asset-venue-price');
+  if(isTrRow)assert(!test.querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),name+' TR row leaked US pre/post data');
+  else assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' US row lost REG/extended quote');
   const ext=test.querySelector('.asset-extended-price')?.textContent||'';
   assert(!/10[.,]20|9[.,]80/.test(ext),name+' extended line shows the extended absolute price instead of the move');
   assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
