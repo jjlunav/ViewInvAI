@@ -162,6 +162,16 @@ function portfolioGoalRequiredMonthlyRate(current,monthly,target,months){
   }
   return high;
 }
+function portfolioGoalRequiredContribution(current,target,months,annualPct){
+  const capital=num(current),goal=num(target),n=Math.round(num(months)||0),annual=Math.max(0,num(annualPct)||0);
+  if(capital===null||goal===null||n<=0)return null;
+  const monthlyRate=Math.pow(1+annual/100,1/12)-1,growth=Math.pow(1+monthlyRate,n);
+  const futureCapital=capital*growth;
+  if(futureCapital>=goal)return 0;
+  const annuity=Math.abs(monthlyRate)<1e-9?n:(growth-1)/monthlyRate;
+  if(!Number.isFinite(annuity)||annuity<=0)return null;
+  return Math.max(0,(goal-futureCapital)/annuity);
+}
 function portfolioGoalPlanMetrics(current,target,targetDate,monthlyContribution,riskProfile){
   const months=portfolioGoalMonths(targetDate),monthly=Math.max(0,num(monthlyContribution)||0),capital=num(current),goal=num(target);
   const contributions=months===null?null:monthly*months;
@@ -169,11 +179,13 @@ function portfolioGoalPlanMetrics(current,target,targetDate,monthlyContribution,
   const requiredMonthlyRate=months===null?null:portfolioGoalRequiredMonthlyRate(capital,monthly,goal,months);
   const requiredAnnualRate=requiredMonthlyRate===null?null:(Math.pow(1+requiredMonthlyRate,12)-1)*100;
   const riskBands={
-    conservative:{label:"Conservador",maxAnnual:8,maxPosition:18},
-    balanced:{label:"Equilibrado",maxAnnual:16,maxPosition:28},
-    aggressive:{label:"Agresivo",maxAnnual:30,maxPosition:38}
+    conservative:{label:"Conservador",planningAnnual:4,maxAnnual:8,maxPosition:18},
+    balanced:{label:"Equilibrado",planningAnnual:7,maxAnnual:16,maxPosition:28},
+    aggressive:{label:"Agresivo",planningAnnual:10,maxAnnual:30,maxPosition:38}
   };
   const band=riskBands[riskProfile]||riskBands.balanced;
+  const requiredMonthlyContribution=months===null?null:portfolioGoalRequiredContribution(capital,goal,months,band.planningAnnual);
+  const contributionGap=requiredMonthlyContribution===null?null:Math.max(0,requiredMonthlyContribution-monthly);
   let feasibility="Sin plazo";
   if(months!==null){
     if(goal!==null&&noGrowthValue!==null&&noGrowthValue>=goal)feasibility="Aportaciones suficientes";
@@ -182,7 +194,7 @@ function portfolioGoalPlanMetrics(current,target,targetDate,monthlyContribution,
     else if(requiredAnnualRate<=band.maxAnnual*1.6)feasibility="Exigente";
     else feasibility="Muy exigente";
   }
-  return{months,monthly,contributions,noGrowthValue,requiredMonthlyRate,requiredAnnualRate,riskBand:band,feasibility};
+  return{months,monthly,contributions,noGrowthValue,requiredMonthlyRate,requiredAnnualRate,requiredMonthlyContribution,contributionGap,riskBand:band,feasibility};
 }
 
 function portfolioStockKeys() {
@@ -637,7 +649,8 @@ function portfolioGoalViewHtml(){
   if(plan.months!==null){
     const contributionText=plan.contributions>0?' Con '+formatMoney(plan.monthly,"EUR")+' al mes aportarías '+formatMoney(plan.contributions,"EUR")+' durante '+plan.months+' meses.':' Sin aportaciones periódicas registradas.';
     const returnText=plan.requiredAnnualRate===null?' La rentabilidad necesaria queda fuera de un rango calculable razonable.':plan.requiredAnnualRate<=0?' Las aportaciones previstas bastarían incluso sin rentabilidad positiva.':' La rentabilidad anualizada necesaria sería aproximadamente '+formatNumber(plan.requiredAnnualRate,1)+'%.';
-    growthText+=contributionText+returnText+' Evaluación: '+plan.feasibility+'.';
+    const requiredContributionText=plan.requiredMonthlyContribution===null?'':(' Con un escenario de planificación del '+formatNumber(plan.riskBand.planningAnnual,0)+'% anual, la aportación orientativa para ese plazo sería '+formatMoney(plan.requiredMonthlyContribution,"EUR")+'/mes'+(plan.contributionGap>0?' (unos '+formatMoney(plan.contributionGap,"EUR")+'/mes más que lo indicado).':'.'));
+    growthText+=contributionText+returnText+requiredContributionText+' Evaluación: '+plan.feasibility+'.';
   }
   return '<section class="portfolio-goal-view" data-goal-portfolio="'+esc(portfolio.id)+'">'+
     '<div class="portfolio-goal-hero"><div><small>MOTOR IA · '+esc(portfolio.name)+' · '+esc(marketLabel)+'</small><h2>Objetivo IA de '+esc(portfolio.name)+'</h2><p>El motor trabaja únicamente con esta cartera y con acciones compatibles con su mercado. Compara lo que ya tienes con Pulso IA, Radar y catalizadores para proponer mantener, reducir o estudiar una rotación. No ejecuta órdenes ni puede garantizar alcanzar el objetivo.</p></div>'+
@@ -652,11 +665,11 @@ function portfolioGoalViewHtml(){
     '<div class="portfolio-goal-metrics"><div><small>VALOR OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>CAPITAL ACTUAL</small><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong></div><div><small>FALTA PARA EL OBJETIVO</small><strong>'+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+'</strong></div><div><small>CRECIMIENTO NECESARIO</small><strong>'+(metrics.requiredMultiple===null?'—':'×'+formatNumber(metrics.requiredMultiple,2))+'</strong></div></div>'+
     '<div class="portfolio-goal-progress"><div><span>Progreso por valor de cartera</span><b>'+formatNumber(metrics.progress,1)+'%</b></div><i><em style="width:'+Math.max(0,Math.min(100,metrics.progress))+'%"></em></i></div>'+
     '<div class="portfolio-goal-distance"><strong>Distancia al objetivo</strong><span>'+esc(growthText)+'</span></div>'+
-    '<div class="portfolio-goal-strategy"><div><small>MERCADO</small><strong>'+esc(marketLabel)+'</strong></div><div><small>HORIZONTE</small><strong>'+(plan.months===null?'Sin fecha':plan.months+' meses')+'</strong></div><div><small>APORTACIONES</small><strong>'+formatMoney(plan.monthly,"EUR")+'/mes</strong></div><div><small>PERFIL</small><strong>'+esc(plan.riskBand.label)+'</strong></div><div><small>VIABILIDAD</small><strong>'+esc(plan.feasibility)+'</strong></div><div><small>MOTOR</small><strong>Pulso IA + Radar + catalizadores</strong></div></div>'+
+    '<div class="portfolio-goal-strategy"><div><small>MERCADO</small><strong>'+esc(marketLabel)+'</strong></div><div><small>HORIZONTE</small><strong>'+(plan.months===null?'Sin fecha':plan.months+' meses')+'</strong></div><div><small>APORTACIONES</small><strong>'+formatMoney(plan.monthly,"EUR")+'/mes</strong></div><div><small>APORTE ORIENTATIVO</small><strong>'+(plan.requiredMonthlyContribution===null?'—':formatMoney(plan.requiredMonthlyContribution,"EUR")+'/mes')+'</strong></div><div><small>PERFIL</small><strong>'+esc(plan.riskBand.label)+'</strong></div><div><small>VIABILIDAD</small><strong>'+esc(plan.feasibility)+'</strong></div><div><small>MOTOR</small><strong>Pulso IA + Radar + catalizadores</strong></div></div>'+
     '<div class="portfolio-goal-toolbar"><span>Las candidatas se filtran por el mercado configurado en '+esc(portfolio.name)+'. Una cartera LSX no recibirá propuestas exclusivas de Nasdaq/NYSE.</span><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar '+esc(portfolio.name)+'</button></div>'+
     '<section class="portfolio-goal-section"><header><div><small>PASO 1 · REVISAR LO QUE YA TIENES</small><h3>Mantener, reducir o liberar capital</h3></div></header><div class="portfolio-goal-actions">'+planHtml+'</div></section>'+
     '<section class="portfolio-goal-section"><header><div><small>PASO 2 · OPCIONES DEL MISMO MERCADO</small><h3>Rotaciones y compras a estudiar</h3></div></header><div class="portfolio-goal-candidates">'+candidatesHtml+'</div></section>'+
-    '<p class="portfolio-goal-note">Los escenarios de rotación, stops, take profit y contribuciones son herramientas de análisis. No son resultados previstos ni una promesa de alcanzar el objetivo en un plazo concreto.</p>')+'</section>';
+    '<p class="portfolio-goal-note">El aporte orientativo usa un escenario de planificación del '+formatNumber(plan.riskBand.planningAnnual,0)+'% anual para '+esc(plan.riskBand.label.toLowerCase())+'; no es una rentabilidad prevista. Rotaciones, stops, take profit y contribuciones son herramientas de análisis y no garantizan alcanzar el objetivo.</p>')+'</section>';
 }
 
 async function savePortfolioGoal(targetValueEur,portfolioId=state.selectedPortfolioId,options={}){
