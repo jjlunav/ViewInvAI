@@ -2238,7 +2238,7 @@ async function scanNotificationPreferences(env,services){
       }
       const price=Number(pref.prefer_tr)===1
         ?(chart&&chart.available?finiteNumber(chart.last):null)
-        :finiteNumber(liveQuote&&liveQuote.price??stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+        :finiteNumber((liveQuote&&liveQuote.price)??stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
       let anchorPrice=finiteNumber(pref.anchor_price);
       if(anchorPrice===null&&price!==null){
         anchorPrice=price;
