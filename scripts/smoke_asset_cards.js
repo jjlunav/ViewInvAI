@@ -37,7 +37,7 @@ window.checkAssetCards = async function () {
  const portfolio=window.ViewInvAIPortfolios,ps=portfolio.getState(),saved={...ps};
  const view=document.querySelector('#view-portfolios'),display=view.style.display;
  try{
-  Object.assign(ps,{user:{uid:'ci-fixture'},loading:false,selectedPortfolioId:'ci',portfolios:[{id:'ci',name:'CI fixture',base_currency:'USD'}],positions:[
+  Object.assign(ps,{user:{uid:'ci-fixture'},loading:false,primaryTab:'portfolio',goal:{target_profit_eur:1000},selectedPortfolioId:'ci',portfolios:[{id:'ci',name:'CI fixture',base_currency:'USD'}],positions:[
    {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
    {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
   ],watchlist:[],portfolioTransactionSummaries:{}});
@@ -49,6 +49,14 @@ window.checkAssetCards = async function () {
   const row=rows[0].querySelector('[data-open-stock]');
   assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
   assert(rows[0].querySelector('.asset-regular-price')&&rows[0].querySelector('.asset-regular-change')&&rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio does not use the shared compact stock row');
+  assert(!view.querySelector('.portfolio-primary-tabs'),'obsolete portfolio/goal primary tabs remain');
+  assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle]'),'goal control is not inside the stock portfolio toolbar');
+  ps.primaryTab='goal';portfolio.render();
+  assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle].active'),'goal toolbar control did not become active');
+  assert(view.querySelector('.portfolio-goal-view'),'goal view did not render inside stocks');
+  const goalInput=view.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
+  assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
+  ps.primaryTab='portfolio';portfolio.render();
   row.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');

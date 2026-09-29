@@ -356,12 +356,6 @@ function renderWatchRow(w) {
 }
 
 
-function portfolioPrimaryTabsHtml() {
-  return '<nav class="portfolio-primary-tabs" aria-label="Vista principal de cartera">' +
-    '<button type="button" class="' + (state.primaryTab === "portfolio" ? 'active' : '') + '" data-portfolio-main-tab="portfolio">Cartera</button>' +
-    '<button type="button" class="' + (state.primaryTab === "goal" ? 'active' : '') + '" data-portfolio-main-tab="goal">Objetivo de la cartera</button>' +
-  '</nav>';
-}
 function portfolioStockKey(stock) {
   return stock && window.ViewInvAI && typeof window.ViewInvAI.getStockKey === "function"
     ? String(window.ViewInvAI.getStockKey(stock) || "").trim().toUpperCase()
@@ -463,7 +457,7 @@ function portfolioGoalViewHtml(){
   const planHtml=positionRows.length?positionRows.map(goalPositionPlanHtml).join(""):'<div class="portfolio-empty-state compact">Añade posiciones a la cartera de acciones para que el entrenador pueda construir un plan.</div>';
   const candidatesHtml=candidates.length?candidates.map(goalCandidateHtml).join(""):'<div class="portfolio-empty-state compact">Ahora mismo Pulso IA y Radar no aportan una alternativa suficientemente sólida como para forzar una rotación.</div>';
   return '<section class="portfolio-goal-view"><div class="portfolio-goal-hero"><div><small>ENTRENADOR DE INVERSIÓN</small><h2>Objetivo de la cartera</h2><p>Un único objetivo para toda tu cartera de acciones. ViewInvAI ajusta el plan con las señales de cartera, Pulso IA y Radar; no ejecuta órdenes automáticamente.</p></div>'+
-    '<form id="portfolioGoalForm" class="portfolio-goal-form"><label><span>Objetivo de rentabilidad</span><div><input name="targetProfitEur" type="number" min="1" step="10" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button></form></div>'+
+    '<form id="portfolioGoalForm" class="portfolio-goal-form"><label><span>Objetivo de rentabilidad</span><div><input name="targetProfitEur" type="number" min="0.01" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button></form></div>'+
     (target===null?'<div class="portfolio-goal-empty"><strong>Marca cuánto beneficio quieres alcanzar.</strong><span>Por ejemplo, 1.000 €. El objetivo es modificable en cualquier momento.</span></div>':
     '<div class="portfolio-goal-metrics"><div><small>OBJETIVO</small><strong>'+formatMoney(target,"EUR")+'</strong></div><div><small>RESULTADO ACTUAL</small><strong class="'+totalTone+'">'+
     (metrics.totalPnl===null?'—':(metrics.totalPnl>0?'+':'')+formatMoney(metrics.totalPnl,"EUR"))+'</strong></div><div><small>FALTA</small><strong>'+
@@ -484,26 +478,40 @@ async function refreshGoalSummaries(){
   if(state.primaryTab==="goal")renderApp();
 }
 
+function portfolioWorkbarHtml(selected){
+  return '<div class="portfolio-workbar">'+
+    '<div class="portfolio-tabs-wrap">'+
+      '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+state.portfolios.map(renderPortfolioCard).join('')+'</div>'+
+      '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>'+
+      '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-goal-toggle'+(state.primaryTab==="goal"?' active':'')+'" data-portfolio-goal-toggle aria-pressed="'+(state.primaryTab==="goal"?'true':'false')+'" aria-label="Objetivo de la cartera" title="Objetivo de la cartera">◎</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">⊕</button>'+
+      '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>'+
+    '</div>'+
+    '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>'+
+  '</div>';
+}
+
 function renderApp() {
   const box=$("#portfolioApp");if(!box)return;if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
   state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
   if(!state.selectedPortfolioId&&state.portfolios.length)state.selectedPortfolioId=state.portfolios[0].id;
   if(state.selectedPortfolioId&&!state.portfolios.some(p=>String(p.id??"")===String(state.selectedPortfolioId??"")))state.selectedPortfolioId=state.portfolios[0]?state.portfolios[0].id:null;
+  const selected=state.portfolios.find(p=>String(p.id??"")===String(state.selectedPortfolioId??""))||null;
+  const positions=selected?portfolioPositions(selected.id):[];
   savePortfolioUi();
-  if(state.primaryTab==="goal"){
-    box.innerHTML=portfolioPrimaryTabsHtml()+portfolioGoalViewHtml();
-    requestAnimationFrame(()=>{if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box)});
-    return;
-  }
-  const selected=state.portfolios.find(p=>String(p.id??"")===String(state.selectedPortfolioId??""))||null,positions=selected?portfolioPositions(selected.id):[];
-  box.innerHTML=portfolioPrimaryTabsHtml()+'<div class="portfolio-workbar"><div class="portfolio-tabs-wrap"><div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+
-    state.portfolios.map(renderPortfolioCard).join('')+'</div><button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">＋</button>'+
-    '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>'+
-    '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
-    '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
-    '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">⊕</button><div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div></div>'+
-    '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button></div><div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>';
-  requestAnimationFrame(()=>{updatePortfolioTabOverflow();if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box)});
+
+  box.innerHTML=portfolioWorkbarHtml(selected)+
+    (state.primaryTab==="goal"
+      ? portfolioGoalViewHtml()
+      : '<div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>');
+
+  requestAnimationFrame(()=>{
+    updatePortfolioTabOverflow();
+    if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
+  });
 }
 
 async function fetchJson(path) {
@@ -1416,8 +1424,13 @@ async function savePositionForm(form) {
 
 function bind() {
   document.addEventListener("click", async event => {
-    const mainTab=event.target.closest?.("[data-portfolio-main-tab]");
-    if(mainTab){state.primaryTab=mainTab.dataset.portfolioMainTab==="goal"?"goal":"portfolio";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();if(state.primaryTab==="goal")refreshGoalSummaries().catch(()=>{});return}
+    const goalToggle=event.target.closest?.("[data-portfolio-goal-toggle]");
+    if(goalToggle){
+      state.primaryTab=state.primaryTab==="goal"?"portfolio":"goal";
+      savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();
+      if(state.primaryTab==="goal")refreshGoalSummaries().catch(()=>{});
+      return;
+    }
     const goalRefresh=event.target.closest?.("[data-goal-refresh-plan]");
     if(goalRefresh){goalRefresh.disabled=true;state.goalCandidateCache={at:0,key:"",rows:[]};const stamp=()=>state.positions.map(x=>String(x.updated_at||x.last_analysis_at||x.id||'')).join('|');
       try{if(window.ViewInvAIRefreshFeedback)await window.ViewInvAIRefreshFeedback.run(()=>loadAll(),stamp);else await loadAll();await refreshGoalSummaries()}finally{if(goalRefresh.isConnected)goalRefresh.disabled=false}return}
@@ -1460,6 +1473,7 @@ function bind() {
     const selector = event.target.closest?.("[data-portfolio-select]");
     if (selector) {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
+      state.primaryTab = "portfolio";
       savePortfolioUi();
       closePortfolioTabOverflow();
       renderApp();
@@ -1772,6 +1786,11 @@ window.ViewInvAIPortfolios = {
     portfolioName: x.portfolio?.name || ''
   })),
   removeStockFromPortfolio,
+  setGoalVisible: visible => {
+    state.primaryTab = visible ? "goal" : "portfolio";
+    savePortfolioUi();
+    renderApp();
+  },
   getState: () => state
 };
 

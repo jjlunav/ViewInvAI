@@ -738,8 +738,17 @@
    if(asset){
     const mode=asset.dataset.portfolioAsset;
     document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{const active=b.dataset.portfolioAsset===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',active?'true':'false')});
-    document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>p.classList.toggle('is-hidden',p.dataset.portfolioAssetPanel!==mode));
-    if(mode==='funds')loadPortfolio(false);
+    document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>{
+     const active=p.dataset.portfolioAssetPanel===mode;
+     p.classList.toggle('is-hidden',!active);
+     p.hidden=!active;
+    });
+    if(mode==='funds'){
+     root.ViewInvAIPortfolios?.setGoalVisible?.(false);
+     loadPortfolio(false);
+    }else{
+     root.ViewInvAIPortfolios?.render?.();
+    }
     return;
    }
    if(e.target.closest?.('[data-fund-login]')){root.ViewInvAIAuth?.signIn?.();return}
