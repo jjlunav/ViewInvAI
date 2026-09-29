@@ -2528,12 +2528,25 @@ export async function handleBackendApi(request, env, services = {}) {
 
   const url = new URL(request.url);
   if (url.pathname === "/api/backend/status") {
+    const pushConfigured=!!fcmServiceAccount(env);
+    const secConfigured=!!String(env.SEC_USER_AGENT||"").trim();
+    const openFdaKeyConfigured=!!String(env.OPENFDA_API_KEY||"").trim();
     return json({
       d1: !!env.DB,
       ai: !!env.AI,
       firebase: !!String(env.FIREBASE_PROJECT_ID || "").trim(),
-      push: !!fcmServiceAccount(env),
-      model: String(env.AI_MODEL || DEFAULT_AI_MODEL)
+      push: pushConfigured,
+      model: String(env.AI_MODEL || DEFAULT_AI_MODEL),
+      alertsCadenceMinutes: 1,
+      sources: {
+        tradeRepublic: { integrated: true, configured: true, mode: "direct-origin", label: "Trade Republic / LSX" },
+        nasdaq: { integrated: true, configured: true, mode: "direct-origin", label: "Nasdaq / EEUU" },
+        sec: { integrated: true, configured: secConfigured, requiredConfig: secConfigured ? null : "SEC_USER_AGENT", label: "SEC / EDGAR" },
+        clinicalTrials: { integrated: true, configured: true, mode: "official-public", label: "ClinicalTrials.gov" },
+        fda: { integrated: true, configured: true, enhancedConfig: openFdaKeyConfigured, optionalConfig: openFdaKeyConfigured ? null : "OPENFDA_API_KEY", label: "FDA / openFDA" },
+        push: { integrated: true, configured: pushConfigured, requiredConfig: pushConfigured ? null : "FCM service account", label: "Firebase Cloud Messaging" }
+      },
+      updatedAt: nowIso()
     });
   }
 
