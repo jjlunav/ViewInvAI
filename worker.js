@@ -1284,6 +1284,31 @@ async function loadAllOfficialEventsForBackend(stock,target,env){
 
 
 
+async function stockEventsLiveResponse(env,request){
+  const url=new URL(request.url),ticker=safeStockSymbol(url.searchParams.get("ticker")||""),exchange=String(url.searchParams.get("exchange")||"").trim().toUpperCase();
+  if(!ticker)return jsonResponse({error:"ticker is required"},400,{"Cache-Control":"no-store"});
+  const snapshot=await loadMarketSnapshotForBackend(env);
+  const stock=(snapshot.stocks||[]).find(row=>{
+    const rowTicker=String(row&&row.ticker||"").trim().toUpperCase(),trTicker=String(row&&row.trTicker||"").trim().toUpperCase(),rowExchange=String(row&&row.exchange||"").trim().toUpperCase();
+    if(ticker!==rowTicker&&ticker!==trTicker)return false;
+    return !exchange||!rowExchange||exchange===rowExchange||exchange==="LSX";
+  });
+  if(!stock)return jsonResponse({error:"Stock not found"},404,{"Cache-Control":"no-store"});
+  const target={ticker:stock.ticker||ticker,exchange:stock.exchange||exchange,isin:stock.isin||stock.usIsin||stock.trIsin||"",secCik:stock.secCik||""};
+  const [official,news]=await Promise.all([
+    loadAllOfficialEventsForBackend(stock,target,env),
+    loadNewsForBackend(stock,target)
+  ]);
+  const merged=[],seen=new Set();
+  for(const event of [...official,...news]){
+    const key=String(event&&event.id||"")||[event&&event.eventKind,event&&event.title,event&&event.date].join("|");
+    if(!event||seen.has(key))continue;
+    seen.add(key);merged.push(event);
+  }
+  merged.sort((a,b)=>new Date(b&&b.date||0)-new Date(a&&a.date||0));
+  return jsonResponse({events:merged.slice(0,24),ticker:stock.ticker||ticker,updatedAt:new Date().toISOString()},200,{"Cache-Control":"private, max-age=30"});
+}
+
 let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
 async function socialTrendingResponse(){
   const cached=publicMarketCache.social;
@@ -1513,6 +1538,7 @@ export default {
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/stock-events-live")limited=await enforcedRateLimit(request,env,"stock-events-live",60,60000,"MARKET_RATE_LIMITER");
     else if(isBackendApiPath(url.pathname))limited=await enforcedRateLimit(request,env,"backend",180,60000,"API_RATE_LIMITER");
     if(limited)return nativeCorsResponse(request, limited);
 
@@ -1543,6 +1569,14 @@ export default {
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await nasdaqQuotes(request));
+    }
+    if (url.pathname === "/api/stock-events-live") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await stockEventsLiveResponse(env,request)); }
+      catch (error) {
+        console.warn("Live stock events upstream error", String(error && error.message || error));
+        return nativeCorsResponse(request, jsonResponse({ error: "Live stock events unavailable" }, 502, { "Cache-Control": "no-store" }));
+      }
     }
     if (url.pathname === "/api/fx-live") {
       const guard = requestGuard(request); if (guard) return guard;
