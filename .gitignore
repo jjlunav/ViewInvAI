@@ -1,6 +1,43 @@
+# Dependencies and generated builds
 node_modules/
 android/
 *.apk
 *.aab
 .DS_Store
+
+# Local/runtime configuration
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler/
+wrangler.toml.local
+wrangler.jsonc.local
+
+# Credentials, private keys and signing material
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.der
+*.crt
+*.cer
+service-account*.json
+firebase-admin*.json
+credentials*.json
+secrets*.json
+secrets.*
+credentials.*
+
+# Local tooling / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Generated market deltas
 data/market-catalog-delta.json
