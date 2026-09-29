@@ -260,8 +260,8 @@ jobs:
           if missing_assets:
               raise SystemExit("index.html no carga la arquitectura separada: " + ", ".join(missing_assets))
 
-          if "profileGeneralPrimaryStats" not in profile or "profileDisclosure" not in profile:
-              raise SystemExit("stock-profile.js no aplica divulgacion progresiva")
+          if "profileGeneralPrimaryStats" not in profile or "profileFixedMarketSection" not in profile or "profile-market-sessions" not in profile or "profile-market-extra" not in profile:
+              raise SystemExit("stock-profile.js no mantiene visibles los datos de mercado en General")
           if "stock-card-details" not in stock_list:
               raise SystemExit("stock-list.js no oculta metricas secundarias")
           if "reco-disclosure" not in recommendation:
@@ -276,7 +276,7 @@ jobs:
           portfolio = Path("portfolio.js").read_text(encoding="utf-8")
           if "portfolio-position-more" not in portfolio:
               raise SystemExit("portfolio.js no aplica detalle progresivo")
-          required_density = ("profile-disclosure", "reco-disclosure", "portfolio-position-more")
+          required_density = ("reco-disclosure", "portfolio-position-more")
           missing_density = [item for item in required_density if item not in density_css]
           if missing_density:
               raise SystemExit("ui-density.css incompleto: " + ", ".join(missing_density))
