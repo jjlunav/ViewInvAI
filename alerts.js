@@ -69,7 +69,7 @@
     detailsLabel:'Motivo del aviso',detailsHtml:'<p>'+esc(item.message||'')+'</p>'+(item.score?'<p>Convicción '+fmt(item.score,0)+'/100</p>':'')
    });
 
-  }).join(''):'<div class="notification-empty">No hay compras de alta convicción recientes.</div>';
+  }).join(''):'<div class="notification-empty">No hay avisos recientes.</div>';
  }
 
  function setCenterOpen(open,{auto=false}={}){
