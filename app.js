@@ -350,8 +350,10 @@ function topGainers(kind,se){
   .slice(0,10);
 }
 function leaderItem(s,se,i,preferTr=false){
- let ch=preferTr?trLiveChange(s):SC(s,se),p=preferTr?trLivePrice(s):SP(s,se),vol=SV(s,se),avg=N(s.avgVolume),volumeLabel=preferTr?'Vol EEUU ref.':'Vol';
- return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s,'',preferTr)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s,preferTr)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="'+(preferTr?'Volumen del subyacente EEUU / volumen medio diario':'Volumen actual / volumen medio diario')+'">'+volumeLabel+' '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
+ return standardStockCard(s,i,{
+  se,preferTr,context:'home-leader',rankLabel:'#'+(i+1),className:'leader-item unified-leader-card',
+  hint:'Mercados · top de subidas',detailsHtml:''
+ });
 }
 function leadersPinned(){
  try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
@@ -420,11 +422,10 @@ function renderFavorites(){
   box.innerHTML='<div class="favorites-empty"><span aria-hidden="true">☆</span><p>Pulsa la estrella de cualquier acción para guardarla aquí.</p></div>';
   return;
  }
- box.innerHTML=stocks.map(s=>{
-  let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  let preferTr=false;
-  return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s,'',preferTr)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div>'+pricePair(s,p,preferTr)+'</div>'+bidAskHtml(s,preferTr)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,preferTr)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
- }).join('');
+ box.innerHTML=stocks.map(s=>standardStockCard(s,0,{
+  se,preferTr:false,context:'favorites',rankLabel:'',className:'favorite-row unified-favorite-card',
+  hint:'Favoritos',detailsHtml:''
+ })).join('');
 }
 function status(){}
 function renderCurrentView(){
