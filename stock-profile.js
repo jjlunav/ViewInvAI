@@ -210,6 +210,11 @@ function profileBodyTabsHtml(){
 }
 const profileLiveEventCache=new Map();
 function profileNewsPanelHtml(s){
+ let events=stockEvents(s),now=Date.now();
+ let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
+ let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
+ let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
+ let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  return '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>';
 }
 async function refreshProfileLiveEvents(s){
@@ -234,11 +239,6 @@ async function refreshProfileLiveEvents(s){
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
  let isTr=requested&&trTradable(s),se=currentMarketSession();
- let events=stockEvents(s),now=Date.now();
- let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
- let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
- let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
- let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
  return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
