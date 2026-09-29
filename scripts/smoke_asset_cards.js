@@ -37,8 +37,10 @@ window.checkAssetCards = async function () {
   assert(test.querySelector('.fav-star'),name+' lost favourites');
   assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost primary quote');
   const isTrRow=!!test.querySelector('.asset-venue-price');
+  const hasExtendedFixture=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
   if(isTrRow)assert(!test.querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),name+' TR row leaked US pre/post data');
-  else assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' US row lost REG/extended quote');
+  else if(hasExtendedFixture)assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' US row lost available REG/extended quote');
+  else assert(!test.querySelector('.asset-extended-price,.asset-extended-change'),'US row fabricated extended data that the source does not contain');
   const ext=test.querySelector('.asset-extended-price')?.textContent||'';
   assert(!/10[.,]20|9[.,]80/.test(ext),name+' extended line shows the extended absolute price instead of the move');
   assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
