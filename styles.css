@@ -7696,3 +7696,82 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 }
 #view-portfolios .portfolio-summary-bar small{font-size:9px!important}
 #view-portfolios .portfolio-summary-bar strong{font-size:15px!important}
+
+
+/* 2026-09-29 · Per-portfolio AI objective engine */
+#view-portfolios .portfolio-selected-nav{
+ display:grid;
+ grid-template-columns:minmax(0,820px) minmax(240px,320px);
+ justify-content:center;
+ align-items:center;
+ gap:12px;
+ margin:2px auto 12px;
+}
+#view-portfolios .portfolio-selected-nav .portfolio-primary-tabs{
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+}
+#view-portfolios .portfolio-market-scope{
+ min-height:48px;
+ display:grid;
+ grid-template-columns:auto 1fr auto;
+ align-items:center;
+ gap:8px;
+ padding:7px 11px;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:var(--panel);
+ color:var(--text);
+ cursor:pointer;
+ text-align:left;
+}
+#view-portfolios .portfolio-market-scope>span{font-size:9px;font-weight:850;color:var(--muted);letter-spacing:.05em}
+#view-portfolios .portfolio-market-scope>strong{font-size:12.5px}
+#view-portfolios .portfolio-market-scope>em{font-style:normal;font-size:9px;color:var(--accent)}
+#view-portfolios .portfolio-market-scope.unresolved{border-color:color-mix(in srgb,var(--warning) 55%,var(--line))}
+#view-portfolios .portfolio-goal-hero small{font-size:11px!important}
+#view-portfolios .portfolio-goal-hero h2{font-size:28px!important;line-height:1.08!important}
+#view-portfolios .portfolio-goal-hero p{font-size:14px!important;line-height:1.55!important}
+#view-portfolios .portfolio-goal-form label>span{font-size:10px!important}
+#view-portfolios .portfolio-goal-form input{font-size:18px!important}
+#view-portfolios .portfolio-goal-form .btn{font-size:13px!important}
+#view-portfolios .portfolio-goal-metrics small{font-size:10px!important}
+#view-portfolios .portfolio-goal-metrics strong{font-size:19px!important}
+#view-portfolios .portfolio-goal-progress span,
+#view-portfolios .portfolio-goal-progress b{font-size:11px!important}
+#view-portfolios .portfolio-goal-distance{
+ display:grid;
+ grid-template-columns:auto 1fr;
+ gap:14px;
+ align-items:start;
+ padding:12px 14px;
+ border:1px solid color-mix(in srgb,var(--accent) 26%,var(--line));
+ border-radius:10px;
+ background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+}
+#view-portfolios .portfolio-goal-distance strong{font-size:13px}
+#view-portfolios .portfolio-goal-distance span{font-size:12px;line-height:1.5;color:var(--muted)}
+#view-portfolios .portfolio-goal-strategy small{font-size:9.5px!important}
+#view-portfolios .portfolio-goal-strategy strong{font-size:14px!important}
+#view-portfolios .portfolio-goal-toolbar>span{font-size:11.5px!important}
+#view-portfolios .portfolio-goal-section header small{font-size:9.5px!important}
+#view-portfolios .portfolio-goal-section header h3{font-size:21px!important}
+#view-portfolios .goal-action-head strong,
+#view-portfolios .goal-candidate-head strong{font-size:15px!important}
+#view-portfolios .goal-action-head small,
+#view-portfolios .goal-candidate-head small{font-size:10px!important}
+#view-portfolios .goal-action-head>b,
+#view-portfolios .goal-candidate-action{font-size:10.5px!important}
+#view-portfolios .goal-action-grid span,
+#view-portfolios .portfolio-goal-action p,
+#view-portfolios .portfolio-goal-candidate p{font-size:11px!important;line-height:1.5!important}
+#view-portfolios .goal-candidate-kpis span{font-size:10px!important}
+#view-portfolios .goal-candidate-kpis b{font-size:12px!important}
+#view-portfolios .portfolio-goal-note{font-size:10.5px!important;line-height:1.5!important}
+.portfolio-form-note{margin:0 0 8px;color:var(--muted);font-size:11px;line-height:1.45}
+@media(max-width:900px){
+ #view-portfolios .portfolio-selected-nav{grid-template-columns:1fr}
+ #view-portfolios .portfolio-market-scope{width:100%}
+ #view-portfolios .portfolio-goal-distance{grid-template-columns:1fr;gap:4px}
+}

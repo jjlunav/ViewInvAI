@@ -545,10 +545,10 @@ function initStockListInteractions(){
  }));
 }
 
-function radarCoachCandidates(limit=10,excluded=[]){
- const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),se=currentMarketSession();
- return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,'us'))return null;const a=entryOpportunityAnalysis(stock,se,false);
-   return{stock,preferTr:trTradable(stock),score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a}})
+function radarCoachCandidates(limit=10,excluded=[],marketMode='us'){
+ const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),preferTr=marketMode==='tr',se=preferTr?'regular':currentMarketSession();
+ return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,preferTr?'tr':'us'))return null;const a=entryOpportunityAnalysis(stock,se,preferTr);
+   return{stock,preferTr,score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a}})
   .filter(Boolean).filter(row=>row.quality>=45&&row.score>=58).sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
 }
 window.ViewInvAIRadarCoach={rankCandidates:radarCoachCandidates};

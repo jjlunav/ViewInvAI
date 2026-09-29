@@ -521,9 +521,9 @@ function pulseCoachAnalysis(stock,preferTr=false){
  const a=recommendationAnalysis(stock,mode),q=stockDataQuality(stock,mode,false),signal=window.ViewInvAIScore&&typeof window.ViewInvAIScore.positionSignal==='function'?window.ViewInvAIScore.positionSignal(a.score,q.score):(a.score<=35?'SELL':a.score<50?'REVIEW':'HOLD');
  return{stock,preferTr,mode,score:N(a.score)??0,quality:N(q.score)??0,signal,analysis:a};
 }
-function pulseCoachCandidates(limit=10,excluded=[]){
- const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase()));
- return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase()))return null;return pulseCoachAnalysis(stock,false)})
+function pulseCoachCandidates(limit=10,excluded=[],marketMode='us'){
+ const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),preferTr=marketMode==='tr';
+ return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase()))return null;return pulseCoachAnalysis(stock,preferTr)})
   .filter(Boolean).filter(row=>row.quality>=55&&row.score>=60&&row.signal!=='SELL').sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
 }
 window.ViewInvAIPulseCoach={analyzeStock:pulseCoachAnalysis,rankCandidates:pulseCoachCandidates};

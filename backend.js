@@ -271,9 +271,25 @@ async function verifyFirebaseUser(request, env) {
   }
 }
 
+let portfolioMarketSchemaReady=false;
+async function ensurePortfolioMarketSchema(env){
+  if(portfolioMarketSchemaReady)return;
+  const info=await env.DB.prepare("PRAGMA table_info(portfolios)").all();
+  const columns=new Set((info.results||[]).map(row=>String(row.name||"")));
+  if(!columns.has("market_scope")){
+    try{await env.DB.prepare("ALTER TABLE portfolios ADD COLUMN market_scope TEXT NOT NULL DEFAULT 'auto'").run()}
+    catch(error){if(!/duplicate column/i.test(String(error&&error.message||error)))throw error}
+  }
+  portfolioMarketSchemaReady=true;
+}
+function normalizedMarketScope(value){
+  const scope=String(value||"auto").trim().toLowerCase();
+  return ["tr","us","auto"].includes(scope)?scope:"auto";
+}
 async function onePortfolio(env, userId, portfolioId) {
+  await ensurePortfolioMarketSchema(env);
   return env.DB.prepare(
-    "SELECT id,user_id,name,broker,base_currency,sort_order,created_at,updated_at FROM portfolios WHERE id=? AND user_id=?"
+    "SELECT id,user_id,name,broker,base_currency,market_scope,sort_order,created_at,updated_at FROM portfolios WHERE id=? AND user_id=?"
   ).bind(portfolioId, userId).first();
 }
 
@@ -284,6 +300,7 @@ function portfolioPayload(body) {
     baseCurrency: /^[A-Z]{3}$/.test(String(body.baseCurrency || "EUR").toUpperCase())
       ? String(body.baseCurrency || "EUR").toUpperCase()
       : "EUR",
+    marketScope: normalizedMarketScope(body.marketScope),
     sortOrder: Math.max(-1000, Math.min(1000, Math.round(finiteNumber(body.sortOrder) || 0)))
   };
 }
@@ -671,6 +688,7 @@ async function handleMe(request, env, user, json) {
 }
 
 async function handlePortfolios(request, env, user, json, parts) {
+  await ensurePortfolioMarketSchema(env);
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const rows = await env.DB.prepare(
@@ -687,8 +705,8 @@ async function handlePortfolios(request, env, user, json, parts) {
     const idNew = uid("pf_");
     const now = nowIso();
     await env.DB.prepare(
-      "INSERT INTO portfolios (id,user_id,name,broker,base_currency,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)"
-    ).bind(idNew, user.id, data.name, data.broker, data.baseCurrency, data.sortOrder, now, now).run();
+      "INSERT INTO portfolios (id,user_id,name,broker,base_currency,market_scope,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
+    ).bind(idNew, user.id, data.name, data.broker, data.baseCurrency, data.marketScope, data.sortOrder, now, now).run();
     return json({ portfolio: await onePortfolio(env, user.id, idNew) }, 201);
   }
 
@@ -702,12 +720,21 @@ async function handlePortfolios(request, env, user, json, parts) {
       name: body.name !== undefined ? body.name : existing.name,
       broker: body.broker !== undefined ? body.broker : existing.broker,
       baseCurrency: body.baseCurrency !== undefined ? body.baseCurrency : existing.base_currency,
+      marketScope: body.marketScope !== undefined ? body.marketScope : existing.market_scope,
       sortOrder: body.sortOrder !== undefined ? body.sortOrder : existing.sort_order
     });
     if (!data.name) return json({ error: "Portfolio name is required" }, 400);
+    if(data.marketScope!=="auto"){
+      const conflicts=await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 AND prefer_tr<>?"
+      ).bind(user.id,id,data.marketScope==="tr"?1:0).first();
+      if(Number(conflicts&&conflicts.n||0)>0){
+        return json({error:"La cartera contiene posiciones de otro mercado. Mueve o elimina esas posiciones antes de cambiar el mercado."},409);
+      }
+    }
     await env.DB.prepare(
-      "UPDATE portfolios SET name=?,broker=?,base_currency=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
-    ).bind(data.name, data.broker, data.baseCurrency, data.sortOrder, nowIso(), id, user.id).run();
+      "UPDATE portfolios SET name=?,broker=?,base_currency=?,market_scope=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(data.name, data.broker, data.baseCurrency, data.marketScope, data.sortOrder, nowIso(), id, user.id).run();
     return json({ portfolio: await onePortfolio(env, user.id, id) });
   }
 
@@ -741,7 +768,11 @@ async function handlePositions(request, env, user, json, parts, url) {
     if (!data.portfolioId || !data.stockKey || !data.ticker) {
       return json({ error: "portfolioId, stockKey and ticker are required" }, 400);
     }
-    if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
+    const portfolio=await onePortfolio(env, user.id, data.portfolioId);
+    if (!portfolio) return json({ error: "Portfolio not found" }, 404);
+    const marketScope=normalizedMarketScope(portfolio.market_scope);
+    if(marketScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
+    if(marketScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
     const existing = await env.DB.prepare(
       "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
     ).bind(user.id, data.portfolioId, data.stockKey).first();
@@ -776,7 +807,8 @@ async function handlePositions(request, env, user, json, parts, url) {
   if (request.method === "PATCH") {
     const body = await readJson(request);
     const portfolioId = trimText(body.portfolioId !== undefined ? body.portfolioId : existing.portfolio_id, 80);
-    if (!(await onePortfolio(env, user.id, portfolioId))) return json({ error: "Portfolio not found" }, 404);
+    const targetPortfolio=await onePortfolio(env, user.id, portfolioId);
+    if (!targetPortfolio) return json({ error: "Portfolio not found" }, 404);
     const data = positionPayload({
       portfolioId,
       stockKey: existing.stock_key,
@@ -791,6 +823,9 @@ async function handlePositions(request, env, user, json, parts, url) {
       openedAt: body.openedAt !== undefined ? body.openedAt : existing.opened_at,
       notes: body.notes !== undefined ? body.notes : existing.notes
     });
+    const targetScope=normalizedMarketScope(targetPortfolio.market_scope);
+    if(targetScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
+    if(targetScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
     await env.DB.prepare(
       "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,opened_at=?,notes=?,updated_at=? WHERE id=? AND user_id=?"
     ).bind(
@@ -1708,22 +1743,65 @@ async function subjectForUser(env, userId, subjectType, subjectId) {
 }
 
 
-let stockPortfolioGoalSchemaReady=false;
-async function ensureStockPortfolioGoalSchema(env){
-  if(stockPortfolioGoalSchemaReady)return;
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS stock_portfolio_goals (user_id TEXT PRIMARY KEY,target_profit_eur REAL NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)").run();
-  stockPortfolioGoalSchemaReady=true;
+let portfolioGoalSchemaReady=false;
+async function ensurePortfolioGoalSchema(env){
+  if(portfolioGoalSchemaReady)return;
+  await ensurePortfolioMarketSchema(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS portfolio_goals ("+
+    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,target_value_eur REAL NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  try{
+    const legacy=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_portfolio_goals'").first();
+    if(legacy){
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO portfolio_goals (portfolio_id,user_id,target_value_eur,created_at,updated_at) "+
+        "SELECT p.id,p.user_id,g.target_profit_eur,g.created_at,g.updated_at FROM portfolios p "+
+        "JOIN stock_portfolio_goals g ON g.user_id=p.user_id"
+      ).run();
+    }
+  }catch(error){console.warn("Portfolio goal legacy migration skipped",String(error&&error.message||error))}
+  portfolioGoalSchemaReady=true;
 }
-async function handlePortfolioGoal(request,env,user,json){
-  await ensureStockPortfolioGoalSchema(env);
-  if(request.method==="GET"){const goal=await env.DB.prepare("SELECT user_id,target_profit_eur,created_at,updated_at FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();return json({goal:goal||null})}
-  if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
-    const body=await readJson(request),raw=finiteNumber(body.targetProfitEur);if(raw===null||raw<=0)return json({error:"targetProfitEur must be greater than zero"},400);
-    const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso(),existing=await env.DB.prepare("SELECT user_id FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();
-    await env.DB.prepare("INSERT INTO stock_portfolio_goals (user_id,target_profit_eur,created_at,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET target_profit_eur=excluded.target_profit_eur,updated_at=excluded.updated_at").bind(user.id,target,now,now).run();
-    const goal=await env.DB.prepare("SELECT user_id,target_profit_eur,created_at,updated_at FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).first();return json({goal},existing?200:201);
+async function handlePortfolioGoal(request,env,user,json,url){
+  await ensurePortfolioGoalSchema(env);
+  if(request.method==="GET"){
+    const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
+    if(portfolioId){
+      if(!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+      const goal=await env.DB.prepare(
+        "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+      ).bind(portfolioId,user.id).first();
+      return json({goal:goal||null});
+    }
+    const rows=await env.DB.prepare(
+      "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE user_id=? ORDER BY updated_at DESC"
+    ).bind(user.id).all();
+    return json({goals:rows.results||[]});
   }
-  if(request.method==="DELETE"){await env.DB.prepare("DELETE FROM stock_portfolio_goals WHERE user_id=?").bind(user.id).run();return json({goal:null,deleted:true})}
+  if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
+    const body=await readJson(request),portfolioId=trimText(body.portfolioId,80);
+    if(!portfolioId||!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    const raw=finiteNumber(body.targetValueEur!==undefined?body.targetValueEur:body.targetProfitEur);
+    if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
+    const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
+    const existing=await env.DB.prepare("SELECT portfolio_id FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+    await env.DB.prepare(
+      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,created_at,updated_at) VALUES (?,?,?,?,?) "+
+      "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,updated_at=excluded.updated_at"
+    ).bind(portfolioId,user.id,target,now,now).run();
+    const goal=await env.DB.prepare(
+      "SELECT portfolio_id,user_id,target_value_eur,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+    ).bind(portfolioId,user.id).first();
+    return json({goal},existing?200:201);
+  }
+  if(request.method==="DELETE"){
+    const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
+    if(!portfolioId)return json({error:"portfolioId required"},400);
+    await env.DB.prepare("DELETE FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).run();
+    return json({goal:null,deleted:true});
+  }
   return json({error:"Method not allowed"},405);
 }
 
@@ -2145,7 +2223,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
-    if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json);
+    if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
