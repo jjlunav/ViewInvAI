@@ -7867,3 +7867,11 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 @media(max-width:430px){
  #view-portfolios .portfolio-goal-metrics{grid-template-columns:1fr!important}
 }
+
+
+/* Official event provenance */
+.event-item.official-source{border-color:color-mix(in srgb,var(--positive) 38%,var(--line))!important}
+.event-item.official-source .event-item-head span{color:var(--positive)!important;font-weight:850!important;letter-spacing:.04em}
+.event-verification{margin-top:6px;padding:6px 8px;border-radius:7px;background:var(--panel-2);font-size:11.5px;line-height:1.45;color:var(--muted)}
+.event-verification.official{background:color-mix(in srgb,var(--positive) 7%,var(--panel-2));color:var(--text)}
+.event-verification strong{font-weight:850}
