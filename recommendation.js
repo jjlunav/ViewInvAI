@@ -293,6 +293,8 @@ async function pulseAiValidate(result){
  }catch(e){console.warn('Pulse AI validation failed',e);return result}
 }
 
+let recommendationRenderCache={html:'',updatedAt:0,snapshot:''};
+let recommendationRenderPromise=null;
 const highConvictionRuntimeCache=new Map();
 async function highConvictionRecommendation(mode){
  let cacheKey=mode+':'+String(db.meta&&db.meta.updatedAt||'');
@@ -433,54 +435,70 @@ function recommendationMobileCell(key,s,mode,a,signal,quality){
  }
  return{value,tone};
 }
-function recommendationMobileItem(mode,s){return recommendationCard(mode,s,recommendationGroup());}
-function recommendationMobileList(us,tr){
- let group=recommendationGroup();
- return recommendationMobileTabs()+
-  '<div class="reco-mobile-compare">'+
-   window.ViewInvAICards.head(group.columns.map(([,label])=>label))+
-   '<div class="reco-mobile-rows">'+recommendationMobileItem('us',us)+recommendationMobileItem('tr',tr)+'</div>'+
-  '</div>';
+function recommendationMobileItem(mode,result){
+ let s=result&&result.s?result.s:null;
+ return recommendationCard(mode,s,null,result);
+}
+function recommendationMobileList(usResult,trResult){
+ return '<div class="reco-mobile-rows unified-asset-list">'+recommendationMobileItem('us',usResult)+recommendationMobileItem('tr',trResult)+'</div>';
 }
 
-function recommendationCard(mode,s,group=null){
+function recommendationCard(mode,s,group=null,pulseResult=null){
  if(!s)return '<div class="empty-state pulse-empty"><strong>Sin entrada de alta convicción ahora mismo</strong><span>ViewInvAI no fuerza una compra si no se alinean gráfico, tendencia, volumen, RSI/ADX, liquidez, catalizadores y calidad de datos.</span></div>';
- let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed,signal=recommendationSignal(a.score,bucket,quality.score);
+ let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed;
+ let ai=pulseResult&&pulseResult.aiValidated&&pulseResult.ai?pulseResult.ai:null;
+ let signal=ai?{key:pulseResult.eligible?'buy':'watch',label:String(ai.signal||'VIGILAR'),text:ai.summary||ai.answer||'Evaluación híbrida completada.'}:recommendationSignal(a.score,bucket,quality.score);
  if(bucket.armed!==wasArmed)saveRecommendationState();
  let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
  let events=a.catalyst.events.length?a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join(''):'<p>Sin noticia o evento direccional fuerte en las últimas 72 h / próximos 14 días.</p>';
  let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'';
- let details='<strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p>'+quoteFreshnessHtml(s,preferTr)+bidAskHtml(s,preferTr)+
+ let aiSummary=ai?'<div class="pulse-ai-result"><strong>Motor híbrido IA + cuantitativo</strong><p>'+E(ai.summary||ai.answer||'Evaluación completada.')+'</p><small>Confianza IA '+F(ai.confidence,0)+'/100 · score cuantitativo '+F(pulseResult&&pulseResult.score,1)+'/100</small></div>':'';
+ let details=aiSummary+'<strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p>'+quoteFreshnessHtml(s,preferTr)+bidAskHtml(s,preferTr)+
   '<details class="reco-disclosure"><summary>Factores del análisis</summary><div class="reco-factors">'+factors+'</div></details>'+
   '<details class="reco-disclosure"><summary>Noticias y eventos</summary><div class="reco-events">'+events+'</div></details>'+
-  '<p>Datos '+quality.score+'/100 · Convicción heurística, no probabilidad estadística.</p>';
+  '<p>Datos '+quality.score+'/100 · '+(ai?'Síntesis IA contrastada con reglas cuantitativas y calidad de datos.':'Evaluación cuantitativa de respaldo; la IA se activa con sesión iniciada.')+'</p>';
  let cells=group?group.columns.map(([key,label])=>({...recommendationMobileCell(key,s,mode,a,signal,quality),label})):undefined;
  if(group)cells=group.columns.map(([key,label],i)=>['price','change'].includes(key)?{...stockMobileCell(s,key,a.se,preferTr),label}:cells[i]);
  return standardStockCard(s,0,{se:a.se,preferTr,rankLabel:'',context:'recommendation',hint:'Recomendación actual',cells,
-  subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+signal.label+' · '+F(a.score,1)+'/100',
+  subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+signal.label+' · '+F(pulseResult&&N(pulseResult.score)!==null?pulseResult.score:a.score,1)+'/100',
   detailsHtml:details,detailsLabel:'Tesis IA · factores · noticias',detailsClass:'reco-mobile-detail',actionsHtml:sold});
 }
-async function renderRecommendation(){
+async function renderRecommendation(force=false){
  let box=$('#recommendationResults');if(!box)return;
- box.innerHTML='<div class="empty-state">Validando entradas de alta convicción…</div>';
- let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
- let us=usResult&&usResult.eligible?usResult.s:null,tr=trResult&&trResult.eligible?trResult.s:null;
- box.innerHTML=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us)+recommendationCard('tr',tr));
- if(!us&&!tr){
-  const best=[usResult,trResult].filter(Boolean).sort((a,b)=>(b.score||0)-(a.score||0))[0];
-  if(best&&best.aiValidated&&best.ai){
-   box.insertAdjacentHTML('beforeend','<div class="pulse-ai-explanation"><strong>IA: sin entrada confirmada</strong><span>'+E(best.ai.summary||'La candidata más fuerte todavía no supera la validación completa.')+'</span></div>');
-  }
+ const snapshot=String(db.meta&&db.meta.updatedAt||'');
+ if(recommendationRenderCache.html){
+  box.innerHTML=recommendationRenderCache.html;
+  let stamp=$('#recommendationUpdated');
+  if(stamp)stamp.textContent='Último análisis '+new Date(recommendationRenderCache.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(snapshot&&recommendationRenderCache.snapshot===snapshot?' · datos actuales':' · actualizando…');
  }
- let stamp=$('#recommendationUpdated');
- if(stamp)stamp.textContent='Recalculado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');
- requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
+ if(recommendationRenderPromise&&!force)return recommendationRenderPromise;
+ if(!recommendationRenderCache.html)box.innerHTML='<div class="empty-state"><strong>Analizando oportunidades…</strong><span>Mostraremos el resultado en cuanto termine la primera validación; después se reutiliza en segundo plano.</span></div>';
+ recommendationRenderPromise=(async()=>{
+  let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
+  let us=usResult&&usResult.eligible?usResult:null,tr=trResult&&trResult.eligible?trResult:null;
+  let html=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us&&us.s,null,us)+recommendationCard('tr',tr&&tr.s,null,tr));
+  if(!us&&!tr){
+   const best=[usResult,trResult].filter(Boolean).sort((a,b)=>(b.score||0)-(a.score||0))[0];
+   if(best&&best.aiValidated&&best.ai){
+    html+='<div class="pulse-ai-explanation"><strong>IA: sin entrada confirmada</strong><span>'+E(best.ai.summary||'La candidata más fuerte todavía no supera la validación completa.')+'</span></div>';
+   }else{
+    html+='<div class="pulse-ai-explanation"><strong>Sin entrada confirmada</strong><span>El motor cuantitativo no encuentra una candidata que justifique forzar una compra con los datos actuales.</span></div>';
+   }
+  }
+  recommendationRenderCache={html,updatedAt:Date.now(),snapshot};
+  if($('#recommendationResults'))$('#recommendationResults').innerHTML=html;
+  let stamp=$('#recommendationUpdated');
+  if(stamp)stamp.textContent='Analizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+(db.meta.updatedAt?' · snapshot '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'');
+  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
+ })().catch(error=>{
+  console.warn('Pulse IA refresh failed',error);
+  if(!recommendationRenderCache.html&&box)box.innerHTML='<div class="empty-state pulse-empty"><strong>No se pudo completar el análisis ahora mismo</strong><span>Se mantiene el último resultado disponible cuando exista y se reintentará automáticamente.</span></div>';
+ }).finally(()=>{recommendationRenderPromise=null});
+ return recommendationRenderPromise;
 }
-function markRecommendationSold(mode){
- if(!['us','tr'].includes(mode))return;
- let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
- recommendationState.sold[mode][key]=Date.now();
- bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
- saveRecommendationState();
- renderRecommendation();
+function warmRecommendationCache(){
+ if(!db.stocks.length||document.hidden)return;
+ highConvictionRuntimeCache.clear();
+ renderRecommendation(false).catch(()=>{});
 }
+window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,350));
