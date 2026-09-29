@@ -21,7 +21,12 @@
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20260929r6"stylesheet" href="mobile-app.css?v=20260929r6">
+      link.href = 'web-mobile.css?v=20260929r6';
+      link.media = '(max-width:820px)';
+      document.head.appendChild(link);
+    })();
+  </script>
+  <link rel="stylesheet" href="mobile-app.css?v=20260929r6">
   <link rel="stylesheet" href="ui-density.css?v=20260928r1">
   <link rel="stylesheet" href="asset-card.css?v=20260929r6">
 </head>
