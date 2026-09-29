@@ -200,10 +200,15 @@ function portfolioGoalPlanMetrics(current,target,targetDate,monthlyContribution,
 function portfolioStockKeys() {
   return [...new Set(state.positions.filter(p => Number(p.active) !== 0).map(p => canonicalStockKey(p.stock_key)).filter(Boolean))];
 }
-
+function watchlistStockKeys(){
+  return [...new Set(state.watchlist.map(w=>canonicalStockKey(w.stock_key)).filter(Boolean))];
+}
+function favoriteStockKeys(){
+  return [...new Set([...portfolioStockKeys(),...watchlistStockKeys()])];
+}
 function syncPortfolioStars() {
   if (window.ViewInvAI && typeof window.ViewInvAI.replaceFavoriteKeys === "function") {
-    window.ViewInvAI.replaceFavoriteKeys(portfolioStockKeys());
+    window.ViewInvAI.replaceFavoriteKeys(favoriteStockKeys());
   }
 }
 
@@ -1579,6 +1584,10 @@ function openStarMenu(stockKey, preferTr = null) {
   if (!state.user) return window.ViewInvAIAuth?.signIn?.();
   const stock = stockByKey(stockKey);
   if (!stock) return;
+  const watchItem=state.watchlist.find(w=>sameStockRef(w.stock_key,stockKey))||null;
+  const watchPreferTr=watchItem?Number(watchItem.prefer_tr)===1:preferTr===true?true:preferTr===false?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
+  const watchRow='<button type="button" class="star-portfolio-choice '+(watchItem?'selected':'')+'" data-star-watch-toggle="'+esc(stockKey)+'" data-star-watch-active="'+(watchItem?'1':'0')+'" data-star-prefer-tr="'+(watchPreferTr?'1':'0')+'">'+
+    '<span>'+(watchItem?'★':'☆')+'</span><strong>Solo seguimiento</strong><small>'+(watchItem?'Quitar de favoritos y seguimiento':'Guardar como favorito sin añadirlo a una cartera')+' · '+(watchPreferTr?'TR / LSX':'EEUU')+'</small></button>';
 
   const rows = state.portfolios.map(p => {
     const existing = positionForPortfolioStock(stockKey, p.id);
@@ -1605,7 +1614,8 @@ function openStarMenu(stockKey, preferTr = null) {
   openModal(isInPortfolio(stockKey) ? "Gestionar carteras" : "Añadir a cartera",
     '<div class="star-portfolio-menu">' +
       '<div class="star-stock-summary"><strong>' + esc((preferTr && stock.trTicker) || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
-      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras.</div>') +
+      watchRow +
+      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras. Puedes mantener la acción en Solo seguimiento.</div>') +
       '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Crear nueva cartera</button>' +
     '</div>'
   );
@@ -1617,15 +1627,15 @@ function openAddToSpecificPortfolio(stockKey, portfolioId, preferTr) {
   setTimeout(() => openAddPositionModal(stockKey, preferTr), 30);
 }
 
-async function syncFavorite(active, key) {
+async function syncFavorite(active, key, preferTrOverride=null) {
   if (!state.user || !key) return;
   try {
     const existing = state.watchlist.find(x => sameStockRef(x.stock_key, key));
     if (active) {
-      if (existing) return;
+      if (existing) return existing;
       const stock = stockByKey(key);
       if (!stock) return;
-      const preferTr = !!(stock.tradeRepublicVerified || stock.tradeRepublicCandidate);
+      const preferTr = preferTrOverride===true?true:preferTrOverride===false?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
       const response = await api("/api/watchlist", {
         method: "POST",
         body: JSON.stringify({
@@ -1645,10 +1655,13 @@ async function syncFavorite(active, key) {
       if (!response.ok) throw new Error("No se pudo quitar del seguimiento.");
       state.watchlist = state.watchlist.filter(x => x.id !== existing.id);
     }
+    syncPortfolioStars();
     renderApp();
+    return state.watchlist.find(x=>sameStockRef(x.stock_key,key))||null;
   } catch (error) {
     console.warn("Favorite sync failed", error);
-    toast("Favorito guardado localmente; sincronización pendiente.", true);
+    toast("No se pudo actualizar el seguimiento.", true);
+    throw error;
   }
 }
 
@@ -1853,6 +1866,19 @@ function bind() {
       } catch (error) {
         toast(error.message || 'No se pudo eliminar la exposición.', true);
       }
+      return;
+    }
+
+    const watchToggle=event.target.closest?.("[data-star-watch-toggle]");
+    if(watchToggle){
+      event.preventDefault();event.stopPropagation();
+      const key=watchToggle.dataset.starWatchToggle,pref=watchToggle.dataset.starPreferTr,active=watchToggle.dataset.starWatchActive==="1";
+      watchToggle.disabled=true;
+      try{
+        await syncFavorite(!active,key,pref==="1"?true:pref==="0"?false:null);
+        toast(active?"Quitado de seguimiento":"Añadido a Solo seguimiento");
+        closeModal();
+      }catch(_){if(watchToggle.isConnected)watchToggle.disabled=false}
       return;
     }
 
@@ -2076,8 +2102,10 @@ function bind() {
     if (state.user) loadAll();
   });
 
-  window.addEventListener("viewinvai:favorite-changed", () => {
-    syncPortfolioStars();
+  window.addEventListener("viewinvai:favorite-changed", event => {
+    // Account favorites are authoritative from positions + backend watchlist.
+    // Re-sync instead of allowing a local-only star to drift from the account state.
+    if(state.user)syncPortfolioStars();
   });
 
   window.addEventListener("viewinvai:quote-updated", event => {
