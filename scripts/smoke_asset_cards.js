@@ -46,7 +46,7 @@ window.checkAssetCards = async function () {
   assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
   const row=rows[0].querySelector('[data-open-stock]');
   assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
-  assert(rows[0].textContent.includes('Precio REG')&&rows[0].textContent.includes('Variación'),'portfolio does not use the shared compact stock row');
+  assert(rows[0].querySelector('.asset-regular-price')&&rows[0].querySelector('.asset-regular-change')&&rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio does not use the shared compact stock row');
   row.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');
