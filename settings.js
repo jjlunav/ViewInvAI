@@ -183,11 +183,12 @@ function refreshVisibleChartThemes(){
  });
 }
 function applyTheme(theme,rerenderCharts=true){
- let next=theme==='light'?'light':'dark';
+ let next=theme==='light'?'light':'dark',changed=document.documentElement.dataset.theme!==next;
  document.documentElement.dataset.theme=next;
  try{localStorage.setItem(THEME_KEY,next)}catch(_){}
  updateThemeButton();
  if(rerenderCharts)requestAnimationFrame(refreshVisibleChartThemes);
+ if(changed)window.dispatchEvent(new CustomEvent('viewinvai:theme-changed',{detail:{theme:next}}));
 }
 
 function initSettings(){

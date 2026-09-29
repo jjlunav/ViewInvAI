@@ -250,6 +250,7 @@
         <button type="button" class="filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Fondos y ETFs" aria-label="Abrir filtros" title="Filtros">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>
         </button>
+        <button type="button" class="btn ghost compact fund-reset-columns" id="fundResetColumns" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
         <div class="fund-toolbar-advanced filter-sheet-source" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
@@ -353,6 +354,7 @@
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
           <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelTr" data-filter-sheet-title="Filtros · Trade Republic" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
+          <button type="button" class="btn ghost compact catalog-reset-columns" data-catalog-mode="tr" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
           <span id="catalogCount" class="count-pill">0</span>
         </div>
         <div id="catalogFilterPanelTr" class="catalog-filter-panel filter-sheet-source"></div>
@@ -367,6 +369,7 @@
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogUSSearch" class="input grow" placeholder="Buscar nombre, ticker, ISIN, sector…">
           <button type="button" class="filter-icon-button" data-filter-sheet-target="#catalogFilterPanelUs" data-filter-sheet-title="Filtros · Estados Unidos" aria-label="Abrir filtros" title="Filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
+          <button type="button" class="btn ghost compact catalog-reset-columns" data-catalog-mode="us" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
           <span id="catalogUSCount" class="count-pill">0</span>
         </div>
         <div id="catalogFilterPanelUs" class="catalog-filter-panel filter-sheet-source"></div>
@@ -573,7 +576,8 @@
 <script src="market-session.js?v=20260925r1"></script>
 <script src="score-engine.js?v=20260925r3"></script>
 <script src="app.js?v=20260929r3"></script>
-<script src="settings.js?v=20260925r1"></script>\n<script src="ui-preferences.js?v=20260929r1"></script>
+<script src="settings.js?v=20260929r2"></script>
+<script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20260929r2"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
 <script src="events.js?v=20260929r5"></script>
@@ -582,13 +586,13 @@
 <script src="recommendation.js?v=20260929r8"></script>
 <script src="help.js?v=20260925r1"></script>
 <script src="stock-profile.js?v=20260929r10"></script>
-<script src="catalog.js?v=20260929r5"></script>
+<script src="catalog.js?v=20260929r6"></script>
 <script src="heatmap.js?v=20260929r3"></script>
 <script src="stock-interactions.js?v=20260928r1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
 <script src="navigation.js?v=20260929r2"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20260929r9"></script>
+<script src="funds.js?v=20260929r10"></script>
 <script src="bootstrap.js?v=20260928r4"></script>
 <script src="alerts.js?v=20260928r1"></script>
 <script src="stock-notifications.js?v=20260929r2"></script>

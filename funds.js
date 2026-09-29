@@ -798,6 +798,9 @@
    }
    const sortButton=e.target.closest&&e.target.closest('[data-fund-sort-col]');
    if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
+   if(e.target.closest&&e.target.closest('#fundResetColumns')){
+    applyFundLayout({order:fundDefaultOrder(),widths:fundDefaultWidths()});saveFundLayout();render();return;
+   }
 
    const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
    if(asset){setPortfolioAssetMode(asset.dataset.portfolioAsset,true);return}
