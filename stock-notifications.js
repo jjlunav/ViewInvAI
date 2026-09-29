@@ -62,7 +62,9 @@
  }
  async function save(e){
   e.preventDefault();if(!current)return;
-  const f=ensureSource(),stock=current.stock,quote=root.ViewInvAI?.getDisplayQuote?.(stock,current.preferTr)||{};
+  const f=ensureSource(),stock=current.stock,quote=(current.preferTr
+   ?root.ViewInvAI?.getCanonicalQuote?.(stock,true)
+   :root.ViewInvAI?.getDisplayQuote?.(stock,false))||{};
   const payload={
    stockKey:current.key,
    ticker:current.preferTr?(stock.trTicker||stock.ticker):(stock.ticker||stock.trTicker),
