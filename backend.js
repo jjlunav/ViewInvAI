@@ -1754,6 +1754,47 @@ async function handleSettings(request, env, user, json) {
 }
 
 
+
+let uiPreferencesSchemaReady=false;
+async function ensureUiPreferencesSchema(env){
+  if(uiPreferencesSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS user_ui_preferences ("+
+    "user_id TEXT NOT NULL,scope TEXT NOT NULL,preferences_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL,"+
+    "PRIMARY KEY(user_id,scope),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  uiPreferencesSchemaReady=true;
+}
+function validUiPreferenceScope(value){
+  const scope=String(value||"").trim();
+  return /^[a-z0-9._:-]{1,64}$/i.test(scope)?scope:"";
+}
+async function handleUiPreferences(request,env,user,json,url){
+  await ensureUiPreferencesSchema(env);
+  if(request.method==="GET"){
+    const scope=validUiPreferenceScope(url.searchParams.get("scope"));
+    if(!scope)return json({error:"Valid scope required"},400);
+    const row=await env.DB.prepare(
+      "SELECT preferences_json,updated_at FROM user_ui_preferences WHERE user_id=? AND scope=?"
+    ).bind(user.id,scope).first();
+    let preferences={};
+    try{preferences=row&&row.preferences_json?JSON.parse(row.preferences_json):{}}catch(_){preferences={}}
+    return json({scope,preferences,updatedAt:row&&row.updated_at||null},200,{"Cache-Control":"no-store"});
+  }
+  if(request.method!=="PUT"&&request.method!=="PATCH")return json({error:"Method not allowed"},405);
+  const body=await readJson(request),scope=validUiPreferenceScope(body.scope);
+  if(!scope)return json({error:"Valid scope required"},400);
+  const preferences=body.preferences&&typeof body.preferences==="object"&&!Array.isArray(body.preferences)?body.preferences:{};
+  const raw=JSON.stringify(preferences);
+  if(raw.length>20000)return json({error:"Preferences payload too large"},413);
+  const now=nowIso();
+  await env.DB.prepare(
+    "INSERT INTO user_ui_preferences (user_id,scope,preferences_json,updated_at) VALUES (?,?,?,?) "+
+    "ON CONFLICT(user_id,scope) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at"
+  ).bind(user.id,scope,raw,now).run();
+  return json({scope,preferences,updatedAt:now},200,{"Cache-Control":"no-store"});
+}
+
 let notificationSchemaReady=false;
 async function ensureNotificationPreferenceSchema(env){
   if(notificationSchemaReady)return;
@@ -2106,6 +2147,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json);
     if (root === "settings") return handleSettings(request, env, user, json);
+    if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);
   } catch (error) {
