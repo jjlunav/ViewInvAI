@@ -1415,6 +1415,38 @@ function recentEvents(snapshot, stock, limit = 12) {
     }));
 }
 
+function mergeEventRows(primary,extra,limit=24){
+  const rows=[...(Array.isArray(primary)?primary:[]),...(Array.isArray(extra)?extra:[])];
+  const seen=new Set(),out=[];
+  for(const raw of rows.sort((a,b)=>new Date(b&&b.date||0)-new Date(a&&a.date||0))){
+    if(!raw)continue;
+    const title=trimText(raw.title||raw.fact||"",240);
+    const date=raw.date||null;
+    if(!title||!date)continue;
+    const key=String(raw.id||"").trim()||[String(raw.eventKind||raw.type||""),title.toLowerCase(),String(date).slice(0,16)].join("|");
+    if(seen.has(key))continue;
+    seen.add(key);
+    out.push({
+      id:trimText(raw.id||key,160),
+      date,
+      eventKind:raw.eventKind||(raw.type==="news"?"news":"event"),
+      type:raw.type||raw.eventKind||"event",
+      title,
+      fact:trimText(raw.fact||title,300),
+      impact:trimText(raw.hypothesis||raw.impact||raw.context||"",260),
+      impactScore:finiteNumber(raw.impactScore),
+      verification:trimText(raw.verification||"",180),
+      sourceCount:finiteNumber(raw.sourceCount),
+      independentSourceCount:finiteNumber(raw.independentSourceCount),
+      corroborated:raw.corroborated===true,
+      source:trimText(raw.source||"",120),
+      url:trimText(raw.url||raw.sourceUrl||"",500)
+    });
+    if(out.length>=limit)break;
+  }
+  return out;
+}
+
 function average(values) {
   const a = values.map(finiteNumber).filter(v => v !== null);
   return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
@@ -1833,7 +1865,12 @@ async function analyzeTarget(env, target, services) {
     console.warn("Chart analysis unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
-  const events = recentEvents(snapshot, stock);
+  let directNews=[];
+  if(services.loadNews){
+    try{directNews=await services.loadNews(stock,target)}
+    catch(error){console.warn("Direct news analysis unavailable",String(error&&error.message||error))}
+  }
+  const events = mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
   const fallback = deterministicAssessment(target, stock, chart, events);
   const current = await aiAssessment(env, target, stock, chart, events, fallback);
 
@@ -2178,7 +2215,12 @@ async function scanNotificationPreferences(env,services){
           downBucket=nextDown;
         }
       }
-      const events=recentEvents(snapshot,stock,16);
+      let directNews=[];
+      if(global.newsEvents&&Number(pref.news_enabled)===1&&services.loadNews){
+        try{directNews=await services.loadNews(stock,pref)}
+        catch(error){console.warn("Notification news unavailable",pref.id,String(error&&error.message||error))}
+      }
+      const events=mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
       if(global.newsEvents&&Number(pref.news_enabled)===1){
         await maybeCreateNewsAlerts(env,pref,stock,events,null);
         await maybeCreateEventAlerts(env,pref,stock,events,null);
