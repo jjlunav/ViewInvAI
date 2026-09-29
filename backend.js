@@ -2394,7 +2394,16 @@ async function handleAiChat(request, env, user, json, services) {
     console.warn("AI chat chart unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
-  const events = recentEvents(snapshot, stock, 16);
+  let directNews=[],officialEvents=[];
+  if(services.loadOfficialEvents){
+    try{officialEvents=await services.loadOfficialEvents(stock,target)}
+    catch(error){console.warn("AI chat official events unavailable",String(error&&error.message||error))}
+  }
+  if(services.loadNews){
+    try{directNews=await services.loadNews(stock,target)}
+    catch(error){console.warn("AI chat live news unavailable",String(error&&error.message||error))}
+  }
+  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,16),officialEvents,24),directNews,24);
   const fallbackTarget = { subject_type: "watchlist", ...target };
   const deterministic = deterministicAssessment(fallbackTarget, stock, chart, events);
 
