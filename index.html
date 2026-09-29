@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.14">
+<html lang="es" data-app-version="0.6.15">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -15,7 +15,7 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260929r6">
+  <link rel="stylesheet" href="styles.css?v=20260929r7">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
@@ -226,13 +226,13 @@
         </div>
       </div>
       <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
-        <button type="button" class="active" role="tab" aria-selected="true" data-portfolio-asset="stocks">Acciones</button>
-        <button type="button" role="tab" aria-selected="false" data-portfolio-asset="funds">Fondos / ETFs</button>
+        <button type="button" class="tab active" role="tab" id="portfolioStocksTab" aria-selected="true" aria-controls="portfolioApp" tabindex="0" data-portfolio-asset="stocks">Acciones</button>
+        <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds">Fondos / ETFs</button>
       </div>
-      <div id="portfolioApp" class="portfolio-app" data-portfolio-asset-panel="stocks">
+      <div id="portfolioApp" class="portfolio-app" role="tabpanel" aria-labelledby="portfolioStocksTab" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
       </div>
-      <div id="fundPortfolioApp" class="portfolio-app is-hidden" data-portfolio-asset-panel="funds" hidden>
+      <div id="fundPortfolioApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFundsTab" data-portfolio-asset-panel="funds" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
       </div>
     </section>
@@ -640,11 +640,11 @@
 <script src="filter-sheet.js?v=20260928r1"></script>
 <script src="navigation.js?v=20260929r1"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20260929r4"></script>
+<script src="funds.js?v=20260929r5"></script>
 <script src="bootstrap.js?v=20260928r4"></script>
 <script src="alerts.js?v=20260928r1"></script>
 <script src="stock-notifications.js?v=20260928r1"></script>
 <script type="module" src="auth.js?v=20260925r7"></script>
-<script type="module" src="portfolio.js?v=20260929r5"></script>
+<script type="module" src="portfolio.js?v=20260929r6"></script>
 </body>
 </html>

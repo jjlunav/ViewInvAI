@@ -51,13 +51,17 @@ window.checkAssetCards = async function () {
   assert(rows[0].querySelector('.asset-regular-price')&&rows[0].querySelector('.asset-regular-change')&&rows[0].querySelector('.asset-extended-price')&&rows[0].querySelector('.asset-extended-change'),'portfolio does not use the shared compact stock row');
   assert(!view.querySelector('.portfolio-primary-tabs'),'obsolete portfolio/goal primary tabs remain');
   assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle]'),'goal control is not inside the stock portfolio toolbar');
+  const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
+  assert(assetTabs.length===2&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
+  assert(view.querySelector('[data-portfolio-goal-toggle] svg'),'portfolio goal does not use the target SVG icon');
   ps.primaryTab='goal';portfolio.render();
   assert(view.querySelector('.portfolio-workbar [data-portfolio-goal-toggle].active'),'goal toolbar control did not become active');
   assert(view.querySelector('.portfolio-goal-view'),'goal view did not render inside stocks');
   const goalInput=view.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
   assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
   ps.primaryTab='portfolio';portfolio.render();
-  row.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  const liveRow=view.querySelector('.portfolio-position-list [data-open-stock]');
+  liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');
   closeQuickProfile(false);

@@ -737,18 +737,22 @@
    const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
    if(asset){
     const mode=asset.dataset.portfolioAsset;
-    document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{const active=b.dataset.portfolioAsset===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',active?'true':'false')});
+    document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
+     const active=b.dataset.portfolioAsset===mode;
+     b.classList.toggle('active',active);
+     b.setAttribute('aria-selected',active?'true':'false');
+     b.tabIndex=active?0:-1;
+    });
     document.querySelectorAll('[data-portfolio-asset-panel]').forEach(p=>{
      const active=p.dataset.portfolioAssetPanel===mode;
      p.classList.toggle('is-hidden',!active);
      p.hidden=!active;
+     p.setAttribute('aria-hidden',active?'false':'true');
     });
     if(mode==='funds'){
      root.ViewInvAIPortfolios?.setGoalVisible?.(false);
      loadPortfolio(false);
-    }else{
-     root.ViewInvAIPortfolios?.render?.();
-    }
+    }else root.ViewInvAIPortfolios?.render?.();
     return;
    }
    if(e.target.closest?.('[data-fund-login]')){root.ViewInvAIAuth?.signIn?.();return}
@@ -789,6 +793,12 @@
     const id=del.dataset.fundPositionDelete;
     const r=await api('/api/fund-positions/'+encodeURIComponent(id),{method:'DELETE'});if(r.ok)await loadPortfolio(true);return;
    }
+  });
+  q('.portfolio-asset-switch')?.addEventListener('keydown',e=>{
+   if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+   const tabs=[...document.querySelectorAll('[data-portfolio-asset]')],current=tabs.indexOf(document.activeElement);if(current<0)return;
+   e.preventDefault();const next=e.key==='ArrowRight'?(current+1)%tabs.length:(current-1+tabs.length)%tabs.length;
+   tabs[next]?.focus();tabs[next]?.click();
   });
   document.addEventListener('submit',async e=>{
    if(e.target.id==='fundPositionForm'){e.preventDefault();try{await savePosition(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la posición.')+'</div>')}return}
