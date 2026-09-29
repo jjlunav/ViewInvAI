@@ -441,17 +441,45 @@
             <span>Estado</span>
             <strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong>
           </div>
-          <div class="settings-status-row">
+          <div class="settings-status-row settings-master-notification-row">
+            <span><strong>Activar notificaciones</strong><small>Interruptor maestro. Si lo desactivas, ViewInvAI no enviará ningún aviso aunque las categorías de abajo sigan seleccionadas.</small></span>
+            <label class="settings-switch" aria-label="Activar todas las notificaciones">
+              <input id="globalNotificationsEnabled" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row" data-notification-child-setting>
             <span><strong>Noticias y eventos</strong><small>Activa o desactiva globalmente estos avisos para las acciones que ViewInvAI está siguiendo.</small></span>
             <label class="settings-switch" aria-label="Notificaciones globales de noticias y eventos">
               <input id="globalNotifyNewsEvents" type="checkbox" checked disabled>
               <span class="settings-switch-track" aria-hidden="true"><span></span></span>
             </label>
           </div>
-          <div class="settings-status-row">
-            <span><strong>Entrada en Pulso IA</strong><small>Avísame cuando una acción pase a cumplir los criterios de Pulso IA. Radar no se incluye en este ajuste global.</small></span>
+          <div class="settings-status-row" data-notification-child-setting>
+            <span><strong>Entrada en Pulso IA</strong><small>Avísame cuando una acción pase a cumplir los criterios de Pulso IA.</small></span>
             <label class="settings-switch" aria-label="Notificaciones globales de entrada en Pulso IA">
               <input id="globalNotifyPulseAi" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row" data-notification-child-setting>
+            <span><strong>Entrada en Radar</strong><small>Avísame cuando una acción seguida pase a cumplir los criterios del Radar.</small></span>
+            <label class="settings-switch" aria-label="Notificaciones globales de entrada en Radar">
+              <input id="globalNotifyRadar" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row" data-notification-child-setting>
+            <span><strong>Movimientos de precio</strong><small>Permite avisos de subida o bajada por tramos para los activos donde los hayas configurado.</small></span>
+            <label class="settings-switch" aria-label="Notificaciones globales de movimientos de precio">
+              <input id="globalNotifyPrice" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row" data-notification-child-setting>
+            <span><strong>Cartera</strong><small>Avisos relevantes sobre deterioro, revisión o posible salida de posiciones de tus carteras.</small></span>
+            <label class="settings-switch" aria-label="Notificaciones globales de cartera">
+              <input id="globalNotifyPortfolio" type="checkbox" checked disabled>
               <span class="settings-switch-track" aria-hidden="true"><span></span></span>
             </label>
           </div>

@@ -7,7 +7,7 @@
   if(source)return source;
   source=document.createElement('form');source.id='stockNotificationPanel';source.className='filter-sheet-source stock-notification-source';
   source.innerHTML=
-   '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span></div>'+
+   '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span><small id="stockNotificationGlobalStatus"></small></div>'+
    '<label class="notification-pref-row"><input type="checkbox" name="news" checked><span><b>Noticias y eventos relevantes</b><small>Resultados, regulación, contratos, financiación y catalizadores verificados.</small></span></label>'+
    '<label class="notification-pref-row"><input type="checkbox" name="pulse" checked><span><b>Entrada en Pulso IA</b><small>Aviso cuando la IA confirme una entrada de alta convicción.</small></span></label>'+
    '<label class="notification-pref-row"><input type="checkbox" name="radar"><span><b>Entrada en Radar</b><small>Aviso cuando pase los criterios de oportunidad del Radar.</small></span></label>'+
@@ -32,6 +32,10 @@
  function stockFor(key){return root.ViewInvAI&&root.ViewInvAI.getStockByKey?root.ViewInvAI.getStockByKey(key):null}
  function fill(pref){
   const f=ensureSource(),get=n=>f.elements[n];
+  const global=root.ViewInvAINotificationSettings;
+  const globalStatus=f.querySelector('#stockNotificationGlobalStatus');
+  if(globalStatus)globalStatus.textContent=global&&global.enabled===false?'Notificaciones globales desactivadas: estas preferencias quedan guardadas para cuando vuelvas a activarlas.':'';
+
   get('news').checked=pref?Number(pref.news_enabled)===1:true;
   get('pulse').checked=pref?Number(pref.pulse_enabled)===1:true;
   get('radar').checked=pref?Number(pref.radar_enabled)===1:false;

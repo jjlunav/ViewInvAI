@@ -102,16 +102,31 @@ function renderAnalysisSettings(settings=null){
   el.value=clampSetting(raw,min,max,fallback);
   el.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  }
+ const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)!==0:true;
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)!==0:true;
  const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)!==0:true;
- let newsToggle=$('#globalNotifyNewsEvents'),pulseToggle=$('#globalNotifyPulseAi');
- if(newsToggle){newsToggle.checked=newsEvents;newsToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
- if(pulseToggle){pulseToggle.checked=pulseAi;pulseToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
+ const radar=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar)!==0:true;
+ const price=accountAnalysisSettings?Number(accountAnalysisSettings.notify_price)!==0:true;
+ const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)!==0:true;
+ const toggles={
+  globalNotificationsEnabled:enabled,
+  globalNotifyNewsEvents:newsEvents,
+  globalNotifyPulseAi:pulseAi,
+  globalNotifyRadar:radar,
+  globalNotifyPrice:price,
+  globalNotifyPortfolio:portfolio
+ };
+ for(const [id,checked] of Object.entries(toggles)){
+  let el=$('#'+id);if(!el)continue;
+  el.checked=checked;
+  el.disabled=!accountAnalysisSettings||analysisSettingsBusy||(id!=='globalNotificationsEnabled'&&!enabled);
+ }
+ document.querySelectorAll('[data-notification-child-setting]').forEach(row=>row.classList.toggle('is-disabled',!enabled));
  let globalStatus=$('#globalNotificationSettingsStatus');
- if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para cambiar estos avisos.';
+ if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':(enabled?'Notificaciones activadas.':'Notificaciones desactivadas.')):'Inicia sesión para cambiar estos avisos.';
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={newsEvents,pulseAi};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{newsEvents,pulseAi}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,price,portfolio};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,price,portfolio}}));
  }else{
   window.ViewInvAINotificationSettings=null;
  }
@@ -128,8 +143,12 @@ async function saveAnalysisSettings(){
   minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
   minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20),
+  notificationsEnabled:$('#globalNotificationsEnabled')?.checked!==false,
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked!==false,
-  notifyPulseAi:$('#globalNotifyPulseAi')?.checked!==false
+  notifyPulseAi:$('#globalNotifyPulseAi')?.checked!==false,
+  notifyRadar:$('#globalNotifyRadar')?.checked!==false,
+  notifyPrice:$('#globalNotifyPrice')?.checked!==false,
+  notifyPortfolio:$('#globalNotifyPortfolio')?.checked!==false
  };
  analysisSettingsBusy=true;renderAnalysisSettings(accountAnalysisSettings);
  try{
@@ -220,7 +239,7 @@ function initSettings(){
 
  $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
  $('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
- ['globalNotifyNewsEvents','globalNotifyPulseAi'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotificationsEnabled','globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPrice','globalNotifyPortfolio'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{

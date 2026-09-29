@@ -7779,3 +7779,9 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 
 /* Legacy Calendar compatibility node: routes are fused into Potencial futuro. */
 #view-calendar.legacy-calendar-view{display:none!important}
+
+
+/* Notification settings hierarchy */
+.settings-status-row.is-disabled{opacity:.5}
+.settings-status-row.is-disabled .settings-switch{pointer-events:none}
+.settings-master-notification-row{border-color:color-mix(in srgb,var(--accent, #5b8cff) 32%,transparent)}
