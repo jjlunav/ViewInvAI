@@ -1440,6 +1440,8 @@ function mergeEventRows(primary,extra,limit=24){
       independentSourceCount:finiteNumber(raw.independentSourceCount),
       corroborated:raw.corroborated===true,
       source:trimText(raw.source||"",120),
+      sourceFamily:trimText(raw.sourceFamily||"",40),
+      official:raw.official===true||["sec","fda","clinicaltrials"].includes(String(raw.sourceFamily||"").toLowerCase())||/official|oficial|sec \/ edgar|clinicaltrials|fda/i.test(String(raw.verification||"")),
       url:trimText(raw.url||raw.sourceUrl||"",500)
     });
     if(out.length>=limit)break;
@@ -1749,7 +1751,7 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
     const severity = impact >= 85 ? "high" : impact >= 70 ? "warning" : "info";
     const id = uid("al_");
     const source = trimText(event.source || event.verification || "", 120);
-    const title = "Noticia · " + target.ticker;
+    const title = (event.official ? "Fuente oficial · " : "Noticia · ") + target.ticker;
     const body = source ? message + " · " + source : message;
     const now = nowIso();
 
@@ -1792,7 +1794,7 @@ async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
     if(duplicate)continue;
     const impact=finiteNumber(event.impactScore)??50;
     const severity=impact>=85?"high":impact>=65?"warning":"info";
-    const id=uid("al_"),title="Evento · "+target.ticker,now=nowIso();
+    const id=uid("al_"),title=(event.official?"Evento oficial · ":"Evento · ")+target.ticker,now=nowIso();
     await env.DB.prepare(
       "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(id,target.user_id,target.stock_key,target.ticker,stock.name||target.name||"","stock-event",severity,title,body,snapshotId||null,now).run();
@@ -1865,12 +1867,16 @@ async function analyzeTarget(env, target, services) {
     console.warn("Chart analysis unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
-  let directNews=[];
+  let directNews=[],officialEvents=[];
+  if(services.loadOfficialEvents){
+    try{officialEvents=await services.loadOfficialEvents(stock,target)}
+    catch(error){console.warn("Official analysis events unavailable",String(error&&error.message||error))}
+  }
   if(services.loadNews){
     try{directNews=await services.loadNews(stock,target)}
     catch(error){console.warn("Direct news analysis unavailable",String(error&&error.message||error))}
   }
-  const events = mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
+  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),officialEvents,24),directNews,24);
   const fallback = deterministicAssessment(target, stock, chart, events);
   const current = await aiAssessment(env, target, stock, chart, events, fallback);
 
@@ -2147,9 +2153,13 @@ async function ensureNotificationPreferenceSchema(env){
     "CREATE TABLE IF NOT EXISTS notification_preferences ("+
     "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0,"+
     "news_enabled INTEGER NOT NULL DEFAULT 1,pulse_enabled INTEGER NOT NULL DEFAULT 1,radar_enabled INTEGER NOT NULL DEFAULT 0,price_up_enabled INTEGER NOT NULL DEFAULT 0,price_down_enabled INTEGER NOT NULL DEFAULT 0,"+
-    "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',"+
+    "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',last_ai_scan_at TEXT,"+
     "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
+  const prefColumns=await env.DB.prepare("PRAGMA table_info(notification_preferences)").all();
+  if(!(prefColumns.results||[]).some(row=>String(row.name||"")==="last_ai_scan_at")){
+    await env.DB.prepare("ALTER TABLE notification_preferences ADD COLUMN last_ai_scan_at TEXT").run();
+  }
   await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_user_stock ON notification_preferences(user_id,stock_key,prefer_tr)").run();
   notificationSchemaReady=true;
 }
@@ -2209,17 +2219,26 @@ async function scanNotificationPreferences(env,services){
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       if(!global.enabled)continue;
       const stock=findStock(snapshot,pref);if(!stock)continue;
-      const needsAnalysis=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
+      const signalConfigured=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
+      const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
+      const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
+      const trPriceConfigured=Number(pref.prefer_tr)===1&&global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
       let chart={available:false},chartRaw=null;
-      if(Number(pref.prefer_tr)===1||needsAnalysis){
+      if(trPriceConfigured||aiDue){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
         catch(error){console.warn("Notification chart unavailable",pref.id,String(error&&error.message||error))}
       }
       // A TR/LSX alert must never be evaluated from the US quote. Use the exact
       // LSX chart/ticker when available; otherwise wait instead of mixing markets.
+      let liveQuote=null;
+      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      if(Number(pref.prefer_tr)!==1&&priceAlertConfigured&&services.loadQuote){
+        try{liveQuote=await services.loadQuote(stock,pref)}
+        catch(error){console.warn("Notification live quote unavailable",pref.id,String(error&&error.message||error))}
+      }
       const price=Number(pref.prefer_tr)===1
         ?(chart&&chart.available?finiteNumber(chart.last):null)
-        :finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+        :finiteNumber((liveQuote&&liveQuote.price)??stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
       let anchorPrice=finiteNumber(pref.anchor_price);
       if(anchorPrice===null&&price!==null){
         anchorPrice=price;
@@ -2238,18 +2257,24 @@ async function scanNotificationPreferences(env,services){
           downBucket=nextDown;
         }
       }
-      let directNews=[];
-      if(global.newsEvents&&Number(pref.news_enabled)===1&&services.loadNews){
-        try{directNews=await services.loadNews(stock,pref)}
-        catch(error){console.warn("Notification news unavailable",pref.id,String(error&&error.message||error))}
+      let directNews=[],officialEvents=[];
+      if(global.newsEvents&&Number(pref.news_enabled)===1){
+        if(services.loadOfficialEvents){
+          try{officialEvents=await services.loadOfficialEvents(stock,pref)}
+          catch(error){console.warn("Official notification events unavailable",pref.id,String(error&&error.message||error))}
+        }
+        if(services.loadNews){
+          try{directNews=await services.loadNews(stock,pref)}
+          catch(error){console.warn("Notification news unavailable",pref.id,String(error&&error.message||error))}
+        }
       }
-      const events=mergeEventRows(recentEvents(snapshot,stock,18),directNews,24);
+      const events=mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),officialEvents,24),directNews,24);
       if(global.newsEvents&&Number(pref.news_enabled)===1){
         await maybeCreateNewsAlerts(env,pref,stock,events,null);
         await maybeCreateEventAlerts(env,pref,stock,events,null);
       }
       let pulseState=String(pref.last_pulse_state||""),radarState=String(pref.last_radar_state||"");
-      if(needsAnalysis){
+      if(aiDue){
         const target={...pref,subject_type:"watchlist",subject_id:pref.id,avg_price:null,quantity:null,currency:Number(pref.prefer_tr)===1?"EUR":"USD"};
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
@@ -2260,8 +2285,9 @@ async function scanNotificationPreferences(env,services){
         if(global.radar&&Number(pref.radar_enabled)===1&&nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
         pulseState=nextPulse;radarState=nextRadar;
       }
-      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,updated_at=? WHERE id=?")
-        .bind(upBucket,downBucket,pulseState,radarState,nowIso(),pref.id).run();
+      const scanNow=nowIso();
+      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
+        .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
       results.push(pref.id);
     }catch(error){console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error))}
   }
@@ -2374,7 +2400,16 @@ async function handleAiChat(request, env, user, json, services) {
     console.warn("AI chat chart unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
-  const events = recentEvents(snapshot, stock, 16);
+  let directNews=[],officialEvents=[];
+  if(services.loadOfficialEvents){
+    try{officialEvents=await services.loadOfficialEvents(stock,target)}
+    catch(error){console.warn("AI chat official events unavailable",String(error&&error.message||error))}
+  }
+  if(services.loadNews){
+    try{directNews=await services.loadNews(stock,target)}
+    catch(error){console.warn("AI chat live news unavailable",String(error&&error.message||error))}
+  }
+  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,16),officialEvents,24),directNews,24);
   const fallbackTarget = { subject_type: "watchlist", ...target };
   const deterministic = deterministicAssessment(fallbackTarget, stock, chart, events);
 

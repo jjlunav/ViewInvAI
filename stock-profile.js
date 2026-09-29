@@ -208,14 +208,37 @@ function profileStickyShellHtml(s,isTr=false,opts={}){
 function profileBodyTabsHtml(){
  return nativeProfileChrome()?'':profileTabs();
 }
-function quickProfileHtml(s,opts={}){
- let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
- let isTr=requested&&trTradable(s),se=currentMarketSession();
+const profileLiveEventCache=new Map();
+function profileNewsPanelHtml(s){
  let events=stockEvents(s),now=Date.now();
  let upcoming=events.filter(e=>e.eventKind!=='news'&&new Date(e.date).getTime()>=now-864e5).sort((x,y)=>new Date(x.date)-new Date(y.date)).slice(0,4);
  let news=events.filter(e=>e.eventKind==='news').sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,6);
  let catalystHtml=upcoming.length?upcoming.map(eventItem).join(''):'<div class="profile-empty">No hay eventos próximos fechados cargados.</div>';
  let newsHtml=news.length?news.map(eventItem).join(''):'<div class="profile-empty">No hay noticias recientes cargadas.</div>';
+ return '<section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section>';
+}
+async function refreshProfileLiveEvents(s){
+ if(!s)return;
+ const key=stockKey(s),last=profileLiveEventCache.get(key)||0,now=Date.now();
+ if(now-last<120000)return;
+ profileLiveEventCache.set(key,now);
+ const ticker=String(s.ticker||s.trTicker||'').trim(),exchange=String(s.exchange||'').trim();
+ if(!ticker)return;
+ try{
+  const response=await fetch('/api/stock-events-live?ticker='+encodeURIComponent(ticker)+'&exchange='+encodeURIComponent(exchange),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const data=await response.json();
+  window.ViewInvAI?.mergeLiveEvents?.(data.events||[]);
+  if(state.profileKey!==key)return;
+  const panel=document.querySelector('.profile-tab-panel[data-profile-panel="news"] #profile-news');
+  if(panel)panel.outerHTML=profileNewsPanelHtml(s);
+ }catch(error){
+  console.warn('Live profile events unavailable',error);
+ }
+}
+function quickProfileHtml(s,opts={}){
+ let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
+ let isTr=requested&&trTradable(s),se=currentMarketSession();
  return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
@@ -227,7 +250,7 @@ function quickProfileHtml(s,opts={}){
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-tab-panel" data-profile-panel="fundamental" hidden><section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section></section>'+
    '<section class="profile-tab-panel" data-profile-panel="technical" hidden><section class="profile-section profile-stats-section" id="profile-technical"><div class="profile-section-head"><h3>Técnico</h3><span>Indicadores cargados</span></div><div class="profile-stat-list">'+profileTechnicalStats(s)+'</div></section></section>'+
-   '<section class="profile-tab-panel" data-profile-panel="news" hidden><section class="profile-section quick-events" id="profile-news"><div class="profile-section-head"><h3>Noticias y catalizadores</h3><span>'+news.length+' noticias · '+upcoming.length+' próximos</span></div><div class="profile-news-grid"><div><h4>Noticias recientes</h4><div class="event-list profile-events">'+newsHtml+'</div></div><div><h4>Próximos catalizadores</h4><div class="event-list profile-events">'+catalystHtml+'</div></div></div></section></section>'+
+   '<section class="profile-tab-panel" data-profile-panel="news" hidden>'+profileNewsPanelHtml(s)+'</section>'+
   '</div>';
 }
 function renderQuickProfile(){
@@ -240,6 +263,7 @@ function renderQuickProfile(){
  requestAnimationFrame(()=>{
   observeTrLivePrices(box);
   pollUsLive();
+  refreshProfileLiveEvents(s);
   window.ViewInvAINativeUI?.syncLayout?.();
  });
 }

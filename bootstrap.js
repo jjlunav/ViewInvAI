@@ -47,6 +47,23 @@ window.ViewInvAI={
  openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
  getStockByKey:key=>stockByKey(key),
  getAllStocks:()=>db.stocks.slice(),
+ mergeLiveEvents:events=>{
+  const rows=Array.isArray(events)?events:[];
+  if(!rows.length)return 0;
+  const merged=[...(db.events||[])],seen=new Set(merged.map(event=>String(event&&event.id||"")||[String(event&&event.eventKind||""),String(event&&event.ticker||""),String(event&&event.title||event&&event.fact||""),String(event&&event.date||"")].join("|")));
+  let added=0;
+  for(const event of rows){
+   if(!event)continue;
+   const key=String(event.id||"")||[String(event.eventKind||""),String(event.ticker||""),String(event.title||event.fact||""),String(event.date||"")].join("|");
+   if(seen.has(key))continue;
+   seen.add(key);merged.push(event);added++;
+  }
+  if(added){
+   db.events=merged;
+   rebuildMarketIndexes();
+  }
+  return added;
+ },
  getStockKey:s=>stockKey(s),
  getCurrentStockKey:()=>state.profileKey||null,
  getQuoteUpdatedLabel:(stock,preferTr=false)=>quoteUpdatedLabel(stock,preferTr),

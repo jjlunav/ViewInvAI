@@ -1023,6 +1023,13 @@ async function loadMarketSnapshotForBackend(env) {
   return data;
 }
 
+async function loadQuoteForBackend(stock,target){
+  if(target&&Number(target.prefer_tr)===1)return null;
+  const ticker=safeStockSymbol(stock&&stock.ticker||target&&target.ticker||"");
+  if(!ticker)return null;
+  return fetchNasdaqQuote(ticker);
+}
+
 async function loadChartForBackend(stock, target) {
   const preferTr = target && Number(target.prefer_tr) === 1;
   const isin = String((target && target.isin) || (stock && stock.trIsin) || (stock && stock.isin) || "").trim().toUpperCase();
@@ -1055,7 +1062,7 @@ async function loadNewsForBackend(stock,target){
   const symbol=String(stock&&stock.tvSymbol||((stock&&stock.exchange||target&&target.exchange||"")+":"+ticker)).trim().toUpperCase();
   if(!ticker||!symbol)return[];
   const cacheKey=symbol,now=Date.now(),cached=backendNewsCache.get(cacheKey);
-  if(cached&&now-cached.at<5*60*1000)return cached.rows;
+  if(cached&&now-cached.at<60*1000)return cached.rows;
   try{
     const url=new URL("https://news-headlines.tradingview.com/v2/headlines");
     url.searchParams.set("client","web");
@@ -1109,6 +1116,293 @@ async function loadNewsForBackend(stock,target){
   }
 }
 
+const backendOfficialEventCache = new Map();
+function secImpactForForm(form){
+  const f=String(form||"").toUpperCase();
+  if(["8-K","6-K","10-Q","10-K","S-1","S-3","424B5","424B3"].includes(f))return 88;
+  if(/^SC 13[DG]/.test(f)||f==="4")return 72;
+  return 68;
+}
+function secTypeForForm(form,description){
+  const f=String(form||"").toUpperCase(),d=String(description||"").toLowerCase();
+  if(f==="10-Q"||f==="10-K"||/earnings|results/.test(d))return "earnings";
+  if(/^S-|^424B/.test(f)||/offering|financing|securities/.test(d))return "financing";
+  return "regulatory";
+}
+async function loadOfficialEventsForBackend(stock,target,env){
+  const events=[],now=Date.now(),ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
+  const cikDigits=String(stock&&stock.secCik||target&&target.secCik||"").replace(/\D/g,"");
+  if(!ticker||!cikDigits)return events;
+  const userAgent=String(env&&env.SEC_USER_AGENT||"").trim();
+  if(!userAgent)return events;
+  const cik=cikDigits.padStart(10,"0").slice(-10),cacheKey="sec:"+cik,cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<60*1000)return cached.rows;
+  try{
+    const response=await fetch("https://data.sec.gov/submissions/CIK"+cik+".json",{headers:{
+      "Accept":"application/json",
+      "Accept-Encoding":"gzip, deflate",
+      "User-Agent":userAgent
+    }});
+    if(!response.ok)throw new Error("SEC "+response.status);
+    const payload=await response.json(),recent=payload&&payload.filings&&payload.filings.recent||{};
+    const forms=Array.isArray(recent.form)?recent.form:[],dates=Array.isArray(recent.filingDate)?recent.filingDate:[],
+      accessions=Array.isArray(recent.accessionNumber)?recent.accessionNumber:[],primaryDocs=Array.isArray(recent.primaryDocument)?recent.primaryDocument:[],
+      descriptions=Array.isArray(recent.primaryDocDescription)?recent.primaryDocDescription:[];
+    const acceptedForms=/^(8-K|6-K|10-Q|10-K|S-1|S-3|424B3|424B5|SC 13D|SC 13G|4)$/;
+    for(let i=0;i<Math.min(forms.length,80);i++){
+      const form=String(forms[i]||"").toUpperCase();
+      if(!acceptedForms.test(form))continue;
+      const filed=new Date(String(dates[i]||"")+"T12:00:00Z");
+      if(!Number.isFinite(filed.getTime())||now-filed.getTime()>8*86400000||filed.getTime()>now+86400000)continue;
+      const accession=String(accessions[i]||"").trim(),doc=String(primaryDocs[i]||"").trim(),description=String(descriptions[i]||"").trim();
+      const accessionCompact=accession.replace(/-/g,"");
+      const cikPlain=String(Number(cik));
+      const url=accessionCompact&&doc?"https://www.sec.gov/Archives/edgar/data/"+cikPlain+"/"+accessionCompact+"/"+encodeURIComponent(doc):"https://www.sec.gov/edgar/browse/?CIK="+cikPlain;
+      const title="SEC "+form+(description?" · "+description:"");
+      events.push({
+        id:"sec:"+cik+":"+accession,
+        eventKind:"news",
+        type:secTypeForForm(form,description),
+        ticker,
+        name:String(stock&&stock.name||target&&target.name||payload&&payload.name||""),
+        exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+        date:filed.toISOString(),
+        title:title.slice(0,240),
+        fact:"Presentación oficial "+form+" registrada en SEC/EDGAR.",
+        impact:"",
+        impactScore:secImpactForForm(form),
+        verification:"Documento oficial SEC / EDGAR",
+        source:"SEC EDGAR",
+        sourceFamily:"sec",
+        official:true,
+        sourceCount:1,
+        independentSourceCount:0,
+        corroborated:false,
+        url
+      });
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows:events});
+    if(backendOfficialEventCache.size>500){
+      for(const [key,value] of backendOfficialEventCache)if(!value||now-value.at>60*60*1000)backendOfficialEventCache.delete(key);
+    }
+    return events;
+  }catch(error){
+    console.warn("Followed-stock official events unavailable",ticker,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
+
+function normalizedCompanyTokens(value){
+  const generic=new Set(["inc","incorporated","corp","corporation","co","company","ltd","limited","plc","holdings","holding","group","sa","ag","nv","se","and","the","bio","biotech","biotechnology","pharma","pharmaceutical","pharmaceuticals","therapeutics","therapeutic","medical","health","sciences","science"]);
+  return String(value||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(token=>token.length>1&&!generic.has(token));
+}
+function clinicalSponsorMatches(company,sponsor){
+  const left=normalizedCompanyTokens(company),right=new Set(normalizedCompanyTokens(sponsor));
+  if(!left.length||!right.size)return false;
+  const matches=left.filter(token=>right.has(token)).length;
+  return matches>=Math.min(2,left.length)||left.some(token=>token.length>=6&&right.has(token));
+}
+function clinicalCompanyQuery(name){
+  return normalizedCompanyTokens(name).slice(0,3).join(" ");
+}
+function clinicalDate(value){
+  const raw=String(value||"").trim();
+  if(!/^\d{4}-\d{2}(-\d{2})?$/.test(raw))return null;
+  const normalized=raw.length===7?raw+"-01":raw;
+  const parsed=new Date(normalized+"T12:00:00Z");
+  return Number.isFinite(parsed.getTime())?parsed:null;
+}
+function clinicalPhase(phases){
+  const list=(Array.isArray(phases)?phases:[]).map(x=>String(x||"").toUpperCase());
+  if(list.includes("PHASE3"))return{label:"Fase 3",impact:68};
+  if(list.includes("PHASE2"))return{label:"Fase 2",impact:58};
+  if(list.includes("PHASE1")||list.includes("EARLY_PHASE1"))return{label:"Fase 1",impact:46};
+  if(list.includes("PHASE4"))return{label:"Fase 4",impact:50};
+  return{label:"Ensayo clínico",impact:42};
+}
+async function loadClinicalEventsForBackend(stock,target){
+  const sector=String(stock&&stock.sector||"")+" "+String(stock&&stock.industry||"");
+  if(!/health|biotech|biolog|pharma|therapeut|medical/i.test(sector))return[];
+  const company=String(stock&&stock.name||target&&target.name||"").trim(),query=clinicalCompanyQuery(company);
+  if(!query)return[];
+  const now=Date.now(),cacheKey="clinical:"+query.toLowerCase(),cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<6*60*60*1000)return cached.rows;
+  try{
+    const url=new URL("https://clinicaltrials.gov/api/v2/studies");
+    url.searchParams.set("query.lead",query);
+    url.searchParams.set("filter.overallStatus","RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING|ENROLLING_BY_INVITATION");
+    url.searchParams.set("pageSize","40");
+    url.searchParams.set("format","json");
+    const response=await fetch(url.toString(),{headers:{"Accept":"application/json","User-Agent":"ViewInvAI/0.6.18"}});
+    if(!response.ok)throw new Error("ClinicalTrials.gov "+response.status);
+    const payload=await response.json(),rows=[];
+    const start=now-86400000,end=now+120*86400000;
+    for(const study of Array.isArray(payload&&payload.studies)?payload.studies:[]){
+      const protocol=study&&study.protocolSection||{},identification=protocol.identificationModule||{},sponsors=protocol.sponsorCollaboratorsModule||{},
+        lead=sponsors.leadSponsor||{},leadName=String(lead.name||"").trim(),leadClass=String(lead.class||"").toUpperCase();
+      if(leadClass&&leadClass!=="INDUSTRY")continue;
+      if(!clinicalSponsorMatches(company,leadName))continue;
+      const status=protocol.statusModule||{},primary=status.primaryCompletionDateStruct||{},completion=status.completionDateStruct||{},
+        dateStruct=primary.date?primary:completion,when=clinicalDate(dateStruct.date);
+      if(!when||when.getTime()<start||when.getTime()>end)continue;
+      const nct=String(identification.nctId||"").trim();
+      if(!nct)continue;
+      const phase=clinicalPhase(protocol.designModule&&protocol.designModule.phases||[]),dateKind=primary.date?"finalización primaria":"finalización del estudio",
+        estimated=String(dateStruct.type||"").toUpperCase()==="ESTIMATED",brief=String(identification.briefTitle||"").trim(),
+        ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase(),eventUrl="https://clinicaltrials.gov/study/"+encodeURIComponent(nct);
+      rows.push({
+        id:"clinicaltrials:"+nct+":"+dateKind.replace(/\s+/g,"-"),
+        eventKind:"scheduled",
+        type:"medical",
+        ticker,
+        name:company,
+        exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+        date:when.toISOString(),
+        title:"ClinicalTrials.gov · "+dateKind+" · "+phase.label,
+        fact:leadName+" figura como lead sponsor. ClinicalTrials.gov marca "+when.toISOString().slice(0,10)+" como fecha "+(estimated?"estimada":"registrada")+" de "+dateKind+(brief?" para "+brief+".":"."),
+        impact:"La fecha puede aumentar la atención sobre el programa, pero no anticipa el resultado del estudio.",
+        impactScore:phase.impact,
+        verification:"Registro oficial ClinicalTrials.gov · lead sponsor validado",
+        source:"ClinicalTrials.gov",
+        sourceFamily:"clinicaltrials",
+        official:true,
+        sourceCount:1,
+        independentSourceCount:0,
+        corroborated:false,
+        url:eventUrl
+      });
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows});
+    return rows;
+  }catch(error){
+    console.warn("Followed-stock clinical events unavailable",company,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
+function fdaStatusInfo(code){
+  const map={
+    AP:{label:"Aprobación",kind:"approved",impact:92},
+    TA:{label:"Aprobación tentativa",kind:"tentative_approval",impact:76},
+    CR:{label:"Complete Response",kind:"complete_response",impact:90},
+    NA:{label:"No aprobable",kind:"not_approvable",impact:90},
+    WD:{label:"Retirada",kind:"withdrawn",impact:82},
+    AE:{label:"Aprobable",kind:"approvable",impact:70}
+  };
+  return map[String(code||"").toUpperCase()]||{label:"Actualización regulatoria",kind:"regulatory_update",impact:64};
+}
+function fdaSubmissionDate(value){
+  const raw=String(value||"").trim();
+  if(/^\d{8}$/.test(raw))return new Date(raw.slice(0,4)+"-"+raw.slice(4,6)+"-"+raw.slice(6,8)+"T12:00:00Z");
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return new Date(raw+"T12:00:00Z");
+  return null;
+}
+async function loadFdaEventsForBackend(stock,target,env){
+  const sector=String(stock&&stock.sector||"")+" "+String(stock&&stock.industry||"");
+  if(!/health|biotech|biolog|pharma|therapeut|medical/i.test(sector))return[];
+  const company=String(stock&&stock.name||target&&target.name||"").trim(),query=clinicalCompanyQuery(company);
+  if(!query)return[];
+  const now=Date.now(),cacheKey="fda:"+query.toLowerCase(),cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<6*60*60*1000)return cached.rows;
+  try{
+    const url=new URL("https://api.fda.gov/drug/drugsfda.json");
+    url.searchParams.set("search",'sponsor_name:"'+query.replace(/"/g,"")+'"');
+    url.searchParams.set("limit","30");
+    const apiKey=String(env&&env.OPENFDA_API_KEY||"").trim();
+    if(apiKey)url.searchParams.set("api_key",apiKey);
+    const response=await fetch(url.toString(),{headers:{"Accept":"application/json","User-Agent":"ViewInvAI/0.6.18 market-research"}});
+    if(response.status===404){backendOfficialEventCache.set(cacheKey,{at:now,rows:[]});return[]}
+    if(!response.ok)throw new Error("openFDA "+response.status);
+    const payload=await response.json(),rows=[],cutoff=now-8*86400000;
+    for(const application of Array.isArray(payload&&payload.results)?payload.results:[]){
+      const sponsor=String(application&&application.sponsor_name||"").trim();
+      if(!clinicalSponsorMatches(company,sponsor))continue;
+      const applicationNumber=String(application&&application.application_number||"").trim(),digits=applicationNumber.replace(/\D/g,"");
+      const eventUrl=digits?"https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo="+encodeURIComponent(digits):"https://www.accessdata.fda.gov/scripts/cder/daf/";
+      const productNames=[];
+      for(const product of Array.isArray(application&&application.products)?application.products:[]){
+        const name=String(product&&product.brand_name||"").trim();
+        if(name&&!productNames.includes(name))productNames.push(name);
+      }
+      const productLabel=productNames.slice(0,3).join(", ");
+      for(const submission of Array.isArray(application&&application.submissions)?application.submissions:[]){
+        const when=fdaSubmissionDate(submission&&submission.submission_status_date);
+        if(!when||!Number.isFinite(when.getTime())||when.getTime()<cutoff||when.getTime()>now+86400000)continue;
+        const code=String(submission&&submission.submission_status||"").trim().toUpperCase(),status=fdaStatusInfo(code),
+          submissionType=String(submission&&submission.submission_type||"").trim().toUpperCase(),
+          submissionNumber=String(submission&&submission.submission_number||"").trim(),
+          detail=String(submission&&submission.submission_class_code_description||submission&&submission.submission_public_notes||"").trim(),
+          ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
+        let title="FDA · "+status.label+(productLabel?" · "+productLabel:"");
+        let fact=sponsor+" figura como sponsor oficial en Drugs@FDA. La submission "+((submissionType||submissionNumber)?submissionType+submissionNumber:"registrada")+" recibió estado "+(code||"sin código")+" ("+status.label+") el "+when.toISOString().slice(0,10)+".";
+        if(detail)fact+=" "+detail.slice(0,320);
+        rows.push({
+          id:"fda:"+applicationNumber+":"+submissionType+":"+submissionNumber+":"+when.toISOString().slice(0,10),
+          eventKind:"news",
+          type:"medical",
+          ticker,
+          name:company,
+          exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+          date:when.toISOString(),
+          title:title.slice(0,240),
+          fact:fact.slice(0,800),
+          impact:"Una decisión regulatoria de FDA puede alterar materialmente expectativas y volatilidad; el registro no predice la reacción bursátil.",
+          impactScore:status.impact,
+          verification:"Registro oficial FDA / Drugs@FDA · sponsor validado",
+          source:"FDA / Drugs@FDA",
+          sourceFamily:"fda",
+          official:true,
+          sourceCount:1,
+          independentSourceCount:0,
+          corroborated:false,
+          url:eventUrl
+        });
+      }
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows});
+    return rows;
+  }catch(error){
+    console.warn("Followed-stock FDA events unavailable",company,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
+async function loadAllOfficialEventsForBackend(stock,target,env){
+  const [sec,clinical,fda]=await Promise.all([
+    loadOfficialEventsForBackend(stock,target,env),
+    loadClinicalEventsForBackend(stock,target),
+    loadFdaEventsForBackend(stock,target,env)
+  ]);
+  return [...sec,...clinical,...fda];
+}
+
+
+
+async function stockEventsLiveResponse(env,request){
+  const url=new URL(request.url),ticker=safeStockSymbol(url.searchParams.get("ticker")||""),exchange=String(url.searchParams.get("exchange")||"").trim().toUpperCase();
+  if(!ticker)return jsonResponse({error:"ticker is required"},400,{"Cache-Control":"no-store"});
+  const snapshot=await loadMarketSnapshotForBackend(env);
+  const stock=(snapshot.stocks||[]).find(row=>{
+    const rowTicker=String(row&&row.ticker||"").trim().toUpperCase(),trTicker=String(row&&row.trTicker||"").trim().toUpperCase(),rowExchange=String(row&&row.exchange||"").trim().toUpperCase();
+    if(ticker!==rowTicker&&ticker!==trTicker)return false;
+    return !exchange||!rowExchange||exchange===rowExchange||exchange==="LSX";
+  });
+  if(!stock)return jsonResponse({error:"Stock not found"},404,{"Cache-Control":"no-store"});
+  const target={ticker:stock.ticker||ticker,exchange:stock.exchange||exchange,isin:stock.isin||stock.usIsin||stock.trIsin||"",secCik:stock.secCik||""};
+  const [official,news]=await Promise.all([
+    loadAllOfficialEventsForBackend(stock,target,env),
+    loadNewsForBackend(stock,target)
+  ]);
+  const merged=[],seen=new Set();
+  for(const event of [...official,...news]){
+    const key=String(event&&event.id||"")||[event&&event.eventKind,event&&event.title,event&&event.date].join("|");
+    if(!event||seen.has(key))continue;
+    seen.add(key);merged.push(event);
+  }
+  merged.sort((a,b)=>new Date(b&&b.date||0)-new Date(a&&a.date||0));
+  return jsonResponse({events:merged.slice(0,24),ticker:stock.ticker||ticker,updatedAt:new Date().toISOString()},200,{"Cache-Control":"private, max-age=30"});
+}
 
 let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
 async function socialTrendingResponse(){
@@ -1339,6 +1633,7 @@ export default {
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/stock-events-live")limited=await enforcedRateLimit(request,env,"stock-events-live",60,60000,"MARKET_RATE_LIMITER");
     else if(isBackendApiPath(url.pathname))limited=await enforcedRateLimit(request,env,"backend",180,60000,"API_RATE_LIMITER");
     if(limited)return nativeCorsResponse(request, limited);
 
@@ -1347,7 +1642,9 @@ export default {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
-        loadNews: loadNewsForBackend
+        loadQuote: loadQuoteForBackend,
+        loadNews: loadNewsForBackend,
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -1368,6 +1665,14 @@ export default {
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await nasdaqQuotes(request));
+    }
+    if (url.pathname === "/api/stock-events-live") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await stockEventsLiveResponse(env,request)); }
+      catch (error) {
+        console.warn("Live stock events upstream error", String(error && error.message || error));
+        return nativeCorsResponse(request, jsonResponse({ error: "Live stock events unavailable" }, 502, { "Cache-Control": "no-store" }));
+      }
     }
     if (url.pathname === "/api/fx-live") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -1397,15 +1702,20 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(Promise.allSettled([
+    const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
+    const minute=new Date(scheduledAt).getUTCMinutes();
+    const tasks=[
       runScheduledPortfolioAnalysis(env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
-        loadNews: loadNewsForBackend
-      }),
-      refreshAttentionRankings(env)
-    ]).then(results=>{
+        loadQuote: loadQuoteForBackend,
+        loadNews: loadNewsForBackend,
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
+      })
+    ];
+    if(minute%5===0)tasks.push(refreshAttentionRankings(env));
+    ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
     }));
   }
