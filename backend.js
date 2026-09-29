@@ -423,6 +423,15 @@ async function ensureFundSchema(env) {
     ),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_fund_plans_user ON fund_contribution_plans(user_id,fund_portfolio_id,enabled)")
   ]);
+  const planColumns=await env.DB.prepare("PRAGMA table_info(fund_contribution_plans)").all();
+  const planColumnNames=new Set((planColumns.results||[]).map(row=>String(row.name||"")));
+  for(const [name,sql] of [
+    ["start_date","ALTER TABLE fund_contribution_plans ADD COLUMN start_date TEXT"],
+    ["status","ALTER TABLE fund_contribution_plans ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"],
+    ["next_contribution_at","ALTER TABLE fund_contribution_plans ADD COLUMN next_contribution_at TEXT"]
+  ]){
+    if(!planColumnNames.has(name))await env.DB.prepare(sql).run();
+  }
   fundSchemaReady = true;
 }
 
