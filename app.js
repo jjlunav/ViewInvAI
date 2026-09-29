@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={home:'00 Mercados',entry:'01 Radar de entrada',recommendation:'02 Pulso IA',portfolios:'03 Carteras',funds:'04 Fondos y ETFs',alerts:'05 Avisos',heatmap:'06 Mapa de calor',future:'07 Potencial futuro',calendar:'08 Calendario y noticias',catalog:'09 Catálogo Trade Republic',catalogUS:'10 Catálogo EEUU',settings:'11 Settings'};
+const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -85,6 +85,7 @@ function currentRouteState(){
   let m=String(location.hash||'').match(/^#app\/([^/]+)(?:\/stock\/(.+))?$/);
   if(!m)return null;
   let view=decodeURIComponent(m[1]||'');
+  if(view==='calendar')view='future';
   if(!V[view])return null;
   return {view,profileKey:m[2]?decodeURIComponent(m[2]):null};
  }catch(_){return null}
@@ -92,6 +93,7 @@ function currentRouteState(){
 function restoreUiState(){
  try{
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
+  if(x&&x.view==='calendar')x.view='future';
   if(x&&V[x.view])state.currentView=x.view;
   if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
   // Every fresh web/APK session starts from the canonical US market clock.
@@ -434,7 +436,6 @@ function renderCurrentView(){
  else if(state.currentView==='heatmap')renderHeatmap();
  else if(state.currentView==='future')renderFuture();
  else if(state.currentView==='alerts'){if(window.AppAlerts)window.AppAlerts.renderSettings()}
- else if(state.currentView==='calendar')renderCalendar();
  else if(state.currentView==='catalog')renderCatalog();
  else if(state.currentView==='catalogUS')renderCatalogUS();
  else if(state.currentView==='settings')syncDeviceSettingsUi();
@@ -517,7 +518,7 @@ function clock(){
   lastLeaderSession=se;
   if(db.stocks.length){
    renderMarketLeaders();renderFavorites();
-   if(!document.body.classList.contains('stock-detail-open')&&['home','portfolios','calendar','future','recommendation'].includes(state.currentView))renderCurrentView();
+   if(!document.body.classList.contains('stock-detail-open')&&['home','portfolios','future','recommendation'].includes(state.currentView))renderCurrentView();
   }
  }
 }

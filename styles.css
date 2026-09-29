@@ -7516,3 +7516,111 @@ html[data-theme="light"] .tr-native-axis{
   #view-portfolios .goal-action-grid{grid-template-columns:1fr!important}
   #view-portfolios .portfolio-goal-metrics{grid-template-columns:1fr 1fr!important}
 }
+
+
+/* 2026-09-29 · Fused Future Potential list */
+#view-future .future-filter-bar{
+ display:flex;
+ align-items:end;
+ flex-wrap:wrap;
+ gap:8px;
+ padding:10px 12px;
+ margin-bottom:10px;
+ border:1px solid var(--line);
+ border-radius:12px;
+ background:var(--panel);
+}
+#view-future .future-filter-bar .select{min-height:38px;font-size:11px}
+#view-future .future-date-filter{display:grid;gap:3px}
+#view-future .future-date-filter>span{font-size:8px;font-weight:800;color:var(--muted);letter-spacing:.05em}
+#view-future .future-date-filter .input{min-height:38px;font-size:10px}
+#view-future .check-inline{min-height:38px;padding:0 8px;font-size:10px}
+#view-future .future-list{display:grid;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+#view-future .future-list-item{background:var(--panel);border-bottom:1px solid var(--line)}
+#view-future .future-list-item:last-child{border-bottom:0}
+#view-future .future-list-row{
+ display:grid;
+ grid-template-columns:minmax(260px,1.45fr) minmax(240px,1.25fr) minmax(150px,.75fr) minmax(130px,.62fr) minmax(105px,.52fr) 18px;
+ gap:14px;
+ align-items:center;
+ min-height:72px;
+ padding:9px 14px;
+ cursor:pointer;
+}
+#view-future .future-list-row:hover{background:color-mix(in srgb,var(--panel) 78%,var(--accent) 7%)}
+#view-future .future-identity{display:flex;align-items:center;gap:10px;min-width:0}
+#view-future .future-identity>div{display:grid;gap:3px;min-width:0}
+#view-future .future-identity strong{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-future .future-identity strong em{margin-right:5px;color:var(--muted);font-size:8px;font-style:normal}
+#view-future .future-identity small{font-size:8.5px;color:var(--muted)}
+#view-future .future-catalyst,#view-future .future-when,#view-future .future-quote,#view-future .future-move{display:grid;gap:3px;min-width:0}
+#view-future .future-list-row>div>small{font-size:7.5px;font-weight:800;color:var(--muted);letter-spacing:.05em}
+#view-future .future-catalyst strong,#view-future .future-when strong{font-size:11px}
+#view-future .future-catalyst span,#view-future .future-when span{font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-future .future-price .price-pair>strong{font-size:13px!important}
+#view-future .future-price .price-pair>small{font-size:8px!important}
+#view-future .future-change{font-size:12px;font-weight:850}
+#view-future .future-open{font-size:19px;color:var(--muted)}
+#view-future .future-row-details{border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+#view-future .future-row-details>summary{padding:6px 14px;font-size:8.5px;color:var(--muted);cursor:pointer}
+#view-future .future-row-details>div{padding:0 14px 10px}
+#view-future .event-item{padding:10px 0}
+#view-future .event-item+.event-item{border-top:1px solid var(--line)}
+#view-future .event-title{font-size:10.5px}
+#view-future .event-context,#view-future .event-impact,#view-future .event-sources{font-size:9px}
+
+/* Official TradingView heatmap: one-screen board */
+#view-heatmap{
+ max-width:none!important;
+ width:100%!important;
+ height:100vh!important;
+ overflow:hidden!important;
+ padding:12px 14px 8px!important;
+ display:flex!important;
+ flex-direction:column!important;
+}
+#view-heatmap>.page-heading{flex:0 0 auto;margin-bottom:8px!important}
+#view-heatmap>.page-heading h1{font-size:22px!important}
+#view-heatmap .tradingview-heatmap-shell{
+ flex:1 1 auto;
+ min-height:0;
+ width:100%;
+ overflow:hidden;
+ border:1px solid var(--line);
+ border-radius:10px;
+ background:#070d11;
+}
+#view-heatmap .viewinvai-tv-heatmap,
+#view-heatmap .tradingview-widget-container__widget{
+ width:100%!important;
+ height:100%!important;
+ min-height:0!important;
+}
+#view-heatmap .viewinvai-tv-heatmap{display:flex;flex-direction:column}
+#view-heatmap .tradingview-widget-container__widget{flex:1 1 auto}
+#view-heatmap .tradingview-widget-copyright{flex:0 0 20px;text-align:right;padding:2px 7px;font-size:9px}
+#view-heatmap .tradingview-widget-copyright a{text-decoration:none}
+
+@media(max-width:1050px){
+ #view-future .future-list-row{grid-template-columns:minmax(220px,1.3fr) minmax(190px,1fr) minmax(130px,.7fr) minmax(110px,.6fr) minmax(90px,.5fr) 16px;gap:8px;padding:8px 10px}
+}
+@media(max-width:820px){
+ #view-future .future-filter-bar{padding:7px;gap:6px}
+ #view-future .future-filter-bar>*{flex:1 1 calc(50% - 6px);min-width:0}
+ #view-future .future-list{border-radius:8px}
+ #view-future .future-list-row{
+  grid-template-columns:minmax(0,1.7fr) minmax(100px,.75fr) minmax(75px,.55fr) 14px;
+  gap:6px;min-height:60px;padding:7px 8px;
+ }
+ #view-future .future-catalyst{grid-column:1/3;grid-row:2}
+ #view-future .future-when{grid-column:3;grid-row:1/3}
+ #view-future .future-quote{grid-column:2;grid-row:1}
+ #view-future .future-move{display:none}
+ #view-future .future-open{grid-column:4;grid-row:1/3}
+ #view-future .future-identity strong{font-size:10.5px}
+ #view-future .future-catalyst strong,#view-future .future-when strong{font-size:9px}
+ #view-heatmap{height:calc(100vh - 62px)!important;padding:7px 6px 4px!important}
+ #view-heatmap>.page-heading{margin-bottom:5px!important}
+ #view-heatmap>.page-heading h1{font-size:16px!important}
+ #view-heatmap>.page-heading .lead{display:none!important}
+}

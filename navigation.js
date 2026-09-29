@@ -5,7 +5,7 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','portfolios','funds','recommendation','entry','alerts','future','catalog','catalogUS','heatmap','calendar','settings'];
+const NAV_ORDER=['home','recommendation','entry','alerts','future','portfolios','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  entry:{icon:'◈',short:'Radar',desc:'Entradas y filtros'},
