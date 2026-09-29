@@ -14,12 +14,12 @@ function rankingWhy(s,next,se,q,pos,preferTr=false){
   return 'Puesto #'+pos+' por impulso naciente: '+reasons.join(' · ')+'. Variación actual '+PC(e.current)+'.';
  }
  let a=marketChange(s,se,preferTr),b=next?marketChange(next,se,preferTr):null;
- let basis=preferTr&&trMarketOpen()&&trLiveChange(s)!==null?'LSX en tiempo real':SN(se);
+ let basis=preferTr&&trLiveChange(s)!==null?'LSX':SN(se);
  return 'Puesto #'+pos+' por variación porcentual en '+basis+': '+PC(a)+(next?' frente a '+PC(b)+' de #'+(pos+1)+' '+E(next.ticker)+'.':'.')+' El orden se actualiza automáticamente con las cotizaciones.';
 }
-function why(s,se,preferTr=false){let b=[],c=marketChange(s,se,preferTr),r=RV(s,se);if(c!==null)b.push((preferTr&&trMarketOpen()&&trLiveChange(s)!==null?'LSX':SN(se))+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
+function why(s,se,preferTr=false){let b=[],c=marketChange(s,se,preferTr),r=RV(s,se);if(c!==null)b.push((preferTr&&trLiveChange(s)!==null?'LSX':SN(se))+' '+PC(c));if(r!==null)b.push('vol. relativo '+F(r,2)+'×');if(N(s.adx)!==null)b.push('ADX '+F(s.adx,1));if(N(s.rsi)!==null)b.push('RSI '+F(s.rsi,1));if(trend(s))b.push('tendencia compatible');return b.join(' · ')||'Cumple el criterio activo con los datos disponibles.'}
 function entryChangeHtml(s,se,preferTr=false){
- let trLive=preferTr&&trMarketOpen()&&trLiveChange(s)!==null,v=marketChange(s,se,preferTr),usLive=!trLive&&se==='regular'&&usLiveChange(s)!==null;
+ let trLive=preferTr&&trLiveChange(s)!==null,v=marketChange(s,se,preferTr),usLive=!preferTr&&se==='regular'&&usLiveChange(s)!==null;
  let attrs=trLive?' data-tr-live-change-key="'+E(stockKey(s))+'"':usLive?' data-us-live-change-key="'+E(stockKey(s))+'"':'';
  return '<span class="quote-change '+C(v)+'"'+attrs+'>'+PC(v)+'</span>';
 }
@@ -61,13 +61,13 @@ function stockMobileTabs(scope='entry'){
 function stockMobileCell(s,key,se,preferTr=false){
  let v=null,text='—',tone='text';
  if(key==='price'){
-  let q=verifiedDisplayQuote(s,preferTr,se),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
+  let q=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),sym=q.nativeCurrency==='EUR'?'€':'\u0024';
   v=N(q.change);text=quoteMoney(q.price,sym,quotePrecision(s,q.nativeCurrency==='EUR',SP(s,se)));
   tone=N(q.price)===null?'muted':v===null?'text':v>=0?'positive':'negative';
   let source=q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
   return{value:text,tone,html:'<span class="asset-price-value">'+E(text)+'</span>'+source};
  }else if(key==='change'){
-  let q=verifiedDisplayQuote(s,preferTr,se);v=N(q.change);
+  let q=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se);v=N(q.change);
   text=PC(v);tone=v===null?'muted':v>=0?'positive':'negative';
  }else if(key==='volume'){
   text=compactVol(preferTr?SV(s,se):(N(s.usLiveVolume)??SV(s,se)));
@@ -149,9 +149,9 @@ function standardStockCard(s,i=0,opts={}){
  let cells=[regularQuoteCell(s,se,preferTr),regularChangeCell(s,se,preferTr)];
  let details=opts.detailsHtml;
  if(details===undefined){
-  let rv=RV(s,se);
+  let rv=RV(s,se),ref=preferTr?' EEUU':'';
   details='<p>'+E(opts.insight||listInsightLabel(s,se,preferTr))+'</p>'+quoteFreshnessHtml(s,preferTr)+listSessionQuote(s,se,preferTr)+
-   '<div class="asset-card-metrics"><span>Vol <b>'+compactVol(SV(s,se))+'</b></span><span>RV <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
+   '<div class="asset-card-metrics"><span>Vol'+ref+' <b>'+compactVol(SV(s,se))+'</b></span><span>RV'+ref+' <b>'+(rv===null?'—':F(rv,2)+'×')+'</b></span><span>RSI <b>'+F(s.rsi,0)+'</b></span><span>ADX <b>'+F(s.adx,0)+'</b></span></div>'+(opts.contextHtml||'');
  }
  return window.ViewInvAICards.render({
   context:opts.context||state.currentView||'stock',title:s.name||ticker||'—',rank,
@@ -182,7 +182,7 @@ function lockAllCriteria(){['minChange','maxChange','minRelVolume','minAdx','min
 function toUI(x){['minChange','maxChange','minRelVolume','minAdx','minRsi','maxRsi','minVolume'].forEach(k=>$('#'+k).value=x[k]);$('#requireTrend').checked=!!x.trend;$('#excludeIlliquid').checked=!!x.illiquid}
 function entryUniverseMatch(s){
  if(state.entryMarket==='tr')return trTradable(s);
- return market(s,'us')&&!trTradable(s);
+ return market(s,'us');
 }
 function entrySessionForPreset(){
  if(state.entryMarket==='tr')return 'regular';
@@ -294,7 +294,7 @@ function homeSession(){
 }
 function homeDailyChange(s){return effectiveSessionChange(s,homeSession())}
 function homeUniverse(){
- return (db.stocks||[]).filter(s=>stockKey(s)&&(N(s.price)!==null||trTradable(s)));
+ return (db.stocks||[]).filter(s=>stockKey(s)&&market(s,'us')&&(N(s.price)!==null||usLivePrice(s)!==null));
 }
 function homeUserViewedStocks(limit=10){
  let universe=homeUniverse(),ranked=universe.filter(s=>stockViewCount(s)>0).sort((a,b)=>stockViewCount(b)-stockViewCount(a)||((stockViews[stockKey(b)]?.last||0)-(stockViews[stockKey(a)]?.last||0)));

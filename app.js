@@ -280,7 +280,7 @@ function inferProfilePreferTr(s){
  if(state.currentView==='catalog')return true;
  if(state.currentView==='catalogUS')return false;
  if(state.currentView==='entry')return state.entryMarket==='tr'&&trTradable(s);
- return trTradable(s);
+ return false;
 }
 function openStock(s,reason='',preferTr=null){
  if(!s)return;
@@ -340,15 +340,16 @@ function compactVol(v){
  return I(v);
 }
 function topGainers(kind,se){
+ const change=s=>kind==='tr'?trLiveChange(s):SC(s,se);
  return db.stocks
   .filter(s=>kind==='tr'?trTradable(s):market(s,'us'))
-  .filter(s=>SC(s,se)!==null&&SC(s,se)>0)
-  .sort((a,b)=>(SC(b,se)??-999)-(SC(a,se)??-999))
+  .filter(s=>change(s)!==null&&change(s)>0)
+  .sort((a,b)=>(change(b)??-999)-(change(a)??-999))
   .slice(0,10);
 }
 function leaderItem(s,se,i,preferTr=false){
- let ch=SC(s,se),p=SP(s,se),vol=SV(s,se),avg=N(s.avgVolume);
- return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s,'',preferTr)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="Volumen actual / volumen medio diario">Vol '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
+ let ch=preferTr?trLiveChange(s):SC(s,se),p=preferTr?trLivePrice(s):SP(s,se),vol=SV(s,se),avg=N(s.avgVolume),volumeLabel=preferTr?'Vol EEUU ref.':'Vol';
+ return '<div class="leader-item stock-open-row"'+stockOpenAttrs(s,'',preferTr)+' title="#'+(i+1)+' · '+E(s.name||s.ticker)+'"><div class="leader-top"><div class="leader-symbol">'+favButton(s,preferTr)+'<div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div></div>'+liveChangeHtml(s,ch,preferTr)+'</div><div class="leader-body">'+bidAskHtml(s,preferTr)+'<div class="leader-price">'+pricePair(s,p,preferTr)+'</div><div class="leader-volume" title="'+(preferTr?'Volumen del subyacente EEUU / volumen medio diario':'Volumen actual / volumen medio diario')+'">'+volumeLabel+' '+compactVol(vol)+' / '+compactVol(avg)+'</div></div></div>';
 }
 function leadersPinned(){
  try{return localStorage.getItem(LEADERS_PIN_KEY)==='1'}catch(_){return false}
@@ -395,10 +396,10 @@ function initLeadersDock(){
  });
 }
 function renderMarketLeaders(){
- let se=currentMarketSession(),label=sessionStageLabel(se)+' · TOP 10 SUBIDAS';
+ let se=currentMarketSession(),usLabel=sessionStageLabel(se)+' · TOP 10 SUBIDAS',trLabel='LSX · TOP 10 SUBIDAS';
  let us=$('#leadersUS'),tr=$('#leadersTR');
- if($('#leadersSessionUS'))$('#leadersSessionUS').textContent=label;
- if($('#leadersSessionTR'))$('#leadersSessionTR').textContent=label;
+ if($('#leadersSessionUS'))$('#leadersSessionUS').textContent=usLabel;
+ if($('#leadersSessionTR'))$('#leadersSessionTR').textContent=trLabel;
  if(us){
   let a=topGainers('us',se);
   us.innerHTML=a.length?a.map((s,i)=>leaderItem(s,se,i,false)).join(''):'<span class="leader-loading">Sin subidas disponibles</span>';
@@ -419,7 +420,7 @@ function renderFavorites(){
  }
  box.innerHTML=stocks.map(s=>{
   let ch=SC(s,se),p=SP(s,se),v=SV(s,se),avg=N(s.avgVolume),key=stockKey(s);
-  let preferTr=trTradable(s);
+  let preferTr=false;
   return '<div class="favorite-row stock-open-row"'+stockOpenAttrs(s,'',preferTr)+'><button type="button" class="fav-star active mini" data-fav-key="'+E(key)+'" title="Quitar de favoritos" aria-label="Quitar de favoritos">★</button><div class="favorite-link" title="'+E(s.name||s.ticker)+'"><div class="favorite-main"><div class="ticker-stack">'+tickerDisplay(s,preferTr)+'</div>'+pricePair(s,p,preferTr)+'</div>'+bidAskHtml(s,preferTr)+'<div class="favorite-stats">'+liveChangeHtml(s,ch,preferTr)+'<small>Vol '+compactVol(v)+' / '+compactVol(avg)+'</small></div></div></div>';
  }).join('');
 }

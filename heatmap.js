@@ -6,7 +6,12 @@
 
 let heatmapState={market:'tr',session:'auto',limit:250,sectorByMarket:{tr:null,us:null},selectedStockKey:null};
 
+function syncHeatmapVenueControls(){
+ const tr=heatmapState.market==='tr',control=$('#heatmapSession');
+ if(control)control.classList.toggle('is-hidden',tr);
+}
 function heatmapSession(){
+ if(heatmapState.market==='tr')return 'regular';
  let se=heatmapState.session==='auto'?auto():heatmapState.session;
  return se==='previous'?'postmarket':se;
 }
@@ -59,7 +64,7 @@ function heatmapTile(s,se,maxWeight){
  let ch=heatmapChange(s,se),preferTr=heatmapState.market==='tr',ticker=preferTr&&trTradable(s)?s.trTicker:s.ticker,key=stockKey(s);
  let cap=N(s.marketCap),capText=cap!==null?compactMoney(cap):'Cap. no disponible';
  let quote=canonicalQuote(s,preferTr),price=quote.price!==null?quoteMoney(quote.price,preferTr?'€':'\u0024',quotePrecision(s,preferTr,quote.price)):'—';
- let reason='Mapa de calor · '+SN(se)+' · '+PC(ch)+' · '+String(s.sector||'Sin sector');
+ let reason='Mapa de calor · '+(preferTr?'LSX':SN(se))+' · '+PC(ch)+' · '+String(s.sector||'Sin sector');
  let selected=heatmapState.selectedStockKey===key?' selected':'';
  return '<button type="button" class="heat-stock '+heatmapChangeClass(ch)+' '+heatmapTileSize(s,maxWeight)+selected+'"'+stockOpenAttrs(s,reason,preferTr)+' data-heat-select="'+E(key)+'" data-heat-ticker="'+E(ticker||'—')+'" data-heat-name="'+E(s.name||'')+'" data-heat-price="'+E(price)+'" data-heat-change="'+E(PC(ch))+'" data-us-heat-key="'+E(key)+'" aria-label="'+E((ticker||'Acción')+' '+price+' '+PC(ch)+' '+(s.name||''))+'">'+
   '<strong>'+E(ticker||'—')+'</strong>'+
@@ -77,6 +82,7 @@ function compactMoney(v){
 }
 function renderHeatmap(){
  let box=$('#heatmapResults'),tabs=$('#heatmapSectorTabs');if(!box)return;
+ syncHeatmapVenueControls();
  let se=heatmapSession(),limit=Math.max(25,Math.min(500,N(heatmapState.limit)||250));
  let universe=heatmapUniverse().filter(s=>heatmapChange(s,se)!==null);
  universe.sort((a,b)=>heatmapWeight(b)-heatmapWeight(a));
@@ -112,12 +118,15 @@ function renderHeatmap(){
   if(tabs)tabs.innerHTML='';
   box.innerHTML='<div class="empty-state">No hay datos suficientes para construir el mapa de calor en esta sesión.</div>';
  }
- let marketLabel=heatmapState.market==='tr'?'Trade Republic':'EEUU';
- let ses=$('#heatmapSessionText');if(ses)ses.textContent=marketLabel+' · '+SN(se)+(active?' · '+active.name:'');
+ let marketLabel=heatmapState.market==='tr'?'Trade Republic / LSX':'EEUU';
+ let ses=$('#heatmapSessionText');if(ses)ses.textContent=heatmapState.market==='tr'
+  ?marketLabel+' · sesión única'+(active?' · '+active.name:'')
+  :marketLabel+' · '+SN(se)+(active?' · '+active.name:'');
  let count=$('#heatmapCount');if(count)count.textContent=(active?active.stocks.length:0)+' visibles · '+selected.length+' analizadas';
  let upd=$('#heatmapUpdated');
  if(upd){
-  if(se==='regular'&&usLive.lastFetchAt)upd.textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(heatmapState.market==='tr')upd.textContent=trMarketOpen()?'LSX · mercado abierto':'LSX · mercado cerrado';
+  else if(se==='regular'&&usLive.lastFetchAt)upd.textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   else upd.textContent=db.meta.updatedAt?'snapshot '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';
  }
 }
@@ -181,8 +190,8 @@ function initHeatmapInteractions(){
 
  $$('[data-tab-group="heatmapMarket"] .tab').forEach(b=>b.addEventListener('click',()=>{
   heatmapState.market=b.dataset.tab==='us'?'us':'tr';
-  $$('[data-tab-group="heatmapMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
-  renderHeatmap();
+  $('[data-tab-group="heatmapMarket"] .tab').forEach(x=>x.classList.toggle('active',x===b));
+  syncHeatmapVenueControls();renderHeatmap();
  }));
  $('#heatmapSession').addEventListener('change',e=>{heatmapState.session=e.target.value;renderHeatmap()});
  $('#heatmapLimit').addEventListener('change',e=>{heatmapState.limit=N(e.target.value)||250;renderHeatmap()});

@@ -16,20 +16,12 @@ const CATALOG_COLUMNS={
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.trExchange||'LSX',cell:s=>E(s.trExchange||'LSX')},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).eur,cell:(s,se)=>trPriceCell(s,'eur',se)},
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).usd,cell:(s,se)=>trPriceCell(s,'usd',se)},
-  {id:'change',label:'%',type:'number',value:(s,se)=>trLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),true)},
+  {id:'change',label:'%',type:'number',value:s=>trLiveChange(s),cell:s=>liveChangeHtml(s,null,true)},
   {id:'bid',label:'Bid €',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveBidDirection)+'" data-tr-bid-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveBid,'€',quotePrecision(s,true))+'</span>'},
   {id:'ask',label:'Ask €',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveAskDirection)+'" data-tr-ask-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveAsk,'€',quotePrecision(s,true))+'</span>'},
-  {id:'volume',label:'Vol. actual',type:'number',value:(s,se)=>SV(s,se),cell:(s,se)=>compactVol(SV(s,se))},
-  {id:'avgVolume',label:'Vol. medio',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
-  {id:'relVolume',label:'Vol. rel.',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
-  {id:'premarketPrice',label:'Pre USD',type:'number',value:s=>N(s.premarketPrice),cell:s=>PR(s.premarketPrice)},
-  {id:'premarketChange',label:'Pre %',type:'number',value:s=>N(s.premarketChangePct),cell:s=>PC(s.premarketChangePct)},
-  {id:'premarketVolume',label:'Vol. pre',type:'number',value:s=>N(s.premarketVolume),cell:s=>compactVol(s.premarketVolume)},
-  {id:'regularPrice',label:'Regular USD',type:'number',value:s=>N(s.price),cell:s=>PR(s.price)},
-  {id:'regularChange',label:'Regular %',type:'number',value:s=>N(s.changePct),cell:s=>PC(s.changePct)},
-  {id:'postmarketPrice',label:'Post USD',type:'number',value:s=>N(s.postmarketPrice),cell:s=>PR(s.postmarketPrice)},
-  {id:'postmarketChange',label:'Post %',type:'number',value:s=>N(s.postmarketChangePct),cell:s=>PC(s.postmarketChangePct)},
-  {id:'postmarketVolume',label:'Vol. post',type:'number',value:s=>N(s.postmarketVolume),cell:s=>compactVol(s.postmarketVolume)},
+  {id:'volume',label:'Vol. EEUU',type:'number',value:(s,se)=>SV(s,se),cell:(s,se)=>compactVol(SV(s,se))},
+  {id:'avgVolume',label:'Vol. medio EEUU',type:'number',value:s=>N(s.avgVolume),cell:s=>compactVol(s.avgVolume)},
+  {id:'relVolume',label:'Vol. rel. EEUU',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
   {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
   {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
   {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
@@ -98,7 +90,11 @@ function catalogLoadOrder(mode){
 }
 function catalogSaveOrder(mode){try{localStorage.setItem(catalogStorageKey(mode),JSON.stringify(catalogState[mode].order||[]))}catch(_){}}
 function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
-function catalogSession(mode){let id=mode==='tr'?'#catalogSession':'#catalogUSSession',v=$(id)?.value||'auto';return v==='auto'?currentMarketSession():v}
+function catalogSession(mode){
+ if(mode==='tr')return 'regular';
+ let v=$('#catalogUSSession')?.value||'auto';
+ return v==='auto'?currentMarketSession():v;
+}
 function catalogFilterNumber(raw){
  raw=String(raw||'').trim().toLowerCase().replace(/\s+/g,'');
  let m=raw.match(/^(-?\d+(?:[.,]\d+)?)([kmb])?%?$/i);
@@ -165,14 +161,14 @@ function catalogMobileCell(mode,s,se,colId){
  if(!col)return{label:colId,value:'—',tone:'text'};
  let raw=col.value(s,se),html=col.cell(s,se),value='';
  if(colId==='priceEur'||colId==='priceUsd'){
-  let preferTr=mode==='tr',q=verifiedDisplayQuote(s,preferTr,se),n=N(q&&q.price),change=N(q&&q.change);
+  let preferTr=mode==='tr',q=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),n=N(q&&q.price),change=N(q&&q.change);
   let sym=q&&q.nativeCurrency==='EUR'?'€':'\u0024';
   value=quoteMoney(n,sym,quotePrecision(s,q&&q.nativeCurrency==='EUR',SP(s,se)));
   let tone=n===null?'muted':change===null?'text':change>=0?'positive':'negative';
   let source=q&&q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
   return{label:col.label,value,tone,html:'<span class="asset-price-value">'+E(value)+'</span>'+source};
  }else if(colId==='change'){
-  let q=verifiedDisplayQuote(s,mode==='tr',se),n=N(q&&q.change);value=PC(n);
+  let q=mode==='tr'?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),n=N(q&&q.change);value=PC(n);
   return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
  }else if(['week','month'].includes(colId)){
   let n=N(raw);value=PC(n);return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
