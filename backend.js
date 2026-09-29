@@ -1440,6 +1440,8 @@ function mergeEventRows(primary,extra,limit=24){
       independentSourceCount:finiteNumber(raw.independentSourceCount),
       corroborated:raw.corroborated===true,
       source:trimText(raw.source||"",120),
+      sourceFamily:trimText(raw.sourceFamily||"",40),
+      official:raw.official===true||["sec","fda","clinicaltrials"].includes(String(raw.sourceFamily||"").toLowerCase())||/official|oficial|sec \/ edgar|clinicaltrials|fda/i.test(String(raw.verification||"")),
       url:trimText(raw.url||raw.sourceUrl||"",500)
     });
     if(out.length>=limit)break;
@@ -1749,7 +1751,7 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
     const severity = impact >= 85 ? "high" : impact >= 70 ? "warning" : "info";
     const id = uid("al_");
     const source = trimText(event.source || event.verification || "", 120);
-    const title = "Noticia · " + target.ticker;
+    const title = (event.official ? "Fuente oficial · " : "Noticia · ") + target.ticker;
     const body = source ? message + " · " + source : message;
     const now = nowIso();
 
@@ -1792,7 +1794,7 @@ async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
     if(duplicate)continue;
     const impact=finiteNumber(event.impactScore)??50;
     const severity=impact>=85?"high":impact>=65?"warning":"info";
-    const id=uid("al_"),title="Evento · "+target.ticker,now=nowIso();
+    const id=uid("al_"),title=(event.official?"Evento oficial · ":"Evento · ")+target.ticker,now=nowIso();
     await env.DB.prepare(
       "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(id,target.user_id,target.stock_key,target.ticker,stock.name||target.name||"","stock-event",severity,title,body,snapshotId||null,now).run();
