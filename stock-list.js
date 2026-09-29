@@ -293,11 +293,13 @@ function homeSession(){
  let se=currentMarketSession();return['premarket','regular','postmarket'].includes(se)?se:'regular';
 }
 function homeDailyChange(s){return effectiveSessionChange(s,homeSession())}
-function homeUniverse(){
- return (db.stocks||[]).filter(s=>stockKey(s)&&market(s,'us')&&(N(s.price)!==null||usLivePrice(s)!==null));
+function homeUniverse(source='us'){
+ const rows=(db.stocks||[]).filter(s=>stockKey(s));
+ if(source==='tr')return rows.filter(s=>trTradable(s));
+ return rows.filter(s=>market(s,'us')&&(N(s.price)!==null||usLivePrice(s)!==null));
 }
 function homeUserViewedStocks(limit=10){
- let universe=homeUniverse(),ranked=universe.filter(s=>stockViewCount(s)>0).sort((a,b)=>stockViewCount(b)-stockViewCount(a)||((stockViews[stockKey(b)]?.last||0)-(stockViews[stockKey(a)]?.last||0)));
+ let universe=homeUniverse('us'),ranked=universe.filter(s=>stockViewCount(s)>0).sort((a,b)=>stockViewCount(b)-stockViewCount(a)||((stockViews[stockKey(b)]?.last||0)-(stockViews[stockKey(a)]?.last||0)));
  return ranked.slice(0,limit);
 }
 let attentionRankingRows=[],attentionRankingAt=0,attentionRankingLoading=false;
@@ -313,8 +315,8 @@ async function refreshAttentionRanking(force=false){
  finally{attentionRankingLoading=false}
 }
 async function refreshSocialTrending(force=false){return refreshAttentionRanking(force)}
-function homeActiveStocks(limit=10){
- const universe=homeUniverse(),byTicker=new Map(),byKey=new Map();
+function homeActiveStocks(limit=10,source='us'){
+ const universe=homeUniverse(source),byTicker=new Map(),byKey=new Map();
  for(const s of universe){
   byKey.set(stockKey(s),s);
   for(const t of [s.ticker,s.trTicker])if(t)byTicker.set(String(t).toUpperCase(),s);
@@ -335,13 +337,18 @@ function homeActiveStocks(limit=10){
  }
  return out.slice(0,limit);
 }
-function homeMoveStocks(desc=true,limit=10){
+function seedTradeRepublicMarketBoard(limit=100){
+ if(typeof ensureTrLiveKey!=='function')return;
+ homeActiveStocks(limit,'tr').forEach(s=>ensureTrLiveKey(stockKey(s)));
+}
+function homeMoveStocks(desc=true,limit=10,source='us'){
  let se=homeSession();
- return homeUniverse().map(s=>({s,ch:effectiveSessionChange(s,se)}))
+ if(source==='tr')seedTradeRepublicMarketBoard(Math.min(100,Math.max(50,limit*8)));
+ return homeUniverse(source).map(s=>({s,ch:source==='tr'?trLiveChange(s):effectiveSessionChange(s,se)}))
   .filter(x=>x.ch!==null&&(desc?x.ch>0:x.ch<0)).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
-function homeStockRow(s,i,kind){
- let preferTr=false,se=homeSession();
+function homeStockRow(s,i,kind,source='us'){
+ let preferTr=source==='tr',se=homeSession();
  let hint=kind==='views'?'Visto esta semana':(kind==='active'?'Atención y popularidad de mercado':kind==='gainers'?'Mayor subida de la sesión':'Mayor bajada de la sesión');
  let ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let exchange=preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU');
@@ -355,15 +362,50 @@ function homePanel(title,subtitle,stocks,kind,tone){
   '<div class="home-stock-list">'+(stocks.length?stocks.map((s,i)=>homeStockRow(s,i,kind)).join(''):'<div class="home-empty">Sin datos disponibles todavía.</div>')+'</div></section>';
 }
 let marketBoardMode='active';
-function marketBoardStocks(mode='active',limit=10){
- if(mode==='gainers')return homeMoveStocks(true,limit);
- if(mode==='losers')return homeMoveStocks(false,limit);
- return homeActiveStocks(limit);
+const marketBoardSourceByMode={active:'us',gainers:'us',losers:'us',funds:'tr',indices:'global'};
+function marketBoardSourceOptions(mode=marketBoardMode){
+ if(mode==='funds')return[{key:'tr',label:'Trade Republic'},{key:'mi',label:'MyInvestor'}];
+ if(mode==='indices')return[{key:'global',label:'Mercado global'}];
+ return[{key:'us',label:'EEUU'},{key:'tr',label:'Trade Republic / LSX'}];
+}
+function currentMarketBoardSource(){
+ const options=marketBoardSourceOptions(),allowed=new Set(options.map(x=>x.key));
+ let value=marketBoardSourceByMode[marketBoardMode]||options[0]?.key||'us';
+ if(!allowed.has(value))value=options[0]?.key||'us';
+ marketBoardSourceByMode[marketBoardMode]=value;
+ return value;
+}
+function renderMarketBoardSourceTabs(){
+ const nav=$('#marketBoardSourceTabs');if(!nav)return;
+ const source=currentMarketBoardSource(),options=marketBoardSourceOptions();
+ nav.innerHTML=options.map(item=>
+  '<button type="button" class="tab '+(item.key===source?'active':'')+'" data-market-board-source="'+E(item.key)+'" aria-pressed="'+(item.key===source?'true':'false')+'">'+E(item.label)+'</button>'
+ ).join('');
+ nav.dataset.mode=marketBoardMode;
+}
+function marketBoardStocks(mode='active',limit=10,source=currentMarketBoardSource()){
+ if(mode==='gainers')return homeMoveStocks(true,limit,source);
+ if(mode==='losers')return homeMoveStocks(false,limit,source);
+ return homeActiveStocks(limit,source);
 }
 function renderMarketQuickSheet(){
  let box=$('#marketQuickContent');if(!box)return;
  let views=homeUserViewedStocks(10);
  box.innerHTML='<section class="weekly-viewed-section">'+(views.length?views.map((s,i)=>homeStockRow(s,i,'views')).join(''):'<div class="empty-state compact">Todavía no has visitado activos esta semana.</div>')+'</section>';
+}
+function renderMarketBoardStatus(updatedAt=null){
+ const source=currentMarketBoardSource(),se=homeSession();
+ let label=SN(se)+' · EEUU · Top 10';
+ if(marketBoardMode==='funds')label=(source==='mi'?'MyInvestor':'Trade Republic')+' · Top 10';
+ else if(marketBoardMode==='indices')label='Mercado global · Top 10';
+ else if(source==='tr')label='Trade Republic / LSX · Top 10';
+ if($('#homeSession'))$('#homeSession').textContent=label;
+ const at=updatedAt||(
+  marketBoardMode==='funds'&&window.ViewInvAIFunds?.getState?.().meta?.updatedAt
+   ?window.ViewInvAIFunds.getState().meta.updatedAt
+   :db.meta.updatedAt
+ );
+ if($('#homeUpdated'))$('#homeUpdated').textContent=at?'Datos '+new Date(at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Actualizando…';
 }
 async function renderIndicesTop10(box){
  box.innerHTML='<div class="empty-state compact">Actualizando índices…</div>';
@@ -374,6 +416,7 @@ async function renderIndicesTop10(box){
   ]);
   if(!liveResp.ok)throw Error(String(liveResp.status));
   let data=await liveResp.json(),rows=Array.isArray(data.indices)?data.indices:[];
+  renderMarketBoardStatus(data.updatedAt||null);
   if(rankResp&&rankResp.ok){
    let ranking=await rankResp.json(),order=new Map((ranking.items||[]).map((x,i)=>[String(x.symbol||'').toUpperCase(),i]));
    rows=rows.slice().sort((a,b)=>(order.get(String(a.symbol||'').toUpperCase())??999)-(order.get(String(b.symbol||'').toUpperCase())??999));
@@ -388,20 +431,22 @@ async function renderIndicesTop10(box){
 }
 function renderHome(){
  let box=$('#homeGroups');if(!box)return;
+ renderMarketBoardSourceTabs();
+ const source=currentMarketBoardSource();
  if(marketBoardMode==='funds'){
   box.innerHTML='<div class="empty-state compact">Cargando Top 10 de fondos y ETFs…</div>';
-  window.ViewInvAIFunds?.renderMarketTop10?.(box,10);
+  window.ViewInvAIFunds?.renderMarketTop10?.(box,10,source);
  }else if(marketBoardMode==='indices'){
   renderIndicesTop10(box);
  }else{
-  let rows=marketBoardStocks(marketBoardMode,10);
+  let rows=marketBoardStocks(marketBoardMode,10,source);
+  if(source==='tr')rows.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
+  const waitingTr=source==='tr'&&['gainers','losers'].includes(marketBoardMode)&&!rows.length;
   box.innerHTML=rows.length
-   ?'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'active')).join('')+'</div>'
-   :'<div class="empty-state">No hay datos de mercado disponibles.</div>';
+   ?'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'active',source)).join('')+'</div>'
+   :'<div class="empty-state">'+(waitingTr?'Recopilando cotizaciones Trade Republic / LSX en directo…':'No hay datos de mercado disponibles.')+'</div>';
  }
- let se=homeSession();
- if($('#homeSession'))$('#homeSession').textContent=SN(se)+' · Top 10';
- if($('#homeUpdated'))$('#homeUpdated').textContent=db.meta.updatedAt?'Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Actualizando…';
+ renderMarketBoardStatus();
  renderMarketQuickSheet();
  if(marketBoardMode==='active')setTimeout(()=>refreshSocialTrending(false),0);
 }
@@ -428,6 +473,16 @@ function renderEntry(){
 
 window.ViewInvAIMarketBoard={refreshSocialTrending,refreshAttentionRanking,renderMarketQuickSheet};
 
+
+let homeTrBoardRerenderTimer=null;
+window.addEventListener('viewinvai:quote-updated',event=>{
+ if(!event||!event.detail||event.detail.market!=='tr')return;
+ if(state.currentView!=='home'||currentMarketBoardSource()!=='tr')return;
+ if(!['gainers','losers'].includes(marketBoardMode))return;
+ clearTimeout(homeTrBoardRerenderTimer);
+ homeTrBoardRerenderTimer=setTimeout(()=>renderHome(),350);
+});
+
 function initStockListInteractions(){
  document.addEventListener('click',e=>{
   let board=e.target.closest&&e.target.closest('[data-market-board]');
@@ -435,6 +490,13 @@ function initStockListInteractions(){
   let mode=board.dataset.marketBoard;
   marketBoardMode=mode||'active';
   document.querySelectorAll('[data-market-board]').forEach(b=>b.classList.toggle('active',b===board));
+  renderHome();
+ });
+
+ document.addEventListener('click',e=>{
+  let source=e.target.closest&&e.target.closest('[data-market-board-source]');
+  if(!source)return;
+  marketBoardSourceByMode[marketBoardMode]=source.dataset.marketBoardSource||currentMarketBoardSource();
   renderHome();
  });
 
