@@ -98,8 +98,11 @@ function renderFuture(){
   if(type!=='all'&&e.type!==type)return false;
   if(sector!=='all'&&futureSectorForEvent(e)!==sector)return false;
   let s=stockForEvent(e);if(!s)return false;
-  if(trOnly&&!trTradable(s))return false;
-  let q=canonicalQuote(s,trOnly&&trTradable(s));return N(q&&q.price)!==null;
+  if(trOnly){
+   if(!trTradable(s))return false;
+   if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s));
+  }
+  return true;
  });
  let groups=groupFutureEvents(filtered).slice(0,180),box=document.querySelector('#futureResults');
  if(!box)return;
