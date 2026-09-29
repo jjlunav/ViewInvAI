@@ -7823,3 +7823,36 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 @media(max-width:480px){
  #view-portfolios .portfolio-goal-strategy{grid-template-columns:1fr!important}
 }
+
+
+/* Shared compact card contract in leader dock and favorites */
+.leader-item.asset-card,
+.favorite-row.asset-card{
+ display:block!important;
+ grid-template-columns:none!important;
+ padding:0!important;
+ border-radius:8px!important;
+ overflow:hidden!important;
+}
+.leader-item.asset-card .asset-card-row{
+ min-height:58px!important;
+ padding:5px 6px!important;
+ grid-template-columns:minmax(0,1.25fr) minmax(0,.85fr) minmax(0,.72fr) 10px!important;
+ gap:4px!important;
+}
+.leader-item.asset-card .asset-card-copy strong{font-size:9.5px!important}
+.leader-item.asset-card .asset-card-copy small,
+.leader-item.asset-card .list-copy-isin{font-size:7px!important}
+.leader-item.asset-card .asset-card-cell>small{font-size:6.5px!important}
+.leader-item.asset-card .asset-card-cell>span{font-size:9px!important}
+.favorite-row.asset-card .asset-card-row{
+ min-height:54px!important;
+ padding:5px 6px!important;
+ grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr) minmax(0,.72fr) 10px!important;
+ gap:4px!important;
+}
+.favorite-row.asset-card .asset-card-copy strong{font-size:10px!important}
+.favorite-row.asset-card .asset-card-copy small,
+.favorite-row.asset-card .list-copy-isin{font-size:7px!important}
+.favorite-row.asset-card .asset-card-cell>small{font-size:7px!important}
+.favorite-row.asset-card .asset-card-cell>span{font-size:9px!important}
