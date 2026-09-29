@@ -312,7 +312,7 @@ function favButton(s,preferTr=null){
  let key=stockKey(s),on=favorites.has(key);
  if(preferTr!==true&&preferTr!==false)preferTr=inferProfilePreferTr(s);
  let pref=preferTr===true?'1':'0';
- let title=on?'Gestionar carteras':'Añadir a una cartera';
+ let title=on?'Gestionar seguimiento y carteras':'Seguir o añadir a cartera';
  return '<button type="button" class="fav-star'+(on?' active':'')+'" data-fav-key="'+E(key)+'" data-fav-prefer-tr="'+pref+'" title="'+title+'" aria-label="'+title+'">'+(on?'★':'☆')+'</button>';
 }
 function toggleFavorite(key,preferTr=null){
@@ -328,7 +328,7 @@ function toggleFavorite(key,preferTr=null){
   let on=favorites.has(key);
   b.classList.toggle('active',on);
   b.textContent=on?'★':'☆';
-  b.title=on?'Gestionar carteras':'Añadir a una cartera';
+  b.title=on?'Gestionar seguimiento y carteras':'Seguir o añadir a cartera';
   b.setAttribute('aria-label',b.title);
  });
  renderFavorites();
