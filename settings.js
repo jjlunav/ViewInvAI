@@ -102,16 +102,19 @@ function renderAnalysisSettings(settings=null){
   el.value=clampSetting(raw,min,max,fallback);
   el.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  }
+ const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)!==0:true;
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)!==0:true;
  const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)!==0:true;
- let newsToggle=$('#globalNotifyNewsEvents'),pulseToggle=$('#globalNotifyPulseAi');
- if(newsToggle){newsToggle.checked=newsEvents;newsToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
- if(pulseToggle){pulseToggle.checked=pulseAi;pulseToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
+ let masterToggle=$('#globalNotificationsEnabled'),newsToggle=$('#globalNotifyNewsEvents'),pulseToggle=$('#globalNotifyPulseAi');
+ if(masterToggle){masterToggle.checked=enabled;masterToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
+ if(newsToggle){newsToggle.checked=newsEvents;newsToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy||!enabled}
+ if(pulseToggle){pulseToggle.checked=pulseAi;pulseToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy||!enabled}
+ document.querySelectorAll('[data-notification-child-setting]').forEach(row=>row.classList.toggle('is-disabled',!enabled));
  let globalStatus=$('#globalNotificationSettingsStatus');
- if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para cambiar estos avisos.';
+ if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':(enabled?'Notificaciones activadas.':'Notificaciones desactivadas.')):'Inicia sesión para cambiar estos avisos.';
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={newsEvents,pulseAi};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{newsEvents,pulseAi}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi}}));
  }else{
   window.ViewInvAINotificationSettings=null;
  }
@@ -128,6 +131,7 @@ async function saveAnalysisSettings(){
   minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
   minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20),
+  notificationsEnabled:$('#globalNotificationsEnabled')?.checked!==false,
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked!==false,
   notifyPulseAi:$('#globalNotifyPulseAi')?.checked!==false
  };
@@ -220,7 +224,7 @@ function initSettings(){
 
  $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
  $('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
- ['globalNotifyNewsEvents','globalNotifyPulseAi'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotificationsEnabled','globalNotifyNewsEvents','globalNotifyPulseAi'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
