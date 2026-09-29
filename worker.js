@@ -1109,6 +1109,83 @@ async function loadNewsForBackend(stock,target){
   }
 }
 
+const backendOfficialEventCache = new Map();
+function secImpactForForm(form){
+  const f=String(form||"").toUpperCase();
+  if(["8-K","6-K","10-Q","10-K","S-1","S-3","424B5","424B3"].includes(f))return 88;
+  if(/^SC 13[DG]/.test(f)||f==="4")return 72;
+  return 68;
+}
+function secTypeForForm(form,description){
+  const f=String(form||"").toUpperCase(),d=String(description||"").toLowerCase();
+  if(f==="10-Q"||f==="10-K"||/earnings|results/.test(d))return "earnings";
+  if(/^S-|^424B/.test(f)||/offering|financing|securities/.test(d))return "financing";
+  return "regulatory";
+}
+async function loadOfficialEventsForBackend(stock,target,env){
+  const events=[],now=Date.now(),ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
+  const cikDigits=String(stock&&stock.secCik||target&&target.secCik||"").replace(/\D/g,"");
+  if(!ticker||!cikDigits)return events;
+  const userAgent=String(env&&env.SEC_USER_AGENT||"").trim();
+  if(!userAgent)return events;
+  const cik=cikDigits.padStart(10,"0").slice(-10),cacheKey="sec:"+cik,cached=backendOfficialEventCache.get(cacheKey);
+  if(cached&&now-cached.at<10*60*1000)return cached.rows;
+  try{
+    const response=await fetch("https://data.sec.gov/submissions/CIK"+cik+".json",{headers:{
+      "Accept":"application/json",
+      "Accept-Encoding":"gzip, deflate",
+      "User-Agent":userAgent
+    }});
+    if(!response.ok)throw new Error("SEC "+response.status);
+    const payload=await response.json(),recent=payload&&payload.filings&&payload.filings.recent||{};
+    const forms=Array.isArray(recent.form)?recent.form:[],dates=Array.isArray(recent.filingDate)?recent.filingDate:[],
+      accessions=Array.isArray(recent.accessionNumber)?recent.accessionNumber:[],primaryDocs=Array.isArray(recent.primaryDocument)?recent.primaryDocument:[],
+      descriptions=Array.isArray(recent.primaryDocDescription)?recent.primaryDocDescription:[];
+    const acceptedForms=/^(8-K|6-K|10-Q|10-K|S-1|S-3|424B3|424B5|SC 13D|SC 13G|4)$/;
+    for(let i=0;i<Math.min(forms.length,80);i++){
+      const form=String(forms[i]||"").toUpperCase();
+      if(!acceptedForms.test(form))continue;
+      const filed=new Date(String(dates[i]||"")+"T12:00:00Z");
+      if(!Number.isFinite(filed.getTime())||now-filed.getTime()>8*86400000||filed.getTime()>now+86400000)continue;
+      const accession=String(accessions[i]||"").trim(),doc=String(primaryDocs[i]||"").trim(),description=String(descriptions[i]||"").trim();
+      const accessionCompact=accession.replace(/-/g,"");
+      const cikPlain=String(Number(cik));
+      const url=accessionCompact&&doc?"https://www.sec.gov/Archives/edgar/data/"+cikPlain+"/"+accessionCompact+"/"+encodeURIComponent(doc):"https://www.sec.gov/edgar/browse/?CIK="+cikPlain;
+      const title="SEC "+form+(description?" · "+description:"");
+      events.push({
+        id:"sec:"+cik+":"+accession,
+        eventKind:"news",
+        type:secTypeForForm(form,description),
+        ticker,
+        name:String(stock&&stock.name||target&&target.name||payload&&payload.name||""),
+        exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+        date:filed.toISOString(),
+        title:title.slice(0,240),
+        fact:"Presentación oficial "+form+" registrada en SEC/EDGAR.",
+        impact:"",
+        impactScore:secImpactForForm(form),
+        verification:"Documento oficial SEC / EDGAR",
+        source:"SEC EDGAR",
+        sourceFamily:"sec",
+        official:true,
+        sourceCount:1,
+        independentSourceCount:0,
+        corroborated:false,
+        url
+      });
+    }
+    backendOfficialEventCache.set(cacheKey,{at:now,rows:events});
+    if(backendOfficialEventCache.size>500){
+      for(const [key,value] of backendOfficialEventCache)if(!value||now-value.at>60*60*1000)backendOfficialEventCache.delete(key);
+    }
+    return events;
+  }catch(error){
+    console.warn("Followed-stock official events unavailable",ticker,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
+
 
 let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
 async function socialTrendingResponse(){
@@ -1347,7 +1424,8 @@ export default {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
-        loadNews: loadNewsForBackend
+        loadNews: loadNewsForBackend,
+        loadOfficialEvents: (stock,target) => loadOfficialEventsForBackend(stock,target,env)
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -1402,7 +1480,8 @@ export default {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
-        loadNews: loadNewsForBackend
+        loadNews: loadNewsForBackend,
+        loadOfficialEvents: (stock,target) => loadOfficialEventsForBackend(stock,target,env)
       }),
       refreshAttentionRankings(env)
     ]).then(results=>{
