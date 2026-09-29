@@ -1034,6 +1034,79 @@ async function loadChartForBackend(stock, target) {
   return fetchNasdaqChart(ticker);
 }
 
+const backendNewsCache = new Map();
+function backendNewsImpact(title){
+  const text=String(title||"").toLowerCase();
+  if(/bankrupt|chapter 11|fraud|investigation|sec charges|delist|clinical hold|complete response|recall/.test(text))return 90;
+  if(/earnings|guidance|acquisition|merger|fda|approval|contract|offering|financing|dividend|buyback|ceo|cfo/.test(text))return 78;
+  if(/results|partnership|launch|trial|patent|regulatory|forecast|outlook/.test(text))return 68;
+  return 60;
+}
+function backendNewsType(title){
+  const text=String(title||"").toLowerCase();
+  if(/earnings|revenue|eps|guidance|results/.test(text))return "earnings";
+  if(/offering|financing|debt|capital raise|convertible/.test(text))return "financing";
+  if(/fda|regulat|sec |lawsuit|investigation|patent/.test(text))return "regulatory";
+  if(/acquisition|merger|contract|partnership|launch/.test(text))return "corporate";
+  return "news";
+}
+async function loadNewsForBackend(stock,target){
+  const ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
+  const symbol=String(stock&&stock.tvSymbol||((stock&&stock.exchange||target&&target.exchange||"")+":"+ticker)).trim().toUpperCase();
+  if(!ticker||!symbol)return[];
+  const cacheKey=symbol,now=Date.now(),cached=backendNewsCache.get(cacheKey);
+  if(cached&&now-cached.at<5*60*1000)return cached.rows;
+  try{
+    const url=new URL("https://news-headlines.tradingview.com/v2/headlines");
+    url.searchParams.set("client","web");
+    url.searchParams.set("lang","en");
+    url.searchParams.set("symbol",symbol);
+    const response=await fetch(url.toString(),{headers:{
+      "Accept":"application/json, text/plain, */*",
+      "User-Agent":"Mozilla/5.0",
+      "Referer":"https://www.tradingview.com/"
+    }});
+    if(!response.ok)throw new Error("TradingView news "+response.status);
+    const payload=await response.json();
+    const rows=(Array.isArray(payload&&payload.items)?payload.items:[]).slice(0,12).map(item=>{
+      const published=new Date(item&&item.published||0);
+      if(!Number.isFinite(published.getTime()))return null;
+      const title=String(item&&item.title||"").trim();
+      if(!title)return null;
+      let link=String(item&&item.link||"").trim();
+      if(!link&&item&&item.storyPath)link="https://www.tradingview.com"+String(item.storyPath);
+      const provider=String(item&&item.provider&&item.provider.name||item&&item.source||"TradingView Headlines").trim();
+      return{
+        id:String(item&&item.id||("tvnews:"+ticker+":"+published.getTime()+":"+title.slice(0,48))),
+        eventKind:"news",
+        type:backendNewsType(title),
+        ticker,
+        name:String(stock&&stock.name||target&&target.name||""),
+        exchange:String(stock&&stock.exchange||target&&target.exchange||""),
+        date:published.toISOString(),
+        title,
+        fact:title,
+        impact:"",
+        impactScore:backendNewsImpact(title),
+        verification:"TradingView headline for followed symbol",
+        source:provider||"TradingView Headlines",
+        sourceCount:1,
+        independentSourceCount:0,
+        corroborated:false,
+        url:link
+      };
+    }).filter(Boolean);
+    backendNewsCache.set(cacheKey,{at:now,rows});
+    if(backendNewsCache.size>500){
+      for(const [key,value] of backendNewsCache)if(!value||now-value.at>20*60*1000)backendNewsCache.delete(key);
+    }
+    return rows;
+  }catch(error){
+    console.warn("Followed-stock news unavailable",symbol,String(error&&error.message||error));
+    return cached&&cached.rows||[];
+  }
+}
+
 
 let publicMarketCache={social:{at:0,value:null},indices:{at:0,value:null}};
 async function socialTrendingResponse(){
@@ -1271,7 +1344,8 @@ export default {
       return nativeCorsResponse(request, await handleBackendApi(request, env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
-        loadChart: loadChartForBackend
+        loadChart: loadChartForBackend,
+        loadNews: loadNewsForBackend
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -1325,7 +1399,8 @@ export default {
       runScheduledPortfolioAnalysis(env, {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
-        loadChart: loadChartForBackend
+        loadChart: loadChartForBackend,
+        loadNews: loadNewsForBackend
       }),
       refreshAttentionRankings(env)
     ]).then(results=>{
