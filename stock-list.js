@@ -103,11 +103,32 @@ function stockMobileList(rows,se,preferTr=false,scope='entry'){
  return '<div class="stock-mobile-rows unified-asset-list">'+rows.map((s,i)=>stockMobileRow(s,i,se,preferTr,scope)).join('')+'</div>';
 }
 
+function sessionQuoteTimestamp(value,now=Date.now()){
+ if(value===null||value===undefined||value==='')return null;
+ let timestamp=null;
+ if(typeof value==='number'||(typeof value==='string'&&/^\d+(?:\.\d+)?$/.test(value.trim()))){
+  const number=Number(value);timestamp=number<1e12?number*1000:number;
+ }else if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)){
+  timestamp=Date.parse(value);
+ }
+ return Number.isFinite(timestamp)&&timestamp>0&&timestamp<=now+60000?timestamp:null;
+}
+function selectExtendedSessionQuote(s,se=currentMarketSession(),now=Date.now()){
+ const quotes=['premarket','postmarket'].map(kind=>({
+  kind,price:N(s[kind+'Price']),change:N(s[kind+'ChangePct']),at:sessionQuoteTimestamp(s[kind+'Time'],now)
+ })).filter(q=>q.price!==null&&q.price>0);
+ if(se==='premarket'||se==='postmarket')return quotes.find(q=>q.kind===se)||null;
+ if(quotes.length<2)return quotes[0]||null;
+ if(quotes.some(q=>q.at===null)||quotes[0].at===quotes[1].at)return null;
+ return quotes.reduce((latest,q)=>q.at>latest.at?q:latest);
+}
 function extendedSessionDisplay(s,se=currentMarketSession()){
- const usePost=se==='postmarket'||se==='previous',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun',price=N(usePost?s.postmarketPrice:s.premarketPrice);
- const regular=N(s.price),delta=price!==null&&regular!==null?price-regular:null;
- const change=price!==null&&regular>0?(price/regular-1)*100:null;
- return{icon,iconClass,price,regular,delta,change,tone:change===null?'muted':C(change),kind:usePost?'postmarket':'premarket'};
+ const quote=selectExtendedSessionQuote(s,se),regular=N(s.price);
+ if(!quote)return{icon:'',iconClass:'',price:null,regular,delta:null,change:null,tone:'muted',kind:null,at:null};
+ const usePost=quote.kind==='postmarket',icon=usePost?'☾︎':'☀︎',iconClass=usePost?'session-icon-moon':'session-icon-sun';
+ const price=quote.price,delta=price!==null&&regular!==null?price-regular:null;
+ const change=quote.change!==null?quote.change:(price!==null&&regular>0?(price/regular-1)*100:null);
+ return{icon,iconClass,price,regular,delta,change,tone:change===null?'muted':C(change),kind:quote.kind,at:quote.at};
 }
 function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){

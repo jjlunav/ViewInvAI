@@ -18,6 +18,7 @@ on:
       - "asset-card.js"
       - "asset-card.css"
       - "scripts/smoke_asset_cards.js"
+      - "scripts/test-session-quotes.mjs"
       - "recommendation.js"
       - "help.js"
       - "bootstrap.js"
@@ -74,6 +75,7 @@ jobs:
           node --check heatmap.js
           node --check events.js
           node --check stock-list.js
+          node scripts/test-session-quotes.mjs
           node --check asset-card.js
           node --check recommendation.js
           node --check help.js
@@ -188,7 +190,7 @@ jobs:
               ".event-mobile-groups", ".catalog-mobile-groups", ".fund-mobile-groups",
               "'homeGroups'", "'entryResults'", "'recommendationResults'", "'portfolioApp'",
               "'fundPortfolioApp'", "'fundsApp'", "'futureResults'", "'calendarResults'",
-              "'catalogResults'", "'catalogUSResults'"
+              "'catalogResults'", "'catalogUSResults'", "'stockQuickDetail'", ".profile-tabs", "details.profile-disclosure"
           )
           missing_continuity = [item for item in required_continuity if item not in interactions]
           if missing_continuity:
@@ -296,6 +298,8 @@ jobs:
               raise SystemExit("Las listas compactas no separan LSX exacto de la cotización EEUU")
           if "if(preferTr)return '';" not in stock_list:
               raise SystemExit("Las tarjetas TR pueden volver a mostrar pre/post de EEUU")
+          if "function selectExtendedSessionQuote" not in stock_list or "sessionQuoteTimestamp" not in stock_list:
+              raise SystemExit("Las sesiones PRE/POST pueden volver a elegirse sin cronologia verificable")
           if "displayQuote&&displayQuote.price" not in stock_list:
               raise SystemExit("Radar puede volver a mostrar filas sin precio verificable")
           if "getDisplayQuote" not in bootstrap:

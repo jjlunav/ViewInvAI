@@ -133,18 +133,21 @@ let stockViewContinuityInitialized=false;
 function initStockViewContinuity(){
  if(stockViewContinuityInitialized||typeof MutationObserver!=='function')return;
  stockViewContinuityInitialized=true;
- const detailsSelector='details.asset-card-details,details.stock-card-details,details.reco-disclosure,details.reco-mobile-detail,details.portfolio-position-more,details.catalog-mobile-filters';
- const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups,.event-mobile-groups,.catalog-mobile-groups,.fund-mobile-groups';
+ const detailsSelector='details.asset-card-details,details.stock-card-details,details.reco-disclosure,details.reco-mobile-detail,details.portfolio-position-more,details.catalog-mobile-filters,details.profile-disclosure';
+ const scrollSelector='.stock-mobile-groups,.portfolio-tabs-track,.reco-mobile-groups,.event-mobile-groups,.catalog-mobile-groups,.fund-mobile-groups,.profile-tabs';
  const controlSelector='summary,button,a,input,select,textarea,[tabindex]';
- const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','fundPortfolioApp','fundsApp','futureResults','calendarResults','catalogResults','catalogUSResults']
+ const hosts=['homeGroups','entryResults','recommendationResults','portfolioApp','fundPortfolioApp','fundsApp','futureResults','calendarResults','catalogResults','catalogUSResults','stockQuickDetail']
   .map(id=>document.getElementById(id)).filter(Boolean);
  const focusByHost=new WeakMap(),scrollByElement=new WeakMap();
  const elements=(node,selector)=>node.nodeType===1
   ?[...(node.matches(selector)?[node]:[]),...node.querySelectorAll(selector)]:[];
- function accountKey(){
+ function continuityScope(host){
   try{
    const user=window.ViewInvAIAuth?.getUser?.();
-   return String(user?.uid??user?.id??'');
+   const account=String(user?.uid??user?.id??'');
+   const portfolio=host.id==='portfolioApp'?window.ViewInvAIPortfolios?.getState?.():null;
+   const profile=host.id==='stockQuickDetail'&&typeof state==='object'?state:null;
+   return JSON.stringify([account,portfolio?.selectedPortfolioId??null,profile?.profileKey??null,profile?.profilePreferTr??null]);
   }catch(_){return '';}
  }
  function cardKey(el){
@@ -169,6 +172,9 @@ function initStockViewContinuity(){
    const index=[...card.querySelectorAll(detailsSelector)].indexOf(el);
    return JSON.stringify(['card',key,el.dataset.uiStateKey||el.className,index]);
   }
+  if(el.matches('details.profile-disclosure')){
+   return JSON.stringify(['profile',el.dataset.uiStateKey||el.className,el.querySelector('summary')?.textContent.trim()||'']);
+  }
   const host=hosts.find(item=>item.contains(el));
   if(!host)return '';
   const index=[...host.querySelectorAll(detailsSelector)].indexOf(el);
@@ -191,16 +197,27 @@ function initStockViewContinuity(){
   hosts.forEach(host=>focusByHost.set(host,host.contains(event.target)?event.target:null));
  });
  hosts.forEach(host=>{
-  let owner=accountKey();
+  let owner=continuityScope(host);
+  host.addEventListener('focusout',event=>{
+   const previous=event.target;
+   queueMicrotask(()=>{
+    if(previous.isConnected&&focusByHost.get(host)===previous&&document.activeElement!==previous)focusByHost.set(host,null);
+   });
+  });
   host.addEventListener('scroll',event=>{
    if(event.target.matches?.(scrollSelector))scrollByElement.set(event.target,event.target.scrollLeft);
   },true);
   new MutationObserver(records=>{
-   const currentOwner=accountKey();
-   if(currentOwner!==owner){owner=currentOwner;focusByHost.set(host,null);return;}
-   const removed=records.flatMap(record=>[...record.removedNodes]);
+   const currentOwner=continuityScope(host);
+   if(currentOwner!==owner){
+    owner=currentOwner;focusByHost.set(host,null);
+    if(host.id==='stockQuickDetail')delete host.dataset.profileTab;
+    return;
+   }
+   const removed=records.flatMap(record=>[...record.removedNodes]).filter(node=>!node.isConnected);
    if(!removed.length)return;
    const openByKey=new Map(),leftByKey=new Map();
+   let activeProfileTab=null;
    for(const node of removed){
     for(const details of elements(node,detailsSelector)){
      const key=detailKey(details);
@@ -210,11 +227,30 @@ function initStockViewContinuity(){
      const key=scrollKey(scroller);
      if(!leftByKey.has(key))leftByKey.set(key,scrollByElement.get(scroller)??scroller.scrollLeft);
     }
+    if(host.id==='stockQuickDetail'&&!activeProfileTab){
+     activeProfileTab=elements(node,'[data-profile-tab][aria-selected="true"]')[0]?.dataset.profileTab||null;
+    }
    }
    if(openByKey.size)host.querySelectorAll(detailsSelector).forEach(details=>{
     const key=detailKey(details);
     if(openByKey.has(key))details.open=openByKey.get(key);
    });
+   if(activeProfileTab&&host.querySelector('[data-profile-panel="'+CSS.escape(activeProfileTab)+'"]')){
+    host.dataset.profileTab=activeProfileTab;
+    host.querySelectorAll('[data-profile-tab]').forEach(button=>{
+     const active=button.dataset.profileTab===activeProfileTab;
+     button.classList.toggle('active',active);button.setAttribute('aria-selected',active?'true':'false');
+    });
+    host.querySelectorAll('[data-profile-panel]').forEach(panel=>{
+     const active=panel.dataset.profilePanel===activeProfileTab||(activeProfileTab==='general'&&panel.dataset.profilePanel==='general-extra');
+     panel.hidden=!active;panel.classList.toggle('active',active);
+    });
+    if(['chart','ai'].includes(activeProfileTab)&&typeof stockByKey==='function'&&typeof activateProfileTabData==='function'){
+     const stock=stockByKey(state.profileKey);
+     if(stock)activateProfileTabData(host,stock,state.profilePreferTr===true,activeProfileTab);
+    }
+    window.ViewInvAINativeUI?.syncLayout?.();
+   }
    if(leftByKey.size)host.querySelectorAll(scrollSelector).forEach(scroller=>{
     const left=leftByKey.get(scrollKey(scroller));
     if(left!==undefined){scroller.scrollLeft=left;scrollByElement.set(scroller,left);}
