@@ -1,0 +1,8 @@
+# Security-sensitive project surfaces
+/.github/workflows/ @jjlunav
+/.github/dependabot.yml @jjlunav
+/.gitignore @jjlunav
+/.assetsignore @jjlunav
+/wrangler.jsonc @jjlunav
+/firebase/ @jjlunav
+/SECURITY.md @jjlunav
