@@ -21,7 +21,7 @@
   {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns'};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null};
  const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
 
  function q(s){return document.querySelector(s)}
@@ -289,39 +289,63 @@
   ['perf1Y','1A'],['perf3Y','3A'],['perf5Y','5A'],['perf10Y','10A'],['perfSinceInception','Hist.'],
   ['ter','TER'],['index','Índice'],['provider','Gestora'],['distribution','Clase'],['region','Región']
  ];
+ const FUND_PREF_SCOPE='catalog:funds';
+ const FUND_DEFAULT_WIDTHS={name:340,platform:170,current:118,freshness:130,perf1M:76,perf3M:76,perf6M:76,perfYtd:76,perf1Y:76,perf3Y:76,perf5Y:76,perf10Y:76,perfSinceInception:82,ter:74,index:210,provider:150,distribution:120,region:120};
+ function fundDefaultOrder(){return FUND_COLUMNS.map(([key])=>key)}
+ function fundDefaultWidths(){return Object.fromEntries(FUND_COLUMNS.map(([key])=>[key,FUND_DEFAULT_WIDTHS[key]||110]))}
+ function applyFundLayout(prefs){
+  const ids=fundDefaultOrder(),input=prefs&&typeof prefs==='object'?prefs:{};
+  const saved=Array.isArray(input.order)?input.order.filter(id=>ids.includes(id)):[];
+  state.columnOrder=[...saved,...ids.filter(id=>!saved.includes(id))];
+  state.columnWidths=fundDefaultWidths();
+  const widths=input.widths&&typeof input.widths==='object'?input.widths:{};
+  for(const id of ids){const n=Number(widths[id]);if(Number.isFinite(n))state.columnWidths[id]=Math.max(54,Math.min(620,Math.round(n)))}
+ }
+ function fundLayout(){
+  if(!state.columnOrder||!state.columnWidths)applyFundLayout(root.ViewInvAIUiPreferences?.get?.(FUND_PREF_SCOPE,{})||{});
+  return{order:[...state.columnOrder],widths:{...state.columnWidths}};
+ }
+ function fundColumns(){
+  const map=new Map(FUND_COLUMNS),layout=fundLayout();
+  return layout.order.map(key=>[key,map.get(key)]).filter(([,label])=>label);
+ }
+ function saveFundLayout(){root.ViewInvAIUiPreferences?.save?.(FUND_PREF_SCOPE,fundLayout())}
  function sortHeader(key,label){
   const active=state.sort===key;
   const arrow=active?(state.sortDir==='asc'?'↑':'↓'):'↕';
   const aria=active?(state.sortDir==='asc'?'ascending':'descending'):'none';
-  return '<th scope="col" aria-sort="'+aria+'" data-fund-column="'+esc(key)+'"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button></th>';
+  return '<th scope="col" aria-sort="'+aria+'" draggable="true" data-fund-column="'+esc(key)+'"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button><button type="button" class="fund-column-resizer" data-fund-resize="'+esc(key)+'" aria-label="Cambiar ancho de '+esc(label)+'" title="Arrastra para cambiar el ancho"></button></th>';
  }
  function performanceCell(p,key){
   const v=num(p[key]);
   return '<td class="fund-table-number '+(v===null?'muted':v>=0?'positive':'negative')+'">'+pct(v)+'</td>';
  }
- function fundTableRow(p){
-  const current=fundCurrentValue(p);
+ function fundColumnCell(p,key){
+  const current=fundCurrentValue(p),kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO';
+  if(key==='name')return '<td class="fund-table-fund"><div class="fund-table-fund-main"><span class="fund-kind">'+kind+'</span><strong title="'+esc(p.name||p.isin)+'">'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></div></td>';
+  if(key==='platform')return '<td class="fund-table-platforms"><div class="fund-platforms">'+platformLabel(p)+'</div></td>';
+  if(key==='current')return '<td class="fund-table-value"><strong data-fund-current-value>'+money(current,p.currency)+'</strong></td>';
+  if(key==='freshness')return '<td class="fund-table-freshness">'+freshnessHtml(p)+'</td>';
+  if(PERIODS.some(([,period])=>period===key))return performanceCell(p,key);
+  if(key==='ter')return '<td class="fund-table-number">'+(num(p.ter)===null?'—':esc(num(p.ter).toLocaleString('es-ES',{maximumFractionDigits:3})+'%'))+'</td>';
+  if(key==='index')return '<td class="fund-table-text" title="'+esc(p.index||p.category||'')+'">'+esc(p.index||p.category||'—')+'</td>';
+  if(key==='provider')return '<td class="fund-table-text" title="'+esc(p.provider||'')+'">'+esc(p.provider||'—')+'</td>';
+  if(key==='distribution')return '<td class="fund-table-text">'+esc(p.distribution||'—')+'</td>';
+  if(key==='region')return '<td class="fund-table-text">'+esc(p.region||'—')+'</td>';
+  return '<td>—</td>';
+ }
+ function fundTableRow(p,columns){
   const liveAttr=p.type==='etf'&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
-  const kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO';
-  return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+
-   '<td class="fund-table-fund"><div class="fund-table-fund-main"><span class="fund-kind">'+kind+'</span><strong>'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></div></td>'+
-   '<td class="fund-table-platforms"><div class="fund-platforms">'+platformLabel(p)+'</div></td>'+
-   '<td class="fund-table-value"><strong data-fund-current-value>'+money(current,p.currency)+'</strong></td>'+
-   '<td class="fund-table-freshness">'+freshnessHtml(p)+'</td>'+
-   PERIODS.map(([,key])=>performanceCell(p,key)).join('')+
-   '<td class="fund-table-number">'+(num(p.ter)===null?'—':esc(num(p.ter).toLocaleString('es-ES',{maximumFractionDigits:3})+'%'))+'</td>'+
-   '<td class="fund-table-text" title="'+esc(p.index||p.category||'')+'">'+esc(p.index||p.category||'—')+'</td>'+
-   '<td class="fund-table-text" title="'+esc(p.provider||'')+'">'+esc(p.provider||'—')+'</td>'+
-   '<td class="fund-table-text">'+esc(p.distribution||'—')+'</td>'+
-   '<td class="fund-table-text">'+esc(p.region||'—')+'</td>'+
-   '<td class="fund-table-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td>'+
-  '</tr>';
+  return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+
+   '<td class="fund-table-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td></tr>';
  }
  function fundTable(rows){
+  const columns=fundColumns(),layout=fundLayout();
+  const colgroup='<colgroup>'+columns.map(([key])=>'<col data-fund-col-width="'+esc(key)+'" style="width:'+Math.round(layout.widths[key]||110)+'px">').join('')+'<col style="width:170px"></colgroup>';
   return '<div class="fund-table-scroll" role="region" aria-label="Comparador de fondos indexados y ETFs" tabindex="0">'+
-   '<table class="fund-table"><thead><tr>'+FUND_COLUMNS.map(([key,label])=>sortHeader(key,label)).join('')+'<th scope="col" class="fund-actions-head">Acciones</th></tr></thead>'+
-   '<tbody>'+rows.map(fundTableRow).join('')+'</tbody></table></div>'+
-   '<div class="fund-table-swipe-hint">Desliza horizontalmente para ver todas las columnas · Pulsa una cabecera para ordenar</div>';
+   '<table class="fund-table fund-resizable-table">'+colgroup+'<thead><tr>'+columns.map(([key,label])=>sortHeader(key,label)).join('')+'<th scope="col" class="fund-actions-head">Acciones</th></tr></thead>'+
+   '<tbody>'+rows.map(p=>fundTableRow(p,columns)).join('')+'</tbody></table></div>'+
+   '<div class="fund-table-swipe-hint">Arrastra cabeceras para reordenar · arrastra su borde derecho para cambiar el ancho · los cambios se guardan en tu cuenta</div>';
  }
  function mobileSortHead(key,label){
   const active=state.sort===key;
@@ -816,6 +840,33 @@
     const r=await api('/api/fund-positions/'+encodeURIComponent(id),{method:'DELETE'});if(r.ok)await loadPortfolio(true);return;
    }
   });
+  let draggedFundColumn=null,fundResize=null;
+  document.addEventListener('dragstart',e=>{
+   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer'))return;
+   draggedFundColumn=th.dataset.fundColumn;th.classList.add('dragging');
+   if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedFundColumn)}
+  });
+  document.addEventListener('dragend',()=>{document.querySelectorAll('.fund-table th.dragging,.fund-table th.drag-over').forEach(x=>x.classList.remove('dragging','drag-over'));draggedFundColumn=null});
+  document.addEventListener('dragover',e=>{const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||!draggedFundColumn)return;e.preventDefault();th.classList.add('drag-over')});
+  document.addEventListener('dragleave',e=>{e.target.closest&&e.target.closest('.fund-table th[data-fund-column]')?.classList.remove('drag-over')});
+  document.addEventListener('drop',e=>{
+   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||!draggedFundColumn)return;e.preventDefault();
+   const order=[...fundLayout().order],from=order.indexOf(draggedFundColumn),to=order.indexOf(th.dataset.fundColumn);if(from<0||to<0||from===to)return;
+   order.splice(from,1);order.splice(to,0,draggedFundColumn);state.columnOrder=order;saveFundLayout();render();
+  });
+  document.addEventListener('pointerdown',e=>{
+   const handle=e.target.closest&&e.target.closest('.fund-column-resizer');if(!handle)return;
+   e.preventDefault();e.stopPropagation();const key=handle.dataset.fundResize,th=handle.closest('th');if(!key||!th)return;
+   fundResize={key,startX:e.clientX,startWidth:th.getBoundingClientRect().width};handle.setPointerCapture?.(e.pointerId);document.body.classList.add('column-resizing');
+  });
+  document.addEventListener('pointermove',e=>{
+   if(!fundResize)return;const next=Math.max(54,Math.min(620,Math.round(fundResize.startWidth+e.clientX-fundResize.startX)));
+   fundLayout();state.columnWidths[fundResize.key]=next;const col=document.querySelector('.fund-table col[data-fund-col-width="'+fundResize.key+'"]');if(col)col.style.width=next+'px';
+  });
+  document.addEventListener('pointerup',()=>{if(!fundResize)return;fundResize=null;document.body.classList.remove('column-resizing');saveFundLayout()});
+  root.ViewInvAIUiPreferences?.load?.(FUND_PREF_SCOPE,fundLayout()).then(prefs=>{applyFundLayout(prefs);if(state.loaded)render()}).catch(()=>{});
+  root.addEventListener('viewinvai:ui-preferences',event=>{if(event.detail&&event.detail.scope===FUND_PREF_SCOPE){applyFundLayout(event.detail.preferences||{});if(state.loaded)render()}});
+
   q('.portfolio-asset-switch')?.addEventListener('keydown',e=>{
    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
    const tabs=[...document.querySelectorAll('[data-portfolio-asset]')],current=tabs.indexOf(document.activeElement);if(current<0)return;

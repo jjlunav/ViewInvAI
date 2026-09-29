@@ -7624,3 +7624,54 @@ html[data-theme="light"] .tr-native-axis{
  #view-heatmap>.page-heading h1{font-size:16px!important}
  #view-heatmap>.page-heading .lead{display:none!important}
 }
+
+
+/* 2026-09-29 · User-configurable catalog columns */
+.catalog-table-wrap,.fund-table-scroll{overflow:auto!important}
+.catalog-resizable-table,.fund-resizable-table{
+ table-layout:fixed!important;
+ width:max-content!important;
+ min-width:100%!important;
+}
+.catalog-resizable-table th[data-catalog-col],
+.fund-resizable-table th[data-fund-column]{position:relative!important}
+.catalog-column-resizer,.fund-column-resizer{
+ position:absolute;
+ z-index:5;
+ top:0;
+ right:-4px;
+ width:8px;
+ height:100%;
+ padding:0!important;
+ margin:0!important;
+ border:0!important;
+ border-radius:0!important;
+ background:transparent!important;
+ cursor:col-resize;
+ touch-action:none;
+}
+.catalog-column-resizer:hover,.fund-column-resizer:hover,
+body.column-resizing .catalog-column-resizer,
+body.column-resizing .fund-column-resizer{background:rgba(95,220,185,.28)!important}
+body.column-resizing{cursor:col-resize!important;user-select:none!important}
+.catalog-table th.drag-over,.fund-table th.drag-over{box-shadow:inset 3px 0 0 var(--accent)}
+.catalog-table th.dragging,.fund-table th.dragging{opacity:.55}
+.catalog-resizable-table td,
+.catalog-resizable-table th,
+.fund-resizable-table td,
+.fund-resizable-table th{overflow:hidden;text-overflow:ellipsis}
+.catalog-name-cell{
+ display:block;
+ width:100%;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+}
+.fund-table-fund-main{min-width:0!important}
+.fund-table-fund-main>strong{
+ display:block;
+ overflow:hidden;
+ white-space:nowrap;
+ text-overflow:ellipsis;
+}
+.catalog-table td[data-col="name"]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
