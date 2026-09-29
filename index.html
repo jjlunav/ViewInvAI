@@ -15,7 +15,7 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260929r23">
+  <link rel="stylesheet" href="styles.css?v=20260929r24">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
@@ -489,6 +489,23 @@
           </div>
         </article>
 
+        <article class="settings-card source-health-settings-card">
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">DATOS Y SERVICIOS</span>
+              <h2>Estado de fuentes</h2>
+              <p>Comprueba qué integraciones están preparadas. Este panel no muestra credenciales ni sustituye una prueba de disponibilidad en tiempo real.</p>
+            </div>
+            <span id="sourceStatusCadence" class="settings-status">Comprobando…</span>
+          </div>
+          <div class="settings-status-row"><span><strong>Trade Republic / LSX</strong><small>Universo y cotización del mercado configurado para TR.</small></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>Nasdaq / EEUU</strong><small>Cotización, BID/ASK y sesiones estadounidenses.</small></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>SEC / EDGAR</strong><small>Filings oficiales directos para activos seguidos.</small></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>ClinicalTrials.gov</strong><small>Ensayos y fechas clínicas oficiales para valores sanitarios.</small></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>FDA / openFDA</strong><small>Registros regulatorios; la API key es opcional y mejora los límites de uso.</small></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>Firebase push</strong><small>Canal de entrega de notificaciones Android.</small></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
+        </article>
+
         <article class="settings-card account-analysis-settings-card">
           <div class="settings-card-head">
             <div>
@@ -620,7 +637,7 @@
 <script src="market-session.js?v=20260925r1"></script>
 <script src="score-engine.js?v=20260925r3"></script>
 <script src="app.js?v=20260929r5"></script>
-<script src="settings.js?v=20260929r2"></script>
+<script src="settings.js?v=20260929r9"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20260929r2"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
