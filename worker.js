@@ -1023,6 +1023,13 @@ async function loadMarketSnapshotForBackend(env) {
   return data;
 }
 
+async function loadQuoteForBackend(stock,target){
+  if(target&&Number(target.prefer_tr)===1)return null;
+  const ticker=safeStockSymbol(stock&&stock.ticker||target&&target.ticker||"");
+  if(!ticker)return null;
+  return fetchNasdaqQuote(ticker);
+}
+
 async function loadChartForBackend(stock, target) {
   const preferTr = target && Number(target.prefer_tr) === 1;
   const isin = String((target && target.isin) || (stock && stock.trIsin) || (stock && stock.isin) || "").trim().toUpperCase();
@@ -1635,6 +1642,7 @@ export default {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
+        loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
       }));
@@ -1701,6 +1709,7 @@ export default {
         jsonResponse,
         loadMarketSnapshot: loadMarketSnapshotForBackend,
         loadChart: loadChartForBackend,
+        loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
       })
