@@ -683,10 +683,21 @@ function watchPayload(body) {
 
 async function handleMe(request, env, user, json) {
   if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
-  const settings = await env.DB.prepare(
+  const analysis = await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
   ).bind(user.id).first();
-  return json({ user, settings: settings || null }, 200, { "Cache-Control": "no-store" });
+  const notifications = await globalNotificationSettingsForUser(env, user.id);
+  const settings = Object.assign({
+    analysis_positions_minutes: 10,
+    analysis_watchlist_minutes: 30,
+    min_buy_confidence: 85,
+    min_sell_confidence: 80,
+    notify_score_change: 20
+  }, analysis || {}, {
+    notify_news_events: notifications.newsEvents ? 1 : 0,
+    notify_pulse_ai: notifications.pulseAi ? 1 : 0
+  });
+  return json({ user, settings }, 200, { "Cache-Control": "no-store" });
 }
 
 async function handlePortfolios(request, env, user, json, parts) {
@@ -1570,6 +1581,28 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
   }
 }
 
+let globalNotificationSettingsSchemaReady=false;
+async function ensureGlobalNotificationSettingsSchema(env){
+  if(globalNotificationSettingsSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS user_notification_settings ("+
+    "user_id TEXT PRIMARY KEY,news_events_enabled INTEGER NOT NULL DEFAULT 1,pulse_ai_enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  globalNotificationSettingsSchemaReady=true;
+}
+
+async function globalNotificationSettingsForUser(env,userId){
+  await ensureGlobalNotificationSettingsSchema(env);
+  const row=await env.DB.prepare(
+    "SELECT news_events_enabled,pulse_ai_enabled FROM user_notification_settings WHERE user_id=?"
+  ).bind(userId).first();
+  return {
+    newsEvents: row ? Number(row.news_events_enabled)!==0 : true,
+    pulseAi: row ? Number(row.pulse_ai_enabled)!==0 : true
+  };
+}
+
 async function analysisSettingsForUser(env, userId) {
   const row = await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -1626,12 +1659,49 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
   return created;
 }
 
-async function maybeCreateAlert(env, target, stock, current, previous) {
+async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
+  const nowMs=Date.now(),horizon=nowMs+7*24*60*60*1000;
+  const candidates=(events||[])
+    .filter(event=>{
+      const when=new Date(event&&event.date||0).getTime();
+      const impact=finiteNumber(event&&event.impactScore)??50;
+      return event&&event.eventKind!=="news"&&Number.isFinite(when)&&when>=nowMs-2*60*60*1000&&when<=horizon&&impact>=50;
+    })
+    .sort((a,b)=>new Date(a.date||0)-new Date(b.date||0)||(finiteNumber(b.impactScore)??50)-(finiteNumber(a.impactScore)??50))
+    .slice(0,3);
+  const created=[];
+  for(const event of candidates){
+    const message=trimText(event.title||event.fact||"Evento próximo relacionado con el valor.",500);
+    if(!message)continue;
+    const dateText=new Date(event.date).toISOString().slice(0,10);
+    const bodyBase=dateText+" · "+message;
+    const source=trimText(event.source||event.verification||"",120);
+    const body=source?bodyBase+" · "+source:bodyBase;
+    const duplicate=await env.DB.prepare(
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-event' AND message=? LIMIT 1"
+    ).bind(target.user_id,target.stock_key,body).first();
+    if(duplicate)continue;
+    const impact=finiteNumber(event.impactScore)??50;
+    const severity=impact>=85?"high":impact>=65?"warning":"info";
+    const id=uid("al_"),title="Evento · "+target.ticker,now=nowIso();
+    await env.DB.prepare(
+      "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(id,target.user_id,target.stock_key,target.ticker,stock.name||target.name||"","stock-event",severity,title,body,snapshotId||null,now).run();
+    const alert={id,alert_type:"stock-event",severity,title,message:body};
+    try{await dispatchPushAlert(env,alert,target)}
+    catch(error){console.warn("Event push dispatch failed",String(error&&error.message||error))}
+    created.push(id);
+  }
+  return created;
+}
+
+async function maybeCreateAlert(env, target, stock, current, previous, notificationSettings=null) {
   const previousEngine = previous ? String(previous.engine || "") : "";
   const previousCompatible = previous && (previousEngine.startsWith("viewinvai-score/") || previousEngine.startsWith("viewinvai-hybrid/"));
   const previousScore = previousCompatible ? finiteNumber(previous.score) : null;
   const delta = previousScore === null ? 0 : current.score - previousScore;
   const settings = await analysisSettingsForUser(env, target.user_id);
+  const globalNotifications = notificationSettings || await globalNotificationSettingsForUser(env, target.user_id);
   let should = false;
   let type = "analysis-change";
   let severity = "info";
@@ -1645,8 +1715,8 @@ async function maybeCreateAlert(env, target, stock, current, previous) {
       should = true; type = "position-deterioration"; severity = "warning";
     }
   } else {
-    if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
-      should = true; type = "watchlist-buy"; severity = "high";
+    if (globalNotifications.pulseAi && current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
+      should = true; type = "pulse-ai"; severity = "high";
     } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "watchlist-improving"; severity = "info";
     }
@@ -1658,7 +1728,7 @@ async function maybeCreateAlert(env, target, stock, current, previous) {
   const now = nowIso();
   const title = target.subject_type === "position"
     ? (current.signal === "SELL" ? "Revisar salida · " : "Cambio en cartera · ") + target.ticker
-    : (current.signal === "BUY" ? "Compra de alta convicción · " : "Mejora relevante · ") + target.ticker;
+    : (type === "pulse-ai" ? "Pulso IA · " : "Mejora relevante · ") + target.ticker;
   const message = current.thesis || current.riskSummary || "Cambio relevante detectado en el análisis.";
 
   await env.DB.prepare(
@@ -1722,8 +1792,12 @@ async function analyzeTarget(env, target, services) {
     "UPDATE " + table + " SET last_analysis_at=?,last_signal=?,last_confidence=?,last_score=?,last_snapshot_id=?,updated_at=? WHERE id=? AND user_id=?"
   ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
 
-  await maybeCreateAlert(env, target, stock, current, previous);
-  await maybeCreateNewsAlerts(env, target, stock, events, snapshotId);
+  const notificationSettings=await globalNotificationSettingsForUser(env,target.user_id);
+  await maybeCreateAlert(env,target,stock,current,previous,notificationSettings);
+  if(notificationSettings.newsEvents){
+    await maybeCreateNewsAlerts(env,target,stock,events,snapshotId);
+    await maybeCreateEventAlerts(env,target,stock,events,snapshotId);
+  }
 
   return {
     id: snapshotId,
@@ -1825,31 +1899,54 @@ async function handlePortfolioGoal(request,env,user,json,url){
 }
 
 async function handleSettings(request, env, user, json) {
+  await ensureGlobalNotificationSettingsSchema(env);
   const existing = await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
   ).bind(user.id).first();
+  const notifications=await globalNotificationSettingsForUser(env,user.id);
+  const current=Object.assign({
+    analysis_positions_minutes:10,
+    analysis_watchlist_minutes:30,
+    min_buy_confidence:85,
+    min_sell_confidence:80,
+    notify_score_change:20
+  },existing||{},{
+    notify_news_events:notifications.newsEvents?1:0,
+    notify_pulse_ai:notifications.pulseAi?1:0
+  });
 
-  if (request.method === "GET") return json({ settings: existing || null });
+  if (request.method === "GET") return json({ settings: current });
   if (request.method !== "PATCH") return json({ error: "Method not allowed" }, 405);
 
   const body = await readJson(request);
   const next = {
-    positions: Math.max(5, Math.min(240, Math.round(finiteNumber(body.analysisPositionsMinutes) ?? finiteNumber(existing && existing.analysis_positions_minutes) ?? 10))),
-    watchlist: Math.max(10, Math.min(1440, Math.round(finiteNumber(body.analysisWatchlistMinutes) ?? finiteNumber(existing && existing.analysis_watchlist_minutes) ?? 30))),
-    buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(existing && existing.min_buy_confidence) ?? 85))),
-    sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(existing && existing.min_sell_confidence) ?? 80))),
-    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(existing && existing.notify_score_change) ?? 20)))
+    positions: Math.max(5, Math.min(240, Math.round(finiteNumber(body.analysisPositionsMinutes) ?? finiteNumber(current.analysis_positions_minutes) ?? 10))),
+    watchlist: Math.max(10, Math.min(1440, Math.round(finiteNumber(body.analysisWatchlistMinutes) ?? finiteNumber(current.analysis_watchlist_minutes) ?? 30))),
+    buy: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minBuyConfidence) ?? finiteNumber(current.min_buy_confidence) ?? 85))),
+    sell: Math.max(60, Math.min(99, Math.round(finiteNumber(body.minSellConfidence) ?? finiteNumber(current.min_sell_confidence) ?? 80))),
+    change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(current.notify_score_change) ?? 20))),
+    newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
+    pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1
   };
   const now = nowIso();
-  await env.DB.prepare(
-    "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
-  ).bind(user.id, next.positions, next.watchlist, next.buy, next.sell, next.change, now, now).run();
-  return json({ settings: await env.DB.prepare(
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO user_settings (user_id,analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
+    ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
+    env.DB.prepare(
+      "INSERT INTO user_notification_settings (user_id,news_events_enabled,pulse_ai_enabled,created_at,updated_at) VALUES (?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,next.newsEvents?1:0,next.pulseAi?1:0,now,now)
+  ]);
+  const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
-  ).bind(user.id).first() });
+  ).bind(user.id).first();
+  return json({settings:Object.assign({},saved||{},{
+    notify_news_events:next.newsEvents?1:0,
+    notify_pulse_ai:next.pulseAi?1:0
+  })});
 }
-
 
 
 let uiPreferencesSchemaReady=false;
@@ -1951,11 +2048,13 @@ async function scanNotificationPreferences(env,services){
   await ensureNotificationPreferenceSchema(env);
   const rows=await env.DB.prepare("SELECT * FROM notification_preferences ORDER BY updated_at ASC LIMIT 24").all();
   if(!(rows.results||[]).length)return{processed:0};
-  const snapshot=await services.loadMarketSnapshot(env),results=[];
+  const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();
   for(const pref of rows.results||[]){
     try{
+      let global=globalByUser.get(pref.user_id);
+      if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       const stock=findStock(snapshot,pref);if(!stock)continue;
-      const needsAnalysis=Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1;
+      const needsAnalysis=(global.pulseAi&&Number(pref.pulse_enabled)===1)||Number(pref.radar_enabled)===1;
       let chart={available:false},chartRaw=null;
       if(Number(pref.prefer_tr)===1||needsAnalysis){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
@@ -1985,7 +2084,10 @@ async function scanNotificationPreferences(env,services){
         }
       }
       const events=recentEvents(snapshot,stock,16);
-      if(Number(pref.news_enabled)===1)await maybeCreateNewsAlerts(env,pref,stock,events,null);
+      if(global.newsEvents&&Number(pref.news_enabled)===1){
+        await maybeCreateNewsAlerts(env,pref,stock,events,null);
+        await maybeCreateEventAlerts(env,pref,stock,events,null);
+      }
       let pulseState=String(pref.last_pulse_state||""),radarState=String(pref.last_radar_state||"");
       if(needsAnalysis){
         const target={...pref,subject_type:"watchlist",subject_id:pref.id,avg_price:null,quantity:null,currency:Number(pref.prefer_tr)===1?"EUR":"USD"};
@@ -1994,7 +2096,7 @@ async function scanNotificationPreferences(env,services){
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
         const nextPulse=current.signal==="BUY"&&current.confidence>=70&&current.score>=60?"BUY":"";
         const nextRadar=current.score>=58&&["BUY","WATCH"].includes(current.signal)?"RADAR":"";
-        if(Number(pref.pulse_enabled)===1&&nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
+        if(global.pulseAi&&Number(pref.pulse_enabled)===1&&nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
         if(Number(pref.radar_enabled)===1&&nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
         pulseState=nextPulse;radarState=nextRadar;
       }

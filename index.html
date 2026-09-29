@@ -441,9 +441,23 @@
             <span>Estado</span>
             <strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong>
           </div>
+          <div class="settings-status-row">
+            <span><strong>Noticias y eventos</strong><small>Activa o desactiva globalmente estos avisos para las acciones que ViewInvAI está siguiendo.</small></span>
+            <label class="settings-switch" aria-label="Notificaciones globales de noticias y eventos">
+              <input id="globalNotifyNewsEvents" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row">
+            <span><strong>Entrada en Pulso IA</strong><small>Avísame cuando una acción pase a cumplir los criterios de Pulso IA. Radar no se incluye en este ajuste global.</small></span>
+            <label class="settings-switch" aria-label="Notificaciones globales de entrada en Pulso IA">
+              <input id="globalNotifyPulseAi" type="checkbox" checked disabled>
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
           <div class="settings-save-row push-settings-actions">
-            <span class="settings-note">Disponible en la APK Android con Firebase Messaging.</span>
-            <button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar</button>
+            <span id="globalNotificationSettingsStatus" class="settings-note">Inicia sesión para cambiar estos avisos.</span>
+            <button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar push</button>
           </div>
         </article>
 
