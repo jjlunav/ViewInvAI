@@ -502,3 +502,14 @@ function warmRecommendationCache(){
  renderRecommendation(false).catch(()=>{});
 }
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,350));
+
+function markRecommendationSold(mode){
+ if(!['us','tr'].includes(mode))return;
+ let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
+ recommendationState.sold[mode][key]=Date.now();
+ bucket.key=null;bucket.selectedAt=0;bucket.armed=false;
+ saveRecommendationState();
+ recommendationRenderCache={html:'',updatedAt:0,snapshot:''};
+ highConvictionRuntimeCache.clear();
+ renderRecommendation(true);
+}
