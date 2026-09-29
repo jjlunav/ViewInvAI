@@ -564,7 +564,8 @@
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
  function planSummaryHtml(portfolioId){
   const plans=fundPlans(portfolioId);if(!plans.length)return'';
-  return '<div class="fund-plan-strip">'+plans.slice(0,4).map(p=>'<span><b>'+esc(p.label||p.isin||'Aportación')+'</b> '+(num(p.amount)===null?'variable':money(p.amount,p.currency||'EUR'))+(p.day_of_month?' · día '+p.day_of_month:'')+'</span>').join('')+'</div>';
+  const freqLabel={weekly:'semanal',monthly:'mensual',quarterly:'trimestral',annual:'anual',manual:'manual'};
+  return '<div class="fund-plan-strip">'+plans.slice(0,4).map(p=>'<span><b>'+esc(p.label||p.isin||'Aportación')+'</b> '+(num(p.amount)===null?'variable':money(p.amount,p.currency||'EUR'))+' · '+esc(freqLabel[p.frequency]||p.frequency||'mensual')+(p.next_contribution_at?' · próxima '+dateText(p.next_contribution_at):'')+(String(p.status||'active')==='paused'?' · pausada':'')+'</span>').join('')+'</div>';
  }
  async function openFundPlanForm(position=null){
   const selected=selectedFundPortfolio();if(!selected)return;
@@ -574,8 +575,11 @@
    '<label><span>Fondo / concepto</span><input name="label" maxlength="160" value="'+esc(product&&product.name||'Aportación periódica')+'" required></label>'+
    '<div class="portfolio-form-grid"><label><span>Tipo</span><select name="kind"><option value="monthly">Aportación periódica</option><option value="saveback">Saveback</option><option value="roundup">Round up</option><option value="variable">Variable / manual</option></select></label>'+
    '<label><span>Importe</span><input name="amount" type="number" min="0" step="0.01" placeholder="Ej. 50"></label></div>'+
+   '<div class="portfolio-form-grid"><label><span>Periodicidad</span><select name="frequency"><option value="weekly">Semanal</option><option value="monthly" selected>Mensual</option><option value="quarterly">Trimestral</option><option value="annual">Anual</option><option value="manual">Manual / variable</option></select></label>'+
+   '<label><span>Fecha de inicio</span><input name="startDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label></div>'+
    '<div class="portfolio-form-grid"><label><span>Día del mes</span><input name="day" type="number" min="1" max="31" placeholder="Ej. 5"></label><label><span>Divisa</span><input name="currency" value="'+esc(position&&position.currency||selected.base_currency||'EUR')+'"></label></div>'+
-   '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Ej. Trade Republic · 50 € cada mes"></label>'+
+   '<div class="portfolio-form-grid"><label><span>Estado</span><select name="status"><option value="active">Activa</option><option value="paused">Pausada</option></select></label><label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Ej. Trade Republic · 50 € cada mes"></label></div>'+
+   '<p class="settings-note">La programación no modifica participaciones automáticamente. Solo una operación ejecutada y registrada actualiza unidades, precio medio e historial.</p>'+
    '<button type="submit" class="btn">Guardar programación</button></form>');
  }
  async function openFundPortfolioHistory(portfolioId){
@@ -881,7 +885,7 @@
    if(e.target.id==='fundTransactionForm'){e.preventDefault();try{await saveFundTransaction(e.target)}catch(err){console.warn(err);q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message||'No se pudo guardar la operación.')+'</div>')}return}
    if(e.target.id==='fundPlanForm'){
     e.preventDefault();const fd=new FormData(e.target),selected=selectedFundPortfolio();
-    try{const r=await api('/api/fund-plans',{method:'POST',body:JSON.stringify({fundPortfolioId:selected.id,fundPositionId:String(fd.get('positionId')||''),isin:String(fd.get('isin')||''),label:String(fd.get('label')||''),kind:String(fd.get('kind')||'monthly'),amount:num(fd.get('amount')),dayOfMonth:num(fd.get('day')),currency:String(fd.get('currency')||'EUR'),notes:String(fd.get('notes')||'')})});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la programación.');closeModal();await loadPortfolio(true)}catch(err){q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message)+'</div>')}return
+    try{const r=await api('/api/fund-plans',{method:'POST',body:JSON.stringify({fundPortfolioId:selected.id,fundPositionId:String(fd.get('positionId')||''),isin:String(fd.get('isin')||''),label:String(fd.get('label')||''),kind:String(fd.get('kind')||'monthly'),amount:num(fd.get('amount')),dayOfMonth:num(fd.get('day')),currency:String(fd.get('currency')||'EUR'),frequency:String(fd.get('frequency')||'monthly'),startDate:String(fd.get('startDate')||''),status:String(fd.get('status')||'active'),enabled:String(fd.get('status')||'active')!=='paused',notes:String(fd.get('notes')||'')})});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'No se pudo guardar la programación.');closeModal();await loadPortfolio(true)}catch(err){q('#fundModalBody')?.insertAdjacentHTML('afterbegin','<div class="portfolio-render-warning">'+esc(err.message)+'</div>')}return
    }
    if(e.target.id==='fundPortfolioEditForm'){
     e.preventDefault();const fd=new FormData(e.target),id=e.target.dataset.id;
