@@ -791,15 +791,18 @@ function portfolioPickerStocks(query = "") {
 function portfolioPickerRows(query = "") {
   const rows = portfolioPickerStocks(query);
   if (!rows.length) return '<div class="portfolio-empty-state compact">No se han encontrado acciones.</div>';
+  const scope=portfolioMarketScope(selectedPortfolio());
   return rows.map(stock => {
-    const key = window.ViewInvAI.getStockKey(stock);
-    const tr = !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+    const key = window.ViewInvAI.getStockKey(stock),tr=!!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+    const displayTicker=scope==="tr"?(stock.trTicker||stock.ticker):(stock.ticker||stock.trTicker);
+    const buttons=scope==="tr"
+      ?(tr?'<button type="button" data-position-pick="'+esc(key)+'" data-position-pick-market="tr">Añadir LSX</button>':'')
+      :scope==="us"
+        ?'<button type="button" data-position-pick="'+esc(key)+'" data-position-pick-market="us">Añadir EEUU</button>'
+        :(tr?'<button type="button" data-position-pick="'+esc(key)+'" data-position-pick-market="tr">TR</button>':'')+'<button type="button" data-position-pick="'+esc(key)+'" data-position-pick-market="us">EEUU</button>';
     return '<div class="portfolio-stock-picker-row">' +
-      '<div><strong>' + esc(stock.ticker || stock.trTicker || "—") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
-      '<div class="portfolio-stock-picker-markets">' +
-        (tr ? '<button type="button" data-position-pick="' + esc(key) + '" data-position-pick-market="tr">TR</button>' : '') +
-        '<button type="button" data-position-pick="' + esc(key) + '" data-position-pick-market="us">EEUU</button>' +
-      '</div>' +
+      '<div><strong>' + esc(displayTicker||"—") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
+      '<div class="portfolio-stock-picker-markets">' +buttons+'</div>' +
     '</div>';
   }).join("");
 }
@@ -1293,7 +1296,8 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if (!form || !stock) return;
   const portfolioId = form.querySelector('[name="portfolioId"]')?.value || '';
   const existing = positionForPortfolioStock(form.dataset.stockKey, portfolioId);
-  const preferTr = existing ? Number(existing.prefer_tr) === 1 : fallbackPreferTr;
+  const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId))||null,scope=portfolioMarketScope(portfolio);
+  const preferTr = existing ? Number(existing.prefer_tr) === 1 : scope==="tr"?true:scope==="us"?false:fallbackPreferTr;
   const current = currentMarket(stock, preferTr);
   form.dataset.preferTr = preferTr ? '1' : '0';
   form.dataset.existingPositionId = existing?.id || '';

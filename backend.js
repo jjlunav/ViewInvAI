@@ -274,12 +274,12 @@ async function verifyFirebaseUser(request, env) {
 let portfolioMarketSchemaReady=false;
 async function ensurePortfolioMarketSchema(env){
   if(portfolioMarketSchemaReady)return;
-  const info=await env.DB.prepare("PRAGMA table_info(portfolios)").all();
-  const columns=new Set((info.results||[]).map(row=>String(row.name||"")));
-  if(!columns.has("market_scope")){
-    try{await env.DB.prepare("ALTER TABLE portfolios ADD COLUMN market_scope TEXT NOT NULL DEFAULT 'auto'").run()}
-    catch(error){if(!/duplicate column/i.test(String(error&&error.message||error)))throw error}
-  }
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS portfolio_market_settings ("+
+    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,market_scope TEXT NOT NULL DEFAULT 'auto',updated_at TEXT NOT NULL,"+
+    "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_portfolio_market_settings_user ON portfolio_market_settings(user_id,updated_at DESC)").run();
   portfolioMarketSchemaReady=true;
 }
 function normalizedMarketScope(value){
@@ -289,7 +289,9 @@ function normalizedMarketScope(value){
 async function onePortfolio(env, userId, portfolioId) {
   await ensurePortfolioMarketSchema(env);
   return env.DB.prepare(
-    "SELECT id,user_id,name,broker,base_currency,market_scope,sort_order,created_at,updated_at FROM portfolios WHERE id=? AND user_id=?"
+    "SELECT p.id,p.user_id,p.name,p.broker,p.base_currency,COALESCE(s.market_scope,'auto') AS market_scope,p.sort_order,p.created_at,p.updated_at "+
+    "FROM portfolios p LEFT JOIN portfolio_market_settings s ON s.portfolio_id=p.id AND s.user_id=p.user_id "+
+    "WHERE p.id=? AND p.user_id=?"
   ).bind(portfolioId, userId).first();
 }
 
@@ -692,8 +694,9 @@ async function handlePortfolios(request, env, user, json, parts) {
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const rows = await env.DB.prepare(
-      "SELECT p.*, (SELECT COUNT(*) FROM positions x WHERE x.portfolio_id=p.id AND x.active=1) AS position_count " +
-      "FROM portfolios p WHERE p.user_id=? ORDER BY p.sort_order ASC,p.created_at ASC"
+      "SELECT p.*,COALESCE(s.market_scope,'auto') AS market_scope,(SELECT COUNT(*) FROM positions x WHERE x.portfolio_id=p.id AND x.active=1) AS position_count " +
+      "FROM portfolios p LEFT JOIN portfolio_market_settings s ON s.portfolio_id=p.id AND s.user_id=p.user_id "+
+      "WHERE p.user_id=? ORDER BY p.sort_order ASC,p.created_at ASC"
     ).bind(user.id).all();
     return json({ portfolios: rows.results || [] });
   }
@@ -704,9 +707,15 @@ async function handlePortfolios(request, env, user, json, parts) {
     if (!data.name) return json({ error: "Portfolio name is required" }, 400);
     const idNew = uid("pf_");
     const now = nowIso();
-    await env.DB.prepare(
-      "INSERT INTO portfolios (id,user_id,name,broker,base_currency,market_scope,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
-    ).bind(idNew, user.id, data.name, data.broker, data.baseCurrency, data.marketScope, data.sortOrder, now, now).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO portfolios (id,user_id,name,broker,base_currency,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)"
+      ).bind(idNew,user.id,data.name,data.broker,data.baseCurrency,data.sortOrder,now,now),
+      env.DB.prepare(
+        "INSERT INTO portfolio_market_settings (portfolio_id,user_id,market_scope,updated_at) VALUES (?,?,?,?) "+
+        "ON CONFLICT(portfolio_id) DO UPDATE SET market_scope=excluded.market_scope,updated_at=excluded.updated_at"
+      ).bind(idNew,user.id,data.marketScope,now)
+    ]);
     return json({ portfolio: await onePortfolio(env, user.id, idNew) }, 201);
   }
 
@@ -732,15 +741,25 @@ async function handlePortfolios(request, env, user, json, parts) {
         return json({error:"La cartera contiene posiciones de otro mercado. Mueve o elimina esas posiciones antes de cambiar el mercado."},409);
       }
     }
-    await env.DB.prepare(
-      "UPDATE portfolios SET name=?,broker=?,base_currency=?,market_scope=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
-    ).bind(data.name, data.broker, data.baseCurrency, data.marketScope, data.sortOrder, nowIso(), id, user.id).run();
+    const updatedAt=nowIso();
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE portfolios SET name=?,broker=?,base_currency=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
+      ).bind(data.name,data.broker,data.baseCurrency,data.sortOrder,updatedAt,id,user.id),
+      env.DB.prepare(
+        "INSERT INTO portfolio_market_settings (portfolio_id,user_id,market_scope,updated_at) VALUES (?,?,?,?) "+
+        "ON CONFLICT(portfolio_id) DO UPDATE SET market_scope=excluded.market_scope,updated_at=excluded.updated_at"
+      ).bind(id,user.id,data.marketScope,updatedAt)
+    ]);
     return json({ portfolio: await onePortfolio(env, user.id, id) });
   }
 
   if (request.method === "DELETE") {
     await ensureTransactionsSchema(env);
+    await ensurePortfolioGoalSchema(env);
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(id,user.id),
+      env.DB.prepare("DELETE FROM portfolio_market_settings WHERE portfolio_id=? AND user_id=?").bind(id,user.id),
       env.DB.prepare("DELETE FROM transactions WHERE portfolio_id=? AND user_id=?").bind(id, user.id),
       env.DB.prepare("DELETE FROM positions WHERE portfolio_id=? AND user_id=?").bind(id, user.id),
       env.DB.prepare("DELETE FROM portfolios WHERE id=? AND user_id=?").bind(id, user.id)

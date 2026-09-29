@@ -547,8 +547,13 @@ function initStockListInteractions(){
 
 function radarCoachCandidates(limit=10,excluded=[],marketMode='us'){
  const skip=new Set((excluded||[]).map(x=>String(x||'').toUpperCase())),preferTr=marketMode==='tr',se=preferTr?'regular':currentMarketSession();
- return(db.stocks||[]).map(stock=>{const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,preferTr?'tr':'us'))return null;const a=entryOpportunityAnalysis(stock,se,preferTr);
-   return{stock,preferTr,score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a}})
-  .filter(Boolean).filter(row=>row.quality>=45&&row.score>=58).sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
+ let rows=(db.stocks||[]).map(stock=>{
+   const key=stockKey(stock);if(!key||skip.has(String(key).toUpperCase())||!market(stock,preferTr?'tr':'us'))return null;
+   const useTr=preferTr&&trLivePrice(stock)!==null,a=entryOpportunityAnalysis(stock,se,useTr);
+   return{stock,preferTr,score:N(a&&a.score)??0,quality:N(a&&a.quality)??0,analysis:a,provisionalVenue:preferTr&&!useTr}
+  }).filter(Boolean).filter(row=>row.quality>=42&&row.score>=55)
+   .sort((a,b)=>b.score-a.score||b.quality-a.quality).slice(0,Math.max(1,Math.min(25,Number(limit)||10)));
+ if(preferTr&&typeof ensureTrLiveKey==='function')rows.forEach(row=>ensureTrLiveKey(stockKey(row.stock)));
+ return rows;
 }
 window.ViewInvAIRadarCoach={rankCandidates:radarCoachCandidates};

@@ -1,6 +1,16 @@
 PRAGMA foreign_keys = ON;
 
-ALTER TABLE portfolios ADD COLUMN market_scope TEXT NOT NULL DEFAULT 'auto';
+CREATE TABLE IF NOT EXISTS portfolio_market_settings (
+  portfolio_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  market_scope TEXT NOT NULL DEFAULT 'auto',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_market_settings_user
+  ON portfolio_market_settings(user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS portfolio_goals (
   portfolio_id TEXT PRIMARY KEY,
