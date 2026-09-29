@@ -102,6 +102,16 @@ function renderAnalysisSettings(settings=null){
   el.value=clampSetting(raw,min,max,fallback);
   el.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  }
+ const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)!==0:true;
+ const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)!==0:true;
+ let newsToggle=$('#globalNotifyNewsEvents'),pulseToggle=$('#globalNotifyPulseAi');
+ if(newsToggle){newsToggle.checked=newsEvents;newsToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
+ if(pulseToggle){pulseToggle.checked=pulseAi;pulseToggle.disabled=!accountAnalysisSettings||analysisSettingsBusy}
+ let globalStatus=$('#globalNotificationSettingsStatus');
+ if(globalStatus)globalStatus.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para cambiar estos avisos.';
+ if(accountAnalysisSettings){
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{newsEvents,pulseAi}}));
+ }
  let button=$('#saveAnalysisSettings');if(button)button.disabled=!accountAnalysisSettings||analysisSettingsBusy;
  let status=$('#analysisSettingsStatus');if(status){
   status.textContent=accountAnalysisSettings?(analysisSettingsBusy?'Guardando…':'Sincronizado con tu cuenta.'):'Inicia sesión para sincronizar estos ajustes.';
@@ -109,22 +119,27 @@ function renderAnalysisSettings(settings=null){
 }
 async function saveAnalysisSettings(){
  if(analysisSettingsBusy||!accountAnalysisSettings||!window.ViewInvAIAuth||typeof window.ViewInvAIAuth.apiFetch!=='function')return;
+ let body={
+  analysisPositionsMinutes:clampSetting($('#analysisPositionsMinutes')?.value,5,240,10),
+  analysisWatchlistMinutes:clampSetting($('#analysisWatchlistMinutes')?.value,10,1440,30),
+  minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
+  minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
+  notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20),
+  notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked!==false,
+  notifyPulseAi:$('#globalNotifyPulseAi')?.checked!==false
+ };
  analysisSettingsBusy=true;renderAnalysisSettings(accountAnalysisSettings);
  try{
-  let body={
-   analysisPositionsMinutes:clampSetting($('#analysisPositionsMinutes')?.value,5,240,10),
-   analysisWatchlistMinutes:clampSetting($('#analysisWatchlistMinutes')?.value,10,1440,30),
-   minBuyConfidence:clampSetting($('#minBuyConfidence')?.value,60,99,85),
-   minSellConfidence:clampSetting($('#minSellConfidence')?.value,60,99,80),
-   notifyScoreChange:clampSetting($('#notifyScoreChange')?.value,5,60,20)
-  };
   let response=await window.ViewInvAIAuth.apiFetch('/api/settings',{method:'PATCH',body:JSON.stringify(body)});
   let data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||'No se pudieron guardar los ajustes.');
   accountAnalysisSettings=data.settings||accountAnalysisSettings;
   let status=$('#analysisSettingsStatus');if(status)status.textContent='Ajustes guardados.';
+  let globalStatus=$('#globalNotificationSettingsStatus');if(globalStatus)globalStatus.textContent='Avisos globales actualizados.';
  }catch(e){
-  let status=$('#analysisSettingsStatus');if(status)status.textContent=e&&e.message?e.message:'No se pudieron guardar los ajustes.';
+  let message=e&&e.message?e.message:'No se pudieron guardar los ajustes.';
+  let status=$('#analysisSettingsStatus');if(status)status.textContent=message;
+  let globalStatus=$('#globalNotificationSettingsStatus');if(globalStatus)globalStatus.textContent=message;
  }finally{
   analysisSettingsBusy=false;renderAnalysisSettings(accountAnalysisSettings);
  }
@@ -202,6 +217,7 @@ function initSettings(){
 
  $('#saveAnalysisSettings')?.addEventListener('click',saveAnalysisSettings);
  $('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
+ ['globalNotifyNewsEvents','globalNotifyPulseAi'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
