@@ -2230,9 +2230,15 @@ async function scanNotificationPreferences(env,services){
       }
       // A TR/LSX alert must never be evaluated from the US quote. Use the exact
       // LSX chart/ticker when available; otherwise wait instead of mixing markets.
+      let liveQuote=null;
+      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      if(Number(pref.prefer_tr)!==1&&priceAlertConfigured&&services.loadQuote){
+        try{liveQuote=await services.loadQuote(stock,pref)}
+        catch(error){console.warn("Notification live quote unavailable",pref.id,String(error&&error.message||error))}
+      }
       const price=Number(pref.prefer_tr)===1
         ?(chart&&chart.available?finiteNumber(chart.last):null)
-        :finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+        :finiteNumber(liveQuote&&liveQuote.price??stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
       let anchorPrice=finiteNumber(pref.anchor_price);
       if(anchorPrice===null&&price!==null){
         anchorPrice=price;
