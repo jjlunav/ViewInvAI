@@ -12,7 +12,7 @@
  let seeded=false;
  let lastScan={at:0,results:[],best:null,error:''};
  let state=readState();
- let globalNotifications={newsEvents:true,pulseAi:true};
+ let globalNotifications={enabled:true,newsEvents:true,pulseAi:true};
 
  function q(s){return document.querySelector(s)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -94,6 +94,8 @@
   let status=q('#alertPageStatus'),list=q('#alertPageList');if(!status||!list)return;
   if(!state.enabled){
    status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar compras de alta convicción.</span>';
+  }else if(globalNotifications.enabled===false){
+   status.innerHTML='<strong>Notificaciones globales desactivadas</strong><span>El interruptor maestro de Settings está apagado.</span>';
   }else if(globalNotifications.pulseAi===false){
    status.innerHTML='<strong>Pulso IA global desactivado</strong><span>Puedes volver a activar estas notificaciones desde Settings.</span>';
   }else if(evaluating){
@@ -134,7 +136,7 @@
  async function evaluate(){
   const accountGlobal=window.ViewInvAINotificationSettings;
   if(accountGlobal&&typeof accountGlobal==='object')globalNotifications=Object.assign(globalNotifications,accountGlobal);
-  if(evaluating||!state.enabled||globalNotifications.pulseAi===false){renderAlertPage();return}
+  if(evaluating||!state.enabled||globalNotifications.enabled===false||globalNotifications.pulseAi===false){renderAlertPage();return}
   if(!window.ViewInvAI||typeof window.ViewInvAI.highConvictionRecommendation!=='function'){renderAlertPage();return}
   evaluating=true;renderAlertPage();
   try{
@@ -188,14 +190,15 @@
   window.addEventListener('viewinvai:notification-settings',e=>{
    let detail=e&&e.detail||{};
    globalNotifications={
+    enabled:detail.enabled!==false,
     newsEvents:detail.newsEvents!==false,
     pulseAi:detail.pulseAi!==false
    };
-   if(globalNotifications.pulseAi===false){
+   if(globalNotifications.enabled===false||globalNotifications.pulseAi===false){
     state.activeKey=null;seeded=false;saveState();
    }
    renderAlertPage();
-   if(globalNotifications.pulseAi!==false&&state.enabled)setTimeout(evaluate,100);
+   if(globalNotifications.enabled!==false&&globalNotifications.pulseAi!==false&&state.enabled)setTimeout(evaluate,100);
   });
   document.addEventListener('click',e=>{
    let item=e.target.closest&&e.target.closest('[data-alert-stock-key]');if(item)openAlertStock(item);
