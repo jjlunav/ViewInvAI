@@ -1358,7 +1358,7 @@ async function savePortfolioMarket(form){
   const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({marketScope,cashBalance})});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el mercado.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
-  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();toast("Mercado de la cartera actualizado");
+  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();toast("Configuración de la cartera actualizada");
 }
 
 function stockFormPayload(stock, form) {
