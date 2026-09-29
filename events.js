@@ -87,8 +87,7 @@ function eventMobileTabs(scope){
   '<button type="button" class="'+(g.key===active?'active':'')+'" data-event-mobile-scope="'+E(scope)+'" data-event-mobile-group="'+E(g.key)+'">'+E(g.label)+'</button>'
  ).join('')+'</nav>';
 }
-function eventMobileRow(scope,s,event,index,label,when,count=1){
- let preferTr=trTradable(s);
+function eventMobileRow(scope,s,event,index,label,when,count=1,preferTr=false){
  let meta='<div class="asset-event-meta"><strong>'+E(label)+'</strong><span>'+E(when)+'</span>'+(count>1?'<em>'+count+' eventos</em>':'')+'</div>';
  return standardStockCard(s,index,{se:currentMarketSession(),preferTr,context:scope,hint:label+' · '+when,detailsHtml:'',metaHtml:meta});
 }
@@ -103,15 +102,15 @@ function renderFuture(){
   let s=stockForEvent(e);
   if(!s)return false;
   if(tr&&!trTradable(s))return false;
-  let q=verifiedDisplayQuote(s,trTradable(s),SES());
+  let q=tr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,SES());
   return N(q&&q.price)!==null;
  });
  let groups=groupFutureEvents(filtered);
  if(groups.length){
   let shown=groups.slice(0,180);
   $('#futureResults').innerHTML=eventCompactListView()
-   ?eventMobileList('future',shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e,count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);return eventMobileRow('future',s,e,i,label,when,count)}))
-   :shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e;let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=trTradable(s);let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'})}).join('');
+   ?eventMobileList('future',shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e,count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e);return eventMobileRow('future',s,e,i,label,when,count,tr)}))
+   :shown.map((g,i)=>{let e=g.first,s=stockForEvent(e)||e;let count=g.items.length,label=count===1?EL(e):(count+' catalizadores'),when=eventWhen(e),preferTr=tr;let context='<strong>'+E(when)+'</strong><span>'+E(label)+'</span>'+(count>1?'<span>'+count+' eventos agrupados</span>':'');return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:context,className:'future-stock-card'})}).join('');
  }else $('#futureResults').innerHTML='<div class="empty-state">No hay catalizadores desde ahora hasta '+h+' día'+(h===1?'':'s')+' vista con estos filtros.</div>';
 }
 
@@ -149,8 +148,8 @@ function renderCalendar(){
  if(rows.length){
   let shown=rows.slice(0,400);
   $('#calendarResults').innerHTML=eventCompactListView()
-   ?eventMobileList('calendar',shown.map((e,i)=>{let s=stockForEvent(e)||e,label=EL(e),when=DF(e.date);return eventMobileRow('calendar',s,e,i,label,when,1)}))
-   :shown.map((e,i)=>{let s=stockForEvent(e)||e;let label=EL(e),when=DF(e.date),preferTr=trTradable(s);return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'})}).join('');
+   ?eventMobileList('calendar',shown.map((e,i)=>{let s=stockForEvent(e)||e,label=EL(e),when=DF(e.date);return eventMobileRow('calendar',s,e,i,label,when,1,false)}))
+   :shown.map((e,i)=>{let s=stockForEvent(e)||e;let label=EL(e),when=DF(e.date),preferTr=false;return standardStockCard(s,i,{se:currentMarketSession(),preferTr,hint:label+' · '+when,insight:'IA · '+label,contextHtml:'<strong>'+E(when)+'</strong><span>'+E(label)+'</span>',className:'calendar-stock-card'})}).join('');
  }else $('#calendarResults').innerHTML='<div class="empty-state">Sin eventos o noticias disponibles.</div>';
 }
 

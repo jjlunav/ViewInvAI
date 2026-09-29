@@ -36,17 +36,20 @@ function recommendationSoldRecently(mode,key){
  return Number.isFinite(ts)&&Date.now()-ts<RECO_COOLDOWN_MS;
 }
 function recommendationEligible(s,mode){
- if(!s||!market(s,'us'))return false;
- if(mode==='tr'&&!trTradable(s))return false;
+ if(!s)return false;
+ if(mode==='tr')return trTradable(s)&&trLivePrice(s)!==null;
+ if(!market(s,'us'))return false;
  let se=currentMarketSession();
- return SP(s,se)!==null||usLivePrice(s)!==null||(mode==='tr'&&trLivePrice(s)!==null);
+ return SP(s,se)!==null||usLivePrice(s)!==null;
 }
 function recommendationTechnicalLegacy(s,mode){
  let preferTr=mode==='tr',se=currentMarketSession(),score=50,factors=[];
  let add=(label,delta,note)=>{delta=Math.round(Number(delta||0)*10)/10;score+=delta;factors.push({label,delta,note})};
- let displayQuote=verifiedDisplayQuote(s,preferTr,se);
+ let displayQuote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se);
  let ch=N(displayQuote.change),rv=RV(s,se),adx=N(s.adx),rsi=N(s.rsi);
- let p=N(displayQuote.price),ema20=N(s.ema20),ema50=N(s.ema50),week=N(s.perfWeek),month=N(s.perfMonth),vol=SV(s,se),sp=spreadPct(s,preferTr);
+ // EMAs are sourced from the US underlying and are USD-denominated. When the
+ // selected venue is LSX, compare them with the LSX quote converted to USD.
+ let p=preferTr?N(displayQuote.usd):N(displayQuote.price),ema20=N(s.ema20),ema50=N(s.ema50),week=N(s.perfWeek),month=N(s.perfMonth),vol=SV(s,se),sp=spreadPct(s,preferTr);
 
  if(ch===null)add('Momentum',-5,'Variación actual no disponible');
  else if(ch<0)add('Momentum',Math.max(-18,ch*1.2),'Movimiento '+PC(ch));
@@ -138,12 +141,12 @@ function recommendationCatalystLegacy(s){
 }
 function recommendationEngineInput(s,mode='us',chartAvailable=false){
  let preferTr=mode==='tr',se=currentMarketSession();
- let quote=verifiedDisplayQuote(s,preferTr,se),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
+ let quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),snapshotAt=parseMarketTimestamp(db.meta&&db.meta.updatedAt);
  let quoteAt=preferTr?(N(s&&s.trLiveUpdatedAt)??N(s&&s.trLiveReceivedAt)):(N(s&&s.usLiveReceivedAt)??parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York'));
  let now=Date.now();
  return {
-  price:quote&&N(quote.price)!==null?N(quote.price):SP(s,se),
-  change:quote&&N(quote.change)!==null?N(quote.change):marketChange(s,se,false),
+  price:preferTr?N(quote&&quote.usd):(quote&&N(quote.price)!==null?N(quote.price):SP(s,se)),
+  change:preferTr?N(quote&&quote.change):(quote&&N(quote.change)!==null?N(quote.change):marketChange(s,se,false)),
   volume:SV(s,se),
   avgVolume:N(s&&s.avgVolume),
   relVolume:RV(s,se),
@@ -278,7 +281,7 @@ async function pulseAiValidate(result){
  const auth=window.ViewInvAIAuth;
  if(!auth||!auth.getUser?.()||!auth.apiFetch)return result;
  try{
-  const s=result.s,preferTr=result.mode==='tr',quote=verifiedDisplayQuote(s,preferTr,currentMarketSession());
+  const s=result.s,preferTr=result.mode==='tr',quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,currentMarketSession());
   const response=await auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
    stockKey:stockKey(s),ticker:s.ticker||s.trTicker||'',isin:preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin),preferTr,
    question:'Pulso IA: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
@@ -307,7 +310,7 @@ async function highConvictionRecommendation(mode){
   .slice(0,8);
  const withCharts=await Promise.all(candidates.map(async row=>({row,chart:await recommendationChartAnalysis(row.s,mode)})));
  let ranked=withCharts.map(({row,chart})=>{
-  let s=row.s,a=row.a,se=a.se,vol=SV(s,se),price=N(verifiedDisplayQuote(s,mode==='tr',se).price),ema20=N(s.ema20),ema50=N(s.ema50);
+  let s=row.s,a=row.a,se=a.se,vol=SV(s,se),venueQuote=mode==='tr'?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),price=mode==='tr'?N(venueQuote.usd):N(venueQuote.price),ema20=N(s.ema20),ema50=N(s.ema50);
   let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
   let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
   let dataQuality=stockDataQuality(s,mode,chart.available);
