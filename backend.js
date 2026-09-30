@@ -479,6 +479,7 @@ function positionPayload(body) {
     openedAt: trimText(body.openedAt, 40) || null,
     notes: trimText(body.notes, 1000),
     broker: trimText(body.broker, 80),
+    fees: finiteNumber(body.fees),
     cashFxRate: finiteNumber(body.cashFxRate)
   };
 }
@@ -831,8 +832,9 @@ async function ensureOpeningTransaction(env, userId, position) {
   const d = executed ? new Date(executed) : new Date(now);
   const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
   const broker=trimText(position.broker,80);
-  const feeInfo=await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY");
-  const fee=feeInfo.fee===null?0:feeInfo.fee;
+  const explicitFee=finiteNumber(position.opening_fee);
+  const feeInfo=explicitFee===null?await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY"):null;
+  const fee=explicitFee!==null?Math.max(0,explicitFee):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:0);
   const txId=uid("tx_");
   await env.DB.prepare(
     "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
@@ -1093,9 +1095,9 @@ async function handlePositions(request, env, user, json, parts, url) {
         return json({error:"quantity and avgPrice are required to add to an existing position"},400);
       }
       const txId=uid("tx_");
-      const feeInfo=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY");
-      if(feeInfo.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
-      const fee=feeInfo.fee;
+      const feeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY"):null;
+      const fee=data.fees!==null?Math.max(0,data.fees):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:null);
+      if(fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       await env.DB.prepare(
         "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'manual',?,?)"
       ).bind(
@@ -1110,16 +1112,18 @@ async function handlePositions(request, env, user, json, parts, url) {
       const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,existing.id);
       row=recalculated&&recalculated.position||existing;
     }else{
-      const initialFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY");
-      if(initialFee.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
+      const initialFeeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY"):null;
+      const initialFee=data.fees!==null?Math.max(0,data.fees):(initialFeeInfo&&initialFeeInfo.fee!==null?initialFeeInfo.fee:null);
+      if(initialFee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       const idNew=uid("pos_");
       await env.DB.prepare(
         "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
       ).bind(
         idNew,data.portfolioId,user.id,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
-        data.quantity,data.avgPrice,data.quantity*data.avgPrice+initialFee.fee,initialFee.fee,data.currency,data.broker,data.openedAt,data.notes,now,now
+        data.quantity,data.avgPrice,data.quantity*data.avgPrice+initialFee,initialFee,data.currency,data.broker,data.openedAt,data.notes,now,now
       ).run();
       row=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew,user.id).first();
+      row.opening_fee=initialFee;
       const seed=await ensureOpeningTransaction(env,user.id,row);
       if(seed&&seed.created){
         const cashAdjustment=await adjustPortfolioCashForTransaction(
