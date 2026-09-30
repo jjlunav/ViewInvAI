@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.26">
+<html lang="es" data-app-version="0.6.27">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -15,18 +15,18 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260930r27">
+  <link rel="stylesheet" href="styles.css?v=20260930r28">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20260930r5';
+      link.href = 'web-mobile.css?v=20260930r6';
       link.media = '(max-width:820px)';
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20260930r10">
+  <link rel="stylesheet" href="mobile-app.css?v=20260930r11">
   <link rel="stylesheet" href="ui-density.css?v=20260928r1">
   <link rel="stylesheet" href="asset-card.css?v=20260930r1">
 </head>
@@ -451,6 +451,7 @@
             <div class="settings-status-row" data-notification-child-setting><span><strong>Entrada en Radar</strong></span><label class="settings-switch" aria-label="Entrada en Radar"><input id="globalNotifyRadar" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
             <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
             <div class="settings-status-row" data-notification-child-setting><span><strong>Cartera</strong></span><label class="settings-switch" aria-label="Cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
           </div>
         </article>
 
@@ -574,7 +575,7 @@
 <script src="market-session.js?v=20260925r1"></script>
 <script src="score-engine.js?v=20260925r3"></script>
 <script src="app.js?v=20260929r5"></script>
-<script src="settings.js?v=20260930r11"></script>
+<script src="settings.js?v=20260930r12"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20260929r2"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
@@ -594,7 +595,7 @@
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20260929r2"></script>
 <script src="stock-notifications.js?v=20260930r3"></script>
-<script type="module" src="auth.js?v=20260930r1"></script>
-<script type="module" src="portfolio.js?v=20260930r20"></script>
+<script type="module" src="auth.js?v=20260930r2"></script>
+<script type="module" src="portfolio.js?v=20260930r21"></script>
 </body>
 </html>
