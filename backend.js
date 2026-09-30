@@ -478,7 +478,8 @@ function positionPayload(body) {
       : "EUR",
     openedAt: trimText(body.openedAt, 40) || null,
     notes: trimText(body.notes, 1000),
-    broker: trimText(body.broker, 80)
+    broker: trimText(body.broker, 80),
+    cashFxRate: finiteNumber(body.cashFxRate)
   };
 }
 
@@ -1101,6 +1102,11 @@ async function handlePositions(request, env, user, json, parts, url) {
         txId,data.portfolioId,user.id,existing.id,data.broker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,
         data.preferTr,data.quantity,data.avgPrice,fee,data.currency,data.openedAt?new Date(data.openedAt).toISOString():now,data.notes||"",now,now
       ).run();
+      const cashAdjustment=await adjustPortfolioCashForTransaction(
+        env,user.id,data.portfolioId,data.currency,"BUY",data.quantity,data.avgPrice,fee,1,null,data.cashFxRate
+      );
+      await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
+        .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
       const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,existing.id);
       row=recalculated&&recalculated.position||existing;
     }else{
@@ -1108,13 +1114,22 @@ async function handlePositions(request, env, user, json, parts, url) {
       if(initialFee.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       const idNew=uid("pos_");
       await env.DB.prepare(
-        "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
+        "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
       ).bind(
         idNew,data.portfolioId,user.id,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
-        data.quantity,data.avgPrice,data.currency,data.broker,data.openedAt,data.notes,now,now
+        data.quantity,data.avgPrice,data.quantity*data.avgPrice+initialFee.fee,initialFee.fee,data.currency,data.broker,data.openedAt,data.notes,now,now
       ).run();
       row=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew,user.id).first();
-      await ensureOpeningTransaction(env,user.id,row);
+      const seed=await ensureOpeningTransaction(env,user.id,row);
+      if(seed&&seed.created){
+        const cashAdjustment=await adjustPortfolioCashForTransaction(
+          env,user.id,data.portfolioId,data.currency,"BUY",data.quantity,data.avgPrice,seed.fee,1,null,data.cashFxRate
+        );
+        await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
+          .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),seed.id,user.id).run();
+      }
+      const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,idNew);
+      row=recalculated&&recalculated.position||row;
     }
     if(!existing||Number(existing.active)===0){
       try{await notifyPortfolioMembershipChange(env,user.id,portfolio,row,"added")}catch(error){console.warn("Portfolio entry notification failed",String(error&&error.message||error))}
@@ -1149,11 +1164,18 @@ async function handlePositions(request, env, user, json, parts, url) {
     const targetScope=normalizedMarketScope(targetPortfolio.market_scope);
     if(targetScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
     if(targetScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
+    const adjusted=await appendPositionAdjustment(env,user.id,existing,data);
+    const recalculated=adjusted
+      ?await recalculatePositionFromTransactions(env,user.id,existing.portfolio_id,existing.stock_key,existing.id)
+      :null;
+    const ledger=recalculated&&recalculated.ledger;
     await env.DB.prepare(
-      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,broker=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
+      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,cost_basis=?,fees_total=?,currency=?,broker=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
     ).bind(
       data.portfolioId,data.ticker,data.name,data.exchange,data.isin,data.preferTr,data.quantity,
-      data.avgPrice,data.currency,data.broker,data.openedAt,data.notes,nowIso(),id,user.id
+      data.avgPrice,ledger?ledger.invested:(finiteNumber(existing.cost_basis)??data.quantity*data.avgPrice),
+      ledger?(ledger.totalFees||0):(finiteNumber(existing.fees_total)||0),
+      data.currency,data.broker,data.openedAt,data.notes,nowIso(),id,user.id
     ).run();
     return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
   }
