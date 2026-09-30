@@ -60,7 +60,14 @@ window.checkAssetCards = async function () {
  assert(!test.querySelector('img,script'),'untrusted text is interpreted as markup');
  test.remove();
 
- const portfolio=window.ViewInvAIPortfolios,ps=portfolio.getState(),saved={...ps};
+ test.innerHTML='<div id="recommendationResults">'+radarAiCard({s:stock,preferTr:false,tier:'opportunity',score:80,quality:65,liveVenue:true,analysis:{se:'regular'}})+'</div>';
+ const radarRow=test.querySelector('.radar-ai-tier-list .asset-card-row[data-stock-key]')||test.querySelector('#recommendationResults .asset-card-row[data-stock-key]');
+ assert(radarRow,'Radar AI card lost its stock target');
+ radarRow.querySelector('.asset-card-copy strong')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+ assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'Radar AI card click did not open the full stock profile');
+ closeQuickProfile(false);
+
+  const portfolio=window.ViewInvAIPortfolios,ps=portfolio.getState(),saved={...ps};
  const view=document.querySelector('#view-portfolios'),display=view.style.display;
  try{
   Object.assign(ps,{user:{uid:'ci-fixture'},loading:false,primaryTab:'portfolio',goal:{target_profit_eur:1000},selectedPortfolioId:'ci',portfolios:[{id:'ci',name:'CI fixture',base_currency:'USD'}],positions:[
