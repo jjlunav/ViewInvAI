@@ -1037,10 +1037,15 @@ async function handleTransactions(request, env, user, json, parts, url) {
   if (request.method === "GET" && !id) {
     const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
     const stockKey = trimText(url.searchParams.get("stockKey"), 80).toUpperCase();
+    const positionId = trimText(url.searchParams.get("positionId"), 80);
     const limit = Math.max(1, Math.min(500, Math.round(finiteNumber(url.searchParams.get("limit")) || 200)));
 
     let rows;
-    if (portfolioId && stockKey) {
+    if(positionId){
+      rows=await env.DB.prepare(
+        "SELECT * FROM transactions WHERE user_id=? AND position_id=? ORDER BY executed_at DESC,created_at DESC LIMIT ?"
+      ).bind(user.id,positionId,limit).all();
+    } else if (portfolioId && stockKey) {
       rows = await env.DB.prepare(
         "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? ORDER BY executed_at DESC,created_at DESC LIMIT ?"
       ).bind(user.id, portfolioId, stockKey, limit).all();
@@ -1055,7 +1060,13 @@ async function handleTransactions(request, env, user, json, parts, url) {
     }
 
     let summary = null, portfolioSummary = null;
-    if (portfolioId && stockKey) {
+    if(positionId){
+      const p=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId,user.id).first();
+      if(p){
+        const ascending=await transactionRows(env,user.id,p.portfolio_id,p.stock_key,p.id);
+        summary=calculateTransactionLedger(ascending);
+      }
+    } else if (portfolioId && stockKey) {
       const ascending = await transactionRows(env, user.id, portfolioId, stockKey);
       summary = calculateTransactionLedger(ascending);
     } else if (portfolioId) {
@@ -1078,29 +1089,41 @@ async function handleTransactions(request, env, user, json, parts, url) {
     if (!data.executedAt) return json({ error: "executedAt is invalid" }, 400);
     if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
 
-    const position = await env.DB.prepare(
-      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
-    ).bind(user.id, data.portfolioId, data.stockKey).first();
-    if (position) {
-      await ensureOpeningTransaction(env, user.id, position);
-      const positionCurrency = String(position.currency || data.currency).toUpperCase();
-      if (positionCurrency !== data.currency) return json({ error: "Transaction currency must match the position currency" }, 400);
+    let position=data.positionId
+      ?await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(data.positionId,user.id).first()
+      :null;
+    if(!position){
+      const broker=trimText(data.broker,80);
+      position=await env.DB.prepare(
+        "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
+      ).bind(user.id,data.portfolioId,data.stockKey,broker,data.currency,data.preferTr,data.exchange).first();
+    }
+    if(position){
+      await ensureOpeningTransaction(env,user.id,position);
+      const positionCurrency=String(position.currency||data.currency).toUpperCase();
+      if(positionCurrency!==data.currency)return json({error:"Transaction currency must match the position currency"},400);
+    }else if(data.side==="SELL"){
+      return json({error:"Position not found for sell"},404);
     }
 
-    const beforeRows = await transactionRows(env, user.id, data.portfolioId, data.stockKey);
-    const before = calculateTransactionLedger(beforeRows);
-    if (data.side === "SELL" && data.quantity > before.quantity + 1e-8) {
-      return json({ error: "Sell quantity exceeds current position" }, 400);
+    const resolvedPositionId=position&&position.id?position.id:uid("pos_");
+    const beforeRows=position
+      ?await transactionRows(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId)
+      :[];
+    const before=calculateTransactionLedger(beforeRows);
+    if(data.side==="SELL"&&data.quantity>before.quantity+1e-8){
+      return json({error:"Sell quantity exceeds current position"},400);
     }
 
     const txId = uid("tx_");
     const now = nowIso();
+    const txBroker=trimText(data.broker||(position&&position.broker),80);
     await env.DB.prepare(
-      "INSERT INTO transactions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'manual',?,?)"
+      "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)"
     ).bind(
-      txId, data.portfolioId, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin, data.preferTr,
-      data.side, data.quantity, data.price, data.fees, data.currency, data.executedAt, data.notes, now, now
+      txId,data.portfolioId,user.id,resolvedPositionId,txBroker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
+      data.side,data.quantity,data.price,data.fees,data.currency,data.executedAt,data.notes,now,now
     ).run();
 
     const cashAdjustment = await adjustPortfolioCashForTransaction(
@@ -1108,7 +1131,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
     );
     await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
       .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
-    const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
+    const recalculated = await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId);
     const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
     return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
   }
@@ -1125,7 +1148,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
     const cashAdjustment = await adjustPortfolioCashForTransaction(
       env,user.id,existing.portfolio_id,existing.cash_currency||existing.currency,existing.side,existing.quantity,existing.price,existing.fees,-1,finiteNumber(existing.cash_delta)||0
     );
-    const recalculated = await recalculatePositionFromTransactions(env, user.id, existing.portfolio_id, existing.stock_key);
+    const recalculated = await recalculatePositionFromTransactions(env,user.id,existing.portfolio_id,existing.stock_key,existing.position_id||"");
     return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment });
   }
 
