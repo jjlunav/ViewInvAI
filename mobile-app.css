@@ -2811,7 +2811,12 @@ html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions>.portfolio
  max-width:44px!important;
 }
 html[data-native-app="1"] #view-portfolios .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
- grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) auto!important;
+ grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) 91px!important;
+ gap:4px!important;
+ min-width:0!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-position-card .asset-card-row[data-asset-columns="2"]{
+ grid-template-columns:minmax(0,1fr) minmax(92px,.82fr) minmax(88px,.72fr) 91px!important;
  gap:4px!important;
  min-width:0!important;
 }
