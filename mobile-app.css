@@ -2733,3 +2733,13 @@ html[data-native-app="1"] #view-portfolios .portfolio-goal-trade>b{grid-column:2
 html[data-native-app="1"] #view-portfolios .portfolio-goal-reason{font-size:8.2px!important;line-height:1.4!important;padding:0 3px!important}
 html[data-native-app="1"] #view-portfolios .portfolio-goal-decision-head h3{font-size:12px!important}
 html[data-native-app="1"] #view-portfolios .portfolio-goal-note.compact-note{font-size:8px!important;line-height:1.4!important}
+
+
+/* 2026-09-30 · native company identity and operation registration */
+html[data-native-app="1"] .profile-company-grid{grid-template-columns:1fr 1fr!important;gap:5px!important}
+html[data-native-app="1"] .profile-company-summary{font-size:9.5px!important;line-height:1.45!important}
+html[data-native-app="1"] .profile-company-grid .profile-identity{padding:7px!important}
+html[data-native-app="1"] .profile-company-grid .profile-identity strong{font-size:9px!important}
+html[data-native-app="1"] .profile-company-grid .profile-identity small,
+html[data-native-app="1"] .profile-company-grid .profile-identity span{font-size:7px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-register{font-size:7.5px!important;min-height:24px!important;padding:3px 7px!important}
