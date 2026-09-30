@@ -25,7 +25,7 @@
  const FUND_FAVORITES_KEY='viewinvai:fundFavorites:v1';
  const favoriteIsins=new Set((()=>{try{const x=JSON.parse(localStorage.getItem(FUND_FAVORITES_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return[]}})());
  function saveFundFavorites(){try{localStorage.setItem(FUND_FAVORITES_KEY,JSON.stringify([...favoriteIsins]))}catch(_){}}
- function fundFavoriteButton(p){const on=favoriteIsins.has(p.isin);return '<button type="button" class="fav-star fund-fav-star '+(on?'active':'')+'" data-fund-favorite="'+esc(p.isin)+'" aria-label="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'" title="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'">'+(on?'★':'☆')+'</button>'}
+ function fundFavoriteButton(p){const on=favoriteIsins.has(p.isin);return '<button type="button" class="fund-favorite-star '+(on?'active':'')+'" data-fund-favorite="'+esc(p.isin)+'" aria-label="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'" title="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'">'+(on?'★':'☆')+'</button>'}
  function toggleFundFavorite(isin){if(favoriteIsins.has(isin))favoriteIsins.delete(isin);else favoriteIsins.add(isin);saveFundFavorites();render();if(typeof renderFavoritesDashboard==='function')renderFavoritesDashboard();}
  const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
  const PORTFOLIO_ASSET_UI_KEY='viewinvai:portfolioAssetMode:v1';
