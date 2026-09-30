@@ -2269,3 +2269,40 @@ html,body{font-size:14px}
 main{
  padding-bottom:calc(var(--mobile-nav-h,70px) + 16px)!important;
 }
+
+
+/* 2026-09-30 extended stock header: full company name first, ticker secondary. */
+@media(max-width:820px){
+  .stock-profile-page .unified-stock-header .profile-company-name{
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    margin:1px 0 2px!important;
+    font-size:15px!important;
+    line-height:1.14!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    overflow-wrap:anywhere!important;
+  }
+  .stock-profile-page .unified-stock-header .profile-ticker-line{
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    font-size:8px!important;
+    line-height:1.05!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+  .stock-profile-page .unified-stock-header-inner{
+    padding-right:10px!important;
+  }
+  .stock-profile-page .unified-stock-header .profile-live{
+    justify-content:space-between!important;
+  }
+  .stock-profile-page .profile-quote-freshness{
+    margin-left:auto!important;
+  }
+}
