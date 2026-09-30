@@ -201,6 +201,10 @@ function syncPortfolioStars() {
   if (window.ViewInvAI && typeof window.ViewInvAI.replaceFavoriteKeys === "function") {
     window.ViewInvAI.replaceFavoriteKeys(favoriteStockKeys());
   }
+  try{
+    const key=typeof state!=="undefined"&&state.profileKey?state.profileKey:null,stock=key?stockByKey(key):null;
+    if(stock&&typeof refreshProfilePortfolioActions==="function")refreshProfilePortfolioActions(stock);
+  }catch(_){}
 }
 
 function openStockInline(key, preferTr = null) {
