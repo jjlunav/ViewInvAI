@@ -351,6 +351,8 @@ jobs:
               'notificationPreferenceAllows(assetPreference,"news_enabled",true)',
               'type==="pulse-ai"||type==="radar-entry"',
               "created_at>=?",
+              "WHERE COALESCE(g.notifications_enabled,1)<>0 ORDER BY p.updated_at ASC LIMIT 24",
+              'UPDATE notification_preferences SET updated_at=? WHERE id=?',
           )
           missing = [item for item in required_backend if item not in backend]
           if missing:
