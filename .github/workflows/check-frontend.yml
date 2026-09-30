@@ -394,6 +394,16 @@ jobs:
               raise SystemExit("Objetivo IA conserva opciones de planificación que no pertenecen al motor de rotación")
           if "sin avance semanal suficiente" not in portfolio or "revisión IA continua" not in portfolio:
               raise SystemExit("Objetivo IA no contempla rotación temprana o niveles operativos")
+          if 'id="globalNotifyPortfolioGoal"' not in index or "notify_portfolio_goal" not in backend or "portfolio_goal_enabled" not in backend:
+              raise SystemExit("Falta la categoría de notificación para Objetivo IA")
+          if "scanPortfolioGoalNotifications" not in backend or 'route:"portfolio-goal"' not in backend:
+              raise SystemExit("Objetivo IA no puede avisar cambios en segundo plano")
+          if "wholeRecommendationUnits" not in portfolio or "Math.floor(budget/row.unitEur)" not in portfolio:
+              raise SystemExit("Las recomendaciones deben operar con acciones enteras")
+          if "finalists.push(ranked[2])" not in portfolio or "slice(0,3)" not in portfolio:
+              raise SystemExit("El ranking estricto debe admitir como máximo tres entradas")
+          if 'riskProfile||"aggressive"' not in portfolio:
+              raise SystemExit("Objetivo IA debe usar perfil agresivo por defecto")
           print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras
