@@ -518,6 +518,12 @@ function warmRecommendationCache(){
 }
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,350));
 
+document.addEventListener('click',event=>{
+ const button=event.target&&event.target.closest?event.target.closest('[data-reco-mobile-group]'):null;
+ if(!button)return;
+ setRecommendationMobileGroup(button.dataset.recoMobileGroup||'general');
+});
+
 function markRecommendationSold(mode){
  if(!['us','tr'].includes(mode))return;
  let bucket=recommendationBucket(mode),key=bucket.key;if(!key)return;
