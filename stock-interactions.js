@@ -39,6 +39,7 @@ function initStockInteractions(){
  document.addEventListener('click',e=>{
   let isinCopy=e.target.closest&&e.target.closest('[data-copy-isin]');
   if(isinCopy){
+   if(isinCopy.closest('.portfolio-position-list'))return;
    e.preventDefault();e.stopPropagation();
    copyListIsin(isinCopy.dataset.copyIsin||isinCopy.textContent);
    return;
