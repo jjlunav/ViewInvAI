@@ -1831,18 +1831,26 @@ async function deleteTransaction(transactionId) {
   }
 }
 
-function openNewPortfolioModal() {
+function openNewPortfolioModal(options={}) {
   if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
+  const marketScope=String(options.marketScope||"auto");
+  const broker=String(options.broker||"");
+  const baseCurrency=String(options.baseCurrency||(marketScope==="us"?"USD":"EUR")).toUpperCase();
   openModal("Nueva cartera",
     '<form id="newPortfolioForm" class="portfolio-form">' +
-      '<label><span>Nombre</span><input name="name" required maxlength="80" placeholder="Trade Republic"></label>' +
-      '<label><span>Bróker</span><input name="broker" maxlength="80" placeholder="Trade Republic, IBKR…"></label>' +
-      '<label><span>Mercado de la cartera</span><select name="marketScope" required><option value="auto">Detectar por posiciones</option><option value="tr">Trade Republic / LSX</option><option value="us">EEUU (NASDAQ / NYSE / AMEX)</option></select></label>' +
-      '<label><span>Divisa base</span><select name="baseCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label>' +
+      '<label><span>Nombre</span><input name="name" required maxlength="80" placeholder="'+(marketScope==="us"?'Cartera EEUU':'Trade Republic')+'"></label>' +
+      '<label><span>Bróker</span><input name="broker" maxlength="80" value="'+esc(broker)+'" placeholder="Trade Republic, IBKR…"></label>' +
+      '<label><span>Mercado de la cartera</span><select name="marketScope" required><option value="auto"'+(marketScope==="auto"?' selected':'')+'>Detectar por posiciones</option><option value="tr"'+(marketScope==="tr"?' selected':'')+'>Trade Republic / LSX</option><option value="us"'+(marketScope==="us"?' selected':'')+'>EEUU (NASDAQ / NYSE / AMEX)</option></select></label>' +
+      '<label><span>Divisa base</span><select name="baseCurrency"><option'+(baseCurrency==="EUR"?' selected':'')+'>EUR</option><option'+(baseCurrency==="USD"?' selected':'')+'>USD</option><option'+(baseCurrency==="GBP"?' selected':'')+'>GBP</option></select></label>' +
       '<label><span>Efectivo disponible</span><input name="cashBalance" type="number" min="0" step="0.01" inputmode="decimal" value="0" placeholder="0"></label>' +
       '<button type="submit" class="btn">Crear cartera</button>' +
     '</form>'
   );
+  const form=$("#newPortfolioForm");
+  if(form){
+    if(options.pendingStockKey)form.dataset.pendingStockKey=String(options.pendingStockKey);
+    if(options.pendingPreferTr!==undefined&&options.pendingPreferTr!==null)form.dataset.pendingPreferTr=options.pendingPreferTr===true?"1":options.pendingPreferTr===false?"0":String(options.pendingPreferTr);
+  }
   setTimeout(() => $("#newPortfolioForm input[name=name]")?.focus(), 40);
 }
 
@@ -2132,16 +2140,22 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   const preferredPortfolio=state.portfolios.find(p=>String(p.id)===String(preferredPortfolioId))||null;
   if(!editPosition&&explicitMarket&&!preferredPortfolio){
     toast(explicitMarket==='us'
-      ?"No tienes una cartera compatible con EEUU. Crea o configura una cartera NASDAQ / NYSE / AMEX antes de registrar la operación."
-      :"No tienes una cartera compatible con Trade Republic / LSX. Crea o configura una cartera LSX antes de registrar la operación.",true);
-    openNewPortfolioModal();
+      ?"No tienes una cartera compatible con EEUU. Te preparo una nueva cartera EEUU."
+      :"No tienes una cartera compatible con Trade Republic / LSX. Te preparo una nueva cartera LSX.",true);
+    openNewPortfolioModal({
+      marketScope:explicitMarket,
+      broker:explicitMarket==="us"?"IBKR":"Trade Republic",
+      baseCurrency:explicitMarket==="us"?"USD":"EUR",
+      pendingStockKey:stockKey,
+      pendingPreferTr:explicitMarket==="tr"
+    });
     return;
   }
   const scope=portfolioMarketScope(preferredPortfolio);
   const preferTr=editPosition?Number(editPosition.prefer_tr)===1:
     explicitMarket==='tr'?true:explicitMarket==='us'?false:
     scope==="tr"?true:scope==="us"?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
-  if(scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker))){
+  if(preferTr&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker))){
     toast("Esta acción no está verificada como negociable en Trade Republic / LSX.",true);return;
   }
   const defaultBroker=String(editPosition?.broker||brokerDefaultName(preferredPortfolio,preferTr)).trim();
