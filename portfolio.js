@@ -435,8 +435,19 @@ function portfolioSummaryHtml(portfolio, positions) {
   const totalValue = currentComplete ? positionsValue + cashBalance : null;
   const openPnl = currentComplete && costComplete ? positionsValue - invested : null;
   const openPnlPct = openPnl !== null && invested > 0 ? openPnl / invested * 100 : null;
-  const currencySummary = txSummary && txSummary.currencies && txSummary.currencies[baseCurrency] || null;
-  const realizedPnl = currencySummary ? num(currencySummary.realizedPnl) : null;
+  let realizedPnl=null;
+  if(txSummary&&txSummary.currencies){
+    let convertedTotal=0,complete=true,seen=false;
+    for(const [code,row] of Object.entries(txSummary.currencies)){
+      const value=num(row&&row.realizedPnl);
+      if(value===null)continue;
+      seen=true;
+      const converted=portfolioConvertAmount(value,code,baseCurrency,fxUsdEur);
+      if(converted===null){complete=false;break}
+      convertedTotal+=converted;
+    }
+    if(seen&&complete)realizedPnl=convertedTotal;
+  }
   const totalPnl = openPnl !== null && realizedPnl !== null ? openPnl + realizedPnl : null;
   const pnlHtml = (label, value, suffix = "") => value === null ? "" :
     '<div><small>' + label + '</small><strong class="' + (value >= 0 ? 'pnl-up' : 'pnl-down') + '">' +
