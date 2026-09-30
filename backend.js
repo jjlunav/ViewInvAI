@@ -1872,12 +1872,14 @@ function chartFeatures(chart) {
 function deterministicAssessment(target, stock, chart, events) {
   const engine = globalThis.ViewInvAIScore;
   const preferTr = Number(target.prefer_tr) === 1;
-  const price = preferTr && chart && chart.available ? finiteNumber(chart.last) : finiteNumber(stock.price);
-  const change = preferTr && chart && chart.available
-    ? finiteNumber(chart.return20)
-    : finiteNumber(stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct);
-  const bid = preferTr ? finiteNumber(stock.trLiveBid ?? stock.usBid) : finiteNumber(stock.usLiveBid ?? stock.usBid);
-  const ask = preferTr ? finiteNumber(stock.trLiveAsk ?? stock.usAsk) : finiteNumber(stock.usLiveAsk ?? stock.usAsk);
+  const price = preferTr
+    ? finiteNumber(stock.trLivePrice) ?? (chart && chart.available ? finiteNumber(chart.last) : null)
+    : finiteNumber(stock.usLivePrice);
+  const change = preferTr
+    ? finiteNumber(stock.trLiveChangePct) ?? (chart && chart.available ? finiteNumber(chart.return20) : null)
+    : finiteNumber(stock.usLiveChangePct);
+  const bid = preferTr ? finiteNumber(stock.trLiveBid) : finiteNumber(stock.usLiveBid);
+  const ask = preferTr ? finiteNumber(stock.trLiveAsk) : finiteNumber(stock.usLiveAsk);
   const spread = bid !== null && ask !== null && ask >= bid && (ask + bid) > 0
     ? (ask - bid) / ((ask + bid) / 2) * 100
     : null;
@@ -1885,7 +1887,7 @@ function deterministicAssessment(target, stock, chart, events) {
   const input = {
     price,
     change,
-    volume: finiteNumber(stock.usLiveVolume ?? stock.volume),
+    volume: preferTr ? null : finiteNumber(stock.usLiveVolume),
     avgVolume: finiteNumber(stock.avgVolume),
     relVolume: finiteNumber(stock.relVolume),
     rsi: finiteNumber(stock.rsi),
@@ -2000,10 +2002,16 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
         exchange: Number(target.prefer_tr) === 1 ? (stock.trExchange || "LSX") : stock.exchange,
         market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
         currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
-        price: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.last : stock.price,
-        changePct: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.return20 : (stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct),
+        price: Number(target.prefer_tr) === 1
+          ? (stock.trLivePrice ?? (chart && chart.available ? chart.last : null))
+          : (stock.usLivePrice ?? null),
+        changePct: Number(target.prefer_tr) === 1
+          ? (stock.trLiveChangePct ?? (chart && chart.available ? chart.return20 : null))
+          : (stock.usLiveChangePct ?? null),
+        bid: Number(target.prefer_tr) === 1 ? (stock.trLiveBid ?? null) : (stock.usLiveBid ?? null),
+        ask: Number(target.prefer_tr) === 1 ? (stock.trLiveAsk ?? null) : (stock.usLiveAsk ?? null),
         relVolume: stock.relVolume,
-        volume: stock.usLiveVolume ?? stock.volume,
+        volume: Number(target.prefer_tr) === 1 ? null : (stock.usLiveVolume ?? null),
         avgVolume: stock.avgVolume,
         rsi: stock.rsi,
         adx: stock.adx,
