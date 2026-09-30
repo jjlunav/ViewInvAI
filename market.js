@@ -149,7 +149,9 @@ function canonicalQuote(s,preferTr=false){
    updatedAt:quoteTimestampMs(s,true),
    fx,
    fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
-   live:eur!==null
+   live:eur!==null,
+   realTime:eur!==null,
+   fallback:false
   };
  }
  let current=currentUsQuote(s,currentMarketSession()),usd=N(current&&current.price);
@@ -165,7 +167,9 @@ function canonicalQuote(s,preferTr=false){
   session:current&&current.kind||null,
   fx,
   fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
-  live:usd!==null
+  live:usd!==null&&!!(current&&current.source)&&!/^Snapshot\b/i.test(String(current.source||'')),
+  realTime:current&&current.realtime===true,
+  fallback:!current||!current.source||/^Snapshot\b/i.test(String(current.source||''))
  };
 }
 
