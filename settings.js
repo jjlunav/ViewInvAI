@@ -293,7 +293,7 @@ function initSettings(){
   if(event.target.checked)await retryPushRegistration();
   renderPushSettingsStatus();
  });
- ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyRadarAi','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
