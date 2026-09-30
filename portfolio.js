@@ -1782,7 +1782,7 @@ function stockFormPayload(stock, form) {
   const preferTr = form.dataset.preferTr === "1";
   const ticker = preferTr && stock.trTicker ? stock.trTicker : stock.ticker;
   return {
-    portfolioId: String(fd.get("portfolioId") || ""),
+    portfolioId: String(fd.get("portfolioId") || form.querySelector('[name="portfolioId"]')?.value || ""),
     stockKey: window.ViewInvAI.getStockKey(stock),
     ticker: String(ticker || stock.ticker || ""),
     name: stock.name || "",
@@ -1791,7 +1791,7 @@ function stockFormPayload(stock, form) {
     preferTr,
     quantity: num(fd.get("quantity")),
     avgPrice: num(fd.get("avgPrice")),
-    currency: String(fd.get("currency") || (preferTr ? "EUR" : stock.currency || "USD")),
+    currency: String(fd.get("currency") || form.querySelector('[name="currency"]')?.value || (preferTr ? "EUR" : stock.currency || "USD")),
     openedAt: String(fd.get("openedAt") || ""),
     notes: String(fd.get("notes") || ""),
     broker: String(fd.get("broker") || form.querySelector('[data-broker-select]')?.value || "")
@@ -2392,7 +2392,7 @@ function bind() {
       const position = transactionPosition(editPosition.dataset.editPortfolioPosition);
       if (position) {
         closeModal();
-        setTimeout(() => openAddPositionModal(position.stock_key, Number(position.prefer_tr) === 1, position.portfolio_id), 20);
+        setTimeout(() => openAddPositionModal(position.stock_key, Number(position.prefer_tr) === 1, position.portfolio_id, position.id), 20);
       }
       return;
     }
@@ -2744,7 +2744,7 @@ function openPositionEditorForStock(stockKey,portfolioId=null){
   if(!target&&memberships.length===1)target=memberships[0];
   if(!target){openStarMenu(stockKey);return true}
   closeModal();
-  setTimeout(()=>openAddPositionModal(target.position.stock_key,Number(target.position.prefer_tr)===1,target.position.portfolio_id),20);
+  setTimeout(()=>openAddPositionModal(target.position.stock_key,Number(target.position.prefer_tr)===1,target.position.portfolio_id,target.position.id),20);
   return true;
 }
 
