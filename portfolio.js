@@ -1599,7 +1599,7 @@ async function saveGoalOperationForm(form){
     if(status)status.textContent=error.message||"No se pudo registrar la operación.";
     toast(error.message||"No se pudo registrar la operación.",true);
   }finally{
-    delete form.dataset.saving;if(button&&button.isConnected){button.disabled=false;button.textContent="Registrar operación"}
+    delete form.dataset.saving;if(button&&button.isConnected){button.disabled=false;button.textContent="Registrar estrategia"}
   }
 }
 
