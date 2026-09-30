@@ -978,13 +978,24 @@ function renderGoalApp() {
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
     persistPendingGoalHistory();
   });
-  refreshGoalSummaries().catch(()=>{});
-  setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
 }
 
 function renderActivePortfolioPanel(){
   if(state.primaryTab==="goal")return renderGoalApp();
   return renderApp();
+}
+
+function activateGoalPanel({reanalyze=true}={}){
+  state.primaryTab="goal";
+  savePortfolioUi();
+  renderGoalApp();
+  const portfolioId=state.selectedPortfolioId;
+  if(portfolioId){
+    refreshPortfolioTransactionSummary(portfolioId,false).then(()=>{
+      if(state.primaryTab==="goal"&&String(state.selectedPortfolioId)===String(portfolioId))renderGoalApp();
+    }).catch(()=>{});
+  }
+  if(reanalyze)setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
 }
 
 async function fetchJson(path) {
@@ -2336,9 +2347,10 @@ function bind() {
     state.goalCandidateCache={at:0,key:"",rows:[]};
     savePortfolioUi();
     renderGoalApp();
-    refreshPortfolioTransactionSummary(id).then(()=>{
-      if(state.primaryTab==="goal")renderGoalApp();
+    refreshPortfolioTransactionSummary(id,false).then(()=>{
+      if(state.primaryTab==="goal"&&String(state.selectedPortfolioId)===String(id))renderGoalApp();
     }).catch(()=>{});
+    setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
   });
 
   document.addEventListener("submit", async event => {
@@ -2513,14 +2525,17 @@ window.ViewInvAIPortfolios = {
   })),
   removeStockFromPortfolio,
   setGoalVisible: visible => {
-    state.primaryTab = visible ? "goal" : "portfolio";
-    savePortfolioUi();
-    if(visible)renderGoalApp();
-    else renderApp();
+    if(visible)activateGoalPanel({reanalyze:true});
+    else{
+      state.primaryTab="portfolio";
+      savePortfolioUi();
+      renderApp();
+    }
   },
   openGoal: portfolioId => {
     if(portfolioId&&state.portfolios.some(p=>String(p.id)===String(portfolioId)))state.selectedPortfolioId=portfolioId;
-    state.primaryTab="goal";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderGoalApp();
+    state.goalCandidateCache={at:0,key:"",rows:[]};
+    activateGoalPanel({reanalyze:true});
     return true;
   },
   getState: () => state
