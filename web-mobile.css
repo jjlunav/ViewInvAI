@@ -2325,3 +2325,30 @@ main{
   border-color:rgba(165,183,255,.52)!important;
   background:linear-gradient(180deg,rgba(111,137,255,.30),rgba(89,83,224,.14))!important;
 }
+
+
+/* 2026-09-30 · show compact wallet action on mobile stock profiles */
+@media(max-width:820px){
+ .stock-profile-page .profile-primary-actions,
+ .stock-profile .profile-primary-actions{
+  display:flex!important;
+  justify-content:flex-end!important;
+  align-items:center!important;
+  gap:6px!important;
+ }
+ .stock-profile-page .profile-wallet-action,
+ .stock-profile .profile-wallet-action,
+ .portfolio-register-operation-icon{
+  width:34px!important;
+  min-width:34px!important;
+  height:34px!important;
+  min-height:34px!important;
+  padding:0!important;
+  border-radius:9px!important;
+ }
+ .stock-profile-page .profile-wallet-action>span,
+ .stock-profile .profile-wallet-action>span,
+ .portfolio-register-operation-icon>span{
+  font-size:17px!important;
+ }
+}
