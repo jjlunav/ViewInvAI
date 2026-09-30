@@ -179,7 +179,8 @@ function standardStockCard(s,i=0,opts={}){
   leadingHtml:favButton(s,preferTr),cells,
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
-  metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,className:opts.className
+  metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,className:opts.className,
+  openLabel:opts.openLabel||'',openActionAttrs:opts.openActionAttrs||''
  });
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){
