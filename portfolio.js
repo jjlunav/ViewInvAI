@@ -1408,6 +1408,71 @@ async function saveTransactionForm(form) {
   }
 }
 
+function openGoalOperationModal(button){
+  if(!button)return;
+  const side=String(button.dataset.registerGoalOperation||"BUY").toUpperCase();
+  const portfolioId=button.dataset.goalPortfolio||state.selectedPortfolioId,stockKey=button.dataset.goalStockKey||"";
+  const stock=stockByKey(stockKey),portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));
+  if(!stock||!portfolio)return toast("No se pudo preparar la operación.",true);
+  const preferTr=button.dataset.goalPreferTr==="1",currency=String(button.dataset.goalCurrency||(preferTr?"EUR":"USD")).toUpperCase();
+  const units=Math.max(0,Math.round(num(button.dataset.goalUnits)||0)),price=num(button.dataset.goalPrice),fees=Math.max(0,num(button.dataset.goalFees)||0);
+  if(units<1||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
+  const position=state.positions.find(p=>Number(p.active)!==0&&String(p.portfolio_id)===String(portfolioId)&&sameStockRef(p.stock_key,stockKey))||null;
+  if(side==="SELL"&&!position)return toast("No se encuentra la posición que se quiere vender.",true);
+  const ticker=(preferTr&&stock.trTicker)||stock.ticker||position?.ticker||"",name=stock.name||position?.name||ticker;
+  const exchange=preferTr?(stock.trExchange||"LSX"):(stock.exchange||position?.exchange||"");
+  const isin=preferTr?(stock.trIsin||stock.isin||position?.isin||""):(stock.usIsin||stock.isin||position?.isin||"");
+  openModal((side==="BUY"?"Registrar compra · ":"Registrar venta · ")+ticker,
+    '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
+      '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
+      '<input name="side" type="hidden" value="'+esc(side)+'">'+
+      '<div class="portfolio-form-grid">'+
+        '<label><span>Acciones</span><input name="quantity" type="number" inputmode="numeric" step="1" min="1" value="'+esc(String(units))+'" required></label>'+
+        '<label><span>Precio ejecutado</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(price))+'" required></label>'+
+      '</div>'+
+      '<div class="portfolio-form-grid">'+
+        '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(fees))+'"></label>'+
+        '<label><span>Divisa</span><input name="currency" value="'+esc(currency)+'" readonly></label>'+
+      '</div>'+
+      '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="'+localDateTimeValue()+'" required></label>'+
+      '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
+      '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si el precio real difiere del límite recomendado. El efectivo se recalculará automáticamente; seguirá pudiendo editarse manualmente.</p>'+
+      '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
+      '<button type="submit" class="btn">Registrar operación</button>'+
+    '</form>'
+  );
+}
+async function saveGoalOperationForm(form){
+  if(!form||form.dataset.saving==="1")return;
+  const fd=new FormData(form),preferTr=form.dataset.preferTr==="1",side=String(fd.get("side")||"BUY").toUpperCase();
+  const executedDate=new Date(String(fd.get("executedAt")||""));
+  const payload={
+    portfolioId:form.dataset.portfolioId,stockKey:form.dataset.stockKey,ticker:form.dataset.ticker||"",
+    name:form.dataset.name||"",exchange:form.dataset.exchange||"",isin:form.dataset.isin||"",preferTr,
+    side,quantity:Math.max(0,Math.round(num(fd.get("quantity"))||0)),price:num(fd.get("price")),
+    fees:Math.max(0,num(fd.get("fees"))??(preferTr?1:0)),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
+    executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
+  };
+  const status=form.querySelector("[data-goal-operation-status]"),button=form.querySelector('button[type="submit"]');
+  if(payload.quantity<1||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
+  form.dataset.saving="1";if(button){button.disabled=true;button.textContent="Guardando…"}
+  try{
+    const response=await api("/api/transactions",{method:"POST",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo registrar la operación.");
+    await loadAll();
+    state.goalCandidateCache={at:0,key:"",rows:[]};
+    const cash=data.cashAdjustment&&data.cashAdjustment.adjusted?(" · efectivo "+formatMoney(data.cashAdjustment.cashBalance,data.cashAdjustment.baseCurrency||"EUR")):"";
+    toast((side==="BUY"?"Compra":"Venta")+" registrada"+cash);
+    closeModal();
+    if(portfolioHasGoal(payload.portfolioId))scheduleGoalPortfolioReview(payload.portfolioId,data.position&&Number(data.position.active)!==0?data.position.id:null);
+  }catch(error){
+    if(status)status.textContent=error.message||"No se pudo registrar la operación.";
+    toast(error.message||"No se pudo registrar la operación.",true);
+  }finally{
+    delete form.dataset.saving;if(button&&button.isConnected){button.disabled=false;button.textContent="Registrar operación"}
+  }
+}
+
 async function deleteTransaction(transactionId) {
   if (!transactionId) return;
   const ledger = document.querySelector('[data-transaction-position]');
