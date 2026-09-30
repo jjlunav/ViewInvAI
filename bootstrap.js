@@ -63,7 +63,7 @@ setInterval(()=>{if(!document.hidden&&state.currentView==='recommendation'&&!doc
 setTimeout(()=>window.ViewInvAIMarketBoard?.refreshSocialTrending?.(false),0);
 openPushTargetFromUrl();
 window.ViewInvAI={
- openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
+ openStockByKey:(key,reason='Aviso',preferTr=null,originView=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr,originView);return true},
  getStockByKey:key=>stockByKey(key),
  getAllStocks:()=>db.stocks.slice(),
  mergeLiveEvents:events=>{
