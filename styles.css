@@ -9257,3 +9257,31 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
   text-overflow:ellipsis!important;
  }
 }
+
+
+/* 2026-09-30 profile hierarchy, market status and technical levels */
+.unified-stock-header .profile-company-name{
+  color:#eef6f8!important;
+  font-size:20px!important;
+  line-height:1.12!important;
+  margin:2px 0 3px!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
+.unified-stock-header .profile-ticker-line{
+  color:#75e8c1!important;
+  font-size:10px!important;
+  line-height:1.1!important;
+  font-weight:800!important;
+  letter-spacing:.45px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.quote-freshness.stale{color:var(--red)!important}
+.quote-freshness.stale i{background:var(--red)!important}
+.quote-freshness.unknown{color:var(--red)!important}
+.quote-freshness.unknown i{background:var(--red)!important}
+.profile-live-level{font-variant-numeric:tabular-nums}
+.profile-live-level.ready{color:#e7f0f3}
