@@ -74,6 +74,9 @@ window.checkAssetCards = async function () {
   assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
   const row=rows[0].querySelector('[data-open-stock]');
   assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
+  const buyAction=rows[0].querySelector('[data-position-transactions][data-position-side="BUY"]');
+  const sellAction=rows[0].querySelector('[data-position-transactions][data-position-side="SELL"]');
+  assert(buyAction&&sellAction,'portfolio position lost direct buy/sell controls');
   assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
   assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
   assert(!rows[1].querySelector('.asset-investing-extended,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
