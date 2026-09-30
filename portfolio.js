@@ -982,6 +982,11 @@ function renderGoalApp() {
   setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
 }
 
+function renderActivePortfolioPanel(){
+  if(state.primaryTab==="goal")return renderGoalApp();
+  return renderApp();
+}
+
 async function fetchJson(path) {
   const response = await api(path);
   const data = await response.json().catch(() => ({}));
@@ -1154,7 +1159,7 @@ async function loadAll({ syncFavorites = false } = {}) {
   if (!state.user || state.loading) return;
   let ok = true;
   state.loading = true;
-  renderApp();
+  renderActivePortfolioPanel();
   try {
     const [portfolios, positions, watchlist, goalData] = await Promise.all([
       fetchJson("/api/portfolios"),fetchJson("/api/positions"),fetchJson("/api/watchlist"),
@@ -1171,7 +1176,7 @@ async function loadAll({ syncFavorites = false } = {}) {
     toast(error.message || "No se pudieron cargar las carteras.", true);
   } finally {
     state.loading = false;
-    renderApp();
+    renderActivePortfolioPanel();
     const summaryPortfolioId = state.selectedPortfolioId;
     if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});
   }
@@ -1367,7 +1372,7 @@ async function refreshPortfolioTransactionSummary(portfolioId, rerender = true) 
   try {
     const data = await fetchJson('/api/transactions?portfolioId=' + encodeURIComponent(portfolioId) + '&limit=1');
     state.portfolioTransactionSummaries[portfolioId] = data.portfolioSummary || null;
-    if (rerender && String(state.selectedPortfolioId || "") === portfolioId) renderApp();
+    if (rerender && String(state.selectedPortfolioId || "") === portfolioId) renderActivePortfolioPanel();
     return data.portfolioSummary || null;
   } catch (error) {
     console.warn("Portfolio transaction summary failed", error);
@@ -1658,7 +1663,7 @@ async function savePortfolioMarket(form){
   const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({marketScope,baseCurrency})});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el mercado.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
-  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Mercado de la cartera actualizado");
+  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderActivePortfolioPanel();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Mercado de la cartera actualizado");
 }
 function openPortfolioCashModal(portfolioId){
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));if(!portfolio)return;
@@ -1675,7 +1680,7 @@ async function savePortfolioCash(form){
   const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({cashBalance})});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el capital líquido.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
-  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Capital líquido actualizado");
+  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderActivePortfolioPanel();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Capital líquido actualizado");
 }
 
 function stockFormPayload(stock, form) {
@@ -2059,7 +2064,7 @@ function bind() {
       const portfolioId=goalToggle.dataset.portfolioGoalToggle;
       if(portfolioId&&String(state.selectedPortfolioId)!==String(portfolioId))state.selectedPortfolioId=portfolioId;
       state.primaryTab=state.primaryTab==="goal"?"portfolio":"goal";
-      savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();
+      savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderActivePortfolioPanel();
       if(state.primaryTab==="goal"){
         refreshGoalSummaries().catch(()=>{});
         setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
@@ -2440,7 +2445,7 @@ function bind() {
       state.goalError = "";
       state.goalCandidateCache = { at:0,key:"",rows:[] };
       Object.values(state.goalReviewTimers).forEach(timer=>clearTimeout(timer));state.goalReviewTimers={};
-      renderApp();
+      renderActivePortfolioPanel();
     } else {
       loadAll();
     }
@@ -2462,12 +2467,12 @@ function bind() {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
     clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderApp, 180);
+    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 180);
   });
   window.addEventListener("viewinvai:fx-updated", () => {
     state.goalCandidateCache={at:0,key:"",rows:[]};
     clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderApp, 180);
+    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 180);
   });
 }
 
@@ -2510,14 +2515,12 @@ window.ViewInvAIPortfolios = {
   setGoalVisible: visible => {
     state.primaryTab = visible ? "goal" : "portfolio";
     savePortfolioUi();
-    if(visible&&window.ViewInvAINavigation&&typeof window.ViewInvAINavigation.go==="function")window.ViewInvAINavigation.go("portfolioGoal");
+    if(visible)renderGoalApp();
     else renderApp();
   },
   openGoal: portfolioId => {
     if(portfolioId&&state.portfolios.some(p=>String(p.id)===String(portfolioId)))state.selectedPortfolioId=portfolioId;
-    state.primaryTab="goal";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();
-    refreshGoalSummaries().catch(()=>{});
-    setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
+    state.primaryTab="goal";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderGoalApp();
     return true;
   },
   getState: () => state
