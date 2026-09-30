@@ -135,7 +135,7 @@ function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
   return{label:'Precio LSX',value:text,tone:change===null?'muted':C(change),html:'<span class="asset-regular-price asset-venue-price" data-tr-live-key="'+E(stockKey(s))+'">'+pricePairInner(s,price,true)+'</span>'};
  }
- const q=currentUsQuote(s,se),price=N(q&&q.price),change=N(q&&q.change);
+ const q=currentUsQuote(s,currentMarketSession()),price=N(q&&q.price),change=N(q&&q.change);
  const text=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
  const label=q&&q.kind==='premarket'?'Premarket':q&&q.kind==='postmarket'?'Postmarket':'Precio actual';
  return{label,value:text,tone:change===null?'muted':C(change),
@@ -146,7 +146,7 @@ function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
   const change=N(canonicalQuote(s,true).change);
   return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),html:'<span class="asset-regular-change asset-venue-change '+C(change)+'" data-tr-live-change-key="'+E(stockKey(s))+'">'+E(PC(change))+'</span>'};
  }
- const q=currentUsQuote(s,se),change=N(q&&q.change);
+ const q=currentUsQuote(s,currentMarketSession()),change=N(q&&q.change);
  return{label:'Variación',value:PC(change),tone:change===null?'muted':C(change),
   html:'<span class="asset-regular-change">'+E(PC(change))+'</span>'};
 }
