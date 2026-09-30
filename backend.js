@@ -859,6 +859,19 @@ async function handlePortfolios(request, env, user, json, parts) {
   return json({ error: "Method not allowed" }, 405);
 }
 
+async function notifyPortfolioMembershipChange(env,userId,portfolio,position,action){
+  const settings=await globalNotificationSettingsForUser(env,userId);
+  if(!settings.enabled||!settings.portfolio)return null;
+  const entering=action==="added",ticker=trimText(position&&position.ticker,24).toUpperCase(),name=trimText(position&&position.name,160);
+  const title=(entering?"Entrada en cartera · ":"Salida de cartera · ")+(ticker||name||"Posición");
+  const message=(ticker||name||"La posición")+" "+(entering?"se ha añadido a ":"ha salido de ")+(portfolio&&portfolio.name||"la cartera")+".";
+  const id=uid("al_"),now=nowIso();
+  await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .bind(id,userId,position&&position.stock_key||"",ticker,name,entering?"portfolio-entry":"portfolio-exit","info",title,message,now).run();
+  await dispatchPushAlert(env,{id,alert_type:entering?"portfolio-entry":"portfolio-exit",severity:"info",title,message},{user_id:userId,route:"portfolios",portfolio_id:portfolio&&portfolio.id||position&&position.portfolio_id||"",stock_key:position&&position.stock_key||"",ticker,prefer_tr:Number(position&&position.prefer_tr)===1?1:0});
+  return id;
+}
+
 async function handlePositions(request, env, user, json, parts, url) {
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
@@ -905,6 +918,9 @@ async function handlePositions(request, env, user, json, parts, url) {
     } else {
       await ensureOpeningTransaction(env, user.id, row);
     }
+    if(!existing||Number(existing.active)===0){
+      try{await notifyPortfolioMembershipChange(env,user.id,portfolio,row,"added")}catch(error){console.warn("Portfolio entry notification failed",String(error&&error.message||error))}
+    }
     return json({ position: row }, existing ? 200 : 201);
   }
 
@@ -945,6 +961,10 @@ async function handlePositions(request, env, user, json, parts, url) {
 
   if (request.method === "DELETE") {
     await env.DB.prepare("UPDATE positions SET active=0,updated_at=? WHERE id=? AND user_id=?").bind(nowIso(), id, user.id).run();
+    try{
+      const portfolio=await onePortfolio(env,user.id,existing.portfolio_id);
+      await notifyPortfolioMembershipChange(env,user.id,portfolio,existing,"removed");
+    }catch(error){console.warn("Portfolio exit notification failed",String(error&&error.message||error))}
     return json({ deleted: true });
   }
 
@@ -2210,7 +2230,7 @@ async function handleSettings(request, env, user, json) {
     notify_news_events:notifications.newsEvents?1:0,
     notify_pulse_ai:notifications.pulseAi?1:0,
     notify_radar:notifications.radar?1:0,
-    notify_price:notifications.price?1:0,
+    notify_price:0,
     notify_portfolio:notifications.portfolio?1:0,
     notify_portfolio_goal:notifications.portfolioGoal?1:0
   });
@@ -2229,7 +2249,7 @@ async function handleSettings(request, env, user, json) {
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
     pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1,
     radar: body.notifyRadar === undefined ? Number(current.notify_radar)!==0 : booleanInt(body.notifyRadar)===1,
-    price: body.notifyPrice === undefined ? Number(current.notify_price)!==0 : booleanInt(body.notifyPrice)===1,
+    price: false,
     portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1,
     portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1
   };
@@ -2390,7 +2410,7 @@ async function scanNotificationPreferences(env,services){
       const signalConfigured=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
-      const trPriceConfigured=Number(pref.prefer_tr)===1&&global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      const trPriceConfigured=Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
       let chart={available:false},chartRaw=null;
       if(trPriceConfigured||aiDue){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
@@ -2399,7 +2419,7 @@ async function scanNotificationPreferences(env,services){
       // A TR/LSX alert must never be evaluated from the US quote. Use the exact
       // LSX chart/ticker when available; otherwise wait instead of mixing markets.
       let liveQuote=null;
-      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      const priceAlertConfigured=Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1;
       if(Number(pref.prefer_tr)!==1&&priceAlertConfigured&&services.loadQuote){
         try{liveQuote=await services.loadQuote(stock,pref)}
         catch(error){console.warn("Notification live quote unavailable",pref.id,String(error&&error.message||error))}
@@ -2416,11 +2436,11 @@ async function scanNotificationPreferences(env,services){
       if(anchorPrice&&price!==null){
         const pct=(price/anchorPrice-1)*100,upStep=Math.max(.5,finiteNumber(pref.price_up_step)??3),downStep=Math.max(.5,finiteNumber(pref.price_down_step)??3);
         const nextUp=Math.floor(Math.max(0,pct)/upStep),nextDown=Math.floor(Math.max(0,-pct)/downStep);
-        if(global.price&&Number(pref.price_up_enabled)===1&&nextUp>upBucket){
+        if(Number(pref.price_up_enabled)===1&&nextUp>upBucket){
           await sendPreferenceAlert(env,pref,"price-up","info","Subida · "+pref.ticker,"Ha superado +"+(nextUp*upStep).toFixed(1)+"% desde que activaste el aviso.");
           upBucket=nextUp;
         }
-        if(global.price&&Number(pref.price_down_enabled)===1&&nextDown>downBucket){
+        if(Number(pref.price_down_enabled)===1&&nextDown>downBucket){
           await sendPreferenceAlert(env,pref,"price-down","warning","Bajada · "+pref.ticker,"Ha superado -"+(nextDown*downStep).toFixed(1)+"% desde que activaste el aviso.");
           downBucket=nextDown;
         }
@@ -2449,8 +2469,14 @@ async function scanNotificationPreferences(env,services){
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
         const nextPulse=current.signal==="BUY"&&current.confidence>=70&&current.score>=60?"BUY":"";
         const nextRadar=current.score>=58&&["BUY","WATCH"].includes(current.signal)?"RADAR":"";
-        if(global.pulseAi&&Number(pref.pulse_enabled)===1&&nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
-        if(global.radar&&Number(pref.radar_enabled)===1&&nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
+        if(global.pulseAi&&Number(pref.pulse_enabled)===1){
+          if(nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
+          else if(pulseState&&!nextPulse)await sendPreferenceAlert(env,pref,"pulse-ai-exit","info","Salida de Pulso IA · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios de Pulso IA.");
+        }
+        if(global.radar&&Number(pref.radar_enabled)===1){
+          if(nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
+          else if(radarState&&!nextRadar)await sendPreferenceAlert(env,pref,"radar-exit","info","Salida de Radar · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios del Radar.");
+        }
         pulseState=nextPulse;radarState=nextRadar;
       }
       const scanNow=nowIso();
