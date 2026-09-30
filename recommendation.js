@@ -467,6 +467,10 @@ function recommendationCompactList(usResult,trResult){
  '</div>';
 }
 
+function recommendationMobileList(usResult,trResult){
+ return recommendationCompactList(usResult,trResult);
+}
+
 function recommendationLoadingSection(mode){
  const isTr=mode==='tr';
  const title=isTr?'Trade Republic':'EEUU';
