@@ -417,6 +417,12 @@ jobs:
                   raise SystemExit("La ficha General no expone todos los datos o edición de posición: " + required)
           if "openPositionEditorForStock" not in portfolio or "profileEditPosition" not in stock_interactions:
               raise SystemExit("No se puede editar una posición desde la ficha de la acción")
+          for required in ("portfolio_goal_recommendation_history", "handlePortfolioGoalHistory", 'root === "portfolio-goal-history"'):
+              if required not in backend:
+                  raise SystemExit("Falta historial persistente de Objetivo IA: " + required)
+          for required in ("data-goal-history", "openGoalHistory", "buildGoalHistorySnapshot", "persistPendingGoalHistory"):
+              if required not in portfolio:
+                  raise SystemExit("Falta historial visible de Objetivo IA: " + required)
           print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras

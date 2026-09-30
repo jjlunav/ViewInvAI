@@ -2158,3 +2158,11 @@ html,body{font-size:14px}
 .profile-company-grid .profile-identity small,
 .profile-company-grid .profile-identity span{font-size:7.5px!important}
 #view-portfolios .portfolio-goal-register{width:max-content!important;max-width:100%!important;font-size:8px!important;min-height:26px!important}
+
+
+/* 2026-09-30 · eight controls while Objective IA is open */
+#view-portfolios .portfolio-workbar.goal-mode .portfolio-workbar-actions{grid-template-columns:repeat(8,minmax(0,1fr))!important}
+.goal-history-entry{padding:8px!important}
+.goal-history-op{grid-template-columns:58px minmax(0,1fr)!important;padding:6px!important}
+.goal-history-op>span{font-size:10px!important}
+.goal-history-op>small{font-size:8px!important}
