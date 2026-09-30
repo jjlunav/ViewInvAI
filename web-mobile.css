@@ -2131,10 +2131,8 @@ html,body{font-size:14px}
 
 
 /* 2026-09-30 · selected-portfolio controls */
-@media(max-width:820px){
- #view-portfolios .portfolio-workbar-actions{grid-template-columns:repeat(7,minmax(0,1fr))!important}
- #view-portfolios .portfolio-workbar-actions>*{height:36px!important;min-height:36px!important}
- #view-portfolios .portfolio-cash-row{margin:5px 0!important}
- #view-portfolios .portfolio-goal-form.compact-goal-form{grid-template-columns:1fr 1fr!important}
- #view-portfolios .portfolio-goal-form.compact-goal-form>button{grid-column:1/-1!important}
-}
+#view-portfolios .portfolio-workbar-actions{grid-template-columns:repeat(7,minmax(0,1fr))!important}
+#view-portfolios .portfolio-workbar-actions>*{height:36px!important;min-height:36px!important}
+#view-portfolios .portfolio-cash-row{margin:5px 0!important}
+#view-portfolios .portfolio-goal-form.compact-goal-form{grid-template-columns:1fr 1fr!important}
+#view-portfolios .portfolio-goal-form.compact-goal-form>button{grid-column:1/-1!important}
