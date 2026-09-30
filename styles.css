@@ -9285,3 +9285,45 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
 .quote-freshness.unknown i{background:var(--red)!important}
 .profile-live-level{font-variant-numeric:tabular-nums}
 .profile-live-level.ready{color:#e7f0f3}
+
+
+/* 2026-09-30 · compact portfolio wallet actions */
+.profile-wallet-action,
+.portfolio-register-operation-icon{
+ display:inline-grid;
+ place-items:center;
+ width:34px;
+ min-width:34px;
+ height:34px;
+ min-height:34px;
+ padding:0;
+ border:1px solid rgba(155,108,64,.55);
+ border-radius:9px;
+ background:rgba(91,58,30,.22);
+ color:#c7925b;
+ cursor:pointer;
+ line-height:1;
+ box-shadow:none;
+}
+.profile-wallet-action:hover,
+.portfolio-register-operation-icon:hover{
+ border-color:rgba(193,139,83,.82);
+ background:rgba(111,70,34,.34);
+}
+.profile-wallet-action>span,
+.portfolio-register-operation-icon>span{
+ font-size:17px;
+ line-height:1;
+}
+.profile-wallet-action.is-managed{
+ border-color:rgba(155,108,64,.7)!important;
+ background:rgba(91,58,30,.30)!important;
+ color:#d7a36d!important;
+}
+.asset-card-row-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ gap:5px;
+ min-width:34px;
+}
