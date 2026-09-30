@@ -22,5 +22,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.5"
   }
 }
