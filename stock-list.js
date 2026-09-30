@@ -441,27 +441,38 @@ function homeActiveStocks(limit=10,source='us'){
  return out.slice(0,limit);
 }
 let trMarketScanCursor=0;
+const trMarketScanState={seen:new Set(),lastBatchAt:0,lastCoverageRenderAt:0};
 function seedTradeRepublicMarketBoard(limit=120){
  if(typeof ensureTrLiveKey!=='function')return;
  const universe=homeUniverse('tr');
  if(!universe.length)return;
- const priority=universe.slice().sort((a,b)=>{
-  const ac=Math.abs(effectiveSessionChange(a,homeSession())??N(a.changePct)??0);
-  const bc=Math.abs(effectiveSessionChange(b,homeSession())??N(b.changePct)??0);
-  return bc-ac;
- });
- const wanted=[],seen=new Set();
- const add=s=>{const k=stockKey(s);if(!k||seen.has(k))return;seen.add(k);wanted.push(s)};
- priority.slice(0,Math.min(60,limit)).forEach(add);
- homeActiveStocks(Math.min(30,limit),'tr').forEach(add);
+
+ // LSX movers cannot be inferred from the US listing. Scan the LSX universe in
+ // rotating batches and retain each received quote in the stock object. Keep a
+ // small priority slice for rows the user is already looking at, then spend the
+ // remaining subscriptions on fresh symbols so "Subidas" and "Bajadas" converge
+ // to the real LSX market instead of only showing portfolio/watchlist names.
+ const wanted=[],seen=new Set(),add=s=>{const k=stockKey(s);if(!k||seen.has(k))return;seen.add(k);wanted.push(s)};
+ const alreadyQuoted=universe
+  .filter(s=>trLiveChange(s)!==null)
+  .sort((a,b)=>Math.abs(trLiveChange(b)||0)-Math.abs(trLiveChange(a)||0));
+ alreadyQuoted.slice(0,Math.min(20,limit)).forEach(add);
+
  const rotate=Math.max(0,limit-wanted.length);
  for(let i=0;i<rotate&&i<universe.length;i++)add(universe[(trMarketScanCursor+i)%universe.length]);
  trMarketScanCursor=universe.length?(trMarketScanCursor+Math.max(1,rotate))%universe.length:0;
  wanted.slice(0,limit).forEach(s=>ensureTrLiveKey(stockKey(s)));
+ trMarketScanState.lastBatchAt=Date.now();
+}
+function trMarketCoverage(){
+ const universe=homeUniverse('tr');
+ let quoted=0;
+ for(const s of universe)if(trLiveChange(s)!==null){quoted++;trMarketScanState.seen.add(stockKey(s))}
+ return{quoted,total:universe.length,complete:universe.length>0&&quoted>=universe.length};
 }
 function homeMoveStocks(desc=true,limit=10,source='us'){
  let se=homeSession();
- if(source==='tr')seedTradeRepublicMarketBoard(Math.min(100,Math.max(50,limit*8)));
+ if(source==='tr')seedTradeRepublicMarketBoard(120);
  return homeUniverse(source).map(s=>({s,ch:source==='tr'?trLiveChange(s):effectiveSessionChange(s,se)}))
   .filter(x=>x.ch!==null&&(desc?x.ch>0:x.ch<0)).sort((a,b)=>desc?b.ch-a.ch:a.ch-b.ch).slice(0,limit).map(x=>x.s);
 }
@@ -612,10 +623,14 @@ function renderHome(){
  }else{
   let rows=marketBoardStocks(marketBoardMode,10,source);
   if(source==='tr')rows.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
-  const waitingTr=source==='tr'&&['gainers','losers'].includes(marketBoardMode)&&!rows.length;
+  const trCoverage=source==='tr'&&['gainers','losers'].includes(marketBoardMode)?trMarketCoverage():null;
+  const waitingTr=!!(trCoverage&&trCoverage.quoted<trCoverage.total);
+  const coverageNote=waitingTr
+   ?'<div class="market-board-scan-note">Escaneando LSX · '+trCoverage.quoted+' / '+trCoverage.total+' cotizaciones recibidas. El ranking se actualiza automáticamente.</div>'
+   :'';
   box.innerHTML=rows.length
-   ?'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'active',source)).join('')+'</div>'
-   :'<div class="empty-state">'+(waitingTr?'Recopilando cotizaciones Trade Republic / LSX en directo…':'No hay datos de mercado disponibles.')+'</div>';
+   ?coverageNote+'<div class="market-board-list">'+rows.map((s,i)=>homeStockRow(s,i,marketBoardMode==='gainers'?'gainers':marketBoardMode==='losers'?'losers':'active',source)).join('')+'</div>'
+   :'<div class="empty-state">'+(waitingTr?'Recopilando cotizaciones Trade Republic / LSX en directo…':'No hay datos de mercado disponibles.')+'</div>'+coverageNote;
  }
  renderMarketBoardStatus();
  renderMarketQuickSheet();
