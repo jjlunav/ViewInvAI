@@ -1403,6 +1403,7 @@ function transactionRowsHtml(rows, currency) {
 
 async function fetchTransactions(position) {
   const qs = new URLSearchParams({
+    positionId: position.id,
     portfolioId: position.portfolio_id,
     stockKey: position.stock_key,
     limit: '300'
