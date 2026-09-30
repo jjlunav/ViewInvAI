@@ -10,7 +10,7 @@
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
     '<div class="asset-card-identity">'+(options.leadingHtml||'')+'<div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
     cells.map(cell=>'<div class="asset-card-cell '+escape(cell.tone||'')+'">'+(cell.label?'<small class="asset-card-label">'+escape(cell.label)+'</small>':'')+'<span>'+content(cell)+'</span></div>').join('')+
-    '<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>'+
+    (options.openLabel&&interactive?'<button type="button" class="asset-card-open asset-card-open-button"'+(options.openActionAttrs||'')+'>'+escape(options.openLabel)+' <b aria-hidden="true">›</b></button>':'<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>')+
    '</div>'+
    (options.metaHtml?'<div class="asset-card-meta">'+options.metaHtml+'</div>':'')+
    (options.detailsHtml?'<details class="asset-card-details '+escape(options.detailsClass||'')+'"><summary><span>'+escape(options.detailsLabel||'Más datos')+'</span><i aria-hidden="true">＋</i></summary><div class="asset-card-detail-body">'+options.detailsHtml+'</div></details>':'')+
