@@ -56,50 +56,51 @@ function usLiveBid(s){return N(s&&s.usLiveBid)}
 function usLiveAsk(s){return N(s&&s.usLiveAsk)}
 function usLiveChange(s){return N(s&&s.usLiveChangePct)}
 function currentUsQuote(s,se=currentMarketSession(),now=Date.now()){
- const regularPrice=usLivePrice(s)??N(s&&s.price);
- const regularChange=usLiveChange(s)??N(s&&s.changePct);
- const regularAt=quoteTimestampMs(s,false);
- const previousClose=regularPrice!==null&&regularChange!==null&&regularChange>-99.999
-  ?regularPrice/(1+regularChange/100)
-  :N(s&&s.previousClose);
- const sessionPrice=kind=>N(s&&s[kind+'Price']);
- const sessionAt=kind=>sessionQuoteTimestamp(s&&s[kind+'Time'],now);
- const sessionQuote=kind=>{
-  const price=sessionPrice(kind);if(price===null||price<=0)return null;
-  let change=null;
-  if(kind==='premarket'){
-   const base=N(s&&s.price)??previousClose;
-   change=base>0?(price/base-1)*100:N(s&&s.premarketChangePct);
-  }else{
-   change=previousClose>0?(price/previousClose-1)*100:null;
-   if(change===null){
-    const vsRegular=N(s&&s.postmarketChangePct),base=N(s&&s.price);
-    change=vsRegular!==null&&base>0?((price/base)*(1+(regularChange||0)/100)-1)*100:null;
-   }
-  }
-  return{price,change,kind,at:sessionAt(kind),source:kind==='premarket'?'EEUU · Premarket':'EEUU · Postmarket',extended:true};
+ const livePrice=usLivePrice(s),liveChange=usLiveChange(s),liveAt=quoteTimestampMs(s,false);
+ if(livePrice!==null&&livePrice>0){
+  const rawStatus=String(s&&s.usLiveMarketStatus||'').toLowerCase();
+  let kind=rawStatus.includes('pre')?'premarket':rawStatus.includes('post')||rawStatus.includes('after')?'postmarket':rawStatus.includes('regular')||rawStatus.includes('open')?'regular':se;
+  if(!['premarket','regular','postmarket'].includes(kind))kind=se==='previous'?'regular':se;
+  return{
+   price:livePrice,
+   change:liveChange,
+   kind,
+   at:liveAt||N(s&&s.usLiveReceivedAt),
+   source:String(s&&s.usLiveSource||'Nasdaq'),
+   extended:kind==='premarket'||kind==='postmarket',
+   realtime:s&&s.usLiveIsRealTime===true
+  };
+ }
+ const regularPrice=N(s&&s.price),regularChange=N(s&&s.changePct),regularAt=parseMarketTimestamp(s&&s.priceTime||s&&s.updatedAt,'America/New_York');
+ const explicit=kind=>{
+  const price=N(s&&s[kind+'Price']);if(price===null||price<=0)return null;
+  const at=sessionQuoteTimestamp(s&&s[kind+'Time'],now);
+  let change=N(s&&s[kind+'ChangePct']);
+  return{price,change,kind,at,source:kind==='premarket'?'EEUU · Premarket':'EEUU · Postmarket',extended:true,realtime:false};
  };
  if(se==='premarket'){
-  const q=sessionQuote('premarket');if(q)return q;
+  const q=explicit('premarket');if(q)return q;
  }
  if(se==='postmarket'){
-  const q=sessionQuote('postmarket');if(q)return q;
+  const q=explicit('postmarket');if(q)return q;
  }
- if(se==='regular'&&regularPrice!==null){
-  return{price:regularPrice,change:regularChange,kind:'regular',at:regularAt,source:String(s&&s.usLiveSource||'Nasdaq'),extended:false};
- }
+ if(se==='regular'&&regularPrice!==null)return{price:regularPrice,change:regularChange,kind:'regular',at:regularAt,source:'Snapshot EEUU',extended:false,realtime:false};
  if(se==='previous'){
-  const candidates=[sessionQuote('postmarket'),sessionQuote('premarket')].filter(Boolean);
-  if(candidates.length){
-   const dated=candidates.filter(q=>q.at!==null);
-   if(dated.length)return dated.sort((a,b)=>b.at-a.at)[0];
-   const post=candidates.find(q=>q.kind==='postmarket');if(post)return post;
-   return candidates[0];
-  }
+  const candidates=[explicit('postmarket'),explicit('premarket')].filter(Boolean);
+  const dated=candidates.filter(q=>q.at!==null);
+  if(dated.length)return dated.sort((a,b)=>b.at-a.at)[0];
+  if(candidates.length)return candidates[0];
  }
- if(regularPrice!==null)return{price:regularPrice,change:regularChange,kind:'regular',at:regularAt,source:String(s&&s.usLiveSource||'Nasdaq'),extended:false};
- const fallback=[sessionQuote('postmarket'),sessionQuote('premarket')].filter(Boolean);
- return fallback[0]||{price:null,change:null,kind:null,at:null,source:'EEUU',extended:false};
+ if(regularPrice!==null)return{price:regularPrice,change:regularChange,kind:'regular',at:regularAt,source:'Snapshot EEUU',extended:false,realtime:false};
+ return explicit('postmarket')||explicit('premarket')||{price:null,change:null,kind:null,at:null,source:'EEUU',extended:false,realtime:false};
+}
+function currentUsPrimaryHtml(s,se=currentMarketSession()){
+ const q=currentUsQuote(s,se),price=N(q&&q.price),change=N(q&&q.change);
+ const text=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
+ const icon=q&&q.kind==='premarket'?'☀︎':q&&q.kind==='postmarket'?'☾︎':'';
+ const iconClass=q&&q.kind==='premarket'?'session-icon-sun':q&&q.kind==='postmarket'?'session-icon-moon':'';
+ return (icon?'<span class="session-icon '+iconClass+'" aria-hidden="true">'+icon+'</span>':'')+
+  '<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b>';
 }
 function decimalPlaces(v,cap=6){
  v=N(v);if(v===null)return 0;
@@ -664,12 +665,12 @@ function pruneTrLiveSubscriptions(){
 }
 function usStockByKey(key){let s=stockByKey(key);return s&&market(s,'us')?s:null}
 function usVisibleKeys(){
- let nodes=liveNodes('[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
+ let nodes=liveNodes('[data-us-current-hero-key],[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
  let h=window.innerHeight||900,seen=new Set(),out=[];
  for(let el of nodes){
   let r=el.getBoundingClientRect();
   if(r.bottom<-400||r.top>h+400)continue;
-  let key=el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
+  let key=el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
   if(!key||seen.has(key))continue;
   let s=usStockByKey(key);if(!s)continue;
   seen.add(key);out.push(s);
@@ -704,6 +705,10 @@ function usApplyQuote(s,q){
  window.dispatchEvent(new CustomEvent('viewinvai:quote-updated',{detail:{key:stockKey(s),market:'us',updatedAt:quoteTimestampMs(s,false)||s.usLiveReceivedAt}}));
 }
 function refreshUsLiveDom(){
+ visibleLiveNodes('[data-us-current-hero-key]').forEach(el=>{
+  let s=usStockByKey(el.dataset.usCurrentHeroKey);if(!s)return;
+  setHtmlIfChanged(el,currentUsPrimaryHtml(s,currentMarketSession()));
+ });
  visibleLiveNodes('[data-us-live-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.usLiveKey);if(!s)return;
   const q=currentUsQuote(s,currentMarketSession());
