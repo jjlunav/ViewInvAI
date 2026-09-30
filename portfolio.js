@@ -1328,7 +1328,7 @@ async function openTransactionsModal(positionId) {
           '</div>' +
           '<div class="portfolio-form-grid">' +
             '<label><span>Precio</span><input name="price" type="number" inputmode="decimal" step="any" min="0" required placeholder="' + esc(market.price || '') + '"></label>' +
-            '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="0"></label>' +
+            '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="' + (preferTr ? '1' : '0') + '"></label>' +
           '</div>' +
           '<div class="portfolio-form-grid">' +
             '<label><span>Divisa</span><input name="currency" value="' + esc(currency) + '" readonly></label>' +
