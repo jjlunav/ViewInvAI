@@ -170,9 +170,9 @@ function brokerRecords(){
 }
 function brokerDisplayName(row){
   if(!row)return"";
-  const base=String(row.name||row.canonical_name||"").trim();
+  const base=String(row.name||row.canonical_name||"").trim(),plan=String(row.plan||"").trim();
   const status=String(row.verification_status||"").toLowerCase();
-  return base+(status==="pending"?" · verificando…":"");
+  return base+(plan&&plan.toLowerCase()!=="standard"?" · "+plan:"")+(status==="pending"?" · verificando…":"");
 }
 function brokerRecordByName(name){
   const key=String(name||"").trim().toLowerCase();
@@ -1940,6 +1940,10 @@ function brokerIsTradeRepublic(name){
   const row=brokerRecordByName(name),key=String(row&&row.code||row&&row.canonical_name||name||"").toLowerCase();
   return key==="tr"||/trade\s*republic/.test(key);
 }
+function brokerIsIbkr(name){
+  const row=brokerRecordByName(name),key=String(row&&row.code||row&&row.canonical_name||name||"").toLowerCase();
+  return key==="ibkr"||/interactive\s*brokers/.test(key);
+}
 function brokerDefaultName(portfolio,preferTr){
   const portfolioBroker=String(portfolio&&portfolio.broker||"").trim();
   if(portfolioBroker)return portfolioBroker;
@@ -1956,7 +1960,7 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
     brokerSelect.value=broker;
     broker=brokerSelect.value||broker;
   }
-  let preferTr=brokerIsTradeRepublic(broker)?true:(scope==="tr"?true:scope==="us"?false:fallbackPreferTr);
+  let preferTr=brokerIsTradeRepublic(broker)?true:brokerIsIbkr(broker)?false:(scope==="tr"?true:scope==="us"?false:fallbackPreferTr);
   const editId=String(form.dataset.editPositionId||"");
   let existing=editId?state.positions.find(p=>String(p.id)===editId)||null:null;
   const currency=form.querySelector('[name="currency"]');
@@ -1986,6 +1990,7 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if(currency){
     if(isEdit&&existing)currency.value=String(existing.currency||preferredCurrency).toUpperCase();
     else if(brokerIsTradeRepublic(broker))currency.value='EUR';
+    else if(brokerIsIbkr(broker))currency.value='USD';
   }
   const finalCurrency=String(currency?.value||preferredCurrency).toUpperCase();
   if(!isEdit&&existing&&String(existing.currency||'').toUpperCase()!==finalCurrency)existing=null;
@@ -1998,22 +2003,26 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if(openedAt)openedAt.value=isEdit&&existing&&existing.opened_at?String(existing.opened_at).slice(0,10):localDateValue();
   if(notes)notes.value=isEdit&&existing?(existing.notes||''):'';
 
-  const incompatible=scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker));
+  const listingConflict=(scope==="tr"&&!preferTr)||(scope==="us"&&preferTr);
+  const incompatible=(preferTr&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker)))||listingConflict;
+  const feePreview=brokerFeeInCurrency(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY',exchange);
   if(save){
-    save.disabled=incompatible;
+    save.disabled=incompatible||(!isEdit&&feePreview.fee===null);
     save.textContent=isEdit?'Guardar cambios':existing?'Añadir compra':'Añadir posición';
   }
-  if(mode)mode.textContent=incompatible
-    ?'Esta acción no está verificada para Trade Republic / LSX y no puede añadirse a esta cartera.'
+  if(mode)mode.textContent=listingConflict
+    ?'El broker seleccionado no coincide con el mercado configurado para esta cartera.'
+    :incompatible
+      ?'Esta acción no está verificada para Trade Republic / LSX y no puede añadirse a esta cartera.'
     :isEdit&&existing
       ?'Corrigiendo posición · broker y mercado bloqueados para no mezclar historiales.'
       :existing
         ?'Ya tienes '+formatNumber(existing.quantity,4)+' uds. en '+broker+' · media '+formatMoney(existing.avg_price,existing.currency||finalCurrency)+'. Esta compra se sumará y recalculará el precio medio.'
         :'Nueva posición · '+broker+' · '+portfolioMarketLabel(scope)+'.';
   if(feeHint){
-    const fee=brokerFeeInCurrency(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY',exchange);
+    const fee=feePreview;
     feeHint.textContent=fee.fee===null
-      ?'Comisión: pendiente de verificar'
+      ?(fee.reason==="market-mismatch"?'Comisión no disponible para este mercado con el plan seleccionado':'Comisión: pendiente de verificar')
       :'Comisión estimada: '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
     feeHint.classList.toggle('pending',fee.fee===null);
   }
@@ -2028,8 +2037,10 @@ function updatePositionBrokerFeeHint(form,stock){
   const hint=form.querySelector('[data-broker-fee-hint]');
   if(!hint)return;
   const fee=brokerFeeInCurrency(broker,quantity,price,currency,'BUY',form.dataset.preferTr==="1"?(stock.trExchange||"LSX"):(stock.exchange||""));
-  hint.textContent=fee.fee===null?'Comisión automática pendiente de verificar':'Comisión estimada '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
+  hint.textContent=fee.fee===null?(fee.reason==="market-mismatch"?'Comisión no disponible para este mercado con el plan seleccionado':'Comisión automática pendiente de verificar'):'Comisión estimada '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
   hint.classList.toggle('pending',fee.fee===null);
+  const save=form.querySelector('[data-save-position]');
+  if(save&&!form.dataset.editPositionId)save.disabled=fee.fee===null;
 }
 async function createBrokerFromPositionForm(form,stock){
   const input=form&&form.querySelector('[data-new-broker-name]'),button=form&&form.querySelector('[data-create-broker]');
