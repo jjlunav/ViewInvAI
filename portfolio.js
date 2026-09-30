@@ -3,6 +3,7 @@ const state = {
   portfolios: [],
   positions: [],
   watchlist: [],
+  brokers: [],
   portfolioTransactionSummaries: {},
   selectedPortfolioId: null,
   primaryTab: "portfolio",
@@ -155,6 +156,47 @@ function wholeRecommendationUnits(quantity,desired){
 function portfolioOperationFee(preferTr){
   return preferTr?1:0;
 }
+function brokerRecords(){
+  const builtins=[
+    {name:"Trade Republic",canonical_name:"Trade Republic",code:"TR",verification_status:"verified",plan:"Standard",fee_rules_json:JSON.stringify({type:"flat",buy:1,sell:1,currency:"EUR"})},
+    {name:"IBKR",canonical_name:"Interactive Brokers",code:"IBKR",verification_status:"verified",plan:"Pro Fixed",fee_rules_json:JSON.stringify({type:"per_share",perShare:.005,min:1,maxPct:1,currency:"USD",market:"US"})}
+  ];
+  const seen=new Set(),rows=[];
+  for(const row of [...builtins,...(state.brokers||[])]){
+    const key=String(row.code||row.canonical_name||row.name||"").trim().toLowerCase();
+    if(!key||seen.has(key))continue;seen.add(key);rows.push(row);
+  }
+  return rows;
+}
+function brokerDisplayName(row){
+  if(!row)return"";
+  const base=String(row.name||row.canonical_name||"").trim();
+  const status=String(row.verification_status||"").toLowerCase();
+  return base+(status==="pending"?" · verificando…":"");
+}
+function brokerRecordByName(name){
+  const key=String(name||"").trim().toLowerCase();
+  return brokerRecords().find(row=>[row.name,row.canonical_name,row.code].some(v=>String(v||"").trim().toLowerCase()===key))||null;
+}
+function brokerFeeEstimate(brokerName,quantity,price,currency,side="BUY"){
+  const row=brokerRecordByName(brokerName),qty=Math.max(0,num(quantity)||0),px=Math.max(0,num(price)||0),tradeValue=qty*px;
+  if(!row)return{fee:null,currency:String(currency||"EUR").toUpperCase(),verified:false,label:"Pendiente de verificar"};
+  let rules={};try{rules=JSON.parse(row.fee_rules_json||"{}")||{}}catch(_){}
+  const feeCurrency=String(rules.currency||currency||"EUR").toUpperCase(),type=String(rules.type||"").toLowerCase();
+  let fee=null;
+  if(type==="flat"){
+    const value=num(String(side).toUpperCase()==="SELL"?rules.sell:rules.buy);
+    fee=value!==null?value:null;
+  }else if(type==="per_share"){
+    const per=num(rules.perShare),minimum=num(rules.min)||0,maxPct=num(rules.maxPct);
+    if(per!==null){
+      fee=Math.max(minimum,qty*per);
+      if(maxPct!==null&&tradeValue>0)fee=Math.min(fee,tradeValue*maxPct/100);
+    }
+  }
+  return{fee,currency:feeCurrency,verified:String(row.verification_status||"verified")==="verified",label:row.plan||row.canonical_name||row.name||brokerName};
+}
+
 function portfolioPriceToEur(price,currency,fxUsdEur){
   const value=num(price),code=String(currency||"EUR").toUpperCase();
   if(value===null)return null;
@@ -1210,11 +1252,12 @@ async function loadAll({ syncFavorites = false } = {}) {
   state.loading = true;
   renderActivePortfolioPanel();
   try {
-    const [portfolios, positions, watchlist, goalData] = await Promise.all([
+    const [portfolios, positions, watchlist, brokerData, goalData] = await Promise.all([
       fetchJson("/api/portfolios"),fetchJson("/api/positions"),fetchJson("/api/watchlist"),
+      fetchJson("/api/brokers").catch(()=>({brokers:[]})),
       fetchJson("/api/portfolio-goal").then(data=>({goals:data.goals||[],error:"",ok:true})).catch(error=>({goals:null,error:error.message||"No se pudieron cargar los objetivos.",ok:false}))
     ]);
-    state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];
+    state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];state.brokers=brokerData.brokers||[];
     if(Array.isArray(goalData.goals))state.goals=Object.fromEntries(goalData.goals.map(goal=>[String(goal.portfolio_id),goal]));
     const goalErrorText=String(goalData.error||"");
     state.goalError=/too many requests/i.test(goalErrorText)?"":goalErrorText;
