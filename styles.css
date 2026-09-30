@@ -8069,3 +8069,17 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
 #view-portfolios .portfolio-goal-reason{font-size:10.5px!important;line-height:1.45!important;padding:0 10px!important}
 #view-portfolios .portfolio-goal-note.compact-note{font-size:9.5px!important;line-height:1.45!important;max-width:860px;margin-left:auto!important;margin-right:auto!important}
 #view-portfolios .portfolio-goal-trade.cash>em{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent)}
+
+
+/* 2026-09-30 · company identity + executable portfolio operations */
+.profile-company-overview{display:grid;gap:12px}
+.profile-company-summary{margin:0;color:var(--muted);font-size:13px;line-height:1.55;max-width:1000px}
+.profile-company-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.profile-company-grid .profile-identity{min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.profile-company-grid .profile-identity small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em}
+.profile-company-grid .profile-identity strong{display:block;margin-top:3px;font-size:12px;overflow-wrap:anywhere}
+.profile-company-grid .profile-identity span{display:block;margin-top:2px;color:var(--muted);font-size:9px}
+.profile-edit-position{white-space:nowrap}
+#view-portfolios .portfolio-goal-register{margin-top:6px;min-height:28px;padding:4px 9px;font-size:9px;position:relative;z-index:2}
+#view-portfolios .portfolio-goal-trade.cash{border-style:dashed}
+#portfolioModalBody #goalOperationForm .portfolio-form-note{font-size:10px;line-height:1.45;color:var(--muted)}
