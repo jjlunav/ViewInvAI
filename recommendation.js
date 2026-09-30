@@ -471,7 +471,7 @@ function recommendationMobileList(usResult,trResult){
  return recommendationCompactList(usResult,trResult);
 }
 
-function radarAiCandidateRows(mode){
+function radarAiCandidateRows(mode,advanced=null){
  const preferTr=mode==='tr',rows=[];
  for(const s of (db.stocks||[])){
   if(preferTr){
@@ -488,10 +488,10 @@ function radarAiCandidateRows(mode){
    ?window.ViewInvAIScore.watchSignal(score,quality)
    :(score>=72&&quality>=60?'BUY':score>=60?'WATCH':'WAIT');
   let tier='watch';
-  if(liveVenue&&shared==='BUY'&&score>=72&&quality>=60)tier='high';
-  else if(score>=60&&quality>=48)tier='opportunity';
+  if(score>=60&&quality>=48)tier='opportunity';
   else if(score<48&&quality<40)continue;
-  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue});
+  if(advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
+  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }
  return rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
 }
@@ -528,8 +528,8 @@ function radarAiColumn(mode,rows){
   radarAiTier(mode,'watch',rows)+
  '</section>';
 }
-function radarAiShell(){
- const tr=radarAiCandidateRows('tr'),us=radarAiCandidateRows('us');
+function radarAiShell(advanced={}){
+ const tr=radarAiCandidateRows('tr',advanced.tr||null),us=radarAiCandidateRows('us',advanced.us||null);
  return '<div class="radar-ai-shell">'+radarAiColumn('tr',tr)+radarAiColumn('us',us)+'</div>';
 }
 
@@ -577,9 +577,20 @@ async function renderRecommendation(force=false){
  if(state.currentView==='recommendation')seedTradeRepublicMarketBoard(120);
  box.innerHTML=radarAiShell();
  let stamp=$('#recommendationUpdated');
- if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+ if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · validando alta convicción…';
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
- return Promise.resolve();
+ if(recommendationRenderPromise&&!force)return recommendationRenderPromise;
+ recommendationRenderPromise=(async()=>{
+  const results=await Promise.race([
+   Promise.all([highConvictionRecommendation('tr'),highConvictionRecommendation('us')]),
+   new Promise(resolve=>setTimeout(()=>resolve([null,null]),12000))
+  ]);
+  const tr=results&&results[0],us=results&&results[1];
+  if($('#recommendationResults'))$('#recommendationResults').innerHTML=radarAiShell({tr,us});
+  if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
+ })().catch(error=>console.warn('Radar AI advanced validation failed',error)).finally(()=>{recommendationRenderPromise=null});
+ return recommendationRenderPromise;
 }
 function warmRecommendationCache(){
  if(!db.stocks.length||document.hidden)return;
