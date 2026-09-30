@@ -327,9 +327,9 @@ function profilePortfolioActionHtml(s,isTr=false){
  let title=inPortfolio?'Abrir operaciones de cartera':'Añadir a cartera';
  return '<button type="button" class="profile-add-portfolio profile-wallet-action'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'" title="'+E(title)+'" aria-label="'+E(title)+'"><span aria-hidden="true">💼</span></button>';
 }
-function profilePositionEditActionHtml(s){
+function profilePositionEditActionHtml(s,isTr=false){
  const key=stockKey(s),api=window.ViewInvAIPortfolios;
- const memberships=api&&typeof api.getPortfolioMemberships==='function'?api.getPortfolioMemberships(key,false):[];
+ const memberships=api&&typeof api.getPortfolioMemberships==='function'?api.getPortfolioMemberships(key,isTr):[];
  if(!memberships||!memberships.length)return'';
  return '<button type="button" class="btn small profile-edit-position" data-profile-edit-position="'+E(key)+'">✎ Posición</button>';
 }
@@ -371,7 +371,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
-    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s)+profileNotificationActionHtml(s,isTr)+'</div>')+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
 }
