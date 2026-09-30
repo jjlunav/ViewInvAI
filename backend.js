@@ -2692,6 +2692,164 @@ async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[
   return{processed,alerts};
 }
 
+
+let portfolioGoalNotificationStateReady=false;
+async function ensurePortfolioGoalNotificationStateSchema(env){
+  if(portfolioGoalNotificationStateReady)return;
+  await ensureGlobalNotificationSettingsSchema(env);
+  await ensurePortfolioGoalSchema(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS portfolio_goal_notification_state ("+
+    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,signature TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,"+
+    "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  portfolioGoalNotificationStateReady=true;
+}
+function goalServerKey(stock){
+  return trimText(stock&&stock.tvSymbol||((stock&&stock.exchange||"")+":"+(stock&&stock.ticker||"")),120).toUpperCase();
+}
+function goalServerAllowed(stock,scope){
+  if(scope==="tr")return stock&&(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker));
+  return stock&&["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(stock.exchange||"").toUpperCase());
+}
+function goalServerUsdToEur(snapshot){
+  const eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
+  return eurUsd&&eurUsd>0?1/eurUsd:null;
+}
+function goalServerPriceEur(stock,preferTr,usdToEur){
+  if(!stock)return null;
+  if(preferTr)return finiteNumber(stock.trLivePrice??stock.trPrice??stock.tradeRepublicPrice);
+  const usd=finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+  return usd!==null&&usdToEur!==null?usd*usdToEur:null;
+}
+function goalServerCandidate(snapshot,stock,scope){
+  const preferTr=scope==="tr",trPrice=preferTr?finiteNumber(stock.trLivePrice??stock.trPrice??stock.tradeRepublicPrice):null;
+  const chart=preferTr&&trPrice!==null?{available:true,last:trPrice,return20:finiteNumber(stock.trLiveChangePct??stock.changePct??stock.perfWeek)}:{available:false};
+  const target={subject_type:"watchlist",subject_id:"goal-scan",user_id:"",stock_key:goalServerKey(stock),ticker:stock.ticker||stock.trTicker||"",prefer_tr:preferTr?1:0};
+  const events=recentEvents(snapshot,stock,12),a=deterministicAssessment(target,stock,chart,events);
+  const catalyst=events.filter(event=>{
+    const when=new Date(event&&event.date||0).getTime();
+    return Number.isFinite(when)&&when>=Date.now()-3600000&&when<=Date.now()+14*86400000;
+  }).sort((x,y)=>(finiteNumber(y&&y.impactScore)??0)-(finiteNumber(x&&x.impactScore)??0))[0]||null;
+  const impact=finiteNumber(catalyst&&catalyst.impactScore)??0,rel=finiteNumber(stock.relVolume)??1,change=Math.abs(finiteNumber(stock.usLiveChangePct??stock.changePct??stock.trLiveChangePct)??0);
+  const velocity=Math.min(100,a.score*.58+a.quality*.18+a.confidence*.14+Math.min(6,Math.max(0,rel-1)*4)+Math.min(5,change*.18)+Math.min(6,impact*.06));
+  const composite=Math.min(100,a.score*.46+a.quality*.20+a.confidence*.16+velocity*.18);
+  return{stock,score:a.score,quality:a.quality,confidence:a.confidence,velocity,composite,catalyst,preferTr};
+}
+function goalServerFinalists(rows){
+  if(!rows.length)return[];
+  const out=[rows[0]];
+  if(rows[1]&&rows[1].composite>=Math.max(82,rows[0].composite-4))out.push(rows[1]);
+  if(rows[2]&&rows[2].composite>=Math.max(84,rows[0].composite-3))out.push(rows[2]);
+  return out;
+}
+async function scanPortfolioGoalNotifications(env,services){
+  if(!services.loadMarketSnapshot)return{processed:0,alerts:0};
+  await ensurePortfolioGoalNotificationStateSchema(env);
+  const goals=await env.DB.prepare(
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.risk_profile,p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance "+
+    "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
+    "LEFT JOIN portfolio_market_settings m ON m.portfolio_id=g.portfolio_id AND m.user_id=g.user_id "+
+    "JOIN user_notification_settings n ON n.user_id=g.user_id "+
+    "WHERE n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 ORDER BY g.updated_at DESC LIMIT 8"
+  ).all();
+  if(!(goals.results||[]).length)return{processed:0,alerts:0};
+  const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
+  let processed=0,alerts=0;
+  for(const goal of goals.results||[]){
+    try{
+      const positionsResult=await env.DB.prepare(
+        "SELECT id,stock_key,ticker,prefer_tr,quantity,opened_at,last_signal,last_score,last_confidence FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at ASC"
+      ).bind(goal.user_id,goal.portfolio_id).all();
+      const positions=positionsResult.results||[];
+      let scope=String(goal.market_scope||"auto").toLowerCase();
+      if(scope==="auto"&&positions.length){
+        const markets=new Set(positions.map(p=>Number(p.prefer_tr)===1?"tr":"us"));
+        if(markets.size===1)scope=[...markets][0];
+      }
+      if(!["tr","us"].includes(scope))continue;
+      const excluded=new Set(positions.map(p=>String(p.stock_key||"").toUpperCase()));
+      const sells=[];let released=0,capital=0;
+      for(const p of positions){
+        const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),price=goalServerPriceEur(stock,Number(p.prefer_tr)===1,usdToEur);
+        if(price!==null)capital+=qty*price;
+        const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
+        const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
+        const stagnant=heldDays>=7&&week<1.25&&score<68;
+        const pct=signal==="SELL"||score<=35||stagnant?100:signal==="REVIEW"||score<48?50:0;
+        if(pct<=0||qty<1||price===null)continue;
+        const units=Math.max(1,Math.min(Math.floor(qty),Math.round(qty*pct/100)));
+        if(units<1)continue;
+        released+=units*price;
+        sells.push({ticker:p.ticker||stock&&stock.ticker||"",units});
+      }
+      let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
+      if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
+      capital+=cashEur;
+      const target=finiteNumber(goal.target_value_eur);
+      if(target!==null&&capital>=target){
+        const signature="GOAL_REACHED",summary="Objetivo alcanzado · no se fuerza una nueva operación.";
+        const old=await env.DB.prepare("SELECT signature FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
+        await env.DB.prepare(
+          "INSERT INTO portfolio_goal_notification_state (portfolio_id,user_id,signature,summary,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,updated_at=excluded.updated_at"
+        ).bind(goal.portfolio_id,goal.user_id,signature,summary,nowIso()).run();
+        if(old&&old.signature!==signature){
+          const id=uid("al_"),title="Objetivo IA · "+goal.name,message=summary,now=nowIso();
+          await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+            .bind(id,goal.user_id,"","","","portfolio-goal","info",title,message,now).run();
+          await dispatchPushAlert(env,{id,alert_type:"portfolio-goal",severity:"info",title,message},{user_id:goal.user_id,route:"portfolio-goal",portfolio_id:goal.portfolio_id,stock_key:"",ticker:"",prefer_tr:0});
+          alerts++;
+        }
+        processed++;continue;
+      }
+      const pool=cashEur+released;
+      let candidates=[];
+      if(pool>0){
+        candidates=stocks.filter(stock=>goalServerAllowed(stock,scope)&&!excluded.has(goalServerKey(stock)))
+          .map(stock=>goalServerCandidate(snapshot,stock,scope))
+          .filter(row=>row&&row.score>=78&&row.quality>=62&&row.confidence>=76&&row.velocity>=78&&row.composite>=80)
+          .sort((x,y)=>y.composite-x.composite||y.velocity-x.velocity||y.score-x.score)
+          .slice(0,12);
+      }
+      const finalists=goalServerFinalists(candidates).map(row=>({...row,unitEur:goalServerPriceEur(row.stock,row.preferTr,usdToEur)})).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur<=pool);
+      const weights=finalists.length===1?[1]:finalists.length===2?[.70,.30]:[.60,.25,.15],buys=[];
+      finalists.slice(0,3).forEach((row,index)=>{
+        const units=Math.floor((pool*weights[index])/row.unitEur);
+        if(units>=1)buys.push({ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,score:Math.round(row.composite)});
+      });
+      let used=buys.reduce((sum,buy)=>{
+        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);return sum+(row?row.unitEur*buy.units:0);
+      },0),left=Math.max(0,pool-used);
+      if(buys[0]){
+        const top=finalists.find(x=>goalServerKey(x.stock)===buys[0].stockKey);
+        if(top&&left>=top.unitEur){
+          const extra=Math.floor(left/top.unitEur);buys[0].units+=extra;used+=extra*top.unitEur;left=Math.max(0,pool-used);
+        }
+      }
+      const signature=JSON.stringify({sells:sells.map(x=>[x.ticker,x.units]),buys:buys.map(x=>[x.ticker,x.units])});
+      const pieces=[];
+      if(sells.length)pieces.push("Vender "+sells.map(x=>x.units+" "+x.ticker).join(", "));
+      if(buys.length)pieces.push("Comprar "+buys.map((x,i)=>"#"+(i+1)+" "+x.units+" "+x.ticker).join(", "));
+      if(!pieces.length)pieces.push("Sin cambios: ningún candidato supera el filtro estricto.");
+      const summary=trimText(pieces.join(" · "),500),old=await env.DB.prepare("SELECT signature FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
+      await env.DB.prepare(
+        "INSERT INTO portfolio_goal_notification_state (portfolio_id,user_id,signature,summary,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,updated_at=excluded.updated_at"
+      ).bind(goal.portfolio_id,goal.user_id,signature,summary,nowIso()).run();
+      if(old&&old.signature!==signature){
+        const id=uid("al_"),title="Cambio de Objetivo IA · "+goal.name,now=nowIso();
+        await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+          .bind(id,goal.user_id,buys[0]&&buys[0].stockKey||"","","","portfolio-goal","high",title,summary,now).run();
+        await dispatchPushAlert(env,{id,alert_type:"portfolio-goal",severity:"high",title,message:summary},{user_id:goal.user_id,route:"portfolio-goal",portfolio_id:goal.portfolio_id,stock_key:buys[0]&&buys[0].stockKey||"",ticker:buys[0]&&buys[0].ticker||"",prefer_tr:scope==="tr"?1:0});
+        alerts++;
+      }
+      processed++;
+    }catch(error){
+      console.warn("Portfolio goal notification scan failed",goal.portfolio_id,String(error&&error.message||error));
+    }
+  }
+  return{processed,alerts};
+}
+
 export async function runScheduledPortfolioAnalysis(env, services = {}) {
   if (!env.DB || !services.loadMarketSnapshot || !services.loadChart) {
     return { skipped: true, reason: "backend-not-configured" };
@@ -2743,9 +2901,10 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
     }
   }
 
-  let trackedNews={processed:0,alerts:0},preferences={processed:0};
+  let trackedNews={processed:0,alerts:0},preferences={processed:0},portfolioGoals={processed:0,alerts:0};
   try{trackedNews=await scanTrackedNewsAndEvents(env,services,positionRows.results||[],watchRows.results||[])}
   catch(error){console.warn("Tracked news/event sweep failed",String(error&&error.message||error))}
   try{preferences=await scanNotificationPreferences(env,services)}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
-  return { processed: results.length, results, trackedNews, preferences };
+  try{portfolioGoals=await scanPortfolioGoalNotifications(env,services)}catch(error){console.warn("Portfolio goal notification sweep failed",String(error&&error.message||error))}
+  return { processed: results.length, results, trackedNews, preferences, portfolioGoals };
 }
