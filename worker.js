@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification } from "./backend.js";
 
 
 function parseMarketNumber(value) {
@@ -1715,6 +1715,7 @@ export default {
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
+    if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));
     ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
     }));
