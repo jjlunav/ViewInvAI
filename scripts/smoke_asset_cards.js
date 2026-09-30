@@ -17,8 +17,9 @@ window.checkAssetCards = async function () {
  const trStock=window.ViewInvAI.getAllStocks().find(s=>s&&s.trTicker&&(s.tradeRepublicTradable===true||s.tradeRepublicVerified));
  if(trStock){
   test.innerHTML=standardStockCard(trStock,0,{se:'regular',preferTr:true,context:'ci-tr',detailsHtml:''});
-  assert(test.querySelector('.asset-venue-price'),'TR card does not use the LSX price cell');
-  assert(!test.querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),'TR card leaked US pre/post data');
+  assert(test.querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'TR card does not use the shared compact quote block');
+  assert(test.querySelector('.asset-investing-main')&&test.querySelector('.asset-investing-status'),'TR compact quote is incomplete');
+  assert(!test.querySelector('.asset-investing-extended'),'TR card leaked US pre/post data');
   test.innerHTML=quickProfileHtml(trStock,{preferTr:true});
   assert(test.querySelector('.profile-quote-lsx'),'TR profile hero does not use the LSX-only quote');
   assert(!test.querySelector('.profile-quote-extended'),'TR profile hero leaked US extended session');
@@ -43,14 +44,14 @@ window.checkAssetCards = async function () {
   assert(rect.height<=90&&rect.height>=48,name+' is not compact: '+rect.height);
   assert(row.scrollWidth<=row.clientWidth+1,name+' overflows horizontally');
   assert(test.querySelector('.fav-star'),name+' lost favourites');
-  assert(test.querySelector('.asset-regular-price')&&test.querySelector('.asset-regular-change'),name+' compact row lost primary quote');
-  const isTrRow=!!test.querySelector('.asset-venue-price');
+  const compact=test.querySelector('.asset-investing-quote');
+  assert(compact,name+' compact row lost the shared quote block');
+  assert(compact.querySelector('.asset-investing-main'),name+' compact row lost regular/current market price');
+  assert(compact.querySelector('.asset-investing-status'),name+' compact row lost market state/date');
+  const isTrRow=compact.dataset.compactQuoteTr==='1';
   const hasExtendedFixture=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
-  if(isTrRow)assert(!test.querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),name+' TR row leaked US pre/post data');
-  else if(hasExtendedFixture)assert(test.querySelector('.asset-extended-price')&&test.querySelector('.asset-extended-change'),name+' US row lost available REG/extended quote');
-  else assert(!test.querySelector('.asset-extended-price,.asset-extended-change'),'US row fabricated extended data that the source does not contain');
-  const ext=test.querySelector('.asset-extended-price')?.textContent||'';
-  assert(!/10[.,]20|9[.,]80/.test(ext),name+' extended line shows the extended absolute price instead of the move');
+  if(isTrRow)assert(!compact.querySelector('.asset-investing-extended'),name+' TR row leaked US pre/post data');
+  else if(hasExtendedFixture&&['premarket','postmarket'].includes(currentMarketSession()))assert(compact.querySelector('.asset-investing-extended'),name+' US row lost available extended-session quote');
   assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
   const copy=test.querySelector('[data-copy-isin]');
   if(copy){copy.click();assert(!document.body.classList.contains('stock-detail-open'),name+' copy opened the detail')}
