@@ -12,7 +12,7 @@
  let seeded=false;
  let lastScan={at:0,results:[],best:null,error:''};
  let state=readState();
- let globalNotifications={enabled:true,newsEvents:true,pulseAi:true};
+ let globalNotifications={enabled:true,newsEvents:true,radarAi:true,pulseAi:true};
 
  function q(s){return document.querySelector(s)}
  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -101,11 +101,11 @@
  function renderAlertPage(){
   let status=q('#alertPageStatus'),list=q('#alertPageList');if(!status||!list)return;
   if(!state.enabled){
-   status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar compras de alta convicción.</span>';
+   status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar cambios de alta convicción de Radar AI.</span>';
   }else if(globalNotifications.enabled===false){
    status.innerHTML='<strong>Notificaciones globales desactivadas</strong><span>El interruptor maestro de Settings está apagado.</span>';
-  }else if(globalNotifications.pulseAi===false){
-   status.innerHTML='<strong>Pulso IA global desactivado</strong><span>Puedes volver a activar estas notificaciones desde Settings.</span>';
+  }else if(globalNotifications.radarAi===false||globalNotifications.pulseAi===false){
+   status.innerHTML='<strong>Radar AI global desactivado</strong><span>Puedes volver a activar estas notificaciones desde Configuración.</span>';
   }else if(evaluating){
    status.innerHTML='<strong>Analizando mercado…</strong><span>Contrastando gráfico, tendencia, volumen, RSI/ADX, liquidez, noticias y eventos.</span>';
   }else if(lastScan.error){
@@ -136,7 +136,7 @@
   let key=el&&el.dataset&&el.dataset.alertStockKey;if(!key)return;
   let preferTr=el.dataset.alertPreferTr==='1';
   if(window.ViewInvAI&&typeof window.ViewInvAI.openStockByKey==='function'){
-   let opened=window.ViewInvAI.openStockByKey(key,'Aviso · compra de alta convicción',preferTr);
+   let opened=window.ViewInvAI.openStockByKey(key,'Radar AI · alta convicción',preferTr);
    if(opened){state.unread=0;saveState();renderCenter();setCenterOpen(false)}
   }
  }
@@ -144,7 +144,7 @@
  async function evaluate(){
   const accountGlobal=window.ViewInvAINotificationSettings;
   if(accountGlobal&&typeof accountGlobal==='object')globalNotifications=Object.assign(globalNotifications,accountGlobal);
-  if(evaluating||!state.enabled||globalNotifications.enabled===false||globalNotifications.pulseAi===false){renderAlertPage();return}
+  if(evaluating||!state.enabled||globalNotifications.enabled===false||globalNotifications.radarAi===false||globalNotifications.pulseAi===false){renderAlertPage();return}
   if(!window.ViewInvAI||typeof window.ViewInvAI.highConvictionRecommendation!=='function'){renderAlertPage();return}
   evaluating=true;renderAlertPage();
   try{
@@ -219,13 +219,14 @@
    globalNotifications={
     enabled:detail.enabled!==false,
     newsEvents:detail.newsEvents!==false,
-    pulseAi:detail.pulseAi!==false
+    radarAi:detail.radarAi!==false,
+    pulseAi:detail.radarAi!==false
    };
-   if(globalNotifications.enabled===false||globalNotifications.pulseAi===false){
+   if(globalNotifications.enabled===false||globalNotifications.radarAi===false){
     state.activeKey=null;seeded=false;saveState();
    }
    renderAlertPage();
-   if(globalNotifications.enabled!==false&&globalNotifications.pulseAi!==false&&state.enabled)setTimeout(evaluate,100);
+   if(globalNotifications.enabled!==false&&globalNotifications.radarAi!==false&&state.enabled)setTimeout(evaluate,100);
   });
   document.addEventListener('click',e=>{
    let item=e.target.closest&&e.target.closest('[data-alert-stock-key]');if(item)openAlertStock(item);
