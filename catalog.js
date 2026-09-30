@@ -245,9 +245,6 @@ function catalogFilterOptions(mode,key){
 }
 function renderCatalogFilterPanel(mode,cols){
  let st=catalogState[mode],host=$(mode==='tr'?'#catalogFilterPanelTr':'#catalogFilterPanelUs');if(!host)return;
- let inputs=cols.filter(c=>c.id!=='fav').map(c=>
-  '<label><span>'+E(c.label)+'</span><input class="catalog-col-filter input" inputmode="'+(c.type==='number'?'decimal':'text')+'" data-mode="'+mode+'" data-col="'+E(c.id)+'" value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 · 10..30':c.type==='date'?'24/09/2026':'Contiene…')+'"></label>'
- ).join('');
  let sectorOpts='<option value="all">Todos</option>'+catalogFilterOptions(mode,'sector').map(v=>'<option '+(st.sector===v?'selected':'')+'>'+E(v)+'</option>').join('');
  let industryOpts='<option value="all">Todas</option>'+catalogFilterOptions(mode,'industry').map(v=>'<option '+(st.industry===v?'selected':'')+'>'+E(v)+'</option>').join('');
  let sortOpts=cols.filter(c=>c.id!=='fav').map(c=>'<option value="'+E(c.id)+'" '+(st.sort===c.id?'selected':'')+'>'+E(c.label)+'</option>').join('');
@@ -257,7 +254,7 @@ function renderCatalogFilterPanel(mode,cols){
    '<label><span>Industria / tipo</span><select class="select catalog-industry-filter" data-mode="'+mode+'">'+industryOpts+'</select></label>'+
    '<label><span>Ordenar por</span><select class="select catalog-mobile-sort-select" data-mode="'+mode+'">'+sortOpts+'</select></label>'+
   '</div>'+
-  '<details class="catalog-column-filters"><summary>Filtros avanzados por dato</summary><div class="catalog-mobile-filter-grid">'+inputs+'</div></details>'+
+  '<p class="catalog-filter-hint">Los filtros específicos de cada dato están ahora en el embudo de su columna.</p>'+
   '<div class="filter-actions"><button type="button" class="btn ghost catalog-reset-filter" data-catalog-mode="'+mode+'">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Aplicar filtro</button></div>';
 }
 
