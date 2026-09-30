@@ -321,6 +321,101 @@ async function onePortfolio(env, userId, portfolioId) {
   ).bind(portfolioId, userId).first();
 }
 
+let userBrokerSchemaReady=false;
+async function ensureUserBrokerSchema(env){
+  if(userBrokerSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS user_brokers ("+
+    "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,code TEXT NOT NULL DEFAULT '',fee_mode TEXT NOT NULL DEFAULT 'manual',fee_value REAL NOT NULL DEFAULT 0,fee_min REAL NOT NULL DEFAULT 0,fee_max_pct REAL,fee_currency TEXT NOT NULL DEFAULT 'EUR',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "canonical_name TEXT NOT NULL DEFAULT '',official_domain TEXT NOT NULL DEFAULT '',pricing_url TEXT NOT NULL DEFAULT '',plan TEXT NOT NULL DEFAULT '',fee_rules_json TEXT NOT NULL DEFAULT '{}',verification_status TEXT NOT NULL DEFAULT 'pending',last_verified_at TEXT,source_excerpt TEXT NOT NULL DEFAULT '',"+
+    "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  const cols=await env.DB.prepare("PRAGMA table_info(user_brokers)").all();
+  const names=new Set((cols.results||[]).map(row=>String(row.name||"")));
+  const additions=[
+    ["canonical_name","TEXT NOT NULL DEFAULT ''"],["official_domain","TEXT NOT NULL DEFAULT ''"],["pricing_url","TEXT NOT NULL DEFAULT ''"],
+    ["plan","TEXT NOT NULL DEFAULT ''"],["fee_rules_json","TEXT NOT NULL DEFAULT '{}'"],["verification_status","TEXT NOT NULL DEFAULT 'pending'"],
+    ["last_verified_at","TEXT"],["source_excerpt","TEXT NOT NULL DEFAULT ''"]
+  ];
+  for(const item of additions){if(!names.has(item[0]))await env.DB.prepare("ALTER TABLE user_brokers ADD COLUMN "+item[0]+" "+item[1]).run()}
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_brokers_user_name ON user_brokers(user_id,name)").run();
+  userBrokerSchemaReady=true;
+}
+function builtinBrokerProfile(name){
+  const key=String(name||"").trim().toLowerCase();
+  if(/trade\s*republic|^tr$/.test(key))return{
+    canonicalName:"Trade Republic",code:"TR",officialDomain:"traderepublic.com",pricingUrl:"https://traderepublic.com/en-es?openModal=pricing-scheme",
+    plan:"Standard",status:"verified",rules:{type:"flat",buy:1,sell:1,currency:"EUR",note:"1 EUR external settlement cost per trade"}
+  };
+  if(/interactive\s*brokers|\bibkr\b/.test(key))return{
+    canonicalName:"Interactive Brokers",code:"IBKR",officialDomain:"interactivebrokers.com",pricingUrl:"https://www.interactivebrokers.com/en/pricing/commissions-stocks.php",
+    plan:"Pro Fixed",status:"verified",rules:{type:"per_share",perShare:0.005,min:1,maxPct:1,currency:"USD",market:"US",note:"IBKR Pro Fixed US stocks"}
+  };
+  return null;
+}
+async function resolveBrokerProfile(env,name){
+  const builtin=builtinBrokerProfile(name);if(builtin)return builtin;
+  if(!env.AI||typeof env.AI.run!=="function")return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
+  const model=trimText(env.AI_MODEL||DEFAULT_AI_MODEL,120)||DEFAULT_AI_MODEL;
+  try{
+    const identifyPrompt=[
+      "Identify the brokerage firm from the supplied name. Return JSON only.",
+      "Keys: canonicalName, officialDomain, pricingUrl, plan.",
+      "pricingUrl must be an official stock commission page only if confidently known. Otherwise leave it empty. Never invent a domain.",
+      JSON.stringify({name:trimText(name,80)})
+    ].join("\n");
+    const identified=extractAiJson(await env.AI.run(model,{prompt:identifyPrompt,max_tokens:220,temperature:0}))||{};
+    const canonicalName=trimText(identified.canonicalName||name,80),officialDomain=trimText(identified.officialDomain,120).toLowerCase(),pricingUrl=trimText(identified.pricingUrl,500),plan=trimText(identified.plan,80);
+    if(!officialDomain||!pricingUrl)return{canonicalName,code:"",officialDomain:"",pricingUrl:"",plan,status:"pending",rules:{}};
+    const url=new URL(pricingUrl);
+    if(!url.hostname.toLowerCase().endsWith(officialDomain))return{canonicalName,code:"",officialDomain:"",pricingUrl:"",plan,status:"pending",rules:{}};
+    const response=await fetch(pricingUrl,{headers:{"User-Agent":"ViewInvAI/1.0 broker-fee-verifier"}});
+    if(!response.ok)return{canonicalName,code:"",officialDomain,pricingUrl,plan,status:"pending",rules:{}};
+    const html=await response.text(),plain=html.replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").slice(0,18000);
+    const feePrompt=[
+      "Extract current STOCK trading commissions from this broker official pricing page. Return JSON only.",
+      "Keys: type (flat|per_share|tiered|unknown), currency, buy, sell, perShare, min, maxPct, market, note.",
+      "Use null when not explicit. Do not infer or invent missing values.",
+      JSON.stringify({broker:canonicalName,plan,text:plain})
+    ].join("\n");
+    const fees=extractAiJson(await env.AI.run(model,{prompt:feePrompt,max_tokens:320,temperature:0}))||{};
+    const hasRule=["buy","sell","perShare","min","maxPct"].some(k=>finiteNumber(fees[k])!==null);
+    return{canonicalName,code:"",officialDomain,pricingUrl,plan,status:hasRule?"verified":"pending",rules:fees,sourceExcerpt:plain.slice(0,700)};
+  }catch(error){
+    console.warn("Broker verification failed",String(error&&error.message||error));
+    return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
+  }
+}
+async function handleBrokers(request,env,user,json,parts){
+  await ensureUserBrokerSchema(env);
+  const id=parts[1]||"",action=parts[2]||"";
+  if(request.method==="GET"&&!id){
+    const rows=await env.DB.prepare("SELECT * FROM user_brokers WHERE user_id=? ORDER BY canonical_name,name").bind(user.id).all();
+    return json({brokers:rows.results||[]});
+  }
+  if(request.method==="POST"&&!id){
+    const body=await readJson(request),name=trimText(body.name,80);
+    if(!name)return json({error:"Broker name required"},400);
+    const now=nowIso(),idNew=uid("br_");
+    await env.DB.prepare(
+      "INSERT INTO user_brokers (id,user_id,name,code,fee_mode,fee_value,fee_min,fee_max_pct,fee_currency,canonical_name,official_domain,pricing_url,plan,fee_rules_json,verification_status,last_verified_at,source_excerpt,created_at,updated_at) "+
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,name) DO UPDATE SET verification_status='pending',updated_at=excluded.updated_at"
+    ).bind(idNew,user.id,name,"","auto",0,0,null,"EUR",name,"","","","{}","pending",null,"",now,now).run();
+    const row=await env.DB.prepare("SELECT * FROM user_brokers WHERE user_id=? AND name=?").bind(user.id,name).first();
+    return json({broker:row},201);
+  }
+  if(request.method==="POST"&&id&&action==="verify"){
+    const row=await env.DB.prepare("SELECT * FROM user_brokers WHERE id=? AND user_id=?").bind(id,user.id).first();
+    if(!row)return json({error:"Broker not found"},404);
+    const resolved=await resolveBrokerProfile(env,row.name),now=nowIso(),rules=JSON.stringify(resolved.rules||{});
+    await env.DB.prepare(
+      "UPDATE user_brokers SET code=?,fee_mode='auto',fee_currency=?,canonical_name=?,official_domain=?,pricing_url=?,plan=?,fee_rules_json=?,verification_status=?,last_verified_at=?,source_excerpt=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(resolved.code||"",(resolved.rules&&resolved.rules.currency)||row.fee_currency||"EUR",resolved.canonicalName||row.name,resolved.officialDomain||"",resolved.pricingUrl||"",resolved.plan||"",rules,resolved.status||"pending",resolved.status==="verified"?now:null,resolved.sourceExcerpt||"",now,id,user.id).run();
+    return json({broker:await env.DB.prepare("SELECT * FROM user_brokers WHERE id=? AND user_id=?").bind(id,user.id).first()});
+  }
+  return json({error:"Method not allowed"},405);
+}
+
 function portfolioPayload(body) {
   return {
     name: trimText(body.name, 80),
