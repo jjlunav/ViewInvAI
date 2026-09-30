@@ -290,18 +290,15 @@ function openCatalogColumnFilterMenu(button){
  const mode=button.dataset.mode,id=button.dataset.catalogFilterColumn,st=catalogState[mode];
  if(!st)return;
  const col=CATALOG_COLUMNS[mode].find(x=>x.id===id);if(!col)return;
- const menu=ensureCatalogColumnFilterMenu(),se=catalogSession(mode),current=String(st.filters[id]||'');
- const values=col.type==='html'?[]:catalogColumnUniqueValues(mode,col,se);
+ const menu=ensureCatalogColumnFilterMenu(),current=String(st.filters[id]||'');
  menu.dataset.mode=mode;menu.dataset.col=id;
  menu.innerHTML=
   '<div class="column-filter-head"><strong>Filtrar · '+E(col.label)+'</strong><button type="button" data-column-filter-close aria-label="Cerrar">×</button></div>'+
-  '<div class="column-filter-sort">'+
-   '<button type="button" data-catalog-filter-sort="asc">↑ Ascendente</button>'+
-   '<button type="button" data-catalog-filter-sort="desc">↓ Descendente</button>'+
-  '</div>'+
-  (col.id==='fav'?'':'<label class="column-filter-input"><span>'+(col.type==='number'?'Condición numérica':col.type==='date'?'Fecha / rango':'Texto contiene')+'</span><input class="input" data-catalog-filter-input value="'+E(current)+'" placeholder="'+(col.type==='number'?'>10 · 10..30':col.type==='date'?'01/10/2026 · 01/10/2026..31/10/2026':'Escribe para filtrar…')+'"></label>')+
-  (values.length?'<div class="column-filter-values"><small>Valores frecuentes</small><div>'+values.slice(0,18).map(v=>'<button type="button" data-catalog-filter-value="'+E(v)+'" title="'+E(v)+'">'+E(v)+'</button>').join('')+'</div></div>':'')+
-  '<div class="column-filter-actions"><button type="button" class="btn ghost" data-catalog-filter-clear>Limpiar</button><button type="button" class="btn secondary" data-catalog-filter-apply>Aplicar</button></div>';
+  '<div class="column-filter-compact-row">'+
+   (col.id==='fav'?'<span class="column-filter-no-input">Ordenar favoritos</span>':'<input class="input" data-catalog-filter-input value="'+E(current)+'" placeholder="'+(col.type==='number'?'>10 · 10..30':col.type==='date'?'01/10/2026..31/10/2026':'Escribe para filtrar…')+'">')+
+   '<button type="button" class="column-sort-mini" data-catalog-filter-sort="asc" aria-label="Orden ascendente" title="Orden ascendente">↑</button>'+
+   '<button type="button" class="column-sort-mini" data-catalog-filter-sort="desc" aria-label="Orden descendente" title="Orden descendente">↓</button>'+
+  '</div>';
  const rect=button.getBoundingClientRect(),width=Math.min(340,window.innerWidth-20);
  let left=Math.min(window.innerWidth-width-10,Math.max(10,rect.left-120));
  let top=Math.min(window.innerHeight-320,rect.bottom+6);if(top<10)top=10;
@@ -379,10 +376,6 @@ function initCatalogInteractions(){
    if(e.target.closest('[data-column-filter-close]')){closeCatalogColumnFilterMenu();return}
    const sort=e.target.closest('[data-catalog-filter-sort]');
    if(sort&&st){st.sort=col;st.dir=sort.dataset.catalogFilterSort==='desc'?-1:1;catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
-   const value=e.target.closest('[data-catalog-filter-value]');
-   if(value){const input=filterMenu.querySelector('[data-catalog-filter-input]');if(input)input.value=value.dataset.catalogFilterValue||'';return}
-   if(e.target.closest('[data-catalog-filter-clear]')&&st){st.filters[col]='';catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
-   if(e.target.closest('[data-catalog-filter-apply]')&&st){const input=filterMenu.querySelector('[data-catalog-filter-input]');st.filters[col]=input?input.value:'';catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
    return;
   }
   if(!e.target.closest('.column-filter-popover'))closeCatalogColumnFilterMenu();
