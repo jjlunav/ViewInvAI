@@ -347,11 +347,11 @@ function builtinBrokerProfile(name){
   const key=String(name||"").trim().toLowerCase();
   if(/trade\s*republic|^tr$/.test(key))return{
     canonicalName:"Trade Republic",code:"TR",officialDomain:"traderepublic.com",pricingUrl:"https://traderepublic.com/en-es?openModal=pricing-scheme",
-    plan:"Standard",status:"verified",rules:{type:"flat",buy:1,sell:1,currency:"EUR",note:"1 EUR external settlement cost per trade"}
+    plan:"Standard",status:"verified",rules:{type:"flat",buy:1,sell:1,currency:"EUR",market:"TR",note:"1 EUR external settlement cost per trade"}
   };
   if(/interactive\s*brokers|\bibkr\b/.test(key))return{
     canonicalName:"Interactive Brokers",code:"IBKR",officialDomain:"interactivebrokers.com",pricingUrl:"https://www.interactivebrokers.com/en/pricing/commissions-stocks.php",
-    plan:"Pro Fixed",status:"verified",rules:{type:"per_share",perShare:0.005,min:1,maxPct:1,currency:"USD",market:"US",note:"IBKR Pro Fixed US stocks"}
+    plan:"Pro Fixed",status:"verified",rules:{type:"per_share",perShare:0.005,min:1,maxPct:1,sellValueRate:0.0000206,sellPerShareExtra:0.000198,currency:"USD",market:"US",note:"IBKR Pro Fixed US stocks; sale regulatory fees included from official schedule"}
   };
   return null;
 }
@@ -388,7 +388,7 @@ async function resolveBrokerProfile(env,name){
     return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
   }
 }
-async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,side="BUY"){
+async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,side="BUY",exchange=""){
   const name=trimText(brokerName,80),builtin=builtinBrokerProfile(name);
   let rules=builtin&&builtin.rules||null,status=builtin?"verified":"pending",label=builtin&&builtin.plan||"";
   if(!rules){
@@ -402,6 +402,10 @@ async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,s
     }
   }
   if(status!=="verified"||!rules)return{fee:null,currency:String(currency||"EUR").toUpperCase(),verified:false,label};
+  const venue=String(exchange||"").trim().toUpperCase(),ruleMarket=String(rules.market||"").trim().toUpperCase();
+  const usVenue=["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(venue);
+  if(ruleMarket==="TR"&&venue&&venue!=="LSX")return{fee:null,currency:String(rules.currency||currency||"EUR").toUpperCase(),verified:false,label,reason:"market-mismatch"};
+  if(ruleMarket==="US"&&venue&&!usVenue)return{fee:null,currency:String(rules.currency||currency||"USD").toUpperCase(),verified:false,label,reason:"market-mismatch"};
   const qty=Math.max(0,finiteNumber(quantity)||0),px=Math.max(0,finiteNumber(price)||0),tradeValue=qty*px,type=String(rules.type||"").toLowerCase();
   let fee=null;
   if(type==="flat"){
@@ -412,6 +416,10 @@ async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,s
     if(per!==null){
       fee=Math.max(minimum,qty*per);
       if(maxPct!==null&&tradeValue>0)fee=Math.min(fee,tradeValue*maxPct/100);
+      if(String(side).toUpperCase()==="SELL"){
+        const valueRate=Math.max(0,finiteNumber(rules.sellValueRate)||0),shareExtra=Math.max(0,finiteNumber(rules.sellPerShareExtra)||0);
+        fee+=tradeValue*valueRate+qty*shareExtra;
+      }
     }
   }
   return{fee,currency:String(rules.currency||currency||"EUR").toUpperCase(),verified:fee!==null,label};
@@ -860,7 +868,7 @@ async function ensureOpeningTransaction(env, userId, position) {
   const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
   const broker=trimText(position.broker,80);
   const explicitFee=finiteNumber(position.opening_fee);
-  const feeInfo=explicitFee===null?await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY"):null;
+  const feeInfo=explicitFee===null?await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY",position.exchange):null;
   const fee=explicitFee!==null?Math.max(0,explicitFee):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:0);
   const txId=uid("tx_");
   await env.DB.prepare(
@@ -1122,7 +1130,7 @@ async function handlePositions(request, env, user, json, parts, url) {
         return json({error:"quantity and avgPrice are required to add to an existing position"},400);
       }
       const txId=uid("tx_");
-      const feeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY"):null;
+      const feeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY",data.exchange):null;
       const fee=data.fees!==null?Math.max(0,data.fees):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:null);
       if(fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       await env.DB.prepare(
@@ -1280,7 +1288,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
     if (data.quantity === null || data.quantity <= 0) return json({ error: "quantity must be greater than zero" }, 400);
     if (data.price === null || data.price < 0) return json({ error: "price must be zero or greater" }, 400);
     if(data.fees===null){
-      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side);
+      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side,data.exchange);
       if(autoFee.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       data.fees=autoFee.fee;
     }
