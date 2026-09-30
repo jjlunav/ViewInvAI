@@ -1794,7 +1794,7 @@ function stockFormPayload(stock, form) {
     currency: String(fd.get("currency") || (preferTr ? "EUR" : stock.currency || "USD")),
     openedAt: String(fd.get("openedAt") || ""),
     notes: String(fd.get("notes") || ""),
-    broker: String(fd.get("broker") || "")
+    broker: String(fd.get("broker") || form.querySelector('[data-broker-select]')?.value || "")
   };
 }
 
@@ -1915,67 +1915,122 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   }
 }
 
-function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null) {
-  if (!state.user) return window.ViewInvAIAuth && window.ViewInvAIAuth.signIn();
-  if (!state.portfolios.length) {
-    toast("Primero crea una cartera.", true);
-    openNewPortfolioModal();
-    return;
-  }
-  const stock = stockByKey(stockKey);
-  if (!stock) {
-    toast("Abre primero una acción para añadirla.", true);
-    return;
-  }
+function updatePositionBrokerFeeHint(form,stock){
+  if(!form||!stock)return;
+  const broker=String(form.querySelector('[data-broker-select]')?.value||"").trim();
+  const quantity=num(form.querySelector('[name="quantity"]')?.value)||0;
+  const price=num(form.querySelector('[name="avgPrice"]')?.value)||num(currentMarket(stock,form.dataset.preferTr==="1").price)||0;
+  const currency=String(form.querySelector('[name="currency"]')?.value||(form.dataset.preferTr==="1"?"EUR":"USD")).toUpperCase();
+  const hint=form.querySelector('[data-broker-fee-hint]');
+  if(!hint)return;
+  const fee=brokerFeeEstimate(broker,quantity,price,currency,'BUY');
+  hint.textContent=fee.fee===null?'Comisión automática pendiente de verificar':'Comisión estimada '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
+  hint.classList.toggle('pending',fee.fee===null);
+}
+async function createBrokerFromPositionForm(form,stock){
+  const input=form&&form.querySelector('[data-new-broker-name]'),button=form&&form.querySelector('[data-create-broker]');
+  const name=String(input&&input.value||"").trim();
+  if(!name)return;
+  if(button){button.disabled=true;button.textContent='Añadiendo…'}
+  try{
+    const response=await api('/api/brokers',{method:'POST',body:JSON.stringify({name})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'No se pudo crear el broker.');
+    if(data.broker){
+      const idx=state.brokers.findIndex(x=>String(x.id)===String(data.broker.id)||String(x.name).toLowerCase()===String(data.broker.name).toLowerCase());
+      if(idx>=0)state.brokers[idx]=data.broker;else state.brokers.push(data.broker);
+      const select=form.querySelector('[data-broker-select]');
+      if(select){
+        select.innerHTML=brokerSelectOptions(data.broker.name);
+        select.value=data.broker.name;
+      }
+      const creator=form.querySelector('[data-broker-create-inline]');if(creator)creator.hidden=true;
+      applyPositionFormState(form,stock,form.dataset.preferTr==="1");
+      toast(name+' añadido · verificando comisiones oficiales');
+      if(data.broker.id){
+        api('/api/brokers/'+encodeURIComponent(data.broker.id)+'/verify',{method:'POST'}).then(async r=>{
+          const verified=await r.json().catch(()=>({}));
+          if(!r.ok||!verified.broker)return;
+          const i=state.brokers.findIndex(x=>String(x.id)===String(verified.broker.id));
+          if(i>=0)state.brokers[i]=verified.broker;
+          const sel=form.isConnected&&form.querySelector('[data-broker-select]');
+          if(sel){
+            const value=sel.value;
+            sel.innerHTML=brokerSelectOptions(value);
+            sel.value=value;
+            updatePositionBrokerFeeHint(form,stock);
+          }
+          if(String(verified.broker.verification_status)==='verified')toast((verified.broker.canonical_name||verified.broker.name)+' · comisiones verificadas');
+        }).catch(()=>null);
+      }
+    }
+  }catch(error){toast(error.message||'No se pudo crear el broker.',true)}
+  finally{if(button&&button.isConnected){button.disabled=false;button.textContent='Añadir'}}
+}
+function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null, editPositionId = null) {
+  if(!state.user)return window.ViewInvAIAuth&&window.ViewInvAIAuth.signIn();
+  if(!state.portfolios.length){toast("Primero crea una cartera.",true);openNewPortfolioModal();return}
+  const stock=stockByKey(stockKey);
+  if(!stock){toast("Abre primero una acción para añadirla.",true);return}
 
-  const memberships = activePortfolioMemberships(stockKey);
-  const preferredPortfolioId = portfolioIdOverride ||
-    (state.selectedPortfolioId && state.portfolios.some(p => p.id === state.selectedPortfolioId) ? state.selectedPortfolioId : '') ||
-    (memberships.length === 1 ? memberships[0].position.portfolio_id : '') ||
-    state.portfolios[0].id;
-  const existingInitial = positionForPortfolioStock(stockKey, preferredPortfolioId);
+  const editPosition=editPositionId?state.positions.find(p=>String(p.id)===String(editPositionId))||null:null;
+  const memberships=activePortfolioMemberships(stockKey);
+  const preferredPortfolioId=editPosition?.portfolio_id||portfolioIdOverride||
+    (state.selectedPortfolioId&&state.portfolios.some(p=>p.id===state.selectedPortfolioId)?state.selectedPortfolioId:'')||
+    (memberships.length===1?memberships[0].position.portfolio_id:'')||state.portfolios[0].id;
   const preferredPortfolio=state.portfolios.find(p=>String(p.id)===String(preferredPortfolioId))||null;
   const scope=portfolioMarketScope(preferredPortfolio);
-  const preferTr = existingInitial
-    ? Number(existingInitial.prefer_tr) === 1
-    : scope==="tr" ? true : scope==="us" ? false
-    : preferTrOverride === true ? true : preferTrOverride === false ? false : !!(stock.tradeRepublicTradable || stock.tradeRepublicVerified);
+  const preferTr=editPosition?Number(editPosition.prefer_tr)===1:
+    scope==="tr"?true:scope==="us"?false:
+    preferTrOverride===true?true:preferTrOverride===false?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
   if(scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker))){
     toast("Esta acción no está verificada como negociable en Trade Republic / LSX.",true);return;
   }
-  const current = currentMarket(stock, preferTr);
-  const options = state.portfolios.map(p => '<option value="' + esc(p.id) + '"' + (String(p.id) === String(preferredPortfolioId) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+  const defaultBroker=String(editPosition?.broker||brokerDefaultName(preferredPortfolio,preferTr)).trim();
+  const current=currentMarket(stock,preferTr);
+  const options=state.portfolios.map(p=>'<option value="'+esc(p.id)+'"'+(String(p.id)===String(preferredPortfolioId)?' selected':'')+'>'+esc(p.name)+'</option>').join('');
+  const brokerDisabled=!!editPosition;
 
-  openModal((existingInitial ? "Gestionar " : "Añadir ") + (stock.trTicker || stock.ticker || "acción"),
-    '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '" data-prefer-tr="' + (preferTr ? '1' : '0') + '" data-return-view="' + esc(document.querySelector('.view.active')?.id || '') + '" data-return-scroll="' + esc(String(Math.max(0,Math.round(window.scrollY||0)))) + '">' +
-      '<div class="position-form-stock"><strong>' + esc(stock.trTicker || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span><b>' + formatMoney(current.price, current.currency) + '</b></div>' +
-      '<div class="portfolio-form-mode" data-position-form-mode></div>' +
-      '<label><span>Cartera</span><select name="portfolioId" required>' + options + '</select></label>' +
-      '<div class="portfolio-form-grid"><label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>' +
-      '<label><span>Precio medio</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" placeholder="' + esc(current.price || "") + '"></label></div>' +
-      '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option>EUR</option><option>USD</option><option>GBP</option></select></label>' +
-      '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
-      '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
-      (existingInitial?'<p class="portfolio-form-note">Editar cantidad o precio medio corrige los datos de la posición. Para una compra o venta real usa “Operaciones” o “Registrar operación”, así se actualizará también el efectivo y las comisiones.</p>':'')+
-      '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>' +
-      '<button type="button" class="btn" data-save-position>Guardar posición</button>' +
+  openModal((editPosition?'Editar ':'Añadir ')+(stock.trTicker||stock.ticker||"acción"),
+    '<form id="addPositionForm" class="portfolio-form" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
+      '<div class="position-form-stock"><strong>'+esc(stock.trTicker||stock.ticker||"")+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
+      '<div class="portfolio-form-mode" data-position-form-mode></div>'+
+      '<label><span>Cartera</span><select name="portfolioId" required'+(editPosition?' disabled':'')+'>'+options+'</select></label>'+
+      '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
+        (!brokerDisabled?'<button type="button" class="portfolio-broker-add" data-toggle-broker-create aria-label="Añadir broker" title="Añadir broker">＋</button>':'')+
+      '</div></label>'+
+      (!brokerDisabled?'<div class="broker-create-inline" data-broker-create-inline hidden><input type="text" data-new-broker-name maxlength="80" placeholder="Nombre del broker, p. ej. DEGIRO"><button type="button" data-create-broker>Añadir</button></div>':'')+
+      '<small class="broker-fee-hint" data-broker-fee-hint></small></div>'+
+      '<div class="portfolio-form-grid"><label><span>'+(editPosition?'Cantidad':'Cantidad de esta compra')+'</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>'+
+      '<label><span>'+(editPosition?'Precio medio':'Precio de compra')+'</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" placeholder="'+esc(current.price||"")+'"></label></div>'+
+      '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"'+(editPosition?' disabled':'')+'><option>EUR</option><option>USD</option><option>GBP</option></select></label>'+
+      '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="'+localDateValue()+'" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>'+
+      '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>'+
+      '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>'+
+      '<button type="button" class="btn" data-save-position>'+(editPosition?'Guardar cambios':'Añadir posición')+'</button>'+
     '</form>'
   );
 
-  const form = $("#addPositionForm");
-  const saveButton = form?.querySelector("[data-save-position]");
-  if (form) {
-    applyPositionFormState(form, stock, preferTr);
-    form.querySelector('[name="portfolioId"]')?.addEventListener('change', () => {
-      applyPositionFormState(form, stock, preferTrOverride === true ? true : preferTrOverride === false ? false : preferTr);
+  const form=$("#addPositionForm"),saveButton=form?.querySelector("[data-save-position]");
+  if(form){
+    const brokerSelect=form.querySelector('[data-broker-select]');
+    const currencySelect=form.querySelector('[name="currency"]');
+    if(editPosition&&currencySelect)currencySelect.disabled=false;
+    applyPositionFormState(form,stock,preferTr);
+    if(editPosition&&currencySelect)currencySelect.disabled=true;
+    form.querySelector('[name="portfolioId"]')?.addEventListener('change',()=>applyPositionFormState(form,stock,preferTrOverride===true?true:preferTrOverride===false?false:preferTr));
+    brokerSelect?.addEventListener('change',()=>applyPositionFormState(form,stock,form.dataset.preferTr==="1"));
+    currencySelect?.addEventListener('change',()=>applyPositionFormState(form,stock,form.dataset.preferTr==="1"));
+    form.querySelector('[data-toggle-broker-create]')?.addEventListener('click',()=>{
+      const creator=form.querySelector('[data-broker-create-inline]');if(!creator)return;
+      creator.hidden=!creator.hidden;if(!creator.hidden)creator.querySelector('input')?.focus();
     });
+    form.querySelector('[data-create-broker]')?.addEventListener('click',()=>createBrokerFromPositionForm(form,stock));
+    ['quantity','avgPrice'].forEach(name=>form.querySelector('[name="'+name+'"]')?.addEventListener('input',()=>updatePositionBrokerFeeHint(form,stock)));
+    updatePositionBrokerFeeHint(form,stock);
   }
-  if (form && saveButton) {
-    saveButton.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopPropagation();
-      savePositionForm(form);
-    });
+  if(form&&saveButton){
+    saveButton.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();savePositionForm(form)});
   }
 }
 
