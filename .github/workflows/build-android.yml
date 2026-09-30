@@ -130,6 +130,13 @@ jobs:
                   if(Date.now()-started<8000)return setTimeout(wait,100);
                   return fail('runtime did not initialize');
                 }
+                const nav=document.querySelector('#mobileBottomNav'),items=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
+                const order=items.map(item=>item.dataset.mobileView||'more').join('|');
+                if(items.length!==5||order!=='home|portfolios|recommendation|favorites|more')return fail('bottom nav order invalid: '+order);
+                const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
+                if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside bottom bar');
+                const centers=items.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2}),gaps=centers.slice(1).map((value,index)=>value-centers[index]);
+                if(Math.max(...gaps)-Math.min(...gaps)>3)return fail('bottom nav items are not centered evenly');
                 const more=document.querySelector('#mobileBottomNav [data-mobile-more]');
                 more?.click();
                 if(!document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]'))return fail('funds missing from More menu');
