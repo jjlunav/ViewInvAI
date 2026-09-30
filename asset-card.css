@@ -315,7 +315,14 @@
  grid-template-columns:minmax(0,1.45fr) minmax(180px,.9fr) 12px;
 }
 .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
- grid-template-columns:minmax(0,1.35fr) minmax(220px,1fr) 64px;
+ grid-template-columns:minmax(0,1.35fr) minmax(220px,1fr) 104px;
+}
+/* Portfolio rows currently contain two information cells: live quote + position metrics.
+   Reserve a real final column for [wallet][Ficha] so those controls never sit on top
+   of the price/position information. */
+.portfolio-position-card .asset-card-row[data-asset-columns="2"]{
+ grid-template-columns:minmax(260px,1.35fr) minmax(235px,.9fr) minmax(190px,.72fr) 104px!important;
+ column-gap:10px!important;
 }
 @media(max-width:820px){
  .asset-investing-main>strong{font-size:13px}
@@ -327,7 +334,11 @@
   grid-template-columns:minmax(0,1.25fr) minmax(145px,.95fr) 10px;
  }
  .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
-  grid-template-columns:minmax(0,1.15fr) minmax(145px,.95fr) 56px;
+  grid-template-columns:minmax(0,1.15fr) minmax(145px,.95fr) 94px;
+ }
+ .portfolio-position-card .asset-card-row[data-asset-columns="2"]{
+  grid-template-columns:minmax(0,1fr) minmax(92px,.82fr) minmax(88px,.72fr) 91px!important;
+  gap:4px!important;
  }
 }
 
@@ -398,7 +409,11 @@
   font-size:8.5px;
  }
  html:not([data-native-app="1"]) .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
-  grid-template-columns:minmax(0,1.25fr) minmax(270px,1fr) 70px;
+  grid-template-columns:minmax(0,1.25fr) minmax(270px,1fr) 104px;
+ }
+ html:not([data-native-app="1"]) .portfolio-position-card .asset-card-row[data-asset-columns="2"]{
+  grid-template-columns:minmax(300px,1.28fr) minmax(260px,.92fr) minmax(210px,.72fr) 104px!important;
+  column-gap:12px!important;
  }
 }
 
