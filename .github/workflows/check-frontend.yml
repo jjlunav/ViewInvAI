@@ -347,8 +347,8 @@ jobs:
 
           required_backend = (
               "function notificationPreferenceForTarget",
-              'notificationPreferenceAllows(assetNotificationPreference,"news_enabled",true)',
-              'notificationPreferenceAllows(assetPreference,"news_enabled",true)',
+              'notificationPreferenceAllows(assetNotificationPreference,"news_enabled",false)',
+              'notificationPreferenceAllows(assetPreference,"news_enabled",false)',
               'type==="pulse-ai"||type==="radar-entry"',
               "created_at>=?",
               "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.updated_at ASC LIMIT 24",
