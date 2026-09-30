@@ -958,7 +958,7 @@
   });
     let draggedFundColumn=null,fundResize=null;
   document.addEventListener('dragstart',e=>{
-   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer'))return;
+   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer,.fund-header-filter,.fund-sort-button'))return;
    draggedFundColumn=th.dataset.fundColumn;th.classList.add('dragging');
    if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedFundColumn)}
   });
