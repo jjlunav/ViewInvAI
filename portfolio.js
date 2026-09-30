@@ -1499,11 +1499,9 @@ function transactionRowsHtml(rows, currency) {
 
 async function fetchTransactions(position) {
   const qs = new URLSearchParams({
-    positionId: position.id,
-    portfolioId: position.portfolio_id,
-    positionId: position.id,
-    broker: String(position.broker || fd.get('broker') || (preferTr ? 'Trade Republic' : 'IBKR')),
-    stockKey: position.stock_key,
+    positionId: String(position.id || ''),
+    portfolioId: String(position.portfolio_id || ''),
+    stockKey: String(position.stock_key || ''),
     limit: '300'
   });
   return fetchJson('/api/transactions?' + qs.toString());
@@ -2691,19 +2689,6 @@ function bind() {
       return;
     }
 
-    const row = event.target.closest?.("[data-open-stock]");
-    const portfolioIsin=event.target.closest?.(".portfolio-position-list .list-copy-isin");
-    if (row && (!event.target.closest("button") || portfolioIsin)) {
-      const pref = row.dataset.positionPreferTr;
-      const preferTr=pref === "1" ? true : pref === "0" ? false : null;
-      if(row.closest(".portfolio-position-list")){
-        if(portfolioIsin){event.preventDefault();event.stopPropagation()}
-        openStarMenu(row.dataset.openStock,preferTr);
-      }else{
-        openStockInline(row.dataset.openStock,preferTr);
-      }
-      return;
-    }
   });
 
   document.addEventListener("change", event => {
@@ -2804,17 +2789,6 @@ function bind() {
   $("#portfolioModalBackdrop")?.addEventListener("click", closeModal);
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") { closePortfolioTabOverflow(); closeModal(); return; }
-    const row = event.target.closest?.("[data-open-stock]");
-    if (row && !event.target.closest("button,a,input,select,textarea,summary") && (event.key === "Enter" || event.key === " ")) {
-      event.preventDefault();
-      const pref = row.dataset.positionPreferTr;
-      const preferTr=pref === "1" ? true : pref === "0" ? false : null;
-      if(row.closest(".portfolio-position-list")){
-        openStarMenu(row.dataset.openStock,preferTr);
-      }else{
-        openStockInline(row.dataset.openStock,preferTr);
-      }
-    }
   });
 
   window.addEventListener("viewinvai:auth-changed", event => {
