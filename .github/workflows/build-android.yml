@@ -399,6 +399,8 @@ jobs:
           test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee /tmp/viewinvai-apk-permissions.txt
           grep -q "android.permission.INTERNET" /tmp/viewinvai-apk-permissions.txt
+          grep -q "android.permission.POST_NOTIFICATIONS" /tmp/viewinvai-apk-permissions.txt
+          grep -q "com.google.android.c2dm.permission.RECEIVE" /tmp/viewinvai-apk-permissions.txt
           FORBIDDEN=(
             android.permission.ACCESS_FINE_LOCATION
             android.permission.ACCESS_COARSE_LOCATION
