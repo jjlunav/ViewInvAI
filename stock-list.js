@@ -229,13 +229,17 @@ function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
 }
 
 function effectiveSessionChange(s,se=currentMarketSession()){
- if(se==='premarket'){
-  let ch=N(s.premarketChangePct),p=N(s.premarketPrice),r=N(s.price);
-  return ch!==null?ch:(p!==null&&r>0?(p/r-1)*100:null);
- }
- if(se==='postmarket'){
-  let ch=N(s.postmarketChangePct),p=N(s.postmarketPrice),r=N(s.price);
-  return ch!==null?ch:(p!==null&&r>0?(p/r-1)*100:null);
+ if(se==='premarket'||se==='postmarket'){
+  // Extended-session rankings must use the same live move that is rendered in
+  // the compact market row. During pre/post Nasdaq's /api/us-live quote is the
+  // freshest source; the static premarket/postmarket snapshot is only fallback.
+  const live=currentUsQuote(s,se),regular=N(s&&s.price);
+  if(live&&live.kind===se){
+   const p=N(live.price);
+   if(p!==null&&regular!==null&&regular>0)return(p/regular-1)*100;
+  }
+  let ch=N(s&&s[se+'ChangePct']),p=N(s&&s[se+'Price']);
+  return ch!==null?ch:(p!==null&&regular>0?(p/regular-1)*100:null);
  }
  if(se==='regular')return usLiveChange(s)??N(s.changePct);
  return N(s.changePct);
