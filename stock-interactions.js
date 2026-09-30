@@ -29,6 +29,19 @@ function fallbackCopyListIsin(value){
 
 function initStockInteractions(){
  initStockViewContinuity();
+ const profileRoot=$('#stockQuickDetail');
+ profileRoot?.addEventListener('click',e=>{
+  const back=e.target.closest&&e.target.closest('[data-stock-detail-back],[data-profile-back],[data-portfolio-detail-close]');
+  if(!back)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  if(typeof returnFromProfileToOrigin==='function'&&(state.profileKey||document.body.classList.contains('stock-detail-open'))){
+   returnFromProfileToOrigin();
+  }else if(window.ViewInvAINavigation?.back){
+   window.ViewInvAINavigation.back();
+  }else{
+   closeQuickProfile(true);
+  }
+ },true);
  $('#aiChatClose')?.addEventListener('click',closeAiChat);
  $('#aiChatBackdrop')?.addEventListener('click',closeAiChat);
  $('#aiChatForm')?.addEventListener('submit',e=>{
