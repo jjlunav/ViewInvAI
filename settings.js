@@ -32,13 +32,22 @@ function syncDeviceSettingsUi(){
 
 let pushBackendConfigured=null,pushDeviceRegistered=null,backendSourceStatus=null,accountAnalysisSettings=null,analysisSettingsBusy=false;
 function sourceStatusText(source,key){
- if(!source)return{label:'Sin información',mode:'pending'};
- if(source.configured===false)return{label:'Pendiente',mode:'pending'};
- if(key==='fda'&&source.enhancedConfig===false)return{label:'Integrada',mode:'active'};
- return{label:'Integrada',mode:'active'};
+ if(backendSourceStatus&&backendSourceStatus.error)return{label:'Sin conexión',mode:'error',title:'No se pudo consultar el estado del backend.'};
+ if(!source)return{label:'Sin información',mode:'pending',title:'No hay datos de estado disponibles.'};
+ if(source.configured===false){
+  const required=String(source.requiredConfig||'').trim();
+  return{label:'Sin configurar',mode:'pending',title:required?'Falta configuración: '+required:'La integración requiere configuración adicional.'};
+ }
+ if(key==='fda'&&source.enhancedConfig===false){
+  return{label:'Operativa',mode:'active',title:'Fuente pública operativa. La clave openFDA es opcional y solo amplía capacidad.'};
+ }
+ return{label:'Operativa',mode:'active',title:'Integración disponible y configurada.'};
 }
 function renderSourceSettingsStatus(){
  const sources=backendSourceStatus&&backendSourceStatus.sources||{};
+ const native=window.ViewInvAIAuth?.isNative?.()===true;
+ const pushRow=$('#sourceStatusPushRow');
+ if(pushRow)pushRow.hidden=!native;
  const rows={
   sourceStatusTradeRepublic:'tradeRepublic',
   sourceStatusNasdaq:'nasdaq',
@@ -49,16 +58,20 @@ function renderSourceSettingsStatus(){
  };
  for(const [id,key] of Object.entries(rows)){
   const el=$('#'+id);if(!el)continue;
+  if(key==='push'&&!native)continue;
   const info=sourceStatusText(sources[key],key);
   el.textContent=info.label;
+  el.title=info.title||'';
   el.classList.toggle('active',info.mode==='active');
   el.classList.toggle('pending',info.mode==='pending');
-  el.classList.remove('error');
+  el.classList.toggle('error',info.mode==='error');
  }
  const cadence=$('#sourceStatusCadence');
  if(cadence){
   const minutes=Number(backendSourceStatus&&backendSourceStatus.alertsCadenceMinutes);
-  cadence.textContent=Number.isFinite(minutes)&&minutes>0?'Barrido · '+minutes+' min':'';
+  const updated=new Date(backendSourceStatus&&backendSourceStatus.updatedAt||0);
+  const stamp=Number.isFinite(updated.getTime())&&updated.getTime()>0?updated.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+  cadence.textContent=(stamp?'Comprobado '+stamp:'')+(Number.isFinite(minutes)&&minutes>0?(stamp?' · ':'')+'barrido '+minutes+' min':'');
  }
 }
 async function refreshPushBackendStatus(){
@@ -68,7 +81,7 @@ async function refreshPushBackendStatus(){
   backendSourceStatus=await response.json();
   pushBackendConfigured=backendSourceStatus&&backendSourceStatus.push===true;
  }catch(_){
-  backendSourceStatus=null;pushBackendConfigured=false;
+  backendSourceStatus={error:true,sources:{},updatedAt:new Date().toISOString()};pushBackendConfigured=false;
  }
  renderPushSettingsStatus();
  renderSourceSettingsStatus();
