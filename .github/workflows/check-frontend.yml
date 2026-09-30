@@ -398,8 +398,8 @@ jobs:
               raise SystemExit("Falta la categoría de notificación para Objetivo IA")
           if "scanPortfolioGoalNotifications" not in backend or 'route:"portfolio-goal"' not in backend:
               raise SystemExit("Objetivo IA no puede avisar cambios en segundo plano")
-          if "wholeRecommendationUnits" not in portfolio or "Math.floor(budget/row.unitEur)" not in portfolio:
-              raise SystemExit("Las recomendaciones deben operar con acciones enteras")
+          if "wholeRecommendationUnits" not in portfolio or "Math.floor(Math.max(0,budget-feeEur)/row.execution.unitEur)" not in portfolio:
+              raise SystemExit("Las recomendaciones deben operar con acciones enteras y comisiones")
           if "finalists.push(ranked[2])" not in portfolio or "slice(0,3)" not in portfolio:
               raise SystemExit("El ranking estricto debe admitir como máximo tres entradas")
           if 'riskProfile||"aggressive"' not in portfolio:
