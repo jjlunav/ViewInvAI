@@ -503,11 +503,15 @@ function radarAiCard(row){
   {label:'Score',value:F(row.score,0)+'/100',tone:row.tier==='high'?'buy':row.tier==='opportunity'?'watch':'muted'},
   {label:'Datos',value:F(row.quality,0)+'/100',tone:row.quality>=60?'positive':row.quality>=45?'watch':'muted'}
  ];
+ const quote=canonicalQuote(s,preferTr),ask=preferTr?N(s&&s.trLiveAsk):usLiveAsk(s),entryPrice=ask??N(quote&&quote.price);
+ const actions=row.tier!=='watch'&&row.liveVenue
+  ?'<button type="button" class="btn small radar-register-operation" data-radar-register="'+E(stockKey(s))+'" data-radar-prefer-tr="'+(preferTr?'1':'0')+'" data-radar-price="'+E(entryPrice===null?'':String(entryPrice))+'">Registrar operación</button>'
+  :'';
  return standardStockCard(s,0,{
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
-  detailsHtml:''
+  detailsHtml:'',actionsHtml:actions
  });
 }
 function radarAiTier(mode,tier,rows){
@@ -603,6 +607,15 @@ function warmRecommendationCache(){
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,700));
 
 document.addEventListener('click',event=>{
+ const register=event.target&&event.target.closest?event.target.closest('[data-radar-register]'):null;
+ if(register){
+  event.preventDefault();event.stopPropagation();
+  const key=register.dataset.radarRegister,preferTr=register.dataset.radarPreferTr==='1',price=N(register.dataset.radarPrice);
+  if(window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.openAddPosition==='function'){
+   window.ViewInvAIPortfolios.openAddPosition(key,preferTr,null,null,{price:price});
+  }
+  return;
+ }
  const button=event.target&&event.target.closest?event.target.closest('[data-reco-mobile-group]'):null;
  if(!button)return;
  setRecommendationMobileGroup(button.dataset.recoMobileGroup||'general');
