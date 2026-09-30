@@ -162,6 +162,14 @@ function portfolioPriceToEur(price,currency,fxUsdEur){
   if(code==="USD"&&num(fxUsdEur)!==null)return value*num(fxUsdEur);
   return null;
 }
+function portfolioConvertAmount(value,fromCurrency,toCurrency,fxUsdEur=portfolioUsdToEurRate()){
+  const amount=num(value),from=String(fromCurrency||"EUR").toUpperCase(),to=String(toCurrency||"EUR").toUpperCase(),fx=num(fxUsdEur);
+  if(amount===null)return null;
+  if(from===to)return amount;
+  if(from==="USD"&&to==="EUR"&&fx!==null)return amount*fx;
+  if(from==="EUR"&&to==="USD"&&fx!==null&&fx>0)return amount/fx;
+  return null;
+}
 function goalExecutionQuote(stock,preferTr,side,fxUsdEur){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
   const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct);
@@ -350,6 +358,7 @@ function portfolioSummaryHtml(portfolio, positions) {
   const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
   if (!positions.length && !txSummary && cashBalance<=0) return "";
   let positionsValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0, pricingSessions = new Set();
+  const fxUsdEur=portfolioUsdToEurRate();
   for (const p of positions) {
     const stock = stockByKey(p.stock_key);
     const qty = num(p.quantity);
@@ -364,8 +373,10 @@ function portfolioSummaryHtml(portfolio, positions) {
 
     const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
     const avg = num(p.avg_price);
-    if (avg === null || entryCurrency !== baseCurrency) costComplete = false;
-    else invested += qty * avg;
+    const avgBase=portfolioConvertAmount(avg,entryCurrency,baseCurrency,fxUsdEur);
+    const feeBase=portfolioConvertAmount(portfolioOperationFee(preferTr),preferTr?"EUR":entryCurrency,baseCurrency,fxUsdEur);
+    if (avgBase === null || feeBase===null) costComplete = false;
+    else invested += qty * avgBase + feeBase;
   }
 
   const totalValue = currentComplete ? positionsValue + cashBalance : null;
@@ -452,6 +463,18 @@ function renderPositionRow(p, index = 0) {
   const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
   const priceTone = market.change === null ? "muted" : market.change >= 0 ? "positive" : "negative";
 
+  const entryFee=portfolioOperationFee(preferTr);
+  const investedValue=qty!==null&&avg!==null?qty*avg+entryFee:null;
+  const pnlAfterFees=currentValue!==null&&investedValue!==null?currentValue-investedValue:null;
+  const pnlAfterFeesPct=investedValue!==null&&investedValue>0&&pnlAfterFees!==null?pnlAfterFees/investedValue*100:null;
+  const metaHtml='<div class="portfolio-position-strip">'+
+    '<span><b>'+esc(formatNumber(qty,4))+'</b> uds.</span>'+
+    '<span>Media <b>'+esc(formatMoney(avg,entryCurrency))+'</b></span>'+
+    '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
+    '<span>Valor <b>'+esc(formatMoney(currentValue,entryCurrency))+'</b></span>'+
+    '<span class="'+(pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative')+'">P&L <b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)+(pnlAfterFeesPct===null?'':' · '+(pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')))+'</b></span>'+
+    (preferTr?'<span>Comisión entrada <b>1,00 €</b></span>':'')+
+  '</div>';
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
@@ -459,6 +482,7 @@ function renderPositionRow(p, index = 0) {
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
     openLabel: "Ficha",
     openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
+    metaHtml,
     detailsHtml: ""
   });
 
