@@ -171,11 +171,11 @@ function renderAnalysisSettings(settings=null){
  accountAnalysisSettings=settings&&typeof settings==='object'?settings:null;
  const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)===1:false;
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)===1:false;
- const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)===1:false;
- const radar=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar)===1:false;
+ const radarAi=accountAnalysisSettings?(Number(accountAnalysisSettings.notify_pulse_ai)===1||Number(accountAnalysisSettings.notify_radar)===1):false;
+ const pulseAi=radarAi,radar=radarAi;
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
  const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
- const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadar:radar,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
+ const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyRadarAi:radarAi,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
@@ -189,8 +189,8 @@ function renderAnalysisSettings(settings=null){
   if(accountAnalysisSettings&&enabled&&!analysisSettingsBusy)globalStatus.classList.add('active');
  }
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,portfolio,portfolioGoal};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,portfolio,portfolioGoal}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,radarAi,pulseAi:radarAi,radar:radarAi,portfolio,portfolioGoal};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,radarAi,pulseAi:radarAi,radar:radarAi,portfolio,portfolioGoal}}));
  }else window.ViewInvAINotificationSettings=null;
  const test=$('#testPushNotification');
  if(test)test.disabled=!accountAnalysisSettings||!enabled||pushBackendConfigured===false||analysisSettingsBusy;
@@ -200,8 +200,8 @@ async function saveAnalysisSettings(){
  const body={
   notificationsEnabled:$('#globalNotificationsEnabled')?.checked===true,
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked===true,
-  notifyPulseAi:$('#globalNotifyPulseAi')?.checked===true,
-  notifyRadar:$('#globalNotifyRadar')?.checked===true,
+  notifyPulseAi:$('#globalNotifyRadarAi')?.checked===true,
+  notifyRadar:$('#globalNotifyRadarAi')?.checked===true,
   notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true,
   notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true
  };
