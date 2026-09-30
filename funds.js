@@ -417,13 +417,14 @@
  function closeFundFilterMenu(){const menu=document.querySelector('#fundColumnFilterMenu');if(menu)menu.hidden=true}
  function openFundFilterMenu(button){
   const key=button.dataset.fundFilterColumn,label=(FUND_COLUMNS.find(([id])=>id===key)||[key,key])[1],type=fundColumnType(key),menu=ensureFundFilterMenu();
-  const current=String(state.columnFilters&&state.columnFilters[key]||''),values=fundFilterValues(key),rect=button.getBoundingClientRect(),width=Math.min(340,innerWidth-20);
+  const current=String(state.columnFilters&&state.columnFilters[key]||''),rect=button.getBoundingClientRect(),width=Math.min(340,innerWidth-20);
   menu.dataset.key=key;
   menu.innerHTML='<div class="column-filter-head"><strong>Filtrar · '+esc(label)+'</strong><button type="button" data-column-filter-close aria-label="Cerrar">×</button></div>'+
-   '<div class="column-filter-sort"><button type="button" data-fund-filter-sort="asc">↑ Ascendente</button><button type="button" data-fund-filter-sort="desc">↓ Descendente</button></div>'+
-   '<label class="column-filter-input"><span>'+(type==='number'?'Condición numérica':'Texto contiene')+'</span><input class="input" data-fund-filter-input value="'+esc(current)+'" placeholder="'+(type==='number'?'>1 · 1..5':'Escribe para filtrar…')+'"></label>'+
-   (type==='text'&&values.length?'<div class="column-filter-values"><small>Valores frecuentes</small><div>'+values.slice(0,18).map(v=>'<button type="button" data-fund-filter-value="'+esc(v)+'" title="'+esc(v)+'">'+esc(v)+'</button>').join('')+'</div></div>':'')+
-   '<div class="column-filter-actions"><button type="button" class="btn ghost" data-fund-filter-clear>Limpiar</button><button type="button" class="btn secondary" data-fund-filter-apply>Aplicar</button></div>';
+   '<div class="column-filter-compact-row">'+
+    '<input class="input" data-fund-filter-input value="'+esc(current)+'" placeholder="'+(type==='number'?'>1 · 1..5':'Escribe para filtrar…')+'">'+
+    '<button type="button" class="column-sort-mini" data-fund-filter-sort="asc" aria-label="Orden ascendente" title="Orden ascendente">↑</button>'+
+    '<button type="button" class="column-sort-mini" data-fund-filter-sort="desc" aria-label="Orden descendente" title="Orden descendente">↓</button>'+
+   '</div>';
   menu.style.width=width+'px';menu.style.left=Math.min(innerWidth-width-10,Math.max(10,rect.left-120))+'px';menu.style.top=Math.max(10,Math.min(innerHeight-320,rect.bottom+6))+'px';menu.hidden=false;
   setTimeout(()=>menu.querySelector('[data-fund-filter-input]')?.focus(),0);
  }
@@ -889,9 +890,6 @@
     const key=filterMenu.dataset.key;
     if(e.target.closest('[data-column-filter-close]')){closeFundFilterMenu();return}
     const sort=e.target.closest('[data-fund-filter-sort]');if(sort){setFundSort(key,sort.dataset.fundFilterSort);closeFundFilterMenu();return}
-    const value=e.target.closest('[data-fund-filter-value]');if(value){const input=filterMenu.querySelector('[data-fund-filter-input]');if(input)input.value=value.dataset.fundFilterValue||'';return}
-    if(e.target.closest('[data-fund-filter-clear]')){state.columnFilters[key]='';closeFundFilterMenu();render();return}
-    if(e.target.closest('[data-fund-filter-apply]')){const input=filterMenu.querySelector('[data-fund-filter-input]');state.columnFilters[key]=input?input.value:'';closeFundFilterMenu();render();return}
     return;
    }
    if(!e.target.closest('.column-filter-popover'))closeFundFilterMenu();
