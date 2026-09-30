@@ -1934,7 +1934,7 @@ function openStarMenu(stockKey, preferTr = null) {
     const detail = (qty === null ? 'Posición activa' : formatNumber(qty,4) + ' uds.') + (avg === null ? '' : ' · media ' + formatMoney(avg,currency));
     return '<div class="star-portfolio-manager">' +
       '<button type="button" class="star-portfolio-choice selected" data-edit-portfolio-position="' + esc(existing.id) + '" data-star-stock="' + esc(stockKey) + '">' +
-        '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + esc(detail) + ' · editar datos</small>' +
+        '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + esc(detail) + ' · modificar exposición</small>' +
       '</button>' +
       '<div class="star-portfolio-manager-actions">' +
         '<button type="button" data-manage-position-transactions="' + esc(existing.id) + '">Operaciones</button>' +
@@ -1943,7 +1943,7 @@ function openStarMenu(stockKey, preferTr = null) {
     '</div>';
   }).join('');
 
-  openModal(isInPortfolio(stockKey) ? "Gestionar carteras" : "Añadir a cartera",
+  openModal(isInPortfolio(stockKey) ? "Gestionar exposición" : "Añadir a cartera",
     '<div class="star-portfolio-menu">' +
       '<div class="star-stock-summary"><strong>' + esc((preferTr && stock.trTicker) || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
       watchRow +
@@ -2336,7 +2336,12 @@ function bind() {
     const row = event.target.closest?.("[data-open-stock]");
     if (row && !event.target.closest("button")) {
       const pref = row.dataset.positionPreferTr;
-      openStockInline(row.dataset.openStock, pref === "1" ? true : pref === "0" ? false : null);
+      const preferTr=pref === "1" ? true : pref === "0" ? false : null;
+      if(row.closest(".portfolio-position-list")){
+        openStarMenu(row.dataset.openStock,preferTr);
+      }else{
+        openStockInline(row.dataset.openStock,preferTr);
+      }
       return;
     }
   });
@@ -2443,7 +2448,12 @@ function bind() {
     if (row && !event.target.closest("button,a,input,select,textarea,summary") && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       const pref = row.dataset.positionPreferTr;
-      openStockInline(row.dataset.openStock, pref === "1" ? true : pref === "0" ? false : null);
+      const preferTr=pref === "1" ? true : pref === "0" ? false : null;
+      if(row.closest(".portfolio-position-list")){
+        openStarMenu(row.dataset.openStock,preferTr);
+      }else{
+        openStockInline(row.dataset.openStock,preferTr);
+      }
     }
   });
 
