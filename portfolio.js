@@ -293,7 +293,7 @@ function openStockInline(key, preferTr = null) {
     return false;
   }
   if (window.ViewInvAI && typeof window.ViewInvAI.openStockByKey === "function") {
-    return window.ViewInvAI.openStockByKey(canonicalStockKey(key), "Cartera · posición activa", preferTr);
+    return window.ViewInvAI.openStockByKey(canonicalStockKey(key), "Cartera · posición activa", preferTr, "portfolios");
   }
   return false;
 }
