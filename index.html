@@ -263,11 +263,11 @@
       </div>
       <div class="fund-toolbar compact-fund-toolbar">
         <input id="fundSearch" class="fund-search" type="search" placeholder="Nombre, ISIN, índice o gestora" autocomplete="off">
-        <button type="button" class="catalog-toolbar-mini fund-reset-columns" id="fundResetColumns" aria-label="Restablecer columnas" title="Restablecer columnas">↺</button>
-        <span class="fund-toolbar-spacer" aria-hidden="true"></span>
         <button type="button" class="catalog-toolbar-mini filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Catálogo Fondos y ETFs" aria-label="Abrir filtros generales" title="Filtros generales">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>
         </button>
+        <button type="button" class="catalog-toolbar-mini fund-reset-columns" id="fundResetColumns" aria-label="Restablecer columnas" title="Restablecer columnas">↺</button>
+        <span class="fund-toolbar-spacer" aria-hidden="true"></span>
         <div class="fund-toolbar-advanced filter-sheet-source" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
@@ -372,9 +372,9 @@
       <div id="catalogBrowse">
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogSearch" class="input" placeholder="Buscar nombre, ticker, ISIN, sector…">
+          <button type="button" class="catalog-toolbar-mini filter-icon-button" data-filter-sheet-target="#catalogFilterPanelTr" data-filter-sheet-title="Filtros · Trade Republic" aria-label="Abrir filtros generales" title="Filtros generales"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
           <button type="button" class="catalog-toolbar-mini catalog-reset-columns" data-catalog-mode="tr" aria-label="Restablecer columnas" title="Restablecer columnas">↺</button>
           <span class="catalog-toolbar-spacer" aria-hidden="true"></span>
-          <button type="button" class="catalog-toolbar-mini filter-icon-button" data-filter-sheet-target="#catalogFilterPanelTr" data-filter-sheet-title="Filtros · Trade Republic" aria-label="Abrir filtros generales" title="Filtros generales"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
         </div>
         <div id="catalogFilterPanelTr" class="catalog-filter-panel filter-sheet-source"></div>
         <div id="catalogResults" class="catalog-sheet-wrap"></div>
@@ -387,9 +387,9 @@
       <div id="catalogUSBrowse">
         <div class="catalog-toolbar compact-search-toolbar">
           <input id="catalogUSSearch" class="input" placeholder="Buscar nombre, ticker, ISIN, sector…">
+          <button type="button" class="catalog-toolbar-mini filter-icon-button" data-filter-sheet-target="#catalogFilterPanelUs" data-filter-sheet-title="Filtros · Estados Unidos" aria-label="Abrir filtros generales" title="Filtros generales"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
           <button type="button" class="catalog-toolbar-mini catalog-reset-columns" data-catalog-mode="us" aria-label="Restablecer columnas" title="Restablecer columnas">↺</button>
           <span class="catalog-toolbar-spacer" aria-hidden="true"></span>
-          <button type="button" class="catalog-toolbar-mini filter-icon-button" data-filter-sheet-target="#catalogFilterPanelUs" data-filter-sheet-title="Filtros · Estados Unidos" aria-label="Abrir filtros generales" title="Filtros generales"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button>
         </div>
         <div id="catalogFilterPanelUs" class="catalog-filter-panel filter-sheet-source"></div>
         <div id="catalogUSResults" class="catalog-sheet-wrap"></div>
