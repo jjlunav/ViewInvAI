@@ -2254,9 +2254,20 @@ async function savePositionForm(form) {
     }
     setStatus("Guardando posición…");
 
-    await addPosition(payload);
+    const editPositionId=String(form.dataset.editPositionId||"");
+    if(editPositionId){
+      const response=await api('/api/positions/'+encodeURIComponent(editPositionId),{method:'PATCH',body:JSON.stringify(payload)});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'No se pudo actualizar la posición.');
+      if(data.position){
+        const idx=state.positions.findIndex(p=>String(p.id)===String(data.position.id));
+        if(idx>=0)state.positions[idx]=data.position;
+      }
+    }else{
+      await addPosition(payload);
+    }
 
-    setStatus("Posición guardada");
+    setStatus(editPositionId?"Posición actualizada":"Posición guardada");
     const returnView=form.dataset.returnView||'';
     const returnScroll=Math.max(0,Number(form.dataset.returnScroll)||0);
     closeModal();
@@ -2271,7 +2282,7 @@ async function savePositionForm(form) {
         requestAnimationFrame(()=>window.scrollTo({top:returnScroll,behavior:'auto'}));
       }
     }
-    toast("Posición guardada · análisis continuo activado");
+    toast(editPositionId?"Posición actualizada":"Compra registrada · análisis continuo activado");
 
     // Refresh server state after the modal has closed; saving no longer appears
     // frozen while portfolios/watchlist are reloaded.
