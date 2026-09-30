@@ -239,12 +239,14 @@ function currentMarket(stock, preferTr = false) {
   const bid=num(preferTr?stock.trLiveBid:stock.usLiveBid),ask=num(preferTr?stock.trLiveAsk:stock.usLiveAsk);
   const mid=bid!==null&&ask!==null&&ask>=bid?(bid+ask)/2:null;
   const spread=mid&&mid>0?(ask-bid)/mid*100:null;
-  if (window.ViewInvAI && (typeof window.ViewInvAI.getDisplayQuote === "function" || typeof window.ViewInvAI.getCanonicalQuote === "function")) {
-    const quote = (preferTr && typeof window.ViewInvAI.getCanonicalQuote === "function"
-      ? window.ViewInvAI.getCanonicalQuote(stock, true)
-      : typeof window.ViewInvAI.getDisplayQuote === "function"
-        ? window.ViewInvAI.getDisplayQuote(stock, false)
-        : window.ViewInvAI.getCanonicalQuote(stock, false)) || {};
+  if (window.ViewInvAI && (typeof window.ViewInvAI.getCanonicalQuote === "function" || typeof window.ViewInvAI.getDisplayQuote === "function")) {
+    let quote = typeof window.ViewInvAI.getCanonicalQuote === "function"
+      ? window.ViewInvAI.getCanonicalQuote(stock, !!preferTr)
+      : null;
+    if ((!quote || num(quote.price) === null) && typeof window.ViewInvAI.getDisplayQuote === "function") {
+      quote = window.ViewInvAI.getDisplayQuote(stock, !!preferTr);
+    }
+    quote = quote || {};
     return {
       price: num(quote.price),
       change: num(quote.change),
@@ -254,6 +256,7 @@ function currentMarket(stock, preferTr = false) {
       bid, ask, spreadPct:spread,
       source: quote.source || "",
       updatedAt: quote.updatedAt || null,
+      session: quote.session || null,
       live: quote.live === true,
       fallback: quote.fallback === true
     };
@@ -346,7 +349,7 @@ function portfolioSummaryHtml(portfolio, positions) {
   const cashBalance = Math.max(0,num(portfolio.cash_balance)||0);
   const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
   if (!positions.length && !txSummary && cashBalance<=0) return "";
-  let positionsValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0;
+  let positionsValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0, pricingSessions = new Set();
   for (const p of positions) {
     const stock = stockByKey(p.stock_key);
     const qty = num(p.quantity);
@@ -355,6 +358,7 @@ function portfolioSummaryHtml(portfolio, positions) {
     const preferTr = Number(p.prefer_tr) === 1;
     const market = currentMarket(stock, preferTr);
     const currentUnit = marketValueInCurrency(market, baseCurrency);
+    if (market && market.session) pricingSessions.add(String(market.session));
     if (currentUnit === null) currentComplete = false;
     else positionsValue += qty * currentUnit;
 
@@ -374,7 +378,8 @@ function portfolioSummaryHtml(portfolio, positions) {
     '<div><small>' + label + '</small><strong class="' + (value >= 0 ? 'pnl-up' : 'pnl-down') + '">' +
       (value > 0 ? '+' : '') + formatMoney(value, baseCurrency) + suffix + '</strong></div>';
 
-  return '<div class="portfolio-summary-bar">' +
+  const pricingSessionLabel = pricingSessions.has('premarket') ? ' · preapertura' : pricingSessions.has('postmarket') ? ' · posmercado' : '';
+  return '<div class="portfolio-summary-bar" title="Valorado con la cotización actual disponible'+pricingSessionLabel+'">' +
     '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
     '<div><small>VALOR TOTAL</small><strong>' + (totalValue!==null ? formatMoney(totalValue, baseCurrency) : '—') + '</strong></div>' +
     pnlHtml('ABIERTO', openPnl, openPnlPct === null ? '' : ' · ' + (openPnlPct >= 0 ? '+' : '') + formatNumber(openPnlPct, 2) + '%') +
