@@ -234,7 +234,12 @@ async function recommendationChartAnalysis(s,mode){
    url='/api/us-chart?symbol='+encodeURIComponent(s.ticker);
   }
   if(!url)throw Error('no chart source');
-  let r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(String(r.status));
+  const controller=typeof AbortController!=='undefined'?new AbortController():null;
+  const timer=setTimeout(()=>{try{controller&&controller.abort()}catch(_){}},4500);
+  let r;
+  try{r=await fetch(url,{cache:'no-store',...(controller?{signal:controller.signal}:{})})}
+  finally{clearTimeout(timer)}
+  if(!r.ok)throw Error(String(r.status));
   let data=await r.json(),raw=Array.isArray(data&&data.points)?data.points:[];
   let pts=raw.map(p=>({close:N(p&&((p.close!==undefined)?p.close:p.price)),volume:N(p&&p.volume)})).filter(p=>p.close!==null);
   if(pts.length<35)throw Error('insufficient chart');
@@ -282,11 +287,15 @@ async function pulseAiValidate(result){
  if(!auth||!auth.getUser?.()||!auth.apiFetch)return result;
  try{
   const s=result.s,preferTr=result.mode==='tr',quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,currentMarketSession());
-  const response=await auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
+  const aiRequest=auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
    stockKey:stockKey(s),ticker:s.ticker||s.trTicker||'',isin:preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin),preferTr,
    question:'Pulso IA: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
    live:{price:N(quote.price),changePct:N(quote.change),source:quote.source||'',bid:preferTr?N(s.trLiveBid):usLiveBid(s),ask:preferTr?N(s.trLiveAsk):usLiveAsk(s)}
   })});
+  const response=await Promise.race([
+   aiRequest,
+   new Promise((_,reject)=>setTimeout(()=>reject(Error('Pulse AI timeout')),8000))
+  ]);
   if(!response.ok)return result;
   const ai=await response.json(),aiSignal=String(ai.signal||'').toUpperCase(),confidence=N(ai.confidence)??0;
   const hardSafe=result.dataQuality&&result.dataQuality.score>=65&&result.gates.volume&&result.gates.spread&&result.gates.catalyst;
@@ -489,7 +498,11 @@ async function renderRecommendation(force=false){
  if(recommendationRenderPromise&&!force)return recommendationRenderPromise;
  if(!recommendationRenderCache.html)box.innerHTML='<div class="empty-state"><strong>Analizando oportunidades…</strong><span>Mostraremos el resultado en cuanto termine la primera validación; después se reutiliza en segundo plano.</span></div>';
  recommendationRenderPromise=(async()=>{
-  let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
+  const analysis=Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
+  let [usResult,trResult]=await Promise.race([
+   analysis,
+   new Promise(resolve=>setTimeout(()=>resolve([null,null]),12000))
+  ]);
   let us=usResult&&usResult.eligible?usResult:null,tr=trResult&&trResult.eligible?trResult:null;
   let html=recommendationCompactList(us,tr);
   if(!us&&!tr){
