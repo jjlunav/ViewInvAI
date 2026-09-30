@@ -51,7 +51,6 @@
    if(loadFunds)loadPortfolio(false);
   }else if(mode==='goal'){
    root.ViewInvAIPortfolios?.setGoalVisible?.(true);
-   root.ViewInvAIPortfolios?.renderGoal?.();
   }else{
    root.ViewInvAIPortfolios?.setGoalVisible?.(false);
    root.ViewInvAIPortfolios?.render?.();
