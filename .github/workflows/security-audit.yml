@@ -89,7 +89,8 @@ jobs:
           ];
           const ledger=calculateTransactionLedger(rows);
           if(Math.abs(ledger.quantity-15)>1e-9)throw new Error('Ledger quantity regression');
-          if(Math.abs(ledger.avgPrice-15.1)>1e-9)throw new Error('Ledger average regression: '+ledger.avgPrice);
+          if(Math.abs(ledger.avgPrice-15)>1e-9)throw new Error('Ledger execution-price average regression: '+ledger.avgPrice);
+          if(Math.abs(ledger.avgCost-15.1)>1e-9)throw new Error('Ledger all-in average cost regression: '+ledger.avgCost);
           if(Math.abs(ledger.realizedPnl-73.5)>1e-9)throw new Error('Ledger realized P&L regression: '+ledger.realizedPnl);
           const summary=calculatePortfolioTransactionSummary(rows);
           const eur=summary.currencies&&summary.currencies.EUR;
