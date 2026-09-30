@@ -2857,3 +2857,40 @@ html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]{
 html[data-native-app="1"] main{
  padding-bottom:calc(var(--native-nav-h) + 16px)!important;
 }
+
+
+/* 2026-09-30 native profile header: company name uses available width; ticker stays secondary. */
+html[data-native-app="1"] .unified-stock-header .profile-title{
+  overflow:visible!important;
+}
+html[data-native-app="1"] .unified-stock-header .profile-title>div:last-child{
+  width:100%!important;
+  min-width:0!important;
+  overflow:visible!important;
+}
+html[data-native-app="1"] .unified-stock-header .profile-company-name{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  margin:1px 0 2px!important;
+  font-size:15px!important;
+  line-height:1.14!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere!important;
+}
+html[data-native-app="1"] .unified-stock-header .profile-ticker-line{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  margin:0!important;
+  font-size:8px!important;
+  line-height:1.05!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+html[data-native-app="1"] .unified-stock-header .profile-quote-freshness{
+  justify-self:end!important;
+}
