@@ -2894,3 +2894,25 @@ html[data-native-app="1"] .unified-stock-header .profile-ticker-line{
 html[data-native-app="1"] .unified-stock-header .profile-quote-freshness{
   justify-self:end!important;
 }
+
+
+/* Radar IA: AI accent without lifting it above the native bottom bar. */
+html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]{
+  position:relative!important;
+  transform:none!important;
+  align-self:stretch!important;
+  justify-self:stretch!important;
+  min-height:0!important;
+  margin:0!important;
+  top:auto!important;
+  bottom:auto!important;
+  border:1px solid rgba(129,153,255,.24)!important;
+  background:linear-gradient(180deg,rgba(96,128,255,.14),rgba(93,88,224,.06))!important;
+  color:#bcc9ff!important;
+  box-shadow:none!important;
+}
+html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"].active{
+  color:#eef1ff!important;
+  border-color:rgba(165,183,255,.52)!important;
+  background:linear-gradient(180deg,rgba(111,137,255,.30),rgba(89,83,224,.14))!important;
+}
