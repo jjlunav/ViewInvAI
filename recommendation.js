@@ -286,11 +286,12 @@ async function pulseAiValidate(result){
  const auth=window.ViewInvAIAuth;
  if(!auth||!auth.getUser?.()||!auth.apiFetch)return result;
  try{
-  const s=result.s,preferTr=result.mode==='tr',quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,currentMarketSession());
+  const s=result.s,preferTr=result.mode==='tr',quote=canonicalQuote(s,preferTr),fresh=quoteFreshnessInfo(s,preferTr);
+  if(fresh.state!=='live'||N(quote.price)===null)return Object.assign({},result,{eligible:false,reasons:[...(result.reasons||[]),'cotización no ejecutable en tiempo real']});
   const aiRequest=auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
    stockKey:stockKey(s),ticker:s.ticker||s.trTicker||'',isin:preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin),preferTr,
    question:'Radar AI: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
-   live:{price:N(quote.price),changePct:N(quote.change),source:quote.source||'',bid:preferTr?N(s.trLiveBid):usLiveBid(s),ask:preferTr?N(s.trLiveAsk):usLiveAsk(s)}
+   live:{price:N(quote.price),changePct:N(quote.change),source:quote.source||'',updatedAt:quote.updatedAt||null,bid:preferTr?N(s.trLiveBid):usLiveBid(s),ask:preferTr?N(s.trLiveAsk):usLiveAsk(s)}
   })});
   const response=await Promise.race([
    aiRequest,
@@ -298,7 +299,7 @@ async function pulseAiValidate(result){
   ]);
   if(!response.ok)return result;
   const ai=await response.json(),aiSignal=String(ai.signal||'').toUpperCase(),confidence=N(ai.confidence)??0;
-  const hardSafe=result.dataQuality&&result.dataQuality.score>=65&&result.gates.volume&&result.gates.spread&&result.gates.catalyst;
+  const hardSafe=result.dataQuality&&result.dataQuality.score>=65&&result.gates.quoteFresh&&result.gates.book&&result.gates.volume&&result.gates.spread&&result.gates.catalyst&&result.gates.chart&&result.gates.trend&&result.gates.momentum;
   const eligible=hardSafe&&aiSignal==='COMPRAR'&&confidence>=70&&result.score>=68;
   const value={eligible,ai,aiValidated:true,reasons:[...(result.reasons||[]),...(Array.isArray(ai.keyPoints)?ai.keyPoints.slice(0,2):[])]};
   pulseAiCache.set(cacheKey,{at:Date.now(),value});return Object.assign({},result,value);
@@ -319,19 +320,23 @@ async function highConvictionRecommendation(mode){
   .slice(0,8);
  const withCharts=await Promise.all(candidates.map(async row=>({row,chart:await recommendationChartAnalysis(row.s,mode)})));
  let ranked=withCharts.map(({row,chart})=>{
-  let s=row.s,a=row.a,se=a.se,vol=SV(s,se),venueQuote=mode==='tr'?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),price=mode==='tr'?N(venueQuote.usd):N(venueQuote.price),ema20=N(s.ema20),ema50=N(s.ema50);
+  let s=row.s,a=row.a,se=a.se,venueQuote=canonicalQuote(s,mode==='tr'),fresh=quoteFreshnessInfo(s,mode==='tr');
+  let vol=mode==='tr'?SV(s,se):(N(s.usLiveVolume)??SV(s,se)),price=mode==='tr'?N(venueQuote.usd):N(venueQuote.price),ema20=N(s.ema20),ema50=N(s.ema50);
+  let bid=mode==='tr'?N(s.trLiveBid):usLiveBid(s),ask=mode==='tr'?N(s.trLiveAsk):usLiveAsk(s);
+  let bookOk=bid!==null&&ask!==null&&ask>=bid,quoteFresh=fresh.state==='live'&&N(venueQuote.price)!==null&&venueQuote.fallback!==true;
   let trendOk=price!==null&&ema20!==null&&ema50!==null&&price>=ema20&&ema20>=ema50;
   let severeNegative=(a.catalyst.events||[]).some(x=>N(x.delta)!==null&&x.delta<=-5);
   let dataQuality=stockDataQuality(s,mode,chart.available);
   let combined=Math.max(0,Math.min(100,Math.round((a.score+chart.delta)*10)/10));
   let gates={
+   quoteFresh,book:bookOk,
    score:a.score>=68,combined:combined>=68,chart:chart.available?chart.confirmed:true,trend:trendOk,
    volume:vol!==null&&vol>=50000,relVolume:a.rv===null||a.rv>=1,adx:a.adx===null||a.adx>=18,
-   rsi:a.rsi===null||(a.rsi>=38&&a.rsi<=78),spread:a.spread===null||a.spread<=4.5,
+   rsi:a.rsi===null||(a.rsi>=38&&a.rsi<=78),spread:a.spread!==null&&a.spread<=4.5,
    momentum:a.change!==null&&a.change>=-.5&&a.change<=25,catalyst:a.catalyst.delta>=-3&&!severeNegative,
    quality:dataQuality.score>=60
   };
-  let reasons=[];if(chart.confirmed)reasons.push('gráfico confirmado');if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
+  let reasons=[];if(!quoteFresh)reasons.push('cotización no ejecutable');if(!bookOk)reasons.push('BID/ASK incompleto');if(chart.confirmed)reasons.push('gráfico confirmado');if(a.rv!==null)reasons.push('RV '+F(a.rv,2)+'×');if(a.adx!==null)reasons.push('ADX '+F(a.adx,0));if(a.rsi!==null)reasons.push('RSI '+F(a.rsi,0));
   return{s,mode,eligible:false,score:combined,baseScore:a.score,analysis:a,chart,gates,reasons,dataQuality};
  }).sort((a,b)=>b.score-a.score);
  let best=ranked[0]||null;
