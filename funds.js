@@ -26,8 +26,8 @@
 
  function q(s){return document.querySelector(s)}
  function setPortfolioAssetMode(mode,loadFunds=true){
-  mode=mode==='funds'?'funds':'stocks';
-  const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp');
+  mode=mode==='funds'?'funds':mode==='goal'?'goal':'stocks';
+  const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp'),goalPanel=q('#portfolioGoalApp');
   if(view)view.dataset.portfolioAssetMode=mode;
   document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
    const active=b.dataset.portfolioAsset===mode;
@@ -45,10 +45,15 @@
   };
   show(stockPanel,mode==='stocks');
   show(fundPanel,mode==='funds');
+  show(goalPanel,mode==='goal');
   if(mode==='funds'){
    root.ViewInvAIPortfolios?.setGoalVisible?.(false);
    if(loadFunds)loadPortfolio(false);
+  }else if(mode==='goal'){
+   root.ViewInvAIPortfolios?.setGoalVisible?.(true);
+   root.ViewInvAIPortfolios?.renderGoal?.();
   }else{
+   root.ViewInvAIPortfolios?.setGoalVisible?.(false);
    root.ViewInvAIPortfolios?.render?.();
   }
   return mode;
