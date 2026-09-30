@@ -22,6 +22,9 @@ function setWakeLockStatus(text,mode=''){
  el.textContent=text;el.classList.toggle('active',mode==='active');el.classList.toggle('error',mode==='error');
 }
 function syncDeviceSettingsUi(){
+ const native=window.ViewInvAIAuth?.isNative?.()===true||document.documentElement.dataset.nativeApp==='1';
+ const card=$('#screenWakeSettingsCard');if(card)card.hidden=!native;
+ if(!native)return;
  let toggle=$('#keepScreenAwake');if(toggle)toggle.checked=!!deviceSettings.keepScreenAwake;
  if(!deviceSettings.keepScreenAwake){setWakeLockStatus('Desactivado');return}
  if(!('wakeLock' in navigator)||!navigator.wakeLock||typeof navigator.wakeLock.request!=='function'){setWakeLockStatus('No compatible','error');return}
@@ -89,48 +92,66 @@ async function refreshPushBackendStatus(){
 }
 async function refreshPushDeviceStatus(){
  const auth=window.ViewInvAIAuth;
- if(!auth?.getUser?.()||!auth?.isNative?.()){pushDeviceRegistered=null;return}
+ if(!auth?.getUser?.()){pushDeviceRegistered=null;renderPushSettingsStatus();return}
+ const platform=auth.isNative?.()===true?'android':'web';
  try{
   const response=await auth.apiFetch('/api/devices');
   const data=await response.json().catch(()=>({}));
-  pushDeviceRegistered=response.ok&&Array.isArray(data.devices)&&data.devices.some(device=>Number(device.enabled)!==0);
+  pushDeviceRegistered=response.ok&&Array.isArray(data.devices)&&data.devices.some(device=>Number(device.enabled)!==0&&String(device.platform||'').toLowerCase()===platform);
  }catch(_){pushDeviceRegistered=false}
  renderPushSettingsStatus();
 }
 function renderPushSettingsStatus(detail=null){
- const status=$('#pushNotificationStatus'),row=$('#pushDeviceStatusRow'),actions=$('#pushDeviceActionsRow');
+ const status=$('#pushNotificationStatus'),row=$('#pushDeviceStatusRow'),actions=$('#pushDeviceActionsRow'),label=$('#pushDeviceStatusLabel');
  if(!status)return;
  status.classList.remove('active','pending','error');
  const auth=window.ViewInvAIAuth;
- if(!auth){if(row)row.hidden=false;if(actions)actions.hidden=false;status.textContent='Comprobando…';return}
+ if(row)row.hidden=false;
+ if(actions)actions.hidden=false;
+ if(!auth){status.textContent='Comprobando…';return}
  const native=auth.isNative?.()===true;
- if(row)row.hidden=!native;
- if(actions)actions.hidden=!native;
- if(!native)return;
+ if(label)label.textContent=native?'Push en este dispositivo':'Notificaciones del navegador';
  if(!auth.getUser?.()){status.textContent='Inicia sesión';return}
- if(!auth.hasNativeMessaging?.()){status.textContent='APK pendiente de actualizar';status.classList.add('pending');return}
- if(detail&&detail.permission==='denied'){status.textContent='Permiso denegado';status.classList.add('error');return}
- if(detail&&detail.error){status.textContent='No disponible';status.classList.add('error');return}
+ if(native&&!auth.hasNativeMessaging?.()){status.textContent='APK pendiente de actualizar';status.classList.add('pending');return}
+ if(!native&&!auth.hasWebPush?.()){status.textContent='Navegador no compatible';status.classList.add('error');return}
+ const permission=native?String(detail&&detail.permission||''):String(window.Notification&&Notification.permission||'default');
+ if(detail&&detail.permission==='denied'||permission==='denied'){
+  status.textContent='Permiso denegado';status.classList.add('error');return;
+ }
+ if(detail&&detail.error){
+  status.textContent='No disponible';status.title=String(detail.error||'');status.classList.add('error');return;
+ }
  if(detail&&detail.enabled===true){
   pushDeviceRegistered=true;
-  status.textContent=pushBackendConfigured===false?'Dispositivo registrado · servidor pendiente':'Activo · dispositivo registrado';
+  status.textContent=pushBackendConfigured===false?'Registrado · servidor pendiente':'Activo en este dispositivo';
   status.classList.add(pushBackendConfigured===false?'pending':'active');
   return;
  }
- if(auth.getUser?.()&&pushBackendConfigured===false){status.textContent=pushDeviceRegistered?'Dispositivo registrado · servidor pendiente':'Servidor pendiente · dispositivo sin verificar';status.classList.add('pending')}
- else if(auth.getUser?.()&&pushDeviceRegistered===true){status.textContent='Activo · dispositivo registrado';status.classList.add('active')}
- else if(auth.getUser?.()&&pushDeviceRegistered===false){status.textContent='Dispositivo no registrado';status.classList.add('pending')}
- else status.textContent=auth.getUser?.()?'Preparado':'Inicia sesión';
+ if(pushBackendConfigured===false){
+  status.textContent=pushDeviceRegistered?'Registrado · servidor pendiente':'Servidor push sin configurar';
+  status.classList.add('pending');
+ }else if(pushDeviceRegistered===true){
+  status.textContent='Activo en este dispositivo';status.classList.add('active');
+ }else if(pushDeviceRegistered===false){
+  status.textContent=permission==='granted'?'Permiso concedido · falta registrar':'Sin activar en este dispositivo';
+  status.classList.add('pending');
+ }else{
+  status.textContent=permission==='granted'?'Preparado':'Sin activar en este dispositivo';
+  status.classList.add('pending');
+ }
 }
 async function retryPushRegistration(){
  const auth=window.ViewInvAIAuth;
- if(!auth?.ensurePushRegistration)return;
- const button=$('#enablePushNotifications');if(button){button.textContent='Activando…'}
+ if(!auth?.ensurePushRegistration)return false;
  try{
-  const enabled=!!(await auth.ensurePushRegistration());
+  const enabled=!!(await auth.ensurePushRegistration(true));
   renderPushSettingsStatus({enabled});
   await refreshPushDeviceStatus();
- }finally{if(button){button.textContent='Activar / reintentar';button.disabled=false}}
+  return enabled;
+ }catch(error){
+  renderPushSettingsStatus({enabled:false,error:String(error&&error.message||error)});
+  return false;
+ }
 }
 async function testPushNotification(){
  const auth=window.ViewInvAIAuth,button=$('#testPushNotification'),status=$('#pushNotificationStatus');
@@ -270,13 +291,14 @@ function initSettings(){
  $('#testPushNotification')?.addEventListener('click',testPushNotification);
  $('#globalNotificationsEnabled')?.addEventListener('change',async event=>{
   await saveAnalysisSettings();
-  if(event.target.checked&&window.ViewInvAIAuth?.isNative?.())await retryPushRegistration();
+  if(event.target.checked)await retryPushRegistration();
   renderPushSettingsStatus();
  });
  ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
+  syncDeviceSettingsUi();
   renderAnalysisSettings(e.detail&&e.detail.settings||null);
   renderPushSettingsStatus();
   refreshPushDeviceStatus();
