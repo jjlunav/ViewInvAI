@@ -128,26 +128,28 @@ function closeTransientUiForBack(){
  let picker=$('#presetPicker');if(picker&&picker.classList.contains('open')){picker.classList.remove('open');$('#presetTrigger')?.setAttribute('aria-expanded','false');return true}
  return false;
 }
+function returnFromProfileToOrigin(){
+ const target=V[state.profileOriginView]?state.profileOriginView:(V[state.currentView]?state.currentView:'home');
+ const y=Math.max(0,N(state.profileOriginScroll)??0);
+ const nextDepth=Math.max(0,appHistoryDepth()-1);
+ document.body.classList.remove('stock-detail-open');
+ const box=$('#stockQuickDetail');if(box){box.classList.add('is-hidden');box.innerHTML='';delete box.dataset.profileTab}
+ state.profileKey=null;state.profileReason='';state.profilePreferTr=null;state.profileOriginView=null;state.profileOriginScroll=0;
+ state.currentView=target;
+ document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+target));
+ document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===target));
+ renderNavigation();renderCurrentView();saveUiState();
+ window.dispatchEvent(new CustomEvent('viewinvai:view-changed',{detail:{view:target}}));
+ requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));
+ if(appHistoryReady&&!appHistoryRestoring){
+  const snap=appHistorySnapshot(nextDepth);
+  history.replaceState(snap,'',appHistoryUrl(snap));
+ }
+ return true;
+}
 function navigateBackOneStep(){
  if(closeTransientUiForBack())return true;
- if(state.profileKey||document.body.classList.contains('stock-detail-open')){
-  if(appHistoryReady&&history.state&&history.state.__viewinvai===1&&history.state.profileKey&&appHistoryDepth()>0){
-   history.back();return true;
-  }
-  const target=V[state.profileOriginView]?state.profileOriginView:(V[state.currentView]?state.currentView:'home');
-  const y=Math.max(0,N(state.profileOriginScroll)??0);
-  document.body.classList.remove('stock-detail-open');
-  const box=$('#stockQuickDetail');if(box){box.classList.add('is-hidden');box.innerHTML=''}
-  state.profileKey=null;state.profileReason='';state.profilePreferTr=null;state.profileOriginView=null;state.profileOriginScroll=0;
-  state.currentView=target;
-  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+target));
-  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===target));
-  renderNavigation();renderCurrentView();saveUiState();
-  window.dispatchEvent(new CustomEvent('viewinvai:view-changed',{detail:{view:target}}));
-  requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));
-  replaceCurrentAppHistory();
-  return true;
- }
+ if(state.profileKey||document.body.classList.contains('stock-detail-open'))return returnFromProfileToOrigin();
  if(appHistoryDepth()>0){history.back();return true}
  return false;
 }
