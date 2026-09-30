@@ -594,10 +594,13 @@ async function renderRecommendation(force=false){
 }
 function warmRecommendationCache(){
  if(!db.stocks.length||document.hidden)return;
+ // Do not build the full Radar while another view is active. The expensive
+ // analysis is demand-driven when Radar AI is actually opened.
+ if(state.currentView!=='recommendation')return;
  highConvictionRuntimeCache.clear();
  renderRecommendation(false).catch(()=>{});
 }
-window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,350));
+window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,700));
 
 document.addEventListener('click',event=>{
  const button=event.target&&event.target.closest?event.target.closest('[data-reco-mobile-group]'):null;
