@@ -22,6 +22,11 @@
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
  const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null};
+ const FUND_FAVORITES_KEY='viewinvai:fundFavorites:v1';
+ const favoriteIsins=new Set((()=>{try{const x=JSON.parse(localStorage.getItem(FUND_FAVORITES_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return[]}})());
+ function saveFundFavorites(){try{localStorage.setItem(FUND_FAVORITES_KEY,JSON.stringify([...favoriteIsins]))}catch(_){}}
+ function fundFavoriteButton(p){const on=favoriteIsins.has(p.isin);return '<button type="button" class="fav-star fund-fav-star '+(on?'active':'')+'" data-fund-favorite="'+esc(p.isin)+'" aria-label="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'" title="'+(on?'Quitar de favoritos':'Añadir a favoritos')+'">'+(on?'★':'☆')+'</button>'}
+ function toggleFundFavorite(isin){if(favoriteIsins.has(isin))favoriteIsins.delete(isin);else favoriteIsins.add(isin);saveFundFavorites();render();if(typeof renderFavoritesDashboard==='function')renderFavoritesDashboard();}
  const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
  const PORTFOLIO_ASSET_UI_KEY='viewinvai:portfolioAssetMode:v1';
  function savedPortfolioAssetMode(){
@@ -352,7 +357,7 @@
  function fundTableRow(p,columns){
   const liveAttr=p.type==='etf'&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
   return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+
-   '<td class="fund-table-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td></tr>';
+   '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td></tr>';
  }
  function fundTable(rows){
   const columns=fundColumns(),layout=fundLayout();
@@ -401,7 +406,7 @@
   ).join('')+'</nav>';
  }
  function fundMobileRow(p,group){
-  return root.ViewInvAICards.render({context:'funds',title:p.name||p.isin,isin:p.isin,
+  return root.ViewInvAICards.render({context:'funds',title:p.name||p.isin,isin:p.isin,leadingHtml:fundFavoriteButton(p),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
    cells:group.columns.map(([key,label])=>({...fundMobileCellValue(p,key),label}))});
  }
@@ -809,6 +814,7 @@
   });
   document.addEventListener('click',async e=>{
    if(e.target.closest&&e.target.closest('[data-copy-isin]'))return;
+   const fundFav=e.target.closest&&e.target.closest('[data-fund-favorite]');if(fundFav){e.preventDefault();e.stopPropagation();toggleFundFavorite(fundFav.dataset.fundFavorite);return;}
    const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
    if(mobileGroup){
     state.mobileGroup=mobileGroup.dataset.fundMobileGroup||'general';
@@ -929,5 +935,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness};
+ root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
 })(window);
