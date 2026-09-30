@@ -61,9 +61,11 @@ window.checkAssetCards = async function () {
  test.remove();
 
  test.innerHTML='<div id="recommendationResults">'+radarAiCard({s:stock,preferTr:false,tier:'opportunity',score:80,quality:65,liveVenue:true,analysis:{se:'regular'}})+'</div>';
- const radarRow=test.querySelector('.radar-ai-tier-list .asset-card-row[data-stock-key]')||test.querySelector('#recommendationResults .asset-card-row[data-stock-key]');
- assert(radarRow,'Radar AI card lost its stock target');
- radarRow.querySelector('.asset-card-copy strong')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+ const radarRow=test.querySelector('.asset-card-row[data-radar-open]');
+ assert(radarRow,'Radar AI card lost its explicit navigation target');
+ radarRow.querySelector('.asset-card-copy strong')?.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+ assert(state.profileKey===key,'Radar AI card click did not set the selected stock');
+ assert(document.body.classList.contains('stock-detail-open'),'Radar AI card click did not enter profile mode');
  assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'Radar AI card click did not open the full stock profile');
  closeQuickProfile(false);
 
