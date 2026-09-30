@@ -45,6 +45,7 @@
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
+      <button class="nav-item" data-view="favorites"><span>★</span>Favoritos</button>
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
@@ -239,6 +240,17 @@
       <div id="portfolioGoalApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioGoalTab" data-portfolio-asset-panel="goal" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para usar Objetivo de la cartera.</div>
       </div>
+    </section>
+
+    <section class="view" id="view-favorites">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Favoritos</h1>
+          <p class="lead">Tu lista personal separada por mercado y tipo de activo. Las posiciones en cartera no se añaden aquí automáticamente.</p>
+        </div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="favorites" aria-label="Ayuda sobre Favoritos">?</button></div>
+      </div>
+      <div id="favoritesDashboard" class="favorites-dashboard"></div>
     </section>
 
     <section class="view" id="view-funds">
