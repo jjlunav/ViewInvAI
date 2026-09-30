@@ -920,8 +920,6 @@ function portfolioWorkbarHtml(selected){
       '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-market-current"'+(selected?' data-portfolio-market-config="'+esc(selected.id)+'"':' disabled')+' aria-label="Mercado de la cartera" title="Mercado de la cartera">◉</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-goal-current'+(state.primaryTab==="goal"?' active':'')+'"'+(selected?' data-portfolio-goal-toggle="'+esc(selected.id)+'"':' disabled')+' aria-label="Objetivo de la cartera" title="Objetivo de la cartera">◎</button>'+
-      (state.primaryTab==="goal"?'<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de recomendaciones" title="Últimas 10 recomendaciones">≣</button>':'')+
       '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">+</button>'+
       '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>'+
     '</div>'+
@@ -929,7 +927,10 @@ function portfolioWorkbarHtml(selected){
 }
 
 function renderApp() {
-  const box=$("#portfolioApp");if(!box)return;if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
+  const box=$("#portfolioApp");if(!box)return;
+  const goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML="";
+  state.primaryTab="portfolio";
+  if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
   state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
   if(!state.selectedPortfolioId&&state.portfolios.length)state.selectedPortfolioId=state.portfolios[0].id;
   if(state.selectedPortfolioId&&!state.portfolios.some(p=>String(p.id??"")===String(state.selectedPortfolioId??"")))state.selectedPortfolioId=state.portfolios[0]?state.portfolios[0].id:null;
@@ -941,15 +942,40 @@ function renderApp() {
   if(mappedGoal)state.goal=mappedGoal;
   else if(!state.goal||state.goal.portfolio_id)state.goal=null;
   box.innerHTML=portfolioWorkbarHtml(selected)+
-    (state.primaryTab==="goal"
-      ? portfolioGoalViewHtml()
-      : '<div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>');
+    '<div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>';
 
   requestAnimationFrame(()=>{
     updatePortfolioTabOverflow();
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
     if(state.primaryTab==="goal")persistPendingGoalHistory();
   });
+}
+
+function renderGoalApp() {
+  const box=$("#portfolioGoalApp");if(!box)return;
+  const portfolioBox=$("#portfolioApp");if(portfolioBox)portfolioBox.innerHTML="";
+  state.primaryTab="goal";
+  if(!state.user)return renderLoggedOut(box);
+  if(state.loading)return renderLoading(box);
+  state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
+  if(!state.selectedPortfolioId&&state.portfolios.length)state.selectedPortfolioId=state.portfolios[0].id;
+  if(state.selectedPortfolioId&&!state.portfolios.some(p=>String(p.id??"")===String(state.selectedPortfolioId??"")))state.selectedPortfolioId=state.portfolios[0]?state.portfolios[0].id:null;
+  const selected=selectedPortfolio();
+  const mappedGoal=selected?state.goals[String(selected.id)]||null:null;
+  if(mappedGoal)state.goal=mappedGoal;
+  else if(!state.goal||state.goal.portfolio_id)state.goal=null;
+  savePortfolioUi();
+  box.innerHTML='<div class="portfolio-workbar goal-mode"><div class="portfolio-tabs-wrap"><div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+state.portfolios.map(renderPortfolioCard).join('')+'</div><button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button><div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div></div><div class="portfolio-workbar-actions">'+
+    '<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de recomendaciones" title="Últimas 10 recomendaciones">≣</button>'+
+    '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar objetivo" title="Actualizar">↻</button></div></div>'+
+    portfolioGoalViewHtml();
+  requestAnimationFrame(()=>{
+    updatePortfolioTabOverflow();
+    if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
+    persistPendingGoalHistory();
+  });
+  refreshGoalSummaries().catch(()=>{});
+  setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
 }
 
 async function fetchJson(path) {
@@ -2441,6 +2467,7 @@ function openPositionEditorForStock(stockKey,portfolioId=null){
 
 window.ViewInvAIPortfolios = {
   render: renderApp,
+  renderGoal: renderGoalApp,
   reload: () => loadAll(),
   openNewPortfolio: openNewPortfolioModal,
   openAddPosition: openAddPositionModal,
@@ -2457,7 +2484,8 @@ window.ViewInvAIPortfolios = {
   setGoalVisible: visible => {
     state.primaryTab = visible ? "goal" : "portfolio";
     savePortfolioUi();
-    renderApp();
+    if(visible&&window.ViewInvAINavigation&&typeof window.ViewInvAINavigation.go==="function")window.ViewInvAINavigation.go("portfolioGoal");
+    else renderApp();
   },
   openGoal: portfolioId => {
     if(portfolioId&&state.portfolios.some(p=>String(p.id)===String(portfolioId)))state.selectedPortfolioId=portfolioId;
