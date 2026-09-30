@@ -280,6 +280,19 @@ async function verifyFirebaseUser(request, env) {
   }
 }
 
+let positionBrokerSchemaReady=false;
+async function ensurePositionBrokerSchema(env){
+  if(positionBrokerSchemaReady)return;
+  const cols=await env.DB.prepare("PRAGMA table_info(positions)").all();
+  const names=new Set((cols.results||[]).map(row=>String(row.name||"")));
+  if(!names.has("broker"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
+  await env.DB.prepare("DROP INDEX IF EXISTS idx_positions_portfolio_stock").run();
+  await env.DB.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_portfolio_identity ON positions(portfolio_id,stock_key,broker,currency,prefer_tr,exchange)"
+  ).run();
+  positionBrokerSchemaReady=true;
+}
+
 let portfolioMarketSchemaReady=false;
 async function ensurePortfolioMarketSchema(env){
   if(portfolioMarketSchemaReady)return;
@@ -338,7 +351,8 @@ function positionPayload(body) {
       ? String(body.currency || "EUR").toUpperCase()
       : "EUR",
     openedAt: trimText(body.openedAt, 40) || null,
-    notes: trimText(body.notes, 1000)
+    notes: trimText(body.notes, 1000),
+    broker: trimText(body.broker, 80)
   };
 }
 
@@ -366,7 +380,9 @@ function transactionPayload(body) {
     currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
     cashFxRate: finiteNumber(body.cashFxRate),
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
-    notes: trimText(body.notes, 1000)
+    notes: trimText(body.notes, 1000),
+    positionId: trimText(body.positionId, 80),
+    broker: trimText(body.broker, 80)
   };
 }
 
@@ -505,6 +521,12 @@ async function ensureTransactionsSchema(env) {
   const txNames=new Set((txColumns.results||[]).map(row=>String(row.name||"")));
   if(!txNames.has("cash_delta"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN cash_delta REAL NOT NULL DEFAULT 0").run();
   if(!txNames.has("cash_currency"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN cash_currency TEXT NOT NULL DEFAULT ''").run();
+  if(!txNames.has("broker"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
+  if(!txNames.has("position_id"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN position_id TEXT NOT NULL DEFAULT ''").run();
+  await env.DB.prepare(
+    "UPDATE transactions SET position_id=COALESCE((SELECT p.id FROM positions p WHERE p.user_id=transactions.user_id AND p.portfolio_id=transactions.portfolio_id AND p.stock_key=transactions.stock_key ORDER BY p.updated_at DESC LIMIT 1),'') WHERE position_id=''"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_position ON transactions(user_id,position_id,executed_at,created_at)").run();
   transactionsSchemaReady = true;
 }
 
@@ -883,6 +905,7 @@ async function notifyPortfolioMembershipChange(env,userId,portfolio,position,act
 }
 
 async function handlePositions(request, env, user, json, parts, url) {
+  await ensurePositionBrokerSchema(env);
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
@@ -982,6 +1005,7 @@ async function handlePositions(request, env, user, json, parts, url) {
 }
 
 async function handleTransactions(request, env, user, json, parts, url) {
+  await ensurePositionBrokerSchema(env);
   await ensureTransactionsSchema(env);
   const id = parts[1] || "";
 
