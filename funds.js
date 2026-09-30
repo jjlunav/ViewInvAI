@@ -347,10 +347,10 @@
   ['freshness','Actualización'],
   ['perf1M','1M'],['perf3M','3M'],['perf6M','6M'],['perfYtd','YTD'],
   ['perf1Y','1A'],['perf3Y','3A'],['perf5Y','5A'],['perf10Y','10A'],['perfSinceInception','Hist.'],
-  ['ter','TER'],['index','Índice'],['provider','Gestora'],['distribution','Clase'],['region','Región']
+  ['ter','TER'],['index','Índice'],['provider','Gestora'],['distribution','Clase'],['region','Región'],['actions','Acciones']
  ];
  const FUND_PREF_SCOPE='catalog:funds';
- const FUND_DEFAULT_WIDTHS={name:340,platform:170,current:118,freshness:130,perf1M:76,perf3M:76,perf6M:76,perfYtd:76,perf1Y:76,perf3Y:76,perf5Y:76,perf10Y:76,perfSinceInception:82,ter:74,index:210,provider:150,distribution:120,region:120};
+ const FUND_DEFAULT_WIDTHS={name:340,platform:170,current:118,freshness:130,perf1M:76,perf3M:76,perf6M:76,perfYtd:76,perf1Y:76,perf3Y:76,perf5Y:76,perf10Y:76,perfSinceInception:82,ter:74,index:210,provider:150,distribution:120,region:120,actions:164};
  function fundDefaultOrder(){return FUND_COLUMNS.map(([key])=>key)}
  function fundDefaultWidths(){return Object.fromEntries(FUND_COLUMNS.map(([key])=>[key,FUND_DEFAULT_WIDTHS[key]||110]))}
  function applyFundLayout(prefs){
@@ -359,7 +359,7 @@
   state.columnOrder=[...saved,...ids.filter(id=>!saved.includes(id))];
   state.columnWidths=fundDefaultWidths();
   const widths=input.widths&&typeof input.widths==='object'?input.widths:{};
-  for(const id of ids){const n=Number(widths[id]);if(Number.isFinite(n))state.columnWidths[id]=Math.max(54,Math.min(620,Math.round(n)))}
+  for(const id of ids){const n=Number(widths[id]);if(Number.isFinite(n))state.columnWidths[id]=Math.max(48,Math.min(720,Math.round(n)))}
  }
  function fundLayout(){
   if(!state.columnOrder||!state.columnWidths)applyFundLayout(root.ViewInvAIUiPreferences?.get?.(FUND_PREF_SCOPE,{})||{});
@@ -374,6 +374,7 @@
   const active=state.sort===key,filtered=String(state.columnFilters&&state.columnFilters[key]||'').trim()!=='';
   const arrow=active?(state.sortDir==='asc'?'↑':'↓'):'↕';
   const aria=active?(state.sortDir==='asc'?'ascending':'descending'):'none';
+  if(key==='actions')return '<th scope="col" draggable="true" data-fund-column="actions"><div class="fund-th-content"><span>Acciones</span></div><button type="button" class="fund-column-resizer" data-fund-resize="actions" aria-label="Cambiar ancho de Acciones" title="Arrastra para cambiar el ancho"></button></th>';
   return '<th scope="col" aria-sort="'+aria+'" draggable="true" data-fund-column="'+esc(key)+'">'+
    '<div class="fund-th-content"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button>'+
    '<button type="button" class="fund-header-filter '+(filtered?'active':'')+'" data-fund-filter-column="'+esc(key)+'" aria-label="Filtrar '+esc(label)+'" title="Filtrar '+esc(label)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button></div>'+
@@ -395,12 +396,12 @@
   if(key==='provider')return '<td class="fund-table-text" title="'+esc(p.provider||'')+'">'+esc(p.provider||'—')+'</td>';
   if(key==='distribution')return '<td class="fund-table-text">'+esc(p.distribution||'—')+'</td>';
   if(key==='region')return '<td class="fund-table-text">'+esc(p.region||'—')+'</td>';
+  if(key==='actions')return '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td>';
   return '<td>—</td>';
  }
  function fundTableRow(p,columns){
   const liveAttr=p.type==='etf'&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
-  return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+
-   '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td></tr>';
+  return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+'</tr>';
  }
  function fundFilterValues(key){
   const out=[],seen=new Set();
@@ -416,7 +417,8 @@
  }
  function closeFundFilterMenu(){const menu=document.querySelector('#fundColumnFilterMenu');if(menu)menu.hidden=true}
  function openFundFilterMenu(button){
-  const key=button.dataset.fundFilterColumn,label=(FUND_COLUMNS.find(([id])=>id===key)||[key,key])[1],type=fundColumnType(key),menu=ensureFundFilterMenu();
+  const key=button.dataset.fundFilterColumn;if(key==='actions')return;
+  const label=(FUND_COLUMNS.find(([id])=>id===key)||[key,key])[1],type=fundColumnType(key),menu=ensureFundFilterMenu();
   const current=String(state.columnFilters&&state.columnFilters[key]||''),rect=button.getBoundingClientRect(),width=Math.min(340,innerWidth-20);
   menu.dataset.key=key;
   menu.innerHTML='<div class="column-filter-head"><strong>Filtrar · '+esc(label)+'</strong><button type="button" data-column-filter-close aria-label="Cerrar">×</button></div>'+
@@ -430,9 +432,9 @@
  }
  function fundTable(rows){
   const columns=fundColumns(),layout=fundLayout();
-  const colgroup='<colgroup>'+columns.map(([key])=>'<col data-fund-col-width="'+esc(key)+'" style="width:'+Math.round(layout.widths[key]||110)+'px">').join('')+'<col style="width:170px"></colgroup>';
+  const colgroup='<colgroup>'+columns.map(([key])=>'<col data-fund-col-width="'+esc(key)+'" style="width:'+Math.round(layout.widths[key]||110)+'px">').join('')+'</colgroup>';
   return '<div class="fund-table-scroll" role="region" aria-label="Comparador de fondos indexados y ETFs" tabindex="0">'+
-   '<table class="fund-table fund-resizable-table">'+colgroup+'<thead><tr>'+columns.map(([key,label])=>sortHeader(key,label)).join('')+'<th scope="col" class="fund-actions-head">Acciones</th></tr></thead>'+
+   '<table class="fund-table fund-resizable-table">'+colgroup+'<thead><tr>'+columns.map(([key,label])=>sortHeader(key,label)).join('')+'</tr></thead>'+
    '<tbody>'+rows.map(p=>fundTableRow(p,columns)).join('')+'</tbody></table></div>'+
    '<div class="fund-table-footer"><span><strong>'+rows.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+state.products.length.toLocaleString('es-ES')+'</strong> productos</span><span>Arrastra columnas · ajusta ancho · filtros por cabecera</span></div>';
  }
@@ -956,7 +958,7 @@
   });
     let draggedFundColumn=null,fundResize=null;
   document.addEventListener('dragstart',e=>{
-   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer,.fund-header-filter,.fund-sort-button'))return;
+   const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer,.fund-header-filter'))return;
    draggedFundColumn=th.dataset.fundColumn;th.classList.add('dragging');
    if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedFundColumn)}
   });
@@ -974,7 +976,7 @@
    fundResize={key,startX:e.clientX,startWidth:th.getBoundingClientRect().width};handle.setPointerCapture?.(e.pointerId);document.body.classList.add('column-resizing');
   });
   document.addEventListener('pointermove',e=>{
-   if(!fundResize)return;const next=Math.max(54,Math.min(620,Math.round(fundResize.startWidth+e.clientX-fundResize.startX)));
+   if(!fundResize)return;const next=Math.max(48,Math.min(720,Math.round(fundResize.startWidth+e.clientX-fundResize.startX)));
    fundLayout();state.columnWidths[fundResize.key]=next;const col=document.querySelector('.fund-table col[data-fund-col-width="'+fundResize.key+'"]');if(col)col.style.width=next+'px';
   });
   document.addEventListener('pointerup',()=>{if(!fundResize)return;fundResize=null;document.body.classList.remove('column-resizing');saveFundLayout()});
