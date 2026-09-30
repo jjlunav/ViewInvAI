@@ -94,10 +94,27 @@
  }
  async function disableAll(){
   if(!current)return;
+  const f=ensureSource(),stock=current.stock;
+  const payload={
+   stockKey:current.key,
+   ticker:current.preferTr?(stock.trTicker||stock.ticker):(stock.ticker||stock.trTicker),
+   name:stock.name||'',
+   preferTr:current.preferTr,
+   newsEnabled:false,
+   pulseEnabled:false,
+   radarEnabled:false,
+   priceUpEnabled:false,
+   priceDownEnabled:false,
+   priceUpStep:Number(f.elements.priceUpStep.value)||3,
+   priceDownStep:Number(f.elements.priceDownStep.value)||3,
+   anchorPrice:null
+  };
   try{
-   const r=await api().apiFetch('/api/notification-preferences?stockKey='+encodeURIComponent(current.key)+'&preferTr='+(current.preferTr?'1':'0'),{method:'DELETE'});
-   if(!r.ok)throw Error('No se pudieron desactivar.');
-   fill({news_enabled:0,pulse_enabled:0,radar_enabled:0,price_up_enabled:0,price_down_enabled:0,price_up_step:3,price_down_step:3});setStatus('Notificaciones desactivadas');
+   const r=await api().apiFetch('/api/notification-preferences',{method:'POST',body:JSON.stringify(payload)});
+   const d=await r.json().catch(()=>({}));
+   if(!r.ok)throw Error(d.error||'No se pudieron desactivar.');
+   fill(d.preference||{news_enabled:0,pulse_enabled:0,radar_enabled:0,price_up_enabled:0,price_down_enabled:0,price_up_step:payload.priceUpStep,price_down_step:payload.priceDownStep});
+   setStatus('Notificaciones desactivadas');
   }catch(err){setStatus(err.message||'No se pudieron desactivar.',true)}
  }
  document.addEventListener('click',e=>{

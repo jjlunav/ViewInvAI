@@ -59,7 +59,7 @@ let lastRegisteredPushToken = "";
 
 async function registerPushToken(token) {
   token = String(token || "").trim();
-  if (!token || !currentUser || token === lastRegisteredPushToken) return false;
+  if (!token || !currentUser) return false;\n  if (token === lastRegisteredPushToken) {\n    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: true, registered: true } }));\n    return true;\n  }
   const response = await apiFetch("/api/devices", {
     method: "POST",
     body: JSON.stringify({

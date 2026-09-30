@@ -1720,6 +1720,20 @@ async function globalNotificationSettingsForUser(env,userId){
   };
 }
 
+async function notificationPreferenceForTarget(env,target){
+  await ensureNotificationPreferenceSchema(env);
+  const userId=trimText(target&&target.user_id,128);
+  const stockKey=trimText(target&&target.stock_key,120).toUpperCase();
+  if(!userId||!stockKey)return null;
+  return env.DB.prepare(
+    "SELECT news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=? LIMIT 1"
+  ).bind(userId,stockKey,Number(target&&target.prefer_tr)===1?1:0).first();
+}
+
+function notificationPreferenceAllows(preference,column,defaultValue=true){
+  return preference ? Number(preference[column])===1 : !!defaultValue;
+}
+
 async function analysisSettingsForUser(env, userId) {
   const row = await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -1812,7 +1826,7 @@ async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
   return created;
 }
 
-async function maybeCreateAlert(env, target, stock, current, previous, notificationSettings=null) {
+async function maybeCreateAlert(env, target, stock, current, previous, notificationSettings=null, assetPreference=null) {
   const previousEngine = previous ? String(previous.engine || "") : "";
   const previousCompatible = previous && (previousEngine.startsWith("viewinvai-score/") || previousEngine.startsWith("viewinvai-hybrid/"));
   const previousScore = previousCompatible ? finiteNumber(previous.score) : null;
@@ -1834,7 +1848,8 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
       should = true; type = "position-deterioration"; severity = "warning";
     }
   } else {
-    if (globalNotifications.pulseAi && current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
+    if (!globalNotifications.pulseAi || !notificationPreferenceAllows(assetPreference,"pulse_enabled",true)) return null;
+    if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "pulse-ai"; severity = "high";
     } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "watchlist-improving"; severity = "info";
@@ -1921,8 +1936,9 @@ async function analyzeTarget(env, target, services) {
   ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
 
   const notificationSettings=await globalNotificationSettingsForUser(env,target.user_id);
-  await maybeCreateAlert(env,target,stock,current,previous,notificationSettings);
-  if(notificationSettings.enabled&&notificationSettings.newsEvents){
+  const assetNotificationPreference=await notificationPreferenceForTarget(env,target);
+  await maybeCreateAlert(env,target,stock,current,previous,notificationSettings,assetNotificationPreference);
+  if(notificationSettings.enabled&&notificationSettings.newsEvents&&notificationPreferenceAllows(assetNotificationPreference,"news_enabled",true)){
     await maybeCreateNewsAlerts(env,target,stock,events,snapshotId);
     await maybeCreateEventAlerts(env,target,stock,events,snapshotId);
   }
@@ -2612,6 +2628,8 @@ async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[
       let global=globalByUser.get(target.user_id);
       if(!global){global=await globalNotificationSettingsForUser(env,target.user_id);globalByUser.set(target.user_id,global)}
       if(!global.enabled||!global.newsEvents)continue;
+      const assetPreference=await notificationPreferenceForTarget(env,target);
+      if(!notificationPreferenceAllows(assetPreference,"news_enabled",true))continue;
       const stock=findStock(snapshot,target);if(!stock)continue;
       const [officialResult,newsResult]=await Promise.allSettled([
         services.loadOfficialEvents?services.loadOfficialEvents(stock,target):Promise.resolve([]),
