@@ -8956,3 +8956,104 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
   align-items:center!important;
  }
 }
+
+
+/* Radar de entrada: same centered compact-list composition as Pulso IA. */
+#view-entry.active{
+ display:flex!important;
+ flex-direction:column!important;
+ align-items:center!important;
+ justify-content:safe center!important;
+ min-height:calc(100dvh - 20px)!important;
+ box-sizing:border-box!important;
+ width:100%!important;
+ max-width:none!important;
+ padding:24px 28px!important;
+}
+#view-entry>.page-heading{
+ position:relative!important;
+ display:block!important;
+ width:min(100%,1120px)!important;
+ max-width:1120px!important;
+ margin:0 auto 12px!important;
+ padding:0 56px 14px!important;
+ text-align:center!important;
+ box-sizing:border-box!important;
+}
+#view-entry>.page-heading>div:first-child{
+ width:100%!important;
+ max-width:980px!important;
+ margin:0 auto!important;
+ text-align:center!important;
+}
+#view-entry>.page-heading h1{
+ justify-content:center!important;
+ text-align:center!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+}
+#view-entry>.page-heading .lead{
+ max-width:920px!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+ text-align:center!important;
+}
+#view-entry>.page-heading .heading-actions{
+ position:absolute!important;
+ right:0!important;
+ top:0!important;
+}
+#view-entry>.entry-market-tabs,
+#view-entry>.entry-filter-launch,
+#view-entry>#entryResults{
+ width:min(100%,1120px)!important;
+ max-width:1120px!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+}
+#view-entry>.entry-market-tabs{
+ justify-content:center!important;
+ margin-top:0!important;
+ margin-bottom:8px!important;
+}
+#view-entry>.entry-filter-launch{
+ position:relative!important;
+ min-height:34px;
+ align-items:center!important;
+ justify-content:center!important;
+ margin-top:0!important;
+ margin-bottom:9px!important;
+}
+#view-entry .entry-inline-status{
+ text-align:center!important;
+ justify-content:center!important;
+}
+#view-entry>.entry-filter-launch .filter-icon-button{
+ position:absolute!important;
+ right:0!important;
+ top:0!important;
+}
+#view-entry>#entryResults{
+ display:grid!important;
+ gap:6px!important;
+ align-content:start!important;
+}
+#view-entry>#entryResults>.asset-card{
+ width:100%!important;
+ margin:0!important;
+ border-radius:9px!important;
+}
+#view-entry>#entryResults .asset-card-row{
+ min-height:64px!important;
+}
+#view-entry>#entryResults>.empty-state{
+ width:100%!important;
+ max-width:none!important;
+ min-height:92px;
+ display:flex!important;
+ flex-direction:column!important;
+ align-items:center!important;
+ justify-content:center!important;
+ text-align:center!important;
+ margin:0 auto!important;
+}
