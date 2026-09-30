@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.42">
+<html lang="es" data-app-version="0.6.43">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -40,8 +40,7 @@
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
       <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
-      <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Pulso IA</button>
-      <button class="nav-item" data-view="entry"><span>◈</span>Radar de entrada</button>
+      <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Radar AI</button>
       <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
@@ -206,15 +205,12 @@
     <section class="view" id="view-recommendation">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Pulso IA <span class="heading-badge ai-badge">✹ ALTA CONVICCIÓN</span></h1>
-          <p class="lead">Entradas inmediatas que superan la validación multifactor de alta convicción. Si ninguna cumple, Pulso IA no fuerza una compra.</p>
+          <h1>Radar AI <span class="heading-badge ai-badge">✹ MERCADO + IA</span></h1>
+          <p class="lead">Analiza Trade Republic y EEUU con el mismo motor, separando alta convicción, oportunidades y valores en vigilancia.</p>
         </div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="recommendation" aria-label="Ayuda sobre Recomendación actual">?</button><button class="btn icon-btn" id="refreshRecommendation" title="Reanalizar ahora">↻</button></div>
       </div>
-      <div class="recommendation-intro">
-        <strong>Entrada inmediata · validación estricta</strong>
-        <span>Combina momentum, volumen relativo, ADX, RSI, EMA20/EMA50, rendimiento, liquidez/spread y noticias/eventos. No fuerza una compra: si la convicción no supera el umbral, mostrará VIGILAR o ESPERAR.</span>
-      </div>
+      <div class="recommendation-intro"><strong>Un único radar · dos mercados</strong><span>Trade Republic y EEUU se clasifican con el mismo motor común. Alta convicción exige cotización ejecutable y calidad suficiente; oportunidades y vigilancia permiten detectar movimientos antes de que lleguen a ese nivel.</span></div>
       <div class="status-line"><span id="recommendationUpdated">pendiente</span></div>
       <div id="recommendationResults" class="recommendation-grid">
         <div class="pulse-list-shell pulse-list-loading">
@@ -603,12 +599,11 @@
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌁</span><small>Mercados</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>▣</span><small>Carteras</small></button>
-      <button type="button" class="mobile-nav-item ai-pulse-nav" data-mobile-view="recommendation"><span>✹</span><small>Pulso IA</small></button>
-      <button type="button" class="mobile-nav-item" data-mobile-view="entry"><span>◈</span><small>Radar</small></button>
+      <button type="button" class="mobile-nav-item ai-pulse-nav" data-mobile-view="recommendation"><span>✹</span><small>Radar AI</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.42 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.43 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20260925r1"></script>
@@ -621,7 +616,7 @@
 <script src="events.js?v=20260929r9"></script>
 <script src="asset-card.js?v=20260928r1"></script>
 <script src="stock-list.js?v=20260930r6"></script>
-<script src="recommendation.js?v=20260930r13"></script>
+<script src="recommendation.js?v=20260930r14"></script>
 <script src="help.js?v=20260925r1"></script>
 <script src="stock-profile.js?v=20260930r3"></script>
 <script src="catalog.js?v=20260930r2"></script>
