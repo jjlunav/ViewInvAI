@@ -598,7 +598,9 @@ function portfolioCoachPositionRows(metrics){
     const desiredReducePct=currentWeight>0?Math.max(0,(currentWeight-targetWeight)/currentWeight*100):0;
     const units=wholeRecommendationUnits(row.qty,row.qty*desiredReducePct/100);
     const reducePct=row.qty>0?Math.max(0,Math.min(100,units/row.qty*100)):0;
-    const released=row.valueEur===null||row.qty<=0?0:row.valueEur*(units/row.qty);
+    const execution=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur);
+    const releasedGross=execution.unitEur===null?0:execution.unitEur*units;
+    const released=units>0?Math.max(0,releasedGross-execution.feeEur):0;
     const action=units<=0?"MANTENER":units>=Math.floor(row.qty+1e-9)&&Math.abs(row.qty-Math.floor(row.qty+1e-9))<1e-8?"SALIR":"REDUCIR",reasons=[];
     if(backendSignal)reasons.push("señal IA "+signalInfo(backendSignal)[0].toLowerCase());
     else reasons.push("pendiente de análisis IA de cartera");
@@ -608,7 +610,7 @@ function portfolioCoachPositionRows(metrics){
     if(quality)reasons.push("calidad "+formatNumber(quality,0)+"/100");
     if(goalReached)reasons.push("objetivo alcanzado");
     const levels=action==="SALIR"?{stop:null,take:null,stopPct:null,takePct:null,currency:row.market.currency||"EUR"}:coachPriceLevels(row.stock,row.preferTr,score);
-    return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,action,reasons,levels,holdingDays,weekPerf,stagnant};
+    return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,releasedGross,execution,action,reasons,levels,holdingDays,weekPerf,stagnant};
   }).sort((a,b)=>b.released-a.released||a.score-b.score);
 }
 function portfolioGoalCatalyst(stock){
