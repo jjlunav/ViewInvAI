@@ -2129,6 +2129,65 @@ async function handlePortfolioGoal(request,env,user,json,url){
   return json({error:"Method not allowed"},405);
 }
 
+
+let portfolioGoalHistorySchemaReady=false;
+async function ensurePortfolioGoalHistorySchema(env){
+  if(portfolioGoalHistorySchemaReady)return;
+  await ensurePortfolioGoalSchema(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS portfolio_goal_recommendation_history ("+
+    "id TEXT PRIMARY KEY,portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,signature TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',plan_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,"+
+    "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_goal_history_lookup ON portfolio_goal_recommendation_history(user_id,portfolio_id,created_at DESC)"
+  ).run();
+  portfolioGoalHistorySchemaReady=true;
+}
+function portfolioGoalHistoryPlan(body){
+  const raw=body&&body.plan&&typeof body.plan==="object"?body.plan:{};
+  const json=JSON.stringify(raw);
+  if(json.length>20000)throw new Error("Goal history payload too large");
+  return json;
+}
+async function handlePortfolioGoalHistory(request,env,user,json,url){
+  await ensurePortfolioGoalHistorySchema(env);
+  const portfolioId=trimText(
+    request.method==="GET"?url.searchParams.get("portfolioId"):"",
+    80
+  );
+  if(request.method==="GET"){
+    if(!portfolioId||!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    const rows=await env.DB.prepare(
+      "SELECT id,portfolio_id,signature,summary,plan_json,created_at FROM portfolio_goal_recommendation_history WHERE user_id=? AND portfolio_id=? ORDER BY created_at DESC LIMIT 10"
+    ).bind(user.id,portfolioId).all();
+    return json({history:(rows.results||[]).map(row=>{
+      let plan={};try{plan=JSON.parse(row.plan_json||"{}")}catch(_){}
+      return{id:row.id,portfolio_id:row.portfolio_id,signature:row.signature,summary:row.summary,plan,created_at:row.created_at};
+    })});
+  }
+  if(request.method==="POST"){
+    const body=await readJson(request),pid=trimText(body.portfolioId,80);
+    if(!pid||!(await onePortfolio(env,user.id,pid)))return json({error:"Portfolio not found"},404);
+    const signature=trimText(body.signature,500),summary=trimText(body.summary,2000);
+    if(!signature)return json({error:"signature required"},400);
+    const latest=await env.DB.prepare(
+      "SELECT id,signature FROM portfolio_goal_recommendation_history WHERE user_id=? AND portfolio_id=? ORDER BY created_at DESC LIMIT 1"
+    ).bind(user.id,pid).first();
+    if(latest&&String(latest.signature||"")===signature)return json({stored:false,deduplicated:true,id:latest.id});
+    const id=uid("gph_"),now=nowIso(),planJson=portfolioGoalHistoryPlan(body);
+    await env.DB.prepare(
+      "INSERT INTO portfolio_goal_recommendation_history (id,portfolio_id,user_id,signature,summary,plan_json,created_at) VALUES (?,?,?,?,?,?,?)"
+    ).bind(id,pid,user.id,signature,summary,planJson,now).run();
+    await env.DB.prepare(
+      "DELETE FROM portfolio_goal_recommendation_history WHERE user_id=? AND portfolio_id=? AND id NOT IN ("+
+      "SELECT id FROM portfolio_goal_recommendation_history WHERE user_id=? AND portfolio_id=? ORDER BY created_at DESC LIMIT 10)"
+    ).bind(user.id,pid,user.id,pid).run();
+    return json({stored:true,id,created_at:now},201);
+  }
+  return json({error:"Method not allowed"},405);
+}
+
 async function handleSettings(request, env, user, json) {
   await ensureGlobalNotificationSettingsSchema(env);
   const existing = await env.DB.prepare(
@@ -2674,6 +2733,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
+    if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
     if (root === "devices") return handleDevices(request, env, user, json, parts);
