@@ -467,18 +467,24 @@ function renderPositionRow(p, index = 0) {
   const investedValue=qty!==null&&avg!==null?qty*avg+entryFee:null;
   const pnlAfterFees=currentValue!==null&&investedValue!==null?currentValue-investedValue:null;
   const pnlAfterFeesPct=investedValue!==null&&investedValue>0&&pnlAfterFees!==null?pnlAfterFees/investedValue*100:null;
+  const brokerLabel=String(p.broker||'').trim();
+  const exposureTone=pnlPct===null?'muted':pnlPct>=0?'positive':'negative';
+  const exposureHtml='<div class="portfolio-position-exposure">'+
+    '<span><small>Precio medio</small><b>'+esc(formatMoney(avg,entryCurrency))+'</b></span>'+
+    '<span class="'+exposureTone+'"><small>Desde compra</small><b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
+    '<span><small>Total</small><b>'+esc(formatMoney(currentValue,entryCurrency))+'</b></span>'+
+  '</div>';
   const metaHtml='<div class="portfolio-position-strip">'+
     '<span><b>'+esc(formatNumber(qty,4))+'</b> uds.</span>'+
-    '<span>Media <b>'+esc(formatMoney(avg,entryCurrency))+'</b></span>'+
+    (brokerLabel?'<span>Broker <b>'+esc(brokerLabel)+'</b></span>':'')+
     '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
-    '<span>Valor <b>'+esc(formatMoney(currentValue,entryCurrency))+'</b></span>'+
-    '<span class="'+(pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative')+'">P&L <b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)+(pnlAfterFeesPct===null?'':' · '+(pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')))+'</b></span>'+
-    (preferTr?'<span>Comisión entrada <b>1,00 €</b></span>':'')+
+    '<span class="'+(pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative')+'">P&L neto <b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)+(pnlAfterFeesPct===null?'':' · '+(pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')))+'</b></span>'+
   '</div>';
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
     leadingHtml: "",
+    cells:[{label:'Posición',html:exposureHtml,tone:exposureTone}],
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
     openLabel: "Ficha",
     openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
