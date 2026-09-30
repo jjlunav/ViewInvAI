@@ -5,14 +5,13 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','recommendation','entry','alerts','future','portfolios','catalog','catalogUS','funds','portfolioGoal','heatmap','settings'];
+const NAV_ORDER=['home','recommendation','entry','alerts','future','portfolios','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  entry:{icon:'◈',short:'Radar',desc:'Entradas y filtros'},
  recommendation:{icon:'✹',short:'Pulso IA',desc:'Alta convicción inmediata'},
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
  funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
- portfolioGoal:{icon:'◎',short:'Objetivo',desc:'Objetivo IA de la cartera'},
  alerts:{icon:'●',short:'Avisos',desc:'Señales de alta convicción'},
  catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
  heatmap:{icon:'▦',short:'Mapa',desc:'Mercado por sectores'},
