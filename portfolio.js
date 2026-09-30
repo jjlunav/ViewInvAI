@@ -1793,7 +1793,8 @@ function stockFormPayload(stock, form) {
     avgPrice: num(fd.get("avgPrice")),
     currency: String(fd.get("currency") || (preferTr ? "EUR" : stock.currency || "USD")),
     openedAt: String(fd.get("openedAt") || ""),
-    notes: String(fd.get("notes") || "")
+    notes: String(fd.get("notes") || ""),
+    broker: String(fd.get("broker") || "")
   };
 }
 
@@ -1811,42 +1812,107 @@ function positionForPortfolioStock(stockKey, portfolioId) {
     Number(p.active) !== 0
   ) || null;
 }
+function positionForPortfolioIdentity(stockKey,portfolioId,broker,currency,preferTr,exchange){
+  const brokerKey=String(broker||"").trim().toLowerCase(),currencyKey=String(currency||"").trim().toUpperCase(),exchangeKey=String(exchange||"").trim().toUpperCase();
+  return state.positions.find(p =>
+    sameStockRef(p.stock_key,stockKey) &&
+    String(p.portfolio_id)===String(portfolioId) &&
+    Number(p.active)!==0 &&
+    String(p.broker||"").trim().toLowerCase()===brokerKey &&
+    String(p.currency||"").trim().toUpperCase()===currencyKey &&
+    Number(p.prefer_tr)===(preferTr?1:0) &&
+    String(p.exchange||"").trim().toUpperCase()===exchangeKey
+  )||null;
+}
+function brokerSelectOptions(selected=""){
+  const selectedKey=String(selected||"").trim().toLowerCase();
+  return brokerRecords().map(row=>{
+    const value=String(row.name||row.canonical_name||row.code||"").trim();
+    const active=value.toLowerCase()===selectedKey||String(row.canonical_name||"").toLowerCase()===selectedKey;
+    return '<option value="'+esc(value)+'"'+(active?' selected':'')+'>'+esc(brokerDisplayName(row))+'</option>';
+  }).join('');
+}
+function brokerIsTradeRepublic(name){
+  const row=brokerRecordByName(name),key=String(row&&row.code||row&&row.canonical_name||name||"").toLowerCase();
+  return key==="tr"||/trade\s*republic/.test(key);
+}
+function brokerDefaultName(portfolio,preferTr){
+  const portfolioBroker=String(portfolio&&portfolio.broker||"").trim();
+  if(portfolioBroker)return portfolioBroker;
+  return preferTr?"Trade Republic":"IBKR";
+}
 
 function applyPositionFormState(form, stock, fallbackPreferTr) {
-  if (!form || !stock) return;
-  const portfolioId = form.querySelector('[name="portfolioId"]')?.value || '';
-  const existing = positionForPortfolioStock(form.dataset.stockKey, portfolioId);
+  if(!form||!stock)return;
+  const portfolioId=form.querySelector('[name="portfolioId"]')?.value||'';
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId))||null,scope=portfolioMarketScope(portfolio);
-  const preferTr = existing ? Number(existing.prefer_tr) === 1 : scope==="tr"?true:scope==="us"?false:fallbackPreferTr;
-  const current = currentMarket(stock, preferTr);
-  form.dataset.preferTr = preferTr ? '1' : '0';
-  form.dataset.existingPositionId = existing?.id || '';
-
-  const quantity = form.querySelector('[name="quantity"]');
-  const avgPrice = form.querySelector('[name="avgPrice"]');
-  const currency = form.querySelector('[name="currency"]');
-  const openedAt = form.querySelector('[name="openedAt"]');
-  const notes = form.querySelector('[name="notes"]');
-  const save = form.querySelector('[data-save-position]');
-  const mode = form.querySelector('[data-position-form-mode]');
-
-  if (quantity) quantity.value = existing && num(existing.quantity) !== null ? existing.quantity : '';
-  if (avgPrice) {
-    avgPrice.value = existing && num(existing.avg_price) !== null ? existing.avg_price : '';
-    avgPrice.placeholder = current.price === null ? '' : String(current.price);
+  const brokerSelect=form.querySelector('[name="broker"]');
+  let broker=String(brokerSelect?.value||form.dataset.defaultBroker||brokerDefaultName(portfolio,fallbackPreferTr)).trim();
+  if(brokerSelect&&!brokerSelect.value){
+    brokerSelect.value=broker;
+    broker=brokerSelect.value||broker;
   }
-  if (currency) currency.value = existing
-    ? String(existing.currency || (preferTr ? 'EUR' : stock.currency || 'USD')).toUpperCase()
-    : (preferTr ? 'EUR' : String(stock.currency || 'USD').toUpperCase());
-  if (openedAt) openedAt.value = existing && existing.opened_at ? String(existing.opened_at).slice(0,10) : localDateValue();
-  if (notes) notes.value = existing?.notes || '';
+  let preferTr=brokerIsTradeRepublic(broker)?true:(scope==="tr"?true:scope==="us"?false:fallbackPreferTr);
+  const editId=String(form.dataset.editPositionId||"");
+  let existing=editId?state.positions.find(p=>String(p.id)===editId)||null:null;
+  const currency=form.querySelector('[name="currency"]');
+  const preferredCurrency=existing
+    ?String(existing.currency||(preferTr?'EUR':stock.currency||'USD')).toUpperCase()
+    :(preferTr?'EUR':String(currency?.value||stock.currency||'USD').toUpperCase());
+  const exchange=preferTr?(stock.trExchange||'LSX'):(stock.exchange||'');
+  if(!existing)existing=positionForPortfolioIdentity(form.dataset.stockKey,portfolioId,broker,preferredCurrency,preferTr,exchange);
+  const isEdit=!!editId;
+  if(existing&&isEdit){
+    preferTr=Number(existing.prefer_tr)===1;
+    broker=String(existing.broker||broker);
+    if(brokerSelect){brokerSelect.value=broker;brokerSelect.disabled=true}
+  }
+  const current=currentMarket(stock,preferTr);
+  form.dataset.preferTr=preferTr?'1':'0';
+  form.dataset.existingPositionId=existing?.id||'';
+
+  const quantity=form.querySelector('[name="quantity"]');
+  const avgPrice=form.querySelector('[name="avgPrice"]');
+  const openedAt=form.querySelector('[name="openedAt"]');
+  const notes=form.querySelector('[name="notes"]');
+  const save=form.querySelector('[data-save-position]');
+  const mode=form.querySelector('[data-position-form-mode]');
+  const feeHint=form.querySelector('[data-broker-fee-hint]');
+
+  if(currency){
+    if(isEdit&&existing)currency.value=String(existing.currency||preferredCurrency).toUpperCase();
+    else if(brokerIsTradeRepublic(broker))currency.value='EUR';
+  }
+  const finalCurrency=String(currency?.value||preferredCurrency).toUpperCase();
+  if(!isEdit&&existing&&String(existing.currency||'').toUpperCase()!==finalCurrency)existing=null;
+
+  if(quantity)quantity.value=isEdit&&existing&&num(existing.quantity)!==null?existing.quantity:'';
+  if(avgPrice){
+    avgPrice.value=isEdit&&existing&&num(existing.avg_price)!==null?existing.avg_price:'';
+    avgPrice.placeholder=current.price===null?'':String(current.price);
+  }
+  if(openedAt)openedAt.value=isEdit&&existing&&existing.opened_at?String(existing.opened_at).slice(0,10):localDateValue();
+  if(notes)notes.value=isEdit&&existing?(existing.notes||''):'';
+
   const incompatible=scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker));
-  if(save){save.textContent=existing?'Guardar cambios':'Guardar posición';save.disabled=incompatible}
+  if(save){
+    save.disabled=incompatible;
+    save.textContent=isEdit?'Guardar cambios':existing?'Añadir compra':'Añadir posición';
+  }
   if(mode)mode.textContent=incompatible
     ?'Esta acción no está verificada para Trade Republic / LSX y no puede añadirse a esta cartera.'
-    :existing
-      ?'Posición existente · modifica los datos o usa Operaciones para compras/ventas parciales.'
-      :'Nueva posición en esta cartera · '+portfolioMarketLabel(scope)+'.';
+    :isEdit&&existing
+      ?'Corrigiendo posición · broker y mercado bloqueados para no mezclar historiales.'
+      :existing
+        ?'Ya tienes '+formatNumber(existing.quantity,4)+' uds. en '+broker+' · media '+formatMoney(existing.avg_price,existing.currency||finalCurrency)+'. Esta compra se sumará y recalculará el precio medio.'
+        :'Nueva posición · '+broker+' · '+portfolioMarketLabel(scope)+'.';
+  if(feeHint){
+    const fee=brokerFeeEstimate(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY');
+    feeHint.textContent=fee.fee===null
+      ?'Comisión: pendiente de verificar'
+      :'Comisión estimada: '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
+    feeHint.classList.toggle('pending',fee.fee===null);
+  }
 }
 
 function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null) {
