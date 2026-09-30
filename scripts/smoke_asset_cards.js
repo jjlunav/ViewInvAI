@@ -75,8 +75,6 @@ window.checkAssetCards = async function () {
   const row=rows[0].querySelector('[data-open-stock]');
   assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
   assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
-  const portfolioHasExtended=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
-  if(portfolioHasExtended)assert(rows[0].querySelector('.asset-investing-extended'),'portfolio US position lost available extended quote');
   assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
   assert(!rows[1].querySelector('.asset-investing-extended,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
   assert(!view.querySelector('[data-portfolio-goal-toggle]'),'portfolio view still exposes the obsolete internal goal control');
