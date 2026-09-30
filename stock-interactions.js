@@ -116,10 +116,13 @@ function initStockInteractions(){
    toggleFavorite(b.dataset.favKey,pref==='1'?true:pref==='0'?false:null);
    return;
   }
-  let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back]');
-  if(quickBack){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
-  let back=e.target.closest&&e.target.closest('[data-profile-back]');
-  if(back){e.preventDefault();e.stopPropagation();closeQuickProfile(true);return}
+  let quickBack=e.target.closest&&e.target.closest('[data-stock-detail-back],[data-profile-back],[data-portfolio-detail-close]');
+  if(quickBack){
+   e.preventDefault();e.stopPropagation();
+   if(window.ViewInvAINavigation?.back)window.ViewInvAINavigation.back();
+   else closeQuickProfile(true);
+   return
+  }
   let row=e.target.closest&&e.target.closest('[data-stock-key]');
   if(row){
    if(e.target.closest&&e.target.closest('.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
