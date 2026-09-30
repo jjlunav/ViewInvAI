@@ -499,3 +499,74 @@
  border-color:rgba(255,102,122,.35);
  color:#ff9aaa;
 }
+
+
+/* 2026-10-01 · explicit column contract for every shared asset card */
+.asset-card-row,
+.asset-list-head{
+ --asset-action-column:12px;
+ grid-template-columns:minmax(0,1.55fr) repeat(var(--asset-columns,2),minmax(0,.72fr)) var(--asset-action-column)!important;
+}
+.asset-card-row:has(.asset-card-open-button){
+ --asset-action-column:64px;
+}
+.asset-card-row:has(.asset-card-row-actions){
+ --asset-action-column:104px;
+}
+.asset-card-end-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ gap:6px;
+ min-width:0;
+ width:100%;
+ justify-self:stretch;
+}
+.asset-card-end-actions .asset-card-row-actions{
+ flex:0 0 auto;
+}
+.asset-card-end-actions .asset-card-open{
+ flex:0 0 auto;
+}
+.asset-card-identity,
+.asset-card-cell,
+.asset-card-copy{
+ min-width:0;
+}
+.asset-card-cell{
+ overflow:hidden;
+}
+.asset-card-cell>span{
+ min-width:0;
+ max-width:100%;
+}
+[data-card-context="portfolio"] .asset-card-cell{
+ overflow:visible;
+}
+@media(max-width:820px){
+ .asset-card-row,
+ .asset-list-head{
+  --asset-action-column:10px;
+  grid-template-columns:minmax(0,1.5fr) repeat(var(--asset-columns,2),minmax(0,.62fr)) var(--asset-action-column)!important;
+ }
+ .asset-card-row:has(.asset-card-open-button){
+  --asset-action-column:58px;
+ }
+ .asset-card-row:has(.asset-card-row-actions){
+  --asset-action-column:91px;
+ }
+ .asset-card-end-actions{
+  gap:4px;
+ }
+ .asset-card-cell,
+ .asset-card-copy{
+  overflow:hidden!important;
+ }
+ .asset-card-copy>strong,
+ .asset-card-copy>small,
+ .asset-card .list-copy-isin{
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+ }
+}
