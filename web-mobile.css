@@ -2136,3 +2136,15 @@ html,body{font-size:14px}
 #view-portfolios .portfolio-cash-row{margin:5px 0!important}
 #view-portfolios .portfolio-goal-form.compact-goal-form{grid-template-columns:1fr 1fr!important}
 #view-portfolios .portfolio-goal-form.compact-goal-form>button{grid-column:1/-1!important}
+
+
+/* 2026-09-30 · mobile readability for strict portfolio decisions */
+#view-portfolios .portfolio-goal-trade{grid-template-columns:68px minmax(0,1fr)!important;padding:8px!important}
+#view-portfolios .portfolio-goal-trade>em{font-size:8px!important}
+#view-portfolios .portfolio-goal-trade strong{font-size:11px!important}
+#view-portfolios .portfolio-goal-trade small{font-size:8.5px!important;line-height:1.3!important}
+#view-portfolios .portfolio-goal-reason{font-size:8.8px!important;line-height:1.4!important;padding:0 4px!important}
+#view-portfolios .portfolio-goal-decision-head h3{font-size:13px!important}
+#view-portfolios .portfolio-goal-summary{font-size:10px!important}
+#view-portfolios .portfolio-goal-summary strong{font-size:13px!important}
+#view-portfolios .portfolio-goal-summary b{font-size:9px!important}
