@@ -549,8 +549,8 @@ function initMarketBoardLiveScan(){
   }else{
    scanMarketBoardUsBatch();
   }
- },950);
- setTimeout(scanMarketBoardUsBatch,250);
+ },2500);
+ setTimeout(scanMarketBoardUsBatch,450);
 }
 function renderMarketQuickSheet(){
  let box=$('#marketQuickContent');if(!box)return;
