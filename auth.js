@@ -10,7 +10,10 @@ const FIREBASE_CONFIG = Object.freeze({
 const FIREBASE_VERSION = "12.19.0";
 
 let webSdkPromise = null;
+let webMessagingPromise = null;
 let webAuth = null;
+let webMessaging = null;
+let webServiceWorkerRegistration = null;
 let currentUser = null;
 let toastTimer = null;
 let busy = false;
@@ -58,7 +61,7 @@ let pushListenersBound = false;
 let pushLifecycleBound = false;
 let lastRegisteredPushToken = "";
 
-async function registerPushToken(token) {
+async function registerPushToken(token, platform = "android") {
   token = String(token || "").trim();
   if (!token || !currentUser) return false;
   if (token === lastRegisteredPushToken) {
@@ -69,7 +72,7 @@ async function registerPushToken(token) {
     method: "POST",
     body: JSON.stringify({
       pushToken: token,
-      platform: "android",
+      platform: String(platform || "android").toLowerCase(),
       appVersion: document.documentElement.dataset.appVersion || ""
     })
   });
@@ -128,10 +131,28 @@ function bindPushLifecycle(){
     pushLifecycleBound=true;
   }
   document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState==="visible"&&currentUser&&isNativePlatform())ensurePushRegistration(false).catch(()=>{});
+    if(document.visibilityState==="visible"&&currentUser)ensurePushRegistration(false).catch(()=>{});
   });
 }
-async function ensurePushRegistration(requestPermission = true) {
+async function loadWebMessagingSdk() {
+  if (!webMessagingPromise) {
+    webMessagingPromise = Promise.all([
+      import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
+      import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-messaging.js`)
+    ]).then(async ([appSdk, messagingSdk]) => {
+      const app = appSdk.getApps().length ? appSdk.getApp() : appSdk.initializeApp(FIREBASE_CONFIG);
+      webMessaging = messagingSdk.getMessaging(app);
+      if (!webServiceWorkerRegistration) {
+        webServiceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
+        await navigator.serviceWorker.ready;
+      }
+      return { messagingSdk, messaging: webMessaging, registration: webServiceWorkerRegistration };
+    });
+  }
+  return webMessagingPromise;
+}
+
+async function ensureNativePushRegistration(requestPermission = true) {
   const plugin = nativeMessagingPlugin();
   if (!plugin || !currentUser) return false;
   try {
@@ -153,20 +174,57 @@ async function ensurePushRegistration(requestPermission = true) {
       }
     }
     let permission = await plugin.checkPermissions();
-    if ((!permission || permission.receive !== "granted") && requestPermission) {
-      permission = await plugin.requestPermissions();
-    }
+    if ((!permission || permission.receive !== "granted") && requestPermission) permission = await plugin.requestPermissions();
     if (!permission || permission.receive !== "granted") {
-      window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, permission: permission && permission.receive || "denied" } }));
+      window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, permission: permission && permission.receive || "denied", platform:"android" } }));
       return false;
     }
     const result = await plugin.getToken();
-    return registerPushToken(result && result.token);
+    return registerPushToken(result && result.token, "android");
   } catch (error) {
     console.warn("Push registration unavailable", error);
-    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, error: String(error && error.message || error) } }));
+    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, error: String(error && error.message || error), platform:"android" } }));
     return false;
   }
+}
+
+async function ensureWebPushRegistration(requestPermission = true) {
+  if (!currentUser || !("serviceWorker" in navigator) || !("Notification" in window)) return false;
+  try {
+    let permission = Notification.permission;
+    if (permission === "default" && requestPermission) permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled:false, permission, platform:"web" } }));
+      return false;
+    }
+    const { messagingSdk, messaging, registration } = await loadWebMessagingSdk();
+    const token = await messagingSdk.getToken(messaging, { serviceWorkerRegistration: registration });
+    if (!token) throw new Error("Firebase no devolvió un token web.");
+    if (!ensureWebPushRegistration._listenerBound) {
+      ensureWebPushRegistration._listenerBound = true;
+      messagingSdk.onMessage(messaging, payload => {
+        const notification = payload && payload.notification || {};
+        const data = payload && payload.data || {};
+        const title = String(notification.title || data.title || "ViewInvAI");
+        const body = String(notification.body || data.body || "");
+        showToast(body ? title + " · " + body : title);
+        window.dispatchEvent(new CustomEvent("viewinvai:push-received", { detail: payload || {} }));
+      });
+    }
+    const ok = await registerPushToken(token, "web");
+    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled:!!ok, registered:!!ok, platform:"web" } }));
+    return ok;
+  } catch (error) {
+    console.warn("Web push registration unavailable", error);
+    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled:false, error:String(error && error.message || error), platform:"web" } }));
+    return false;
+  }
+}
+
+async function ensurePushRegistration(requestPermission = true) {
+  return isNativePlatform()
+    ? ensureNativePushRegistration(requestPermission)
+    : ensureWebPushRegistration(requestPermission);
 }
 
 async function loadWebSdk() {
@@ -415,8 +473,13 @@ async function signOutAccount() {
       await authSdk.signOut(auth);
     }
     try {
-      const messaging = nativeMessagingPlugin();
-      if (messaging) await messaging.deleteToken();
+      if (isNativePlatform()) {
+        const messaging = nativeMessagingPlugin();
+        if (messaging) await messaging.deleteToken();
+      } else if (webMessaging) {
+        const { messagingSdk, messaging } = await loadWebMessagingSdk();
+        await messagingSdk.deleteToken(messaging);
+      }
     } catch (_) {}
     lastRegisteredPushToken = "";
     setUser(null, { sync: false });
@@ -502,6 +565,7 @@ window.ViewInvAIAuth = {
   syncBackendUser,
   ensurePushRegistration,
   hasNativeMessaging: () => !!nativeMessagingPlugin(),
+  hasWebPush: () => !isNativePlatform() && 'serviceWorker' in navigator && 'Notification' in window,
   isNative: isNativePlatform
 };
 
