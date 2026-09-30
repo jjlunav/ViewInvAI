@@ -23,10 +23,21 @@
  ];
  const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null};
  const account={user:null,portfolios:[],positions:[],plans:[],selectedPortfolioId:null,loading:false};
+ const PORTFOLIO_ASSET_UI_KEY='viewinvai:portfolioAssetMode:v1';
+ function savedPortfolioAssetMode(){
+  try{
+   const mode=String(localStorage.getItem(PORTFOLIO_ASSET_UI_KEY)||'stocks');
+   return mode==='funds'||mode==='goal'?mode:'stocks';
+  }catch(_){return 'stocks'}
+ }
+ function savePortfolioAssetMode(mode){
+  try{localStorage.setItem(PORTFOLIO_ASSET_UI_KEY,mode)}catch(_){}
+ }
 
  function q(s){return document.querySelector(s)}
  function setPortfolioAssetMode(mode,loadFunds=true){
   mode=mode==='funds'?'funds':mode==='goal'?'goal':'stocks';
+  savePortfolioAssetMode(mode);
   const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp'),goalPanel=q('#portfolioGoalApp');
   if(view)view.dataset.portfolioAssetMode=mode;
   document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
@@ -909,7 +920,7 @@
  }
  function init(){
   bind();
-  setPortfolioAssetMode('stocks',false);
+  setPortfolioAssetMode(savedPortfolioAssetMode(),false);
   if(root.matchMedia){
    const mq=root.matchMedia('(max-width:820px)');
    if(typeof mq.addEventListener==='function')mq.addEventListener('change',()=>{if(state.loaded)render()});
