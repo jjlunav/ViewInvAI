@@ -321,6 +321,42 @@ jobs:
         run: node --check alerts.js
       - name: Validar sintaxis de autenticación
         run: node --check auth.js
+      - name: Validar contrato de notificaciones
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          auth = Path("auth.js").read_text(encoding="utf-8")
+          stock_notifications = Path("stock-notifications.js").read_text(encoding="utf-8")
+          backend = Path("backend.js").read_text(encoding="utf-8")
+
+          token_start = auth.find("if (token === lastRegisteredPushToken)")
+          token_end = auth.find("const response = await apiFetch", token_start)
+          token_block = auth[token_start:token_end]
+          if token_start < 0 or "return true;" not in token_block or "enabled: true" not in token_block:
+              raise SystemExit("El registro push repetido puede volver a reportarse como fallo")
+
+          disable_start = stock_notifications.find("async function disableAll()")
+          disable_end = stock_notifications.find("document.addEventListener('click'", disable_start)
+          disable_block = stock_notifications[disable_start:disable_end]
+          for required in ("method:'POST'", "newsEnabled:false", "pulseEnabled:false", "radarEnabled:false", "priceUpEnabled:false", "priceDownEnabled:false"):
+              if required not in disable_block:
+                  raise SystemExit("Desactivar todas no persiste correctamente: falta " + required)
+          if "method:'DELETE'" in disable_block:
+              raise SystemExit("Desactivar todas no debe borrar la preferencia y reactivar valores por defecto")
+
+          required_backend = (
+              "function notificationPreferenceForTarget",
+              'notificationPreferenceAllows(assetNotificationPreference,"news_enabled",true)',
+              'notificationPreferenceAllows(assetPreference,"news_enabled",true)',
+              'type==="pulse-ai"||type==="radar-entry"',
+              "created_at>=?",
+          )
+          missing = [item for item in required_backend if item not in backend]
+          if missing:
+              raise SystemExit("Contrato backend de notificaciones incompleto: " + ", ".join(missing))
+          print("Contrato de notificaciones: OK")
+          PY
       - name: Validar sintaxis de carteras
         run: node --check portfolio.js
       - name: Validar sintaxis de fondos y ETFs
