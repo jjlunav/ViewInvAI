@@ -1698,7 +1698,12 @@ async function ensureGlobalNotificationSettingsSchema(env){
   const columns=await env.DB.prepare("PRAGMA table_info(user_notification_settings)").all();
   const names=new Set((columns.results||[]).map(row=>String(row.name||"")));
   for(const column of ["opted_in_explicitly","notifications_enabled","radar_enabled","price_enabled","portfolio_enabled"]){
-    if(!names.has(column))await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 0").run();
+    if(names.has(column))continue;
+    try{
+      await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 0").run();
+    }catch(error){
+      if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
+    }
   }
   globalNotificationSettingsSchemaReady=true;
 }
