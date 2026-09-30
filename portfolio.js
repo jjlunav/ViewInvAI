@@ -1965,13 +1965,17 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if(!form||!stock)return;
   const portfolioId=form.querySelector('[name="portfolioId"]')?.value||'';
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId))||null,scope=portfolioMarketScope(portfolio);
+  const marketLock=String(form.dataset.marketLock||'');
+  const lockedPreferTr=marketLock==='tr'?true:marketLock==='us'?false:null;
   const brokerSelect=form.querySelector('[data-broker-select]');
-  let broker=String(brokerSelect?.value||form.dataset.defaultBroker||brokerDefaultName(portfolio,fallbackPreferTr)).trim();
+  let broker=String(brokerSelect?.value||form.dataset.defaultBroker||brokerDefaultName(portfolio,lockedPreferTr===null?fallbackPreferTr:lockedPreferTr)).trim();
   if(brokerSelect&&!brokerSelect.value){
     brokerSelect.value=broker;
     broker=brokerSelect.value||broker;
   }
-  let preferTr=brokerIsTradeRepublic(broker)?true:brokerIsIbkr(broker)?false:(scope==="tr"?true:scope==="us"?false:fallbackPreferTr);
+  let preferTr=lockedPreferTr!==null
+    ?lockedPreferTr
+    :(brokerIsTradeRepublic(broker)?true:brokerIsIbkr(broker)?false:(scope==="tr"?true:scope==="us"?false:fallbackPreferTr));
   const editId=String(form.dataset.editPositionId||"");
   let existing=editId?state.positions.find(p=>String(p.id)===editId)||null:null;
   const currency=form.querySelector('[name="currency"]');
@@ -2015,14 +2019,17 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if(notes)notes.value=isEdit&&existing?(existing.notes||''):'';
 
   const listingConflict=(scope==="tr"&&!preferTr)||(scope==="us"&&preferTr);
-  const incompatible=(preferTr&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker)))||listingConflict;
+  const brokerListingConflict=(marketLock==='us'&&brokerIsTradeRepublic(broker))||(marketLock==='tr'&&brokerIsIbkr(broker));
+  const incompatible=(preferTr&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker)))||listingConflict||brokerListingConflict;
   const feePreview=brokerFeeInCurrency(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY',exchange);
   if(save){
     save.disabled=incompatible||(!isEdit&&feePreview.fee===null);
     save.textContent=isEdit?'Guardar cambios':existing?'Añadir compra':'Añadir posición';
   }
   if(mode)mode.textContent=listingConflict
-    ?'El broker seleccionado no coincide con el mercado configurado para esta cartera.'
+    ?'Esta cartera no admite el mercado desde el que has abierto la acción.'
+    :brokerListingConflict
+      ?'El broker seleccionado no corresponde al mercado desde el que has abierto la acción.'
     :incompatible
       ?'Esta acción no está verificada para Trade Republic / LSX y no puede añadirse a esta cartera.'
     :isEdit&&existing
@@ -2101,26 +2108,48 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
 
   const editPosition=editPositionId?state.positions.find(p=>String(p.id)===String(editPositionId))||null:null;
   const memberships=activePortfolioMemberships(stockKey);
-  const preferredPortfolioId=editPosition?.portfolio_id||portfolioIdOverride||
-    (state.selectedPortfolioId&&state.portfolios.some(p=>p.id===state.selectedPortfolioId)?state.selectedPortfolioId:'')||
-    (memberships.length===1?memberships[0].position.portfolio_id:'')||state.portfolios[0].id;
+  const explicitMarket=editPosition?null:(preferTrOverride===true?'tr':preferTrOverride===false?'us':null);
+  const portfolioCompatible=p=>{
+    if(!p)return false;
+    const ps=portfolioMarketScope(p);
+    if(explicitMarket==='tr')return ps!=='us';
+    if(explicitMarket==='us')return ps!=='tr';
+    return true;
+  };
+  const candidateIds=[
+    editPosition?.portfolio_id,
+    portfolioIdOverride,
+    state.selectedPortfolioId,
+    ...memberships
+      .filter(m=>explicitMarket===null||Number(m.position.prefer_tr)===(explicitMarket==='tr'?1:0))
+      .map(m=>m.position.portfolio_id),
+    ...state.portfolios.filter(portfolioCompatible).map(p=>p.id)
+  ].filter(Boolean);
+  const preferredPortfolioId=candidateIds.find(id=>{
+    const p=state.portfolios.find(row=>String(row.id)===String(id));
+    return p&&(editPosition||portfolioCompatible(p));
+  })||state.portfolios[0].id;
   const preferredPortfolio=state.portfolios.find(p=>String(p.id)===String(preferredPortfolioId))||null;
   const scope=portfolioMarketScope(preferredPortfolio);
   const preferTr=editPosition?Number(editPosition.prefer_tr)===1:
-    scope==="tr"?true:scope==="us"?false:
-    preferTrOverride===true?true:preferTrOverride===false?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
+    explicitMarket==='tr'?true:explicitMarket==='us'?false:
+    scope==="tr"?true:scope==="us"?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
   if(scope==="tr"&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker))){
     toast("Esta acción no está verificada como negociable en Trade Republic / LSX.",true);return;
   }
   const defaultBroker=String(editPosition?.broker||brokerDefaultName(preferredPortfolio,preferTr)).trim();
   const current=currentMarket(stock,preferTr);
-  const options=state.portfolios.map(p=>'<option value="'+esc(p.id)+'"'+(String(p.id)===String(preferredPortfolioId)?' selected':'')+'>'+esc(p.name)+'</option>').join('');
+  const options=state.portfolios.map(p=>{
+    const compatible=editPosition||portfolioCompatible(p);
+    const scopeLabel=portfolioMarketLabel(portfolioMarketScope(p));
+    return '<option value="'+esc(p.id)+'"'+(String(p.id)===String(preferredPortfolioId)?' selected':'')+(compatible?'':' disabled')+'>'+esc(p.name)+(scopeLabel?' · '+esc(scopeLabel):'')+'</option>';
+  }).join('');
   const brokerDisabled=!!editPosition;
 
   openModal(editPosition?('Editar '+(stock.trTicker||stock.ticker||"acción")):('Operaciones · '+(stock.trTicker||stock.ticker||"acción")),
-    '<form id="addPositionForm" class="portfolio-form'+(editPosition?'':' transaction-form')+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
+    '<form id="addPositionForm" class="portfolio-form'+(editPosition?'':' transaction-form')+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-market-lock="'+(explicitMarket||'')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
       (!editPosition?'<div class="transaction-form-head"><strong>Nueva operación</strong><span>'+esc(stock.name||"")+'</span></div>':'')+
-      '<div class="position-form-stock"><strong>'+esc(stock.trTicker||stock.ticker||"")+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
+      '<div class="position-form-stock"><strong>'+esc(preferTr?(stock.trTicker||stock.ticker||""):(stock.ticker||stock.trTicker||""))+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
       (!editPosition?'<div class="portfolio-form-grid"><label><span>Tipo</span><input value="Compra" readonly></label><label><span>Comisión</span><input data-first-operation-fee readonly></label></div>':'')+
       '<div class="portfolio-form-mode" data-position-form-mode></div>'+
       '<label><span>Cartera</span><select name="portfolioId" required'+(editPosition?' disabled':'')+'>'+options+'</select></label>'+
