@@ -953,7 +953,6 @@ function renderApp() {
 
 function renderGoalApp() {
   const box=$("#portfolioGoalApp");if(!box)return;
-  const portfolioBox=$("#portfolioApp");if(portfolioBox)portfolioBox.innerHTML="";
   state.primaryTab="goal";
   if(!state.user)return renderLoggedOut(box);
   if(state.loading)return renderLoading(box);
