@@ -1695,15 +1695,20 @@ function openGoalOperationModal(button){
   const stock=stockByKey(stockKey),portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));
   if(!stock||!portfolio)return toast("No se pudo preparar la operación.",true);
   const preferTr=button.dataset.goalPreferTr==="1",currency=String(button.dataset.goalCurrency||(preferTr?"EUR":"USD")).toUpperCase();
-  const units=Math.max(0,Math.round(num(button.dataset.goalUnits)||0)),price=num(button.dataset.goalPrice),fees=Math.max(0,num(button.dataset.goalFees)||0);
+  const units=Math.max(0,Math.round(num(button.dataset.goalUnits)||0)),price=num(button.dataset.goalPrice);
   if(units<1||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
-  const position=state.positions.find(p=>Number(p.active)!==0&&String(p.portfolio_id)===String(portfolioId)&&sameStockRef(p.stock_key,stockKey))||null;
-  if(side==="SELL"&&!position)return toast("No se encuentra la posición que se quiere vender.",true);
+  const positionId=String(button.dataset.goalPositionId||"");
+  const position=positionId
+    ?state.positions.find(p=>String(p.id)===positionId&&Number(p.active)!==0)||null
+    :null;
+  if(side==="SELL"&&!position)return toast("No se encuentra la posición exacta que se quiere vender.",true);
+  const broker=String((position&&position.broker)||button.dataset.goalBroker||brokerDefaultName(portfolio,preferTr)).trim();
   const ticker=(preferTr&&stock.trTicker)||stock.ticker||position?.ticker||"",name=stock.name||position?.name||ticker;
   const exchange=preferTr?(stock.trExchange||"LSX"):(stock.exchange||position?.exchange||"");
   const isin=preferTr?(stock.trIsin||stock.isin||position?.isin||""):(stock.usIsin||stock.isin||position?.isin||"");
+  const feeInfo=brokerFeeInCurrency(broker,units,price,currency,side),fee=feeInfo.fee;
   openModal((side==="BUY"?"Registrar estrategia de compra · ":"Registrar estrategia de venta · ")+ticker,
-    '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
+    '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-position-id="'+esc(position?.id||"")+'" data-broker="'+esc(broker)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
       '<input name="side" type="hidden" value="'+esc(side)+'">'+
       '<div class="portfolio-form-grid">'+
@@ -1711,26 +1716,44 @@ function openGoalOperationModal(button){
         '<label><span>Precio ejecutado</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(price))+'" required></label>'+
       '</div>'+
       '<div class="portfolio-form-grid">'+
-        '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(fees))+'"></label>'+
+        '<label><span>Broker</span><input name="broker" value="'+esc(broker)+'" readonly></label>'+
         '<label><span>Divisa</span><input name="currency" value="'+esc(currency)+'" readonly></label>'+
       '</div>'+
+      '<label><span>Comisión automática</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(fee===null?"":String(fee))+'" readonly></label>'+
+      '<small class="broker-fee-hint'+(fee===null?' pending':'')+'" data-goal-fee-hint>'+(fee===null?'Comisión pendiente de verificación':'Comisión '+esc(formatMoney(fee,currency))+' · '+esc(feeInfo.label||broker))+'</small>'+
       '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="'+localDateTimeValue()+'" required></label>'+
       '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
-      '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si el precio real difiere del límite recomendado. El efectivo se recalculará automáticamente; seguirá pudiendo editarse manualmente.</p>'+
+      '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si difiere del límite recomendado; la comisión y el efectivo se recalculan automáticamente.</p>'+
       '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
-      '<button type="submit" class="btn">Registrar estrategia</button>'+
+      '<button type="submit" class="btn"'+(fee===null?' disabled':'')+'>Registrar estrategia</button>'+
     '</form>'
   );
+  const form=$("#goalOperationForm");
+  if(form){
+    const refreshFee=()=>{
+      const qty=Math.max(0,Math.round(num(form.querySelector('[name="quantity"]')?.value)||0));
+      const px=num(form.querySelector('[name="price"]')?.value);
+      const info=brokerFeeInCurrency(broker,qty,px,currency,side);
+      const input=form.querySelector('[name="fees"]'),hint=form.querySelector('[data-goal-fee-hint]'),submit=form.querySelector('button[type="submit"]');
+      if(input)input.value=info.fee===null?"":String(info.fee);
+      if(hint){hint.textContent=info.fee===null?'Comisión pendiente de verificación':'Comisión '+formatMoney(info.fee,currency)+' · '+(info.label||broker);hint.classList.toggle('pending',info.fee===null)}
+      if(submit)submit.disabled=info.fee===null;
+    };
+    form.querySelector('[name="quantity"]')?.addEventListener('input',refreshFee);
+    form.querySelector('[name="price"]')?.addEventListener('input',refreshFee);
+  }
 }
+
 async function saveGoalOperationForm(form){
   if(!form||form.dataset.saving==="1")return;
   const fd=new FormData(form),preferTr=form.dataset.preferTr==="1",side=String(fd.get("side")||"BUY").toUpperCase();
   const executedDate=new Date(String(fd.get("executedAt")||""));
   const payload={
-    portfolioId:form.dataset.portfolioId,stockKey:form.dataset.stockKey,ticker:form.dataset.ticker||"",
+    portfolioId:form.dataset.portfolioId,positionId:form.dataset.positionId||"",broker:form.dataset.broker||String(fd.get("broker")||""),
+    stockKey:form.dataset.stockKey,ticker:form.dataset.ticker||"",
     name:form.dataset.name||"",exchange:form.dataset.exchange||"",isin:form.dataset.isin||"",preferTr,
     side,quantity:Math.max(0,Math.round(num(fd.get("quantity"))||0)),price:num(fd.get("price")),
-    fees:Math.max(0,num(fd.get("fees"))??(preferTr?1:0)),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
+    fees:num(fd.get("fees")),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
     executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
   };
   const portfolio=state.portfolios.find(item=>String(item.id)===String(payload.portfolioId));
