@@ -108,7 +108,7 @@ window.checkAssetCards = async function () {
   assert(opForm.querySelector('[name="currency"]')?.value==='USD','US operation did not keep USD');
   assert((opForm.querySelector('[data-broker-select]')?.value||'').toLowerCase().indexOf('trade republic')<0,'US operation switched to Trade Republic');
   assert((document.querySelector('#portfolioModal')?.textContent||'').includes(stock.ticker),'US operation did not keep the US ticker');
-  closeModal();
+  document.querySelector('#portfolioModalClose')?.click();
 
   ps.portfolios=[{id:'tr-pf',name:'TR fixture',base_currency:'EUR',market_scope:'tr',broker:'Trade Republic'}];
   ps.selectedPortfolioId='tr-pf';
@@ -118,7 +118,7 @@ window.checkAssetCards = async function () {
   assert(!document.querySelector('#newPortfolioForm'),'missing compatible portfolio auto-opened create-portfolio');
   assert(opForm.querySelector('[name="portfolioId"]')?.value==='','incompatible portfolio was silently selected');
   assert(opForm.querySelector('[data-create-compatible-portfolio]'),'explicit create-compatible-portfolio action is missing');
-  closeModal();
+  document.querySelector('#portfolioModalClose')?.click();
 
   ps.portfolios=[{id:'ci',name:'CI fixture',base_currency:'USD'}];
   ps.selectedPortfolioId='ci';
