@@ -1995,7 +1995,7 @@ async function createBrokerFromPositionForm(form,stock){
   }catch(error){toast(error.message||'No se pudo crear el broker.',true)}
   finally{if(button&&button.isConnected){button.disabled=false;button.textContent='Añadir'}}
 }
-function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null, editPositionId = null) {
+function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOverride = null, editPositionId = null, preset = null) {
   if(!state.user)return window.ViewInvAIAuth&&window.ViewInvAIAuth.signIn();
   if(!state.portfolios.length){toast("Primero crea una cartera.",true);openNewPortfolioModal();return}
   const stock=stockByKey(stockKey);
@@ -2045,6 +2045,13 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
     const currencySelect=form.querySelector('[name="currency"]');
     if(editPosition&&currencySelect)currencySelect.disabled=false;
     applyPositionFormState(form,stock,preferTr);
+    if(!editPosition&&preset&&typeof preset==='object'){
+      const quantityInput=form.querySelector('[name="quantity"]'),priceInput=form.querySelector('[name="avgPrice"]');
+      const presetQty=num(preset.quantity),presetPrice=num(preset.price);
+      if(quantityInput&&presetQty!==null&&presetQty>0)quantityInput.value=String(presetQty);
+      if(priceInput&&presetPrice!==null&&presetPrice>=0)priceInput.value=String(presetPrice);
+      updatePositionBrokerFeeHint(form,stock);
+    }
     if(editPosition&&currencySelect)currencySelect.disabled=true;
     form.querySelector('[name="portfolioId"]')?.addEventListener('change',()=>applyPositionFormState(form,stock,preferTrOverride===true?true:preferTrOverride===false?false:preferTr));
     brokerSelect?.addEventListener('change',()=>applyPositionFormState(form,stock,form.dataset.preferTr==="1"));
