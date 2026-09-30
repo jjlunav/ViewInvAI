@@ -512,6 +512,7 @@ function radarAiCard(row){
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
+  openAttrs:stockOpenAttrs(s,'Radar IA',preferTr)+' data-radar-open="'+E(stockKey(s))+'" data-radar-prefer-tr="'+(preferTr?'1':'0')+'"',
   detailsHtml:''
  });
 }
@@ -608,16 +609,17 @@ function warmRecommendationCache(){
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,700));
 
 document.addEventListener('click',event=>{
- const radarRow=event.target&&event.target.closest?event.target.closest('#recommendationResults .radar-ai-tier-list .asset-card-row[data-stock-key]'):null;
- if(radarRow){
-  const control=event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label');
-  if(!control){
-   event.preventDefault();event.stopPropagation();
-   const s=stockByKey(radarRow.dataset.stockKey),pref=radarRow.dataset.stockPreferTr;
-   if(s)openStock(s,radarRow.dataset.stockReason||'Radar IA',pref==='1'?true:pref==='0'?false:null);
-   return;
-  }
- }
+ const row=event.target&&event.target.closest?event.target.closest('[data-radar-open]'):null;
+ if(!row)return;
+ if(event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label'))return;
+ const s=stockByKey(row.dataset.radarOpen),pref=row.dataset.radarPreferTr;
+ if(!s)return;
+ event.preventDefault();
+ event.stopPropagation();
+ openStock(s,'Radar IA',pref==='1'?true:false,'recommendation');
+},true);
+
+document.addEventListener('click',event=>{
  const register=event.target&&event.target.closest?event.target.closest('[data-radar-register]'):null;
  if(register){
   event.preventDefault();event.stopPropagation();
