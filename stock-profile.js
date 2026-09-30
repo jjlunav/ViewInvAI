@@ -324,8 +324,8 @@ function activateProfileTabData(root,s,preferTr=false,tab=''){
 function profilePortfolioActionHtml(s,isTr=false){
  let key=stockKey(s),api=window.ViewInvAIPortfolios;
  let inPortfolio=!!(api&&typeof api.isInPortfolio==='function'&&api.isInPortfolio(key));
- let label=inPortfolio?'★ Gestionar cartera':'＋ Añadir a cartera';
- return '<button type="button" class="btn small profile-add-portfolio'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">'+label+'</button>';
+ let title=inPortfolio?'Abrir operaciones de cartera':'Añadir a cartera';
+ return '<button type="button" class="profile-add-portfolio profile-wallet-action'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'" title="'+E(title)+'" aria-label="'+E(title)+'"><span aria-hidden="true">💼</span></button>';
 }
 function profilePositionEditActionHtml(s){
  const key=stockKey(s),api=window.ViewInvAIPortfolios;
