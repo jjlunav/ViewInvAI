@@ -85,13 +85,16 @@ async function refreshPushDeviceStatus(){
  renderPushSettingsStatus();
 }
 function renderPushSettingsStatus(detail=null){
- const status=$('#pushNotificationStatus');
+ const status=$('#pushNotificationStatus'),row=$('#pushDeviceStatusRow'),actions=$('#pushDeviceActionsRow');
  if(!status)return;
  status.classList.remove('active','pending','error');
  const auth=window.ViewInvAIAuth;
- if(!auth){status.textContent='Comprobando…';return}
+ if(!auth){if(row)row.hidden=false;if(actions)actions.hidden=false;status.textContent='Comprobando…';return}
+ const native=auth.isNative?.()===true;
+ if(row)row.hidden=!native;
+ if(actions)actions.hidden=!native;
+ if(!native)return;
  if(!auth.getUser?.()){status.textContent='Inicia sesión';return}
- if(!auth.isNative?.()){status.textContent='Avisos en la cuenta · push no necesario en web';status.classList.add('active');return}
  if(!auth.hasNativeMessaging?.()){status.textContent='APK pendiente de actualizar';status.classList.add('pending');return}
  if(detail&&detail.permission==='denied'){status.textContent='Permiso denegado';status.classList.add('error');return}
  if(detail&&detail.error){status.textContent='No disponible';status.classList.add('error');return}
