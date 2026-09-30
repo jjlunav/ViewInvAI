@@ -2239,7 +2239,11 @@ async function sendPreferenceAlert(env,pref,type,severity,title,message){
 
 async function scanNotificationPreferences(env,services){
   await ensureNotificationPreferenceSchema(env);
-  const rows=await env.DB.prepare("SELECT * FROM notification_preferences ORDER BY updated_at ASC LIMIT 24").all();
+  await ensureGlobalNotificationSettingsSchema(env);
+  const rows=await env.DB.prepare(
+    "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
+    "WHERE COALESCE(g.notifications_enabled,1)<>0 ORDER BY p.updated_at ASC LIMIT 24"
+  ).all();
   if(!(rows.results||[]).length)return{processed:0};
   const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();
   for(const pref of rows.results||[]){
@@ -2247,7 +2251,11 @@ async function scanNotificationPreferences(env,services){
       let global=globalByUser.get(pref.user_id);
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       if(!global.enabled)continue;
-      const stock=findStock(snapshot,pref);if(!stock)continue;
+      const stock=findStock(snapshot,pref);
+      if(!stock){
+        await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run();
+        continue;
+      }
       const signalConfigured=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
@@ -2318,7 +2326,10 @@ async function scanNotificationPreferences(env,services){
       await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
         .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
       results.push(pref.id);
-    }catch(error){console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error))}
+    }catch(error){
+      console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error));
+      try{await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run()}catch(_){}
+    }
   }
   return{processed:results.length};
 }
