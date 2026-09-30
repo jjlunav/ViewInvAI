@@ -130,6 +130,83 @@ function extendedSessionDisplay(s,se=currentMarketSession()){
  const change=price!==null&&regular>0?(price/regular-1)*100:null;
  return{icon,iconClass,price,regular,delta,change,tone:change===null?'muted':C(change),kind:quote.kind,at:quote.at};
 }
+function compactQuoteDate(ts){
+ ts=N(ts);if(ts===null)return'';
+ const d=new Date(ts);if(Number.isNaN(d.getTime()))return'';
+ return d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'});
+}
+function compactQuoteTime(ts){
+ ts=N(ts);if(ts===null)return'';
+ const d=new Date(ts);if(Number.isNaN(d.getTime()))return'';
+ return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function compactSignedMoney(value,symbol,decimals){
+ value=N(value);if(value===null)return'—';
+ const sign=value>0?'+':value<0?'-':'';
+ return sign+quoteMoney(Math.abs(value),symbol,decimals);
+}
+function compactRegularMove(price,pct,previousClose=null){
+ price=N(price);pct=N(pct);previousClose=N(previousClose);
+ if(price===null)return null;
+ if(previousClose!==null)return price-previousClose;
+ if(pct===null||pct<=-99.999)return null;
+ const base=price/(1+pct/100);
+ return Number.isFinite(base)?price-base:null;
+}
+function compactInvestingQuoteData(s,preferTr=false){
+ if(preferTr&&trTradable(s)){
+  const q=canonicalQuote(s,true),price=N(q&&q.price),pct=N(q&&q.change),prev=trLivePre(s);
+  const ts=N(q&&q.updatedAt)||N(s&&s.trLiveUpdatedAt)||N(s&&s.trLiveReceivedAt)||Date.now();
+  return{
+   symbol:'€',regularPrice:price,regularPct:pct,regularAbs:compactRegularMove(price,pct,prev),
+   status:trMarketOpen()?'Mercado abierto':'Mercado cerrado',statusAt:ts,
+   session:null,sessionLabel:'',sessionPrice:null,sessionPct:null,sessionAbs:null,sessionAt:null
+  };
+ }
+ const se=currentMarketSession();
+ const live=N(usLivePrice(s)),regularOpen=se==='regular';
+ const regularPrice=regularOpen&&live!==null?live:N(s&&s.price);
+ const regularPct=regularOpen?(usLiveChange(s)??N(s&&s.changePct)):N(s&&s.changePct);
+ const regularAbs=compactRegularMove(regularPrice,regularPct,N(s&&s.previousClose));
+ let regularAt=regularOpen?(quoteTimestampMs(s,false)||N(s&&s.usLiveReceivedAt)):null;
+ if(regularAt===null)regularAt=parseMarketTimestamp(s&&s.priceTime||s&&s.updatedAt,'America/New_York')||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'America/New_York');
+ let session=null,sessionLabel='',sessionPrice=null,sessionPct=null,sessionAbs=null,sessionAt=null;
+ if(se==='premarket'||se==='postmarket'){
+  session=se;
+  sessionLabel=se==='premarket'?'Preapertura':'Posmercado';
+  const explicit=N(s&&s[se+'Price']);
+  sessionPrice=live!==null?live:explicit;
+  if(sessionPrice!==null&&regularPrice!==null&&regularPrice>0){
+   sessionAbs=sessionPrice-regularPrice;
+   sessionPct=(sessionPrice/regularPrice-1)*100;
+  }else{
+   sessionPct=N(s&&s[se+'ChangePct']);
+   sessionAbs=compactRegularMove(sessionPrice,sessionPct,regularPrice);
+  }
+  sessionAt=live!==null?(quoteTimestampMs(s,false)||N(s&&s.usLiveReceivedAt)):sessionQuoteTimestamp(s&&s[se+'Time']);
+ }
+ return{
+  symbol:'\u0024',regularPrice,regularPct,regularAbs,
+  status:regularOpen?'Mercado abierto':'Mercado cerrado',statusAt:regularAt,
+  session,sessionLabel,sessionPrice,sessionPct,sessionAbs,sessionAt
+ };
+}
+function compactInvestingQuoteHtml(s,preferTr=false){
+ const q=compactInvestingQuoteData(s,preferTr);
+ const dec=quotePrecision(s,preferTr,q.regularPrice),tone=C(q.regularPct);
+ const main='<div class="asset-investing-main"><strong>'+quoteMoney(q.regularPrice,q.symbol,dec)+'</strong><span class="'+tone+'">'+compactSignedMoney(q.regularAbs,q.symbol,dec)+' <b>('+PC(q.regularPct)+')</b></span></div>';
+ const status='<div class="asset-investing-status"><span class="asset-market-clock" aria-hidden="true">◷</span><span>'+E(q.status)+(q.statusAt?' · '+E(compactQuoteDate(q.statusAt)):'')+'</span></div>';
+ let extended='';
+ if(q.session&&q.sessionPrice!==null){
+  const extTone=C(q.sessionPct),extDec=quotePrecision(s,false,q.sessionPrice),icon=q.session==='premarket'?'☀︎':'☾︎';
+  extended='<div class="asset-investing-extended '+extTone+'"><span class="asset-session-name"><i aria-hidden="true">'+icon+'</i>'+E(q.sessionLabel)+'</span><strong>'+quoteMoney(q.sessionPrice,'\u0024',extDec)+'</strong><span>'+compactSignedMoney(q.sessionAbs,'\u0024',extDec)+' <b>('+PC(q.sessionPct)+')</b></span>'+(q.sessionAt?'<time>'+E(compactQuoteTime(q.sessionAt))+'</time>':'')+'</div>';
+ }
+ return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'">'+main+status+extended+'</div>';
+}
+function compactInvestingQuoteCell(s,preferTr=false){
+ return{label:'Cotización',value:'',tone:'',html:compactInvestingQuoteHtml(s,preferTr)};
+}
+
 function regularQuoteCell(s,se=currentMarketSession(),preferTr=false){
  if(preferTr&&trTradable(s)){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
@@ -167,7 +244,9 @@ function effectiveSessionChange(s,se=currentMarketSession()){
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||currentMarketSession(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
- let cells=[regularQuoteCell(s,se,preferTr),regularChangeCell(s,se,preferTr)];
+ let cells=opts.cells||[];
+ const extras=cells.filter(cell=>!/^(precio|precio actual|precio lsx|regular|premarket|postmarket|variación|cotización)$/i.test(String(cell&&cell.label||'')));
+ cells=[compactInvestingQuoteCell(s,preferTr),...extras];
  let details=opts.detailsHtml;
  // Compact lists stay compact: tapping the row opens the shared full stock profile.
  // A caller may still opt into details explicitly for a specialized non-navigation use.
