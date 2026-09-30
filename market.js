@@ -621,7 +621,7 @@ function refreshTrLiveDom(){
 }
 function initTrLive(){
  connectTrLive();
- setInterval(()=>{if(!document.hidden)refreshTrLiveDom()},1000);
+ setInterval(()=>{if(!document.hidden)refreshTrLiveDom()},1800);
  setInterval(pruneTrLiveSubscriptions,15000);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){connectTrLive();requestAnimationFrame(()=>observeActiveTrLivePrices());pruneTrLiveSubscriptions()}});
 }
@@ -744,16 +744,20 @@ function refreshUsLiveDom(){
   $('#entryUpdated').textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
  }
 }
-let liveViewRefreshTimer=null;
+let liveViewRefreshTimer=null,liveViewLastRecommendationAt=0;
 function scheduleLiveViewRefresh(delay=180){
  if(liveViewRefreshTimer||document.hidden||document.body.classList.contains('stock-detail-open'))return;
  if(!['home','heatmap','recommendation'].includes(state.currentView))return;
+ if(state.currentView==='recommendation'&&Date.now()-liveViewLastRecommendationAt<8000)return;
  liveViewRefreshTimer=setTimeout(()=>{
   liveViewRefreshTimer=null;
   if(state.currentView==='home')renderHome();
   else if(state.currentView==='heatmap')renderHeatmap();
-  else if(state.currentView==='recommendation')renderRecommendation();
- },Math.max(100,delay));
+  else if(state.currentView==='recommendation'){
+   liveViewLastRecommendationAt=Date.now();
+   renderRecommendation();
+  }
+ },Math.max(state.currentView==='recommendation'?900:100,delay));
 }
 async function pollUsLive(){
  if(usLive.busy||document.hidden)return;
@@ -824,9 +828,9 @@ function scheduleEntryAutoSort(delay=650){
  },Math.max(250,delay));
 }
 function initUsLive(){
- setInterval(refreshUsLiveDom,1000);
- setInterval(()=>refreshQuoteFreshnessDom(document),1000);
- setInterval(pollUsLive,3000);
+ setInterval(refreshUsLiveDom,1800);
+ setInterval(()=>refreshQuoteFreshnessDom(document),3000);
+ setInterval(pollUsLive,5000);
  setTimeout(pollUsLive,700);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();scheduleEntryAutoSort(0)}});
 }
