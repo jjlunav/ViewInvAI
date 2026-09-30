@@ -1915,6 +1915,10 @@ async function savePositionForm(form) {
 
 function bind() {
   document.addEventListener("click", async event => {
+    const registerGoalOperation=event.target.closest?.("[data-register-goal-operation]");
+    if(registerGoalOperation){
+      event.preventDefault();event.stopPropagation();openGoalOperationModal(registerGoalOperation);return;
+    }
     const goalToggle=event.target.closest?.("[data-portfolio-goal-toggle]");
     if(goalToggle){
       const portfolioId=goalToggle.dataset.portfolioGoalToggle;
@@ -2184,7 +2188,7 @@ function bind() {
 
   document.addEventListener("submit", async event => {
     if(event.target.id==="portfolioGoalForm"){
-      event.preventDefault();const form=event.target,fd=new FormData(form),target=num(fd.get("targetValueEur")),portfolioId=form.dataset.portfolioId||state.selectedPortfolioId,status=form.querySelector("[data-goal-form-status]"),riskProfile=String(fd.get("riskProfile")||"balanced");
+      event.preventDefault();const form=event.target,fd=new FormData(form),target=num(fd.get("targetValueEur")),portfolioId=form.dataset.portfolioId||state.selectedPortfolioId,status=form.querySelector("[data-goal-form-status]"),riskProfile=String(fd.get("riskProfile")||"aggressive");
       const setGoalStatus=(message,error=false)=>{if(status){status.textContent=message||"";status.classList.toggle("error",!!error)}};
       if(target===null||target<=0){setGoalStatus("Indica una cantidad mayor que 0 €.",true);toast("Indica un objetivo de rentabilidad mayor que 0 €.",true);return}
       const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;setGoalStatus("Guardando…");
@@ -2244,6 +2248,12 @@ function bind() {
     if (event.target.id === "transactionForm") {
       event.preventDefault();
       await saveTransactionForm(event.target);
+      return;
+    }
+    if(event.target.id==="goalOperationForm"){
+      event.preventDefault();
+      await saveGoalOperationForm(event.target);
+      return;
     }
   });
 
