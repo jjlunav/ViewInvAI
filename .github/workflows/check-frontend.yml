@@ -700,6 +700,15 @@ jobs:
                   return fail('native runtime did not initialize');
                 }
                 await window.checkAssetCards();
+                const nav=document.querySelector('#mobileBottomNav');
+                const navItems=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
+                const navOrder=navItems.map(item=>item.dataset.mobileView||'more').join('|');
+                if(navItems.length!==5||navOrder!=='home|portfolios|recommendation|favorites|more')return fail('native bottom nav order invalid: '+navOrder);
+                const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
+                if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside native bottom bar');
+                const centers=navItems.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2});
+                const gaps=centers.slice(1).map((value,index)=>value-centers[index]);
+                if(Math.max(...gaps)-Math.min(...gaps)>3)return fail('native bottom nav is not evenly centered');
                 const more=document.querySelector('[data-mobile-more]');
                 more?.click();
                 const fundsItem=document.querySelector('.mobile-more-item[data-mobile-view="funds"]');
