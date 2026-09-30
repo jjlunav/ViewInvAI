@@ -188,7 +188,18 @@ async function hydrateProfileSupportResistance(root,s,isTr=false){
  try{
   let levels=await loadProfileSupportResistance(s,isTr);
   if(!root.isConnected)return;
-  let symbol=isTr?'€':'
+  let symbol=isTr?'€':'$';
+  nodes.forEach(el=>{
+   let value=el.dataset.profileLevel==='support'?levels.support:levels.resistance;
+   el.textContent=quoteMoney(value,symbol,quotePrecision(s,isTr,value));
+   el.classList.add('ready');
+   el.title='Calculado con swings recientes y niveles de Fibonacci sobre '+levels.points+' puntos de gráfico.';
+  });
+ }catch(_){
+  nodes.forEach(el=>{el.textContent='N/D';el.title='No hay histórico suficiente para calcular un nivel fiable.'});
+ }
+}
+function profileFixedMarketSection(label,body,meta='',className=''){
  return '<section class="profile-section profile-stats-section profile-fixed-market '+E(className)+'">'+
   '<div class="profile-section-head"><h3>'+E(label)+'</h3>'+(meta?'<span>'+E(meta)+'</span>':'')+'</div>'+
   '<div class="profile-fixed-market-body">'+body+'</div></section>';
