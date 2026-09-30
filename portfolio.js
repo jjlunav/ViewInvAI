@@ -765,14 +765,14 @@ function portfolioCoachCandidates(metrics,positionRows){
       const key=portfolioStockKey(stock);if(!key||excluded.has(key))continue;
       if(preferTr&&typeof window.ViewInvAI?.ensureTrLiveKey==="function")window.ViewInvAI.ensureTrLiveKey(key);
       const old=merged.get(key)||{stock,preferTr,pulseScore:null,radarScore:null,quality:0,sources:[]};
-      if(source==="Pulso IA")old.pulseScore=num(row.score);else old.radarScore=num(row.score);
+      if(source==="Radar AI · alta convicción")old.pulseScore=num(row.score);else old.radarScore=num(row.score);
       old.quality=Math.max(old.quality||0,num(row.quality)||0);
       if(!old.sources.includes(source))old.sources.push(source);
       merged.set(key,old);
     }
   };
-  try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Pulso IA")}catch(_){}
-  try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Radar")}catch(_){}
+  try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Radar AI · alta convicción")}catch(_){}
+  try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Radar AI · oportunidades")}catch(_){}
   const band=metrics.riskBand||portfolioGoalRiskBand("aggressive");
   const ranked=[...merged.values()].map(row=>{
     const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);
@@ -956,7 +956,7 @@ function portfolioGoalViewHtml(){
   let decisionHtml='';
   if(metrics.marketScope==="auto")decisionHtml='<div class="portfolio-goal-no-action">Configura el mercado de esta cartera antes de pedir una rotación.</div>';
   else if(num(metrics.remaining)!==null&&metrics.remaining<=0)decisionHtml='<div class="portfolio-goal-no-action">Objetivo alcanzado. El modelo no fuerza nuevas operaciones.</div>';
-  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera simultáneamente los filtros estrictos de Pulso IA, Radar, velocidad, catalizadores y calidad de datos.</div>';
+  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera simultáneamente los filtros estrictos de Radar AI, velocidad, catalizadores y calidad de datos.</div>';
   else{
     const sells=rotationRows.map(goalTradeInstructionHtml).join('');
     const cashSource=(num(metrics.cashEur)||0)>0?'<div class="portfolio-goal-trade cash"><em>EFECTIVO</em><div><strong>Capital ya disponible</strong><small>Se suma al capital neto liberado por las ventas.</small></div><b>'+formatMoney(metrics.cashEur,"EUR")+'</b></div>':'';
