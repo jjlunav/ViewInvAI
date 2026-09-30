@@ -49,6 +49,49 @@ function profileAiPanel(s,mode='us'){
   '</div>'+
  '</aside>';
 }
+function profileCompanySummary(s){
+ const explicit=String(s.businessSummary||s.companySummary||s.longBusinessSummary||"").trim();
+ if(explicit)return explicit;
+ const name=String(s.secName||s.name||s.ticker||"La compañía").trim(),exchange=String(s.exchange||"").trim();
+ const sector=String(s.sector||"").trim(),industry=String(s.industry||"").trim();
+ const classification=industry&&sector?industry+" · "+sector:industry||sector;
+ if(classification)return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". Según la clasificación sectorial disponible, su actividad se encuadra en "+classification+".";
+ return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". No hay una descripción corporativa ampliada verificada en la fuente actual.";
+}
+function profileCompanyIdentityHtml(s,isTr){
+ const isin=String((isTr?s.trIsin:null)||s.usIsin||s.isin||s.trIsin||"").trim()||"—";
+ const ticker=String((isTr&&s.trTicker)||s.ticker||"").trim()||"—";
+ const exchange=String(isTr?(s.trExchange||"LSX"):(s.exchange||"EEUU")).trim()||"—";
+ const rows=[
+  profileIdentity("Empresa",s.secName||s.name||"—"),
+  profileIdentity("Ticker",ticker,exchange),
+  profileIdentity("ISIN",isin),
+  profileIdentity("WKN",s.trWkn||"—"),
+  profileIdentity("Tipo",s.instrumentType||"Acción"),
+  profileIdentity("Divisa",isTr?"EUR":(s.currency||"USD")),
+  profileIdentity("Sector",s.sector||"—"),
+  profileIdentity("Industria",s.industry||"—"),
+  profileIdentity("CIK SEC",s.secCik||"—")
+ ].join("");
+ return '<section class="profile-section profile-company-overview" id="profile-company">'+
+  '<div class="profile-section-head"><h3>Empresa</h3><span>Identificación y actividad</span></div>'+
+  '<p class="profile-company-summary">'+E(profileCompanySummary(s))+'</p>'+
+  '<div class="profile-company-grid">'+rows+'</div>'+
+ '</section>';
+}
+function profileGeneralBusinessStats(s){
+ const cur=E(s.fundamentalCurrency||s.currency||"USD");
+ return [
+  profileKpi("Capitalización",N(s.marketCap)===null?"—":compactVol(s.marketCap),cur),
+  profileKpi("Valor empresa",N(s.enterpriseValue)===null?"—":compactVol(s.enterpriseValue),cur),
+  profileKpi("Acciones en circulación",N(s.sharesOutstanding)===null?"—":compactVol(s.sharesOutstanding),""),
+  profileKpi("Ingresos TTM",N(s.revenueTtm)===null?"—":compactVol(s.revenueTtm),cur),
+  profileKpi("Resultado neto TTM",N(s.netIncomeTtm)===null?"—":compactVol(s.netIncomeTtm),cur),
+  profileKpi("PER",N(s.peRatio)===null?"—":F(s.peRatio,2)+"×",""),
+  profileKpi("P/B",N(s.priceBook)===null?"—":F(s.priceBook,2)+"×",""),
+  profileKpi("Beta 1 año",N(s.beta1Y)===null?"—":F(s.beta1Y,2),"")
+ ].join("");
+}
 function profileGeneralPrimaryStats(s,isTr,se){
  let range=N(s.dayLow)!==null&&N(s.dayHigh)!==null?PR(s.dayLow)+' - '+PR(s.dayHigh):'—';
  const ref=isTr?' · referencia del subyacente':'';
@@ -166,6 +209,12 @@ function profilePortfolioActionHtml(s,isTr=false){
  let label=inPortfolio?'★ Gestionar cartera':'＋ Añadir a cartera';
  return '<button type="button" class="btn small profile-add-portfolio'+(inPortfolio?' is-managed':'')+'" data-add-portfolio-stock="'+E(key)+'" data-add-portfolio-prefer-tr="'+(isTr?'1':'0')+'">'+label+'</button>';
 }
+function profilePositionEditActionHtml(s){
+ const key=stockKey(s),api=window.ViewInvAIPortfolios;
+ const memberships=api&&typeof api.getPortfolioMemberships==='function'?api.getPortfolioMemberships(key):[];
+ if(!memberships||!memberships.length)return'';
+ return '<button type="button" class="btn small profile-edit-position" data-profile-edit-position="'+E(key)+'">✎ Posición</button>';
+}
 function refreshProfilePortfolioActions(s){
  if(!s)return;
  let key=stockKey(s);
@@ -209,7 +258,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'Sesión extendida vs regular · regular detrás')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
-    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
+    (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
 }
@@ -259,9 +308,11 @@ function quickProfileHtml(s,opts={}){
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
    '<section class="profile-tab-panel active" data-profile-panel="general">'+
-   '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
+   profileCompanyIdentityHtml(s,isTr)+
+   '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen de mercado</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
    (isTr?'':profileFixedMarketSection('Sesiones de mercado',profileSessionStrip(s),'Premarket · Regular · Postmarket · solo EEUU','profile-market-sessions'))+
    profileFixedMarketSection('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización','profile-market-extra')+
+   profileFixedMarketSection('Datos de empresa','<div class="profile-stat-list">'+profileGeneralBusinessStats(s)+'</div>','Magnitudes fundamentales disponibles','profile-business-extra')+
    '</section>'+
    profileVisualAnalysisHtml(s,isTr)+
    '<section class="profile-tab-panel" data-profile-panel="fundamental" hidden><section class="profile-section profile-stats-section" id="profile-fundamental"><div class="profile-section-head"><h3>Fundamental</h3><span>Valoración y negocio</span></div><div class="profile-stat-list">'+profileFundamentalStats(s)+'</div></section></section>'+
