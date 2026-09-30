@@ -2663,34 +2663,26 @@ html[data-native-app="1"] .profile-quote-extended>strong{font-size:9px!important
 html[data-native-app="1"] .profile-quote-extended>b{font-size:8px!important}
 
 
-/* Central Pulso IA action in native Android shell */
-html[data-native-app="1"] .mobile-bottom-nav{overflow:visible!important}
+/* Radar AI keeps its blue identity while remaining centered inside the native bar. */
+html[data-native-app="1"] .mobile-bottom-nav{overflow:hidden!important}
 html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]{
  position:relative!important;
- transform:translateY(-10px)!important;
- min-height:62px!important;
- border-radius:18px!important;
- background:linear-gradient(180deg,rgba(96,128,255,.24),rgba(93,88,224,.10))!important;
+ transform:none!important;
+ min-height:0!important;
+ border-radius:10px!important;
+ background:linear-gradient(180deg,rgba(96,128,255,.18),rgba(93,88,224,.08))!important;
  color:#c9d4ff!important;
- border:1px solid rgba(129,153,255,.34)!important;
- box-shadow:0 8px 24px rgba(57,71,171,.28)!important;
- overflow:visible!important;
+ border:1px solid rgba(129,153,255,.28)!important;
+ box-shadow:none!important;
+ overflow:hidden!important;
 }
-html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]::before{
- content:"";
- position:absolute;
- inset:-7px;
- z-index:-1;
- border-radius:22px;
- background:conic-gradient(from 0deg,transparent 0 8%,rgba(151,174,255,.32) 9% 11%,transparent 12% 22%,rgba(151,174,255,.24) 23% 25%,transparent 26% 100%);
- opacity:.9;
-}
-html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]>span{font-size:25px!important}
-html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]>small{font-size:9px!important;font-weight:850!important}
+html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]::before{content:none!important}
+html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]>span{font-size:20px!important}
+html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"]>small{font-size:8px!important;font-weight:850!important}
 html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"].active{
  color:#eef1ff!important;
- background:linear-gradient(180deg,rgba(111,137,255,.42),rgba(89,83,224,.20))!important;
- border-color:rgba(165,183,255,.62)!important;
+ background:linear-gradient(180deg,rgba(111,137,255,.38),rgba(89,83,224,.18))!important;
+ border-color:rgba(165,183,255,.58)!important;
 }
 
 /* 2026-09-30 · stable portfolio controls */
