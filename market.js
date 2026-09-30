@@ -11,7 +11,9 @@ function trProxyUrl(){
  if(window.ViewInvAIRuntime&&typeof window.ViewInvAIRuntime.websocketUrl==='function'){
   return window.ViewInvAIRuntime.websocketUrl('/api/tr-live');
  }
- return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/tr-live';
+ // Web frontend does not load native-runtime.js, so never fall back to the
+ // static frontend host for WS upgrades. The TR feed terminates at the Worker.
+ return 'wss://viewinvai.sonarlab.workers.dev/api/tr-live';
 }
 
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
