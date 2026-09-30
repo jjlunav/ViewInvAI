@@ -508,8 +508,19 @@ async function ensureTransactionsSchema(env) {
   transactionsSchemaReady = true;
 }
 
+async function normalizeLegacyTrSeedFees(env,userId,portfolioId,stockKey){
+  try{
+    await env.DB.prepare(
+      "UPDATE transactions SET fees=1,updated_at=? WHERE user_id=? AND portfolio_id=? AND stock_key=? AND origin='position-seed' AND prefer_tr=1 AND fees=0"
+    ).bind(nowIso(),userId,portfolioId,stockKey).run();
+  }catch(error){
+    console.warn("Legacy TR seed fee normalization failed",String(error&&error.message||error));
+  }
+}
+
 async function transactionRows(env, userId, portfolioId, stockKey) {
   await ensureTransactionsSchema(env);
+  await normalizeLegacyTrSeedFees(env,userId,portfolioId,stockKey);
   const rows = await env.DB.prepare(
     "SELECT * FROM transactions WHERE user_id=? AND portfolio_id=? AND stock_key=? ORDER BY executed_at ASC,created_at ASC,id ASC"
   ).bind(userId, portfolioId, stockKey).all();
@@ -660,11 +671,11 @@ async function ensureOpeningTransaction(env, userId, position) {
   const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
   await env.DB.prepare(
     "INSERT INTO transactions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?,?,'BUY',?,?,0,?,?,?,'position-seed',?,?)"
+    "VALUES (?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'position-seed',?,?)"
   ).bind(
     uid("tx_"), position.portfolio_id, userId, position.stock_key, position.ticker, position.name || "",
     position.exchange || "", position.isin || "", booleanInt(position.prefer_tr),
-    finiteNumber(position.quantity), finiteNumber(position.avg_price), String(position.currency || "EUR").toUpperCase(),
+    finiteNumber(position.quantity), finiteNumber(position.avg_price), booleanInt(position.prefer_tr)===1?1:0, String(position.currency || "EUR").toUpperCase(),
     executedAt, "Posición inicial importada", now, now
   ).run();
 }
