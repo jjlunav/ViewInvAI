@@ -134,7 +134,9 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
             ticker: String(target.ticker || ""),
             preferTr: Number(target.prefer_tr) === 1 ? "1" : "0",
             alertType: String(alert.alert_type || ""),
-            severity: String(alert.severity || "")
+            severity: String(alert.severity || ""),
+            route: String(target.route || ""),
+            portfolioId: String(target.portfolio_id || target.portfolioId || "")
           },
           android: {
             priority: alert.severity === "critical" || alert.severity === "high" ? "high" : "normal",
@@ -164,7 +166,12 @@ async function dispatchPushAlert(env, alert, target) {
   if (!env.DB) return { configured: false, sent: 0 };
   const globalNotifications = await globalNotificationSettingsForUser(env, target.user_id);
   if (!globalNotifications.enabled) return { configured: true, sent: 0, disabled: true };
-  const auth = await fcmAccessToken(env);
+  let auth=null;
+  try{auth=await fcmAccessToken(env)}
+  catch(error){
+    console.warn("FCM authentication failed",String(error&&error.message||error));
+    return {configured:true,sent:0,error:"fcm-auth-failed"};
+  }
   if (!auth) return { configured: false, sent: 0 };
 
   const rows = await env.DB.prepare(
@@ -726,7 +733,8 @@ async function handleMe(request, env, user, json) {
     notify_pulse_ai: notifications.pulseAi ? 1 : 0,
     notify_radar: notifications.radar ? 1 : 0,
     notify_price: notifications.price ? 1 : 0,
-    notify_portfolio: notifications.portfolio ? 1 : 0
+    notify_portfolio: notifications.portfolio ? 1 : 0,
+    notify_portfolio_goal: notifications.portfolioGoal ? 1 : 0
   });
   return json({ user, settings }, 200, { "Cache-Control": "no-store" });
 }
@@ -1702,12 +1710,12 @@ async function ensureGlobalNotificationSettingsSchema(env){
   if(globalNotificationSettingsSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_notification_settings ("+
-    "user_id TEXT PRIMARY KEY,opted_in_explicitly INTEGER NOT NULL DEFAULT 0,notifications_enabled INTEGER NOT NULL DEFAULT 0,news_events_enabled INTEGER NOT NULL DEFAULT 0,pulse_ai_enabled INTEGER NOT NULL DEFAULT 0,radar_enabled INTEGER NOT NULL DEFAULT 0,price_enabled INTEGER NOT NULL DEFAULT 0,portfolio_enabled INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "user_id TEXT PRIMARY KEY,opted_in_explicitly INTEGER NOT NULL DEFAULT 0,notifications_enabled INTEGER NOT NULL DEFAULT 0,news_events_enabled INTEGER NOT NULL DEFAULT 0,pulse_ai_enabled INTEGER NOT NULL DEFAULT 0,radar_enabled INTEGER NOT NULL DEFAULT 0,price_enabled INTEGER NOT NULL DEFAULT 0,portfolio_enabled INTEGER NOT NULL DEFAULT 0,portfolio_goal_enabled INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
     "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
   const columns=await env.DB.prepare("PRAGMA table_info(user_notification_settings)").all();
   const names=new Set((columns.results||[]).map(row=>String(row.name||"")));
-  for(const column of ["opted_in_explicitly","notifications_enabled","radar_enabled","price_enabled","portfolio_enabled"]){
+  for(const column of ["opted_in_explicitly","notifications_enabled","radar_enabled","price_enabled","portfolio_enabled","portfolio_goal_enabled"]){
     if(names.has(column))continue;
     try{
       await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 0").run();
@@ -1721,7 +1729,7 @@ async function ensureGlobalNotificationSettingsSchema(env){
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
   return {
@@ -1730,7 +1738,8 @@ async function globalNotificationSettingsForUser(env,userId){
     pulseAi: optedIn&&Number(row.pulse_ai_enabled)===1,
     radar: optedIn&&Number(row.radar_enabled)===1,
     price: optedIn&&Number(row.price_enabled)===1,
-    portfolio: optedIn&&Number(row.portfolio_enabled)===1
+    portfolio: optedIn&&Number(row.portfolio_enabled)===1,
+    portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1
   };
 }
 
@@ -2000,7 +2009,7 @@ async function ensurePortfolioGoalSchema(env){
   await ensurePortfolioMarketSchema(env);
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS portfolio_goals ("+
-    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,target_value_eur REAL NOT NULL,target_date TEXT,monthly_contribution_eur REAL NOT NULL DEFAULT 0,risk_profile TEXT NOT NULL DEFAULT 'balanced',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "portfolio_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,target_value_eur REAL NOT NULL,target_date TEXT,monthly_contribution_eur REAL NOT NULL DEFAULT 0,risk_profile TEXT NOT NULL DEFAULT 'aggressive',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
     "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
   const goalColumns=await env.DB.prepare("PRAGMA table_info(portfolio_goals)").all();
@@ -2008,7 +2017,7 @@ async function ensurePortfolioGoalSchema(env){
   for(const [name,sql] of [
     ["target_date","ALTER TABLE portfolio_goals ADD COLUMN target_date TEXT"],
     ["monthly_contribution_eur","ALTER TABLE portfolio_goals ADD COLUMN monthly_contribution_eur REAL NOT NULL DEFAULT 0"],
-    ["risk_profile","ALTER TABLE portfolio_goals ADD COLUMN risk_profile TEXT NOT NULL DEFAULT 'balanced'"]
+    ["risk_profile","ALTER TABLE portfolio_goals ADD COLUMN risk_profile TEXT NOT NULL DEFAULT 'aggressive'"]
   ]){
     if(!goalColumnNames.has(name))await env.DB.prepare(sql).run();
   }
@@ -2059,8 +2068,8 @@ async function handlePortfolioGoal(request,env,user,json,url){
     }
     const contributionRaw=body.monthlyContributionEur!==undefined?finiteNumber(body.monthlyContributionEur):finiteNumber(existing&&existing.monthly_contribution_eur);
     const monthlyContribution=Math.max(0,Math.min(1000000,Math.round((contributionRaw||0)*100)/100));
-    const requestedRisk=String(body.riskProfile!==undefined?body.riskProfile:(existing&&existing.risk_profile||"balanced")).trim().toLowerCase();
-    const riskProfile=["conservative","balanced","aggressive"].includes(requestedRisk)?requestedRisk:"balanced";
+    const requestedRisk=String(body.riskProfile!==undefined?body.riskProfile:(existing&&existing.risk_profile||"aggressive")).trim().toLowerCase();
+    const riskProfile=["conservative","balanced","aggressive"].includes(requestedRisk)?requestedRisk:"aggressive";
     await env.DB.prepare(
       "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) "+
       "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,target_date=excluded.target_date,monthly_contribution_eur=excluded.monthly_contribution_eur,risk_profile=excluded.risk_profile,updated_at=excluded.updated_at"
@@ -2097,7 +2106,8 @@ async function handleSettings(request, env, user, json) {
     notify_pulse_ai:notifications.pulseAi?1:0,
     notify_radar:notifications.radar?1:0,
     notify_price:notifications.price?1:0,
-    notify_portfolio:notifications.portfolio?1:0
+    notify_portfolio:notifications.portfolio?1:0,
+    notify_portfolio_goal:notifications.portfolioGoal?1:0
   });
 
   if (request.method === "GET") return json({ settings: current });
@@ -2115,7 +2125,8 @@ async function handleSettings(request, env, user, json) {
     pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1,
     radar: body.notifyRadar === undefined ? Number(current.notify_radar)!==0 : booleanInt(body.notifyRadar)===1,
     price: body.notifyPrice === undefined ? Number(current.notify_price)!==0 : booleanInt(body.notifyPrice)===1,
-    portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1
+    portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1,
+    portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1
   };
   const now = nowIso();
   await env.DB.batch([
@@ -2124,9 +2135,9 @@ async function handleSettings(request, env, user, json) {
       "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
     ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
     env.DB.prepare(
-      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) " +
-      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,radar_enabled=excluded.radar_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,next.radar?1:0,next.price?1:0,next.portfolio?1:0,now,now)
+      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,radar_enabled=excluded.radar_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,next.radar?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -2137,7 +2148,8 @@ async function handleSettings(request, env, user, json) {
     notify_pulse_ai:next.pulseAi?1:0,
     notify_radar:next.radar?1:0,
     notify_price:next.price?1:0,
-    notify_portfolio:next.portfolio?1:0
+    notify_portfolio:next.portfolio?1:0,
+    notify_portfolio_goal:next.portfolioGoal?1:0
   })});
 }
 
@@ -2359,7 +2371,8 @@ async function handleDevices(request, env, user, json, parts) {
     await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
       .bind(alertId,user.id,"","","","push-test","info",title,message,now).run();
     const result=await dispatchPushAlert(env,{id:alertId,alert_type:"push-test",severity:"info",title,message},{user_id:user.id,stock_key:"",ticker:"",prefer_tr:0});
-    if(!result.configured)return json({error:"El servidor push no está configurado.",code:"push-backend-not-configured",result},503);
+    if(!result.configured)return json({error:"El servidor push no está configurado: falta FCM_SERVICE_ACCOUNT_JSON.",code:"push-backend-not-configured",result},503);
+    if(result.error==="fcm-auth-failed")return json({error:"Firebase rechazó la autenticación del servidor push. Revisa FCM_SERVICE_ACCOUNT_JSON.",code:"push-auth-failed",result},502);
     if(result.sent<1)return json({error:"No se pudo entregar la notificación a ningún dispositivo activo.",code:"push-not-delivered",result},502);
     return json({ok:true,sent:result.sent,devices:(devices.results||[]).length,alertId});
   }
@@ -2367,7 +2380,7 @@ async function handleDevices(request, env, user, json, parts) {
     const rows = await env.DB.prepare(
       "SELECT id,platform,app_version,enabled,last_seen_at,created_at,updated_at FROM devices WHERE user_id=? ORDER BY last_seen_at DESC"
     ).bind(user.id).all();
-    return json({ devices: rows.results || [] });
+    return json({ devices: rows.results || [], pushConfigured: !!fcmServiceAccount(env) });
   }
 
   if (request.method === "POST" && !id) {
