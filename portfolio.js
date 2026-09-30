@@ -2031,11 +2031,13 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   const incompatible=(preferTr&&!(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker)))||listingConflict||brokerListingConflict;
   const feePreview=brokerFeeInCurrency(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY',exchange);
   if(save){
-    save.disabled=incompatible||(!isEdit&&feePreview.fee===null);
-    save.textContent=isEdit?'Guardar cambios':existing?'Añadir compra':'Añadir posición';
+    save.disabled=!portfolio||incompatible||(!isEdit&&feePreview.fee===null);
+    save.textContent=isEdit?'Guardar cambios':existing?'Añadir compra':'Registrar operación';
   }
-  if(mode)mode.textContent=listingConflict
-    ?'Esta cartera no admite el mercado desde el que has abierto la acción.'
+  if(mode)mode.textContent=!portfolio
+    ?'Selecciona una cartera compatible para registrar la operación.'
+    :listingConflict
+      ?'Esta cartera no admite el mercado desde el que has abierto la acción.'
     :brokerListingConflict
       ?'El broker seleccionado no corresponde al mercado desde el que has abierto la acción.'
     :incompatible
@@ -2138,19 +2140,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
     return p&&(editPosition||portfolioCompatible(p));
   })||'';
   const preferredPortfolio=state.portfolios.find(p=>String(p.id)===String(preferredPortfolioId))||null;
-  if(!editPosition&&explicitMarket&&!preferredPortfolio){
-    toast(explicitMarket==='us'
-      ?"No tienes una cartera compatible con EEUU. Te preparo una nueva cartera EEUU."
-      :"No tienes una cartera compatible con Trade Republic / LSX. Te preparo una nueva cartera LSX.",true);
-    openNewPortfolioModal({
-      marketScope:explicitMarket,
-      broker:explicitMarket==="us"?"IBKR":"Trade Republic",
-      baseCurrency:explicitMarket==="us"?"USD":"EUR",
-      pendingStockKey:stockKey,
-      pendingPreferTr:explicitMarket==="tr"
-    });
-    return;
-  }
+  const hasCompatiblePortfolio=!!preferredPortfolio;
   const scope=portfolioMarketScope(preferredPortfolio);
   const preferTr=editPosition?Number(editPosition.prefer_tr)===1:
     explicitMarket==='tr'?true:explicitMarket==='us'?false:
@@ -2160,7 +2150,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   }
   const defaultBroker=String(editPosition?.broker||brokerDefaultName(preferredPortfolio,preferTr)).trim();
   const current=currentMarket(stock,preferTr);
-  const options=state.portfolios.map(p=>{
+  const options=(hasCompatiblePortfolio?'':'<option value="" selected>Selecciona una cartera compatible</option>')+state.portfolios.map(p=>{
     const compatible=editPosition||portfolioCompatible(p);
     const scopeLabel=portfolioMarketLabel(portfolioMarketScope(p));
     return '<option value="'+esc(p.id)+'"'+(String(p.id)===String(preferredPortfolioId)?' selected':'')+(compatible?'':' disabled')+'>'+esc(p.name)+(scopeLabel?' · '+esc(scopeLabel):'')+'</option>';
@@ -2175,6 +2165,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       (!editPosition?'<div class="portfolio-form-grid"><label><span>Tipo</span><input value="Compra" readonly></label><label><span>Comisión</span><input data-first-operation-fee readonly></label></div>':'')+
       '<div class="portfolio-form-mode" data-position-form-mode></div>'+
       '<label><span>Cartera</span><select name="portfolioId" required'+(editPosition?' disabled':'')+'>'+options+'</select></label>'+
+      (!editPosition&&!hasCompatiblePortfolio?'<button type="button" class="btn ghost compact" data-create-compatible-portfolio data-market="'+esc(explicitMarket||'')+'">＋ Crear cartera compatible</button>':'')+
       '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select name="broker" data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
         (!brokerDisabled?'<button type="button" class="portfolio-broker-add" data-toggle-broker-create aria-label="Añadir broker" title="Añadir broker">＋</button>':'')+
       '</div></label>'+
@@ -2212,6 +2203,17 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       creator.hidden=!creator.hidden;if(!creator.hidden)creator.querySelector('input')?.focus();
     });
     form.querySelector('[data-create-broker]')?.addEventListener('click',()=>createBrokerFromPositionForm(form,stock));
+    form.querySelector('[data-create-compatible-portfolio]')?.addEventListener('click',()=>{
+      const market=String(form.querySelector('[data-create-compatible-portfolio]')?.dataset.market||explicitMarket||'');
+      closeModal();
+      openNewPortfolioModal({
+        marketScope:market||"auto",
+        broker:market==="us"?"IBKR":market==="tr"?"Trade Republic":"",
+        baseCurrency:market==="us"?"USD":"EUR",
+        pendingStockKey:stockKey,
+        pendingPreferTr:market==="tr"
+      });
+    });
     ['quantity','avgPrice'].forEach(name=>form.querySelector('[name="'+name+'"]')?.addEventListener('input',()=>updatePositionBrokerFeeHint(form,stock)));
     updatePositionBrokerFeeHint(form,stock);
     const feePreview=form.querySelector('[data-first-operation-fee]');
