@@ -333,7 +333,7 @@ function scheduleGoalPortfolioReview(portfolioId,positionId=null){
       }
       await loadAll();
       state.goalCandidateCache={at:0,key:"",rows:[]};
-      if(String(state.selectedPortfolioId||"")===id&&state.primaryTab==="goal")renderApp();
+      if(String(state.selectedPortfolioId||"")===id&&state.primaryTab==="goal")renderGoalApp();
     }catch(error){
       console.warn("Goal portfolio movement review failed",id,error);
     }
@@ -731,7 +731,7 @@ function portfolioCoachCandidates(metrics,positionRows){
 }
 function goalOperationButtonHtml({side,portfolioId,stockKey,units,price,fees,currency,preferTr}){
   if(!(num(units)>0)||num(price)===null)return"";
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar operación</button>';
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -829,7 +829,7 @@ function goalHistoryEntryHtml(entry,index){
 }
 async function openGoalHistory(portfolioId){
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));if(!portfolio)return;
-  openModal("Historial Objetivo IA · "+portfolio.name,'<div class="portfolio-loading compact"><span></span><p>Cargando recomendaciones…</p></div>');
+  openModal("Historial de estrategias · "+portfolio.name,'<div class="portfolio-loading compact"><span></span><p>Cargando recomendaciones…</p></div>');
   try{
     const data=await fetchJson("/api/portfolio-goal-history?portfolioId="+encodeURIComponent(portfolioId)),rows=data.history||[];
     const body=$("#portfolioModalBody");if(!body)return;
@@ -872,7 +872,7 @@ function portfolioGoalViewHtml(){
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
-      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar</button></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
+      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
       '<p class="portfolio-goal-note compact-note">El plan intenta reasignar en una sola jugada todo el capital ejecutable, descontando comisiones y respetando acciones enteras. Si el BID/ASK no justifica entrar al precio actual, propone una orden límite y no persigue el precio.</p>')+
     '</section>';
 }
@@ -887,7 +887,7 @@ async function savePortfolioGoal(targetValueEur,portfolioId=state.selectedPortfo
 }
 async function refreshGoalSummaries(){
   if(state.selectedPortfolioId)await refreshPortfolioTransactionSummary(state.selectedPortfolioId,false).catch(()=>null);
-  if(state.primaryTab==="goal")renderApp();
+  if(state.primaryTab==="goal")renderGoalApp();
 }
 async function refreshGoalAnalysis(force=false){
   const active=state.positions.filter(p=>Number(p.active)!==0&&String(p.portfolio_id)===String(state.selectedPortfolioId));
@@ -965,12 +965,17 @@ function renderGoalApp() {
   if(mappedGoal)state.goal=mappedGoal;
   else if(!state.goal||state.goal.portfolio_id)state.goal=null;
   savePortfolioUi();
-  box.innerHTML='<div class="portfolio-workbar goal-mode"><div class="portfolio-tabs-wrap"><div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+state.portfolios.map(renderPortfolioCard).join('')+'</div><button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button><div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div></div><div class="portfolio-workbar-actions">'+
-    '<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de recomendaciones" title="Últimas 10 recomendaciones">≣</button>'+
-    '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar objetivo" title="Actualizar">↻</button></div></div>'+
-    portfolioGoalViewHtml();
+  const portfolioOptions=state.portfolios.map(item=>'<option value="'+esc(item.id)+'"'+(selected&&String(item.id)===String(selected.id)?' selected':'')+'>'+esc(item.name)+'</option>').join('');
+  const cashLabel=selected?formatMoney(Math.max(0,num(selected.cash_balance)||0),String(selected.base_currency||"EUR").toUpperCase()):"—";
+  box.innerHTML='<div class="portfolio-goal-controls">'+
+    '<label class="portfolio-goal-picker"><span>Cartera</span><select data-goal-portfolio-select'+(!state.portfolios.length?' disabled':'')+'>'+portfolioOptions+'</select></label>'+
+    '<div class="portfolio-goal-cash-status"><small>EFECTIVO DISPONIBLE</small><strong>'+esc(cashLabel)+'</strong></div>'+
+    '<div class="portfolio-goal-tools" role="toolbar" aria-label="Herramientas de estrategia">'+
+      '<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de estrategias" title="Historial de estrategias">≣</button>'+
+      '<button type="button" class="portfolio-icon-action" data-goal-refresh-plan'+(selected?'':' disabled')+' aria-label="Reanalizar estrategia" title="Reanalizar estrategia">↻</button>'+
+    '</div>'+
+  '</div>'+portfolioGoalViewHtml();
   requestAnimationFrame(()=>{
-    updatePortfolioTabOverflow();
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
     persistPendingGoalHistory();
   });
@@ -1454,7 +1459,7 @@ async function openTransactionsModal(positionId) {
           '</div>' +
           '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Opcional"></label>' +
           '<div class="portfolio-form-status" data-transaction-status aria-live="polite"></div>' +
-          '<button type="submit" class="btn">Registrar operación</button>' +
+          '<button type="submit" class="btn">Registrar estrategia</button>' +
         '</form>' +
         '<div class="transaction-history-head"><strong>Historial</strong><span>' + (data.transactions || []).length + ' operaciones</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(data.transactions || [], currency) + '</div>' +
@@ -1556,7 +1561,7 @@ function openGoalOperationModal(button){
       '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
       '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si el precio real difiere del límite recomendado. El efectivo se recalculará automáticamente; seguirá pudiendo editarse manualmente.</p>'+
       '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
-      '<button type="submit" class="btn">Registrar operación</button>'+
+      '<button type="submit" class="btn">Registrar estrategia</button>'+
     '</form>'
   );
 }
@@ -2101,6 +2106,20 @@ function bind() {
 
     if (event.target.closest?.("[data-portfolio-order-save]")) {
       savePortfolioOrder();
+      return;
+    }
+
+    const goalPortfolioSelect=event.target.closest?.("[data-goal-portfolio-select]");
+    if(goalPortfolioSelect){
+      const id=goalPortfolioSelect.value;
+      if(id&&state.portfolios.some(item=>String(item.id)===String(id))){
+        state.selectedPortfolioId=id;
+        state.goal=state.goals[String(id)]||null;
+        state.goalCandidateCache={at:0,key:"",rows:[]};
+        savePortfolioUi();
+        renderGoalApp();
+        refreshPortfolioTransactionSummary(id).catch(()=>{});
+      }
       return;
     }
 
