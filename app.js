@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Settings'};
+const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Fondos y ETFs',portfolioGoal:'10 Objetivo de la cartera',heatmap:'11 Mapa de calor',settings:'12 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -433,6 +433,7 @@ function renderCurrentView(){
  else if(state.currentView==='entry')renderEntry();
  else if(state.currentView==='recommendation')renderRecommendation();
  else if(state.currentView==='portfolios'){if(window.ViewInvAIPortfolios)window.ViewInvAIPortfolios.render()}
+ else if(state.currentView==='portfolioGoal'){if(window.ViewInvAIPortfolios)window.ViewInvAIPortfolios.renderGoal()}
  else if(state.currentView==='funds'){if(window.ViewInvAIFunds)window.ViewInvAIFunds.render()}
  else if(state.currentView==='heatmap')renderHeatmap();
  else if(state.currentView==='future')renderFuture();
