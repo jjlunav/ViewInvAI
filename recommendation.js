@@ -467,6 +467,25 @@ function recommendationCompactList(usResult,trResult){
  '</div>';
 }
 
+function recommendationLoadingSection(mode){
+ const isTr=mode==='tr';
+ const title=isTr?'Trade Republic':'EEUU';
+ const subtitle=isTr?'LSX · analizando mercado y ejecución':'NASDAQ / NYSE / AMEX · analizando mercado';
+ return '<section class="pulse-market-group pulse-market-'+mode+' pulse-market-loading">'+
+  '<header class="pulse-market-head"><div><strong>'+title+'</strong><span>'+subtitle+'</span></div></header>'+
+  '<div class="pulse-market-list unified-asset-list">'+
+   '<div class="pulse-loading-row"><div><strong>Analizando oportunidades…</strong><span>Validando precio, momentum, liquidez, técnico y catalizadores.</span></div><i aria-hidden="true"></i></div>'+
+  '</div>'+
+ '</section>';
+}
+function recommendationLoadingShell(){
+ return '<div class="pulse-list-shell pulse-list-loading">'+
+  recommendationMobileTabs()+
+  recommendationLoadingSection('tr')+
+  recommendationLoadingSection('us')+
+ '</div>';
+}
+
 function recommendationCard(mode,s,group=null,pulseResult=null){
  if(!s)return '<div class="empty-state pulse-empty"><strong>Sin entrada de alta convicción ahora mismo</strong><span>ViewInvAI no fuerza una compra si no se alinean gráfico, tendencia, volumen, RSI/ADX, liquidez, catalizadores y calidad de datos.</span></div>';
  let preferTr=mode==='tr',bucket=recommendationBucket(mode),a=recommendationAnalysis(s,mode),quality=stockDataQuality(s,mode,false),wasArmed=!!bucket.armed;
@@ -496,7 +515,7 @@ async function renderRecommendation(force=false){
   if(stamp)stamp.textContent='Último análisis '+new Date(recommendationRenderCache.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(snapshot&&recommendationRenderCache.snapshot===snapshot?' · datos actuales':' · actualizando…');
  }
  if(recommendationRenderPromise&&!force)return recommendationRenderPromise;
- if(!recommendationRenderCache.html)box.innerHTML='<div class="empty-state"><strong>Analizando oportunidades…</strong><span>Mostraremos el resultado en cuanto termine la primera validación; después se reutiliza en segundo plano.</span></div>';
+ if(!recommendationRenderCache.html)box.innerHTML=recommendationLoadingShell();
  recommendationRenderPromise=(async()=>{
   const analysis=Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
   let [usResult,trResult]=await Promise.race([
