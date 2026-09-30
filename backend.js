@@ -2779,9 +2779,12 @@ function goalServerCandidate(snapshot,stock,scope){
     return Number.isFinite(when)&&when>=Date.now()-3600000&&when<=Date.now()+14*86400000;
   }).sort((x,y)=>(finiteNumber(y&&y.impactScore)??0)-(finiteNumber(x&&x.impactScore)??0))[0]||null;
   const impact=finiteNumber(catalyst&&catalyst.impactScore)??0,rel=finiteNumber(stock.relVolume)??1,change=Math.abs(finiteNumber(stock.usLiveChangePct??stock.changePct??stock.trLiveChangePct)??0);
+  const bid=preferTr?null:finiteNumber(stock.usLiveBid??stock.usBid),ask=preferTr?null:finiteNumber(stock.usLiveAsk??stock.usAsk);
+  const mid=bid!==null&&ask!==null&&ask>=bid?(bid+ask)/2:null,spread=mid&&mid>0?(ask-bid)/mid*100:null;
+  const spreadPenalty=spread===null?(preferTr?0:4):Math.min(18,spread*2.2);
   const velocity=Math.min(100,a.score*.58+a.quality*.18+a.confidence*.14+Math.min(6,Math.max(0,rel-1)*4)+Math.min(5,change*.18)+Math.min(6,impact*.06));
-  const composite=Math.min(100,a.score*.46+a.quality*.20+a.confidence*.16+velocity*.18);
-  return{stock,score:a.score,quality:a.quality,confidence:a.confidence,velocity,composite,catalyst,preferTr};
+  const composite=Math.max(0,Math.min(100,a.score*.46+a.quality*.20+a.confidence*.16+velocity*.18-spreadPenalty));
+  return{stock,score:a.score,quality:a.quality,confidence:a.confidence,velocity,composite,catalyst,preferTr,spread};
 }
 function goalServerFinalists(rows){
   if(!rows.length)return[];
@@ -2856,7 +2859,7 @@ async function scanPortfolioGoalNotifications(env,services){
       if(pool>0){
         candidates=stocks.filter(stock=>goalServerAllowed(stock,scope)&&!sellKeys.has(goalServerKey(stock)))
           .map(stock=>goalServerCandidate(snapshot,stock,scope))
-          .filter(row=>row&&row.score>=78&&row.quality>=62&&row.confidence>=76&&row.velocity>=78&&row.composite>=80)
+          .filter(row=>row&&row.score>=78&&row.quality>=62&&row.confidence>=76&&row.velocity>=78&&row.composite>=80&&(row.spread===null||row.spread<=8))
           .sort((x,y)=>y.composite-x.composite||y.velocity-x.velocity||y.score-x.score)
           .slice(0,12);
       }
