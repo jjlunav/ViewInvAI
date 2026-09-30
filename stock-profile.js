@@ -237,12 +237,13 @@ function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
   return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx"><strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
  }
- const regularPrice=N(s.price),regularChange=N(s.changePct),ext=extendedSessionDisplay(s,se);
- const regularText=regularPrice===null?'—':quoteMoney(regularPrice,'\u0024',quotePrecision(s,false,regularPrice));
- const deltaText=ext.delta===null?'—':(ext.delta>0?'+':'')+quoteMoney(ext.delta,'\u0024',quotePrecision(s,false,regularPrice));
- return '<div class="profile-quote-stack profile-quote-stack-us">'+
-  (ext.price===null?'':'<div class="profile-quote-extended '+ext.tone+'"><span class="session-icon '+ext.iconClass+'" aria-hidden="true">'+ext.icon+'</span><strong>'+E(deltaText)+'</strong><b>'+PC(ext.change)+'</b></div>')+
-  '<div class="profile-quote-regular"><strong>'+E(regularText)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b></div></div>';
+ const q=currentUsQuote(s,se),price=N(q&&q.price),change=N(q&&q.change);
+ const text=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
+ const icon=q&&q.kind==='premarket'?'☀︎':q&&q.kind==='postmarket'?'☾︎':'';
+ const iconClass=q&&q.kind==='premarket'?'session-icon-sun':q&&q.kind==='postmarket'?'session-icon-moon':'';
+ return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current">'+
+  (icon?'<span class="session-icon '+iconClass+'" aria-hidden="true">'+icon+'</span>':'')+
+  '<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
 }
 
 function profileHeroHtml(s,isTr=false,opts={}){
@@ -257,7 +258,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2>'+E(title||'—')+'</h2><p>'+E(s.name||'')+'</p></div></div>'+
-    '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'Sesión extendida vs regular · regular detrás')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
