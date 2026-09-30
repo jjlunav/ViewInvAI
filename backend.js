@@ -2095,13 +2095,14 @@ async function globalNotificationSettingsForUser(env,userId){
     "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
-  const radarAi=optedIn&&(Number(row.pulse_ai_enabled)===1||Number(row.radar_enabled)===1);
+  const pulseAi=optedIn&&Number(row.pulse_ai_enabled)===1;
+  const radar=optedIn&&Number(row.radar_enabled)===1;
   return {
     enabled: optedIn&&Number(row.notifications_enabled)===1,
     newsEvents: optedIn&&Number(row.news_events_enabled)===1,
-    radarAi,
-    pulseAi: radarAi,
-    radar: radarAi,
+    radarAi: pulseAi||radar,
+    pulseAi,
+    radar,
     price: optedIn&&Number(row.price_enabled)===1,
     portfolio: optedIn&&Number(row.portfolio_enabled)===1,
     portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1
@@ -2565,7 +2566,7 @@ async function handleSettings(request, env, user, json) {
     notify_news_events:notifications.newsEvents?1:0,
     notify_pulse_ai:notifications.pulseAi?1:0,
     notify_radar:notifications.radar?1:0,
-    notify_price:0,
+    notify_price:notifications.price?1:0,
     notify_portfolio:notifications.portfolio?1:0,
     notify_portfolio_goal:notifications.portfolioGoal?1:0
   });
@@ -2584,7 +2585,7 @@ async function handleSettings(request, env, user, json) {
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
     pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1,
     radar: body.notifyRadar === undefined ? Number(current.notify_radar)!==0 : booleanInt(body.notifyRadar)===1,
-    price: false,
+    price: body.notifyPrice === undefined ? Number(current.notify_price)!==0 : booleanInt(body.notifyPrice)===1,
     portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1,
     portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1
   };
