@@ -2223,17 +2223,22 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
 }
 
 
-function activePortfolioMemberships(stockKey) {
+function activePortfolioMemberships(stockKey, preferTr = null) {
+  const marketFilter=preferTr===true?1:preferTr===false?0:null;
   return state.positions
-    .filter(p => sameStockRef(p.stock_key, stockKey) && Number(p.active) !== 0)
+    .filter(p =>
+      sameStockRef(p.stock_key, stockKey) &&
+      Number(p.active) !== 0 &&
+      (marketFilter===null || Number(p.prefer_tr)===marketFilter)
+    )
     .map(p => ({
       position: p,
       portfolio: state.portfolios.find(x => String(x.id) === String(p.portfolio_id)) || null
     }));
 }
 
-function isInPortfolio(stockKey) {
-  return activePortfolioMemberships(stockKey).length > 0;
+function isInPortfolio(stockKey, preferTr = null) {
+  return activePortfolioMemberships(stockKey,preferTr).length > 0;
 }
 
 function confirmRemoveExposure(positionId) {
@@ -2684,7 +2689,7 @@ function bind() {
       const key=add.dataset.addPortfolioStock;
       const pref=add.dataset.addPortfolioPreferTr;
       const preferTr=pref==="1"?true:pref==="0"?false:null;
-      const memberships=activePortfolioMemberships(key);
+      const memberships=activePortfolioMemberships(key,preferTr);
       if(!memberships.length){
         openAddPositionModal(key,preferTr);
       }else{
@@ -2955,7 +2960,7 @@ window.ViewInvAIPortfolios = {
   getWatchlist: () => state.watchlist.slice(),
   openPositionEditorForStock,
   isInPortfolio,
-  getPortfolioMemberships: stockKey => activePortfolioMemberships(stockKey).map(x => ({
+  getPortfolioMemberships: (stockKey,preferTr=null) => activePortfolioMemberships(stockKey,preferTr).map(x => ({
     positionId: x.position.id,
     portfolioId: x.position.portfolio_id,
     portfolioName: x.portfolio?.name || ''
