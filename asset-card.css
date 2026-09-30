@@ -459,3 +459,28 @@
   font-size:9.5px!important;
  }
 }
+
+
+/* Portfolio position actions stay compact and directly expose buy/sell/history. */
+[data-card-context="portfolio"] .asset-card-actions{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:4px;
+ padding:4px 6px 6px;
+}
+[data-card-context="portfolio"] .asset-card-actions>button{
+ width:100%;
+ min-width:0;
+ min-height:28px;
+ padding:4px 6px;
+ font-size:8px;
+ line-height:1.1;
+}
+[data-card-context="portfolio"] .portfolio-position-trade.buy{
+ border-color:rgba(55,211,153,.35);
+ color:#7be5bd;
+}
+[data-card-context="portfolio"] .portfolio-position-trade.sell{
+ border-color:rgba(255,102,122,.35);
+ color:#ff9aaa;
+}
