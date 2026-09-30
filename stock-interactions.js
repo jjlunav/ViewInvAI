@@ -107,6 +107,23 @@ function initStockInteractions(){
   }
   let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
   if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
+
+  // Pulso IA y Radar de entrada: toda la tarjeta compacta abre la ficha completa.
+  // Los controles internos conservan su acción propia.
+  let compactCard=e.target.closest&&e.target.closest('.asset-card[data-card-context="recommendation"],.asset-card[data-card-context="entry"]');
+  if(compactCard){
+   let control=e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,[data-copy-isin],[data-reco-mobile-group]');
+   if(!control){
+    let row=compactCard.querySelector('[data-stock-key]');
+    if(row){
+     e.preventDefault();e.stopPropagation();
+     let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;
+     if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
+     return;
+    }
+   }
+  }
+
   let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
   if(recoOpen){e.preventDefault();e.stopPropagation();let s=stockByKey(recoOpen.dataset.recoOpen);if(s)openStock(s,'Recomendación actual',recoOpen.dataset.recoPreferTr==='1');return}
   let b=e.target.closest&&e.target.closest('.fav-star');
