@@ -8520,3 +8520,116 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
 .fund-table-actions .btn{
  flex:0 0 auto;
 }
+
+
+/* 2026-09-30 · desktop readability pass */
+@media(min-width:821px){
+ html:not([data-native-app="1"]) body{
+  font-size:16px;
+ }
+ html:not([data-native-app="1"]) .sidebar{
+  padding-top:16px;
+ }
+ html:not([data-native-app="1"]) .brand-name{font-size:17px}
+ html:not([data-native-app="1"]) .brand-subtitle{font-size:10px}
+ html:not([data-native-app="1"]) .workspace-label{font-size:11px}
+ html:not([data-native-app="1"]) .nav-item{
+  min-height:42px;
+  padding:11px 10px;
+  font-size:15px;
+ }
+ html:not([data-native-app="1"]) .nav-symbol-svg{width:22px;height:22px}
+ html:not([data-native-app="1"]) .topbar{height:54px}
+ html:not([data-native-app="1"]) .breadcrumb{font-size:12px}
+ html:not([data-native-app="1"]) .provider-state{font-size:11px}
+ html:not([data-native-app="1"]) .view{
+  padding-top:18px;
+ }
+ html:not([data-native-app="1"]) .view>.page-heading h1{
+  font-size:38px;
+ }
+ html:not([data-native-app="1"]) .view>.page-heading .lead{
+  font-size:14px;
+ }
+ html:not([data-native-app="1"]) .btn,
+ html:not([data-native-app="1"]) .select,
+ html:not([data-native-app="1"]) .input{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) .tab{
+  font-size:13.5px;
+  padding:9px 12px;
+ }
+ html:not([data-native-app="1"]) .status-line{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) .filter-panel>summary{
+  font-size:13px;
+ }
+ html:not([data-native-app="1"]) .filters-grid label,
+ html:not([data-native-app="1"]) .check-inline{
+  font-size:11.5px;
+ }
+ html:not([data-native-app="1"]) .catalog-table,
+ html:not([data-native-app="1"]) .fund-table{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) .catalog-table th,
+ html:not([data-native-app="1"]) .fund-table th{
+  font-size:10.5px;
+ }
+ html:not([data-native-app="1"]) .catalog-table td,
+ html:not([data-native-app="1"]) .fund-table td{
+  font-size:11.5px;
+ }
+ html:not([data-native-app="1"]) .catalog-code,
+ html:not([data-native-app="1"]) .catalog-feed{
+  font-size:10px;
+ }
+ html:not([data-native-app="1"]) .profile-toolbar{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) .profile-market,
+ html:not([data-native-app="1"]) .profile-live small{
+  font-size:11px;
+ }
+ html:not([data-native-app="1"]) .profile-section>h3,
+ html:not([data-native-app="1"]) .profile-section-head h3{
+  font-size:13px;
+ }
+ html:not([data-native-app="1"]) .profile-section-head span{
+  font-size:10.5px;
+ }
+ html:not([data-native-app="1"]) .profile-identity small,
+ html:not([data-native-app="1"]) .profile-kpi small{
+  font-size:10px;
+ }
+ html:not([data-native-app="1"]) .profile-identity strong{
+  font-size:13px;
+ }
+ html:not([data-native-app="1"]) .profile-identity span,
+ html:not([data-native-app="1"]) .profile-kpi>span{
+  font-size:11.5px;
+ }
+ html:not([data-native-app="1"]) .profile-data-note,
+ html:not([data-native-app="1"]) .profile-context,
+ html:not([data-native-app="1"]) .source-note{
+  font-size:11.5px;
+ }
+ html:not([data-native-app="1"]) .portfolio-tab{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) .settings-card h2{
+  font-size:16px;
+ }
+ html:not([data-native-app="1"]) .settings-kicker{
+  font-size:10px;
+ }
+ html:not([data-native-app="1"]) .settings-status-row,
+ html:not([data-native-app="1"]) .notification-pref-row{
+  font-size:12px;
+ }
+ html:not([data-native-app="1"]) footer{
+  font-size:10px;
+ }
+}
