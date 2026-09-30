@@ -8109,3 +8109,25 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  .goal-history-entry>header>b{white-space:normal}
  .goal-history-op{grid-template-columns:62px minmax(0,1fr)}
 }
+
+
+/* 2026-09-30 · top-level portfolio goal controls */
+#view-portfolioGoal .portfolio-goal-controls{
+ display:grid;grid-template-columns:minmax(220px,1fr) auto auto;align-items:end;gap:8px;
+ margin-bottom:9px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--panel)
+}
+#view-portfolioGoal .portfolio-goal-picker{display:grid;gap:4px;min-width:0}
+#view-portfolioGoal .portfolio-goal-picker>span,
+#view-portfolioGoal .portfolio-goal-cash-status small{
+ font-size:7px;font-weight:900;letter-spacing:.55px;color:var(--muted);text-transform:uppercase
+}
+#view-portfolioGoal .portfolio-goal-picker select{
+ width:100%;height:36px;min-width:0;padding:0 10px;border:1px solid var(--line);border-radius:9px;
+ background:var(--bg);color:var(--text);font:inherit;font-weight:800
+}
+#view-portfolioGoal .portfolio-goal-cash-status{display:grid;gap:3px;min-width:125px;padding:0 4px}
+#view-portfolioGoal .portfolio-goal-cash-status strong{font-size:12px;white-space:nowrap}
+#view-portfolioGoal .portfolio-goal-tools{display:flex;align-items:center;gap:5px}
+#view-portfolioGoal .portfolio-goal-tools .portfolio-icon-action{
+ width:36px;min-width:36px;height:36px;min-height:36px;padding:0;display:grid;place-items:center;border-radius:9px
+}
