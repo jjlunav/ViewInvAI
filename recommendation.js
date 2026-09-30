@@ -289,7 +289,7 @@ async function pulseAiValidate(result){
   const s=result.s,preferTr=result.mode==='tr',quote=preferTr?canonicalQuote(s,true):verifiedDisplayQuote(s,false,currentMarketSession());
   const aiRequest=auth.apiFetch('/api/ai/chat',{method:'POST',body:JSON.stringify({
    stockKey:stockKey(s),ticker:s.ticker||s.trTicker||'',isin:preferTr?(s.trIsin||s.isin):(s.usIsin||s.isin),preferTr,
-   question:'Pulso IA: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
+   question:'Radar AI: evalúa si existe una entrada de alta convicción AHORA. Considera tendencia, volumen, RSI/ADX, liquidez, riesgo de FOMO y noticias/eventos. Sé conservador y no fuerces una compra.',
    live:{price:N(quote.price),changePct:N(quote.change),source:quote.source||'',bid:preferTr?N(s.trLiveBid):usLiveBid(s),ask:preferTr?N(s.trLiveAsk):usLiveAsk(s)}
   })});
   const response=await Promise.race([
