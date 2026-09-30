@@ -508,15 +508,11 @@ function radarAiCard(row){
   {label:'Score',value:F(row.score,0)+'/100',tone:row.tier==='high'?'buy':row.tier==='opportunity'?'watch':'muted'},
   {label:'Datos',value:F(row.quality,0)+'/100',tone:row.quality>=60?'positive':row.quality>=45?'watch':'muted'}
  ];
- const quote=canonicalQuote(s,preferTr),ask=preferTr?N(s&&s.trLiveAsk):usLiveAsk(s),entryPrice=ask??N(quote&&quote.price);
- const actions=row.tier!=='watch'&&row.liveVenue
-  ?'<button type="button" class="btn small radar-register-operation" data-radar-register="'+E(stockKey(s))+'" data-radar-prefer-tr="'+(preferTr?'1':'0')+'" data-radar-price="'+E(entryPrice===null?'':String(entryPrice))+'">Registrar operación</button>'
-  :'';
  return standardStockCard(s,0,{
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
-  detailsHtml:'',actionsHtml:actions
+  detailsHtml:''
  });
 }
 function radarAiTier(mode,tier,rows){
