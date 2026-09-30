@@ -436,9 +436,24 @@ function homeActiveStocks(limit=10,source='us'){
  }
  return out.slice(0,limit);
 }
-function seedTradeRepublicMarketBoard(limit=100){
+let trMarketScanCursor=0;
+function seedTradeRepublicMarketBoard(limit=120){
  if(typeof ensureTrLiveKey!=='function')return;
- homeActiveStocks(limit,'tr').forEach(s=>ensureTrLiveKey(stockKey(s)));
+ const universe=homeUniverse('tr');
+ if(!universe.length)return;
+ const priority=universe.slice().sort((a,b)=>{
+  const ac=Math.abs(effectiveSessionChange(a,homeSession())??N(a.changePct)??0);
+  const bc=Math.abs(effectiveSessionChange(b,homeSession())??N(b.changePct)??0);
+  return bc-ac;
+ });
+ const wanted=[],seen=new Set();
+ const add=s=>{const k=stockKey(s);if(!k||seen.has(k))return;seen.add(k);wanted.push(s)};
+ priority.slice(0,Math.min(60,limit)).forEach(add);
+ homeActiveStocks(Math.min(30,limit),'tr').forEach(add);
+ const rotate=Math.max(0,limit-wanted.length);
+ for(let i=0;i<rotate&&i<universe.length;i++)add(universe[(trMarketScanCursor+i)%universe.length]);
+ trMarketScanCursor=universe.length?(trMarketScanCursor+Math.max(1,rotate))%universe.length:0;
+ wanted.slice(0,limit).forEach(s=>ensureTrLiveKey(stockKey(s)));
 }
 function homeMoveStocks(desc=true,limit=10,source='us'){
  let se=homeSession();
@@ -487,6 +502,56 @@ function marketBoardStocks(mode='active',limit=10,source=currentMarketBoardSourc
  if(mode==='losers')return homeMoveStocks(false,limit,source);
  return homeActiveStocks(limit,source);
 }
+
+const marketBoardLiveScan={busy:false,cursor:0,lastAt:0,timer:null,rerenderTimer:null};
+function marketBoardUsScanUniverse(){
+ return homeUniverse('us').filter(s=>String(s.ticker||'').trim());
+}
+async function scanMarketBoardUsBatch(){
+ if(marketBoardLiveScan.busy||document.hidden||state.currentView!=='home')return;
+ if(currentMarketBoardSource()!=='us'||!['active','gainers','losers'].includes(marketBoardMode))return;
+ const universe=marketBoardUsScanUniverse();if(!universe.length)return;
+ const batch=[],seen=new Set(),se=homeSession();
+ const priority=universe.slice().sort((a,b)=>{
+  const ac=Math.abs(effectiveSessionChange(a,se)??0),bc=Math.abs(effectiveSessionChange(b,se)??0);
+  return bc-ac;
+ });
+ const add=s=>{const t=String(s&&s.ticker||'').trim().toUpperCase();if(!t||seen.has(t)||batch.length>=25)return;seen.add(t);batch.push(s)};
+ priority.slice(0,8).forEach(add);
+ for(let i=0;batch.length<25&&i<universe.length;i++)add(universe[(marketBoardLiveScan.cursor+i)%universe.length]);
+ marketBoardLiveScan.cursor=universe.length?(marketBoardLiveScan.cursor+Math.max(1,25-8))%universe.length:0;
+ if(!batch.length)return;
+ marketBoardLiveScan.busy=true;
+ try{
+  const symbols=batch.map(s=>s.ticker).join(',');
+  const r=await fetch('/api/us-live?symbols='+encodeURIComponent(symbols),{cache:'no-store'});
+  if(!r.ok)throw Error(String(r.status));
+  const data=await r.json(),by=new Map(batch.map(s=>[String(s.ticker||'').toUpperCase(),s]));
+  let changed=false;
+  for(const q of (data.quotes||[])){
+   const s=by.get(String(q.symbol||'').toUpperCase());if(!s||q.error)continue;
+   const before=usLiveChange(s);usApplyQuote(s,q);
+   if(before!==usLiveChange(s))changed=true;
+  }
+  marketBoardLiveScan.lastAt=Date.now();
+  if(changed&&state.currentView==='home'&&currentMarketBoardSource()==='us'){
+   clearTimeout(marketBoardLiveScan.rerenderTimer);
+   marketBoardLiveScan.rerenderTimer=setTimeout(()=>renderHome(),180);
+  }
+ }catch(e){console.warn('Market board live scan unavailable',e)}
+ finally{marketBoardLiveScan.busy=false}
+}
+function initMarketBoardLiveScan(){
+ if(marketBoardLiveScan.timer)return;
+ marketBoardLiveScan.timer=setInterval(()=>{
+  if(state.currentView==='home'&&currentMarketBoardSource()==='tr'&&['active','gainers','losers'].includes(marketBoardMode)){
+   seedTradeRepublicMarketBoard(120);
+  }else{
+   scanMarketBoardUsBatch();
+  }
+ },950);
+ setTimeout(scanMarketBoardUsBatch,250);
+}
 function renderMarketQuickSheet(){
  let box=$('#marketQuickContent');if(!box)return;
  let views=homeUserViewedStocks(10);
@@ -499,7 +564,10 @@ function renderMarketBoardStatus(updatedAt=null){
  else if(marketBoardMode==='indices')label='Mercado global · Top 10';
  else if(source==='tr')label='Trade Republic / LSX · Top 10';
  if($('#homeSession'))$('#homeSession').textContent=label;
- const at=updatedAt||(
+ const liveAt=source==='us'&&['active','gainers','losers'].includes(marketBoardMode)
+  ?(marketBoardLiveScan.lastAt||usLive.lastFetchAt||0)
+  :0;
+ const at=updatedAt||liveAt||(
   marketBoardMode==='funds'&&window.ViewInvAIFunds?.getState?.().meta?.updatedAt
    ?window.ViewInvAIFunds.getState().meta.updatedAt
    :db.meta.updatedAt
@@ -604,7 +672,7 @@ function renderEntry(){
 window.ViewInvAIMarketBoard={refreshSocialTrending,refreshAttentionRanking,renderMarketQuickSheet};
 
 
-let homeTrBoardRerenderTimer=null;
+let homeMarketBoardRerenderTimer=null,marketLeaderRerenderTimer=null;
 window.addEventListener('viewinvai:quote-updated',event=>{
  if(!event||!event.detail)return;
  if(state.currentView==='entry'){
@@ -612,14 +680,18 @@ window.addEventListener('viewinvai:quote-updated',event=>{
   radarRerenderTimer=setTimeout(()=>renderEntry(),280);
   return;
  }
- if(event.detail.market!=='tr')return;
- if(state.currentView!=='home'||currentMarketBoardSource()!=='tr')return;
+ clearTimeout(marketLeaderRerenderTimer);
+ marketLeaderRerenderTimer=setTimeout(()=>{if(typeof renderMarketLeaders==='function')renderMarketLeaders()},300);
+ if(state.currentView!=='home')return;
+ const source=currentMarketBoardSource();
+ if((event.detail.market==='us'&&source!=='us')||(event.detail.market==='tr'&&source!=='tr'))return;
  if(!['gainers','losers'].includes(marketBoardMode))return;
- clearTimeout(homeTrBoardRerenderTimer);
- homeTrBoardRerenderTimer=setTimeout(()=>renderHome(),350);
+ clearTimeout(homeMarketBoardRerenderTimer);
+ homeMarketBoardRerenderTimer=setTimeout(()=>renderHome(),220);
 });
 
 function initStockListInteractions(){
+ initMarketBoardLiveScan();
  document.addEventListener('click',e=>{
   let board=e.target.closest&&e.target.closest('[data-market-board]');
   if(!board)return;
