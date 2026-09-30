@@ -451,6 +451,8 @@ function renderPositionRow(p, index = 0) {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
+    openLabel: "Ficha",
+    openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
     detailsHtml: ""
   });
 
@@ -2065,6 +2067,14 @@ function bind() {
     const goalHistory=event.target.closest?.("[data-goal-history]");
     if(goalHistory){
       event.preventDefault();event.stopPropagation();openGoalHistory(goalHistory.dataset.goalHistory);return;
+    }
+
+    const portfolioProfile=event.target.closest?.("[data-portfolio-stock-profile]");
+    if(portfolioProfile){
+      event.preventDefault();event.stopPropagation();
+      const pref=portfolioProfile.dataset.profilePreferTr;
+      openStockInline(portfolioProfile.dataset.portfolioStockProfile,pref==="1"?true:pref==="0"?false:null);
+      return;
     }
 
     const registerGoalOperation=event.target.closest?.("[data-register-goal-operation]");
