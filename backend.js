@@ -365,6 +365,7 @@ function transactionPayload(body) {
     price,
     fees: rawFees === null ? (preferTr ? 1 : 0) : rawFees,
     currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
+    cashFxRate: finiteNumber(body.cashFxRate),
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
     notes: trimText(body.notes, 1000)
   };
@@ -377,16 +378,20 @@ function transactionCashDelta(side,quantity,price,fees){
   return String(side||"").toUpperCase()==="SELL" ? gross-commission : -(gross+commission);
 }
 
-async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1,recordedDelta=null){
+async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1,recordedDelta=null,cashFxRate=null){
   const portfolio=await onePortfolio(env,userId,portfolioId);
   if(!portfolio)return{adjusted:false,reason:"portfolio-not-found"};
   const base=String(portfolio.base_currency||"EUR").toUpperCase();
   const txCurrency=String(currency||base).toUpperCase();
-  if(base!==txCurrency){
-    return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:txCurrency,cashBalance:finiteNumber(portfolio.cash_balance)||0};
-  }
   const before=Math.max(0,finiteNumber(portfolio.cash_balance)||0);
-  const baseDelta=recordedDelta===null?transactionCashDelta(side,quantity,price,fees):(finiteNumber(recordedDelta)||0);
+  let baseDelta=recordedDelta===null?transactionCashDelta(side,quantity,price,fees):(finiteNumber(recordedDelta)||0);
+  if(recordedDelta===null&&base!==txCurrency){
+    const rate=finiteNumber(cashFxRate);
+    if(rate===null||rate<=0){
+      return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:txCurrency,cashBalance:before};
+    }
+    baseDelta*=rate;
+  }
   const rawDelta=baseDelta*(multiplier<0?-1:1);
   const unclamped=before+rawDelta,next=Math.max(0,Math.round((unclamped+Number.EPSILON)*1000000)/1000000);
   const shortfall=Math.max(0,-unclamped);
@@ -1020,7 +1025,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
     ).run();
 
     const cashAdjustment = await adjustPortfolioCashForTransaction(
-      env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1
+      env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1,null,data.cashFxRate
     );
     await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
       .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
