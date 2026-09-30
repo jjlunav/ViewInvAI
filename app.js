@@ -299,6 +299,7 @@ function openStock(s,reason='',preferTr=null){
  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
 }
 function closeQuickProfile(restoreScroll=true){
+ if(window.ViewInvAINavigation?.back){window.ViewInvAINavigation.back();return}
  if(appHistoryReady&&history.state&&history.state.__viewinvai===1&&history.state.profileKey){history.back();return}
  let y=state.profileOriginScroll||0;
  document.body.classList.remove('stock-detail-open');
