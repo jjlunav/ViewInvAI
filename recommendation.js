@@ -512,7 +512,7 @@ function radarAiCard(row){
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
-  openAttrs:stockOpenAttrs(s,'Radar IA',preferTr)+' data-radar-open="'+E(stockKey(s))+'" data-radar-prefer-tr="'+(preferTr?'1':'0')+'"',
+  openAttrs:' data-open-stock="'+E(stockKey(s))+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" data-stock-reason="Radar IA" role="button" tabindex="0"',
   detailsHtml:''
  });
 }
@@ -607,17 +607,6 @@ function warmRecommendationCache(){
  renderRecommendation(false).catch(()=>{});
 }
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,700));
-
-document.addEventListener('click',event=>{
- const row=event.target&&event.target.closest?event.target.closest('[data-radar-open]'):null;
- if(!row)return;
- if(event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label'))return;
- const s=stockByKey(row.dataset.radarOpen),pref=row.dataset.radarPreferTr;
- if(!s)return;
- event.preventDefault();
- event.stopPropagation();
- openStock(s,'Radar IA',pref==='1'?true:false,'recommendation');
-},true);
 
 document.addEventListener('click',event=>{
  const register=event.target&&event.target.closest?event.target.closest('[data-radar-register]'):null;
