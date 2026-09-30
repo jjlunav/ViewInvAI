@@ -1849,6 +1849,8 @@ function stockFormPayload(stock, form) {
     broker: String(fd.get("broker") || form.querySelector('[data-broker-select]')?.value || "")
   };
   const portfolio=state.portfolios.find(item=>String(item.id)===String(payload.portfolioId));
+  const feeInfo=brokerFeeInCurrency(payload.broker,payload.quantity,payload.avgPrice,payload.currency,'BUY');
+  if(feeInfo.fee!==null)payload.fees=feeInfo.fee;
   const cashFxRate=portfolioCashFxRateFor(portfolio,payload.currency);
   if(cashFxRate!==null)payload.cashFxRate=cashFxRate;
   return payload;
