@@ -1799,7 +1799,7 @@ async function notificationPreferenceForTarget(env,target){
   ).bind(userId,stockKey,Number(target&&target.prefer_tr)===1?1:0).first();
 }
 
-function notificationPreferenceAllows(preference,column,defaultValue=true){
+function notificationPreferenceAllows(preference,column,defaultValue=false){
   return preference ? Number(preference[column])===1 : !!defaultValue;
 }
 
@@ -1917,7 +1917,7 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
       should = true; type = "position-deterioration"; severity = "warning";
     }
   } else {
-    if (!globalNotifications.pulseAi || !notificationPreferenceAllows(assetPreference,"pulse_enabled",true)) return null;
+    if (!globalNotifications.pulseAi || !notificationPreferenceAllows(assetPreference,"pulse_enabled",false)) return null;
     if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "pulse-ai"; severity = "high";
     } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
@@ -2007,7 +2007,7 @@ async function analyzeTarget(env, target, services) {
   const notificationSettings=await globalNotificationSettingsForUser(env,target.user_id);
   const assetNotificationPreference=await notificationPreferenceForTarget(env,target);
   await maybeCreateAlert(env,target,stock,current,previous,notificationSettings,assetNotificationPreference);
-  if(notificationSettings.enabled&&notificationSettings.newsEvents&&notificationPreferenceAllows(assetNotificationPreference,"news_enabled",true)){
+  if(notificationSettings.enabled&&notificationSettings.newsEvents&&notificationPreferenceAllows(assetNotificationPreference,"news_enabled",false)){
     await maybeCreateNewsAlerts(env,target,stock,events,snapshotId);
     await maybeCreateEventAlerts(env,target,stock,events,snapshotId);
   }
@@ -2780,7 +2780,7 @@ async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[
       if(!global){global=await globalNotificationSettingsForUser(env,target.user_id);globalByUser.set(target.user_id,global)}
       if(!global.enabled||!global.newsEvents)continue;
       const assetPreference=await notificationPreferenceForTarget(env,target);
-      if(!notificationPreferenceAllows(assetPreference,"news_enabled",true))continue;
+      if(!notificationPreferenceAllows(assetPreference,"news_enabled",false))continue;
       const stock=findStock(snapshot,target);if(!stock)continue;
       const [officialResult,newsResult]=await Promise.allSettled([
         services.loadOfficialEvents?services.loadOfficialEvents(stock,target):Promise.resolve([]),
