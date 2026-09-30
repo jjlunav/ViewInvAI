@@ -2876,7 +2876,7 @@ async function handleAiChat(request, env, user, json, services) {
     role: item && item.role === "assistant" ? "assistant" : "user",
     content: trimText(item && item.content, 1600)
   })).filter(x => x.content) : [];
-  const live = body.live && typeof body.live === "object" && !Array.isArray(body.live) ? body.live : {};
+  const clientLive = body.live && typeof body.live === "object" && !Array.isArray(body.live) ? body.live : {};
   if (!stockKey && !ticker) return json({ error: "Stock is required" }, 400);
   if (!question) return json({ error: "Question is required" }, 400);
 
@@ -2908,11 +2908,23 @@ async function handleAiChat(request, env, user, json, services) {
   const fallbackTarget = { subject_type: "watchlist", ...target };
   const deterministic = deterministicAssessment(fallbackTarget, stock, chart, events);
 
+  let serverQuote=null;
+  if(services.loadQuote){
+    try{serverQuote=await services.loadQuote(stock,target)}
+    catch(error){console.warn("AI chat verified quote unavailable",String(error&&error.message||error))}
+  }
+  const quoteVerified=!!(serverQuote&&finiteNumber(serverQuote.price)!==null);
+  const live=quoteVerified?serverQuote:clientLive;
   const livePrice = finiteNumber(live.price);
-  const liveEur = finiteNumber(live.eur);
-  const liveUsd = finiteNumber(live.usd);
+  const snapshotFx = finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
+  const fx = finiteNumber(clientLive.eurUsd) ?? snapshotFx;
+  const liveEur = preferTr
+    ? livePrice
+    : finiteNumber(clientLive.eur) ?? (livePrice!==null&&fx>0?livePrice/fx:null);
+  const liveUsd = preferTr
+    ? finiteNumber(clientLive.usd) ?? (livePrice!==null&&fx>0?livePrice*fx:null)
+    : livePrice;
   const liveChange = finiteNumber(live.changePct);
-  const fx = finiteNumber(live.eurUsd);
   const model = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
 
   const prompt = [
@@ -2924,6 +2936,7 @@ async function handleAiChat(request, env, user, json, services) {
     "La segunda divisa es únicamente una conversión con EUR/USD y no un segundo precio independiente.",
     "Evalúa momentum, tendencia, riesgo de FOMO, liquidez, técnicos, noticias/eventos y riesgos.",
     "No presentes una recomendación como certeza. Si faltan datos, dilo y baja la confianza.",
+    "Si liveQuote.serverVerified es false, no emitas COMPRAR como señal actual: usa VIGILAR o ESPERAR y explica que falta una cotización verificada por el servidor.",
     "Devuelve JSON únicamente con las claves: answer, summary, signal, confidence, momentum, fomoRisk, trend, keyPoints.",
     "signal debe ser una de: COMPRAR, VIGILAR, ESPERAR, EVITAR.",
     "momentum, fomoRisk y trend deben ser textos cortos.",
@@ -2933,15 +2946,16 @@ async function handleAiChat(request, env, user, json, services) {
       conversation: history,
       selectedMarket: preferTr ? "Trade Republic / LSX" : "EEUU",
       liveQuote: {
+        serverVerified: quoteVerified,
         source: trimText(live.source, 120),
-        nativeCurrency: trimText(live.nativeCurrency, 8),
+        nativeCurrency: preferTr ? "EUR" : "USD",
         price: livePrice,
         eur: liveEur,
         usd: liveUsd,
         changePct: liveChange,
-        quoteUpdatedAt: trimText(live.quoteUpdatedAt, 80),
+        quoteUpdatedAt: trimText(live.timestamp || live.quoteUpdatedAt, 80),
         eurUsd: fx,
-        fxUpdatedAt: trimText(live.fxUpdatedAt, 80),
+        fxUpdatedAt: trimText(clientLive.fxUpdatedAt, 80),
         bid: finiteNumber(live.bid),
         ask: finiteNumber(live.ask)
       },
@@ -2978,18 +2992,23 @@ async function handleAiChat(request, env, user, json, services) {
     const parsed = extractAiJson(result);
     if (!parsed) throw new Error("AI response is not valid JSON");
     const allowed = new Set(["COMPRAR","VIGILAR","ESPERAR","EVITAR"]);
-    const signal = String(parsed.signal || "VIGILAR").toUpperCase();
+    let signal = String(parsed.signal || "VIGILAR").toUpperCase();
+    if(!allowed.has(signal))signal="VIGILAR";
+    let confidence=Math.max(0,Math.min(100,Math.round(finiteNumber(parsed.confidence)??55)));
+    if(!quoteVerified&&signal==="COMPRAR"){signal="VIGILAR";confidence=Math.min(confidence,60)}
     return json({
       answer: trimText(parsed.answer || parsed.summary || "", 4000),
       summary: trimText(parsed.summary || parsed.answer || "", 900),
-      signal: allowed.has(signal) ? signal : "VIGILAR",
-      confidence: Math.max(0, Math.min(100, Math.round(finiteNumber(parsed.confidence) ?? 55))),
+      signal,
+      confidence,
       momentum: trimText(parsed.momentum || "Sin clasificación", 80),
       fomoRisk: trimText(parsed.fomoRisk || "No determinado", 80),
       trend: trimText(parsed.trend || "No determinada", 80),
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(x => trimText(x, 240)).filter(Boolean).slice(0, 6) : [],
       model,
-      dataTimestamp: snapshot && snapshot.meta && snapshot.meta.updatedAt || null
+      quoteVerified,
+      quoteSource: trimText(live.source,120),
+      dataTimestamp: live.timestamp || snapshot && snapshot.meta && snapshot.meta.updatedAt || null
     });
   } catch (error) {
     console.warn("AI chat failed", String(error && error.message || error));
