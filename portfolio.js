@@ -844,6 +844,7 @@ function portfolioGoalViewHtml(){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio,positionRows=portfolioCoachPositionRows(metrics),candidates=portfolioCoachCandidates(metrics,positionRows),target=metrics.target;
   if(!portfolio)return'<div class="portfolio-empty-state">Selecciona o crea una cartera para definir su objetivo.</div>';
   const targetValue=target===null?"":String(Math.round(target*100)/100),marketLabel=portfolioMarketLabel(metrics.marketScope),goalConfig=metrics.goalConfig||portfolioGoalConfig(),riskProfile=goalConfig.riskProfile||"aggressive";
+  state.pendingGoalHistory=null;
   const errorHtml=state.goalError?'<div class="portfolio-goal-error" role="alert">'+esc(state.goalError)+'</div>':'';
   const candidate=candidates[0]||null,rotationRows=positionRows.filter(row=>row.action!=="MANTENER"&&(num(row.released)||0)>.01);
   let decisionHtml='';
@@ -861,7 +862,7 @@ function portfolioGoalViewHtml(){
     decisionHtml=(source||'')+buys+residualHtml;
     state.pendingGoalHistory=buildGoalHistorySnapshot(metrics,positionRows,candidates,rotationRows,residual);
   }
-  if(!candidate&&target!==null)state.pendingGoalHistory=buildGoalHistorySnapshot(metrics,positionRows,[],rotationRows,Math.max(0,num(metrics.cashEur)||0));
+  if(!candidate&&target!==null)state.pendingGoalHistory=buildGoalHistorySnapshot(metrics,positionRows,[],[],Math.max(0,num(metrics.cashEur)||0));
   return '<section class="portfolio-goal-view" data-goal-portfolio="'+esc(portfolio.id)+'">'+
     '<div class="portfolio-goal-hero compact-goal-hero"><div class="portfolio-goal-intro"><h2>Objetivo IA · '+esc(portfolio.name)+'</h2><small>'+esc(marketLabel)+'</small></div>'+
       '<form id="portfolioGoalForm" class="portfolio-goal-form compact-goal-form" data-portfolio-id="'+esc(portfolio.id)+'">'+
