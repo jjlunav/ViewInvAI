@@ -150,6 +150,43 @@ function wholeRecommendationUnits(quantity,desired){
   if(available<1||!(desired>0))return 0;
   return Math.max(1,Math.min(available,Math.round(desired)));
 }
+function portfolioOperationFee(preferTr){
+  return preferTr?1:0;
+}
+function portfolioPriceToEur(price,currency,fxUsdEur){
+  const value=num(price),code=String(currency||"EUR").toUpperCase();
+  if(value===null)return null;
+  if(code==="EUR")return value;
+  if(code==="USD"&&num(fxUsdEur)!==null)return value*num(fxUsdEur);
+  return null;
+}
+function goalExecutionQuote(stock,preferTr,side,fxUsdEur){
+  const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
+  const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct);
+  let price=null,orderType="LIMITE",instruction="",immediate=false;
+  if(String(side||"BUY").toUpperCase()==="SELL"){
+    price=bid??last;
+    instruction=bid!==null?"Venta límite en BID":"Venta límite sobre último precio";
+    immediate=bid!==null;
+  }else if(bid!==null&&ask!==null&&ask>=bid){
+    const gap=ask-bid;
+    if(spread!==null&&spread<=1.2){
+      price=ask;instruction="Límite al ASK";immediate=true;
+    }else if(spread!==null&&spread<=3){
+      price=bid+gap*.50;instruction="Límite en zona media del spread";
+    }else{
+      price=bid+gap*.25;instruction="Esperar · límite conservador dentro del spread";
+    }
+  }else{
+    price=last;instruction="Límite sobre último precio · BID/ASK incompleto";
+  }
+  if(price!==null){
+    const decimals=Math.abs(price)<1?4:Math.abs(price)<10?3:2;
+    price=Number(price.toFixed(decimals));
+  }
+  const unitEur=portfolioPriceToEur(price,currency,fxUsdEur),feeEur=preferTr?1:0;
+  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,orderType,instruction,immediate};
+}
 
 function portfolioStockKeys() {
   return [...new Set(state.positions.filter(p => Number(p.active) !== 0).map(p => canonicalStockKey(p.stock_key)).filter(Boolean))];
