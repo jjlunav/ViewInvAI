@@ -50,7 +50,7 @@ function renderSourceSettingsStatus(){
  const sources=backendSourceStatus&&backendSourceStatus.sources||{};
  const native=window.ViewInvAIAuth?.isNative?.()===true;
  const pushRow=$('#sourceStatusPushRow');
- if(pushRow)pushRow.hidden=!native;
+ if(pushRow)pushRow.hidden=false;
  const rows={
   sourceStatusTradeRepublic:'tradeRepublic',
   sourceStatusNasdaq:'nasdaq',
@@ -61,7 +61,6 @@ function renderSourceSettingsStatus(){
  };
  for(const [id,key] of Object.entries(rows)){
   const el=$('#'+id);if(!el)continue;
-  if(key==='push'&&!native)continue;
   const info=sourceStatusText(sources[key],key);
   el.textContent=info.label;
   el.title=info.title||'';
