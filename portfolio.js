@@ -134,16 +134,21 @@ function portfolioGoalConfig(){
   const goal=selectedPortfolioGoal()||state.goal||null;
   return{
     target:goal?num(goal.target_value_eur!==undefined?goal.target_value_eur:goal.target_profit_eur):null,
-    riskProfile:goal&&["conservative","balanced","aggressive"].includes(String(goal.risk_profile||"").toLowerCase())?String(goal.risk_profile).toLowerCase():"balanced"
+    riskProfile:goal&&["conservative","balanced","aggressive"].includes(String(goal.risk_profile||"").toLowerCase())?String(goal.risk_profile).toLowerCase():"aggressive"
   };
 }
 function portfolioGoalRiskBand(riskProfile){
   const bands={
-    conservative:{label:"Conservador",maxPosition:18,minCandidate:72},
-    balanced:{label:"Equilibrado",maxPosition:28,minCandidate:65},
-    aggressive:{label:"Agresivo",maxPosition:38,minCandidate:58}
+    conservative:{label:"Conservador",maxPosition:18,minCandidate:82,minQuality:72,minVelocity:82,minComposite:84},
+    balanced:{label:"Equilibrado",maxPosition:30,minCandidate:80,minQuality:68,minVelocity:80,minComposite:82},
+    aggressive:{label:"Agresivo",maxPosition:45,minCandidate:78,minQuality:62,minVelocity:78,minComposite:80}
   };
-  return bands[riskProfile]||bands.balanced;
+  return bands[riskProfile]||bands.aggressive;
+}
+function wholeRecommendationUnits(quantity,desired){
+  const qty=Math.max(0,num(quantity)||0),available=Math.max(0,Math.floor(qty+1e-9));
+  if(available<1||!(desired>0))return 0;
+  return Math.max(1,Math.min(available,Math.round(desired)));
 }
 
 function portfolioStockKeys() {
@@ -549,9 +554,11 @@ function portfolioCoachPositionRows(metrics){
     else if(currentWeight>maxWeight+12)targetWeight=Math.min(currentWeight,score>=70?maxWeight:maxWeight*.8);
     else if(currentWeight>maxWeight&&score<65)targetWeight=Math.min(currentWeight,maxWeight);
     if(goalReached&&backendSignal==="HOLD"&&score>=55)targetWeight=Math.min(targetWeight,currentWeight);
-    const reducePct=currentWeight>0?Math.max(0,(currentWeight-targetWeight)/currentWeight*100):0;
-    const units=row.qty*reducePct/100,released=row.valueEur===null?0:row.valueEur*reducePct/100;
-    const action=reducePct>=95?"SALIR":reducePct>=8?"REDUCIR":"MANTENER",reasons=[];
+    const desiredReducePct=currentWeight>0?Math.max(0,(currentWeight-targetWeight)/currentWeight*100):0;
+    const units=wholeRecommendationUnits(row.qty,row.qty*desiredReducePct/100);
+    const reducePct=row.qty>0?Math.max(0,Math.min(100,units/row.qty*100)):0;
+    const released=row.valueEur===null||row.qty<=0?0:row.valueEur*(units/row.qty);
+    const action=units<=0?"MANTENER":units>=Math.floor(row.qty+1e-9)&&Math.abs(row.qty-Math.floor(row.qty+1e-9))<1e-8?"SALIR":"REDUCIR",reasons=[];
     if(backendSignal)reasons.push("señal IA "+signalInfo(backendSignal)[0].toLowerCase());
     else reasons.push("pendiente de análisis IA de cartera");
     if(stagnant)reasons.push("sin avance semanal suficiente");
@@ -609,62 +616,89 @@ function portfolioCoachCandidates(metrics,positionRows){
       merged.set(key,old);
     }
   };
-  try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(30,[...excluded],marketScope)||[],"Pulso IA")}catch(_){}
-  try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(30,[...excluded],marketScope)||[],"Radar")}catch(_){}
+  try{ingest(window.ViewInvAIPulseCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Pulso IA")}catch(_){}
+  try{ingest(window.ViewInvAIRadarCoach?.rankCandidates?.(40,[...excluded],marketScope)||[],"Radar")}catch(_){}
   const released=goalReached?0:positionRows.reduce((sum,row)=>sum+(num(row.released)||0),0);
   const cashAvailable=goalReached?0:Math.max(0,num(metrics.cashEur)||0),rotationPool=goalReached?0:cashAvailable+released;
   if(rotationPool<=0){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
-  const minScore=metrics.riskBand?metrics.riskBand.minCandidate:65;
+  const band=metrics.riskBand||portfolioGoalRiskBand("aggressive");
   const ranked=[...merged.values()].map(row=>{
     const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);
     const score=scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?3:0)):0;
     const velocity=portfolioGoalVelocityScore(row.stock,score,row.quality);
-    return{...row,score,velocityScore:velocity.score,catalyst:velocity.catalyst};
-  }).filter(row=>row.score>=minScore&&row.quality>=42)
-    .sort((a,b)=>b.velocityScore-a.velocityScore||b.score-a.score||b.quality-a.quality);
-  const best=ranked[0];
-  if(!best){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
-  const quote=currentMarket(best.stock,best.preferTr);
-  let unitEur=num(quote.eur);
-  if(unitEur===null&&String(quote.currency||"").toUpperCase()==="EUR")unitEur=num(quote.price);
-  if(unitEur===null&&String(quote.currency||"").toUpperCase()==="USD"&&num(metrics.fxUsdEur)!==null&&num(quote.price)!==null)unitEur=num(quote.price)*num(metrics.fxUsdEur);
-  const allocation=rotationPool,units=unitEur!==null&&unitEur>0?allocation/unitEur:null;
-  const levels=coachPriceLevels(best.stock,best.preferTr,best.score);
-  const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
-  const remaining=Math.max(0,num(metrics.remaining)||0),goalShare=remaining>0?Math.min(100,potentialGain/remaining*100):0;
-  const result=[{...best,allocation,unitEur,units,levels,potentialGain,goalShare,cashAvailable,released}];
+    const catalyst=velocity.catalyst||{},multiSource=row.sources.length>1;
+    const confirmation=multiSource||score>=86||(num(catalyst.impact)||0)>=75;
+    const composite=Math.min(100,score*.44+(num(row.quality)||0)*.20+velocity.score*.28+(multiSource?5:0)+Math.min(3,(num(catalyst.impact)||0)*.03));
+    return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite};
+  }).filter(row=>row.confirmation&&row.score>=band.minCandidate&&row.quality>=band.minQuality&&row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite)
+    .sort((x,y)=>y.composite-x.composite||y.velocityScore-x.velocityScore||y.score-x.score||y.quality-x.quality);
+  if(!ranked.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
+  const finalists=[ranked[0]];
+  if(ranked[1]&&ranked[1].composite>=Math.max(82,ranked[0].composite-4))finalists.push(ranked[1]);
+  if(ranked[2]&&ranked[2].composite>=Math.max(84,ranked[0].composite-3))finalists.push(ranked[2]);
+  const priced=finalists.map(row=>{
+    const quote=currentMarket(row.stock,row.preferTr);
+    let unitEur=num(quote.eur);
+    if(unitEur===null&&String(quote.currency||"").toUpperCase()==="EUR")unitEur=num(quote.price);
+    if(unitEur===null&&String(quote.currency||"").toUpperCase()==="USD"&&num(metrics.fxUsdEur)!==null&&num(quote.price)!==null)unitEur=num(quote.price)*num(metrics.fxUsdEur);
+    return{...row,unitEur,quote};
+  }).filter(row=>row.unitEur!==null&&row.unitEur>0&&row.unitEur<=rotationPool);
+  if(!priced.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
+  const weights=priced.length===1?[1]:priced.length===2?[.70,.30]:[.60,.25,.15];
+  const remainingGoal=Math.max(0,num(metrics.remaining)||0);
+  let result=priced.map((row,index)=>{
+    const budget=rotationPool*weights[index],units=Math.floor(budget/row.unitEur);
+    const allocation=units*row.unitEur,levels=coachPriceLevels(row.stock,row.preferTr,row.score);
+    const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
+    const goalShare=remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0;
+    return{...row,rank:index+1,allocation,units,levels,potentialGain,goalShare,cashAvailable,released};
+  }).filter(row=>row.units>=1);
+  if(!result.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
+  let spent=result.reduce((sum,row)=>sum+row.allocation,0),left=Math.max(0,rotationPool-spent);
+  if(result[0]&&left>=result[0].unitEur){
+    const extra=Math.floor(left/result[0].unitEur);
+    result[0].units+=extra;result[0].allocation+=extra*result[0].unitEur;
+    const levels=result[0].levels;
+    result[0].potentialGain=result[0].allocation>0&&levels.takePct!==null?result[0].allocation*levels.takePct/100:0;
+    result[0].goalShare=remainingGoal>0?Math.min(100,result[0].potentialGain/remainingGoal*100):0;
+  }
+  result=result.map((row,index)=>({...row,rank:index+1}));
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
-
 function goalTradeInstructionHtml(row){
-  const sellUnits=row.action==="SALIR"?row.qty:row.units,keepUnits=Math.max(0,row.qty-sellUnits);
-  const detail=row.action==="SALIR"?"Salida completa · "+formatNumber(sellUnits,4)+" uds.":"Vender "+formatNumber(sellUnits,4)+" uds. ("+formatNumber(row.reducePct,0)+"%) · mantener "+formatNumber(keepUnits,4)+" uds.";
+  const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits);
+  const complete=sellUnits>=Math.floor((num(row.qty)||0)+1e-9)&&Math.abs((num(row.qty)||0)-Math.floor((num(row.qty)||0)+1e-9))<1e-8;
+  const detail=complete?"Salida completa · "+formatNumber(sellUnits,0)+" acciones":"Vender "+formatNumber(sellUnits,0)+" acciones ("+formatNumber(row.reducePct,0)+"%) · mantener "+formatNumber(keepUnits,0);
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small></div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
 function goalCandidateHtml(row){
-  const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=row.units!==null?"≈ "+formatNumber(row.units,4)+" uds.":"importe "+formatMoney(row.allocation,"EUR");
+  const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
   const take=levels.take!==null&&levels.take!==undefined?formatMoney(levels.take,levels.currency||"EUR"):"—";
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small></div><b>'+formatMoney(row.allocation,"EUR")+'</b></div>'+
-    '<p class="portfolio-goal-reason"><b>Motivo:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
+    '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · "+formatMoney(row.allocation,"EUR"))+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small></div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
+    '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 function portfolioGoalViewHtml(){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio,positionRows=portfolioCoachPositionRows(metrics),candidates=portfolioCoachCandidates(metrics,positionRows),target=metrics.target;
   if(!portfolio)return'<div class="portfolio-empty-state">Selecciona o crea una cartera para definir su objetivo.</div>';
-  const targetValue=target===null?"":String(Math.round(target*100)/100),marketLabel=portfolioMarketLabel(metrics.marketScope),goalConfig=metrics.goalConfig||portfolioGoalConfig(),riskProfile=goalConfig.riskProfile||"balanced";
+  const targetValue=target===null?"":String(Math.round(target*100)/100),marketLabel=portfolioMarketLabel(metrics.marketScope),goalConfig=metrics.goalConfig||portfolioGoalConfig(),riskProfile=goalConfig.riskProfile||"aggressive";
   const errorHtml=state.goalError?'<div class="portfolio-goal-error" role="alert">'+esc(state.goalError)+'</div>':'';
   const candidate=candidates[0]||null,rotationRows=positionRows.filter(row=>row.action!=="MANTENER"&&(num(row.released)||0)>.01);
   let decisionHtml='';
   if(metrics.marketScope==="auto")decisionHtml='<div class="portfolio-goal-no-action">Configura el mercado de esta cartera antes de pedir una rotación.</div>';
   else if(num(metrics.remaining)!==null&&metrics.remaining<=0)decisionHtml='<div class="portfolio-goal-no-action">Objetivo alcanzado. El modelo no fuerza nuevas operaciones.</div>';
-  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> No hay una alternativa del mismo mercado que mejore suficientemente la cartera según Pulso IA, Radar, catalizadores y calidad de datos.</div>';
+  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera simultáneamente los filtros estrictos de Pulso IA, Radar, velocidad, catalizadores y calidad de datos.</div>';
   else{
     const sells=rotationRows.map(goalTradeInstructionHtml).join('');
     const source=sells||((num(metrics.cashEur)||0)>0?'<div class="portfolio-goal-trade sell"><em>USAR</em><div><strong>Efectivo disponible</strong><small>Capital ya libre en la cartera</small></div><b>'+formatMoney(metrics.cashEur,"EUR")+'</b></div>':'');
-    decisionHtml=(source||'')+goalCandidateHtml(candidate);
+    const buys=candidates.slice(0,3).map(goalCandidateHtml).join('');
+    const pool=Math.max(0,(num(metrics.cashEur)||0)+rotationRows.reduce((sum,row)=>sum+(num(row.released)||0),0));
+    const spent=candidates.reduce((sum,row)=>sum+(num(row.allocation)||0),0),residual=Math.max(0,pool-spent);
+    const residualHtml=residual>=.01?'<div class="portfolio-goal-trade cash"><em>LÍQUIDO</em><div><strong>Remanente</strong><small>No alcanza otra acción entera sin rebajar el filtro de entrada.</small></div><b>'+formatMoney(residual,"EUR")+'</b></div>':'';
+    decisionHtml=(source||'')+buys+residualHtml;
   }
   return '<section class="portfolio-goal-view" data-goal-portfolio="'+esc(portfolio.id)+'">'+
     '<div class="portfolio-goal-hero compact-goal-hero"><div class="portfolio-goal-intro"><h2>Objetivo IA · '+esc(portfolio.name)+'</h2><small>'+esc(marketLabel)+'</small></div>'+
@@ -675,14 +709,14 @@ function portfolioGoalViewHtml(){
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
-      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora</h3><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar</button></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
+      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar</button></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
       '<p class="portfolio-goal-note compact-note">El plan se recalcula con tus posiciones y el capital líquido registrado. Puede rotar antes del stop o del take profit si la señal pierde fuerza.</p>')+
     '</section>';
 }
 
 async function savePortfolioGoal(targetValueEur,portfolioId=state.selectedPortfolioId,options={}){
   if(!portfolioId)throw new Error("Selecciona una cartera.");
-  const payload={portfolioId,targetValueEur,targetDate:null,monthlyContributionEur:0,riskProfile:options.riskProfile||"balanced"};
+  const payload={portfolioId,targetValueEur,targetDate:null,monthlyContributionEur:0,riskProfile:options.riskProfile||"aggressive"};
   const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
   if(data.goal)state.goals[String(portfolioId)]=data.goal;
@@ -2164,6 +2198,13 @@ window.ViewInvAIPortfolios = {
     state.primaryTab = visible ? "goal" : "portfolio";
     savePortfolioUi();
     renderApp();
+  },
+  openGoal: portfolioId => {
+    if(portfolioId&&state.portfolios.some(p=>String(p.id)===String(portfolioId)))state.selectedPortfolioId=portfolioId;
+    state.primaryTab="goal";savePortfolioUi();state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();
+    refreshGoalSummaries().catch(()=>{});
+    setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
+    return true;
   },
   getState: () => state
 };
