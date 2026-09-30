@@ -158,8 +158,8 @@ function portfolioOperationFee(preferTr){
 }
 function brokerRecords(){
   const builtins=[
-    {name:"Trade Republic",canonical_name:"Trade Republic",code:"TR",verification_status:"verified",plan:"Standard",fee_rules_json:JSON.stringify({type:"flat",buy:1,sell:1,currency:"EUR"})},
-    {name:"IBKR",canonical_name:"Interactive Brokers",code:"IBKR",verification_status:"verified",plan:"Pro Fixed",fee_rules_json:JSON.stringify({type:"per_share",perShare:.005,min:1,maxPct:1,currency:"USD",market:"US"})}
+    {name:"Trade Republic",canonical_name:"Trade Republic",code:"TR",verification_status:"verified",plan:"Standard",fee_rules_json:JSON.stringify({type:"flat",buy:1,sell:1,currency:"EUR",market:"TR"})},
+    {name:"IBKR",canonical_name:"Interactive Brokers",code:"IBKR",verification_status:"verified",plan:"Pro Fixed",fee_rules_json:JSON.stringify({type:"per_share",perShare:.005,min:1,maxPct:1,sellValueRate:.0000206,sellPerShareExtra:.000198,currency:"USD",market:"US"})}
   ];
   const seen=new Set(),rows=[];
   for(const row of [...builtins,...(state.brokers||[])]){
@@ -178,11 +178,15 @@ function brokerRecordByName(name){
   const key=String(name||"").trim().toLowerCase();
   return brokerRecords().find(row=>[row.name,row.canonical_name,row.code].some(v=>String(v||"").trim().toLowerCase()===key))||null;
 }
-function brokerFeeEstimate(brokerName,quantity,price,currency,side="BUY"){
+function brokerFeeEstimate(brokerName,quantity,price,currency,side="BUY",exchange=""){
   const row=brokerRecordByName(brokerName),qty=Math.max(0,num(quantity)||0),px=Math.max(0,num(price)||0),tradeValue=qty*px;
   if(!row)return{fee:null,currency:String(currency||"EUR").toUpperCase(),verified:false,label:"Pendiente de verificar"};
   let rules={};try{rules=JSON.parse(row.fee_rules_json||"{}")||{}}catch(_){}
   const feeCurrency=String(rules.currency||currency||"EUR").toUpperCase(),type=String(rules.type||"").toLowerCase();
+  const venue=String(exchange||"").trim().toUpperCase(),ruleMarket=String(rules.market||"").trim().toUpperCase(),usVenue=["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(venue);
+  const label=row.plan||row.canonical_name||row.name||brokerName;
+  if(ruleMarket==="TR"&&venue&&venue!=="LSX")return{fee:null,currency:feeCurrency,verified:false,label,reason:"market-mismatch"};
+  if(ruleMarket==="US"&&venue&&!usVenue)return{fee:null,currency:feeCurrency,verified:false,label,reason:"market-mismatch"};
   let fee=null;
   if(type==="flat"){
     const value=num(String(side).toUpperCase()==="SELL"?rules.sell:rules.buy);
@@ -192,9 +196,10 @@ function brokerFeeEstimate(brokerName,quantity,price,currency,side="BUY"){
     if(per!==null){
       fee=Math.max(minimum,qty*per);
       if(maxPct!==null&&tradeValue>0)fee=Math.min(fee,tradeValue*maxPct/100);
+      if(String(side).toUpperCase()==="SELL")fee+=tradeValue*Math.max(0,num(rules.sellValueRate)||0)+qty*Math.max(0,num(rules.sellPerShareExtra)||0);
     }
   }
-  return{fee,currency:feeCurrency,verified:String(row.verification_status||"verified")==="verified",label:row.plan||row.canonical_name||row.name||brokerName};
+  return{fee,currency:feeCurrency,verified:String(row.verification_status||"verified")==="verified"&&fee!==null,label};
 }
 
 function portfolioPriceToEur(price,currency,fxUsdEur){
@@ -212,8 +217,8 @@ function portfolioConvertAmount(value,fromCurrency,toCurrency,fxUsdEur=portfolio
   if(from==="EUR"&&to==="USD"&&fx!==null&&fx>0)return amount/fx;
   return null;
 }
-function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side="BUY"){
-  const fee=brokerFeeEstimate(brokerName,quantity,price,transactionCurrency,side);
+function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side="BUY",exchange=""){
+  const fee=brokerFeeEstimate(brokerName,quantity,price,transactionCurrency,side,exchange);
   if(fee.fee===null)return fee;
   const target=String(transactionCurrency||fee.currency||"EUR").toUpperCase();
   const converted=portfolioConvertAmount(fee.fee,fee.currency,target);
