@@ -386,6 +386,35 @@ async function resolveBrokerProfile(env,name){
     return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
   }
 }
+async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,side="BUY"){
+  const name=trimText(brokerName,80),builtin=builtinBrokerProfile(name);
+  let rules=builtin&&builtin.rules||null,status=builtin?"verified":"pending",label=builtin&&builtin.plan||"";
+  if(!rules){
+    await ensureUserBrokerSchema(env);
+    const row=await env.DB.prepare(
+      "SELECT * FROM user_brokers WHERE user_id=? AND (LOWER(name)=LOWER(?) OR LOWER(canonical_name)=LOWER(?) OR LOWER(code)=LOWER(?)) LIMIT 1"
+    ).bind(userId,name,name,name).first();
+    if(row){
+      status=String(row.verification_status||"pending");label=row.plan||row.canonical_name||row.name||"";
+      try{rules=JSON.parse(row.fee_rules_json||"{}")||{}}catch(_){rules={}}
+    }
+  }
+  if(status!=="verified"||!rules)return{fee:null,currency:String(currency||"EUR").toUpperCase(),verified:false,label};
+  const qty=Math.max(0,finiteNumber(quantity)||0),px=Math.max(0,finiteNumber(price)||0),tradeValue=qty*px,type=String(rules.type||"").toLowerCase();
+  let fee=null;
+  if(type==="flat"){
+    const raw=finiteNumber(String(side).toUpperCase()==="SELL"?rules.sell:rules.buy);
+    if(raw!==null)fee=raw;
+  }else if(type==="per_share"){
+    const per=finiteNumber(rules.perShare),minimum=Math.max(0,finiteNumber(rules.min)||0),maxPct=finiteNumber(rules.maxPct);
+    if(per!==null){
+      fee=Math.max(minimum,qty*per);
+      if(maxPct!==null&&tradeValue>0)fee=Math.min(fee,tradeValue*maxPct/100);
+    }
+  }
+  return{fee,currency:String(rules.currency||currency||"EUR").toUpperCase(),verified:fee!==null,label};
+}
+
 async function handleBrokers(request,env,user,json,parts){
   await ensureUserBrokerSchema(env);
   const id=parts[1]||"",action=parts[2]||"";
@@ -471,7 +500,7 @@ function transactionPayload(body) {
     side,
     quantity,
     price,
-    fees: rawFees === null ? (preferTr ? 1 : 0) : rawFees,
+    fees: rawFees,
     currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
     cashFxRate: finiteNumber(body.cashFxRate),
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
@@ -792,13 +821,15 @@ async function ensureOpeningTransaction(env, userId, position) {
   const d = executed ? new Date(executed) : new Date(now);
   const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
   const broker=trimText(position.broker,80);
+  const feeInfo=await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY");
+  const fee=feeInfo.fee===null?0:feeInfo.fee;
   await env.DB.prepare(
     "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
     "VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'position-seed',?,?)"
   ).bind(
     uid("tx_"), position.portfolio_id, userId, position.id, broker, position.stock_key, position.ticker, position.name || "",
     position.exchange || "", position.isin || "", booleanInt(position.prefer_tr),
-    finiteNumber(position.quantity), finiteNumber(position.avg_price), booleanInt(position.prefer_tr)===1?1:0, String(position.currency || "EUR").toUpperCase(),
+    finiteNumber(position.quantity), finiteNumber(position.avg_price), fee, String(position.currency || "EUR").toUpperCase(),
     executedAt, "Posición inicial importada", now, now
   ).run();
 }
@@ -1050,7 +1081,9 @@ async function handlePositions(request, env, user, json, parts, url) {
         return json({error:"quantity and avgPrice are required to add to an existing position"},400);
       }
       const txId=uid("tx_");
-      const fee=data.preferTr===1?1:0;
+      const feeInfo=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY");
+      if(feeInfo.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
+      const fee=feeInfo.fee;
       await env.DB.prepare(
         "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'manual',?,?)"
       ).bind(
@@ -1060,6 +1093,8 @@ async function handlePositions(request, env, user, json, parts, url) {
       const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,existing.id);
       row=recalculated&&recalculated.position||existing;
     }else{
+      const initialFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY");
+      if(initialFee.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
       const idNew=uid("pos_");
       await env.DB.prepare(
         "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
@@ -1180,6 +1215,11 @@ async function handleTransactions(request, env, user, json, parts, url) {
     if (!["BUY","SELL"].includes(data.side)) return json({ error: "side must be BUY or SELL" }, 400);
     if (data.quantity === null || data.quantity <= 0) return json({ error: "quantity must be greater than zero" }, 400);
     if (data.price === null || data.price < 0) return json({ error: "price must be zero or greater" }, 400);
+    if(data.fees===null){
+      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side);
+      if(autoFee.fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
+      data.fees=autoFee.fee;
+    }
     if (data.fees < 0) return json({ error: "fees cannot be negative" }, 400);
     if (!data.executedAt) return json({ error: "executedAt is invalid" }, 400);
     if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
