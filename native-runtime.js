@@ -28,11 +28,15 @@
 
   const websocketUrl = path => {
     const raw = String(path || '');
+    if (/^wss?:\/\//i.test(raw)) return raw;
+    // WebSocket market feeds always terminate at the Worker. Static web hosting
+    // may serve HTTP /api routes, but cannot be relied on to proxy WS upgrades.
+    if (raw.startsWith('/api/')) {
+      return 'wss://viewinvai.sonarlab.workers.dev' + raw;
+    }
     if (!localNativeOrigin) {
-      if (/^wss?:\/\//i.test(raw)) return raw;
       return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + (raw.startsWith('/') ? raw : '/' + raw);
     }
-    if (/^wss?:\/\//i.test(raw)) return raw;
     return 'wss://viewinvai.sonarlab.workers.dev' + (raw.startsWith('/') ? raw : '/' + raw);
   };
 
