@@ -21,7 +21,7 @@
   {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null,columnFilters:{}};
  const FUND_FAVORITES_KEY='viewinvai:fundFavorites:v1';
  const favoriteIsins=new Set((()=>{try{const x=JSON.parse(localStorage.getItem(FUND_FAVORITES_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return[]}})());
  function saveFundFavorites(){try{localStorage.setItem(FUND_FAVORITES_KEY,JSON.stringify([...favoriteIsins]))}catch(_){}}
@@ -263,6 +263,43 @@
   else{state.sort=value;state.sortDir='desc'}
   render();
  }
+ function fundColumnRaw(p,key){
+  if(key==='name')return [p.name,p.isin].filter(Boolean).join(' ');
+  if(key==='platform')return [verified(p.platforms&&p.platforms.tradeRepublic)?'Trade Republic':'',verified(p.platforms&&p.platforms.myInvestor)?'MyInvestor':''].filter(Boolean).join(' ');
+  if(key==='current')return fundCurrentValue(p);
+  if(key==='freshness')return fundFreshness(p).label;
+  if(key==='ter')return num(p.ter);
+  if(key==='index')return p.index||p.category||'';
+  if(key==='provider')return p.provider||'';
+  if(key==='distribution')return p.distribution||'';
+  if(key==='region')return p.region||'';
+  return num(p[key])!==null?num(p[key]):p[key]||'';
+ }
+ function fundColumnType(key){
+  if(['current','ter','perf1M','perf3M','perf6M','perfYtd','perf1Y','perf3Y','perf5Y','perf10Y','perfSinceInception'].includes(key))return'number';
+  return'text';
+ }
+ function fundFilterNumber(raw){
+  raw=String(raw||'').trim().toLowerCase().replace(/\s+/g,'');
+  const m=raw.match(/^(-?\d+(?:[.,]\d+)?)([kmb])?%?$/i);if(!m)return null;
+  let n=Number(m[1].replace(',','.'));if(!Number.isFinite(n))return null;
+  if(m[2]==='k')n*=1e3;else if(m[2]==='m')n*=1e6;else if(m[2]==='b')n*=1e9;
+  return n;
+ }
+ function fundColumnFilterMatch(value,filter,type){
+  filter=String(filter||'').trim();if(!filter)return true;
+  if(type==='number'){
+   const n=num(value);if(n===null)return false;
+   const range=filter.replace(/\s+/g,'').match(/^(.+?)\.\.(.+)$/);
+   if(range){const a=fundFilterNumber(range[1]),b=fundFilterNumber(range[2]);if(a===null||b===null)return true;return n>=Math.min(a,b)&&n<=Math.max(a,b)}
+   const m=filter.replace(/\s+/g,'').match(/^(>=|<=|>|<|=)?(.+)$/);if(!m)return true;
+   const target=fundFilterNumber(m[2]);if(target===null)return true;const op=m[1]||'=';
+   if(op==='>')return n>target;if(op==='<')return n<target;if(op==='>=')return n>=target;if(op==='<=')return n<=target;return Math.abs(n-target)<1e-9;
+  }
+  const hay=String(value??'').toLocaleLowerCase('es');
+  const terms=filter.toLocaleLowerCase('es').split('|').map(x=>x.trim()).filter(Boolean);
+  return !terms.length||terms.some(term=>hay.includes(term));
+ }
  function filtered(){
   const needle=state.query.trim().toLowerCase();
   const rows=state.products.filter(p=>{
@@ -272,6 +309,9 @@
    if(state.region!=='all'&&String(p.region||'')!==state.region)return false;
    if(state.distribution!=='all'&&String(p.distribution||'')!==state.distribution)return false;
    if(state.maxTer!==null){const ter=num(p.ter);if(ter===null||ter>state.maxTer)return false}
+   for(const [key,filter] of Object.entries(state.columnFilters||{})){
+    if(!fundColumnFilterMatch(fundColumnRaw(p,key),filter,fundColumnType(key)))return false;
+   }
    if(!needle)return true;
    return [p.name,p.isin,p.provider,p.index,p.category,p.region].some(v=>String(v||'').toLowerCase().includes(needle));
   });
@@ -331,10 +371,13 @@
  }
  function saveFundLayout(){root.ViewInvAIUiPreferences?.save?.(FUND_PREF_SCOPE,fundLayout())}
  function sortHeader(key,label){
-  const active=state.sort===key;
+  const active=state.sort===key,filtered=String(state.columnFilters&&state.columnFilters[key]||'').trim()!=='';
   const arrow=active?(state.sortDir==='asc'?'↑':'↓'):'↕';
   const aria=active?(state.sortDir==='asc'?'ascending':'descending'):'none';
-  return '<th scope="col" aria-sort="'+aria+'" draggable="true" data-fund-column="'+esc(key)+'"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button><button type="button" class="fund-column-resizer" data-fund-resize="'+esc(key)+'" aria-label="Cambiar ancho de '+esc(label)+'" title="Arrastra para cambiar el ancho"></button></th>';
+  return '<th scope="col" aria-sort="'+aria+'" draggable="true" data-fund-column="'+esc(key)+'">'+
+   '<div class="fund-th-content"><button type="button" class="fund-sort-button'+(active?' active':'')+'" data-fund-sort-col="'+esc(key)+'"><span>'+esc(label)+'</span><i aria-hidden="true">'+arrow+'</i></button>'+
+   '<button type="button" class="fund-header-filter '+(filtered?'active':'')+'" data-fund-filter-column="'+esc(key)+'" aria-label="Filtrar '+esc(label)+'" title="Filtrar '+esc(label)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button></div>'+
+   '<button type="button" class="fund-column-resizer" data-fund-resize="'+esc(key)+'" aria-label="Cambiar ancho de '+esc(label)+'" title="Arrastra para cambiar el ancho"></button></th>';
  }
  function performanceCell(p,key){
   const v=num(p[key]);
@@ -359,13 +402,38 @@
   return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+
    '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td></tr>';
  }
+ function fundFilterValues(key){
+  const out=[],seen=new Set();
+  for(const p of state.products){
+   const value=fundColumnRaw(p,key),label=String(value??'').trim();
+   if(!label||seen.has(label))continue;seen.add(label);out.push(label);if(out.length>=40)break;
+  }
+  return out;
+ }
+ function ensureFundFilterMenu(){
+  let menu=document.querySelector('#fundColumnFilterMenu');if(menu)return menu;
+  menu=document.createElement('div');menu.id='fundColumnFilterMenu';menu.className='column-filter-popover';menu.hidden=true;document.body.appendChild(menu);return menu;
+ }
+ function closeFundFilterMenu(){const menu=document.querySelector('#fundColumnFilterMenu');if(menu)menu.hidden=true}
+ function openFundFilterMenu(button){
+  const key=button.dataset.fundFilterColumn,label=(FUND_COLUMNS.find(([id])=>id===key)||[key,key])[1],type=fundColumnType(key),menu=ensureFundFilterMenu();
+  const current=String(state.columnFilters&&state.columnFilters[key]||''),values=fundFilterValues(key),rect=button.getBoundingClientRect(),width=Math.min(340,innerWidth-20);
+  menu.dataset.key=key;
+  menu.innerHTML='<div class="column-filter-head"><strong>Filtrar · '+esc(label)+'</strong><button type="button" data-column-filter-close aria-label="Cerrar">×</button></div>'+
+   '<div class="column-filter-sort"><button type="button" data-fund-filter-sort="asc">↑ Ascendente</button><button type="button" data-fund-filter-sort="desc">↓ Descendente</button></div>'+
+   '<label class="column-filter-input"><span>'+(type==='number'?'Condición numérica':'Texto contiene')+'</span><input class="input" data-fund-filter-input value="'+esc(current)+'" placeholder="'+(type==='number'?'>1 · 1..5':'Escribe para filtrar…')+'"></label>'+
+   (type==='text'&&values.length?'<div class="column-filter-values"><small>Valores frecuentes</small><div>'+values.slice(0,18).map(v=>'<button type="button" data-fund-filter-value="'+esc(v)+'" title="'+esc(v)+'">'+esc(v)+'</button>').join('')+'</div></div>':'')+
+   '<div class="column-filter-actions"><button type="button" class="btn ghost" data-fund-filter-clear>Limpiar</button><button type="button" class="btn secondary" data-fund-filter-apply>Aplicar</button></div>';
+  menu.style.width=width+'px';menu.style.left=Math.min(innerWidth-width-10,Math.max(10,rect.left-120))+'px';menu.style.top=Math.max(10,Math.min(innerHeight-320,rect.bottom+6))+'px';menu.hidden=false;
+  setTimeout(()=>menu.querySelector('[data-fund-filter-input]')?.focus(),0);
+ }
  function fundTable(rows){
   const columns=fundColumns(),layout=fundLayout();
   const colgroup='<colgroup>'+columns.map(([key])=>'<col data-fund-col-width="'+esc(key)+'" style="width:'+Math.round(layout.widths[key]||110)+'px">').join('')+'<col style="width:170px"></colgroup>';
   return '<div class="fund-table-scroll" role="region" aria-label="Comparador de fondos indexados y ETFs" tabindex="0">'+
    '<table class="fund-table fund-resizable-table">'+colgroup+'<thead><tr>'+columns.map(([key,label])=>sortHeader(key,label)).join('')+'<th scope="col" class="fund-actions-head">Acciones</th></tr></thead>'+
    '<tbody>'+rows.map(p=>fundTableRow(p,columns)).join('')+'</tbody></table></div>'+
-   '<div class="fund-table-swipe-hint">Arrastra cabeceras para reordenar · arrastra su borde derecho para cambiar el ancho · los cambios se guardan en tu cuenta</div>';
+   '<div class="fund-table-footer"><span><strong>'+rows.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+state.products.length.toLocaleString('es-ES')+'</strong> productos</span><span>Arrastra columnas · ajusta ancho · filtros por cabecera</span></div>';
  }
  function mobileSortHead(key,label){
   const active=state.sort===key;
@@ -416,7 +484,8 @@
    '<div class="fund-mobile-compare fund-mobile-cols-'+cols+'">'+
     root.ViewInvAICards.head(group.columns.map(([key,label])=>({html:mobileSortHead(key,label)})),{firstHtml:mobileSortHead('name','Nombre / ISIN')})+
     '<div class="fund-mobile-rows">'+rows.map(p=>fundMobileRow(p,group)).join('')+'</div>'+
-   '</div>';
+   '</div>'+
+   '<div class="fund-table-footer"><span><strong>'+rows.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+state.products.length.toLocaleString('es-ES')+'</strong> productos</span></div>';
  }
  function fundSortLabel(key){
   const desktop=FUND_COLUMNS.find(([column])=>column===key);
@@ -813,6 +882,19 @@
    else load(true);
   });
   document.addEventListener('click',async e=>{
+   const fundFilterButton=e.target.closest&&e.target.closest('[data-fund-filter-column]');
+   if(fundFilterButton){e.preventDefault();e.stopPropagation();openFundFilterMenu(fundFilterButton);return}
+   const filterMenu=e.target.closest&&e.target.closest('#fundColumnFilterMenu');
+   if(filterMenu){
+    const key=filterMenu.dataset.key;
+    if(e.target.closest('[data-column-filter-close]')){closeFundFilterMenu();return}
+    const sort=e.target.closest('[data-fund-filter-sort]');if(sort){setFundSort(key,sort.dataset.fundFilterSort);closeFundFilterMenu();return}
+    const value=e.target.closest('[data-fund-filter-value]');if(value){const input=filterMenu.querySelector('[data-fund-filter-input]');if(input)input.value=value.dataset.fundFilterValue||'';return}
+    if(e.target.closest('[data-fund-filter-clear]')){state.columnFilters[key]='';closeFundFilterMenu();render();return}
+    if(e.target.closest('[data-fund-filter-apply]')){const input=filterMenu.querySelector('[data-fund-filter-input]');state.columnFilters[key]=input?input.value:'';closeFundFilterMenu();render();return}
+    return;
+   }
+   if(!e.target.closest('.column-filter-popover'))closeFundFilterMenu();
    if(e.target.closest&&e.target.closest('[data-copy-isin]'))return;
    const fundFav=e.target.closest&&e.target.closest('[data-fund-favorite]');if(fundFav){e.preventDefault();e.stopPropagation();toggleFundFavorite(fundFav.dataset.fundFavorite);return;}
    const mobileGroup=e.target.closest&&e.target.closest('[data-fund-mobile-group]');
@@ -824,7 +906,7 @@
    const sortButton=e.target.closest&&e.target.closest('[data-fund-sort-col]');
    if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
    if(e.target.closest&&e.target.closest('#fundResetColumns')){
-    applyFundLayout({order:fundDefaultOrder(),widths:fundDefaultWidths()});saveFundLayout();render();return;
+    applyFundLayout({order:fundDefaultOrder(),widths:fundDefaultWidths()});state.columnFilters={};saveFundLayout();render();return;
    }
 
    const asset=e.target.closest&&e.target.closest('[data-portfolio-asset]');
@@ -868,7 +950,13 @@
     const r=await api('/api/fund-positions/'+encodeURIComponent(id),{method:'DELETE'});if(r.ok)await loadPortfolio(true);return;
    }
   });
-  let draggedFundColumn=null,fundResize=null;
+  document.addEventListener('keydown',e=>{
+   if(e.key!=='Enter')return;
+   const input=e.target.closest&&e.target.closest('#fundColumnFilterMenu [data-fund-filter-input]');if(!input)return;
+   const menu=input.closest('#fundColumnFilterMenu'),key=menu.dataset.key;if(!key)return;
+   state.columnFilters[key]=input.value;closeFundFilterMenu();render();
+  });
+    let draggedFundColumn=null,fundResize=null;
   document.addEventListener('dragstart',e=>{
    const th=e.target.closest&&e.target.closest('.fund-table th[data-fund-column]');if(!th||e.target.closest('.fund-column-resizer'))return;
    draggedFundColumn=th.dataset.fundColumn;th.classList.add('dragging');
