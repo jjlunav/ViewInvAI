@@ -14,6 +14,7 @@
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
     '<div class="asset-card-identity">'+(options.leadingHtml||'')+'<div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
     cells.map(cell=>'<div class="asset-card-cell '+escape(cell.tone||'')+'">'+(cell.label?'<small class="asset-card-label">'+escape(cell.label)+'</small>':'')+'<span>'+content(cell)+'</span></div>').join('')+
+    (options.rowActionsHtml?'<div class="asset-card-row-actions">'+options.rowActionsHtml+'</div>':'')+
     (options.openLabel&&interactive?'<button type="button" class="asset-card-open asset-card-open-button"'+(options.openActionAttrs||'')+'>'+escape(options.openLabel)+' <b aria-hidden="true">›</b></button>':'<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>')+
    '</div>'+
    (options.metaHtml?'<div class="asset-card-meta">'+options.metaHtml+'</div>':'')+
