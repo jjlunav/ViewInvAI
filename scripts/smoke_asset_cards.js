@@ -112,7 +112,15 @@ window.checkAssetCards = async function () {
   assert(!document.querySelector('#stockQuickDetail .unified-stock-header .quote-spread'),'profile hero leaked BID/ASK');
   const generalBidAsk=[...document.querySelectorAll('#stockQuickDetail [data-profile-panel="general"] .profile-stat-row')].some(el=>/BID\s*\/\s*ASK/i.test(el.textContent||''));
   assert(generalBidAsk,'General tab lost BID/ASK');
-  closeQuickProfile(false);
+  const chartTab=document.querySelector('#stockQuickDetail [data-profile-tab="chart"]');
+  assert(chartTab,'profile chart tab is missing');
+  chartTab.click();
+  assert(document.querySelector('#stockQuickDetail [data-profile-panel="chart"]')?.hidden===false,'profile chart tab did not activate');
+  const profileBack=document.querySelector('#stockQuickDetail [data-stock-detail-back]');
+  assert(profileBack,'profile back control is missing after tab navigation');
+  profileBack.click();
+  assert(document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'profile back failed after navigating inside the profile');
+  assert(document.querySelector('#view-portfolios').classList.contains('active'),'profile back did not return to portfolios after internal tab navigation');
  }finally{
   Object.assign(ps,saved);portfolio.render();view.style.display=display;
  }
