@@ -17,6 +17,37 @@ function trProxyUrl(){
 }
 
 let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
+const TR_CLOSE_CACHE_KEY='viewinvai:trCloseQuotes:v1';
+let trCloseQuotes=(()=>{
+ try{
+  const raw=JSON.parse(localStorage.getItem(TR_CLOSE_CACHE_KEY)||'{}');
+  return raw&&typeof raw==='object'?raw:{};
+ }catch(_){return{}}
+})();
+function saveTrCloseQuotes(){
+ try{localStorage.setItem(TR_CLOSE_CACHE_KEY,JSON.stringify(trCloseQuotes))}catch(_){}
+}
+function trClosedQuote(s){
+ if(!s||trMarketOpen())return null;
+ const row=trCloseQuotes[stockKey(s)];
+ if(!row||N(row.price)===null)return null;
+ return row;
+}
+function rememberTrCloseQuote(s){
+ const price=N(s&&s.trLivePrice);if(!s||price===null)return;
+ trCloseQuotes[stockKey(s)]={
+  price,
+  pre:N(s.trLivePre),
+  change:N(s.trLiveChangePct),
+  updatedAt:N(s.trLiveUpdatedAt)||N(s.trLiveLastAt)||Date.now()
+ };
+ const keys=Object.keys(trCloseQuotes);
+ if(keys.length>3500){
+  keys.sort((a,b)=>(N(trCloseQuotes[b]&&trCloseQuotes[b].updatedAt)||0)-(N(trCloseQuotes[a]&&trCloseQuotes[a].updatedAt)||0));
+  trCloseQuotes=Object.fromEntries(keys.slice(0,3000).map(k=>[k,trCloseQuotes[k]]));
+ }
+ saveTrCloseQuotes();
+}
 let usLive={busy:false,lastFetchAt:0};
 let fxLive={rate:null,updatedAt:0,busy:false};
 let tvChartAvailability=new Map();
@@ -41,14 +72,21 @@ function trLiveChange(s){
  let direct=N(s&&s.trLiveChangePct);
  if(direct!==null)return direct;
  let p=trLivePrice(s),pre=trLivePre(s);
- return p!==null&&pre>0?(p/pre-1)*100:null;
+ if(p!==null&&pre>0)return(p/pre-1)*100;
+ const closed=trClosedQuote(s);
+ if(closed){
+  const cached=N(closed.change),cp=N(closed.price),cpre=N(closed.pre);
+  return cached!==null?cached:(cp!==null&&cpre>0?(cp/cpre-1)*100:null);
+ }
+ return null;
 }
 function trPriceValues(s,fallback){
  let live=trLivePrice(s),fx=eurUsd();
- if(live!==null)return{eur:live,usd:fx?live*fx:null,direct:true};
- // Never invent a Trade Republic/LSX price from another market. If the live
- // TR ticker has not arrived yet, show N/D until the exact LSX quote is received.
- return{eur:null,usd:null,direct:false};
+ if(live!==null)return{eur:live,usd:fx?live*fx:null,direct:true,closed:false};
+ const closed=trClosedQuote(s),price=N(closed&&closed.price);
+ if(price!==null)return{eur:price,usd:fx?price*fx:null,direct:false,closed:true};
+ // Never invent a Trade Republic/LSX price from another market.
+ return{eur:null,usd:null,direct:false,closed:false};
 }
 function usLivePrice(s){return N(s&&s.usLivePrice)}
 // BID/ASK shown in the live UI must come from the current Nasdaq quote.
@@ -137,21 +175,23 @@ function usPriceValues(s,fallback){
 function canonicalQuote(s,preferTr=false){
  let fx=eurUsd();
  if(preferTr&&trTradable(s)){
-  let eur=trLivePrice(s);
+  const direct=trLivePrice(s),closed=direct===null?trClosedQuote(s):null;
+  const eur=direct??N(closed&&closed.price);
   return{
    market:'tr',
-   source:'Trade Republic / '+String(s&&s.trExchange||'LSX'),
+   source:direct!==null?'Trade Republic / '+String(s&&s.trExchange||'LSX'):'Último cierre · Trade Republic / '+String(s&&s.trExchange||'LSX'),
    nativeCurrency:'EUR',
    price:eur,
    eur,
    usd:eur!==null&&fx?eur*fx:null,
    change:trLiveChange(s),
-   updatedAt:quoteTimestampMs(s,true),
+   updatedAt:direct!==null?quoteTimestampMs(s,true):(N(closed&&closed.updatedAt)||null),
    fx,
    fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
-   live:eur!==null,
-   realTime:eur!==null,
-   fallback:false
+   live:direct!==null,
+   realTime:direct!==null&&trMarketOpen(),
+   fallback:false,
+   frozen:direct===null&&eur!==null
   };
  }
  let current=currentUsQuote(s,currentMarketSession()),usd=N(current&&current.price);
@@ -502,6 +542,7 @@ function trApplyTickerPayload(s,payload){
  if(open!==null)s.trLiveOpen=open;
  if(N(s.trLivePrice)!==null&&N(s.trLivePre)>0)s.trLiveChangePct=(N(s.trLivePrice)/N(s.trLivePre)-1)*100;
  s.trLiveQuality=payload.qualityId||s.trLiveQuality||'';
+ if(N(s.trLivePrice)!==null)rememberTrCloseQuote(s);
  let times=[s.trLiveLastAt,s.trLiveBidAt,s.trLiveAskAt].map(N).filter(x=>x!==null);
  if(times.length)s.trLiveUpdatedAt=Math.max(...times);
  s.trLiveReceivedAt=Date.now();
