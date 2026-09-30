@@ -655,6 +655,9 @@ function observeActiveTrLivePrices(){
 }
 function pruneTrLiveSubscriptions(){
  if(document.hidden||!trLive.wanted.size)return;
+ // Radar de entrada necesita mantener temporalmente el universo LSX aunque todavía no haya filas visibles.
+ // Si se podan estas suscripciones antes de recibir precio, el filtro entra en un bloqueo circular.
+ if(state.currentView==='entry'&&state.entryMarket==='tr')return;
  const selector='[data-compact-quote-key][data-compact-quote-tr="1"],[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key],[data-tr-spread-key],[data-tr-price-eur-key],[data-tr-price-usd-key]';
  let keep=new Set(),h=window.innerHeight||900;
  for(let root of activeLiveRoots())for(let el of root.querySelectorAll(selector)){
