@@ -8770,3 +8770,53 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  }
  #view-recommendation .reco-mobile-groups::-webkit-scrollbar{display:none}
 }
+
+
+/* Pulso IA hard centering and loading-state alignment. */
+#view-recommendation{
+ width:100%;
+ max-width:none!important;
+}
+#view-recommendation>.page-heading{
+ width:min(100%,1120px)!important;
+ max-width:1120px!important;
+ margin:0 auto 8px!important;
+ padding-left:0!important;
+ padding-right:0!important;
+ text-align:center!important;
+}
+#view-recommendation>.page-heading>div{
+ width:100%!important;
+ max-width:1120px!important;
+ margin:0 auto!important;
+ text-align:center!important;
+}
+#view-recommendation>.page-heading h1,
+#view-recommendation>.page-heading .lead{
+ text-align:center!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+}
+#view-recommendation .recommendation-intro,
+#view-recommendation .status-line,
+#view-recommendation #recommendationResults{
+ width:min(100%,1120px)!important;
+ max-width:1120px!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+}
+#view-recommendation #recommendationResults>.empty-state{
+ width:100%!important;
+ max-width:none!important;
+ min-height:92px;
+ display:flex!important;
+ flex-direction:column;
+ align-items:center!important;
+ justify-content:center!important;
+ text-align:center!important;
+ margin:0 auto!important;
+}
+#view-recommendation #recommendationResults>.pulse-ai-explanation{
+ width:100%;
+ text-align:center;
+}
