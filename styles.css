@@ -7967,3 +7967,16 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  .portfolio-goal-trade>b{grid-column:2;text-align:left!important}
  .portfolio-goal-decision-head{align-items:flex-start}
 }
+
+/* 2026-09-30 · compact notification settings */
+.compact-settings-card .settings-card-head p,.compact-settings-card .settings-note{display:none!important}
+.notification-master-card .settings-card-head{align-items:center!important}
+.notification-master-card .settings-switch-track{width:54px;height:30px}
+.notification-master-card .settings-switch-track span{width:24px;height:24px}
+.notification-master-card .settings-switch input:checked+.settings-switch-track span{transform:translateX(24px)}
+.notification-category-list{display:grid}
+.notification-category-list .settings-status-row{margin-top:0;min-height:50px;padding:10px 0}
+.notification-category-list .settings-status-row:first-child{border-top:0}
+.notification-category-list .settings-status-row strong{color:var(--text);font-size:11px}
+.source-health-settings-card .settings-status-row>span>strong{color:var(--text);font-size:10px}
+.push-settings-actions{align-items:center!important}

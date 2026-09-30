@@ -1692,15 +1692,13 @@ async function ensureGlobalNotificationSettingsSchema(env){
   if(globalNotificationSettingsSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_notification_settings ("+
-    "user_id TEXT PRIMARY KEY,notifications_enabled INTEGER NOT NULL DEFAULT 1,news_events_enabled INTEGER NOT NULL DEFAULT 1,pulse_ai_enabled INTEGER NOT NULL DEFAULT 1,radar_enabled INTEGER NOT NULL DEFAULT 1,price_enabled INTEGER NOT NULL DEFAULT 1,portfolio_enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+    "user_id TEXT PRIMARY KEY,opted_in_explicitly INTEGER NOT NULL DEFAULT 0,notifications_enabled INTEGER NOT NULL DEFAULT 0,news_events_enabled INTEGER NOT NULL DEFAULT 0,pulse_ai_enabled INTEGER NOT NULL DEFAULT 0,radar_enabled INTEGER NOT NULL DEFAULT 0,price_enabled INTEGER NOT NULL DEFAULT 0,portfolio_enabled INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
     "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
   const columns=await env.DB.prepare("PRAGMA table_info(user_notification_settings)").all();
   const names=new Set((columns.results||[]).map(row=>String(row.name||"")));
-  for(const column of ["notifications_enabled","radar_enabled","price_enabled","portfolio_enabled"]){
-    if(!names.has(column)){
-      await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 1").run();
-    }
+  for(const column of ["opted_in_explicitly","notifications_enabled","radar_enabled","price_enabled","portfolio_enabled"]){
+    if(!names.has(column))await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 0").run();
   }
   globalNotificationSettingsSchemaReady=true;
 }
@@ -1708,15 +1706,16 @@ async function ensureGlobalNotificationSettingsSchema(env){
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
+  const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
   return {
-    enabled: row ? Number(row.notifications_enabled)!==0 : true,
-    newsEvents: row ? Number(row.news_events_enabled)!==0 : true,
-    pulseAi: row ? Number(row.pulse_ai_enabled)!==0 : true,
-    radar: row ? Number(row.radar_enabled)!==0 : true,
-    price: row ? Number(row.price_enabled)!==0 : true,
-    portfolio: row ? Number(row.portfolio_enabled)!==0 : true
+    enabled: optedIn&&Number(row.notifications_enabled)===1,
+    newsEvents: optedIn&&Number(row.news_events_enabled)===1,
+    pulseAi: optedIn&&Number(row.pulse_ai_enabled)===1,
+    radar: optedIn&&Number(row.radar_enabled)===1,
+    price: optedIn&&Number(row.price_enabled)===1,
+    portfolio: optedIn&&Number(row.portfolio_enabled)===1
   };
 }
 
@@ -2110,9 +2109,9 @@ async function handleSettings(request, env, user, json) {
       "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
     ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
     env.DB.prepare(
-      "INSERT INTO user_notification_settings (user_id,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) " +
-      "ON CONFLICT(user_id) DO UPDATE SET notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,radar_enabled=excluded.radar_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,next.radar?1:0,next.price?1:0,next.portfolio?1:0,now,now)
+      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,radar_enabled=excluded.radar_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,next.radar?1:0,next.price?1:0,next.portfolio?1:0,now,now)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -2174,7 +2173,7 @@ async function ensureNotificationPreferenceSchema(env){
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS notification_preferences ("+
     "id TEXT PRIMARY KEY,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0,"+
-    "news_enabled INTEGER NOT NULL DEFAULT 1,pulse_enabled INTEGER NOT NULL DEFAULT 1,radar_enabled INTEGER NOT NULL DEFAULT 0,price_up_enabled INTEGER NOT NULL DEFAULT 0,price_down_enabled INTEGER NOT NULL DEFAULT 0,"+
+    "news_enabled INTEGER NOT NULL DEFAULT 0,pulse_enabled INTEGER NOT NULL DEFAULT 0,radar_enabled INTEGER NOT NULL DEFAULT 0,price_up_enabled INTEGER NOT NULL DEFAULT 0,price_down_enabled INTEGER NOT NULL DEFAULT 0,"+
     "price_up_step REAL NOT NULL DEFAULT 3,price_down_step REAL NOT NULL DEFAULT 3,anchor_price REAL,last_up_bucket INTEGER NOT NULL DEFAULT 0,last_down_bucket INTEGER NOT NULL DEFAULT 0,last_pulse_state TEXT NOT NULL DEFAULT '',last_radar_state TEXT NOT NULL DEFAULT '',last_ai_scan_at TEXT,"+
     "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
@@ -2242,7 +2241,7 @@ async function scanNotificationPreferences(env,services){
   await ensureGlobalNotificationSettingsSchema(env);
   const rows=await env.DB.prepare(
     "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
-    "WHERE COALESCE(g.notifications_enabled,1)<>0 ORDER BY p.updated_at ASC LIMIT 24"
+    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.updated_at ASC LIMIT 24"
   ).all();
   if(!(rows.results||[]).length)return{processed:0};
   const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();

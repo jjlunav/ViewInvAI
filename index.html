@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.20">
+<html lang="es" data-app-version="0.6.21">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -15,18 +15,18 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260929r24">
+  <link rel="stylesheet" href="styles.css?v=20260930r25">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20260930r2';
+      link.href = 'web-mobile.css?v=20260930r3';
       link.media = '(max-width:820px)';
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20260929r8">
+  <link rel="stylesheet" href="mobile-app.css?v=20260930r9">
   <link rel="stylesheet" href="ui-density.css?v=20260928r1">
   <link rel="stylesheet" href="asset-card.css?v=20260930r1">
 </head>
@@ -429,102 +429,39 @@
           <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
         </article>
 
-        <article class="settings-card push-settings-card">
+        <article class="settings-card push-settings-card compact-settings-card">
+          <div class="settings-card-head"><div><span class="settings-kicker">AVISOS EN SEGUNDO PLANO</span><h2>Notificaciones push</h2></div></div>
+          <div class="settings-status-row"><span>Estado</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-save-row push-settings-actions"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button><button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar</button></div></div>
+        </article>
+
+        <article class="settings-card notification-master-card compact-settings-card">
           <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">AVISOS EN SEGUNDO PLANO</span>
-              <h2>Notificaciones push</h2>
-              <p>Recibe cambios relevantes de cartera y señales de alta convicción aunque ViewInvAI esté cerrada.</p>
-            </div>
+            <div><span class="settings-kicker">ACTIVACIÓN GENERAL</span><h2>Activar notificaciones</h2></div>
+            <label class="settings-switch" aria-label="Activar todas las notificaciones"><input id="globalNotificationsEnabled" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label>
           </div>
-          <div class="settings-status-row">
-            <span>Estado</span>
-            <strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong>
-          </div>
-          <div class="settings-status-row settings-master-notification-row">
-            <span><strong>Activar notificaciones</strong><small>Interruptor maestro. Si lo desactivas, ViewInvAI no enviará ningún aviso aunque las categorías de abajo sigan seleccionadas.</small></span>
-            <label class="settings-switch" aria-label="Activar todas las notificaciones">
-              <input id="globalNotificationsEnabled" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row" data-notification-child-setting>
-            <span><strong>Noticias y eventos</strong><small>Activa o desactiva globalmente estos avisos para las acciones que ViewInvAI está siguiendo.</small></span>
-            <label class="settings-switch" aria-label="Notificaciones globales de noticias y eventos">
-              <input id="globalNotifyNewsEvents" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row" data-notification-child-setting>
-            <span><strong>Entrada en Pulso IA</strong><small>Avísame cuando una acción pase a cumplir los criterios de Pulso IA.</small></span>
-            <label class="settings-switch" aria-label="Notificaciones globales de entrada en Pulso IA">
-              <input id="globalNotifyPulseAi" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row" data-notification-child-setting>
-            <span><strong>Entrada en Radar</strong><small>Avísame cuando una acción seguida pase a cumplir los criterios del Radar.</small></span>
-            <label class="settings-switch" aria-label="Notificaciones globales de entrada en Radar">
-              <input id="globalNotifyRadar" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row" data-notification-child-setting>
-            <span><strong>Movimientos de precio</strong><small>Permite avisos de subida o bajada por tramos para los activos donde los hayas configurado.</small></span>
-            <label class="settings-switch" aria-label="Notificaciones globales de movimientos de precio">
-              <input id="globalNotifyPrice" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row" data-notification-child-setting>
-            <span><strong>Cartera</strong><small>Avisos relevantes sobre deterioro, revisión o posible salida de posiciones de tus carteras.</small></span>
-            <label class="settings-switch" aria-label="Notificaciones globales de cartera">
-              <input id="globalNotifyPortfolio" type="checkbox" checked disabled>
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-save-row push-settings-actions">
-            <span id="globalNotificationSettingsStatus" class="settings-note">Inicia sesión para cambiar estos avisos.</span>
-            <div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button><button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar push</button></div>
+          <div class="settings-status-row"><span>Estado</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
+        </article>
+
+        <article class="settings-card notification-categories-card compact-settings-card">
+          <div class="settings-card-head"><div><span class="settings-kicker">TIPOS DE AVISO</span><h2>Notificarme cuando…</h2></div></div>
+          <div class="notification-category-list">
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos</strong></span><label class="settings-switch" aria-label="Noticias y eventos"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Entrada en Pulso IA</strong></span><label class="settings-switch" aria-label="Entrada en Pulso IA"><input id="globalNotifyPulseAi" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Entrada en Radar</strong></span><label class="settings-switch" aria-label="Entrada en Radar"><input id="globalNotifyRadar" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Cartera</strong></span><label class="settings-switch" aria-label="Cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
           </div>
         </article>
 
-        <article class="settings-card source-health-settings-card">
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">DATOS Y SERVICIOS</span>
-              <h2>Estado de fuentes</h2>
-              <p>Comprueba qué integraciones están preparadas. Este panel no muestra credenciales ni sustituye una prueba de disponibilidad en tiempo real.</p>
-            </div>
-            <span id="sourceStatusCadence" class="settings-status">Comprobando…</span>
-          </div>
-          <div class="settings-status-row"><span><strong>Trade Republic / LSX</strong><small>Universo y cotización del mercado configurado para TR.</small></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row"><span><strong>Nasdaq / EEUU</strong><small>Cotización, BID/ASK y sesiones estadounidenses.</small></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row"><span><strong>SEC / EDGAR</strong><small>Filings oficiales directos para activos seguidos.</small></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row"><span><strong>ClinicalTrials.gov</strong><small>Ensayos y fechas clínicas oficiales para valores sanitarios.</small></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row"><span><strong>FDA / openFDA</strong><small>Registros regulatorios; la API key es opcional y mejora los límites de uso.</small></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row"><span><strong>Firebase push</strong><small>Canal de entrega de notificaciones Android.</small></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
-        </article>
-
-        <article class="settings-card account-analysis-settings-card">
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">IA Y AVISOS</span>
-              <h2>Seguimiento de cartera</h2>
-              <p>Controla cada cuánto se reanalizan tus posiciones y favoritos y qué nivel exige ViewInvAI para generar avisos relevantes.</p>
-            </div>
-          </div>
-          <div class="analysis-settings-grid">
-            <label><span>Posiciones</span><input id="analysisPositionsMinutes" class="input" type="number" min="5" max="240" step="1" value="10"><small>minutos</small></label>
-            <label><span>Favoritos</span><input id="analysisWatchlistMinutes" class="input" type="number" min="10" max="1440" step="1" value="30"><small>minutos</small></label>
-            <label><span>Confianza compra</span><input id="minBuyConfidence" class="input" type="number" min="60" max="99" step="1" value="85"><small>%</small></label>
-            <label><span>Confianza salida</span><input id="minSellConfidence" class="input" type="number" min="60" max="99" step="1" value="80"><small>%</small></label>
-            <label><span>Cambio de score</span><input id="notifyScoreChange" class="input" type="number" min="5" max="60" step="1" value="20"><small>puntos</small></label>
-          </div>
-          <div class="settings-save-row">
-            <strong id="analysisSettingsStatus">Inicia sesión para sincronizar estos ajustes.</strong>
-            <button type="button" class="btn small" id="saveAnalysisSettings" disabled>Guardar</button>
-          </div>
+        <article class="settings-card source-health-settings-card compact-settings-card">
+          <div class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></div>
+          <div class="settings-status-row"><span><strong>Trade Republic / LSX</strong></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>Nasdaq / EEUU</strong></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>SEC / EDGAR</strong></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>ClinicalTrials.gov</strong></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-status-row"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
         </article>
       </div>
     </section>
@@ -637,7 +574,7 @@
 <script src="market-session.js?v=20260925r1"></script>
 <script src="score-engine.js?v=20260925r3"></script>
 <script src="app.js?v=20260929r5"></script>
-<script src="settings.js?v=20260929r9"></script>
+<script src="settings.js?v=20260930r10"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20260929r2"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
@@ -648,16 +585,16 @@
 <script src="help.js?v=20260925r1"></script>
 <script src="stock-profile.js?v=20260929r12"></script>
 <script src="catalog.js?v=20260929r6"></script>
-<script src="heatmap.js?v=20260929r3"></script>
+<script src="heatmap.js?v=20260930r4"></script>
 <script src="stock-interactions.js?v=20260930r1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20260929r3"></script>
+<script src="navigation.js?v=20260930r4"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
 <script src="funds.js?v=20260929r10"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20260929r2"></script>
-<script src="stock-notifications.js?v=20260930r2"></script>
+<script src="stock-notifications.js?v=20260930r3"></script>
 <script type="module" src="auth.js?v=20260930r1"></script>
-<script type="module" src="portfolio.js?v=20260929r17"></script>
+<script type="module" src="portfolio.js?v=20260930r18"></script>
 </body>
 </html>

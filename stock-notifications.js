@@ -8,9 +8,9 @@
   source=document.createElement('form');source.id='stockNotificationPanel';source.className='filter-sheet-source stock-notification-source';
   source.innerHTML=
    '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span><small id="stockNotificationGlobalStatus"></small></div>'+
-   '<label class="notification-pref-row"><span><b>Noticias y eventos relevantes</b><small>Resultados, regulación, contratos, financiación y catalizadores verificados.</small></span><span class="settings-switch"><input type="checkbox" name="news" checked><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
-   '<label class="notification-pref-row"><span><b>Entrada en Pulso IA</b><small>Aviso cuando la IA confirme una entrada de alta convicción.</small></span><span class="settings-switch"><input type="checkbox" name="pulse" checked><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
-   '<label class="notification-pref-row"><span><b>Entrada en Radar</b><small>Aviso cuando pase los criterios de oportunidad del Radar.</small></span><span class="settings-switch"><input type="checkbox" name="radar"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Noticias y eventos</b></span><span class="settings-switch"><input type="checkbox" name="news"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Entrada en Pulso IA</b></span><span class="settings-switch"><input type="checkbox" name="pulse"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Entrada en Radar</b></span><span class="settings-switch"><input type="checkbox" name="radar"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
    '<div class="notification-price-grid">'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Subida por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceUp"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceUpStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Bajada por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceDown"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
@@ -36,8 +36,8 @@
   const globalStatus=f.querySelector('#stockNotificationGlobalStatus');
   if(globalStatus)globalStatus.textContent=global&&global.enabled===false?'Notificaciones globales desactivadas: estas preferencias quedan guardadas para cuando vuelvas a activarlas.':'';
 
-  get('news').checked=pref?Number(pref.news_enabled)===1:true;
-  get('pulse').checked=pref?Number(pref.pulse_enabled)===1:true;
+  get('news').checked=pref?Number(pref.news_enabled)===1:false;
+  get('pulse').checked=pref?Number(pref.pulse_enabled)===1:false;
   get('radar').checked=pref?Number(pref.radar_enabled)===1:false;
   get('priceUp').checked=pref?Number(pref.price_up_enabled)===1:false;
   get('priceDown').checked=pref?Number(pref.price_down_enabled)===1:false;
