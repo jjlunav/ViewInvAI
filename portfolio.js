@@ -2328,6 +2328,19 @@ function init() {
   if (state.user) loadAll();
 }
 
+function openPositionEditorForStock(stockKey,portfolioId=null){
+  const memberships=activePortfolioMemberships(stockKey);
+  if(!memberships.length)return false;
+  let target=null;
+  if(portfolioId)target=memberships.find(x=>String(x.position.portfolio_id)===String(portfolioId))||null;
+  if(!target&&state.selectedPortfolioId)target=memberships.find(x=>String(x.position.portfolio_id)===String(state.selectedPortfolioId))||null;
+  if(!target&&memberships.length===1)target=memberships[0];
+  if(!target){openStarMenu(stockKey);return true}
+  closeModal();
+  setTimeout(()=>openAddPositionModal(target.position.stock_key,Number(target.position.prefer_tr)===1,target.position.portfolio_id),20);
+  return true;
+}
+
 window.ViewInvAIPortfolios = {
   render: renderApp,
   reload: () => loadAll(),
@@ -2335,6 +2348,7 @@ window.ViewInvAIPortfolios = {
   openAddPosition: openAddPositionModal,
   openPositionPicker,
   openStarMenu,
+  openPositionEditorForStock,
   isInPortfolio,
   getPortfolioMemberships: stockKey => activePortfolioMemberships(stockKey).map(x => ({
     positionId: x.position.id,
