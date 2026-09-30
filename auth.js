@@ -55,6 +55,7 @@ function nativeMessagingPlugin() {
 }
 
 let pushListenersBound = false;
+let pushLifecycleBound = false;
 let lastRegisteredPushToken = "";
 
 async function registerPushToken(token) {
@@ -81,8 +82,17 @@ async function registerPushToken(token) {
   return true;
 }
 
-function openPushStock(notification) {
+function openPushTarget(notification) {
   const data = notification && notification.data || {};
+  const route=String(data.route||""),portfolioId=String(data.portfolioId||data.portfolio_id||"");
+  if(route==="portfolio-goal"||portfolioId){
+    const openGoal=()=>{
+      document.querySelector('.nav-item[data-view="portfolios"]')?.click();
+      return !!window.ViewInvAIPortfolios?.openGoal?.(portfolioId);
+    };
+    if(!openGoal())setTimeout(openGoal,900);
+    return;
+  }
   const stockKey = String(data.stockKey || data.stock_key || "");
   const preferTr = String(data.preferTr || data.prefer_tr || "") === "1" || data.preferTr === true;
   if (!stockKey) return;
@@ -97,7 +107,7 @@ async function bindPushListeners(plugin) {
     registerPushToken(event && event.token).catch(error => console.warn("FCM token sync failed", error));
   });
   await plugin.addListener("notificationActionPerformed", event => {
-    openPushStock(event && event.notification);
+    openPushTarget(event && event.notification);
   });
   await plugin.addListener("notificationReceived", event => {
     const notification = event && event.notification ? event.notification : (event || {});
@@ -108,6 +118,19 @@ async function bindPushListeners(plugin) {
   });
 }
 
+function bindPushLifecycle(){
+  if(pushLifecycleBound)return;
+  const app=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
+  if(app&&typeof app.addListener==="function"){
+    app.addListener("appStateChange",event=>{
+      if(event&&event.isActive&&currentUser)ensurePushRegistration(false).catch(error=>console.warn("Push resume sync failed",error));
+    });
+    pushLifecycleBound=true;
+  }
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible"&&currentUser&&isNativePlatform())ensurePushRegistration(false).catch(()=>{});
+  });
+}
 async function ensurePushRegistration(requestPermission = true) {
   const plugin = nativeMessagingPlugin();
   if (!plugin || !currentUser) return false;
@@ -428,6 +451,7 @@ function toggleAccountMenu() {
 }
 
 async function initializeNative() {
+  bindPushLifecycle();
   const plugin = nativeAuthPlugin();
   if (!plugin) {
     setUser(null, { sync: false });
