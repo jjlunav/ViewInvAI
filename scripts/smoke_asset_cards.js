@@ -66,7 +66,7 @@ window.checkAssetCards = async function () {
    {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
    {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
   ],watchlist:[],portfolioTransactionSummaries:{}});
-  fundsApi.setPortfolioAssetMode('stocks',false);view.style.display='block';
+  portfolio.render();view.style.display='block';
   const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
   assert(rows.length===2,'portfolio positions did not render');
   const a=rows[0].getBoundingClientRect(),b=rows[1].getBoundingClientRect();
@@ -98,10 +98,17 @@ window.checkAssetCards = async function () {
   assert(goalView.querySelector('[data-goal-history="ci"]'),'goal recommendation history control is missing');
   const goalInput=goalView.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
   assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
-  portfolio.render();
+  fundsApi.setPortfolioAssetMode('stocks',false);
   const liveRow=view.querySelector('.portfolio-position-list [data-open-stock]');
   liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
-  assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared detail');
+  const exposureModal=document.querySelector('#portfolioModal');
+  assert(exposureModal&&exposureModal.classList.contains('open'),'portfolio row did not open exposure manager');
+  assert(/Gestionar exposición/i.test(document.querySelector('#portfolioModalTitle')?.textContent||''),'exposure manager title is wrong');
+  document.querySelector('#portfolioModalClose')?.click();
+  const profileButton=view.querySelector('[data-portfolio-stock-profile]');
+  assert(profileButton&&/Ficha/.test(profileButton.textContent||''),'explicit Ficha button is missing');
+  profileButton.click();
+  assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'Ficha button did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');
   assert(!document.querySelector('#stockQuickDetail .unified-stock-header .quote-spread'),'profile hero leaked BID/ASK');
   const generalBidAsk=[...document.querySelectorAll('#stockQuickDetail [data-profile-panel="general"] .profile-stat-row')].some(el=>/BID\s*\/\s*ASK/i.test(el.textContent||''));
