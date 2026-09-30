@@ -293,8 +293,13 @@ function openStock(s,reason='',preferTr=null){
  state.profileOriginView=state.currentView;
  state.profileOriginScroll=Math.max(0,Math.round(window.scrollY||0));
  state.profilePreferTr=preferTr===true?true:preferTr===false?false:inferProfilePreferTr(s);
+ let box=$('#stockQuickDetail');
+ if(box){
+  box.dataset.profileOriginView=state.profileOriginView||'';
+  box.dataset.profileOriginScroll=String(state.profileOriginScroll||0);
+ }
  saveUiState();renderQuickProfile();document.body.classList.add('stock-detail-open');
- let box=$('#stockQuickDetail');if(box)box.classList.remove('is-hidden');
+ if(box)box.classList.remove('is-hidden');
  pushCurrentAppHistory();
  requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}));
 }
