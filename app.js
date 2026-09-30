@@ -86,6 +86,7 @@ function currentRouteState(){
   if(!m)return null;
   let view=decodeURIComponent(m[1]||'');
   if(view==='calendar')view='future';
+  if(view==='entry')view='recommendation';
   if(!V[view])return null;
   return {view,profileKey:m[2]?decodeURIComponent(m[2]):null};
  }catch(_){return null}
@@ -94,6 +95,7 @@ function restoreUiState(){
  try{
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
   if(x&&x.view==='calendar')x.view='future';
+  if(x&&x.view==='entry')x.view='recommendation';
   if(x&&V[x.view])state.currentView=x.view;
   if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
   // Every fresh web/APK session starts from the canonical US market clock.
