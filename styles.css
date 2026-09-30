@@ -8316,3 +8316,21 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  .catalog-table-footer,.fund-table-footer{flex-wrap:wrap;min-height:30px;padding:5px 7px}
  .column-filter-popover{left:7px!important;right:7px!important;top:auto!important;bottom:calc(var(--native-nav-h,64px) + 8px)!important;width:auto!important;max-height:65vh}
 }
+
+
+/* 2026-09-30 · funds toolbar compact layout */
+.compact-fund-toolbar{
+ display:grid!important;
+ grid-template-columns:minmax(190px,320px) auto minmax(0,1fr) 34px!important;
+ gap:6px!important;
+ align-items:center!important;
+ margin:2px 0 6px!important;
+}
+.compact-fund-toolbar .fund-search{height:34px!important;min-width:0!important;padding:6px 9px!important}
+.compact-fund-toolbar .fund-toolbar-spacer{min-width:0}
+.fund-data-note-footer{justify-content:flex-end!important;margin-top:4px!important}
+@media(max-width:820px){
+ .compact-fund-toolbar{grid-template-columns:minmax(0,1fr) auto 32px!important}
+ .compact-fund-toolbar .fund-toolbar-spacer{display:none}
+ .compact-fund-toolbar .fund-mobile-filters-toggle{grid-column:3}
+}
