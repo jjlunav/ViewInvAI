@@ -129,11 +129,19 @@ function closeTransientUiForBack(){
  return false;
 }
 function returnFromProfileToOrigin(){
- const target=V[state.profileOriginView]?state.profileOriginView:(V[state.currentView]?state.currentView:'home');
- const y=Math.max(0,N(state.profileOriginScroll)??0);
+ const box=$('#stockQuickDetail');
+ const pinnedView=box&&V[box.dataset.profileOriginView]?box.dataset.profileOriginView:null;
+ const pinnedScroll=N(box&&box.dataset.profileOriginScroll);
+ const target=pinnedView||(V[state.profileOriginView]?state.profileOriginView:(V[state.currentView]?state.currentView:'home'));
+ const y=Math.max(0,pinnedScroll!==null?pinnedScroll:(N(state.profileOriginScroll)??0));
  const nextDepth=Math.max(0,appHistoryDepth()-1);
  document.body.classList.remove('stock-detail-open');
- const box=$('#stockQuickDetail');if(box){box.classList.add('is-hidden');box.innerHTML='';delete box.dataset.profileTab}
+ if(box){
+  box.classList.add('is-hidden');box.innerHTML='';
+  delete box.dataset.profileTab;
+  delete box.dataset.profileOriginView;
+  delete box.dataset.profileOriginScroll;
+ }
  state.profileKey=null;state.profileReason='';state.profilePreferTr=null;state.profileOriginView=null;state.profileOriginScroll=0;
  state.currentView=target;
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+target));
@@ -148,8 +156,8 @@ function returnFromProfileToOrigin(){
  return true;
 }
 function navigateBackOneStep(){
- if(closeTransientUiForBack())return true;
  if(state.profileKey||document.body.classList.contains('stock-detail-open'))return returnFromProfileToOrigin();
+ if(closeTransientUiForBack())return true;
  if(appHistoryDepth()>0){history.back();return true}
  return false;
 }
