@@ -746,6 +746,17 @@ function refreshUsLiveDom(){
   setQuoteDirection(el,s.usLiveDirection);
  });
  visibleLiveNodes('[data-us-spread-key]').forEach(el=>{let s=usStockByKey(el.dataset.usSpreadKey);if(s){setHtmlIfChanged(el,bidAskInner(s,false));el.classList.toggle('realtime',!!s.usLiveIsRealTime);el.classList.toggle('delayed',!s.usLiveIsRealTime)}});
+ visibleLiveNodes('[data-profile-regular-session-key]').forEach(el=>{
+  let s=usStockByKey(el.dataset.profileRegularSessionKey);if(!s)return;
+  let se=currentMarketSession(),live=se==='regular'&&N(s.usLivePrice)!==null;
+  let price=live?N(s.usLivePrice):N(s.price),change=live?(N(s.usLiveChangePct)??N(s.changePct)):N(s.changePct);
+  let volume=live?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
+  let label=el.querySelector('span'),strong=el.querySelector('strong'),tone=el.querySelector('b'),note=el.querySelector('small');
+  if(label)label.textContent=live?'EEUU · Regular · actual':'EEUU · Regular · referencia';
+  if(strong)setHtmlIfChanged(strong,snapshotPricePair(s,price,false));
+  if(tone){tone.textContent=PC(change);tone.className=C(change)}
+  if(note)note.textContent=(live?'Nasdaq actual':'Último cierre/snapshot regular')+' · Vol '+compactVol(volume);
+ });
  visibleLiveNodes('[data-profile-live-range-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.profileLiveRangeKey);if(!s)return;
   let lo=N(s.usLiveDayLow)??N(s.dayLow),hi=N(s.usLiveDayHigh)??N(s.dayHigh);
