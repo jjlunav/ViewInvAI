@@ -663,6 +663,11 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
     "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
   ).bind(userId, portfolioId, stockKey).first();
   const positionId = existing && existing.id ? existing.id : uid("pos_");
+  const analysisChanged=!existing||
+    Math.abs((finiteNumber(existing.quantity)||0)-(finiteNumber(ledger.quantity)||0))>1e-8||
+    Math.abs((finiteNumber(existing.avg_price)||0)-(finiteNumber(ledger.avgPrice)||0))>1e-8||
+    String(existing.currency||"").toUpperCase()!==String(ledger.currency||"").toUpperCase()||
+    Number(existing.active)!==(ledger.quantity>1e-8?1:0);
   await env.DB.prepare(
     "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,opened_at,notes,active,created_at,updated_at) " +
     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?) " +
@@ -680,6 +685,11 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
     ledger.quantity > 1e-8 ? 1 : 0,
     existing && existing.created_at || now, now
   ).run();
+  if(analysisChanged){
+    await env.DB.prepare(
+      "UPDATE positions SET last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL WHERE id=? AND user_id=?"
+    ).bind(positionId,userId).run();
+  }
   return {
     position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId, userId).first(),
     ledger
@@ -879,7 +889,7 @@ async function handlePositions(request, env, user, json, parts, url) {
     if(targetScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
     if(targetScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
     await env.DB.prepare(
-      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,opened_at=?,notes=?,updated_at=? WHERE id=? AND user_id=?"
+      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
     ).bind(
       data.portfolioId, data.ticker, data.name, data.exchange, data.isin, data.preferTr, data.quantity,
       data.avgPrice, data.currency, data.openedAt, data.notes, nowIso(), id, user.id
@@ -2673,6 +2683,7 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   if (!env.DB || !services.loadMarketSnapshot || !services.loadChart) {
     return { skipped: true, reason: "backend-not-configured" };
   }
+  await ensurePortfolioGoalSchema(env);
 
   const nowDate = new Date();
   if (nowDate.getUTCHours() === 3 && nowDate.getUTCMinutes() < 5) {
@@ -2683,8 +2694,8 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   const [positionRows, watchRows] = await Promise.all([
     env.DB.prepare(
       "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at," +
-      "COALESCE(s.analysis_positions_minutes,10) AS analysis_interval_minutes " +
-      "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id WHERE p.active=1 " +
+      "CASE WHEN g.portfolio_id IS NOT NULL THEN 5 ELSE COALESCE(s.analysis_positions_minutes,10) END AS analysis_interval_minutes " +
+      "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id LEFT JOIN portfolio_goals g ON g.portfolio_id=p.portfolio_id AND g.user_id=p.user_id WHERE p.active=1 " +
       "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 40"
     ).all(),
     env.DB.prepare(

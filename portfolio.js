@@ -10,6 +10,7 @@ const state = {
   goals: {},
   goalError: "",
   goalCandidateCache: { at: 0, key: "", rows: [] },
+  goalReviewTimers: {},
   loading: false
 };
 
@@ -303,6 +304,42 @@ function portfolioPositions(portfolioId) {
   return state.positions.filter(p => String(p.portfolio_id ?? "") === id && Number(p.active) !== 0);
 }
 
+function portfolioGoalHoldingsSignature(metrics){
+  if(!metrics||!metrics.portfolio)return"";
+  const rows=(metrics.rows||[]).map(row=>{
+    const key=portfolioStockKey(row.stock)||String(row.p&&row.p.stock_key||"");
+    const qty=num(row.qty),avg=num(row.avgEur),value=num(row.valueEur);
+    return [key,qty===null?"":qty.toFixed(8),avg===null?"":avg.toFixed(6),value===null?"":value.toFixed(4),row.preferTr?1:0].join("~");
+  }).sort();
+  const cash=num(metrics.cashEur),current=num(metrics.currentValue);
+  return [String(metrics.portfolio.id||""),String(metrics.marketScope||"auto"),cash===null?"":cash.toFixed(4),current===null?"":current.toFixed(4),...rows].join("|");
+}
+
+function portfolioHasGoal(portfolioId){
+  return !!state.goals[String(portfolioId||"")];
+}
+
+function scheduleGoalPortfolioReview(portfolioId,positionId=null){
+  const id=String(portfolioId||"");if(!id)return;
+  state.goalCandidateCache={at:0,key:"",rows:[]};
+  const old=state.goalReviewTimers[id];if(old)clearTimeout(old);
+  state.goalReviewTimers[id]=setTimeout(async()=>{
+    delete state.goalReviewTimers[id];
+    if(!state.user||!portfolioHasGoal(id))return;
+    try{
+      const target=positionId?state.positions.find(p=>String(p.id)===String(positionId)&&String(p.portfolio_id)===id&&Number(p.active)!==0):null;
+      if(target){
+        await api("/api/analysis/run",{method:"POST",body:JSON.stringify({subjectType:"position",subjectId:target.id})}).catch(()=>null);
+      }
+      await loadAll();
+      state.goalCandidateCache={at:0,key:"",rows:[]};
+      if(String(state.selectedPortfolioId||"")===id&&state.primaryTab==="goal")renderApp();
+    }catch(error){
+      console.warn("Goal portfolio movement review failed",id,error);
+    }
+  },120);
+}
+
 function portfolioSummaryHtml(portfolio, positions) {
   if (!portfolio) return "";
   const baseCurrency = String(portfolio.base_currency || "EUR").toUpperCase();
@@ -587,7 +624,7 @@ function portfolioCoachCandidates(metrics,positionRows){
   const marketScope=metrics.marketScope;
   if(!["tr","us"].includes(marketScope))return[];
   const excluded=new Set(metrics.rows.map(x=>portfolioStockKey(x.stock))),goalReached=num(metrics.remaining)!==null&&metrics.remaining<=0;
-  const cacheKey=marketScope+"|"+String(metrics.portfolio&&metrics.portfolio.id||"")+"|"+[...excluded].sort().join("|")+"|"+String(Math.round(num(metrics.remaining)||0));
+  const cacheKey=marketScope+"|"+String(metrics.portfolio&&metrics.portfolio.id||"")+"|"+portfolioGoalHoldingsSignature(metrics)+"|"+[...excluded].sort().join("|")+"|"+String(Math.round(num(metrics.remaining)||0));
   if(state.goalCandidateCache.key===cacheKey&&Date.now()-state.goalCandidateCache.at<60000)return state.goalCandidateCache.rows;
   const merged=new Map(),ingest=(rows,source)=>{
     for(const row of Array.isArray(rows)?rows:[]){
@@ -982,17 +1019,21 @@ async function addPosition(payload) {
     if (index >= 0) state.positions[index] = data.position;
     else state.positions.unshift(data.position);
     syncPortfolioStars();
-    setTimeout(async () => {
-      try {
-        await api("/api/analysis/run", {
-          method: "POST",
-          body: JSON.stringify({ subjectType: "position", subjectId: data.position.id })
-        });
-        await loadAll();
-      } catch (error) {
-        console.warn("Automatic position AI analysis failed", error);
-      }
-    }, 50);
+    if(portfolioHasGoal(data.position.portfolio_id)){
+      scheduleGoalPortfolioReview(data.position.portfolio_id,data.position.id);
+    }else{
+      setTimeout(async () => {
+        try {
+          await api("/api/analysis/run", {
+            method: "POST",
+            body: JSON.stringify({ subjectType: "position", subjectId: data.position.id })
+          });
+          await loadAll();
+        } catch (error) {
+          console.warn("Automatic position AI analysis failed", error);
+        }
+      }, 50);
+    }
   }
   return data.position;
 }
@@ -1286,7 +1327,9 @@ async function saveTransactionForm(form) {
     }
     toast(payload.side === 'BUY' ? 'Compra registrada' : 'Venta registrada');
     await loadAll();
-    if (data.position && Number(data.position.active) !== 0) await openTransactionsModal(data.position.id);
+    const activePositionId=data.position&&Number(data.position.active)!==0?data.position.id:null;
+    if(portfolioHasGoal(payload.portfolioId))scheduleGoalPortfolioReview(payload.portfolioId,activePositionId);
+    if (activePositionId) await openTransactionsModal(activePositionId);
     else closeModal();
   } catch (error) {
     if (status) status.textContent = error.message || 'No se pudo guardar la operación.';
@@ -1301,13 +1344,17 @@ async function deleteTransaction(transactionId) {
   if (!transactionId) return;
   const ledger = document.querySelector('[data-transaction-position]');
   const positionId = ledger && ledger.dataset.transactionPosition;
+  const beforePosition=positionId?transactionPosition(positionId):null;
+  const portfolioId=beforePosition&&beforePosition.portfolio_id||null;
   try {
     const response = await api('/api/transactions/' + encodeURIComponent(transactionId), {method:'DELETE'});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'No se pudo eliminar la operación.');
     toast('Operación eliminada');
     await loadAll();
-    if (data.position && Number(data.position.active) !== 0) await openTransactionsModal(data.position.id);
+    const activePositionId=data.position&&Number(data.position.active)!==0?data.position.id:null;
+    if(portfolioId&&portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,activePositionId);
+    if (activePositionId) await openTransactionsModal(activePositionId);
     else if (positionId) closeModal();
   } catch (error) {
     toast(error.message || 'No se pudo eliminar la operación.', true);
@@ -1350,7 +1397,7 @@ async function savePortfolioMarket(form){
   const response=await api("/api/portfolios/"+encodeURIComponent(portfolioId),{method:"PATCH",body:JSON.stringify({marketScope,cashBalance})});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el mercado.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
-  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();toast("Configuración de la cartera actualizada");
+  state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderApp();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Configuración de la cartera actualizada");
 }
 
 function stockFormPayload(stock, form) {
@@ -1528,6 +1575,8 @@ async function removePositionMembership(position) {
   state.positions = state.positions.filter(p => p.id !== position.id);
   syncPortfolioStars();
   window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{stockKey:position.stock_key}}));
+  state.goalCandidateCache={at:0,key:"",rows:[]};
+  if(portfolioHasGoal(position.portfolio_id))scheduleGoalPortfolioReview(position.portfolio_id,null);
   renderApp();
   return true;
 }
@@ -2077,6 +2126,7 @@ function bind() {
       state.goals = {};
       state.goalError = "";
       state.goalCandidateCache = { at:0,key:"",rows:[] };
+      Object.values(state.goalReviewTimers).forEach(timer=>clearTimeout(timer));state.goalReviewTimers={};
       renderApp();
     } else {
       loadAll();

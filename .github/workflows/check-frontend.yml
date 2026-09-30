@@ -376,6 +376,13 @@ jobs:
               raise SystemExit("Faltan colores semánticos de subida/bajada")
           if "portfolio-workbar-actions" not in portfolio:
               raise SystemExit("La barra de Carteras puede volver a descuadrarse")
+          for required in ("portfolioGoalHoldingsSignature", "scheduleGoalPortfolioReview", "portfolioHasGoal"):
+              if required not in portfolio:
+                  raise SystemExit("Objetivo IA no sigue cambios reales de cartera: falta " + required)
+          if "last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL" not in backend:
+              raise SystemExit("Un movimiento de cartera no invalida el análisis anterior")
+          if "CASE WHEN g.portfolio_id IS NOT NULL THEN 5" not in backend:
+              raise SystemExit("Las posiciones con Objetivo IA no tienen seguimiento acelerado")
           print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras
