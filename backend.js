@@ -377,7 +377,7 @@ function transactionCashDelta(side,quantity,price,fees){
   return String(side||"").toUpperCase()==="SELL" ? gross-commission : -(gross+commission);
 }
 
-async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1){
+async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1,recordedDelta=null){
   const portfolio=await onePortfolio(env,userId,portfolioId);
   if(!portfolio)return{adjusted:false,reason:"portfolio-not-found"};
   const base=String(portfolio.base_currency||"EUR").toUpperCase();
@@ -386,7 +386,8 @@ async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency
     return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:txCurrency,cashBalance:finiteNumber(portfolio.cash_balance)||0};
   }
   const before=Math.max(0,finiteNumber(portfolio.cash_balance)||0);
-  const rawDelta=transactionCashDelta(side,quantity,price,fees)*(multiplier<0?-1:1);
+  const baseDelta=recordedDelta===null?transactionCashDelta(side,quantity,price,fees):(finiteNumber(recordedDelta)||0);
+  const rawDelta=baseDelta*(multiplier<0?-1:1);
   const unclamped=before+rawDelta,next=Math.max(0,Math.round((unclamped+Number.EPSILON)*1000000)/1000000);
   const shortfall=Math.max(0,-unclamped);
   const updatedAt=nowIso();
@@ -489,13 +490,17 @@ async function ensureTransactionsSchema(env) {
     env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS transactions (" +
       "id TEXT PRIMARY KEY,portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',exchange TEXT NOT NULL DEFAULT '',isin TEXT NOT NULL DEFAULT '',prefer_tr INTEGER NOT NULL DEFAULT 0," +
-      "side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),quantity REAL NOT NULL CHECK(quantity>0),price REAL NOT NULL CHECK(price>=0),fees REAL NOT NULL DEFAULT 0 CHECK(fees>=0),currency TEXT NOT NULL DEFAULT 'EUR',executed_at TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',origin TEXT NOT NULL DEFAULT 'manual',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
+      "side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),quantity REAL NOT NULL CHECK(quantity>0),price REAL NOT NULL CHECK(price>=0),fees REAL NOT NULL DEFAULT 0 CHECK(fees>=0),currency TEXT NOT NULL DEFAULT 'EUR',executed_at TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',origin TEXT NOT NULL DEFAULT 'manual',cash_delta REAL NOT NULL DEFAULT 0,cash_currency TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL," +
       "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
     ),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id,executed_at DESC,created_at DESC)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_date ON transactions(portfolio_id,executed_at DESC,created_at DESC)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_transactions_stock ON transactions(user_id,portfolio_id,stock_key,executed_at,created_at)")
   ]);
+  const txColumns=await env.DB.prepare("PRAGMA table_info(transactions)").all();
+  const txNames=new Set((txColumns.results||[]).map(row=>String(row.name||"")));
+  if(!txNames.has("cash_delta"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN cash_delta REAL NOT NULL DEFAULT 0").run();
+  if(!txNames.has("cash_currency"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN cash_currency TEXT NOT NULL DEFAULT ''").run();
   transactionsSchemaReady = true;
 }
 
@@ -1017,6 +1022,8 @@ async function handleTransactions(request, env, user, json, parts, url) {
     const cashAdjustment = await adjustPortfolioCashForTransaction(
       env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1
     );
+    await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
     const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
     const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
     return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
@@ -1032,7 +1039,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
     }
     await env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id, user.id).run();
     const cashAdjustment = await adjustPortfolioCashForTransaction(
-      env,user.id,existing.portfolio_id,existing.currency,existing.side,existing.quantity,existing.price,existing.fees,-1
+      env,user.id,existing.portfolio_id,existing.cash_currency||existing.currency,existing.side,existing.quantity,existing.price,existing.fees,-1,finiteNumber(existing.cash_delta)||0
     );
     const recalculated = await recalculatePositionFromTransactions(env, user.id, existing.portfolio_id, existing.stock_key);
     return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment });
