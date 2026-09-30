@@ -2148,3 +2148,13 @@ html,body{font-size:14px}
 #view-portfolios .portfolio-goal-summary{font-size:10px!important}
 #view-portfolios .portfolio-goal-summary strong{font-size:13px!important}
 #view-portfolios .portfolio-goal-summary b{font-size:9px!important}
+
+
+/* 2026-09-30 · mobile company identity and operation registration */
+.profile-company-grid{grid-template-columns:1fr 1fr!important;gap:6px!important}
+.profile-company-summary{font-size:11px!important;line-height:1.45!important}
+.profile-company-grid .profile-identity{padding:8px!important}
+.profile-company-grid .profile-identity strong{font-size:10px!important}
+.profile-company-grid .profile-identity small,
+.profile-company-grid .profile-identity span{font-size:7.5px!important}
+#view-portfolios .portfolio-goal-register{width:max-content!important;max-width:100%!important;font-size:8px!important;min-height:26px!important}
