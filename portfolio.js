@@ -985,7 +985,7 @@ function renderActivePortfolioPanel(){
   return renderApp();
 }
 
-function activateGoalPanel({reanalyze=true}={}){
+function activateGoalPanel({reanalyze=false}={}){
   state.primaryTab="goal";
   savePortfolioUi();
   renderGoalApp();
@@ -1174,11 +1174,12 @@ async function loadAll({ syncFavorites = false } = {}) {
   try {
     const [portfolios, positions, watchlist, goalData] = await Promise.all([
       fetchJson("/api/portfolios"),fetchJson("/api/positions"),fetchJson("/api/watchlist"),
-      fetchJson("/api/portfolio-goal").then(data=>({goals:data.goals||[],error:""})).catch(error=>({goals:[],error:error.message||"No se pudieron cargar los objetivos."}))
+      fetchJson("/api/portfolio-goal").then(data=>({goals:data.goals||[],error:"",ok:true})).catch(error=>({goals:null,error:error.message||"No se pudieron cargar los objetivos.",ok:false}))
     ]);
     state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];
-    state.goals=Object.fromEntries((goalData.goals||[]).map(goal=>[String(goal.portfolio_id),goal]));
-    state.goalError=goalData.error||"";
+    if(Array.isArray(goalData.goals))state.goals=Object.fromEntries(goalData.goals.map(goal=>[String(goal.portfolio_id),goal]));
+    const goalErrorText=String(goalData.error||"");
+    state.goalError=/too many requests/i.test(goalErrorText)?"":goalErrorText;
     syncPortfolioStars();
     window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{}}));
   } catch (error) {
@@ -2091,8 +2092,11 @@ function bind() {
       goalRefresh.disabled=true;const old=goalRefresh.textContent;goalRefresh.textContent="Analizando…";state.goalCandidateCache={at:0,key:"",rows:[]};
       try{
         const done=await refreshGoalAnalysis(true);
-        toast(done?"Cartera reanalizada · "+done+" posiciones":"No había posiciones que analizar");
-      }catch(error){toast(error.message||"No se pudo reanalizar la cartera.",true)}
+        toast(done?"Estrategia reanalizada · "+done+" posiciones":"No había posiciones que analizar");
+      }catch(error){
+        const message=/too many requests/i.test(String(error&&error.message||""))?"Demasiadas solicitudes. Espera un momento y vuelve a reanalizar.":(error.message||"No se pudo reanalizar la estrategia.");
+        toast(message,true);
+      }
       finally{if(goalRefresh.isConnected){goalRefresh.disabled=false;goalRefresh.textContent=old||"↻ Reanalizar cartera"}}return;
     }
     const login = event.target.closest?.(".portfolio-google-login");
@@ -2350,7 +2354,6 @@ function bind() {
     refreshPortfolioTransactionSummary(id,false).then(()=>{
       if(state.primaryTab==="goal"&&String(state.selectedPortfolioId)===String(id))renderGoalApp();
     }).catch(()=>{});
-    setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
   });
 
   document.addEventListener("submit", async event => {
@@ -2525,7 +2528,7 @@ window.ViewInvAIPortfolios = {
   })),
   removeStockFromPortfolio,
   setGoalVisible: visible => {
-    if(visible)activateGoalPanel({reanalyze:true});
+    if(visible)activateGoalPanel({reanalyze:false});
     else{
       state.primaryTab="portfolio";
       savePortfolioUi();
@@ -2535,7 +2538,7 @@ window.ViewInvAIPortfolios = {
   openGoal: portfolioId => {
     if(portfolioId&&state.portfolios.some(p=>String(p.id)===String(portfolioId)))state.selectedPortfolioId=portfolioId;
     state.goalCandidateCache={at:0,key:"",rows:[]};
-    activateGoalPanel({reanalyze:true});
+    activateGoalPanel({reanalyze:false});
     return true;
   },
   getState: () => state
