@@ -99,7 +99,7 @@ function catalogApplyPreferences(mode,prefs){
  const defaults=catalogDefaultWidths(mode),incoming=prefs.widths&&typeof prefs.widths==='object'?prefs.widths:{};
  catalogState[mode].widths={...defaults};
  for(const id of ids){
-  const n=Number(incoming[id]);if(Number.isFinite(n))catalogState[mode].widths[id]=Math.max(42,Math.min(620,Math.round(n)));
+  const n=Number(incoming[id]);if(Number.isFinite(n))catalogState[mode].widths[id]=Math.max(id==='fav'?36:48,Math.min(720,Math.round(n)));
  }
 }
 function catalogLayoutPreferences(mode){
@@ -429,7 +429,7 @@ function initCatalogInteractions(){
  });
  document.addEventListener('pointermove',e=>{
   if(!catalogResize)return;
-  const {mode,id,startX,startWidth}=catalogResize,next=Math.max(42,Math.min(620,Math.round(startWidth+e.clientX-startX)));
+  const {mode,id,startX,startWidth}=catalogResize,next=Math.max(id==='fav'?36:48,Math.min(720,Math.round(startWidth+e.clientX-startX)));
   catalogWidths(mode)[id]=next;
   const table=document.querySelector('.catalog-table[data-mode="'+mode+'"]'),col=table&&table.querySelector('col[data-catalog-col-width="'+id+'"]');
   if(col)col.style.width=next+'px';
