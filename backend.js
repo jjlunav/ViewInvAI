@@ -2834,6 +2834,7 @@ export async function handleBackendApi(request, env, services = {}) {
   try {
     if (root === "me") return handleMe(request, env, user, json);
     if (root === "portfolios") return handlePortfolios(request, env, user, json, parts);
+    if (root === "brokers") return handleBrokers(request, env, user, json, parts);
     if (root === "positions") return handlePositions(request, env, user, json, parts, url);
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
