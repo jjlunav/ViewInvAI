@@ -1,3 +1,22 @@
+function openPushTargetFromUrl(){
+ const params=new URLSearchParams(location.search);
+ const route=String(params.get('pushRoute')||''),portfolioId=String(params.get('portfolioId')||''),stockKey=String(params.get('stockKey')||''),preferTr=params.get('preferTr')==='1';
+ if(!route&&!portfolioId&&!stockKey)return;
+ const clean=()=>{try{const url=new URL(location.href);['pushRoute','portfolioId','stockKey','preferTr'].forEach(k=>url.searchParams.delete(k));history.replaceState(history.state||{},'',url.pathname+url.search+url.hash)}catch(_){}};
+ let tries=0;
+ const attempt=()=>{
+  tries++;
+  if(route==='portfolio-goal'||portfolioId){
+   window.ViewInvAINavigation?.go?.('portfolios');
+   if(window.ViewInvAIPortfolios?.openGoal?.(portfolioId)){clean();return}
+  }else if(stockKey&&window.ViewInvAI?.openStockByKey?.(stockKey,'Aviso web',preferTr)){
+   clean();return;
+  }
+  if(tries<8)setTimeout(attempt,tries<3?500:900);else clean();
+ };
+ setTimeout(attempt,350);
+}
+
 /*
  * ViewInvAI bootstrap
  * -------------------
@@ -42,6 +61,7 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(clock,1000);
 setInterval(()=>{if(!document.hidden&&state.currentView==='recommendation'&&!document.body.classList.contains('stock-detail-open'))renderRecommendation()},60000);
 setTimeout(()=>window.ViewInvAIMarketBoard?.refreshSocialTrending?.(false),0);
+openPushTargetFromUrl();
 window.ViewInvAI={
  openStockByKey:(key,reason='Aviso',preferTr=null)=>{let s=stockByKey(key);if(!s)return false;openStock(s,reason,preferTr);return true},
  getStockByKey:key=>stockByKey(key),
