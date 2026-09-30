@@ -2743,10 +2743,12 @@ async function scanNotificationPreferences(env,services){
         await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run();
         continue;
       }
-      const signalConfigured=global.radarAi&&(Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1);
+      const pulseConfigured=global.pulseAi&&Number(pref.pulse_enabled)===1;
+      const radarConfigured=global.radar&&Number(pref.radar_enabled)===1;
+      const signalConfigured=pulseConfigured||radarConfigured;
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
-      const trPriceConfigured=Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      const trPriceConfigured=global.price&&Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
       let chart={available:false},chartRaw=null;
       if(trPriceConfigured||aiDue){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
@@ -2755,7 +2757,7 @@ async function scanNotificationPreferences(env,services){
       // A TR/LSX alert must never be evaluated from the US quote. Use the exact
       // LSX chart/ticker when available; otherwise wait instead of mixing markets.
       let liveQuote=null;
-      const priceAlertConfigured=Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1;
+      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
       if(Number(pref.prefer_tr)!==1&&priceAlertConfigured&&services.loadQuote){
         try{liveQuote=await services.loadQuote(stock,pref)}
         catch(error){console.warn("Notification live quote unavailable",pref.id,String(error&&error.message||error))}
@@ -2806,18 +2808,26 @@ async function scanNotificationPreferences(env,services){
         const nextRadar=current.signal==="BUY"&&current.confidence>=70&&current.score>=60
           ?"HIGH"
           :(current.score>=58&&["BUY","WATCH"].includes(current.signal)?"OPPORTUNITY":"");
-        const previousRadar=radarState||pulseState;
-        if(signalConfigured){
+        const nextPulse=String(current.signal||"WAIT").toUpperCase();
+        const previousRadar=radarState;
+        const previousPulse=pulseState;
+        if(radarConfigured){
           if(nextRadar&&nextRadar!==previousRadar){
             await sendPreferenceAlert(
-              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+pref.ticker,
-              current.thesis||(nextRadar==="HIGH"?"La acción ha alcanzado alta convicción en Radar AI.":"La acción ha entrado en oportunidades de Radar AI.")
+              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar IA · "+pref.ticker,
+              current.thesis||(nextRadar==="HIGH"?"La acción ha alcanzado alta convicción en Radar IA.":"La acción ha entrado en oportunidades de Radar IA.")
             );
           }else if(previousRadar&&!nextRadar){
-            await sendPreferenceAlert(env,pref,"radar-ai-exit","info","Salida de Radar AI · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios activos de Radar AI.");
+            await sendPreferenceAlert(env,pref,"radar-ai-exit","info","Salida de Radar IA · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios activos de Radar IA.");
           }
         }
-        pulseState=nextRadar;radarState=nextRadar;
+        if(pulseConfigured&&previousPulse&&nextPulse!==previousPulse){
+          await sendPreferenceAlert(
+            env,pref,"pulse-ai-change",nextPulse==="BUY"?"high":"info","Pulso IA · "+pref.ticker,
+            current.thesis||("La lectura IA ha cambiado de "+previousPulse+" a "+nextPulse+".")
+          );
+        }
+        pulseState=nextPulse;radarState=nextRadar;
       }
       const scanNow=nowIso();
       await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
