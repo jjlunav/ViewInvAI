@@ -417,6 +417,33 @@ async function brokerFeeForTrade(env,userId,brokerName,quantity,price,currency,s
   return{fee,currency:String(rules.currency||currency||"EUR").toUpperCase(),verified:fee!==null,label};
 }
 
+export async function runScheduledBrokerVerification(env,{limit=2}={}){
+  await ensureUserBrokerSchema(env);
+  const staleCutoff=new Date(Date.now()-14*86400000).toISOString();
+  const pendingCutoff=new Date(Date.now()-10*60000).toISOString();
+  const rows=await env.DB.prepare(
+    "SELECT * FROM user_brokers WHERE verification_status='pending' OR last_verified_at IS NULL OR last_verified_at<? OR (verification_status<>'verified' AND updated_at<?) ORDER BY CASE WHEN verification_status='pending' THEN 0 ELSE 1 END,last_verified_at ASC,updated_at ASC LIMIT ?"
+  ).bind(staleCutoff,pendingCutoff,Math.max(1,Math.min(5,Math.round(Number(limit)||2)))).all();
+  const results=[];
+  for(const row of (rows.results||[])){
+    try{
+      const resolved=await resolveBrokerProfile(env,row.name),now=nowIso(),rules=JSON.stringify(resolved.rules||{});
+      await env.DB.prepare(
+        "UPDATE user_brokers SET code=?,fee_mode='auto',fee_currency=?,canonical_name=?,official_domain=?,pricing_url=?,plan=?,fee_rules_json=?,verification_status=?,last_verified_at=?,source_excerpt=?,updated_at=? WHERE id=? AND user_id=?"
+      ).bind(
+        resolved.code||row.code||"",(resolved.rules&&resolved.rules.currency)||row.fee_currency||"EUR",
+        resolved.canonicalName||row.canonical_name||row.name,resolved.officialDomain||row.official_domain||"",
+        resolved.pricingUrl||row.pricing_url||"",resolved.plan||row.plan||"",rules,resolved.status||"pending",
+        resolved.status==="verified"?now:row.last_verified_at||null,resolved.sourceExcerpt||row.source_excerpt||"",now,row.id,row.user_id
+      ).run();
+      results.push({id:row.id,status:resolved.status||"pending"});
+    }catch(error){
+      console.warn("Scheduled broker verification failed",row&&row.id,String(error&&error.message||error));
+    }
+  }
+  return{processed:results.length,results};
+}
+
 async function handleBrokers(request,env,user,json,parts){
   await ensureUserBrokerSchema(env);
   const id=parts[1]||"",action=parts[2]||"";
