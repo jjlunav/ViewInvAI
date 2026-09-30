@@ -582,16 +582,16 @@ function ensureTrLiveKey(key){
 }
 function observeTrLivePrices(root=document){
  if(!('IntersectionObserver' in window)){
-  root.querySelectorAll('[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key]').forEach(el=>ensureTrLiveKey(el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey));
+  root.querySelectorAll('[data-compact-quote-key][data-compact-quote-tr="1"],[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key]').forEach(el=>ensureTrLiveKey(el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey));
   return;
  }
  if(!trLive.observer)trLive.observer=new IntersectionObserver(entries=>{
   for(let entry of entries)if(entry.isIntersecting){
-   let el=entry.target,key=el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey;
+   let el=entry.target,key=el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey;
    if(key)ensureTrLiveKey(key);
   }
  },{rootMargin:'300px 0px'});
- root.querySelectorAll('[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key]').forEach(el=>trLive.observer.observe(el));
+ root.querySelectorAll('[data-compact-quote-key][data-compact-quote-tr="1"],[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key]').forEach(el=>trLive.observer.observe(el));
 }
 function refreshTrLiveDom(){
  visibleLiveNodes('[data-tr-live-key]').forEach(el=>{
@@ -659,7 +659,7 @@ function pruneTrLiveSubscriptions(){
  let keep=new Set(),h=window.innerHeight||900;
  for(let root of activeLiveRoots())for(let el of root.querySelectorAll(selector)){
   let r=el.getBoundingClientRect();if(r.bottom<-700||r.top>h+700)continue;
-  let key=el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
+  let key=el.dataset.compactQuoteKey||el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
   if(key)keep.add(key);
  }
  for(let key of [...trLive.wanted])if(!keep.has(key))dropTrLiveKey(key);
