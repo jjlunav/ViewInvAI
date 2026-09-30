@@ -415,10 +415,10 @@ function portfolioSummaryHtml(portfolio, positions) {
 
     const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
     const avg = num(p.avg_price);
-    const avgBase=portfolioConvertAmount(avg,entryCurrency,baseCurrency,fxUsdEur);
-    const feeBase=portfolioConvertAmount(portfolioOperationFee(preferTr),preferTr?"EUR":entryCurrency,baseCurrency,fxUsdEur);
-    if (avgBase === null || feeBase===null) costComplete = false;
-    else invested += qty * avgBase + feeBase;
+    const rawCost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg:null);
+    const costBase=portfolioConvertAmount(rawCost,entryCurrency,baseCurrency,fxUsdEur);
+    if (costBase === null) costComplete = false;
+    else invested += costBase;
   }
 
   const totalValue = currentComplete ? positionsValue + cashBalance : null;
@@ -505,8 +505,9 @@ function renderPositionRow(p, index = 0) {
   const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
   const priceTone = market.change === null ? "muted" : market.change >= 0 ? "positive" : "negative";
 
-  const entryFee=portfolioOperationFee(preferTr);
-  const investedValue=qty!==null&&avg!==null?qty*avg+entryFee:null;
+  const estimatedFee=brokerFeeEstimate(p.broker,qty,avg,entryCurrency,'BUY');
+  const investedValue=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(estimatedFee.fee??0):null);
+  const feesTotal=num(p.fees_total)??(estimatedFee.fee??0);
   const pnlAfterFees=currentValue!==null&&investedValue!==null?currentValue-investedValue:null;
   const pnlAfterFeesPct=investedValue!==null&&investedValue>0&&pnlAfterFees!==null?pnlAfterFees/investedValue*100:null;
   const brokerLabel=String(p.broker||'').trim();
@@ -520,6 +521,7 @@ function renderPositionRow(p, index = 0) {
     '<span><b>'+esc(formatNumber(qty,4))+'</b> uds.</span>'+
     (brokerLabel?'<span>Broker <b>'+esc(brokerLabel)+'</b></span>':'')+
     '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
+    '<span>Comisiones <b>'+esc(formatMoney(feesTotal,entryCurrency))+'</b></span>'+
     '<span class="'+(pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative')+'">P&L neto <b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)+(pnlAfterFeesPct===null?'':' · '+(pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')))+'</b></span>'+
   '</div>';
   return window.ViewInvAI.renderStandardStockCard(stock, {
@@ -616,6 +618,16 @@ function portfolioCashEur(portfolio,fxUsdEur){
   if(cash===0)return 0;
   if(currency==="EUR")return cash;
   if(currency==="USD"&&num(fxUsdEur)!==null)return cash*num(fxUsdEur);
+  return null;
+}
+function portfolioCashFxRateFor(portfolio,transactionCurrency){
+  const base=String(portfolio&&portfolio.base_currency||transactionCurrency||"EUR").toUpperCase();
+  const tx=String(transactionCurrency||base).toUpperCase();
+  if(base===tx)return null;
+  const fx=num(portfolioUsdToEurRate());
+  if(fx===null||fx<=0)return null;
+  if(tx==="USD"&&base==="EUR")return fx;
+  if(tx==="EUR"&&base==="USD")return 1/fx;
   return null;
 }
 function portfolioGoalPositionSnapshot(p,fxUsdEur){
@@ -1608,6 +1620,8 @@ async function saveTransactionForm(form) {
   const executedDate = new Date(executedRaw);
   const payload = {
     portfolioId: position.portfolio_id,
+    positionId: position.id,
+    broker: String(position.broker || fd.get('broker') || (preferTr ? 'Trade Republic' : 'IBKR')),
     stockKey: position.stock_key,
     ticker: position.ticker || stock?.ticker || '',
     name: position.name || stock?.name || '',
@@ -1618,10 +1632,13 @@ async function saveTransactionForm(form) {
     quantity: num(fd.get('quantity')),
     price: num(fd.get('price')),
     fees: num(fd.get('fees')),
-    currency: String(fd.get('currency') || position.currency || 'EUR'),
+    currency: String(fd.get('currency') || position.currency || 'EUR').toUpperCase(),
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : '',
     notes: String(fd.get('notes') || '')
   };
+  const portfolio=state.portfolios.find(item=>String(item.id)===String(position.portfolio_id));
+  const cashFxRate=portfolioCashFxRateFor(portfolio,payload.currency);
+  if(cashFxRate!==null)payload.cashFxRate=cashFxRate;
   const status = form.querySelector('[data-transaction-status]');
   const button = form.querySelector('button[type="submit"]');
   if (!payload.quantity || payload.quantity <= 0 || payload.price === null || payload.price < 0 || !payload.executedAt) {
@@ -1809,7 +1826,7 @@ function stockFormPayload(stock, form) {
   const fd = new FormData(form);
   const preferTr = form.dataset.preferTr === "1";
   const ticker = preferTr && stock.trTicker ? stock.trTicker : stock.ticker;
-  return {
+  const payload={
     portfolioId: String(fd.get("portfolioId") || form.querySelector('[name="portfolioId"]')?.value || ""),
     stockKey: window.ViewInvAI.getStockKey(stock),
     ticker: String(ticker || stock.ticker || ""),
@@ -1819,11 +1836,15 @@ function stockFormPayload(stock, form) {
     preferTr,
     quantity: num(fd.get("quantity")),
     avgPrice: num(fd.get("avgPrice")),
-    currency: String(fd.get("currency") || form.querySelector('[name="currency"]')?.value || (preferTr ? "EUR" : stock.currency || "USD")),
+    currency: String(fd.get("currency") || form.querySelector('[name="currency"]')?.value || (preferTr ? "EUR" : stock.currency || "USD")).toUpperCase(),
     openedAt: String(fd.get("openedAt") || ""),
     notes: String(fd.get("notes") || ""),
     broker: String(fd.get("broker") || form.querySelector('[data-broker-select]')?.value || "")
   };
+  const portfolio=state.portfolios.find(item=>String(item.id)===String(payload.portfolioId));
+  const cashFxRate=portfolioCashFxRateFor(portfolio,payload.currency);
+  if(cashFxRate!==null)payload.cashFxRate=cashFxRate;
+  return payload;
 }
 
 function localDateValue(date = new Date()) {
