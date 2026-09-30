@@ -85,31 +85,31 @@ async function refreshPushDeviceStatus(){
  renderPushSettingsStatus();
 }
 function renderPushSettingsStatus(detail=null){
- const status=$('#pushNotificationStatus'),button=$('#enablePushNotifications');
- if(!status||!button)return;
+ const status=$('#pushNotificationStatus');
+ if(!status)return;
  status.classList.remove('active','pending','error');
  const auth=window.ViewInvAIAuth;
- if(!auth){status.textContent='Comprobando…';button.disabled=true;return}
- if(!auth.isNative?.()){status.textContent='Solo APK Android';button.disabled=true;return}
- if(!auth.hasNativeMessaging?.()){status.textContent='APK pendiente de actualizar';status.classList.add('pending');button.disabled=true;return}
- if(detail&&detail.permission==='denied'){status.textContent='Permiso denegado';status.classList.add('error');button.disabled=false;return}
- if(detail&&detail.error){status.textContent='No disponible';status.classList.add('error');button.disabled=false;return}
+ if(!auth){status.textContent='Comprobando…';return}
+ if(!auth.getUser?.()){status.textContent='Inicia sesión';return}
+ if(!auth.isNative?.()){status.textContent='Avisos en la cuenta · push no necesario en web';status.classList.add('active');return}
+ if(!auth.hasNativeMessaging?.()){status.textContent='APK pendiente de actualizar';status.classList.add('pending');return}
+ if(detail&&detail.permission==='denied'){status.textContent='Permiso denegado';status.classList.add('error');return}
+ if(detail&&detail.error){status.textContent='No disponible';status.classList.add('error');return}
  if(detail&&detail.enabled===true){
   pushDeviceRegistered=true;
   status.textContent=pushBackendConfigured===false?'Dispositivo registrado · servidor pendiente':'Activo · dispositivo registrado';
   status.classList.add(pushBackendConfigured===false?'pending':'active');
-  button.disabled=false;return;
+  return;
  }
  if(auth.getUser?.()&&pushBackendConfigured===false){status.textContent=pushDeviceRegistered?'Dispositivo registrado · servidor pendiente':'Servidor pendiente · dispositivo sin verificar';status.classList.add('pending')}
  else if(auth.getUser?.()&&pushDeviceRegistered===true){status.textContent='Activo · dispositivo registrado';status.classList.add('active')}
  else if(auth.getUser?.()&&pushDeviceRegistered===false){status.textContent='Dispositivo no registrado';status.classList.add('pending')}
  else status.textContent=auth.getUser?.()?'Preparado':'Inicia sesión';
- button.disabled=!auth.getUser?.();
 }
 async function retryPushRegistration(){
  const auth=window.ViewInvAIAuth;
  if(!auth?.ensurePushRegistration)return;
- const button=$('#enablePushNotifications');if(button){button.disabled=true;button.textContent='Activando…'}
+ const button=$('#enablePushNotifications');if(button){button.textContent='Activando…'}
  try{
   const enabled=!!(await auth.ensurePushRegistration());
   renderPushSettingsStatus({enabled});
@@ -120,7 +120,7 @@ async function testPushNotification(){
  const auth=window.ViewInvAIAuth,button=$('#testPushNotification'),status=$('#pushNotificationStatus');
  if(!auth?.getUser?.()){if(status)status.textContent='Inicia sesión';return}
  if(pushBackendConfigured===false){if(status){status.textContent='Servidor push pendiente';status.classList.add('pending');status.classList.remove('error')}return}
- if(button){button.disabled=true;button.textContent='Enviando…'}
+ if(button){button.textContent='Enviando…'}
  try{
   if(!(await auth.ensurePushRegistration?.(true)))throw Error('No se pudo registrar el dispositivo.');
   const response=await auth.apiFetch('/api/devices/test',{method:'POST',body:'{}'});
@@ -129,7 +129,7 @@ async function testPushNotification(){
   if(status){status.textContent='Prueba enviada';status.classList.add('active');status.classList.remove('error','pending')}
  }catch(error){
   if(status){status.textContent=error&&error.message?error.message:'La prueba push ha fallado.';status.classList.add('error');status.classList.remove('active','pending')}
- }finally{if(button){button.disabled=false;button.textContent='Enviar prueba'}}
+ }finally{if(button){button.textContent='Enviar prueba'}}
 }
 function renderAnalysisSettings(settings=null){
  accountAnalysisSettings=settings&&typeof settings==='object'?settings:null;
@@ -137,10 +137,9 @@ function renderAnalysisSettings(settings=null){
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)===1:false;
  const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)===1:false;
  const radar=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar)===1:false;
- const price=accountAnalysisSettings?Number(accountAnalysisSettings.notify_price)===1:false;
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
  const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
- const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadar:radar,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
+ const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadar:radar,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
@@ -154,8 +153,8 @@ function renderAnalysisSettings(settings=null){
   if(accountAnalysisSettings&&enabled&&!analysisSettingsBusy)globalStatus.classList.add('active');
  }
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,price,portfolio,portfolioGoal};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,price,portfolio,portfolioGoal}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,portfolio,portfolioGoal};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,portfolio,portfolioGoal}}));
  }else window.ViewInvAINotificationSettings=null;
  const test=$('#testPushNotification');
  if(test)test.disabled=!accountAnalysisSettings||!enabled||pushBackendConfigured===false||analysisSettingsBusy;
@@ -167,7 +166,6 @@ async function saveAnalysisSettings(){
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked===true,
   notifyPulseAi:$('#globalNotifyPulseAi')?.checked===true,
   notifyRadar:$('#globalNotifyRadar')?.checked===true,
-  notifyPrice:$('#globalNotifyPrice')?.checked===true,
   notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true,
   notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true
  };
@@ -253,13 +251,13 @@ function initSettings(){
   applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
  }));
 
- $('#enablePushNotifications')?.addEventListener('click',retryPushRegistration);
  $('#testPushNotification')?.addEventListener('click',testPushNotification);
  $('#globalNotificationsEnabled')?.addEventListener('change',async event=>{
   await saveAnalysisSettings();
-  if(event.target.checked&&window.ViewInvAIAuth?.isNative?.())retryPushRegistration();
+  if(event.target.checked&&window.ViewInvAIAuth?.isNative?.())await retryPushRegistration();
+  renderPushSettingsStatus();
  });
- ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
