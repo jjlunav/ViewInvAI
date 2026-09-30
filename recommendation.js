@@ -512,8 +512,6 @@ function radarAiCard(row){
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
-  openLabel:'Ficha',
-  openActionAttrs:' data-reco-open="'+E(stockKey(s))+'" data-reco-prefer-tr="'+(preferTr?'1':'0')+'" aria-label="Abrir ficha completa de '+E(s.name||s.ticker||'esta acción')+'" title="Abrir ficha completa"',
   detailsHtml:''
  });
 }
