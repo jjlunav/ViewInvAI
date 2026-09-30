@@ -939,37 +939,46 @@ async function handlePositions(request, env, user, json, parts, url) {
     }
     const portfolio=await onePortfolio(env, user.id, data.portfolioId);
     if (!portfolio) return json({ error: "Portfolio not found" }, 404);
+    data.broker=trimText(data.broker||portfolio.broker||(data.preferTr===1?"Trade Republic":""),80);
     const marketScope=normalizedMarketScope(portfolio.market_scope);
     if(marketScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
     if(marketScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
     const existing = await env.DB.prepare(
-      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=?"
-    ).bind(user.id, data.portfolioId, data.stockKey).first();
-    if (existing) await ensureOpeningTransaction(env, user.id, existing);
-    const idNew = existing && existing.id ? existing.id : uid("pos_");
+      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
+    ).bind(user.id,data.portfolioId,data.stockKey,data.broker,data.currency,data.preferTr,data.exchange).first();
     const now = nowIso();
-    await env.DB.prepare(
-      "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,opened_at,notes,active,created_at,updated_at) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) " +
-      "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,exchange=excluded.exchange,isin=excluded.isin,prefer_tr=excluded.prefer_tr,quantity=excluded.quantity,avg_price=excluded.avg_price,currency=excluded.currency,opened_at=excluded.opened_at,notes=excluded.notes,active=1,updated_at=excluded.updated_at"
-    ).bind(
-      idNew, data.portfolioId, user.id, data.stockKey, data.ticker, data.name, data.exchange, data.isin,
-      data.preferTr, data.quantity, data.avgPrice, data.currency, data.openedAt, data.notes, now, now
-    ).run();
-    let row = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew, user.id).first();
-    if (existing) {
-      const adjusted = await appendPositionAdjustment(env, user.id, existing, data);
-      if (adjusted) {
-        const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
-        row = recalculated && recalculated.position || row;
+    let row=null;
+    if(existing){
+      // POST on an existing broker/listing is a new purchase, never a destructive overwrite.
+      await ensureOpeningTransaction(env,user.id,existing);
+      if(data.quantity===null||data.quantity<=0||data.avgPrice===null||data.avgPrice<0){
+        return json({error:"quantity and avgPrice are required to add to an existing position"},400);
       }
-    } else {
-      await ensureOpeningTransaction(env, user.id, row);
+      const txId=uid("tx_");
+      const fee=data.preferTr===1?1:0;
+      await env.DB.prepare(
+        "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'manual',?,?)"
+      ).bind(
+        txId,data.portfolioId,user.id,existing.id,data.broker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,
+        data.preferTr,data.quantity,data.avgPrice,fee,data.currency,data.openedAt?new Date(data.openedAt).toISOString():now,data.notes||"",now,now
+      ).run();
+      const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,existing.id);
+      row=recalculated&&recalculated.position||existing;
+    }else{
+      const idNew=uid("pos_");
+      await env.DB.prepare(
+        "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
+      ).bind(
+        idNew,data.portfolioId,user.id,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
+        data.quantity,data.avgPrice,data.currency,data.broker,data.openedAt,data.notes,now,now
+      ).run();
+      row=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew,user.id).first();
+      await ensureOpeningTransaction(env,user.id,row);
     }
     if(!existing||Number(existing.active)===0){
       try{await notifyPortfolioMembershipChange(env,user.id,portfolio,row,"added")}catch(error){console.warn("Portfolio entry notification failed",String(error&&error.message||error))}
     }
-    return json({ position: row }, existing ? 200 : 201);
+    return json({position:row,addedToExisting:!!existing},existing?200:201);
   }
 
   if (!id) return json({ error: "Position id required" }, 400);
@@ -993,16 +1002,17 @@ async function handlePositions(request, env, user, json, parts, url) {
       avgPrice: body.avgPrice !== undefined ? body.avgPrice : existing.avg_price,
       currency: body.currency !== undefined ? body.currency : existing.currency,
       openedAt: body.openedAt !== undefined ? body.openedAt : existing.opened_at,
-      notes: body.notes !== undefined ? body.notes : existing.notes
+      notes: body.notes !== undefined ? body.notes : existing.notes,
+      broker: body.broker !== undefined ? body.broker : existing.broker
     });
     const targetScope=normalizedMarketScope(targetPortfolio.market_scope);
     if(targetScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
     if(targetScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
     await env.DB.prepare(
-      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
+      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,broker=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
     ).bind(
-      data.portfolioId, data.ticker, data.name, data.exchange, data.isin, data.preferTr, data.quantity,
-      data.avgPrice, data.currency, data.openedAt, data.notes, nowIso(), id, user.id
+      data.portfolioId,data.ticker,data.name,data.exchange,data.isin,data.preferTr,data.quantity,
+      data.avgPrice,data.currency,data.broker,data.openedAt,data.notes,nowIso(),id,user.id
     ).run();
     return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
   }
