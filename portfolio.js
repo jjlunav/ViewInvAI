@@ -2117,9 +2117,11 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   const options=state.portfolios.map(p=>'<option value="'+esc(p.id)+'"'+(String(p.id)===String(preferredPortfolioId)?' selected':'')+'>'+esc(p.name)+'</option>').join('');
   const brokerDisabled=!!editPosition;
 
-  openModal((editPosition?'Editar ':'Añadir ')+(stock.trTicker||stock.ticker||"acción"),
-    '<form id="addPositionForm" class="portfolio-form" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
+  openModal(editPosition?('Editar '+(stock.trTicker||stock.ticker||"acción")):('Operaciones · '+(stock.trTicker||stock.ticker||"acción")),
+    '<form id="addPositionForm" class="portfolio-form'+(editPosition?'':' transaction-form')+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
+      (!editPosition?'<div class="transaction-form-head"><strong>Nueva operación</strong><span>'+esc(stock.name||"")+'</span></div>':'')+
       '<div class="position-form-stock"><strong>'+esc(stock.trTicker||stock.ticker||"")+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
+      (!editPosition?'<div class="portfolio-form-grid"><label><span>Tipo</span><input value="Compra" readonly></label><label><span>Comisión</span><input data-first-operation-fee readonly></label></div>':'')+
       '<div class="portfolio-form-mode" data-position-form-mode></div>'+
       '<label><span>Cartera</span><select name="portfolioId" required'+(editPosition?' disabled':'')+'>'+options+'</select></label>'+
       '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select name="broker" data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
@@ -2133,7 +2135,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="'+localDateValue()+'" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>'+
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>'+
       '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>'+
-      '<button type="button" class="btn" data-save-position>'+(editPosition?'Guardar cambios':'Añadir posición')+'</button>'+
+      '<button type="button" class="btn" data-save-position>'+(editPosition?'Guardar cambios':'Registrar operación')+'</button>'+
     '</form>'
   );
 
@@ -2161,6 +2163,22 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
     form.querySelector('[data-create-broker]')?.addEventListener('click',()=>createBrokerFromPositionForm(form,stock));
     ['quantity','avgPrice'].forEach(name=>form.querySelector('[name="'+name+'"]')?.addEventListener('input',()=>updatePositionBrokerFeeHint(form,stock)));
     updatePositionBrokerFeeHint(form,stock);
+    const feePreview=form.querySelector('[data-first-operation-fee]');
+    if(feePreview){
+      const refreshFirstFee=()=>{
+        const qty=num(form.querySelector('[name="quantity"]')?.value)||0;
+        const px=num(form.querySelector('[name="avgPrice"]')?.value)||0;
+        const broker=String(form.querySelector('[data-broker-select]')?.value||defaultBroker);
+        const currency=String(form.querySelector('[name="currency"]')?.value||(preferTr?'EUR':'USD'));
+        const exchange=form.dataset.preferTr==="1"?(stock.trExchange||"LSX"):(stock.exchange||"");
+        const fee=brokerFeeInCurrency(broker,qty,px,currency,'BUY',exchange);
+        feePreview.value=fee.fee===null?'Pendiente':formatMoney(fee.fee,fee.currency);
+      };
+      ['quantity','avgPrice'].forEach(name=>form.querySelector('[name="'+name+'"]')?.addEventListener('input',refreshFirstFee));
+      form.querySelector('[data-broker-select]')?.addEventListener('change',refreshFirstFee);
+      form.querySelector('[name="currency"]')?.addEventListener('change',refreshFirstFee);
+      refreshFirstFee();
+    }
   }
   if(form&&saveButton){
     saveButton.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();savePositionForm(form)});
@@ -2626,8 +2644,20 @@ function bind() {
     if (add) {
       event.preventDefault();
       event.stopPropagation();
-      const pref = add.dataset.addPortfolioPreferTr;
-      openStarMenu(add.dataset.addPortfolioStock, pref === "1" ? true : pref === "0" ? false : null);
+      const key=add.dataset.addPortfolioStock;
+      const pref=add.dataset.addPortfolioPreferTr;
+      const preferTr=pref==="1"?true:pref==="0"?false:null;
+      const memberships=activePortfolioMemberships(key);
+      if(!memberships.length){
+        openAddPositionModal(key,preferTr);
+      }else{
+        let target=state.selectedPortfolioId
+          ?memberships.find(x=>String(x.position.portfolio_id)===String(state.selectedPortfolioId))||null
+          :null;
+        if(!target&&memberships.length===1)target=memberships[0];
+        if(target)openTransactionsModal(target.position.id);
+        else openStarMenu(key,preferTr);
+      }
       return;
     }
 
