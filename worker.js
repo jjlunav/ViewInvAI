@@ -359,6 +359,50 @@ async function openTradeRepublicSocket() {
   return ws;
 }
 
+async function fetchTradeRepublicTicker(isin, exchange = "LSX") {
+  const safeIsin = String(isin || "").trim().toUpperCase();
+  const safeExchange = "LSX";
+  if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(safeIsin)) throw new Error("Invalid ISIN");
+  const ws = await openTradeRepublicSocket();
+  try {
+    ws.send("sub 1 " + JSON.stringify({ type: "ticker", id: safeIsin + "." + safeExchange }));
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const raw = await waitForWsMessage(ws, Math.max(800, deadline - Date.now()));
+      if (!raw.startsWith("1 ")) continue;
+      const parts = raw.split(" ", 3), code = parts[1];
+      const body = raw.slice(raw.indexOf(" ", raw.indexOf(" ") + 1) + 1);
+      if (code === "E") throw new Error("Trade Republic ticker subscription rejected");
+      if (code !== "A") continue;
+      const data = JSON.parse(body || "{}");
+      const last = parseMarketNumber(data && data.last && data.last.price);
+      const bid = parseMarketNumber(data && data.bid && data.bid.price);
+      const ask = parseMarketNumber(data && data.ask && data.ask.price);
+      const pre = parseMarketNumber(data && data.pre && data.pre.price);
+      const open = parseMarketNumber(data && data.open && data.open.price);
+      const timestamp = Number(data && data.last && data.last.time) || Number(data && data.bid && data.bid.time) || Number(data && data.ask && data.ask.time) || Date.now();
+      return {
+        market: "tr",
+        isin: safeIsin,
+        exchange: safeExchange,
+        price: last,
+        bid,
+        ask,
+        open,
+        previousClose: pre,
+        changePct: last !== null && pre > 0 ? (last / pre - 1) * 100 : null,
+        timestamp,
+        isRealTime: true,
+        source: "Trade Republic / LSX"
+      };
+    }
+    throw new Error("Trade Republic ticker timeout");
+  } finally {
+    try { ws.send("unsub 1"); } catch (_) {}
+    try { ws.close(1000, "done"); } catch (_) {}
+  }
+}
+
 async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", resolution = 60000) {
   const safeIsin = String(isin || "").trim().toUpperCase();
   const safeExchange = "LSX";
@@ -1079,10 +1123,15 @@ async function loadMarketSnapshotForBackend(env) {
 }
 
 async function loadQuoteForBackend(stock,target){
-  if(target&&Number(target.prefer_tr)===1)return null;
+  if(target&&Number(target.prefer_tr)===1){
+    const isin=String((target&&target.isin)||(stock&&stock.trIsin)||(stock&&stock.isin)||"").trim().toUpperCase();
+    if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return null;
+    return fetchTradeRepublicTicker(isin,"LSX");
+  }
   const ticker=safeStockSymbol(stock&&stock.ticker||target&&target.ticker||"");
   if(!ticker)return null;
-  return fetchNasdaqQuote(ticker);
+  const quote=await fetchNasdaqQuote(ticker);
+  return quote?Object.assign({market:"us",source:quote.source||"Nasdaq"},quote):null;
 }
 
 async function loadChartForBackend(stock, target) {
