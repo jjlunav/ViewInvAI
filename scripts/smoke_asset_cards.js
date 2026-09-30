@@ -66,7 +66,7 @@ window.checkAssetCards = async function () {
    {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
    {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
   ],watchlist:[],portfolioTransactionSummaries:{}});
-  portfolio.render();view.style.display='block';
+  fundsApi.setPortfolioAssetMode('stocks',false);view.style.display='block';
   const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
   assert(rows.length===2,'portfolio positions did not render');
   const a=rows[0].getBoundingClientRect(),b=rows[1].getBoundingClientRect();
@@ -79,8 +79,8 @@ window.checkAssetCards = async function () {
   assert(rows[1].querySelector('.asset-venue-price'),'portfolio TR position does not use the LSX quote cell');
   assert(!rows[1].querySelector('.asset-extended-price,.asset-extended-change,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
   assert(!view.querySelector('[data-portfolio-goal-toggle]'),'portfolio view still exposes the obsolete internal goal control');
-  const goalNav=document.querySelector('[data-view="portfolioGoal"]');
-  assert(goalNav,'top-level portfolio goal navigation is missing');
+  const goalTab=view.querySelector('[data-portfolio-asset="goal"]');
+  assert(goalTab,'portfolio goal tab is missing after Funds / ETFs');
   const cashRow=view.querySelector('[data-portfolio-cash-edit="ci"]');
   assert(cashRow&&/Capital líquido/.test(cashRow.textContent),'manual liquid-capital row is missing');
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
@@ -91,9 +91,10 @@ window.checkAssetCards = async function () {
   assert(stockPanel.hidden&&stockPanel.classList.contains('is-hidden')&&!fundPanel.hidden&&!fundPanel.classList.contains('is-hidden'),'stock and fund portfolio panels are visible at the same time');
   fundsApi.setPortfolioAssetMode('stocks',false);
   assert(!stockPanel.hidden&&!stockPanel.classList.contains('is-hidden')&&fundPanel.hidden&&fundPanel.classList.contains('is-hidden'),'portfolio panels did not return to stocks-only mode');
-  const goalView=document.querySelector('#view-portfolioGoal');
-  portfolio.renderGoal();goalView.style.display='block';
-  assert(goalView.querySelector('.portfolio-goal-view'),'top-level goal view did not render');
+  fundsApi.setPortfolioAssetMode('goal',false);
+  const goalView=document.querySelector('#portfolioGoalApp');
+  assert(!goalView.hidden&&!goalView.classList.contains('is-hidden'),'portfolio goal panel did not open');
+  assert(goalView.querySelector('.portfolio-goal-view'),'portfolio goal view did not render');
   assert(goalView.querySelector('[data-goal-history="ci"]'),'goal recommendation history control is missing');
   const goalInput=goalView.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
   assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
