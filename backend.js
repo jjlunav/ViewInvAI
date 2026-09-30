@@ -348,7 +348,8 @@ function transactionPayload(body) {
   const currency = String(body.currency || "EUR").trim().toUpperCase();
   const quantity = finiteNumber(body.quantity);
   const price = finiteNumber(body.price);
-  const fees = finiteNumber(body.fees);
+  const preferTr = booleanInt(body.preferTr);
+  const rawFees = finiteNumber(body.fees);
   const executedRaw = trimText(body.executedAt, 40);
   const executedDate = executedRaw ? new Date(executedRaw) : new Date();
   return {
@@ -358,15 +359,42 @@ function transactionPayload(body) {
     name: trimText(body.name, 160),
     exchange: trimText(body.exchange, 40).toUpperCase(),
     isin: trimText(body.isin, 24).toUpperCase(),
-    preferTr: booleanInt(body.preferTr),
+    preferTr,
     side,
     quantity,
     price,
-    fees: fees === null ? 0 : fees,
+    fees: rawFees === null ? (preferTr ? 1 : 0) : rawFees,
     currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
     notes: trimText(body.notes, 1000)
   };
+}
+
+function transactionCashDelta(side,quantity,price,fees){
+  const qty=finiteNumber(quantity),px=finiteNumber(price),commission=Math.max(0,finiteNumber(fees)||0);
+  if(qty===null||qty<=0||px===null||px<0)return 0;
+  const gross=qty*px;
+  return String(side||"").toUpperCase()==="SELL" ? gross-commission : -(gross+commission);
+}
+
+async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1){
+  const portfolio=await onePortfolio(env,userId,portfolioId);
+  if(!portfolio)return{adjusted:false,reason:"portfolio-not-found"};
+  const base=String(portfolio.base_currency||"EUR").toUpperCase();
+  const txCurrency=String(currency||base).toUpperCase();
+  if(base!==txCurrency){
+    return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:txCurrency,cashBalance:finiteNumber(portfolio.cash_balance)||0};
+  }
+  const before=Math.max(0,finiteNumber(portfolio.cash_balance)||0);
+  const rawDelta=transactionCashDelta(side,quantity,price,fees)*(multiplier<0?-1:1);
+  const unclamped=before+rawDelta,next=Math.max(0,Math.round((unclamped+Number.EPSILON)*1000000)/1000000);
+  const shortfall=Math.max(0,-unclamped);
+  const updatedAt=nowIso();
+  await env.DB.prepare(
+    "INSERT INTO portfolio_market_settings (portfolio_id,user_id,market_scope,cash_balance,updated_at) VALUES (?,?,?,?,?) "+
+    "ON CONFLICT(portfolio_id) DO UPDATE SET cash_balance=excluded.cash_balance,updated_at=excluded.updated_at"
+  ).bind(portfolioId,userId,normalizedMarketScope(portfolio.market_scope),next,updatedAt).run();
+  return{adjusted:true,before,cashBalance:next,delta:next-before,requestedDelta:rawDelta,shortfall,baseCurrency:base};
 }
 
 
@@ -986,9 +1014,12 @@ async function handleTransactions(request, env, user, json, parts, url) {
       data.side, data.quantity, data.price, data.fees, data.currency, data.executedAt, data.notes, now, now
     ).run();
 
+    const cashAdjustment = await adjustPortfolioCashForTransaction(
+      env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1
+    );
     const recalculated = await recalculatePositionFromTransactions(env, user.id, data.portfolioId, data.stockKey);
     const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
-    return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger }, 201);
+    return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
   }
 
   if (!id) return json({ error: "Transaction id required" }, 400);
@@ -1000,8 +1031,11 @@ async function handleTransactions(request, env, user, json, parts, url) {
       return json({ error: "The initial imported transaction cannot be deleted directly" }, 409);
     }
     await env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id, user.id).run();
+    const cashAdjustment = await adjustPortfolioCashForTransaction(
+      env,user.id,existing.portfolio_id,existing.currency,existing.side,existing.quantity,existing.price,existing.fees,-1
+    );
     const recalculated = await recalculatePositionFromTransactions(env, user.id, existing.portfolio_id, existing.stock_key);
-    return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger });
+    return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment });
   }
 
   return json({ error: "Method not allowed" }, 405);
