@@ -2220,9 +2220,9 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
 
   if (target.subject_type === "position") {
     if (!globalNotifications.portfolio) return null;
-    if (current.signal === "SELL" && current.confidence >= settings.minSellConfidence && (!previous || previous.signal !== "SELL")) {
+    if (current.signal === "SELL" && current.quoteVerified===true && current.confidence >= settings.minSellConfidence && (!previous || previous.signal !== "SELL")) {
       should = true; type = "position-sell"; severity = "critical";
-    } else if (current.signal === "REVIEW" && current.confidence >= Math.max(60, settings.minSellConfidence - 2) && (!previous || previous.signal === "HOLD")) {
+    } else if (current.signal === "REVIEW" && current.quoteVerified===true && current.confidence >= Math.max(60, settings.minSellConfidence - 2) && (!previous || previous.signal === "HOLD")) {
       should = true; type = "position-review"; severity = "warning";
     } else if (previousScore !== null && delta <= -settings.notifyScoreChange) {
       should = true; type = "position-deterioration"; severity = "warning";
@@ -2231,9 +2231,9 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
     const radarConfigured=globalNotifications.radarAi &&
       (notificationPreferenceAllows(assetPreference,"pulse_enabled",false)||notificationPreferenceAllows(assetPreference,"radar_enabled",false));
     if (!radarConfigured) return null;
-    if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
+    if (current.signal === "BUY" && current.quoteVerified===true && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "radar-ai"; severity = "high";
-    } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
+    } else if (current.quoteVerified===true && previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "radar-ai-improving"; severity = "info";
     }
   }
@@ -2265,23 +2265,52 @@ async function analyzeTarget(env, target, services) {
   const stock = findStock(snapshot, target);
   if (!stock) throw new Error("Stock not found in market snapshot: " + target.stock_key);
 
+  let verifiedQuote=null;
+  if(services.loadQuote){
+    try{verifiedQuote=await services.loadQuote(stock,target)}
+    catch(error){console.warn("Verified analysis quote unavailable",String(error&&error.message||error))}
+  }
+  const quoteVerified=!!(verifiedQuote&&finiteNumber(verifiedQuote.price)!==null);
+  const analysisStock=Object.assign({},stock);
+  if(quoteVerified){
+    if(Number(target.prefer_tr)===1){
+      analysisStock.trLivePrice=finiteNumber(verifiedQuote.price);
+      analysisStock.trLiveBid=finiteNumber(verifiedQuote.bid);
+      analysisStock.trLiveAsk=finiteNumber(verifiedQuote.ask);
+      analysisStock.trLiveChangePct=finiteNumber(verifiedQuote.changePct);
+      analysisStock.trLiveUpdatedAt=verifiedQuote.timestamp||nowIso();
+    }else{
+      analysisStock.usLivePrice=finiteNumber(verifiedQuote.price);
+      analysisStock.usLiveBid=finiteNumber(verifiedQuote.bid);
+      analysisStock.usLiveAsk=finiteNumber(verifiedQuote.ask);
+      analysisStock.usLiveChangePct=finiteNumber(verifiedQuote.changePct);
+      analysisStock.usLiveVolume=finiteNumber(verifiedQuote.volume)??analysisStock.usLiveVolume;
+      analysisStock.usLiveTimestamp=verifiedQuote.timestamp||nowIso();
+      analysisStock.usLiveSource=verifiedQuote.source||"Nasdaq";
+      analysisStock.usLiveIsRealTime=verifiedQuote.isRealTime===true;
+    }
+  }
+
   let chartRaw = null;
-  try { chartRaw = await services.loadChart(stock, target); } catch (error) {
+  try { chartRaw = await services.loadChart(analysisStock, target); } catch (error) {
     console.warn("Chart analysis unavailable", String(error && error.message || error));
   }
   const chart = chartFeatures(chartRaw);
   let directNews=[],officialEvents=[];
   if(services.loadOfficialEvents){
-    try{officialEvents=await services.loadOfficialEvents(stock,target)}
+    try{officialEvents=await services.loadOfficialEvents(analysisStock,target)}
     catch(error){console.warn("Official analysis events unavailable",String(error&&error.message||error))}
   }
   if(services.loadNews){
-    try{directNews=await services.loadNews(stock,target)}
+    try{directNews=await services.loadNews(analysisStock,target)}
     catch(error){console.warn("Direct news analysis unavailable",String(error&&error.message||error))}
   }
-  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,stock,18),officialEvents,24),directNews,24);
-  const fallback = deterministicAssessment(target, stock, chart, events);
-  const current = await aiAssessment(env, target, stock, chart, events, fallback);
+  const events = mergeEventRows(mergeEventRows(recentEvents(snapshot,analysisStock,18),officialEvents,24),directNews,24);
+  const fallback = deterministicAssessment(target, analysisStock, chart, events);
+  const current = await aiAssessment(env, target, analysisStock, chart, events, fallback);
+  current.quoteVerified=quoteVerified;
+  current.quoteSource=trimText(verifiedQuote&&verifiedQuote.source,120);
+  current.quoteTimestamp=verifiedQuote&&verifiedQuote.timestamp||null;
 
   const previous = await env.DB.prepare(
     "SELECT signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
@@ -2301,14 +2330,19 @@ async function analyzeTarget(env, target, services) {
     JSON.stringify(chart || {}), JSON.stringify({
       market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
       currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
-      price: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.last : (stock.price ?? null),
-      changePct: Number(target.prefer_tr) === 1 && chart && chart.available ? chart.return20 : (stock.usLiveChangePct ?? stock.changePct ?? stock.premarketChangePct ?? null),
-      relVolume: stock.relVolume ?? null,
-      volume: stock.usLiveVolume ?? stock.volume ?? null,
-      rsi: stock.rsi ?? null,
-      adx: stock.adx ?? null,
-      ema20: stock.ema20 ?? null,
-      ema50: stock.ema50 ?? null
+      quoteVerified,
+      quoteSource: trimText(verifiedQuote&&verifiedQuote.source,120),
+      quoteTimestamp: verifiedQuote&&verifiedQuote.timestamp||null,
+      price: quoteVerified ? finiteNumber(verifiedQuote.price) : null,
+      bid: quoteVerified ? finiteNumber(verifiedQuote.bid) : null,
+      ask: quoteVerified ? finiteNumber(verifiedQuote.ask) : null,
+      changePct: quoteVerified ? finiteNumber(verifiedQuote.changePct) : null,
+      relVolume: analysisStock.relVolume ?? null,
+      volume: Number(target.prefer_tr)===1 ? null : (analysisStock.usLiveVolume ?? analysisStock.volume ?? null),
+      rsi: analysisStock.rsi ?? null,
+      adx: analysisStock.adx ?? null,
+      ema20: analysisStock.ema20 ?? null,
+      ema50: analysisStock.ema50 ?? null
     }), current.model || "", current.engine || "", snapshot && snapshot.meta && snapshot.meta.updatedAt || null, now
   ).run();
 
