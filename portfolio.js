@@ -2128,8 +2128,15 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   const preferredPortfolioId=candidateIds.find(id=>{
     const p=state.portfolios.find(row=>String(row.id)===String(id));
     return p&&(editPosition||portfolioCompatible(p));
-  })||state.portfolios[0].id;
+  })||'';
   const preferredPortfolio=state.portfolios.find(p=>String(p.id)===String(preferredPortfolioId))||null;
+  if(!editPosition&&explicitMarket&&!preferredPortfolio){
+    toast(explicitMarket==='us'
+      ?"No tienes una cartera compatible con EEUU. Crea o configura una cartera NASDAQ / NYSE / AMEX antes de registrar la operación."
+      :"No tienes una cartera compatible con Trade Republic / LSX. Crea o configura una cartera LSX antes de registrar la operación.",true);
+    openNewPortfolioModal();
+    return;
+  }
   const scope=portfolioMarketScope(preferredPortfolio);
   const preferTr=editPosition?Number(editPosition.prefer_tr)===1:
     explicitMarket==='tr'?true:explicitMarket==='us'?false:
@@ -2146,7 +2153,8 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   }).join('');
   const brokerDisabled=!!editPosition;
 
-  openModal(editPosition?('Editar '+(stock.trTicker||stock.ticker||"acción")):('Operaciones · '+(stock.trTicker||stock.ticker||"acción")),
+  const selectedTicker=preferTr?(stock.trTicker||stock.ticker||"acción"):(stock.ticker||stock.trTicker||"acción");
+  openModal(editPosition?('Editar '+selectedTicker):('Operaciones · '+selectedTicker),
     '<form id="addPositionForm" class="portfolio-form'+(editPosition?'':' transaction-form')+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-market-lock="'+(explicitMarket||'')+'" data-default-broker="'+esc(defaultBroker)+'"'+(editPosition?' data-edit-position-id="'+esc(editPosition.id)+'"':'')+' data-return-view="'+esc(document.querySelector('.view.active')?.id||'')+'" data-return-scroll="'+esc(String(Math.max(0,Math.round(window.scrollY||0))))+'">'+
       (!editPosition?'<div class="transaction-form-head"><strong>Nueva operación</strong><span>'+esc(stock.name||"")+'</span></div>':'')+
       '<div class="position-form-stock"><strong>'+esc(preferTr?(stock.trTicker||stock.ticker||""):(stock.ticker||stock.trTicker||""))+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
