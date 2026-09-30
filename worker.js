@@ -106,7 +106,7 @@ function nativePreflightResponse(request) {
 }
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; media-src 'none'; upgrade-insecure-requests",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -1133,8 +1133,7 @@ async function loadOfficialEventsForBackend(stock,target,env){
   const events=[],now=Date.now(),ticker=String(stock&&stock.ticker||target&&target.ticker||"").trim().toUpperCase();
   const cikDigits=String(stock&&stock.secCik||target&&target.secCik||"").replace(/\D/g,"");
   if(!ticker||!cikDigits)return events;
-  const userAgent=String(env&&env.SEC_USER_AGENT||"").trim();
-  if(!userAgent)return events;
+  const userAgent=String(env&&env.SEC_USER_AGENT||"ViewInvAI/1.0 (https://viewinvai.firebaseapp.com)").trim();
   const cik=cikDigits.padStart(10,"0").slice(-10),cacheKey="sec:"+cik,cached=backendOfficialEventCache.get(cacheKey);
   if(cached&&now-cached.at<60*1000)return cached.rows;
   try{
