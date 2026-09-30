@@ -80,6 +80,54 @@ window.checkAssetCards = async function () {
   assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
   assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
   assert(!rows[1].querySelector('.asset-investing-extended,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
+
+  // A dual-listed company is not "in portfolio" on every venue just because
+  // one listing exists. Membership and operation flows must stay market-specific.
+  ps.portfolios=[
+   {id:'us-pf',name:'US fixture',base_currency:'USD',market_scope:'us',broker:'IBKR'},
+   {id:'tr-pf',name:'TR fixture',base_currency:'EUR',market_scope:'tr',broker:'Trade Republic'}
+  ];
+  ps.selectedPortfolioId='tr-pf';
+  ps.positions=[
+   {id:'tr-only',portfolio_id:'tr-pf',stock_key:key,ticker:stock.trTicker||stock.ticker,quantity:3,avg_price:9,currency:'EUR',prefer_tr:1,active:1}
+  ];
+  assert(portfolio.isInPortfolio(key,true)===true,'TR listing membership was not detected');
+  assert(portfolio.isInPortfolio(key,false)===false,'US listing inherited TR portfolio membership');
+
+  test.innerHTML=quickProfileHtml(stock,{preferTr:false});
+  const usWallet=test.querySelector('[data-add-portfolio-stock]');
+  assert(usWallet&&/Añadir a cartera/.test(usWallet.getAttribute('title')||''),'US profile wallet thinks a TR-only position is already held');
+  assert(!test.querySelector('[data-profile-edit-position]'),'US profile exposes edit-position for a TR-only holding');
+
+  portfolio.openAddPosition(key,false);
+  let opForm=document.querySelector('#addPositionForm');
+  assert(opForm,'US add-to-portfolio did not open the operations form');
+  assert(!document.querySelector('#newPortfolioForm'),'US add-to-portfolio unexpectedly opened create-portfolio');
+  assert(opForm.dataset.marketLock==='us'&&opForm.dataset.preferTr==='0','US operation lost its market lock');
+  assert(opForm.querySelector('[name="portfolioId"]')?.value==='us-pf','US operation selected an incompatible portfolio');
+  assert(opForm.querySelector('[name="currency"]')?.value==='USD','US operation did not keep USD');
+  assert((opForm.querySelector('[data-broker-select]')?.value||'').toLowerCase().indexOf('trade republic')<0,'US operation switched to Trade Republic');
+  assert((document.querySelector('#portfolioModal')?.textContent||'').includes(stock.ticker),'US operation did not keep the US ticker');
+  closeModal();
+
+  ps.portfolios=[{id:'tr-pf',name:'TR fixture',base_currency:'EUR',market_scope:'tr',broker:'Trade Republic'}];
+  ps.selectedPortfolioId='tr-pf';
+  portfolio.openAddPosition(key,false);
+  opForm=document.querySelector('#addPositionForm');
+  assert(opForm,'US operation disappeared when no compatible portfolio exists');
+  assert(!document.querySelector('#newPortfolioForm'),'missing compatible portfolio auto-opened create-portfolio');
+  assert(opForm.querySelector('[name="portfolioId"]')?.value==='','incompatible portfolio was silently selected');
+  assert(opForm.querySelector('[data-create-compatible-portfolio]'),'explicit create-compatible-portfolio action is missing');
+  closeModal();
+
+  ps.portfolios=[{id:'ci',name:'CI fixture',base_currency:'USD'}];
+  ps.selectedPortfolioId='ci';
+  ps.positions=[
+   {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
+   {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
+  ];
+  portfolio.render();view.style.display='block';
+
   assert(!view.querySelector('[data-portfolio-goal-toggle]'),'portfolio view still exposes the obsolete internal goal control');
   const goalTab=view.querySelector('[data-portfolio-asset="goal"]');
   assert(goalTab,'portfolio goal tab is missing after Funds / ETFs');
