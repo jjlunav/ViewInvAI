@@ -100,10 +100,10 @@ window.checkAssetCards = async function () {
   fundsApi.setPortfolioAssetMode('stocks',false);
   const liveRow=view.querySelector('.portfolio-position-list [data-open-stock]');
   liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
-  const exposureModal=document.querySelector('#portfolioModal');
-  assert(exposureModal&&exposureModal.classList.contains('open'),'portfolio row did not open exposure manager');
-  assert(/Gestionar exposición/i.test(document.querySelector('#portfolioModalTitle')?.textContent||''),'exposure manager title is wrong');
-  document.querySelector('#portfolioModalClose')?.click();
+  assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared stock detail');
+  assert(!document.querySelector('#portfolioModal')?.classList.contains('open'),'portfolio row incorrectly opened the exposure manager');
+  assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'portfolio row duplicated the shared detail');
+  closeQuickProfile(false);
   const profileButton=view.querySelector('[data-portfolio-stock-profile]');
   assert(profileButton&&/Ficha/.test(profileButton.textContent||''),'explicit Ficha button is missing');
   profileButton.click();
