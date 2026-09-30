@@ -3149,19 +3149,21 @@ function goalServerUsdToEur(snapshot){
 }
 function goalServerPriceEur(stock,preferTr,usdToEur,side="LAST"){
   if(!stock)return null;
-  if(preferTr)return finiteNumber(stock.trLivePrice??stock.trPrice??stock.tradeRepublicPrice);
+  if(preferTr){
+    const eur=finiteNumber(stock.trLivePrice);
+    return eur;
+  }
   const direction=String(side||"LAST").toUpperCase();
-  const quote=direction==="BUY"
-    ? finiteNumber(stock.usLiveAsk??stock.usAsk)
-    : direction==="SELL"
-      ? finiteNumber(stock.usLiveBid??stock.usBid)
-      : null;
-  const usd=quote??finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+  const usd=direction==="BUY"
+    ?finiteNumber(stock.usLiveAsk)
+    :direction==="SELL"
+      ?finiteNumber(stock.usLiveBid)
+      :finiteNumber(stock.usLivePrice);
   return usd!==null&&usdToEur!==null?usd*usdToEur:null;
 }
 function goalServerCandidate(snapshot,stock,scope){
-  const preferTr=scope==="tr",trPrice=preferTr?finiteNumber(stock.trLivePrice??stock.trPrice??stock.tradeRepublicPrice):null;
-  const chart=preferTr&&trPrice!==null?{available:true,last:trPrice,return20:finiteNumber(stock.trLiveChangePct??stock.changePct??stock.perfWeek)}:{available:false};
+  const preferTr=scope==="tr",trPrice=preferTr?finiteNumber(stock.trLivePrice):null;
+  const chart=preferTr&&trPrice!==null?{available:true,last:trPrice,return20:finiteNumber(stock.trLiveChangePct)}:{available:false};
   const target={subject_type:"watchlist",subject_id:"goal-scan",user_id:"",stock_key:goalServerKey(stock),ticker:stock.ticker||stock.trTicker||"",prefer_tr:preferTr?1:0};
   const events=recentEvents(snapshot,stock,12),a=deterministicAssessment(target,stock,chart,events);
   const catalyst=events.filter(event=>{
