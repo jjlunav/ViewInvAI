@@ -52,6 +52,6 @@ function initHeatmapInteractions(){
  window.addEventListener('viewinvai:theme-changed',()=>{if(state.currentView==='heatmap')renderHeatmap()});
  window.addEventListener('viewinvai:view-changed',event=>{
   const view=event&&event.detail&&event.detail.view;
-  if(view==='heatmap')renderHeatmap();else destroyHeatmap();
+  if(view!=='heatmap')destroyHeatmap();
  });
 }
