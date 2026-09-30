@@ -34,7 +34,7 @@
   const f=ensureSource(),get=n=>f.elements[n];
   const global=root.ViewInvAINotificationSettings;
   const globalStatus=f.querySelector('#stockNotificationGlobalStatus');
-  if(globalStatus)globalStatus.textContent=global&&global.enabled===false?'Notificaciones globales desactivadas: estas preferencias quedan guardadas para cuando vuelvas a activarlas.':'';
+  if(globalStatus)globalStatus.textContent=global&&global.enabled===false?'Notificaciones generales de tu cuenta desactivadas: estas preferencias personales quedarán guardadas para cuando vuelvas a activarlas.':'';
 
   get('news').checked=pref?Number(pref.news_enabled)===1:false;
   get('pulse').checked=pref?Number(pref.pulse_enabled)===1:false;
@@ -46,6 +46,7 @@
  }
  async function load(){
   if(!current||!api()?.getUser?.()){fill(null);return}
+  // No saved row for this user + asset means all switches OFF.
   try{
    const r=await api().apiFetch('/api/notification-preferences?stockKey='+encodeURIComponent(current.key)+'&preferTr='+(current.preferTr?'1':'0'));
    const d=await r.json().catch(()=>({}));fill(d.preferences&&d.preferences[0]||null);
