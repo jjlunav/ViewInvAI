@@ -1448,7 +1448,7 @@ async function openPortfolioTransactionHistory(portfolioId) {
   }
 }
 
-async function openTransactionsModal(positionId) {
+async function openTransactionsModal(positionId, preferredSide = null) {
   const position = transactionPosition(positionId);
   if (!position) return toast('No se encuentra la posición.', true);
   const stock = stockByKey(position.stock_key);
@@ -1470,7 +1470,7 @@ async function openTransactionsModal(positionId) {
         '<form id="transactionForm" class="portfolio-form transaction-form" data-position-id="' + esc(position.id) + '">' +
           '<div class="transaction-form-head"><strong>Nueva operación</strong><span>' + esc(position.name || stock?.name || '') + '</span></div>' +
           '<div class="portfolio-form-grid">' +
-            '<label><span>Tipo</span><select name="side"><option value="BUY">Compra</option><option value="SELL">Venta</option></select></label>' +
+            '<label><span>Tipo</span><select name="side"><option value="BUY"' + (preferredSide === 'BUY' ? ' selected' : '') + '>Compra</option><option value="SELL"' + (preferredSide === 'SELL' ? ' selected' : '') + '>Venta</option></select></label>' +
             '<label><span>Cantidad</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0.00000001" required></label>' +
           '</div>' +
           '<div class="portfolio-form-grid">' +
@@ -1483,7 +1483,7 @@ async function openTransactionsModal(positionId) {
           '</div>' +
           '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Opcional"></label>' +
           '<div class="portfolio-form-status" data-transaction-status aria-live="polite"></div>' +
-          '<button type="submit" class="btn">Registrar estrategia</button>' +
+          '<button type="submit" class="btn">Registrar operación</button>' +
         '</form>' +
         '<div class="transaction-history-head"><strong>Historial</strong><span>' + (data.transactions || []).length + ' operaciones</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(data.transactions || [], currency) + '</div>' +
@@ -1925,28 +1925,29 @@ function openStarMenu(stockKey, preferTr = null) {
   const stock = stockByKey(stockKey);
   if (!stock) return;
   const ticker=(preferTr&&stock.trTicker)||stock.ticker||stock.trTicker||"";
-  const rows = state.portfolios.map(p => {
-    const existing = positionForPortfolioStock(stockKey, p.id);
-    if (!existing) {
-      return '<button type="button" class="star-portfolio-choice exposure-add-choice" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
-        '<span>＋</span><strong>' + esc(p.name) + '</strong><small>Añadir exposición a esta cartera</small>' +
-      '</button>';
-    }
+  const memberships=activePortfolioMemberships(stockKey);
+  const rows = memberships.map(({position:existing,portfolio:p}) => {
+    if(!p)return"";
     const qty=num(existing.quantity),avg=num(existing.avg_price),currency=String(existing.currency||(Number(existing.prefer_tr)===1?'EUR':'USD')).toUpperCase();
     const detail=(qty===null?'Posición activa':formatNumber(qty,4)+' uds.')+(avg===null?'':' · media '+formatMoney(avg,currency));
     return '<div class="exposure-manager-row">'+
       '<div class="exposure-manager-copy"><strong>'+esc(p.name)+'</strong><small>'+esc(detail)+'</small></div>'+
-      '<div class="exposure-manager-actions">'+
+      '<div class="exposure-manager-actions exposure-manager-trade-actions">'+
+        '<button type="button" class="btn exposure-buy" data-position-operation="'+esc(existing.id)+'" data-operation-side="BUY">Comprar</button>'+
+        '<button type="button" class="btn ghost exposure-sell" data-position-operation="'+esc(existing.id)+'" data-operation-side="SELL">Vender</button>'+
         '<button type="button" class="btn ghost" data-edit-portfolio-position="'+esc(existing.id)+'">Modificar exposición</button>'+
         '<button type="button" class="btn danger" data-remove-exposure-position="'+esc(existing.id)+'">Eliminar exposición</button>'+
       '</div>'+
     '</div>';
   }).join('');
-  const hasExposure=isInPortfolio(stockKey);
+  const hasExposure=memberships.length>0;
+  const addAction = !hasExposure
+    ? '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Añadir a una cartera</button>'
+    : '';
   openModal(hasExposure ? "Gestionar exposición de "+ticker : "Añadir "+ticker+" a cartera",
     '<div class="star-portfolio-menu exposure-manager-menu">'+
-      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras.</div>')+
-      '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Crear nueva cartera</button>'+
+      (rows || '<div class="portfolio-empty-state compact">Esta acción no está en ninguna cartera.</div>')+
+      addAction+
     '</div>'
   );
 }
@@ -2165,6 +2166,16 @@ function bind() {
       return;
     }
 
+
+    const positionOperation = event.target.closest?.("[data-position-operation]");
+    if (positionOperation) {
+      event.preventDefault();
+      event.stopPropagation();
+      const positionId=positionOperation.dataset.positionOperation;
+      const side=String(positionOperation.dataset.operationSide||"BUY").toUpperCase();
+      openTransactionsModal(positionId, side==="SELL"?"SELL":"BUY");
+      return;
+    }
 
     const editPosition = event.target.closest?.("[data-edit-portfolio-position]");
     if (editPosition) {
