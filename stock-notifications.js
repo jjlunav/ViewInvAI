@@ -9,8 +9,7 @@
   source.innerHTML=
    '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span><small id="stockNotificationGlobalStatus"></small></div>'+
    '<label class="notification-pref-row"><span><b>Noticias y eventos</b></span><span class="settings-switch"><input type="checkbox" name="news"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
-   '<label class="notification-pref-row"><span><b>Entrada en Pulso IA</b></span><span class="settings-switch"><input type="checkbox" name="pulse"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
-   '<label class="notification-pref-row"><span><b>Entrada en Radar</b></span><span class="settings-switch"><input type="checkbox" name="radar"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<label class="notification-pref-row"><span><b>Cambios en Radar AI</b><small>Alta convicción, oportunidades y salida del radar.</small></span><span class="settings-switch"><input type="checkbox" name="radarAi"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
    '<div class="notification-price-grid">'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Subida por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceUp"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceUpStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Bajada por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceDown"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
@@ -37,8 +36,7 @@
   if(globalStatus)globalStatus.textContent=global&&global.enabled===false?'Notificaciones generales de tu cuenta desactivadas: estas preferencias personales quedarán guardadas para cuando vuelvas a activarlas.':'';
 
   get('news').checked=pref?Number(pref.news_enabled)===1:false;
-  get('pulse').checked=pref?Number(pref.pulse_enabled)===1:false;
-  get('radar').checked=pref?Number(pref.radar_enabled)===1:false;
+  get('radarAi').checked=pref?(Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1):false;
   get('priceUp').checked=pref?Number(pref.price_up_enabled)===1:false;
   get('priceDown').checked=pref?Number(pref.price_down_enabled)===1:false;
   get('priceUpStep').value=pref&&pref.price_up_step||3;
@@ -76,8 +74,8 @@
    name:stock.name||'',
    preferTr:current.preferTr,
    newsEnabled:f.elements.news.checked,
-   pulseEnabled:f.elements.pulse.checked,
-   radarEnabled:f.elements.radar.checked,
+   pulseEnabled:f.elements.radarAi.checked,
+   radarEnabled:f.elements.radarAi.checked,
    priceUpEnabled:f.elements.priceUp.checked,
    priceDownEnabled:f.elements.priceDown.checked,
    priceUpStep:Number(f.elements.priceUpStep.value)||3,
