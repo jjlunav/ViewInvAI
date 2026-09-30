@@ -614,6 +614,7 @@ function refreshTrLiveDom(){
   let v=trLiveChange(s);if(v===null)return;
   el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0);
  });
+ refreshCompactQuoteCards();
  if(state.entryMarket==='tr'&&$('#entryUpdated'))$('#entryUpdated').textContent=trLive.lastDataAt?'LSX · último dato '+new Date(trLive.lastDataAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'LSX · esperando cotización';
 }
 function initTrLive(){
@@ -654,23 +655,23 @@ function observeActiveTrLivePrices(){
 }
 function pruneTrLiveSubscriptions(){
  if(document.hidden||!trLive.wanted.size)return;
- const selector='[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key],[data-tr-spread-key],[data-tr-price-eur-key],[data-tr-price-usd-key]';
+ const selector='[data-compact-quote-key][data-compact-quote-tr="1"],[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key],[data-tr-spread-key],[data-tr-price-eur-key],[data-tr-price-usd-key]';
  let keep=new Set(),h=window.innerHeight||900;
  for(let root of activeLiveRoots())for(let el of root.querySelectorAll(selector)){
   let r=el.getBoundingClientRect();if(r.bottom<-700||r.top>h+700)continue;
-  let key=el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
+  let key=el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
   if(key)keep.add(key);
  }
  for(let key of [...trLive.wanted])if(!keep.has(key))dropTrLiveKey(key);
 }
 function usStockByKey(key){let s=stockByKey(key);return s&&market(s,'us')?s:null}
 function usVisibleKeys(){
- let nodes=liveNodes('[data-us-current-hero-key],[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
+ let nodes=liveNodes('[data-compact-quote-key][data-compact-quote-tr="0"],[data-us-current-hero-key],[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
  let h=window.innerHeight||900,seen=new Set(),out=[];
  for(let el of nodes){
   let r=el.getBoundingClientRect();
   if(r.bottom<-400||r.top>h+400)continue;
-  let key=el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
+  let key=el.dataset.compactQuoteKey||el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
   if(!key||seen.has(key))continue;
   let s=usStockByKey(key);if(!s)continue;
   seen.add(key);out.push(s);
@@ -704,7 +705,18 @@ function usApplyQuote(s,q){
  s.usLiveReceivedAt=Date.now();
  window.dispatchEvent(new CustomEvent('viewinvai:quote-updated',{detail:{key:stockKey(s),market:'us',updatedAt:quoteTimestampMs(s,false)||s.usLiveReceivedAt}}));
 }
+function refreshCompactQuoteCards(){
+ visibleLiveNodes('[data-compact-quote-key]').forEach(el=>{
+  const s=stockByKey(el.dataset.compactQuoteKey);
+  if(!s||typeof compactInvestingQuoteHtml!=='function')return;
+  const preferTr=el.dataset.compactQuoteTr==='1';
+  const wrap=document.createElement('div');wrap.innerHTML=compactInvestingQuoteHtml(s,preferTr);
+  const next=wrap.firstElementChild;
+  if(next&&el.innerHTML!==next.innerHTML)el.innerHTML=next.innerHTML;
+ });
+}
 function refreshUsLiveDom(){
+ refreshCompactQuoteCards();
  visibleLiveNodes('[data-us-current-hero-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.usCurrentHeroKey);if(!s)return;
   setHtmlIfChanged(el,currentUsPrimaryHtml(s,currentMarketSession()));
