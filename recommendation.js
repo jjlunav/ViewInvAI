@@ -608,6 +608,16 @@ function warmRecommendationCache(){
 window.addEventListener('viewinvai:account-ready',()=>setTimeout(warmRecommendationCache,700));
 
 document.addEventListener('click',event=>{
+ const radarRow=event.target&&event.target.closest?event.target.closest('#recommendationResults .radar-ai-tier-list .asset-card-row[data-stock-key]'):null;
+ if(radarRow){
+  const control=event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label');
+  if(!control){
+   event.preventDefault();event.stopPropagation();
+   const s=stockByKey(radarRow.dataset.stockKey),pref=radarRow.dataset.stockPreferTr;
+   if(s)openStock(s,radarRow.dataset.stockReason||'Radar IA',pref==='1'?true:pref==='0'?false:null);
+   return;
+  }
+ }
  const register=event.target&&event.target.closest?event.target.closest('[data-radar-register]'):null;
  if(register){
   event.preventDefault();event.stopPropagation();
