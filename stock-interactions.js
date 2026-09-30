@@ -98,6 +98,12 @@ function initStockInteractions(){
    }
    return;
   }
+  let profileEdit=e.target.closest&&e.target.closest('[data-profile-edit-position]');
+  if(profileEdit){
+   e.preventDefault();e.stopPropagation();
+   window.ViewInvAIPortfolios?.openPositionEditorForStock?.(profileEdit.dataset.profileEditPosition||'');
+   return;
+  }
   let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
   if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
   let recoOpen=e.target.closest&&e.target.closest('[data-reco-open]');
