@@ -351,13 +351,32 @@ jobs:
               'notificationPreferenceAllows(assetPreference,"news_enabled",true)',
               'type==="pulse-ai"||type==="radar-entry"',
               "created_at>=?",
-              "WHERE COALESCE(g.notifications_enabled,1)<>0 ORDER BY p.updated_at ASC LIMIT 24",
+              "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.updated_at ASC LIMIT 24",
               'UPDATE notification_preferences SET updated_at=? WHERE id=?',
           )
           missing = [item for item in required_backend if item not in backend]
           if missing:
               raise SystemExit("Contrato backend de notificaciones incompleto: " + ", ".join(missing))
-          print("Contrato de notificaciones: OK")
+          index = Path("index.html").read_text(encoding="utf-8")
+          styles = Path("styles.css").read_text(encoding="utf-8")
+          portfolio = Path("portfolio.js").read_text(encoding="utf-8")
+          if "opted_in_explicitly" not in backend:
+              raise SystemExit("Las notificaciones deben requerir opt-in explícito")
+          if 'id="globalNotificationsEnabled" type="checkbox" checked' in index:
+              raise SystemExit("El master de notificaciones no puede venir activado por defecto")
+          if "account-analysis-settings-card" in index:
+              raise SystemExit("Seguimiento de cartera no debe aparecer en Settings")
+          if "Aportación mensual" in portfolio or 'name="monthlyContributionEur"' in portfolio:
+              raise SystemExit("Objetivo IA no debe pedir aportaciones mensuales")
+          if "Plan recomendado ahora" not in portfolio:
+              raise SystemExit("Objetivo IA debe mostrar un plan único y accionable")
+          if "#view-heatmap:not(.active){display:none!important" not in styles:
+              raise SystemExit("El mapa de calor puede invadir otras vistas")
+          if "--positive:var(--green)" not in styles or "--negative:var(--red)" not in styles:
+              raise SystemExit("Faltan colores semánticos de subida/bajada")
+          if "portfolio-workbar-actions" not in portfolio:
+              raise SystemExit("La barra de Carteras puede volver a descuadrarse")
+          print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras
         run: node --check portfolio.js
