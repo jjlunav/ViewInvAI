@@ -1454,6 +1454,8 @@ async function fetchTransactions(position) {
   const qs = new URLSearchParams({
     positionId: position.id,
     portfolioId: position.portfolio_id,
+    positionId: position.id,
+    broker: String(position.broker || fd.get('broker') || (preferTr ? 'Trade Republic' : 'IBKR')),
     stockKey: position.stock_key,
     limit: '300'
   });
@@ -1549,12 +1551,14 @@ async function openTransactionsModal(positionId, preferredSide = null) {
           '</div>' +
           '<div class="portfolio-form-grid">' +
             '<label><span>Precio</span><input name="price" type="number" inputmode="decimal" step="any" min="0" required placeholder="' + esc(market.price || '') + '"></label>' +
-            '<label><span>Comisión</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="' + (preferTr ? '1' : '0') + '"></label>' +
+            '<label><span>Comisión automática</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" readonly></label>' +
           '</div>' +
           '<div class="portfolio-form-grid">' +
+            '<label><span>Broker</span><input name="broker" value="' + esc(position.broker || (preferTr ? 'Trade Republic' : 'IBKR')) + '" readonly></label>' +
             '<label><span>Divisa</span><input name="currency" value="' + esc(currency) + '" readonly></label>' +
-            '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="' + localDateTimeValue() + '" required></label>' +
           '</div>' +
+          '<small class="broker-fee-hint" data-transaction-fee-hint></small>'+
+          '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="' + localDateTimeValue() + '" required></label>' +
           '<label><span>Nota</span><input name="notes" maxlength="1000" placeholder="Opcional"></label>' +
           '<div class="portfolio-form-status" data-transaction-status aria-live="polite"></div>' +
           '<button type="submit" class="btn">Registrar operación</button>' +
@@ -1562,6 +1566,25 @@ async function openTransactionsModal(positionId, preferredSide = null) {
         '<div class="transaction-history-head"><strong>Historial</strong><span>' + (data.transactions || []).length + ' operaciones</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(data.transactions || [], currency) + '</div>' +
       '</div>';
+    const txForm=$('#transactionForm');
+    if(txForm){
+      const refreshFee=()=>{
+        const side=String(txForm.querySelector('[name="side"]')?.value||'BUY').toUpperCase();
+        const qty=num(txForm.querySelector('[name="quantity"]')?.value)||0;
+        const price=num(txForm.querySelector('[name="price"]')?.value)||num(market.price)||0;
+        const broker=String(position.broker||(preferTr?'Trade Republic':'IBKR'));
+        const fee=brokerFeeEstimate(broker,qty,price,currency,side);
+        const input=txForm.querySelector('[name="fees"]'),hint=txForm.querySelector('[data-transaction-fee-hint]'),submit=txForm.querySelector('button[type="submit"]');
+        if(input)input.value=fee.fee===null?'':String(Math.round((fee.fee+Number.EPSILON)*1000000)/1000000);
+        if(hint){
+          hint.textContent=fee.fee===null?'Comisión pendiente de verificación · no se registrará una operación con una tarifa inventada':'Comisión '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
+          hint.classList.toggle('pending',fee.fee===null);
+        }
+        if(submit)submit.disabled=fee.fee===null;
+      };
+      ['side','quantity','price'].forEach(name=>txForm.querySelector('[name="'+name+'"]')?.addEventListener(name==='side'?'change':'input',refreshFee));
+      refreshFee();
+    }
   } catch (error) {
     const body = $('#portfolioModalBody');
     if (body) body.innerHTML = '<div class="portfolio-empty-state compact">No se pudieron cargar las operaciones.</div>';
@@ -1589,7 +1612,7 @@ async function saveTransactionForm(form) {
     side: String(fd.get('side') || 'BUY'),
     quantity: num(fd.get('quantity')),
     price: num(fd.get('price')),
-    fees: num(fd.get('fees')) || 0,
+    fees: num(fd.get('fees')),
     currency: String(fd.get('currency') || position.currency || 'EUR'),
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : '',
     notes: String(fd.get('notes') || '')
