@@ -261,12 +261,13 @@
         </div>
         <div class="heading-actions"><button class="btn icon-btn" id="refreshFunds" title="Actualizar">↻</button></div>
       </div>
-      <div class="fund-toolbar">
+      <div class="fund-toolbar compact-fund-toolbar">
         <input id="fundSearch" class="fund-search" type="search" placeholder="Nombre, ISIN, índice o gestora" autocomplete="off">
-        <button type="button" class="filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Fondos y ETFs" aria-label="Abrir filtros" title="Filtros">
+        <button type="button" class="btn ghost compact fund-reset-columns" id="fundResetColumns" title="Restablecer orden, ancho y filtros de columnas">↺ Columnas</button>
+        <span class="fund-toolbar-spacer" aria-hidden="true"></span>
+        <button type="button" class="filter-icon-button fund-mobile-filters-toggle" id="fundMobileFiltersToggle" data-filter-sheet-target="#fundToolbarAdvanced" data-filter-sheet-title="Filtros · Fondos y ETFs" aria-label="Abrir filtros generales" title="Filtros generales">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>
         </button>
-        <button type="button" class="btn ghost compact fund-reset-columns" id="fundResetColumns" title="Restablecer orden y ancho de columnas">↺ Columnas</button>
         <div class="fund-toolbar-advanced filter-sheet-source" id="fundToolbarAdvanced">
         <select id="fundPlatform" class="select">
           <option value="all">Todas las plataformas</option>
@@ -304,8 +305,8 @@
         </select>
         </div>
       </div>
-      <div class="fund-data-note compact" id="fundMetaStatus"><span id="fundProductCount">0 productos</span><span>·</span><span id="fundUpdatedAt">Actualizando…</span></div>
       <div id="fundsApp"><div class="empty-state">Cargando fondos y ETFs…</div></div>
+      <div class="fund-data-note compact fund-data-note-footer" id="fundMetaStatus"><span id="fundProductCount">0 productos</span><span>·</span><span id="fundUpdatedAt">Actualizando…</span></div>
     </section>
 
     <section class="view" id="view-heatmap">
