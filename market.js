@@ -705,6 +705,10 @@ function usApplyQuote(s,q){
  if(N(q.bidSize)!==null)s.usLiveBidSize=N(q.bidSize);
  if(N(q.askSize)!==null)s.usLiveAskSize=N(q.askSize);
  if(N(q.volume)!==null)s.usLiveVolume=N(q.volume);
+ if(N(q.dayHigh??q.high)!==null)s.usLiveDayHigh=N(q.dayHigh??q.high);
+ if(N(q.dayLow??q.low)!==null)s.usLiveDayLow=N(q.dayLow??q.low);
+ if(N(q.open)!==null)s.usLiveOpen=N(q.open);
+ if(N(q.previousClose??q.prevClose)!==null)s.usLivePreviousClose=N(q.previousClose??q.prevClose);
  if(N(q.changePct)!==null)s.usLiveChangePct=N(q.changePct);
  s.usLiveTimestamp=q.timestamp||'';
  s.usLiveMarketStatus=q.marketStatus||'';
@@ -738,6 +742,20 @@ function refreshUsLiveDom(){
   setQuoteDirection(el,s.usLiveDirection);
  });
  visibleLiveNodes('[data-us-spread-key]').forEach(el=>{let s=usStockByKey(el.dataset.usSpreadKey);if(s){setHtmlIfChanged(el,bidAskInner(s,false));el.classList.toggle('realtime',!!s.usLiveIsRealTime);el.classList.toggle('delayed',!s.usLiveIsRealTime)}});
+ visibleLiveNodes('[data-profile-live-range-key]').forEach(el=>{
+  let s=usStockByKey(el.dataset.profileLiveRangeKey);if(!s)return;
+  let lo=N(s.usLiveDayLow)??N(s.dayLow),hi=N(s.usLiveDayHigh)??N(s.dayHigh);
+  el.textContent=lo!==null&&hi!==null?PR(lo)+' - '+PR(hi):'—';
+ });
+ visibleLiveNodes('[data-profile-live-volume-key]').forEach(el=>{
+  let s=usStockByKey(el.dataset.profileLiveVolumeKey);if(!s)return;
+  el.textContent=compactVol(N(s.usLiveVolume)??SV(s,currentMarketSession()));
+ });
+ visibleLiveNodes('[data-profile-live-relvol-key]').forEach(el=>{
+  let s=usStockByKey(el.dataset.profileLiveRelvolKey);if(!s)return;
+  let v=N(s.usLiveVolume)??SV(s,currentMarketSession()),avg=N(s.avgVolume),rel=v!==null&&avg>0?v/avg:RV(s,currentMarketSession());
+  el.textContent=rel===null?'—':F(rel,2)+'×';
+ });
  visibleLiveNodes('[data-us-bid-key]').forEach(el=>{let s=usStockByKey(el.dataset.usBidKey);if(!s)return;el.textContent=quoteMoney(usLiveBid(s),'\u0024',quotePrecision(s,false));setQuoteDirection(el,s.usLiveBidDirection)});
  visibleLiveNodes('[data-us-ask-key]').forEach(el=>{let s=usStockByKey(el.dataset.usAskKey);if(!s)return;el.textContent=quoteMoney(usLiveAsk(s),'\u0024',quotePrecision(s,false));setQuoteDirection(el,s.usLiveAskDirection)});
  visibleLiveNodes('[data-us-price-usd-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceUsdKey);if(!s)return;el.textContent=quoteMoney(usPriceValues(s,SP(s,currentMarketSession())).usd,'\u0024',quotePrecision(s,false,SP(s,currentMarketSession())));setQuoteDirection(el,s.usLiveDirection);let t=el.parentElement&&el.parentElement.querySelector('.table-quote-updated');if(t)t.textContent=quoteUpdatedLabel(s,false)});
@@ -764,7 +782,7 @@ function scheduleLiveViewRefresh(delay=180){
 }
 async function pollUsLive(){
  if(usLive.busy||document.hidden)return;
- let minGap=document.body.classList.contains('stock-detail-open')?2500:5000;
+ let minGap=document.body.classList.contains('stock-detail-open')?900:2200;
  if(usLive.lastFetchAt&&Date.now()-usLive.lastFetchAt<minGap)return;
  let stocks=usVisibleKeys();if(!stocks.length)return;
  usLive.busy=true;
@@ -833,7 +851,7 @@ function scheduleEntryAutoSort(delay=650){
 function initUsLive(){
  setInterval(refreshUsLiveDom,1800);
  setInterval(()=>refreshQuoteFreshnessDom(document),3000);
- setInterval(pollUsLive,5000);
+ setInterval(pollUsLive,1200);
  setTimeout(pollUsLive,700);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();scheduleEntryAutoSort(0)}});
 }
