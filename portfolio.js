@@ -571,6 +571,9 @@ function renderPositionRow(p, index = 0) {
     openLabel: "Ficha",
     openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
     metaHtml,
+    actionsHtml:'<button type="button" class="btn ghost compact portfolio-position-trade buy" data-position-transactions="'+esc(p.id)+'" data-position-side="BUY">Comprar</button>'+
+      '<button type="button" class="btn ghost compact portfolio-position-trade sell" data-position-transactions="'+esc(p.id)+'" data-position-side="SELL">Vender</button>'+
+      '<button type="button" class="portfolio-transactions-open compact" data-position-transactions="'+esc(p.id)+'">Operaciones</button>',
     detailsHtml: ""
   });
 
@@ -2681,7 +2684,8 @@ function bind() {
     if (transactionsButton) {
       event.preventDefault();
       event.stopPropagation();
-      openTransactionsModal(transactionsButton.dataset.positionTransactions);
+      const preferredSide=String(transactionsButton.dataset.positionSide||"").toUpperCase();
+      openTransactionsModal(transactionsButton.dataset.positionTransactions,preferredSide==="BUY"||preferredSide==="SELL"?preferredSide:null);
       return;
     }
 
