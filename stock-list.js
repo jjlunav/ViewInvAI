@@ -176,7 +176,7 @@ function standardStockCard(s,i=0,opts={}){
   context:opts.context||state.currentView||'stock',title:s.name||ticker||'—',rank,
   isin:preferTr?(s.trIsin||s.isin||s.usIsin):(s.usIsin||s.isin||s.trIsin),
   subtitle:opts.subtitle||[ticker,preferTr?(s.trExchange||'LSX'):(s.exchange||'EEUU')].filter(Boolean).join(' · '),
-  leadingHtml:favButton(s,preferTr),cells,
+  leadingHtml:opts.leadingHtml!==undefined?opts.leadingHtml:favButton(s,preferTr),cells,
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
   metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,className:opts.className,
