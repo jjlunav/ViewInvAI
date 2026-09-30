@@ -656,15 +656,14 @@ function syncEntryVenueControls(){
 }
 function renderEntry(){
  syncEntryVenueControls();
+ if(state.entryMarket==='tr')seedTradeRepublicMarketBoard(120);
  let [a,se]=entry();
  $('#entrySessionText').textContent=state.entryMarket==='tr'?'Trade Republic / LSX · sesión única':('EEUU · '+SN(se));
  $('#entryCount').textContent=a.length+' seleccionadas · '+entryCandidatePoolCount+' analizadas';
  $('#entryUpdated').textContent=db.meta.updatedAt?'datos '+new Date(db.meta.updatedAt).toLocaleString('es-ES'):'sin actualización';
  let shown=a;
  $('#entryResults').innerHTML=shown.length
-  ?(stockCompactListView()
-    ?stockMobileList(shown,se,state.entryMarket==='tr','entry')
-    :shown.map((s,i)=>card(s,i,se,false,entryOpportunityWhy(s,se,state.entryMarket==='tr',i+1),state.entryMarket==='tr')).join(''))
+  ?stockMobileList(shown,se,state.entryMarket==='tr','entry')
   :'<div class="empty-state">No hay candidatas con este criterio y sesión. Prueba otro preset o abre Configurar criterio para ver los umbrales activos.</div>';
  if(shown.length)setTimeout(()=>refreshRadarLiveContext(shown),0);
 }
