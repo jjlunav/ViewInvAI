@@ -16,8 +16,58 @@ const NASDAQ_HEADERS = {
 };
 
 const NASDAQ_QUOTE_TTL_MS = 2500;
+const NASDAQ_SUMMARY_TTL_MS = 15000;
 const nasdaqQuoteCache = new Map();
 const nasdaqQuoteInflight = new Map();
+const nasdaqSummaryCache = new Map();
+
+function nasdaqSummaryValue(summaryData, ...names) {
+  const wanted = new Set(names.map(name => String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "")));
+  for (const [key, row] of Object.entries(summaryData || {})) {
+    const normalized = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!wanted.has(normalized)) continue;
+    if (row && typeof row === "object" && "value" in row) return row.value;
+    return row;
+  }
+  return null;
+}
+
+function parseNasdaqHighLow(value) {
+  const text = String(value || "").trim();
+  if (!text) return { high: null, low: null };
+  const parts = text.split(/\s*[/|-]\s*/).map(parseMarketNumber).filter(v => v !== null);
+  if (parts.length < 2) return { high: null, low: null };
+  return { high: Math.max(parts[0], parts[1]), low: Math.min(parts[0], parts[1]) };
+}
+
+async function fetchNasdaqSummary(symbol) {
+  const safe = safeStockSymbol(symbol);
+  if (!safe) return null;
+  const cached = nasdaqSummaryCache.get(safe);
+  if (cached && Date.now() - cached.at < NASDAQ_SUMMARY_TTL_MS) return cached.value;
+  try {
+    const response = await fetch("https://api.nasdaq.com/api/quote/" + encodeURIComponent(safe) + "/summary?assetclass=stocks", {
+      headers: NASDAQ_HEADERS,
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    if (!response.ok) throw new Error("Nasdaq summary " + response.status);
+    const json = await response.json();
+    const summary = json && json.data && json.data.summaryData || {};
+    const highLow = parseNasdaqHighLow(nasdaqSummaryValue(summary, "TodayHighLow", "TodaysHighLow", "DayHighLow"));
+    const value = {
+      dayHigh: highLow.high,
+      dayLow: highLow.low,
+      open: parseMarketNumber(nasdaqSummaryValue(summary, "OpenPrice", "Open")),
+      previousClose: parseMarketNumber(nasdaqSummaryValue(summary, "PreviousClose", "PrevClose")),
+      volume: parseMarketNumber(nasdaqSummaryValue(summary, "ShareVolume", "Volume"))
+    };
+    nasdaqSummaryCache.set(safe, { at: Date.now(), value });
+    return value;
+  } catch (error) {
+    console.warn("Nasdaq summary upstream error", safe, String(error && error.message || error));
+    return cached ? cached.value : null;
+  }
+}
 
 const RATE_BUCKETS = new Map();
 function requestIdentity(request){
@@ -414,6 +464,7 @@ async function fetchNasdaqQuote(symbol) {
     if (!data) return null;
     const primary = data.primaryData || {};
     const secondary = data.secondaryData || null;
+    const summary = await fetchNasdaqSummary(safe);
     const value = {
       symbol: data.symbol || safe,
       exchange: data.exchange || null,
@@ -425,7 +476,11 @@ async function fetchNasdaqQuote(symbol) {
       ask: parseMarketNumber(primary.askPrice),
       bidSize: parseMarketNumber(primary.bidSize),
       askSize: parseMarketNumber(primary.askSize),
-      volume: parseMarketNumber(primary.volume),
+      volume: parseMarketNumber(primary.volume) ?? finiteNumber(summary && summary.volume),
+      dayHigh: finiteNumber(summary && summary.dayHigh),
+      dayLow: finiteNumber(summary && summary.dayLow),
+      open: finiteNumber(summary && summary.open),
+      previousClose: finiteNumber(summary && summary.previousClose),
       timestamp: primary.lastTradeTimestamp || null,
       isRealTime: primary.isRealTime === true,
       secondary: secondary ? {
