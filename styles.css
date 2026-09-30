@@ -8176,3 +8176,61 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  }
  #view-portfolios .portfolio-goal-tools{grid-column:2!important;grid-row:1!important}
 }
+
+
+/* 2026-09-30 · favorites workspace and exposure management */
+.market-leaders-dock,.leaders-hotzone{display:none!important}
+body{--leaders-dock-space:0px!important}
+body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
+.main{padding-bottom:0!important}
+
+.exposure-manager-menu{display:grid;gap:8px}
+.exposure-manager-row{
+ display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;
+ padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel)
+}
+.exposure-manager-copy{display:grid;gap:2px;min-width:0}
+.exposure-manager-copy strong{font-size:11px}
+.exposure-manager-copy small{color:var(--muted);font-size:8px}
+.exposure-manager-actions{display:flex;align-items:center;gap:6px}
+.exposure-manager-actions .btn{min-height:36px;white-space:nowrap}
+.exposure-manager-actions .danger{border-color:color-mix(in srgb,var(--negative) 55%,var(--line));color:var(--negative);background:color-mix(in srgb,var(--negative) 7%,transparent)}
+.exposure-add-choice{min-height:52px}
+
+.favorites-dashboard{display:grid;gap:12px}
+.favorites-overview{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px
+}
+.favorites-overview>div{
+ display:grid;grid-template-columns:auto 1fr;align-items:end;column-gap:6px;row-gap:1px;
+ padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel)
+}
+.favorites-overview small{grid-column:1/-1;color:var(--muted);font-size:7px;font-weight:900;letter-spacing:.55px}
+.favorites-overview strong{font-size:17px;line-height:1}
+.favorites-overview span{color:var(--muted);font-size:8px}
+.favorites-market-group{
+ overflow:hidden;border:1px solid var(--line);border-radius:11px;background:var(--panel)
+}
+.favorites-market-group>header{
+ display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-bottom:1px solid var(--line)
+}
+.favorites-market-group>header>div{display:flex;align-items:center;gap:7px}
+.favorites-market-group h2{margin:0;font-size:12px}
+.favorites-market-group>header>b{
+ display:grid;place-items:center;min-width:24px;height:22px;padding:0 6px;border-radius:999px;background:var(--bg);font-size:8px
+}
+.favorites-market-dot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 12%,transparent)}
+.favorites-market-dot.tr{color:var(--teal);background:var(--teal)}
+.favorites-market-dot.us{color:#77a8ff;background:#77a8ff}
+.favorites-market-dot.fund{color:var(--amber);background:var(--amber)}
+.favorites-market-list{display:grid}
+.favorites-market-list .asset-card:last-child{border-bottom:0}
+.favorites-group-empty{padding:14px;color:var(--muted);font-size:9px}
+.fund-table-actions .fund-fav-star{margin-right:4px}
+
+@media(max-width:820px){
+ .favorites-overview{grid-template-columns:1fr 1fr}
+ .exposure-manager-row{grid-template-columns:1fr}
+ .exposure-manager-actions{display:grid;grid-template-columns:1fr 1fr}
+ .exposure-manager-actions .btn{width:100%}
+}
