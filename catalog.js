@@ -415,7 +415,7 @@ function initCatalogInteractions(){
  });
   let draggedCatalogCol=null;
  document.addEventListener('dragstart',e=>{
-  let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
+  let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th||e.target.closest('.catalog-column-resizer,.catalog-header-filter'))return;
   draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
   if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',th.dataset.catalogCol)}
  });
