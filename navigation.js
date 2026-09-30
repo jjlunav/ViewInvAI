@@ -128,12 +128,35 @@ function closeTransientUiForBack(){
  let picker=$('#presetPicker');if(picker&&picker.classList.contains('open')){picker.classList.remove('open');$('#presetTrigger')?.setAttribute('aria-expanded','false');return true}
  return false;
 }
+function navigateBackOneStep(){
+ if(closeTransientUiForBack())return true;
+ if(state.profileKey||document.body.classList.contains('stock-detail-open')){
+  if(appHistoryReady&&history.state&&history.state.__viewinvai===1&&history.state.profileKey&&appHistoryDepth()>0){
+   history.back();return true;
+  }
+  const target=V[state.profileOriginView]?state.profileOriginView:(V[state.currentView]?state.currentView:'home');
+  const y=Math.max(0,N(state.profileOriginScroll)??0);
+  document.body.classList.remove('stock-detail-open');
+  const box=$('#stockQuickDetail');if(box){box.classList.add('is-hidden');box.innerHTML=''}
+  state.profileKey=null;state.profileReason='';state.profilePreferTr=null;state.profileOriginView=null;state.profileOriginScroll=0;
+  state.currentView=target;
+  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+target));
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===target));
+  renderNavigation();renderCurrentView();saveUiState();
+  window.dispatchEvent(new CustomEvent('viewinvai:view-changed',{detail:{view:target}}));
+  requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));
+  replaceCurrentAppHistory();
+  return true;
+ }
+ if(appHistoryDepth()>0){history.back();return true}
+ return false;
+}
+
 function initNativeBackHandling(){
  let cap=window.Capacitor,app=cap&&cap.Plugins&&cap.Plugins.App;
  if(!app||typeof app.addListener!=='function')return;
  app.addListener('backButton',async()=>{
-  if(closeTransientUiForBack())return;
-  if(appHistoryDepth()>0){history.back();return}
+  if(navigateBackOneStep())return
   let now=Date.now();
   if(lastNativeBackAt&&now-lastNativeBackAt<=1600){
    lastNativeBackAt=0;
@@ -191,3 +214,10 @@ function toggleMarketQuick(force){
  if(open&&typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
 }
 $('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));
+
+
+window.ViewInvAINavigation=Object.assign(window.ViewInvAINavigation||{},{
+ go:(view)=>show(view),
+ back:()=>navigateBackOneStep(),
+ show:(view)=>show(view)
+});
