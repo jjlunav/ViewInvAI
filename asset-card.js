@@ -5,7 +5,11 @@
  const content=cell=>cell.html!==undefined?String(cell.html):escape(cell.value??'—');
  function render(options={}){
   const cells=options.cells||[],columns=Math.max(1,cells.length),interactive=!!options.openAttrs;
-  const identifier=options.isin&&options.isin!=='—'?'<button type="button" class="list-copy-isin" data-copy-isin="'+escape(options.isin)+'" aria-label="Copiar ISIN '+escape(options.isin)+'">'+escape(options.isin)+'</button>':'';
+  const identifier=options.isin&&options.isin!=='—'
+   ?(options.context==='catalog'
+     ?'<span class="list-copy-isin catalog-row-isin">'+escape(options.isin)+'</span>'
+     :'<button type="button" class="list-copy-isin" data-copy-isin="'+escape(options.isin)+'" aria-label="Copiar ISIN '+escape(options.isin)+'">'+escape(options.isin)+'</button>')
+   :'';
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
     '<div class="asset-card-identity">'+(options.leadingHtml||'')+'<div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
