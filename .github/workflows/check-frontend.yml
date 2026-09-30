@@ -404,6 +404,19 @@ jobs:
               raise SystemExit("El ranking estricto debe admitir como máximo tres entradas")
           if 'riskProfile||"aggressive"' not in portfolio:
               raise SystemExit("Objetivo IA debe usar perfil agresivo por defecto")
+          stock_profile = Path("stock-profile.js").read_text(encoding="utf-8")
+          stock_interactions = Path("stock-interactions.js").read_text(encoding="utf-8")
+          for required in ("goalExecutionQuote", "spreadPenalty", "portfolioOperationFee", "data-register-goal-operation", "goalOperationForm"):
+              if required not in portfolio:
+                  raise SystemExit("Falta disciplina operativa en Objetivo IA: " + required)
+          for required in ("cash_delta", "cash_currency", "adjustPortfolioCashForTransaction", "rawFees === null ? (preferTr ? 1 : 0)"):
+              if required not in backend:
+                  raise SystemExit("El efectivo automático o la comisión TR no están protegidos: " + required)
+          for required in ("profileCompanyIdentityHtml", "profileCompanySummary", "ISIN", "data-profile-edit-position"):
+              if required not in stock_profile:
+                  raise SystemExit("La ficha General no expone todos los datos o edición de posición: " + required)
+          if "openPositionEditorForStock" not in portfolio or "profileEditPosition" not in stock_interactions:
+              raise SystemExit("No se puede editar una posición desde la ficha de la acción")
           print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras
