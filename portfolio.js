@@ -219,7 +219,7 @@ function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side=
   const converted=portfolioConvertAmount(fee.fee,fee.currency,target);
   return Object.assign({},fee,{sourceFee:fee.fee,sourceCurrency:fee.currency,fee:converted,currency:target,verified:fee.verified&&converted!==null});
 }
-function goalExecutionQuote(stock,preferTr,side,fxUsdEur){
+function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=1){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
   const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct);
   let price=null,orderType="LIMITE",instruction="",immediate=false;
@@ -243,8 +243,12 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur){
     const decimals=Math.abs(price)<1?4:Math.abs(price)<10?3:2;
     price=Number(price.toFixed(decimals));
   }
-  const unitEur=portfolioPriceToEur(price,currency,fxUsdEur),feeEur=preferTr?1:0;
-  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,orderType,instruction,immediate};
+  const unitEur=portfolioPriceToEur(price,currency,fxUsdEur);
+  const broker=String(brokerName||"").trim();
+  const feeInfo=brokerFeeInCurrency(broker,Math.max(1,Math.round(num(quantity)||1)),price,currency,side);
+  const feeNative=feeInfo.fee;
+  const feeEur=feeNative===null?0:(portfolioConvertAmount(feeNative,currency,"EUR",fxUsdEur)??0);
+  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate};
 }
 
 function portfolioStockKeys() {
@@ -703,7 +707,7 @@ function portfolioCoachPositionRows(metrics){
     const desiredReducePct=currentWeight>0?Math.max(0,(currentWeight-targetWeight)/currentWeight*100):0;
     const units=wholeRecommendationUnits(row.qty,row.qty*desiredReducePct/100);
     const reducePct=row.qty>0?Math.max(0,Math.min(100,units/row.qty*100)):0;
-    const execution=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur);
+    const execution=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,units);
     const releasedGross=execution.unitEur===null?0:execution.unitEur*units;
     const released=units>0?Math.max(0,releasedGross-execution.feeEur):0;
     const action=units<=0?"MANTENER":units>=Math.floor(row.qty+1e-9)&&Math.abs(row.qty-Math.floor(row.qty+1e-9))<1e-8?"SALIR":"REDUCIR",reasons=[];
@@ -775,12 +779,13 @@ function portfolioCoachCandidates(metrics,positionRows){
     const score=scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?3:0)):0;
     const velocity=portfolioGoalVelocityScore(row.stock,score,row.quality);
     const catalyst=velocity.catalyst||{},multiSource=row.sources.length>1;
-    const execution=goalExecutionQuote(row.stock,row.preferTr,"BUY",metrics.fxUsdEur);
+    const brokerName=brokerDefaultName(metrics.portfolio,row.preferTr);
+    const execution=goalExecutionQuote(row.stock,row.preferTr,"BUY",metrics.fxUsdEur,brokerName,1);
     const spread=num(execution.spreadPct),spreadPenalty=spread===null?4:Math.min(18,spread*2.2);
     const confirmation=multiSource||score>=86||(num(catalyst.impact)||0)>=75;
     const composite=Math.max(0,Math.min(100,score*.44+(num(row.quality)||0)*.20+velocity.score*.28+(multiSource?5:0)+Math.min(3,(num(catalyst.impact)||0)*.03)-spreadPenalty));
     const spreadAcceptable=spread===null?row.quality>=75:spread<=8;
-    return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,spreadAcceptable};
+    return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,brokerName,spreadAcceptable};
   }).filter(row=>row.confirmation&&row.spreadAcceptable&&row.execution.unitEur!==null&&row.execution.unitEur>0&&row.score>=band.minCandidate&&row.quality>=band.minQuality&&row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite)
     .sort((x,y)=>y.composite-x.composite||y.velocityScore-x.velocityScore||y.score-x.score||y.quality-x.quality);
   if(!ranked.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
@@ -823,14 +828,16 @@ function portfolioCoachCandidates(metrics,positionRows){
     row.units+=1;row.allocation+=row.unitEur;row.totalCost+=row.unitEur;left=Math.max(0,left-row.unitEur);
   }
   result=result.sort((x,y)=>y.composite-x.composite).map((row,index)=>{
-    const potentialGain=row.allocation>0&&row.levels.takePct!==null?row.allocation*row.levels.takePct/100:0;
-    return{...row,rank:index+1,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0};
+    const finalExecution=goalExecutionQuote(row.stock,row.preferTr,"BUY",metrics.fxUsdEur,row.brokerName,row.units);
+    const allocation=(num(finalExecution.unitEur)||0)*row.units,totalCost=allocation+(num(finalExecution.feeEur)||0);
+    const potentialGain=allocation>0&&row.levels.takePct!==null?allocation*row.levels.takePct/100:0;
+    return{...row,execution:finalExecution,unitEur:finalExecution.unitEur,feeEur:finalExecution.feeEur,allocation,totalCost,rank:index+1,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0};
   });
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
-function goalOperationButtonHtml({side,portfolioId,stockKey,units,price,fees,currency,preferTr}){
+function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr}){
   if(!(num(units)>0)||num(price)===null)return"";
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -839,7 +846,7 @@ function goalTradeInstructionHtml(row){
   const price=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?" · spread "+formatNumber(execution.spreadPct,2)+"%":"";
   const fee=execution.feeEur?(" · comisión "+formatMoney(execution.feeEur,"EUR")):"";
-  const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr});
+  const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeNative??execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr});
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
@@ -853,7 +860,7 @@ function goalCandidateHtml(row){
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?formatNumber(execution.spreadPct,2)+"%":"N/D";
   const entry=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
   const fee=row.feeEur?(" · comisión "+formatMoney(row.feeEur,"EUR")):"";
-  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,stockKey:key,units:row.units,price:execution.price,fees:row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr});
+  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr});
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
