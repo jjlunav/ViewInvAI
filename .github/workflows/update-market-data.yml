@@ -35,6 +35,18 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -r requirements.txt
           python -m pip check
+      - name: Comprobar integraciones de producción
+        env:
+          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
+          MARKET_PUBLISH_URL: ${{ vars.MARKET_PUBLISH_URL }}
+          MARKET_PUBLISH_TOKEN: ${{ secrets.MARKET_PUBLISH_TOKEN }}
+        run: |
+          if [ -z "${SEC_USER_AGENT}" ]; then
+            echo "::warning::SEC_USER_AGENT no está configurado; el snapshot conservará SEC previo pero no consultará EDGAR en esta ejecución."
+          fi
+          if [ -z "${MARKET_PUBLISH_URL}" ] || [ -z "${MARKET_PUBLISH_TOKEN}" ]; then
+            echo "::warning::Publicador R2 no configurado; el snapshot se publicará en Git como fallback."
+          fi
       - name: Actualizar datos
         env:
           SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
