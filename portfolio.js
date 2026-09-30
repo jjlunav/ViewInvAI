@@ -571,7 +571,7 @@ function renderPositionRow(p, index = 0) {
     openLabel: "Ficha",
     openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
     metaHtml,
-    rowActionsHtml:'<button type="button" class="portfolio-register-operation-icon" data-position-transactions="'+esc(p.id)+'" aria-label="Registrar operación" title="Registrar operación"><span aria-hidden="true">▣</span></button>',
+    rowActionsHtml:'<button type="button" class="portfolio-register-operation-icon" data-position-transactions="'+esc(p.id)+'" aria-label="Registrar operación" title="Registrar operación"><span aria-hidden="true">💼</span></button>',
     detailsHtml: ""
   });
 
