@@ -22,7 +22,6 @@ window.addEventListener('viewinvai:portfolio-membership-changed',()=>{
  if(s)refreshProfilePortfolioActions(s);
 });
 lockAllCriteria();
-initLeadersDock();
 initTrLive();
 initUsLive();
 pollFxLive();
