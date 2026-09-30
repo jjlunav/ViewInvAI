@@ -99,19 +99,25 @@ function profileGeneralBusinessStats(s){
 function profileGeneralPrimaryStats(s,isTr,se){
  let low=N(s.usLiveDayLow)??N(s.dayLow),high=N(s.usLiveDayHigh)??N(s.dayHigh);
  let range=low!==null&&high!==null?PR(low)+' - '+PR(high):'—';
- const ref=isTr?' · referencia del subyacente':'',key=stockKey(s),tr=isTr?'1':'0';
- const rangeHtml='<span data-profile-live-range-key="'+E(key)+'">'+range+'</span>';
+ const key=stockKey(s),tr=isTr?'1':'0';
+ const rangeHtml=isTr
+  ?'<span data-profile-tr-range-key="'+E(key)+'">Cargando…</span>'
+  :'<span data-profile-live-range-key="'+E(key)+'">'+range+'</span>';
  const volume=N(s.usLiveVolume)??SV(s,se),avg=N(s.avgVolume),rel=volume!==null&&avg>0?volume/avg:RV(s,se);
- const volumeHtml='<span data-profile-live-volume-key="'+E(key)+'">'+compactVol(volume)+'</span>';
- const relHtml='<span data-profile-live-relvol-key="'+E(key)+'">'+(rel===null?'—':F(rel,2)+'×')+'</span>';
+ const volumeHtml=isTr
+  ?'<span data-profile-tr-volume-key="'+E(key)+'">Cargando…</span>'
+  :'<span data-profile-live-volume-key="'+E(key)+'">'+compactVol(volume)+'</span>';
+ const relHtml=isTr
+  ?'<span title="No se mezcla el volumen LSX con la media del mercado EEUU.">N/D</span>'
+  :'<span data-profile-live-relvol-key="'+E(key)+'">'+(rel===null?'—':F(rel,2)+'×')+'</span>';
  const support='<span class="profile-live-level" data-profile-level="support" data-profile-level-key="'+E(key)+'" data-profile-level-tr="'+tr+'">Analizando…</span>';
  const resistance='<span class="profile-live-level" data-profile-level="resistance" data-profile-level-key="'+E(key)+'" data-profile-level-tr="'+tr+'">Analizando…</span>';
  return [
-  profileKpi(isTr?'Rango EEUU':'Rango día',rangeHtml,'Mínimo - máximo'+ref),
+  profileKpi(isTr?'Rango LSX':'Rango día',rangeHtml,isTr?'Mínimo - máximo de la sesión LSX':'Mínimo - máximo'),
   profileKpi('Soporte',support,'Suelo técnico · gráfico reciente'),
   profileKpi('Resistencia',resistance,'Tope técnico · gráfico reciente'),
-  profileKpi(isTr?'Volumen EEUU':'Volumen actual',volumeHtml,'Media '+compactVol(s.avgVolume)+ref),
-  profileKpi(isTr?'Vol. relativo EEUU':'Volumen relativo',relHtml,'Actividad frente a media'+ref),
+  profileKpi(isTr?'Volumen LSX':'Volumen actual',volumeHtml,isTr?'Agregado de la sesión LSX':'Media '+compactVol(s.avgVolume)),
+  profileKpi(isTr?'Vol. relativo LSX':'Volumen relativo',relHtml,isTr?'No se calcula con una media de otro mercado':'Actividad frente a media'),
   profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
  ].join('');
 }
@@ -140,6 +146,43 @@ function profileGeneralExtraStats(s,isTr,se){
   profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones')
  ].join('');
 }
+const profileTrSessionCache=new Map();
+async function loadProfileTrSessionStats(s){
+ const key=stockKey(s),cached=profileTrSessionCache.get(key);
+ if(cached&&Date.now()-cached.at<45000)return cached.value;
+ if(!trTradable(s)||!trIsin(s))throw Error('LSX no disponible');
+ const response=await fetch('/api/tr-history?isin='+encodeURIComponent(trIsin(s))+'&exchange='+encodeURIComponent(s.trExchange||'LSX')+'&range=1d&resolution=60000',{cache:'no-store'});
+ if(!response.ok)throw Error('TR '+response.status);
+ const data=await response.json(),points=(Array.isArray(data&&data.points)?data.points:[]).filter(p=>N(p&&p.close)!==null);
+ if(!points.length)throw Error('Histórico LSX vacío');
+ const highs=points.map(p=>N(p.high)??N(p.close)).filter(v=>v!==null);
+ const lows=points.map(p=>N(p.low)??N(p.close)).filter(v=>v!==null);
+ const volumes=points.map(p=>N(p.volume)).filter(v=>v!==null&&v>=0);
+ const value={
+  high:highs.length?Math.max(...highs):null,
+  low:lows.length?Math.min(...lows):null,
+  volume:volumes.length?volumes.reduce((a,b)=>a+b,0):null,
+  points:points.length
+ };
+ profileTrSessionCache.set(key,{at:Date.now(),value});
+ return value;
+}
+async function hydrateProfileTrSessionStats(root,s){
+ if(!root||!s||!trTradable(s))return;
+ const range=root.querySelector('[data-profile-tr-range-key="'+CSS.escape(stockKey(s))+'"]');
+ const volume=root.querySelector('[data-profile-tr-volume-key="'+CSS.escape(stockKey(s))+'"]');
+ if(!range&&!volume)return;
+ try{
+  const stats=await loadProfileTrSessionStats(s);
+  if(!root.isConnected)return;
+  if(range)range.textContent=stats.low!==null&&stats.high!==null?PR(stats.low)+' - '+PR(stats.high):'N/D';
+  if(volume)volume.textContent=stats.volume!==null?compactVol(stats.volume):'N/D';
+ }catch(_){
+  if(range)range.textContent='N/D';
+  if(volume)volume.textContent='N/D';
+ }
+}
+
 const profileLevelsCache=new Map();
 function profileLevelCluster(values,tolerancePct=1.2){
  const rows=values.map(N).filter(v=>v!==null&&v>0).sort((a,b)=>a-b),clusters=[];
@@ -402,6 +445,7 @@ function renderQuickProfile(){
   pollUsLive();
   refreshProfileLiveEvents(s);
   hydrateProfileSupportResistance(box,s,state.profilePreferTr===true);
+  if(state.profilePreferTr===true)hydrateProfileTrSessionStats(box,s);
   window.ViewInvAINativeUI?.syncLayout?.();
  });
 }
