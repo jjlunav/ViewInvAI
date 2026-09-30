@@ -1246,7 +1246,10 @@ function openPositionPicker() {
   }
 }
 
+let portfolioLoadPromise=null;
 async function loadAll({ syncFavorites = false } = {}) {
+  if(portfolioLoadPromise)return portfolioLoadPromise;
+  portfolioLoadPromise=(async()=>{
   if (!state.user || state.loading) return;
   let ok = true;
   state.loading = true;
@@ -1274,6 +1277,8 @@ async function loadAll({ syncFavorites = false } = {}) {
     if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});
   }
   return ok;
+  })().finally(()=>{portfolioLoadPromise=null});
+  return portfolioLoadPromise;
 }
 
 async function createPortfolio(payload) {
@@ -1869,7 +1874,7 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
   if(!form||!stock)return;
   const portfolioId=form.querySelector('[name="portfolioId"]')?.value||'';
   const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId))||null,scope=portfolioMarketScope(portfolio);
-  const brokerSelect=form.querySelector('[name="broker"]');
+  const brokerSelect=form.querySelector('[data-broker-select]');
   let broker=String(brokerSelect?.value||form.dataset.defaultBroker||brokerDefaultName(portfolio,fallbackPreferTr)).trim();
   if(brokerSelect&&!brokerSelect.value){
     brokerSelect.value=broker;
@@ -2019,7 +2024,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       '<div class="position-form-stock"><strong>'+esc(stock.trTicker||stock.ticker||"")+'</strong><span>'+esc(stock.name||"")+'</span><b>'+formatMoney(current.price,current.currency)+'</b></div>'+
       '<div class="portfolio-form-mode" data-position-form-mode></div>'+
       '<label><span>Cartera</span><select name="portfolioId" required'+(editPosition?' disabled':'')+'>'+options+'</select></label>'+
-      '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
+      '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select name="broker" data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
         (!brokerDisabled?'<button type="button" class="portfolio-broker-add" data-toggle-broker-create aria-label="Añadir broker" title="Añadir broker">＋</button>':'')+
       '</div></label>'+
       (!brokerDisabled?'<div class="broker-create-inline" data-broker-create-inline hidden><input type="text" data-new-broker-name maxlength="80" placeholder="Nombre del broker, p. ej. DEGIRO"><button type="button" data-create-broker>Añadir</button></div>':'')+
@@ -2284,9 +2289,9 @@ async function savePositionForm(form) {
     }
     toast(editPositionId?"Posición actualizada":"Compra registrada · análisis continuo activado");
 
-    // Refresh server state after the modal has closed; saving no longer appears
-    // frozen while portfolios/watchlist are reloaded.
-    setTimeout(() => loadAll(), 0);
+    // The local position state is already updated by add/edit. Repaint immediately;
+    // background analysis will reconcile server state without a second full reload.
+    renderActivePortfolioPanel();
   } catch (error) {
     console.warn("Position save failed", error);
     const message = error && error.message ? error.message : "No se pudo guardar la posición.";
@@ -2752,13 +2757,15 @@ function bind() {
   window.addEventListener("viewinvai:quote-updated", event => {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
+    if(state.currentView!=="portfolios"||document.hidden)return;
     clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 180);
+    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
   });
   window.addEventListener("viewinvai:fx-updated", () => {
     state.goalCandidateCache={at:0,key:"",rows:[]};
+    if(state.currentView!=="portfolios"||document.hidden)return;
     clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 180);
+    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
   });
 }
 
