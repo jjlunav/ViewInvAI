@@ -2015,11 +2015,13 @@ async function globalNotificationSettingsForUser(env,userId){
     "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
+  const radarAi=optedIn&&(Number(row.pulse_ai_enabled)===1||Number(row.radar_enabled)===1);
   return {
     enabled: optedIn&&Number(row.notifications_enabled)===1,
     newsEvents: optedIn&&Number(row.news_events_enabled)===1,
-    pulseAi: optedIn&&Number(row.pulse_ai_enabled)===1,
-    radar: optedIn&&Number(row.radar_enabled)===1,
+    radarAi,
+    pulseAi: radarAi,
+    radar: radarAi,
     price: optedIn&&Number(row.price_enabled)===1,
     portfolio: optedIn&&Number(row.portfolio_enabled)===1,
     portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1
@@ -2154,11 +2156,13 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
       should = true; type = "position-deterioration"; severity = "warning";
     }
   } else {
-    if (!globalNotifications.pulseAi || !notificationPreferenceAllows(assetPreference,"pulse_enabled",false)) return null;
+    const radarConfigured=globalNotifications.radarAi &&
+      (notificationPreferenceAllows(assetPreference,"pulse_enabled",false)||notificationPreferenceAllows(assetPreference,"radar_enabled",false));
+    if (!radarConfigured) return null;
     if (current.signal === "BUY" && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
-      should = true; type = "pulse-ai"; severity = "high";
+      should = true; type = "radar-ai"; severity = "high";
     } else if (previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
-      should = true; type = "watchlist-improving"; severity = "info";
+      should = true; type = "radar-ai-improving"; severity = "info";
     }
   }
 
@@ -2168,7 +2172,7 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
   const now = nowIso();
   const title = target.subject_type === "position"
     ? (current.signal === "SELL" ? "Revisar salida · " : "Cambio en cartera · ") + target.ticker
-    : (type === "pulse-ai" ? "Pulso IA · " : "Mejora relevante · ") + target.ticker;
+    : (type === "radar-ai" ? "Radar AI · " : "Radar AI mejora · ") + target.ticker;
   const message = current.thesis || current.riskSummary || "Cambio relevante detectado en el análisis.";
 
   await env.DB.prepare(
@@ -2591,7 +2595,7 @@ async function handleNotificationPreferences(request,env,user,json,url){
 async function sendPreferenceAlert(env,pref,type,severity,title,message){
   const global=await globalNotificationSettingsForUser(env,pref.user_id);
   if(!global.enabled)return null;
-  if(type==="pulse-ai"||type==="radar-entry"){
+  if(type==="pulse-ai"||type==="radar-entry"||type==="radar-ai"||type==="radar-ai-change"){
     const cutoff=new Date(Date.now()-10*60*1000).toISOString();
     const duplicate=await env.DB.prepare(
       "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type=? AND created_at>=? ORDER BY created_at DESC LIMIT 1"
@@ -2624,7 +2628,7 @@ async function scanNotificationPreferences(env,services){
         await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run();
         continue;
       }
-      const signalConfigured=(global.pulseAi&&Number(pref.pulse_enabled)===1)||(global.radar&&Number(pref.radar_enabled)===1);
+      const signalConfigured=global.radarAi&&(Number(pref.pulse_enabled)===1||Number(pref.radar_enabled)===1);
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
       const trPriceConfigured=Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
@@ -2684,17 +2688,21 @@ async function scanNotificationPreferences(env,services){
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
-        const nextPulse=current.signal==="BUY"&&current.confidence>=70&&current.score>=60?"BUY":"";
-        const nextRadar=current.score>=58&&["BUY","WATCH"].includes(current.signal)?"RADAR":"";
-        if(global.pulseAi&&Number(pref.pulse_enabled)===1){
-          if(nextPulse&&nextPulse!==pulseState)await sendPreferenceAlert(env,pref,"pulse-ai","high","Pulso IA · "+pref.ticker,current.thesis||"La IA ha detectado una entrada de alta convicción.");
-          else if(pulseState&&!nextPulse)await sendPreferenceAlert(env,pref,"pulse-ai-exit","info","Salida de Pulso IA · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios de Pulso IA.");
+        const nextRadar=current.signal==="BUY"&&current.confidence>=70&&current.score>=60
+          ?"HIGH"
+          :(current.score>=58&&["BUY","WATCH"].includes(current.signal)?"OPPORTUNITY":"");
+        const previousRadar=radarState||pulseState;
+        if(signalConfigured){
+          if(nextRadar&&nextRadar!==previousRadar){
+            await sendPreferenceAlert(
+              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+pref.ticker,
+              current.thesis||(nextRadar==="HIGH"?"La acción ha alcanzado alta convicción en Radar AI.":"La acción ha entrado en oportunidades de Radar AI.")
+            );
+          }else if(previousRadar&&!nextRadar){
+            await sendPreferenceAlert(env,pref,"radar-ai-exit","info","Salida de Radar AI · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios activos de Radar AI.");
+          }
         }
-        if(global.radar&&Number(pref.radar_enabled)===1){
-          if(nextRadar&&nextRadar!==radarState)await sendPreferenceAlert(env,pref,"radar-entry","info","Radar · "+pref.ticker,current.thesis||"La acción ha entrado en el radar.");
-          else if(radarState&&!nextRadar)await sendPreferenceAlert(env,pref,"radar-exit","info","Salida de Radar · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios del Radar.");
-        }
-        pulseState=nextPulse;radarState=nextRadar;
+        pulseState=nextRadar;radarState=nextRadar;
       }
       const scanNow=nowIso();
       await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
