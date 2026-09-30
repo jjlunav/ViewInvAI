@@ -2722,3 +2722,14 @@ html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions>*{position
  html[data-native-app="1"] #view-portfolios .portfolio-goal-form.compact-goal-form{grid-template-columns:1fr 1fr!important}
  html[data-native-app="1"] #view-portfolios .portfolio-goal-form.compact-goal-form>button{grid-column:1/-1!important}
 }
+
+
+/* 2026-09-30 · native readability for strict portfolio decisions */
+html[data-native-app="1"] #view-portfolios .portfolio-goal-trade{grid-template-columns:66px minmax(0,1fr)!important;padding:7px 6px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-trade>em{font-size:7.5px!important;white-space:nowrap!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-trade strong{font-size:10.5px!important;line-height:1.2!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-trade small{font-size:8px!important;line-height:1.3!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-trade>b{grid-column:2!important;font-size:9px!important;text-align:left!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-reason{font-size:8.2px!important;line-height:1.4!important;padding:0 3px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-decision-head h3{font-size:12px!important}
+html[data-native-app="1"] #view-portfolios .portfolio-goal-note.compact-note{font-size:8px!important;line-height:1.4!important}
