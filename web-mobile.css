@@ -2120,3 +2120,11 @@ html,body{font-size:14px}
  }
 
 /* Narrow portfolio goal layout belongs to web-mobile.css, not shared styles. */
+
+/* 2026-09-30 · stable portfolio controls */
+#view-heatmap:not(.active){display:none!important}
+#view-portfolios .portfolio-workbar{grid-template-columns:1fr!important;gap:6px!important}
+#view-portfolios .portfolio-tabs-wrap{grid-column:1!important;grid-row:1!important;width:100%!important}
+#view-portfolios .portfolio-tabs-track{width:100%!important;max-width:none!important;overflow-x:auto!important}
+#view-portfolios .portfolio-workbar-actions{grid-column:1!important;grid-row:2!important;width:100%!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:6px!important}
+#view-portfolios .portfolio-workbar-actions>*{position:static!important;width:100%!important;min-width:0!important;max-width:none!important;height:36px!important;min-height:36px!important;margin:0!important;padding:0!important}

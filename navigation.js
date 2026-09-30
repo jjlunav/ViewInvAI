@@ -96,6 +96,7 @@ function applyAppHistorySnapshot(snap){
  let box=$('#stockQuickDetail');
  if(state.profileKey){document.body.classList.add('stock-detail-open');if(box)box.classList.remove('is-hidden');if(db.stocks.length)renderQuickProfile()}
  else{document.body.classList.remove('stock-detail-open');if(box){box.classList.add('is-hidden');box.innerHTML=''}renderCurrentView()}
+ window.dispatchEvent(new CustomEvent('viewinvai:view-changed',{detail:{view:state.currentView}}));
  saveUiState();
  let y=N(snap.scrollY)??0;requestAnimationFrame(()=>window.scrollTo(0,y));
  appHistoryRestoring=false;
@@ -151,6 +152,7 @@ function show(v,preserveProfile=false,recordHistory=true){
  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));renderNavigation();
  $('#sidebar').classList.remove('open');closeMobileMore();saveUiState();
  if(document.body.classList.contains('stock-detail-open')&&state.profileKey)renderQuickProfile();else renderCurrentView();
+ window.dispatchEvent(new CustomEvent('viewinvai:view-changed',{detail:{view:state.currentView}}));
  requestAnimationFrame(()=>observeActiveTrLivePrices());
  window.scrollTo({top:0,behavior:'auto'});
  if(recordHistory)pushCurrentAppHistory();

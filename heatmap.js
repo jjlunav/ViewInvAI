@@ -7,7 +7,12 @@ let heatmapRenderToken=0;
 function tradingViewHeatmapTheme(){
  return document.documentElement.dataset.theme==='light'?'light':'dark';
 }
+function destroyHeatmap(){
+ const box=document.querySelector('#heatmapResults');if(!box)return;
+ heatmapRenderToken+=1;box.removeAttribute('data-heatmap-token');box.innerHTML='';
+}
 function renderHeatmap(){
+ if(typeof state!=='undefined'&&state.currentView!=='heatmap'){destroyHeatmap();return}
  const box=document.querySelector('#heatmapResults');if(!box)return;
  const token=String(++heatmapRenderToken);box.dataset.heatmapToken=token;
  box.innerHTML='';
@@ -45,4 +50,8 @@ function renderHeatmap(){
 function initHeatmapInteractions(){
  document.querySelector('#refreshHeatmap')?.addEventListener('click',renderHeatmap);
  window.addEventListener('viewinvai:theme-changed',()=>{if(state.currentView==='heatmap')renderHeatmap()});
+ window.addEventListener('viewinvai:view-changed',event=>{
+  const view=event&&event.detail&&event.detail.view;
+  if(view==='heatmap')renderHeatmap();else destroyHeatmap();
+ });
 }
