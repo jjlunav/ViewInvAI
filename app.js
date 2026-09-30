@@ -286,13 +286,13 @@ function inferProfilePreferTr(s){
  if(state.currentView==='entry')return state.entryMarket==='tr'&&trTradable(s);
  return false;
 }
-function openStock(s,reason='',preferTr=null){
+function openStock(s,reason='',preferTr=null,originView=null){
  if(!s)return;
  recordStockView(stockKey(s));
  replaceCurrentAppHistory();
  state.profileKey=stockKey(s);
  state.profileReason=reason||'';
- state.profileOriginView=state.currentView;
+ state.profileOriginView=originView&&V[originView]?originView:state.currentView;
  state.profileOriginScroll=Math.max(0,Math.round(window.scrollY||0));
  state.profilePreferTr=preferTr===true?true:preferTr===false?false:inferProfilePreferTr(s);
  let box=$('#stockQuickDetail');
