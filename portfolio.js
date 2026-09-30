@@ -1545,7 +1545,7 @@ function openGoalOperationModal(button){
   const ticker=(preferTr&&stock.trTicker)||stock.ticker||position?.ticker||"",name=stock.name||position?.name||ticker;
   const exchange=preferTr?(stock.trExchange||"LSX"):(stock.exchange||position?.exchange||"");
   const isin=preferTr?(stock.trIsin||stock.isin||position?.isin||""):(stock.usIsin||stock.isin||position?.isin||"");
-  openModal((side==="BUY"?"Registrar compra · ":"Registrar venta · ")+ticker,
+  openModal((side==="BUY"?"Registrar estrategia de compra · ":"Registrar estrategia de venta · ")+ticker,
     '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
       '<input name="side" type="hidden" value="'+esc(side)+'">'+
@@ -1576,6 +1576,12 @@ async function saveGoalOperationForm(form){
     fees:Math.max(0,num(fd.get("fees"))??(preferTr?1:0)),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
     executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
   };
+  const portfolio=state.portfolios.find(item=>String(item.id)===String(payload.portfolioId));
+  const baseCurrency=String(portfolio&&portfolio.base_currency||payload.currency).toUpperCase(),fxUsdEur=portfolioUsdToEurRate();
+  if(baseCurrency!==payload.currency){
+    if(payload.currency==="USD"&&baseCurrency==="EUR"&&num(fxUsdEur)!==null)payload.cashFxRate=num(fxUsdEur);
+    else if(payload.currency==="EUR"&&baseCurrency==="USD"&&num(fxUsdEur)!==null&&num(fxUsdEur)>0)payload.cashFxRate=1/num(fxUsdEur);
+  }
   const status=form.querySelector("[data-goal-operation-status]"),button=form.querySelector('button[type="submit"]');
   if(payload.quantity<1||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
   form.dataset.saving="1";if(button){button.disabled=true;button.textContent="Guardando…"}
@@ -1587,6 +1593,7 @@ async function saveGoalOperationForm(form){
     const cash=data.cashAdjustment&&data.cashAdjustment.adjusted?(" · efectivo "+formatMoney(data.cashAdjustment.cashBalance,data.cashAdjustment.baseCurrency||"EUR")):"";
     toast((side==="BUY"?"Compra":"Venta")+" registrada"+cash);
     closeModal();
+    if(state.primaryTab==="goal")renderGoalApp();
     if(portfolioHasGoal(payload.portfolioId))scheduleGoalPortfolioReview(payload.portfolioId,data.position&&Number(data.position.active)!==0?data.position.id:null);
   }catch(error){
     if(status)status.textContent=error.message||"No se pudo registrar la operación.";
