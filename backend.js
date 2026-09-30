@@ -2223,6 +2223,13 @@ async function handleNotificationPreferences(request,env,user,json,url){
 async function sendPreferenceAlert(env,pref,type,severity,title,message){
   const global=await globalNotificationSettingsForUser(env,pref.user_id);
   if(!global.enabled)return null;
+  if(type==="pulse-ai"||type==="radar-entry"){
+    const cutoff=new Date(Date.now()-10*60*1000).toISOString();
+    const duplicate=await env.DB.prepare(
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type=? AND created_at>=? ORDER BY created_at DESC LIMIT 1"
+    ).bind(pref.user_id,pref.stock_key,type,cutoff).first();
+    if(duplicate&&duplicate.id)return duplicate.id;
+  }
   const id=uid("al_"),now=nowIso();
   await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
     .bind(id,pref.user_id,pref.stock_key,pref.ticker,pref.name||"",type,severity,title,message,now).run();
