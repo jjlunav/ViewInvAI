@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',favorites:'07 Favoritos',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',funds:'10 Fondos y ETFs',heatmap:'11 Mapa de calor',settings:'12 Settings'};
+const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',favorites:'07 Favoritos',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',funds:'10 Fondos y ETFs',heatmap:'11 Mapa de calor',settings:'12 Configuración General'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
