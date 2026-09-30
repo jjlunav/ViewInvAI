@@ -212,6 +212,13 @@ function portfolioConvertAmount(value,fromCurrency,toCurrency,fxUsdEur=portfolio
   if(from==="EUR"&&to==="USD"&&fx!==null&&fx>0)return amount/fx;
   return null;
 }
+function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side="BUY"){
+  const fee=brokerFeeEstimate(brokerName,quantity,price,transactionCurrency,side);
+  if(fee.fee===null)return fee;
+  const target=String(transactionCurrency||fee.currency||"EUR").toUpperCase();
+  const converted=portfolioConvertAmount(fee.fee,fee.currency,target);
+  return Object.assign({},fee,{sourceFee:fee.fee,sourceCurrency:fee.currency,fee:converted,currency:target,verified:fee.verified&&converted!==null});
+}
 function goalExecutionQuote(stock,preferTr,side,fxUsdEur){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
   const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct);
@@ -505,7 +512,7 @@ function renderPositionRow(p, index = 0) {
   const pnlTone = pnlAbs === null ? "muted" : pnlAbs >= 0 ? "positive" : "negative";
   const priceTone = market.change === null ? "muted" : market.change >= 0 ? "positive" : "negative";
 
-  const estimatedFee=brokerFeeEstimate(p.broker,qty,avg,entryCurrency,'BUY');
+  const estimatedFee=brokerFeeInCurrency(p.broker,qty,avg,entryCurrency,'BUY');
   const investedValue=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(estimatedFee.fee??0):null);
   const feesTotal=num(p.fees_total)??(estimatedFee.fee??0);
   const pnlAfterFees=currentValue!==null&&investedValue!==null?currentValue-investedValue:null;
@@ -1590,7 +1597,7 @@ async function openTransactionsModal(positionId, preferredSide = null) {
         const qty=num(txForm.querySelector('[name="quantity"]')?.value)||0;
         const price=num(txForm.querySelector('[name="price"]')?.value)||num(market.price)||0;
         const broker=String(position.broker||(preferTr?'Trade Republic':'IBKR'));
-        const fee=brokerFeeEstimate(broker,qty,price,currency,side);
+        const fee=brokerFeeInCurrency(broker,qty,price,currency,side);
         const input=txForm.querySelector('[name="fees"]'),hint=txForm.querySelector('[data-transaction-fee-hint]'),submit=txForm.querySelector('button[type="submit"]');
         if(input)input.value=fee.fee===null?'':String(Math.round((fee.fee+Number.EPSILON)*1000000)/1000000);
         if(hint){
@@ -1956,7 +1963,7 @@ function applyPositionFormState(form, stock, fallbackPreferTr) {
         ?'Ya tienes '+formatNumber(existing.quantity,4)+' uds. en '+broker+' · media '+formatMoney(existing.avg_price,existing.currency||finalCurrency)+'. Esta compra se sumará y recalculará el precio medio.'
         :'Nueva posición · '+broker+' · '+portfolioMarketLabel(scope)+'.';
   if(feeHint){
-    const fee=brokerFeeEstimate(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY');
+    const fee=brokerFeeInCurrency(broker,num(quantity?.value)||1,num(avgPrice?.value)||num(current.price)||0,finalCurrency,'BUY');
     feeHint.textContent=fee.fee===null
       ?'Comisión: pendiente de verificar'
       :'Comisión estimada: '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
@@ -1972,7 +1979,7 @@ function updatePositionBrokerFeeHint(form,stock){
   const currency=String(form.querySelector('[name="currency"]')?.value||(form.dataset.preferTr==="1"?"EUR":"USD")).toUpperCase();
   const hint=form.querySelector('[data-broker-fee-hint]');
   if(!hint)return;
-  const fee=brokerFeeEstimate(broker,quantity,price,currency,'BUY');
+  const fee=brokerFeeInCurrency(broker,quantity,price,currency,'BUY');
   hint.textContent=fee.fee===null?'Comisión automática pendiente de verificar':'Comisión estimada '+formatMoney(fee.fee,fee.currency)+' · '+fee.label;
   hint.classList.toggle('pending',fee.fee===null);
 }
