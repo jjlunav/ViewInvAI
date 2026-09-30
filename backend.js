@@ -2750,10 +2750,16 @@ function goalServerUsdToEur(snapshot){
   const eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
   return eurUsd&&eurUsd>0?1/eurUsd:null;
 }
-function goalServerPriceEur(stock,preferTr,usdToEur){
+function goalServerPriceEur(stock,preferTr,usdToEur,side="LAST"){
   if(!stock)return null;
   if(preferTr)return finiteNumber(stock.trLivePrice??stock.trPrice??stock.tradeRepublicPrice);
-  const usd=finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+  const direction=String(side||"LAST").toUpperCase();
+  const quote=direction==="BUY"
+    ? finiteNumber(stock.usLiveAsk??stock.usAsk)
+    : direction==="SELL"
+      ? finiteNumber(stock.usLiveBid??stock.usBid)
+      : null;
+  const usd=quote??finiteNumber(stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
   return usd!==null&&usdToEur!==null?usd*usdToEur:null;
 }
 function goalServerCandidate(snapshot,stock,scope){
@@ -2802,20 +2808,22 @@ async function scanPortfolioGoalNotifications(env,services){
         if(markets.size===1)scope=[...markets][0];
       }
       if(!["tr","us"].includes(scope))continue;
-      const excluded=new Set(positions.map(p=>String(p.stock_key||"").toUpperCase()));
-      const sells=[];let released=0,capital=0;
+      const sellKeys=new Set(),sells=[];let released=0,capital=0;
       for(const p of positions){
-        const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),price=goalServerPriceEur(stock,Number(p.prefer_tr)===1,usdToEur);
-        if(price!==null)capital+=qty*price;
+        const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),preferTr=Number(p.prefer_tr)===1;
+        const markPrice=goalServerPriceEur(stock,preferTr,usdToEur),sellPrice=goalServerPriceEur(stock,preferTr,usdToEur,"SELL");
+        if(markPrice!==null)capital+=qty*markPrice;
         const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
         const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
         const stagnant=heldDays>=7&&week<1.25&&score<68;
         const pct=signal==="SELL"||score<=35||stagnant?100:signal==="REVIEW"||score<48?50:0;
-        if(pct<=0||qty<1||price===null)continue;
+        if(pct<=0||qty<1||sellPrice===null)continue;
         const units=Math.max(1,Math.min(Math.floor(qty),Math.round(qty*pct/100)));
         if(units<1)continue;
-        released+=units*price;
-        sells.push({ticker:p.ticker||stock&&stock.ticker||"",units});
+        const fee=preferTr?1:0;
+        released+=Math.max(0,units*sellPrice-fee);
+        sellKeys.add(String(p.stock_key||"").toUpperCase());
+        sells.push({ticker:p.ticker||stock&&stock.ticker||"",units,fee});
       }
       let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
@@ -2839,26 +2847,31 @@ async function scanPortfolioGoalNotifications(env,services){
       const pool=cashEur+released;
       let candidates=[];
       if(pool>0){
-        candidates=stocks.filter(stock=>goalServerAllowed(stock,scope)&&!excluded.has(goalServerKey(stock)))
+        candidates=stocks.filter(stock=>goalServerAllowed(stock,scope)&&!sellKeys.has(goalServerKey(stock)))
           .map(stock=>goalServerCandidate(snapshot,stock,scope))
           .filter(row=>row&&row.score>=78&&row.quality>=62&&row.confidence>=76&&row.velocity>=78&&row.composite>=80)
           .sort((x,y)=>y.composite-x.composite||y.velocity-x.velocity||y.score-x.score)
           .slice(0,12);
       }
-      const finalists=goalServerFinalists(candidates).map(row=>({...row,unitEur:goalServerPriceEur(row.stock,row.preferTr,usdToEur)})).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur<=pool);
-      const weights=finalists.length===1?[1]:finalists.length===2?[.70,.30]:[.60,.25,.15],buys=[];
+      const finalists=goalServerFinalists(candidates).map(row=>({
+        ...row,unitEur:goalServerPriceEur(row.stock,row.preferTr,usdToEur,"BUY"),fee:row.preferTr?1:0
+      })).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur+row.fee<=pool);
+      const weights=finalists.length===1?[1]:finalists.length===2?[.65,.35]:[.55,.30,.15],buys=[];
       finalists.slice(0,3).forEach((row,index)=>{
-        const units=Math.floor((pool*weights[index])/row.unitEur);
-        if(units>=1)buys.push({ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,score:Math.round(row.composite)});
+        const units=Math.floor(Math.max(0,pool*weights[index]-row.fee)/row.unitEur);
+        if(units>=1)buys.push({ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,score:Math.round(row.composite),fee:row.fee});
       });
       let used=buys.reduce((sum,buy)=>{
-        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);return sum+(row?row.unitEur*buy.units:0);
-      },0),left=Math.max(0,pool-used);
-      if(buys[0]){
-        const top=finalists.find(x=>goalServerKey(x.stock)===buys[0].stockKey);
-        if(top&&left>=top.unitEur){
-          const extra=Math.floor(left/top.unitEur);buys[0].units+=extra;used+=extra*top.unitEur;left=Math.max(0,pool-used);
-        }
+        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);return sum+(row?row.unitEur*buy.units+buy.fee:0);
+      },0),left=Math.max(0,pool-used),safety=0;
+      while(buys.length&&safety++<5000){
+        const buy=buys.find(item=>{
+          const row=finalists.find(x=>goalServerKey(x.stock)===item.stockKey);
+          return row&&row.unitEur<=left+1e-9;
+        });
+        if(!buy)break;
+        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);
+        buy.units+=1;used+=row.unitEur;left=Math.max(0,pool-used);
       }
       const signature=JSON.stringify({sells:sells.map(x=>[x.ticker,x.units]),buys:buys.map(x=>[x.ticker,x.units])});
       const pieces=[];
