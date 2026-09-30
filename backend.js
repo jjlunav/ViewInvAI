@@ -3250,6 +3250,25 @@ async function scanPortfolioGoalNotifications(env,services){
   ).all();
   if(!(goals.results||[]).length)return{processed:0,alerts:0};
   const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
+  const quoteCache=new Map();
+  const verifiedGoalPriceEur=async(stock,preferTr,side="LAST")=>{
+    if(!stock||!services.loadQuote)return null;
+    const key=(preferTr?"tr:":"us:")+goalServerKey(stock),cached=quoteCache.get(key);
+    let quote=cached&&Date.now()-cached.at<15000?cached.quote:null;
+    if(!quote){
+      try{
+        quote=await services.loadQuote(stock,{prefer_tr:preferTr?1:0,ticker:stock.ticker||stock.trTicker||"",isin:preferTr?(stock.trIsin||stock.isin||""):(stock.usIsin||stock.isin||"")});
+        quoteCache.set(key,{at:Date.now(),quote});
+      }catch(error){
+        console.warn("Portfolio goal verified quote unavailable",key,String(error&&error.message||error));
+        return null;
+      }
+    }
+    const direction=String(side||"LAST").toUpperCase();
+    const native=direction==="BUY"?finiteNumber(quote&&quote.ask):direction==="SELL"?finiteNumber(quote&&quote.bid):finiteNumber(quote&&quote.price);
+    if(native===null)return null;
+    return preferTr?native:(usdToEur!==null?native*usdToEur:null);
+  };
   let processed=0,alerts=0;
   for(const goal of goals.results||[]){
     try{
@@ -3266,7 +3285,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const sellKeys=new Set(),sells=[];let released=0,capital=0;
       for(const p of positions){
         const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),preferTr=Number(p.prefer_tr)===1;
-        const markPrice=goalServerPriceEur(stock,preferTr,usdToEur),sellPrice=goalServerPriceEur(stock,preferTr,usdToEur,"SELL");
+        const markPrice=await verifiedGoalPriceEur(stock,preferTr,"LAST"),sellPrice=await verifiedGoalPriceEur(stock,preferTr,"SELL");
         if(markPrice!==null)capital+=qty*markPrice;
         const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
         const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
@@ -3308,9 +3327,10 @@ async function scanPortfolioGoalNotifications(env,services){
           .sort((x,y)=>y.composite-x.composite||y.velocity-x.velocity||y.score-x.score)
           .slice(0,12);
       }
-      const finalists=goalServerFinalists(candidates).map(row=>({
-        ...row,unitEur:goalServerPriceEur(row.stock,row.preferTr,usdToEur,"BUY"),fee:row.preferTr?1:0
-      })).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur+row.fee<=pool);
+      const finalistRows=goalServerFinalists(candidates);
+      const finalists=(await Promise.all(finalistRows.map(async row=>({
+        ...row,unitEur:await verifiedGoalPriceEur(row.stock,row.preferTr,"BUY"),fee:row.preferTr?1:0
+      })))).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur+row.fee<=pool);
       const weights=finalists.length===1?[1]:finalists.length===2?[.65,.35]:[.55,.30,.15],buys=[];
       finalists.slice(0,3).forEach((row,index)=>{
         const units=Math.floor(Math.max(0,pool*weights[index]-row.fee)/row.unitEur);
