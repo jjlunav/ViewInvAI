@@ -48,6 +48,7 @@
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
+      <button class="nav-item" data-view="portfolioGoal"><span>◎</span>Objetivo de la cartera</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
     </nav>
@@ -234,6 +235,21 @@
       </div>
       <div id="fundPortfolioApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFundsTab" data-portfolio-asset-panel="funds" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
+      </div>
+    </section>
+
+    <section class="view" id="view-portfolioGoal">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Objetivo de la cartera <span class="heading-badge ai-badge">IA</span></h1>
+          <p class="lead">Define el objetivo de cada cartera y sigue el plan dinámico de reasignación, ejecución e historial de recomendaciones.</p>
+        </div>
+        <div class="heading-actions">
+          <button type="button" class="section-help" data-help-section="portfolios" aria-label="Ayuda sobre Objetivo de la cartera">?</button>
+        </div>
+      </div>
+      <div id="portfolioGoalApp" class="portfolio-app">
+        <div class="portfolio-empty-state">Inicia sesión con Google para usar Objetivo de la cartera.</div>
       </div>
     </section>
 
