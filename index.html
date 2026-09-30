@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.48">
+<html lang="es" data-app-version="0.6.49">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -21,12 +21,12 @@
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20260930r8';
+      link.href = 'web-mobile.css?v=20260930r9';
       link.media = '(max-width:820px)';
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20260930r13">
+  <link rel="stylesheet" href="mobile-app.css?v=20260930r14">
   <link rel="stylesheet" href="ui-density.css?v=20260928r1">
   <link rel="stylesheet" href="asset-card.css?v=20260930r5">
 </head>
@@ -600,10 +600,11 @@
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌁</span><small>Mercados</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>▣</span><small>Carteras</small></button>
       <button type="button" class="mobile-nav-item ai-pulse-nav" data-mobile-view="recommendation"><span>✹</span><small>Radar AI</small></button>
+      <button type="button" class="mobile-nav-item" data-mobile-view="favorites"><span>★</span><small>Favoritos</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.48 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.49 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20260925r1"></script>
@@ -623,7 +624,7 @@
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20260930r4"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20260930r7"></script>
+<script src="navigation.js?v=20260930r8"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
 <script src="funds.js?v=20260930r2"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
