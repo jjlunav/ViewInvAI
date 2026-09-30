@@ -6,9 +6,7 @@
  function render(options={}){
   const cells=options.cells||[],columns=Math.max(1,cells.length),interactive=!!options.openAttrs;
   const identifier=options.isin&&options.isin!=='—'
-   ?(['catalog','portfolio'].includes(options.context)
-     ?'<span class="list-copy-isin '+(options.context==='catalog'?'catalog-row-isin':'portfolio-row-isin')+'">'+escape(options.isin)+'</span>'
-     :'<button type="button" class="list-copy-isin" data-copy-isin="'+escape(options.isin)+'" aria-label="Copiar ISIN '+escape(options.isin)+'">'+escape(options.isin)+'</button>')
+   ?'<span class="list-copy-isin '+(options.context==='catalog'?'catalog-row-isin':options.context==='portfolio'?'portfolio-row-isin':'')+'">'+escape(options.isin)+'</span>'
    :'';
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-asset-columns="'+columns+'"'+(options.openAttrs||'')+'>'+
