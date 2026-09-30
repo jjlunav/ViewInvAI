@@ -260,6 +260,57 @@ function renderCatalogFilterPanel(mode,cols){
   '<details class="catalog-column-filters"><summary>Filtros avanzados por dato</summary><div class="catalog-mobile-filter-grid">'+inputs+'</div></details>'+
   '<div class="filter-actions"><button type="button" class="btn ghost catalog-reset-filter" data-catalog-mode="'+mode+'">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Aplicar filtro</button></div>';
 }
+
+function catalogColumnUniqueValues(mode,col,se){
+ const rows=db.stocks.filter(s=>mode==='tr'?trTradable(s):market(s,'us'));
+ const seen=new Set(),out=[];
+ for(const s of rows){
+  const raw=col.value(s,se);
+  const label=col.type==='number'
+   ?(N(raw)===null?'':String(raw))
+   :col.type==='date'?(raw?DF(raw):''):String(raw??'').trim();
+  if(!label||seen.has(label))continue;
+  seen.add(label);out.push(label);
+  if(out.length>=40)break;
+ }
+ return out;
+}
+function ensureCatalogColumnFilterMenu(){
+ let menu=document.querySelector('#catalogColumnFilterMenu');
+ if(menu)return menu;
+ menu=document.createElement('div');
+ menu.id='catalogColumnFilterMenu';
+ menu.className='column-filter-popover';
+ menu.hidden=true;
+ document.body.appendChild(menu);
+ return menu;
+}
+function closeCatalogColumnFilterMenu(){
+ const menu=document.querySelector('#catalogColumnFilterMenu');
+ if(menu)menu.hidden=true;
+}
+function openCatalogColumnFilterMenu(button){
+ const mode=button.dataset.mode,id=button.dataset.catalogFilterColumn,st=catalogState[mode];
+ if(!st)return;
+ const col=CATALOG_COLUMNS[mode].find(x=>x.id===id);if(!col)return;
+ const menu=ensureCatalogColumnFilterMenu(),se=catalogSession(mode),current=String(st.filters[id]||'');
+ const values=col.type==='html'?[]:catalogColumnUniqueValues(mode,col,se);
+ menu.dataset.mode=mode;menu.dataset.col=id;
+ menu.innerHTML=
+  '<div class="column-filter-head"><strong>Filtrar · '+E(col.label)+'</strong><button type="button" data-column-filter-close aria-label="Cerrar">×</button></div>'+
+  '<div class="column-filter-sort">'+
+   '<button type="button" data-catalog-filter-sort="asc">↑ Ascendente</button>'+
+   '<button type="button" data-catalog-filter-sort="desc">↓ Descendente</button>'+
+  '</div>'+
+  (col.id==='fav'?'':'<label class="column-filter-input"><span>'+(col.type==='number'?'Condición numérica':col.type==='date'?'Fecha / rango':'Texto contiene')+'</span><input class="input" data-catalog-filter-input value="'+E(current)+'" placeholder="'+(col.type==='number'?'>10 · 10..30':col.type==='date'?'01/10/2026 · 01/10/2026..31/10/2026':'Escribe para filtrar…')+'"></label>')+
+  (values.length?'<div class="column-filter-values"><small>Valores frecuentes</small><div>'+values.slice(0,18).map(v=>'<button type="button" data-catalog-filter-value="'+E(v)+'" title="'+E(v)+'">'+E(v)+'</button>').join('')+'</div></div>':'')+
+  '<div class="column-filter-actions"><button type="button" class="btn ghost" data-catalog-filter-clear>Limpiar</button><button type="button" class="btn secondary" data-catalog-filter-apply>Aplicar</button></div>';
+ const rect=button.getBoundingClientRect(),width=Math.min(340,window.innerWidth-20);
+ let left=Math.min(window.innerWidth-width-10,Math.max(10,rect.left-120));
+ let top=Math.min(window.innerHeight-320,rect.bottom+6);if(top<10)top=10;
+ menu.style.width=width+'px';menu.style.left=left+'px';menu.style.top=top+'px';menu.hidden=false;
+ setTimeout(()=>menu.querySelector('[data-catalog-filter-input]')?.focus(),0);
+}
 function catalogTable(mode,rows,se){
  let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
  rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type)));
@@ -267,16 +318,21 @@ function catalogTable(mode,rows,se){
  let step=catalogPageSize();
  if(!Number.isFinite(st.limit)||st.limit<step)st.limit=step;
  let total=rows.length,limit=st.limit,shown=rows.slice(0,limit);
- let more=shown.length<total?'<div class="catalog-more"><button type="button" class="btn ghost catalog-load-more" data-catalog-mode="'+mode+'">Cargar '+Math.min(step,total-shown.length).toLocaleString('es-ES')+' más</button><span>Mostrando '+shown.length.toLocaleString('es-ES')+' de '+total.toLocaleString('es-ES')+'</span></div>':'';
+ let moreButton=shown.length<total?'<button type="button" class="btn ghost catalog-load-more" data-catalog-mode="'+mode+'">Cargar '+Math.min(step,total-shown.length).toLocaleString('es-ES')+' más</button>':'';
+ let footer='<div class="catalog-table-footer"><span><strong>'+total.toLocaleString('es-ES')+'</strong> valores · mostrando <strong>'+shown.length.toLocaleString('es-ES')+'</strong></span>'+moreButton+'</div>';
  if(mobile){
-  return {html:(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+more,count:total,shown:shown.length};
+  return {html:(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+footer,count:total,shown:shown.length};
  }
  let widths=catalogWidths(mode);
  let colgroup='<colgroup>'+cols.map(c=>'<col data-catalog-col-width="'+E(c.id)+'" style="width:'+Math.round(widths[c.id]||110)+'px">').join('')+'</colgroup>';
- let head=cols.map(c=>'<th draggable="true" data-catalog-col="'+E(c.id)+'" data-mode="'+mode+'" data-help-title="'+E(c.label)+'" data-help="Haz clic para ordenar; arrastra para mover la columna; usa el borde derecho para cambiar su ancho." class="'+(st.sort===c.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'"><span>'+E(c.label)+'</span><i></i><button type="button" class="catalog-column-resizer" data-catalog-resize="'+E(c.id)+'" data-mode="'+mode+'" aria-label="Cambiar ancho de '+E(c.label)+'" title="Arrastra para cambiar el ancho"></button></th>').join('');
- let filters=cols.map(c=>c.id==='fav'?'<th></th>':'<th><input class="catalog-col-filter" data-mode="'+mode+'" data-col="'+E(c.id)+'" data-help-title="Filtro · '+E(c.label)+'" data-help="Filtra '+E(c.label)+'. Números: &gt;10, &lt;5, 10..30, 250k, 2.5m. Texto: usa | para alternativas." value="'+E(st.filters[c.id]||'')+'" placeholder="'+(c.type==='number'?'>10 / 10..30':'Filtrar')+'"></th>').join('');
- let body=shown.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(c=>'<td data-col="'+E(c.id)+'">'+c.cell(s,se)+'</td>').join('')+'</tr>').join('');
- return {html:'<div class="catalog-table-wrap"><table class="catalog-table catalog-resizable-table" data-mode="'+mode+'">'+colgroup+'<thead><tr>'+head+'</tr><tr class="catalog-filter-row">'+filters+'</tr></thead><tbody>'+body+'</tbody></table></div>'+more,count:total,shown:shown.length};
+ let head=cols.map(col=>{
+  const activeFilter=String(st.filters[col.id]||'').trim()!=='';
+  return '<th draggable="true" data-catalog-col="'+E(col.id)+'" data-mode="'+mode+'" data-help-title="'+E(col.label)+'" data-help="Haz clic para ordenar; arrastra para mover la columna; usa el borde derecho para cambiar su ancho." class="'+(st.sort===col.id?'sorted '+(st.dir>0?'asc':'desc'):'')+'">'+
+   '<div class="catalog-th-content"><span>'+E(col.label)+'</span><i></i><button type="button" class="catalog-header-filter '+(activeFilter?'active':'')+'" data-catalog-filter-column="'+E(col.id)+'" data-mode="'+mode+'" aria-label="Filtrar '+E(col.label)+'" title="Filtrar '+E(col.label)+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg></button></div>'+
+   '<button type="button" class="catalog-column-resizer" data-catalog-resize="'+E(col.id)+'" data-mode="'+mode+'" aria-label="Cambiar ancho de '+E(col.label)+'" title="Arrastra para cambiar el ancho"></button></th>';
+ }).join('');
+ let body=shown.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(col=>'<td data-col="'+E(col.id)+'">'+col.cell(s,se)+'</td>').join('')+'</tr>').join('');
+ return {html:'<div class="catalog-table-wrap"><table class="catalog-table catalog-resizable-table" data-mode="'+mode+'">'+colgroup+'<thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>'+footer,count:total,shown:shown.length};
 }
 function renderCatalogTable(mode){
  let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
@@ -284,7 +340,7 @@ function renderCatalogTable(mode){
  let st=catalogState[mode];
  let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
  let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogColumns(mode));
- let count=$(isTr?'#catalogCount':'#catalogUSCount');count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
+ let count=$(isTr?'#catalogCount':'#catalogUSCount');if(count)count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }
 function resetCatalogColumns(mode){
@@ -318,6 +374,21 @@ function initCatalogInteractions(){
   },160);
  });
  document.addEventListener('click',e=>{
+  const filterButton=e.target.closest&&e.target.closest('[data-catalog-filter-column]');
+  if(filterButton){e.preventDefault();e.stopPropagation();openCatalogColumnFilterMenu(filterButton);return}
+  const filterMenu=e.target.closest&&e.target.closest('#catalogColumnFilterMenu');
+  if(filterMenu){
+   const mode=filterMenu.dataset.mode,col=filterMenu.dataset.col,st=catalogState[mode];
+   if(e.target.closest('[data-column-filter-close]')){closeCatalogColumnFilterMenu();return}
+   const sort=e.target.closest('[data-catalog-filter-sort]');
+   if(sort&&st){st.sort=col;st.dir=sort.dataset.catalogFilterSort==='desc'?-1:1;catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
+   const value=e.target.closest('[data-catalog-filter-value]');
+   if(value){const input=filterMenu.querySelector('[data-catalog-filter-input]');if(input)input.value=value.dataset.catalogFilterValue||'';return}
+   if(e.target.closest('[data-catalog-filter-clear]')&&st){st.filters[col]='';catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
+   if(e.target.closest('[data-catalog-filter-apply]')&&st){const input=filterMenu.querySelector('[data-catalog-filter-input]');st.filters[col]=input?input.value:'';catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);return}
+   return;
+  }
+  if(!e.target.closest('.column-filter-popover'))closeCatalogColumnFilterMenu();
   let mobileGroup=e.target.closest&&e.target.closest('[data-catalog-mobile-group]');
   if(mobileGroup){
    let mode=mobileGroup.dataset.catalogMode,key=mobileGroup.dataset.catalogMobileGroup;
@@ -330,13 +401,19 @@ function initCatalogInteractions(){
   if(more){e.preventDefault();let mode=more.dataset.catalogMode;if(catalogState[mode]){catalogState[mode].limit=(catalogState[mode].limit||catalogPageSize())+catalogPageSize();renderCatalogTable(mode)}return}
   let sortDir=e.target.closest&&e.target.closest('.catalog-mobile-sort-dir');
   if(sortDir){e.preventDefault();let mode=sortDir.dataset.mode;if(catalogState[mode]){catalogState[mode].dir*=-1;catalogResetLimit(mode);renderCatalogTable(mode)}return}
-  if(e.target.closest&&e.target.closest('.catalog-column-resizer'))return;
+  if(e.target.closest&&e.target.closest('.catalog-column-resizer,.catalog-header-filter'))return;
   let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
   if(!th)return;
   let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
   if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}catalogResetLimit(mode);renderCatalogTable(mode);
  });
- let draggedCatalogCol=null;
+ document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  const input=e.target.closest&&e.target.closest('#catalogColumnFilterMenu [data-catalog-filter-input]');if(!input)return;
+  const menu=input.closest('#catalogColumnFilterMenu'),mode=menu.dataset.mode,col=menu.dataset.col,st=catalogState[mode];if(!st)return;
+  st.filters[col]=input.value;catalogResetLimit(mode);closeCatalogColumnFilterMenu();renderCatalogTable(mode);
+ });
+  let draggedCatalogCol=null;
  document.addEventListener('dragstart',e=>{
   let th=e.target.closest&&e.target.closest('th[data-catalog-col]');if(!th)return;
   draggedCatalogCol={mode:th.dataset.mode,id:th.dataset.catalogCol};th.classList.add('dragging');
