@@ -226,11 +226,20 @@ function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side=
 }
 function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=1){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
-  const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct);
+  const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct),now=Date.now();
+  const rawUpdated=market.updatedAt||(preferTr?(stock&&stock.trLiveUpdatedAt||stock&&stock.trLiveReceivedAt):(stock&&stock.usLiveTimestamp||stock&&stock.usLiveReceivedAt));
+  const updatedAt=rawUpdated?new Date(rawUpdated).getTime():null;
+  const ageMs=Number.isFinite(updatedAt)?Math.max(0,now-updatedAt):null;
+  const direct=preferTr
+    ?num(stock&&stock.trLivePrice)!==null
+    :num(stock&&stock.usLivePrice)!==null&&!market.fallback;
+  const quoteFresh=direct&&ageMs!==null&&ageMs<=120000;
+  const actionSide=String(side||"BUY").toUpperCase();
+  const bookUsable=actionSide==="SELL"?bid!==null:(bid!==null&&ask!==null&&ask>=bid);
   let price=null,orderType="LIMITE",instruction="",immediate=false;
-  if(String(side||"BUY").toUpperCase()==="SELL"){
-    price=bid??last;
-    instruction=bid!==null?"Venta límite en BID":"Venta límite sobre último precio";
+  if(actionSide==="SELL"){
+    price=bid;
+    instruction=bid!==null?"Venta límite en BID":"Esperar · BID no disponible";
     immediate=bid!==null;
   }else if(bid!==null&&ask!==null&&ask>=bid){
     const gap=ask-bid;
@@ -242,7 +251,7 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
       price=bid+gap*.25;instruction="Esperar · límite conservador dentro del spread";
     }
   }else{
-    price=last;instruction="Límite sobre último precio · BID/ASK incompleto";
+    instruction="Esperar · BID/ASK incompleto";
   }
   if(price!==null){
     const decimals=Math.abs(price)<1?4:Math.abs(price)<10?3:2;
@@ -253,7 +262,9 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
   const feeInfo=brokerFeeInCurrency(broker,Math.max(1,Math.round(num(quantity)||1)),price,currency,side,preferTr?(stock.trExchange||"LSX"):(stock.exchange||""));
   const feeNative=feeInfo.fee;
   const feeEur=feeNative===null?0:(portfolioConvertAmount(feeNative,currency,"EUR",fxUsdEur)??0);
-  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate};
+  const executable=quoteFresh&&bookUsable&&unitEur!==null&&feeInfo.verified===true;
+  const executionReason=!quoteFresh?"Cotización ejecutable no disponible o desactualizada":!bookUsable?"BID/ASK ejecutable incompleto":feeInfo.verified!==true?"Comisión del broker no verificada":"Cotización ejecutable verificada";
+  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate,updatedAt,ageMs,quoteFresh,bookUsable,executable,executionReason};
 }
 
 function portfolioStockKeys() {
@@ -329,10 +340,10 @@ function currentMarket(stock, preferTr = false) {
   }
   if (preferTr) {
     const eur = num(stock.trLivePrice);
-    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, bid, ask, spreadPct:spread, source: "Trade Republic / LSX" };
+    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, bid, ask, spreadPct:spread, source: "Trade Republic / LSX", updatedAt: stock.trLiveUpdatedAt || stock.trLiveReceivedAt || null, live: eur!==null, fallback:false };
   }
-  const usd = num(stock.usLivePrice) ?? num(stock.price);
-  return { price: usd, change: num(stock.usLiveChangePct) ?? num(stock.changePct), currency: "USD", eur: null, usd, bid, ask, spreadPct:spread, source: "EEUU" };
+  const usd = num(stock.usLivePrice);
+  return { price: usd, change: num(stock.usLiveChangePct), currency: "USD", eur: null, usd, bid, ask, spreadPct:spread, source: stock.usLiveSource || "Nasdaq", updatedAt: stock.usLiveTimestamp || stock.usLiveReceivedAt || null, live: usd!==null, fallback:false };
 }
 
 function marketValueInCurrency(market, currency) {
@@ -802,7 +813,7 @@ function portfolioCoachCandidates(metrics,positionRows){
     const composite=Math.max(0,Math.min(100,score*.44+(num(row.quality)||0)*.20+velocity.score*.28+(multiSource?5:0)+Math.min(3,(num(catalyst.impact)||0)*.03)-spreadPenalty));
     const spreadAcceptable=spread===null?row.quality>=75:spread<=8;
     return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,brokerName,spreadAcceptable};
-  }).filter(row=>row.confirmation&&row.spreadAcceptable&&row.execution.unitEur!==null&&row.execution.unitEur>0&&row.score>=band.minCandidate&&row.quality>=band.minQuality&&row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite)
+  }).filter(row=>row.confirmation&&row.spreadAcceptable&&row.execution.executable===true&&row.execution.unitEur!==null&&row.execution.unitEur>0&&row.score>=band.minCandidate&&row.quality>=band.minQuality&&row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite)
     .sort((x,y)=>y.composite-x.composite||y.velocityScore-x.velocityScore||y.score-x.score||y.quality-x.quality);
   if(!ranked.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
   const finalists=[ranked[0]];
@@ -851,8 +862,9 @@ function portfolioCoachCandidates(metrics,positionRows){
   });
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
-function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr}){
+function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
   if(!(num(units)>0)||num(price)===null)return"";
+  if(!executable)return '<span class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Esperar cotización ejecutable</span>';
   return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
@@ -862,7 +874,7 @@ function goalTradeInstructionHtml(row){
   const price=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?" · spread "+formatNumber(execution.spreadPct,2)+"%":"";
   const fee=execution.feeEur?(" · comisión "+formatMoney(execution.feeEur,"EUR")):"";
-  const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeNative??execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr});
+  const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeNative??execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
@@ -876,7 +888,7 @@ function goalCandidateHtml(row){
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?formatNumber(execution.spreadPct,2)+"%":"N/D";
   const entry=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
   const fee=row.feeEur?(" · comisión "+formatMoney(row.feeEur,"EUR")):"";
-  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr});
+  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
