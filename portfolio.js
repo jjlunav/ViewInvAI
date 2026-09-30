@@ -908,7 +908,7 @@ async function refreshGoalAnalysis(force=false){
 }
 
 function portfolioWorkbarHtml(selected){
-  return '<div class="portfolio-workbar">'+
+  return '<div class="portfolio-workbar'+(state.primaryTab==="goal"?' goal-mode':'')+'">'+
     '<div class="portfolio-tabs-wrap">'+
       '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis carteras">'+state.portfolios.map(renderPortfolioCard).join('')+'</div>'+
       '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>'+
