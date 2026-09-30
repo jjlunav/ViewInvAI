@@ -192,7 +192,10 @@ function signalInfo(signal) {
 }
 
 function currentMarket(stock, preferTr = false) {
-  if (!stock) return { price: null, change: null, currency: preferTr ? "EUR" : "USD", eur: null, usd: null, source: "", updatedAt: null };
+  if (!stock) return { price: null, change: null, currency: preferTr ? "EUR" : "USD", eur: null, usd: null, bid: null, ask: null, spreadPct: null, source: "", updatedAt: null };
+  const bid=num(preferTr?stock.trLiveBid:stock.usLiveBid),ask=num(preferTr?stock.trLiveAsk:stock.usLiveAsk);
+  const mid=bid!==null&&ask!==null&&ask>=bid?(bid+ask)/2:null;
+  const spread=mid&&mid>0?(ask-bid)/mid*100:null;
   if (window.ViewInvAI && (typeof window.ViewInvAI.getDisplayQuote === "function" || typeof window.ViewInvAI.getCanonicalQuote === "function")) {
     const quote = (preferTr && typeof window.ViewInvAI.getCanonicalQuote === "function"
       ? window.ViewInvAI.getCanonicalQuote(stock, true)
@@ -205,6 +208,7 @@ function currentMarket(stock, preferTr = false) {
       currency: quote.nativeCurrency || (preferTr ? "EUR" : "USD"),
       eur: num(quote.eur),
       usd: num(quote.usd),
+      bid, ask, spreadPct:spread,
       source: quote.source || "",
       updatedAt: quote.updatedAt || null,
       live: quote.live === true,
@@ -213,10 +217,10 @@ function currentMarket(stock, preferTr = false) {
   }
   if (preferTr) {
     const eur = num(stock.trLivePrice);
-    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, source: "Trade Republic / LSX" };
+    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, bid, ask, spreadPct:spread, source: "Trade Republic / LSX" };
   }
   const usd = num(stock.usLivePrice) ?? num(stock.price);
-  return { price: usd, change: num(stock.usLiveChangePct) ?? num(stock.changePct), currency: "USD", eur: null, usd, source: "EEUU" };
+  return { price: usd, change: num(stock.usLiveChangePct) ?? num(stock.changePct), currency: "USD", eur: null, usd, bid, ask, spreadPct:spread, source: "EEUU" };
 }
 
 function marketValueInCurrency(market, currency) {
