@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Settings'};
+const V={home:'01 Mercados',recommendation:'02 Pulso IA',entry:'03 Radar de entrada',alerts:'04 Avisos',future:'05 Potencial futuro',portfolios:'06 Carteras',favorites:'07 Favoritos',catalog:'08 Catálogo Trade Republic',catalogUS:'09 Catálogo EEUU',funds:'10 Fondos y ETFs',heatmap:'11 Mapa de calor',settings:'12 Settings'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -317,21 +317,12 @@ function favButton(s,preferTr=null){
 }
 function toggleFavorite(key,preferTr=null){
  if(!key)return;
- if(window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.openStarMenu==='function'){
-  window.ViewInvAIPortfolios.openStarMenu(key,preferTr);
+ if(window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.toggleFavoriteOnly==='function'){
+  window.ViewInvAIPortfolios.toggleFavoriteOnly(key,preferTr).catch(()=>{});
   return;
  }
  if(favorites.has(key))favorites.delete(key);else favorites.add(key);
- saveFavorites();
- $$('.fav-star').forEach(b=>{
-  if(b.dataset.favKey!==key)return;
-  let on=favorites.has(key);
-  b.classList.toggle('active',on);
-  b.textContent=on?'★':'☆';
-  b.title=on?'Gestionar seguimiento y carteras':'Seguir o añadir a cartera';
-  b.setAttribute('aria-label',b.title);
- });
- renderFavorites();
+ saveFavorites();renderFavorites();renderFavoritesDashboard();
 }
 function compactVol(v){
  v=N(v);if(v===null)return'—';
@@ -427,12 +418,43 @@ function renderFavorites(){
   hint:'Favoritos',detailsHtml:''
  })).join('');
 }
+
+function favoriteStockCard(item,preferTr){
+ const s=stockByKey(item.stock_key||item.key||'');if(!s)return'';
+ return standardStockCard(s,0,{se:currentMarketSession(),preferTr,context:'favorites',rankLabel:'',className:'favorite-dashboard-row',hint:'Favoritos',detailsHtml:''});
+}
+function renderFavoritesDashboard(){
+ const box=$('#favoritesDashboard');if(!box)return;
+ const watch=window.ViewInvAIPortfolios?.getWatchlist?.()||[];
+ const tr=watch.filter(x=>Number(x.prefer_tr)===1).map(x=>favoriteStockCard(x,true)).filter(Boolean);
+ const us=watch.filter(x=>Number(x.prefer_tr)!==1).map(x=>favoriteStockCard(x,false)).filter(Boolean);
+ const fundProducts=window.ViewInvAIFunds?.getFavoriteProducts?.()||[];
+ const fundsHtml=fundProducts.map(p=>window.ViewInvAICards.render({
+  context:'favorites-funds',title:p.name||p.isin,isin:p.isin,subtitle:[p.type==='etf'?'ETF':p.type==='fund'?'Fondo indexado':p.type||'',p.provider||'',p.index||''].filter(Boolean).join(' · '),
+  openAttrs:' data-fund-detail="'+E(p.isin)+'" role="button" tabindex="0"',
+  cells:[{label:'Valor',value:(window.ViewInvAIFunds?.getCurrentValue?.(p)==null?'—':String(window.ViewInvAIFunds.getCurrentValue(p).toLocaleString('es-ES',{maximumFractionDigits:4}))+' '+String(p.currency||'EUR'))},{label:'1 año',value:N(p.perf1Y)==null?'—':F(p.perf1Y,2)+'%',tone:N(p.perf1Y)>=0?'positive':'negative'}]
+ })).join('');
+ const total=tr.length+us.length+fundProducts.length;
+ const empty=text=>'<div class="favorites-group-empty">'+text+'</div>';
+ box.innerHTML=
+  '<div class="favorites-overview">'+
+   '<div><small>TOTAL</small><strong>'+total+'</strong><span>guardados</span></div>'+
+   '<div><small>TR / LSX</small><strong>'+tr.length+'</strong><span>acciones</span></div>'+
+   '<div><small>EEUU</small><strong>'+us.length+'</strong><span>acciones</span></div>'+
+   '<div><small>FONDOS / ÍNDICES</small><strong>'+fundProducts.length+'</strong><span>productos</span></div>'+
+  '</div>'+
+  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot tr"></span><h2>Trade Republic / LSX</h2></div><b>'+tr.length+'</b></header><div class="favorites-market-list">'+(tr.join('')||empty('No has marcado todavía acciones de TR / LSX como favoritas.'))+'</div></section>'+
+  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot us"></span><h2>Estados Unidos</h2></div><b>'+us.length+'</b></header><div class="favorites-market-list">'+(us.join('')||empty('No has marcado todavía acciones de EEUU como favoritas.'))+'</div></section>'+
+  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot fund"></span><h2>Fondos / Índices</h2></div><b>'+fundProducts.length+'</b></header><div class="favorites-market-list">'+(fundsHtml||empty('Marca fondos o ETFs con la estrella del catálogo para verlos aquí.'))+'</div></section>';
+}
+
 function status(){}
 function renderCurrentView(){
  if(state.currentView==='home')renderHome();
  else if(state.currentView==='entry')renderEntry();
  else if(state.currentView==='recommendation')renderRecommendation();
  else if(state.currentView==='portfolios'){if(window.ViewInvAIPortfolios)window.ViewInvAIPortfolios.render()}
+ else if(state.currentView==='favorites'){renderFavoritesDashboard()}
  else if(state.currentView==='funds'){if(window.ViewInvAIFunds)window.ViewInvAIFunds.render()}
  else if(state.currentView==='heatmap')renderHeatmap();
  else if(state.currentView==='future')renderFuture();
@@ -442,7 +464,6 @@ function renderCurrentView(){
  else if(state.currentView==='settings')syncDeviceSettingsUi();
 }
 function render(){
- renderMarketLeaders();
  renderFavorites();
  if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
   let box=$('#stockQuickDetail');
