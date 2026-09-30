@@ -50,7 +50,7 @@
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Fondos y ETFs</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
-      <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
+      <button class="nav-item" data-view="settings"><span>⚙</span>Configuración General</button>
     </nav>
 
   </aside>
@@ -399,10 +399,10 @@
     <section class="view" id="view-settings">
       <div class="page-heading compact-heading">
         <div>
-          <h1>Settings</h1>
+          <h1>Configuración General</h1>
           <p class="lead">Preferencias de dispositivo, análisis y avisos. Los ajustes de cartera e IA se sincronizan con tu cuenta cuando inicias sesión.</p>
         </div>
-        <button type="button" class="section-help" data-help-section="settings" aria-label="Ayuda sobre Settings">?</button>
+        <button type="button" class="section-help" data-help-section="settings" aria-label="Ayuda sobre Configuración General">?</button>
       </div>
 
       <div class="settings-grid">
@@ -445,29 +445,28 @@
           <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
         </article>
 
-        <article class="settings-card push-settings-card compact-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">AVISOS EN SEGUNDO PLANO</span><h2>Notificaciones push</h2></div></div>
-          <div class="settings-status-row"><span>Estado</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-save-row push-settings-actions"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button><button type="button" class="btn small" id="enablePushNotifications">Activar / reintentar</button></div></div>
-        </article>
-
         <article class="settings-card notification-master-card compact-settings-card">
           <div class="settings-card-head">
-            <div><span class="settings-kicker">ACTIVACIÓN GENERAL</span><h2>Activar notificaciones</h2></div>
+            <div>
+              <span class="settings-kicker">ACTIVACIÓN GENERAL</span>
+              <h2>Activar notificaciones</h2>
+              <p>Activa los avisos de tu cuenta en cualquier dispositivo. En la APK Android, al activarlas se habilitarán también las notificaciones push del dispositivo.</p>
+            </div>
             <label class="settings-switch" aria-label="Activar todas las notificaciones"><input id="globalNotificationsEnabled" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label>
           </div>
-          <div class="settings-status-row"><span>Estado</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
+          <div class="settings-status-row"><span>Cuenta</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
+          <div class="settings-status-row"><span>Entrega en este dispositivo</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
+          <div class="settings-save-row push-settings-actions"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button></div></div>
         </article>
 
         <article class="settings-card notification-categories-card compact-settings-card">
           <div class="settings-card-head"><div><span class="settings-kicker">TIPOS DE AVISO</span><h2>Notificarme cuando…</h2></div></div>
           <div class="notification-category-list">
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos</strong></span><label class="settings-switch" aria-label="Noticias y eventos"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Entrada en Pulso IA</strong></span><label class="settings-switch" aria-label="Entrada en Pulso IA"><input id="globalNotifyPulseAi" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Entrada en Radar</strong></span><label class="settings-switch" aria-label="Entrada en Radar"><input id="globalNotifyRadar" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Cartera</strong></span><label class="settings-switch" aria-label="Cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos importantes</strong><small>Avisos generales de noticias y eventos relevantes.</small></span><label class="settings-switch" aria-label="Noticias y eventos importantes"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Cambios en Pulso IA</strong><small>Avisa cuando una acción entra o sale de Pulso IA.</small></span><label class="settings-switch" aria-label="Cambios en Pulso IA"><input id="globalNotifyPulseAi" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Cambios en Radar</strong><small>Avisa cuando una acción entra o sale del Radar.</small></span><label class="settings-switch" aria-label="Cambios en Radar"><input id="globalNotifyRadar" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de cartera</strong><small>Avisa de entradas, salidas y cambios relevantes en las posiciones.</small></span><label class="settings-switch" aria-label="Movimientos de cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong><small>Avisa de movimientos que requieran atención y envía un resumen actualizado del objetivo.</small></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
           </div>
         </article>
 
