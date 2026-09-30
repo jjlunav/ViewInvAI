@@ -1807,7 +1807,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
   const options = state.portfolios.map(p => '<option value="' + esc(p.id) + '"' + (String(p.id) === String(preferredPortfolioId) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
 
   openModal((existingInitial ? "Gestionar " : "Añadir ") + (stock.trTicker || stock.ticker || "acción"),
-    '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '" data-prefer-tr="' + (preferTr ? '1' : '0') + '">' +
+    '<form id="addPositionForm" class="portfolio-form" data-stock-key="' + esc(stockKey) + '" data-prefer-tr="' + (preferTr ? '1' : '0') + '" data-return-view="' + esc(document.querySelector('.view.active')?.id || '') + '" data-return-scroll="' + esc(String(Math.max(0,Math.round(window.scrollY||0)))) + '">' +
       '<div class="position-form-stock"><strong>' + esc(stock.trTicker || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span><b>' + formatMoney(current.price, current.currency) + '</b></div>' +
       '<div class="portfolio-form-mode" data-position-form-mode></div>' +
       '<label><span>Cartera</span><select name="portfolioId" required>' + options + '</select></label>' +
@@ -2039,7 +2039,20 @@ async function savePositionForm(form) {
     await addPosition(payload);
 
     setStatus("Posición guardada");
+    const returnView=form.dataset.returnView||'';
+    const returnScroll=Math.max(0,Number(form.dataset.returnScroll)||0);
     closeModal();
+
+    // If the position was created from Cartera, always return to that exact
+    // context instead of allowing a stock-profile click/history side effect to win.
+    if(returnView==='view-portfolios'){
+      const portfolioView=document.getElementById('view-portfolios');
+      const profileOpen=document.body.classList.contains('stock-detail-open');
+      if(profileOpen||!portfolioView?.classList.contains('active')){
+        window.ViewInvAINavigation?.show?.('portfolios');
+        requestAnimationFrame(()=>window.scrollTo({top:returnScroll,behavior:'auto'}));
+      }
+    }
     toast("Posición guardada · análisis continuo activado");
 
     // Refresh server state after the modal has closed; saving no longer appears
