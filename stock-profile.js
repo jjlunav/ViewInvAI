@@ -237,15 +237,8 @@ function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
   return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx"><strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
  }
- const q=currentUsQuote(s,se),price=N(q&&q.price),change=N(q&&q.change);
- const text=price===null?'—':quoteMoney(price,'\u0024',quotePrecision(s,false,price));
- const icon=q&&q.kind==='premarket'?'☀︎':q&&q.kind==='postmarket'?'☾︎':'';
- const iconClass=q&&q.kind==='premarket'?'session-icon-sun':q&&q.kind==='postmarket'?'session-icon-moon':'';
- return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current">'+
-  (icon?'<span class="session-icon '+iconClass+'" aria-hidden="true">'+icon+'</span>':'')+
-  '<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
+ return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current" data-us-current-hero-key="'+E(stockKey(s))+'">'+currentUsPrimaryHtml(s,se)+'</div></div>';
 }
-
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let title=isTr?(s.trTicker||s.ticker):s.ticker;
