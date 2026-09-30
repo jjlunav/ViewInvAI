@@ -8336,5 +8336,3 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
 }
 
 
-/* Device-only settings: do not flash native controls in the browser */
-html:not([data-native-app="1"]) #screenWakeSettingsCard{display:none!important}
