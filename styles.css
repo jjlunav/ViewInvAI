@@ -8036,3 +8036,36 @@ body.column-resizing{cursor:col-resize!important;user-select:none!important}
  #view-portfolios .portfolio-cash-row{grid-template-columns:34px minmax(0,1fr) auto!important;padding:6px 7px}
  #view-portfolios .portfolio-cash-row>em{display:none}
 }
+
+
+/* 2026-09-30 · centered readable workspace + strict portfolio ranking */
+@media(min-width:901px){
+ .view{max-width:1240px!important;padding-left:28px!important;padding-right:28px!important}
+ .page-heading h1{font-size:28px!important}
+ .lead{font-size:13px!important;line-height:1.45!important}
+ .tab{font-size:13px!important}
+ #view-portfolios .portfolio-goal-view{max-width:1040px!important}
+ #view-portfolios .portfolio-workbar{max-width:1040px!important;margin-left:auto!important;margin-right:auto!important}
+ #view-portfolios .portfolio-context{max-width:1040px!important;margin-left:auto!important;margin-right:auto!important}
+ #view-portfolios .portfolio-goal-decision{max-width:900px!important;margin-left:auto!important;margin-right:auto!important;width:100%!important}
+ #view-portfolios .portfolio-goal-decision-head,
+ #view-portfolios .portfolio-goal-trades{width:100%!important;max-width:860px!important;margin-left:auto!important;margin-right:auto!important}
+ #view-portfolios .portfolio-goal-summary{max-width:860px!important;margin-left:auto!important;margin-right:auto!important;width:100%!important}
+}
+#view-portfolios .compact-goal-hero .portfolio-goal-intro h2{font-size:20px!important}
+#view-portfolios .compact-goal-hero .portfolio-goal-intro small{font-size:10px!important}
+#view-portfolios .portfolio-goal-form.compact-goal-form label>span{font-size:10px!important}
+#view-portfolios .portfolio-goal-form.compact-goal-form input,
+#view-portfolios .portfolio-goal-form.compact-goal-form select{font-size:13px!important}
+#view-portfolios .portfolio-goal-summary{font-size:12px!important}
+#view-portfolios .portfolio-goal-summary strong{font-size:16px!important}
+#view-portfolios .portfolio-goal-summary b{font-size:12px!important}
+#view-portfolios .portfolio-goal-decision-head h3{font-size:16px!important}
+#view-portfolios .portfolio-goal-trade{grid-template-columns:92px minmax(0,1fr) auto!important;padding:9px 10px!important}
+#view-portfolios .portfolio-goal-trade>em{font-size:9px!important;white-space:nowrap}
+#view-portfolios .portfolio-goal-trade strong{font-size:13px!important}
+#view-portfolios .portfolio-goal-trade small{font-size:10px!important;line-height:1.35!important}
+#view-portfolios .portfolio-goal-trade>b{font-size:12px!important}
+#view-portfolios .portfolio-goal-reason{font-size:10.5px!important;line-height:1.45!important;padding:0 10px!important}
+#view-portfolios .portfolio-goal-note.compact-note{font-size:9.5px!important;line-height:1.45!important;max-width:860px;margin-left:auto!important;margin-right:auto!important}
+#view-portfolios .portfolio-goal-trade.cash>em{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent)}
