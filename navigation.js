@@ -19,7 +19,7 @@ const NAV_META={
  future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
  calendar:{icon:'▣',short:'Calendario',desc:'Noticias y eventos'},
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
- settings:{icon:'⚙',short:'Ajustes',desc:'Preferencias y avisos'}
+ settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
 const PRIMARY_MOBILE_VIEWS=['home','entry','recommendation','portfolios'];
 
