@@ -113,6 +113,30 @@ async function fcmAccessToken(env) {
 }
 
 async function sendFcmToDevice(env, auth, device, alert, target) {
+  const data={
+    alertId:String(alert.id||""),
+    stockKey:String(target.stock_key||""),
+    ticker:String(target.ticker||""),
+    preferTr:Number(target.prefer_tr)===1?"1":"0",
+    alertType:String(alert.alert_type||""),
+    severity:String(alert.severity||""),
+    route:String(target.route||""),
+    portfolioId:String(target.portfolio_id||target.portfolioId||""),
+    title:String(alert.title||"ViewInvAI"),
+    body:String(alert.message||"")
+  };
+  const isWeb=String(device&&device.platform||"").toLowerCase()==="web";
+  const message=isWeb
+    ?{token:device.push_token,data,webpush:{headers:{Urgency:alert.severity==="critical"||alert.severity==="high"?"high":"normal"}}}
+    :{
+      token:device.push_token,
+      notification:{title:alert.title,body:alert.message},
+      data,
+      android:{
+        priority:alert.severity==="critical"||alert.severity==="high"?"high":"normal",
+        notification:{channel_id:"viewinvai_market_alerts",sound:"default"}
+      }
+    };
   const response = await fetch(
     "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(auth.projectId) + "/messages:send",
     {
@@ -121,32 +145,7 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
         "Authorization": "Bearer " + auth.token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        message: {
-          token: device.push_token,
-          notification: {
-            title: alert.title,
-            body: alert.message
-          },
-          data: {
-            alertId: alert.id,
-            stockKey: String(target.stock_key || ""),
-            ticker: String(target.ticker || ""),
-            preferTr: Number(target.prefer_tr) === 1 ? "1" : "0",
-            alertType: String(alert.alert_type || ""),
-            severity: String(alert.severity || ""),
-            route: String(target.route || ""),
-            portfolioId: String(target.portfolio_id || target.portfolioId || "")
-          },
-          android: {
-            priority: alert.severity === "critical" || alert.severity === "high" ? "high" : "normal",
-            notification: {
-              channel_id: "viewinvai_market_alerts",
-              sound: "default"
-            }
-          }
-        }
-      })
+      body: JSON.stringify({message})
     }
   );
   const payload = await response.json().catch(() => ({}));
@@ -2721,7 +2720,8 @@ export async function handleBackendApi(request, env, services = {}) {
   const url = new URL(request.url);
   if (url.pathname === "/api/backend/status") {
     const pushConfigured=!!fcmServiceAccount(env);
-    const secConfigured=!!String(env.SEC_USER_AGENT||"").trim();
+    const secUserAgent=String(env.SEC_USER_AGENT||"ViewInvAI/1.0 (https://viewinvai.firebaseapp.com)").trim();
+    const secConfigured=!!secUserAgent;
     const openFdaKeyConfigured=!!String(env.OPENFDA_API_KEY||"").trim();
     return json({
       d1: !!env.DB,
@@ -2733,7 +2733,7 @@ export async function handleBackendApi(request, env, services = {}) {
       sources: {
         tradeRepublic: { integrated: true, configured: true, mode: "direct-origin", label: "Trade Republic / LSX" },
         nasdaq: { integrated: true, configured: true, mode: "direct-origin", label: "Nasdaq / EEUU" },
-        sec: { integrated: true, configured: secConfigured, requiredConfig: secConfigured ? null : "SEC_USER_AGENT", label: "SEC / EDGAR" },
+        sec: { integrated: true, configured: secConfigured, mode: String(env.SEC_USER_AGENT||"").trim() ? "custom-user-agent" : "identified-default", requiredConfig: null, label: "SEC / EDGAR" },
         clinicalTrials: { integrated: true, configured: true, mode: "official-public", label: "ClinicalTrials.gov" },
         fda: { integrated: true, configured: true, enhancedConfig: openFdaKeyConfigured, optionalConfig: openFdaKeyConfigured ? null : "OPENFDA_API_KEY", label: "FDA / openFDA" },
         push: { integrated: true, configured: pushConfigured, requiredConfig: pushConfigured ? null : "FCM service account", label: "Firebase Cloud Messaging" }
