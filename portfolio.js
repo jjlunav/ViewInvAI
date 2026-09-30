@@ -197,7 +197,7 @@ function watchlistStockKeys(){
   return [...new Set(state.watchlist.map(w=>canonicalStockKey(w.stock_key)).filter(Boolean))];
 }
 function favoriteStockKeys(){
-  return [...new Set([...portfolioStockKeys(),...watchlistStockKeys()])];
+  return watchlistStockKeys();
 }
 function syncPortfolioStars() {
   if (window.ViewInvAI && typeof window.ViewInvAI.replaceFavoriteKeys === "function") {
@@ -450,6 +450,7 @@ function renderPositionRow(p, index = 0) {
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
+    leadingHtml: "",
     openAttrs: ' data-open-stock="' + esc(p.stock_key) + '" data-position-prefer-tr="' + (preferTr ? '1' : '0') + '" role="button" tabindex="0"',
     openLabel: "Ficha",
     openActionAttrs: ' data-portfolio-stock-profile="' + esc(p.stock_key) + '" data-profile-prefer-tr="' + (preferTr ? '1' : '0') + '" aria-label="Abrir ficha completa de ' + esc(stock.name||stock.ticker||p.stock_key) + '" title="Abrir ficha completa"',
@@ -1918,39 +1919,29 @@ function openStarMenu(stockKey, preferTr = null) {
   if (!state.user) return window.ViewInvAIAuth?.signIn?.();
   const stock = stockByKey(stockKey);
   if (!stock) return;
-  const watchItem=state.watchlist.find(w=>sameStockRef(w.stock_key,stockKey))||null;
-  const watchPreferTr=watchItem?Number(watchItem.prefer_tr)===1:preferTr===true?true:preferTr===false?false:!!(stock.tradeRepublicTradable||stock.tradeRepublicVerified);
-  const watchRow='<button type="button" class="star-portfolio-choice '+(watchItem?'selected':'')+'" data-star-watch-toggle="'+esc(stockKey)+'" data-star-watch-active="'+(watchItem?'1':'0')+'" data-star-prefer-tr="'+(watchPreferTr?'1':'0')+'">'+
-    '<span>'+(watchItem?'★':'☆')+'</span><strong>Solo seguimiento</strong><small>'+(watchItem?'Quitar de favoritos y seguimiento':'Guardar como favorito sin añadirlo a una cartera')+' · '+(watchPreferTr?'TR / LSX':'EEUU')+'</small></button>';
-
+  const ticker=(preferTr&&stock.trTicker)||stock.ticker||stock.trTicker||"";
   const rows = state.portfolios.map(p => {
     const existing = positionForPortfolioStock(stockKey, p.id);
     if (!existing) {
-      return '<button type="button" class="star-portfolio-choice" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
-        '<span>☆</span><strong>' + esc(p.name) + '</strong><small>Añadir a esta cartera</small>' +
+      return '<button type="button" class="star-portfolio-choice exposure-add-choice" data-star-add-portfolio="' + esc(p.id) + '" data-star-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">' +
+        '<span>＋</span><strong>' + esc(p.name) + '</strong><small>Añadir exposición a esta cartera</small>' +
       '</button>';
     }
-
-    const qty = num(existing.quantity), avg = num(existing.avg_price);
-    const currency = String(existing.currency || (Number(existing.prefer_tr) === 1 ? 'EUR' : 'USD')).toUpperCase();
-    const detail = (qty === null ? 'Posición activa' : formatNumber(qty,4) + ' uds.') + (avg === null ? '' : ' · media ' + formatMoney(avg,currency));
-    return '<div class="star-portfolio-manager">' +
-      '<button type="button" class="star-portfolio-choice selected" data-edit-portfolio-position="' + esc(existing.id) + '" data-star-stock="' + esc(stockKey) + '">' +
-        '<span>★</span><strong>' + esc(p.name) + '</strong><small>' + esc(detail) + ' · modificar exposición</small>' +
-      '</button>' +
-      '<div class="star-portfolio-manager-actions">' +
-        '<button type="button" data-manage-position-transactions="' + esc(existing.id) + '">Operaciones</button>' +
-        '<button type="button" class="danger" data-remove-exposure-position="' + esc(existing.id) + '">Eliminar exposición</button>' +
-      '</div>' +
+    const qty=num(existing.quantity),avg=num(existing.avg_price),currency=String(existing.currency||(Number(existing.prefer_tr)===1?'EUR':'USD')).toUpperCase();
+    const detail=(qty===null?'Posición activa':formatNumber(qty,4)+' uds.')+(avg===null?'':' · media '+formatMoney(avg,currency));
+    return '<div class="exposure-manager-row">'+
+      '<div class="exposure-manager-copy"><strong>'+esc(p.name)+'</strong><small>'+esc(detail)+'</small></div>'+
+      '<div class="exposure-manager-actions">'+
+        '<button type="button" class="btn ghost" data-edit-portfolio-position="'+esc(existing.id)+'">Modificar exposición</button>'+
+        '<button type="button" class="btn danger" data-remove-exposure-position="'+esc(existing.id)+'">Eliminar exposición</button>'+
+      '</div>'+
     '</div>';
   }).join('');
-
-  openModal(isInPortfolio(stockKey) ? "Gestionar exposición" : "Añadir a cartera",
-    '<div class="star-portfolio-menu">' +
-      '<div class="star-stock-summary"><strong>' + esc((preferTr && stock.trTicker) || stock.ticker || "") + '</strong><span>' + esc(stock.name || "") + '</span></div>' +
-      watchRow +
-      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras. Puedes mantener la acción en Solo seguimiento.</div>') +
-      '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Crear nueva cartera</button>' +
+  const hasExposure=isInPortfolio(stockKey);
+  openModal(hasExposure ? "Gestionar exposición de "+ticker : "Añadir "+ticker+" a cartera",
+    '<div class="star-portfolio-menu exposure-manager-menu">'+
+      (rows || '<div class="portfolio-empty-state compact">Todavía no tienes carteras.</div>')+
+      '<button type="button" class="btn star-create-portfolio" data-star-create-stock="' + esc(stockKey) + '" data-star-prefer-tr="' + (preferTr === true ? '1' : preferTr === false ? '0' : '') + '">＋ Crear nueva cartera</button>'+
     '</div>'
   );
 }
@@ -2541,6 +2532,13 @@ window.ViewInvAIPortfolios = {
   openAddPosition: openAddPositionModal,
   openPositionPicker,
   openStarMenu,
+  toggleFavoriteOnly: async (stockKey,preferTr=null) => {
+    const existing=state.watchlist.find(x=>sameStockRef(x.stock_key,stockKey));
+    const result=await syncFavorite(!existing,stockKey,preferTr);
+    if(typeof renderFavoritesDashboard==='function')renderFavoritesDashboard();
+    return result;
+  },
+  getWatchlist: () => state.watchlist.slice(),
   openPositionEditorForStock,
   isInPortfolio,
   getPortfolioMemberships: stockKey => activePortfolioMemberships(stockKey).map(x => ({
