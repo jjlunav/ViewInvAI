@@ -21,10 +21,14 @@ function profileTabs(){
  '</nav>';
 }
 function profileSessionStrip(s){
- const preExt=extendedSessionDisplay(s,'premarket'),postExt=extendedSessionDisplay(s,'postmarket');
- let regular='<div class="profile-session-cell"><span>EEUU · Regular</span><strong>'+snapshotPricePair(s,s.price,false)+'</strong><b class="'+C(s.changePct)+'">'+PC(s.changePct)+'</b><small>Variación vs cierre previo · Vol '+compactVol(s.volume)+'</small></div>';
- let pre='<div class="profile-session-cell"><span>EEUU · Premarket</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+preExt.tone+'">'+PC(preExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.premarketVolume)+'</small></div>';
- let post='<div class="profile-session-cell"><span>EEUU · Postmarket</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+postExt.tone+'">'+PC(postExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
+ const se=currentMarketSession(),preExt=extendedSessionDisplay(s,'premarket'),postExt=extendedSessionDisplay(s,'postmarket'),key=stockKey(s);
+ const regularLive=se==='regular'&&N(s.usLivePrice)!==null;
+ const regularPrice=regularLive?N(s.usLivePrice):N(s.price),regularChange=regularLive?(N(s.usLiveChangePct)??N(s.changePct)):N(s.changePct);
+ const regularVolume=regularLive?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
+ const regularLabel=regularLive?'EEUU · Regular · actual':'EEUU · Regular · referencia';
+ let regular='<div class="profile-session-cell" data-profile-regular-session-key="'+E(key)+'"><span>'+regularLabel+'</span><strong>'+snapshotPricePair(s,regularPrice,false)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b><small>'+(regularLive?'Nasdaq actual':'Último cierre/snapshot regular')+' · Vol '+compactVol(regularVolume)+'</small></div>';
+ let pre='<div class="profile-session-cell"><span>EEUU · Premarket · referencia</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+preExt.tone+'">'+PC(preExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.premarketVolume)+'</small></div>';
+ let post='<div class="profile-session-cell"><span>EEUU · Postmarket · referencia</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+postExt.tone+'">'+PC(postExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
 }
 function profileAiPanel(s,mode='us'){
