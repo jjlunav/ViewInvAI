@@ -569,8 +569,8 @@ function portfolioGoalMetrics(){
   return{portfolio,rows,fxUsdEur,currentValue:capital,investedValue:currentComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
-function coachPriceLevels(stock,preferTr,score){
-  const market=currentMarket(stock,preferTr),price=num(market.price),change=Math.abs(num(market.change)||0);
+function coachPriceLevels(stock,preferTr,score,entryPrice=null){
+  const market=currentMarket(stock,preferTr),price=num(entryPrice)??num(market.price),change=Math.abs(num(market.change)||0);
   if(price===null||price<=0)return{stop:null,take:null,stopPct:null,takePct:null,currency:market.currency||"EUR"};
   const stopPct=Math.max(4.5,Math.min(12,5.5+change*.35+(score<50?1.5:0))),takePct=Math.max(8,Math.min(25,stopPct*(score>=70?2:1.7)));
   return{stop:price*(1-stopPct/100),take:price*(1+takePct/100),stopPct,takePct,currency:market.currency||(preferTr?"EUR":"USD")};
@@ -688,7 +688,7 @@ function portfolioCoachCandidates(metrics,positionRows){
   let result=priced.map((row,index)=>{
     const budget=rotationPool*weights[index],feeEur=row.execution.feeEur||0;
     const units=Math.floor(Math.max(0,budget-feeEur)/row.execution.unitEur);
-    const allocation=units*row.execution.unitEur,totalCost=units>0?allocation+feeEur:0,levels=coachPriceLevels(row.stock,row.preferTr,row.score);
+    const allocation=units*row.execution.unitEur,totalCost=units>0?allocation+feeEur:0,levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price);
     const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
     const goalShare=remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0;
     return{...row,rank:index+1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur,units,levels,potentialGain,goalShare,cashAvailable,released};
@@ -696,7 +696,7 @@ function portfolioCoachCandidates(metrics,positionRows){
   if(!result.length){
     const row=priced[0],feeEur=row.execution.feeEur||0,units=Math.floor(Math.max(0,rotationPool-feeEur)/row.execution.unitEur);
     if(units<1){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
-    const allocation=units*row.execution.unitEur,totalCost=allocation+feeEur,levels=coachPriceLevels(row.stock,row.preferTr,row.score);
+    const allocation=units*row.execution.unitEur,totalCost=allocation+feeEur,levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price);
     const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
     result=[{...row,rank:1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur,units,levels,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0,cashAvailable,released}];
   }
@@ -705,7 +705,7 @@ function portfolioCoachCandidates(metrics,positionRows){
     if(result.some(item=>portfolioStockKey(item.stock)===portfolioStockKey(row.stock)))continue;
     const firstCost=row.execution.unitEur+(row.execution.feeEur||0);
     if(result.length<3&&left>=firstCost){
-      const levels=coachPriceLevels(row.stock,row.preferTr,row.score),allocation=row.execution.unitEur,totalCost=firstCost;
+      const levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price),allocation=row.execution.unitEur,totalCost=firstCost;
       const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
       result.push({...row,rank:result.length+1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur:row.execution.feeEur||0,units:1,levels,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0,cashAvailable,released});
       left-=firstCost;
