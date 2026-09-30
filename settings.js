@@ -132,8 +132,9 @@ function renderAnalysisSettings(settings=null){
  document.querySelectorAll('[data-notification-child-setting]').forEach(row=>row.classList.toggle('is-disabled',!enabled));
  const globalStatus=$('#globalNotificationSettingsStatus');
  if(globalStatus){
+  globalStatus.classList.remove('active','pending','error');
   globalStatus.textContent=!accountAnalysisSettings?'Inicia sesión':analysisSettingsBusy?'Guardando…':enabled?'Activadas':'Desactivadas';
-  globalStatus.classList.toggle('active',!!accountAnalysisSettings&&enabled&&!analysisSettingsBusy);
+  if(accountAnalysisSettings&&enabled&&!analysisSettingsBusy)globalStatus.classList.add('active');
  }
  if(accountAnalysisSettings){
   window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,price,portfolio};
