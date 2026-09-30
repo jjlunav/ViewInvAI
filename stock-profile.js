@@ -96,14 +96,18 @@ function profileGeneralPrimaryStats(s,isTr,se){
  let low=N(s.usLiveDayLow)??N(s.dayLow),high=N(s.usLiveDayHigh)??N(s.dayHigh);
  let range=low!==null&&high!==null?PR(low)+' - '+PR(high):'—';
  const ref=isTr?' · referencia del subyacente':'',key=stockKey(s),tr=isTr?'1':'0';
+ const rangeHtml='<span data-profile-live-range-key="'+E(key)+'">'+range+'</span>';
+ const volume=N(s.usLiveVolume)??SV(s,se),avg=N(s.avgVolume),rel=volume!==null&&avg>0?volume/avg:RV(s,se);
+ const volumeHtml='<span data-profile-live-volume-key="'+E(key)+'">'+compactVol(volume)+'</span>';
+ const relHtml='<span data-profile-live-relvol-key="'+E(key)+'">'+(rel===null?'—':F(rel,2)+'×')+'</span>';
  const support='<span class="profile-live-level" data-profile-level="support" data-profile-level-key="'+E(key)+'" data-profile-level-tr="'+tr+'">Analizando…</span>';
  const resistance='<span class="profile-live-level" data-profile-level="resistance" data-profile-level-key="'+E(key)+'" data-profile-level-tr="'+tr+'">Analizando…</span>';
  return [
-  profileKpi(isTr?'Rango EEUU':'Rango día',range,'Mínimo - máximo'+ref),
+  profileKpi(isTr?'Rango EEUU':'Rango día',rangeHtml,'Mínimo - máximo'+ref),
   profileKpi('Soporte',support,'Suelo técnico · gráfico reciente'),
   profileKpi('Resistencia',resistance,'Tope técnico · gráfico reciente'),
-  profileKpi(isTr?'Volumen EEUU':'Volumen actual',compactVol(N(s.usLiveVolume)??SV(s,se)),'Media '+compactVol(s.avgVolume)+ref),
-  profileKpi(isTr?'Vol. relativo EEUU':'Volumen relativo',RV(s,se)===null?'—':F(RV(s,se),2)+'×','Actividad frente a media'+ref),
+  profileKpi(isTr?'Volumen EEUU':'Volumen actual',volumeHtml,'Media '+compactVol(s.avgVolume)+ref),
+  profileKpi(isTr?'Vol. relativo EEUU':'Volumen relativo',relHtml,'Actividad frente a media'+ref),
   profileKpi('Próximos resultados',s.earningsDate?DF(s.earningsDate):'—',s.earningsDate?(eventTime({date:s.earningsDate,timeCode:s.earningsTimeCode})||''):'Sin fecha cargada')
  ].join('');
 }
