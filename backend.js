@@ -286,6 +286,8 @@ async function ensurePositionBrokerSchema(env){
   const cols=await env.DB.prepare("PRAGMA table_info(positions)").all();
   const names=new Set((cols.results||[]).map(row=>String(row.name||"")));
   if(!names.has("broker"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
+  if(!names.has("cost_basis"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN cost_basis REAL").run();
+  if(!names.has("fees_total"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN fees_total REAL NOT NULL DEFAULT 0").run();
   await env.DB.prepare("DROP INDEX IF EXISTS idx_positions_portfolio_stock").run();
   await env.DB.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_portfolio_identity ON positions(portfolio_id,stock_key,broker,currency,prefer_tr,exchange)"
@@ -680,7 +682,8 @@ async function transactionRows(env, userId, portfolioId, stockKey, positionId=""
 
 export function calculateTransactionLedger(rows) {
   let quantity = 0;
-  let costBasis = 0;
+  let grossCostBasis = 0;
+  let netCostBasis = 0;
   let firstBuyAt = null;
   let currency = null;
   const realizedByCurrency = {};
@@ -704,35 +707,39 @@ export function calculateTransactionLedger(rows) {
     if (origin === "position-adjustment") {
       if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
       quantity = qty;
-      costBasis = qty * price;
+      grossCostBasis = qty * price;
+      netCostBasis = qty * price;
       currency = rowCurrency;
       addAmount(feesByCurrency, rowCurrency, fees);
       continue;
     }
 
     if (side === "BUY") {
-      if (quantity > 1e-8 && currency !== rowCurrency) {
-        throw new Error("Transaction currency differs from current position");
-      }
+      if (quantity > 1e-8 && currency !== rowCurrency) throw new Error("Transaction currency differs from current position");
       if (quantity <= 1e-8) currency = rowCurrency;
       if (!firstBuyAt) firstBuyAt = row.executed_at || row.created_at || null;
       quantity += qty;
-      costBasis += qty * price + fees;
+      grossCostBasis += qty * price;
+      netCostBasis += qty * price + fees;
       addAmount(feesByCurrency, rowCurrency, fees);
       continue;
     }
+
     if (side === "SELL") {
       if (qty > quantity + 1e-8) throw new Error("Sell quantity exceeds current position");
       if (currency !== rowCurrency) throw new Error("Transaction currency differs from current position");
-      const avg = quantity > 1e-8 ? costBasis / quantity : 0;
-      const realized = qty * price - fees - qty * avg;
+      const avgGross = quantity > 1e-8 ? grossCostBasis / quantity : 0;
+      const avgNet = quantity > 1e-8 ? netCostBasis / quantity : 0;
+      const realized = qty * price - fees - qty * avgNet;
       addAmount(realizedByCurrency, rowCurrency, realized);
       addAmount(feesByCurrency, rowCurrency, fees);
       quantity -= qty;
-      costBasis -= qty * avg;
+      grossCostBasis -= qty * avgGross;
+      netCostBasis -= qty * avgNet;
       if (quantity <= 1e-8) {
         quantity = 0;
-        costBasis = 0;
+        grossCostBasis = 0;
+        netCostBasis = 0;
       }
     }
   }
@@ -748,8 +755,10 @@ export function calculateTransactionLedger(rows) {
 
   return {
     quantity,
-    avgPrice: quantity > 1e-8 ? costBasis / quantity : null,
-    invested: costBasis,
+    avgPrice: quantity > 1e-8 ? grossCostBasis / quantity : null,
+    avgCost: quantity > 1e-8 ? netCostBasis / quantity : null,
+    grossInvested: grossCostBasis,
+    invested: netCostBasis,
     realizedPnl,
     realizedByCurrency,
     totalFees,
@@ -809,12 +818,12 @@ export function calculatePortfolioTransactionSummary(rows) {
 }
 
 async function ensureOpeningTransaction(env, userId, position) {
-  if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return;
+  if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return null;
   await ensureTransactionsSchema(env);
   const existing = await env.DB.prepare(
-    "SELECT id FROM transactions WHERE user_id=? AND position_id=? LIMIT 1"
+    "SELECT id,fees FROM transactions WHERE user_id=? AND position_id=? LIMIT 1"
   ).bind(userId, position.id).first();
-  if (existing) return;
+  if (existing) return {id:existing.id,created:false,fee:finiteNumber(existing.fees)||0};
 
   const now = nowIso();
   const executed = trimText(position.opened_at, 40);
@@ -823,15 +832,17 @@ async function ensureOpeningTransaction(env, userId, position) {
   const broker=trimText(position.broker,80);
   const feeInfo=await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY");
   const fee=feeInfo.fee===null?0:feeInfo.fee;
+  const txId=uid("tx_");
   await env.DB.prepare(
     "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
     "VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'position-seed',?,?)"
   ).bind(
-    uid("tx_"), position.portfolio_id, userId, position.id, broker, position.stock_key, position.ticker, position.name || "",
+    txId, position.portfolio_id, userId, position.id, broker, position.stock_key, position.ticker, position.name || "",
     position.exchange || "", position.isin || "", booleanInt(position.prefer_tr),
     finiteNumber(position.quantity), finiteNumber(position.avg_price), fee, String(position.currency || "EUR").toUpperCase(),
     executedAt, "Posición inicial importada", now, now
   ).run();
+  return {id:txId,created:true,fee};
 }
 
 async function appendPositionAdjustment(env, userId, position, data) {
@@ -888,18 +899,18 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
     Number(existing.active)!==(ledger.quantity>1e-8?1:0);
   if(existing){
     await env.DB.prepare(
-      "UPDATE positions SET ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,currency=?,broker=?,opened_at=?,active=?,updated_at=? WHERE id=? AND user_id=?"
+      "UPDATE positions SET ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,cost_basis=?,fees_total=?,currency=?,broker=?,opened_at=?,active=?,updated_at=? WHERE id=? AND user_id=?"
     ).bind(
       existing.ticker||first.ticker||"",existing.name||first.name||"",existing.exchange||first.exchange||"",
-      existing.isin||first.isin||"",booleanInt(existing.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.currency,
+      existing.isin||first.isin||"",booleanInt(existing.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,
       existing.broker||first.broker||"",existing.opened_at||ledger.firstBuyAt,ledger.quantity>1e-8?1:0,now,resolvedId,userId
     ).run();
   }else{
     await env.DB.prepare(
-      "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+      "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(
       resolvedId,portfolioId,userId,stockKey,first.ticker||"",first.name||"",first.exchange||"",first.isin||"",
-      booleanInt(first.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.currency,first.broker||"",ledger.firstBuyAt||now,"",
+      booleanInt(first.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,first.broker||"",ledger.firstBuyAt||now,"",
       ledger.quantity>1e-8?1:0,now,now
     ).run();
   }
