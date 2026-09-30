@@ -883,7 +883,7 @@ async function savePortfolioGoal(targetValueEur,portfolioId=state.selectedPortfo
   const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
   if(data.goal)state.goals[String(portfolioId)]=data.goal;
-  state.goal=data.goal||null;state.goalError="";state.goalCandidateCache={at:0,key:"",rows:[]};renderApp();return state.goal;
+  state.goal=data.goal||null;state.goalError="";state.goalCandidateCache={at:0,key:"",rows:[]};(state.primaryTab==="goal"?renderGoalApp:renderApp)();return state.goal;
 }
 async function refreshGoalSummaries(){
   if(state.selectedPortfolioId)await refreshPortfolioTransactionSummary(state.selectedPortfolioId,false).catch(()=>null);
@@ -2116,20 +2116,6 @@ function bind() {
       return;
     }
 
-    const goalPortfolioSelect=event.target.closest?.("[data-goal-portfolio-select]");
-    if(goalPortfolioSelect){
-      const id=goalPortfolioSelect.value;
-      if(id&&state.portfolios.some(item=>String(item.id)===String(id))){
-        state.selectedPortfolioId=id;
-        state.goal=state.goals[String(id)]||null;
-        state.goalCandidateCache={at:0,key:"",rows:[]};
-        savePortfolioUi();
-        renderGoalApp();
-        refreshPortfolioTransactionSummary(id).catch(()=>{});
-      }
-      return;
-    }
-
     const selector = event.target.closest?.("[data-portfolio-select]");
     if (selector) {
       state.selectedPortfolioId = selector.dataset.portfolioSelect;
@@ -2336,6 +2322,21 @@ function bind() {
     }
   });
 
+  document.addEventListener("change", event => {
+    const selector=event.target.closest?.("[data-goal-portfolio-select]");
+    if(!selector)return;
+    const id=selector.value;
+    if(!id||!state.portfolios.some(item=>String(item.id)===String(id)))return;
+    state.selectedPortfolioId=id;
+    state.goal=state.goals[String(id)]||null;
+    state.goalCandidateCache={at:0,key:"",rows:[]};
+    savePortfolioUi();
+    renderGoalApp();
+    refreshPortfolioTransactionSummary(id).then(()=>{
+      if(state.primaryTab==="goal")renderGoalApp();
+    }).catch(()=>{});
+  });
+
   document.addEventListener("submit", async event => {
     if(event.target.id==="portfolioGoalForm"){
       event.preventDefault();const form=event.target,fd=new FormData(form),target=num(fd.get("targetValueEur")),portfolioId=form.dataset.portfolioId||state.selectedPortfolioId,status=form.querySelector("[data-goal-form-status]"),riskProfile=String(fd.get("riskProfile")||"aggressive");
@@ -2346,7 +2347,7 @@ function bind() {
         await savePortfolioGoal(target,portfolioId,{riskProfile});setGoalStatus("Objetivo guardado");toast("Objetivo de la cartera actualizado");
         setTimeout(()=>refreshGoalAnalysis(false).catch(()=>{}),40);
       }catch(error){
-        const message=error.message||"No se pudo guardar el objetivo.";state.goalError=message;setGoalStatus(message,true);toast(message,true);renderApp();
+        const message=error.message||"No se pudo guardar el objetivo.";state.goalError=message;setGoalStatus(message,true);toast(message,true);(state.primaryTab==="goal"?renderGoalApp:renderApp)();
       }finally{if(button&&button.isConnected)button.disabled=false}
       return;
     }
