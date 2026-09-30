@@ -439,10 +439,23 @@ function recommendationMobileCell(key,s,mode,a,signal,quality){
 }
 function recommendationMobileItem(mode,result){
  let isResult=!!(result&&result.s),s=isResult?result.s:result;
- return recommendationCard(mode,s||null,null,isResult?result:null);
+ return recommendationCard(mode,s||null,recommendationGroup(),isResult?result:null);
 }
-function recommendationMobileList(usResult,trResult){
- return '<div class="reco-mobile-rows unified-asset-list">'+recommendationMobileItem('us',usResult)+recommendationMobileItem('tr',trResult)+'</div>';
+function recommendationMarketSection(mode,result){
+ const isTr=mode==='tr';
+ const title=isTr?'Trade Republic':'EEUU';
+ const subtitle=isTr?'LSX · cotización y ejecución en EUR':'NASDAQ / NYSE / AMEX · cotización en USD';
+ return '<section class="pulse-market-group pulse-market-'+mode+'">'+
+  '<header class="pulse-market-head"><div><strong>'+title+'</strong><span>'+subtitle+'</span></div></header>'+
+  '<div class="pulse-market-list unified-asset-list">'+recommendationMobileItem(mode,result)+'</div>'+
+ '</section>';
+}
+function recommendationCompactList(usResult,trResult){
+ return '<div class="pulse-list-shell">'+
+  recommendationMobileTabs()+
+  recommendationMarketSection('tr',trResult)+
+  recommendationMarketSection('us',usResult)+
+ '</div>';
 }
 
 function recommendationCard(mode,s,group=null,pulseResult=null){
@@ -478,7 +491,7 @@ async function renderRecommendation(force=false){
  recommendationRenderPromise=(async()=>{
   let [usResult,trResult]=await Promise.all([highConvictionRecommendation('us'),highConvictionRecommendation('tr')]);
   let us=usResult&&usResult.eligible?usResult:null,tr=trResult&&trResult.eligible?trResult:null;
-  let html=recommendationCompactView()?recommendationMobileList(us,tr):(recommendationCard('us',us&&us.s,null,us)+recommendationCard('tr',tr&&tr.s,null,tr));
+  let html=recommendationCompactList(us,tr);
   if(!us&&!tr){
    const best=[usResult,trResult].filter(Boolean).sort((a,b)=>(b.score||0)-(a.score||0))[0];
    if(best&&best.aiValidated&&best.ai){
