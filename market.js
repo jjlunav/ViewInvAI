@@ -303,19 +303,22 @@ function quoteFreshnessInfo(s,preferTr=false){
  let realTime=market==='tr'?direct:(direct&&s&&s.usLiveIsRealTime===true);
  let open=market==='tr'?trMarketOpen():auto()!=='previous';
  let source=quote&&quote.source||'';
- let state='stale',label='Último dato';
+ let state='stale',label='Sin actualizar';
  if(!ms){
-  state='unknown';label='Sin hora de actualización';
+  state='stale';label='Sin actualizar';
  }else if(!open){
-  state='closed';label='Mercado cerrado · '+quoteAgeText(ms);
+  state=age!==null&&age>30*60*60*1000?'stale':'delayed';
+  label=state==='stale'?'Sesión anterior':'Mercado cerrado';
  }else if(delay!==null){
-  state='delayed';label='Retraso '+delay+' min · '+quoteAgeText(ms);
+  state='delayed';label='Con retraso';
  }else if(!realTime){
-  state='delayed';label='Dato diferido · '+quoteAgeText(ms);
+  state='delayed';label='Diferido';
  }else if(age!==null&&age<=120000){
-  state='live';label='En directo · '+quoteAgeText(ms);
+  state='live';label='En directo';
+ }else if(age!==null&&age<=15*60*1000){
+  state='delayed';label='Con retraso';
  }else{
-  state='stale';label='Último dato · '+quoteAgeText(ms);
+  state='stale';label='Sin actualizar';
  }
  let exact=ms?new Date(ms).toLocaleString('es-ES',{timeZone:'Europe/Madrid'}):'sin hora disponible';
  let title=(source?source+' · ':'')+exact+(delay!==null?' · retraso declarado '+delay+' min':'');
