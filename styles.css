@@ -9057,3 +9057,158 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  text-align:center!important;
  margin:0 auto!important;
 }
+
+
+/* Radar AI unified: two permanent market columns, including mobile/APK. */
+#view-recommendation #recommendationResults{
+ width:min(100%,1180px)!important;
+ max-width:1180px!important;
+ margin:0 auto!important;
+}
+#view-recommendation .radar-ai-shell{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+ gap:12px!important;
+ width:100%!important;
+ min-width:0!important;
+ align-items:start!important;
+}
+#view-recommendation .radar-ai-market{
+ min-width:0;
+ border:1px solid #203945;
+ border-radius:12px;
+ background:#08151c;
+ overflow:hidden;
+}
+#view-recommendation .radar-ai-market-head{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:8px;
+ padding:9px 10px;
+ border-bottom:1px solid #203945;
+}
+#view-recommendation .radar-ai-market-head>div{
+ display:flex;
+ align-items:baseline;
+ gap:7px;
+ min-width:0;
+}
+#view-recommendation .radar-ai-market-head strong{
+ font-size:12px;
+ color:#dce8ec;
+}
+#view-recommendation .radar-ai-market-head span,
+#view-recommendation .radar-ai-market-head b{
+ color:#78909a;
+ font-size:8px;
+ font-weight:650;
+ white-space:nowrap;
+}
+#view-recommendation .radar-ai-tier{
+ min-width:0;
+ padding:0 7px 7px;
+}
+#view-recommendation .radar-ai-tier>header{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:6px;
+ min-height:28px;
+ padding:4px 2px;
+}
+#view-recommendation .radar-ai-tier>header strong{
+ font-size:9px;
+ color:#aabdc5;
+}
+#view-recommendation .radar-ai-tier>header span{
+ min-width:18px;
+ text-align:center;
+ padding:1px 5px;
+ border:1px solid #2a4652;
+ border-radius:999px;
+ color:#7f98a3;
+ font-size:7px;
+}
+#view-recommendation .radar-ai-tier-high>header strong{color:#72edc3}
+#view-recommendation .radar-ai-tier-opportunity>header strong{color:#d9c96a}
+#view-recommendation .radar-ai-tier-list{
+ display:grid;
+ grid-template-columns:minmax(0,1fr);
+ gap:4px;
+ min-width:0;
+}
+#view-recommendation .radar-ai-tier-list .asset-card{
+ border:1px solid #1d333d;
+ border-radius:8px;
+ background:#0a1820;
+ overflow:hidden;
+}
+#view-recommendation .radar-ai-tier-list .asset-card-row{
+ min-height:58px!important;
+ padding:6px!important;
+}
+#view-recommendation .radar-ai-empty{
+ min-height:36px;
+ display:grid;
+ place-items:center;
+ padding:6px;
+ border:1px dashed #263f4a;
+ border-radius:8px;
+ color:#667f89;
+ font-size:8px;
+ text-align:center;
+}
+@media(max-width:820px){
+ #view-recommendation.active{
+  padding-left:6px!important;
+  padding-right:6px!important;
+ }
+ #view-recommendation #recommendationResults{
+  width:100%!important;
+  max-width:none!important;
+ }
+ #view-recommendation .radar-ai-shell{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:5px!important;
+ }
+ #view-recommendation .radar-ai-market{
+  border-radius:8px;
+ }
+ #view-recommendation .radar-ai-market-head{
+  align-items:flex-start;
+  flex-direction:column;
+  gap:2px;
+  padding:6px 5px;
+ }
+ #view-recommendation .radar-ai-market-head>div{
+  display:grid;
+  gap:1px;
+ }
+ #view-recommendation .radar-ai-market-head strong{font-size:9px}
+ #view-recommendation .radar-ai-market-head span,
+ #view-recommendation .radar-ai-market-head b{font-size:6.5px}
+ #view-recommendation .radar-ai-tier{padding:0 3px 4px}
+ #view-recommendation .radar-ai-tier>header{min-height:23px;padding:2px 1px}
+ #view-recommendation .radar-ai-tier>header strong{font-size:7px}
+ #view-recommendation .radar-ai-tier>header span{font-size:6px;min-width:14px;padding:1px 3px}
+ #view-recommendation .radar-ai-tier-list{gap:3px}
+ #view-recommendation .radar-ai-tier-list .asset-card-row{
+  grid-template-columns:minmax(0,1.25fr) minmax(0,.9fr) minmax(0,.52fr) 7px!important;
+  gap:2px!important;
+  min-height:52px!important;
+  padding:4px 3px!important;
+ }
+ #view-recommendation .radar-ai-tier-list .asset-card-copy>strong{font-size:7.5px!important;-webkit-line-clamp:2}
+ #view-recommendation .radar-ai-tier-list .asset-card-copy>small{display:none!important}
+ #view-recommendation .radar-ai-tier-list .list-copy-isin{display:none!important}
+ #view-recommendation .radar-ai-tier-list .fav-star{width:16px!important;min-width:16px!important;height:22px!important;font-size:10px!important}
+ #view-recommendation .radar-ai-tier-list .asset-card-cell{font-size:7px!important;line-height:1.15!important}
+ #view-recommendation .radar-ai-tier-list .asset-card-label{font-size:5.5px!important;margin-bottom:1px!important}
+ #view-recommendation .radar-ai-tier-list .asset-investing-main strong{font-size:7.5px!important}
+ #view-recommendation .radar-ai-tier-list .asset-investing-main span,
+ #view-recommendation .radar-ai-tier-list .asset-investing-status,
+ #view-recommendation .radar-ai-tier-list .asset-investing-extended{font-size:5.8px!important}
+ #view-recommendation .radar-ai-tier-list .asset-card-open{font-size:11px!important}
+ #view-recommendation .radar-ai-empty{min-height:30px;font-size:6.5px;padding:4px}
+}
