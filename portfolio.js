@@ -723,20 +723,34 @@ function portfolioCoachCandidates(metrics,positionRows){
   });
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
+function goalOperationButtonHtml({side,portfolioId,stockKey,units,price,fees,currency,preferTr}){
+  if(!(num(units)>0)||num(price)===null)return"";
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar operación</button>';
+}
 function goalTradeInstructionHtml(row){
-  const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits);
+  const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
   const complete=sellUnits>=Math.floor((num(row.qty)||0)+1e-9)&&Math.abs((num(row.qty)||0)-Math.floor((num(row.qty)||0)+1e-9))<1e-8;
   const detail=complete?"Salida completa · "+formatNumber(sellUnits,0)+" acciones":"Vender "+formatNumber(sellUnits,0)+" acciones ("+formatNumber(row.reducePct,0)+"%) · mantener "+formatNumber(keepUnits,0);
+  const price=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
+  const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?" · spread "+formatNumber(execution.spreadPct,2)+"%":"";
+  const fee=execution.feeEur?(" · comisión "+formatMoney(execution.feeEur,"EUR")):"";
+  const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr});
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small></div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
+    '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
 function goalCandidateHtml(row){
   const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
-  const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{};
+  const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{},execution=row.execution||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
   const take=levels.take!==null&&levels.take!==undefined?formatMoney(levels.take,levels.currency||"EUR"):"—";
+  const bid=execution.bid!==null&&execution.bid!==undefined?formatMoney(execution.bid,execution.currency||"EUR"):"—";
+  const ask=execution.ask!==null&&execution.ask!==undefined?formatMoney(execution.ask,execution.currency||"EUR"):"—";
+  const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?formatNumber(execution.spreadPct,2)+"%":"N/D";
+  const entry=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
+  const fee=row.feeEur?(" · comisión "+formatMoney(row.feeEur,"EUR")):"";
+  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,stockKey:key,units:row.units,price:execution.price,fees:row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr});
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · "+formatMoney(row.allocation,"EUR"))+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small></div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
+    '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · coste "+formatMoney(row.totalCost||row.allocation,"EUR")+fee)+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 function portfolioGoalViewHtml(){
@@ -751,10 +765,11 @@ function portfolioGoalViewHtml(){
   else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera simultáneamente los filtros estrictos de Pulso IA, Radar, velocidad, catalizadores y calidad de datos.</div>';
   else{
     const sells=rotationRows.map(goalTradeInstructionHtml).join('');
-    const source=sells||((num(metrics.cashEur)||0)>0?'<div class="portfolio-goal-trade sell"><em>USAR</em><div><strong>Efectivo disponible</strong><small>Capital ya libre en la cartera</small></div><b>'+formatMoney(metrics.cashEur,"EUR")+'</b></div>':'');
+    const cashSource=(num(metrics.cashEur)||0)>0?'<div class="portfolio-goal-trade cash"><em>EFECTIVO</em><div><strong>Capital ya disponible</strong><small>Se suma al capital neto liberado por las ventas.</small></div><b>'+formatMoney(metrics.cashEur,"EUR")+'</b></div>':'';
+    const source=sells+cashSource;
     const buys=candidates.slice(0,3).map(goalCandidateHtml).join('');
     const pool=Math.max(0,(num(metrics.cashEur)||0)+rotationRows.reduce((sum,row)=>sum+(num(row.released)||0),0));
-    const spent=candidates.reduce((sum,row)=>sum+(num(row.allocation)||0),0),residual=Math.max(0,pool-spent);
+    const spent=candidates.reduce((sum,row)=>sum+(num(row.totalCost)||0),0),residual=Math.max(0,pool-spent);
     const residualHtml=residual>=.01?'<div class="portfolio-goal-trade cash"><em>LÍQUIDO</em><div><strong>Remanente</strong><small>No alcanza otra acción entera sin rebajar el filtro de entrada.</small></div><b>'+formatMoney(residual,"EUR")+'</b></div>':'';
     decisionHtml=(source||'')+buys+residualHtml;
   }
@@ -768,7 +783,7 @@ function portfolioGoalViewHtml(){
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
       '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3><button type="button" class="btn ghost compact" data-goal-refresh-plan>↻ Reanalizar</button></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
-      '<p class="portfolio-goal-note compact-note">El plan se recalcula con tus posiciones y el capital líquido registrado. Puede rotar antes del stop o del take profit si la señal pierde fuerza.</p>')+
+      '<p class="portfolio-goal-note compact-note">El plan intenta reasignar en una sola jugada todo el capital ejecutable, descontando comisiones y respetando acciones enteras. Si el BID/ASK no justifica entrar al precio actual, propone una orden límite y no persigue el precio.</p>')+
     '</section>';
 }
 
