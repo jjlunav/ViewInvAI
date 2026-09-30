@@ -8670,3 +8670,103 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
   width:100%;
  }
 }
+
+
+/* Pulso IA: centered compact row layout, TR first and US second. */
+#view-recommendation .recommendation-grid{
+ display:block;
+ max-width:1120px;
+ margin:0 auto;
+}
+#view-recommendation .pulse-list-shell{
+ width:min(100%,1120px);
+ margin:0 auto;
+ display:grid;
+ gap:14px;
+}
+#view-recommendation .reco-mobile-groups{
+ display:flex;
+ justify-content:center;
+ gap:6px;
+ flex-wrap:wrap;
+ margin:0 auto 2px;
+ padding:0 4px;
+}
+#view-recommendation .reco-mobile-groups button{
+ border:1px solid #29404d;
+ border-radius:999px;
+ background:#0a151d;
+ color:#89a0aa;
+ padding:6px 11px;
+ font-size:10px;
+ font-weight:700;
+ cursor:pointer;
+}
+#view-recommendation .reco-mobile-groups button.active{
+ color:#dce8ec;
+ border-color:#3f7e72;
+ background:#0d211d;
+}
+#view-recommendation .pulse-market-group{
+ display:grid;
+ gap:7px;
+ width:100%;
+}
+#view-recommendation .pulse-market-head{
+ display:flex;
+ align-items:end;
+ justify-content:space-between;
+ gap:12px;
+ padding:0 2px;
+}
+#view-recommendation .pulse-market-head>div{
+ display:flex;
+ align-items:baseline;
+ gap:9px;
+ min-width:0;
+}
+#view-recommendation .pulse-market-head strong{
+ color:#dce8ec;
+ font-size:13px;
+}
+#view-recommendation .pulse-market-head span{
+ color:#718b96;
+ font-size:9.5px;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis;
+}
+#view-recommendation .pulse-market-list{
+ display:grid;
+ gap:6px;
+ width:100%;
+}
+#view-recommendation .pulse-market-list>.asset-card{
+ width:100%;
+ margin:0;
+}
+#view-recommendation .pulse-market-list .asset-card-details,
+#view-recommendation .pulse-market-list .reco-mobile-detail{
+ display:none!important;
+}
+#view-recommendation .pulse-market-list .asset-card{
+ border-radius:9px;
+}
+#view-recommendation .pulse-market-list .asset-card-row{
+ min-height:64px;
+}
+#view-recommendation .pulse-ai-explanation{
+ max-width:1120px;
+ margin:10px auto 0;
+}
+@media (max-width:820px){
+ #view-recommendation .pulse-list-shell{gap:11px}
+ #view-recommendation .pulse-market-head>div{align-items:flex-start;flex-direction:column;gap:2px}
+ #view-recommendation .reco-mobile-groups{
+  justify-content:flex-start;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  scrollbar-width:none;
+ }
+ #view-recommendation .reco-mobile-groups::-webkit-scrollbar{display:none}
+}
