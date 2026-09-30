@@ -2157,3 +2157,115 @@ html,body{font-size:14px}
 .goal-history-op{grid-template-columns:58px minmax(0,1fr)!important;padding:6px!important}
 .goal-history-op>span{font-size:10px!important}
 .goal-history-op>small{font-size:8px!important}
+
+
+/* 2026-09-30 final mobile alignment pass: keep controls centered, readable and non-overlapping. */
+#view-portfolios .portfolio-workbar{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr)!important;
+ gap:6px!important;
+ width:100%!important;
+ min-width:0!important;
+ overflow:visible!important;
+}
+#view-portfolios .portfolio-tabs-wrap{
+ grid-column:1!important;
+ grid-row:1!important;
+ width:100%!important;
+ min-width:0!important;
+}
+#view-portfolios .portfolio-tabs-track{
+ width:100%!important;
+ max-width:none!important;
+ min-width:0!important;
+ overflow-x:auto!important;
+ overflow-y:hidden!important;
+ scrollbar-width:none!important;
+ -webkit-overflow-scrolling:touch!important;
+}
+#view-portfolios .portfolio-tabs-track::-webkit-scrollbar,
+#view-portfolios .portfolio-workbar-actions::-webkit-scrollbar{display:none!important}
+#view-portfolios .portfolio-workbar-actions{
+ grid-column:1!important;
+ grid-row:2!important;
+ display:flex!important;
+ align-items:center!important;
+ justify-content:flex-start!important;
+ gap:6px!important;
+ width:100%!important;
+ min-width:0!important;
+ padding:1px 0 3px!important;
+ overflow-x:auto!important;
+ overflow-y:hidden!important;
+ scrollbar-width:none!important;
+ -webkit-overflow-scrolling:touch!important;
+ scroll-snap-type:x proximity!important;
+}
+#view-portfolios .portfolio-workbar-actions>*{
+ position:static!important;
+ flex:0 0 38px!important;
+ width:38px!important;
+ min-width:38px!important;
+ max-width:38px!important;
+ height:38px!important;
+ min-height:38px!important;
+ margin:0!important;
+ padding:0!important;
+ display:grid!important;
+ place-items:center!important;
+ border-radius:9px!important;
+ scroll-snap-align:start!important;
+}
+#view-portfolios .portfolio-workbar-actions>.portfolio-add-current{
+ flex-basis:44px!important;
+ width:44px!important;
+ min-width:44px!important;
+ max-width:44px!important;
+}
+#view-portfolios .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
+ grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) 38px!important;
+ gap:4px!important;
+ min-width:0!important;
+}
+#view-portfolios .portfolio-position-exposure{
+ grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ gap:3px!important;
+ min-width:0!important;
+}
+#view-portfolios .portfolio-position-exposure>span{min-width:0!important}
+#view-portfolios .portfolio-position-exposure small{
+ display:block!important;
+ font-size:6px!important;
+ line-height:1.05!important;
+ white-space:nowrap!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+}
+#view-portfolios .portfolio-position-exposure b{
+ display:block!important;
+ font-size:7.4px!important;
+ line-height:1.08!important;
+ white-space:nowrap!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+}
+.mobile-bottom-nav{
+ grid-template-columns:repeat(5,minmax(0,1fr))!important;
+ overflow:hidden!important;
+}
+.mobile-nav-item{
+ transform:none!important;
+ align-self:stretch!important;
+ justify-self:stretch!important;
+}
+.mobile-nav-item[data-mobile-view="recommendation"]{
+ transform:none!important;
+ align-self:stretch!important;
+ min-height:0!important;
+ margin:0!important;
+ top:auto!important;
+ bottom:auto!important;
+}
+main{
+ padding-bottom:calc(var(--mobile-nav-h,70px) + 16px)!important;
+}
