@@ -443,3 +443,19 @@
  .portfolio-position-exposure small{font-size:5.6px}
  .portfolio-position-exposure b{font-size:7px}
 }
+
+
+/* 2026-09-30 mobile compact rows: names yield space before market data does. */
+@media(max-width:820px){
+ .asset-card-copy>strong{
+  display:block!important;
+  max-width:100%!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  -webkit-line-clamp:unset!important;
+ }
+ [data-card-context="portfolio"] .asset-card-copy>strong{
+  font-size:9.5px!important;
+ }
+}
