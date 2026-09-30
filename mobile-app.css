@@ -2811,9 +2811,37 @@ html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions>.portfolio
  max-width:44px!important;
 }
 html[data-native-app="1"] #view-portfolios .portfolio-position-card .asset-card-row[data-asset-columns="1"]{
- grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) 38px!important;
+ grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) auto!important;
  gap:4px!important;
  min-width:0!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-position-card .asset-card-end-actions{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:flex-end!important;
+ gap:5px!important;
+ width:auto!important;
+ min-width:0!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-position-card .portfolio-register-operation-icon{
+ width:32px!important;
+ min-width:32px!important;
+ height:32px!important;
+ min-height:32px!important;
+ padding:0!important;
+ border-radius:8px!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-position-card .asset-card-end-actions .asset-card-open-button{
+ width:auto!important;
+ min-width:54px!important;
+ height:32px!important;
+ min-height:32px!important;
+ padding:0 8px!important;
+ margin:0!important;
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ white-space:nowrap!important;
 }
 html[data-native-app="1"] #view-portfolios .portfolio-position-exposure{
  grid-template-columns:repeat(3,minmax(0,1fr))!important;
