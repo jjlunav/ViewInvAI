@@ -2344,10 +2344,12 @@ function bind() {
     }
 
     const row = event.target.closest?.("[data-open-stock]");
-    if (row && !event.target.closest("button")) {
+    const portfolioIsin=event.target.closest?.(".portfolio-position-list .list-copy-isin");
+    if (row && (!event.target.closest("button") || portfolioIsin)) {
       const pref = row.dataset.positionPreferTr;
       const preferTr=pref === "1" ? true : pref === "0" ? false : null;
       if(row.closest(".portfolio-position-list")){
+        if(portfolioIsin){event.preventDefault();event.stopPropagation()}
         openStarMenu(row.dataset.openStock,preferTr);
       }else{
         openStockInline(row.dataset.openStock,preferTr);
