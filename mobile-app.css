@@ -2916,3 +2916,27 @@ html[data-native-app="1"] .mobile-nav-item[data-mobile-view="recommendation"].ac
   border-color:rgba(165,183,255,.52)!important;
   background:linear-gradient(180deg,rgba(111,137,255,.30),rgba(89,83,224,.14))!important;
 }
+
+
+/* 2026-09-30 · compact wallet actions in native stock/portfolio rows */
+html[data-native-app="1"] .unified-stock-header .profile-primary-actions{
+ display:flex!important;
+ justify-content:flex-end!important;
+ align-items:center!important;
+ gap:6px!important;
+ width:auto!important;
+ min-width:0!important;
+}
+html[data-native-app="1"] .profile-wallet-action,
+html[data-native-app="1"] .portfolio-register-operation-icon{
+ width:34px!important;
+ min-width:34px!important;
+ height:34px!important;
+ min-height:34px!important;
+ padding:0!important;
+ border-radius:9px!important;
+}
+html[data-native-app="1"] .profile-wallet-action>span,
+html[data-native-app="1"] .portfolio-register-operation-icon>span{
+ font-size:17px!important;
+}
