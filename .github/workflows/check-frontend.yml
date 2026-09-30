@@ -383,6 +383,17 @@ jobs:
               raise SystemExit("Un movimiento de cartera no invalida el análisis anterior")
           if "CASE WHEN g.portfolio_id IS NOT NULL THEN 5" not in backend:
               raise SystemExit("Las posiciones con Objetivo IA no tienen seguimiento acelerado")
+          if "portfolioPrimaryTabsHtml" in portfolio or 'data-portfolio-primary="goal"' in portfolio:
+              raise SystemExit("Objetivo IA no puede volver a ser una pestaña global de Carteras")
+          for required in ('data-portfolio-goal-toggle', 'class="portfolio-cash-row"', 'portfolioCashBalanceForm'):
+              if required not in portfolio:
+                  raise SystemExit("Falta control por cartera: " + required)
+          if 'title="Añadir posición">+</button>' not in portfolio:
+              raise SystemExit("Añadir posición debe usar el símbolo +")
+          if 'name="targetDate"' in portfolio or "portfolioGoalRequiredContribution" in portfolio:
+              raise SystemExit("Objetivo IA conserva opciones de planificación que no pertenecen al motor de rotación")
+          if "sin avance semanal suficiente" not in portfolio or "revisión IA continua" not in portfolio:
+              raise SystemExit("Objetivo IA no contempla rotación temprana o niveles operativos")
           print("Contrato de notificaciones y UI crítica: OK")
           PY
       - name: Validar sintaxis de carteras
