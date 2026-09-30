@@ -9327,3 +9327,27 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  gap:5px;
  min-width:34px;
 }
+
+
+/* 2026-10-01 · portfolio row end actions: wallet immediately left of Ficha */
+.portfolio-position-card .asset-card-end-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ gap:8px;
+ min-width:max-content;
+ justify-self:end;
+}
+.portfolio-position-card .asset-card-end-actions .asset-card-row-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ min-width:34px;
+ margin:0;
+}
+.portfolio-position-card .asset-card-end-actions .asset-card-open-button{
+ position:static!important;
+ margin:0!important;
+ align-self:center;
+ white-space:nowrap;
+}
