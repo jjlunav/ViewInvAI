@@ -1666,6 +1666,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       '<div class="portfolio-form-grid"><label><span>Divisa</span><select name="currency"><option>EUR</option><option>USD</option><option>GBP</option></select></label>' +
       '<label><span>Fecha de entrada</span><span class="portfolio-date-field"><input id="openedAtInput" name="openedAt" type="date" value="' + localDateValue() + '" required><button type="button" class="portfolio-date-picker" data-open-date-picker aria-label="Abrir calendario">📅</button></span></label></div>' +
       '<label><span>Nota</span><textarea name="notes" rows="2" maxlength="1000" placeholder="Opcional"></textarea></label>' +
+      (existingInitial?'<p class="portfolio-form-note">Editar cantidad o precio medio corrige los datos de la posición. Para una compra o venta real usa “Operaciones” o “Registrar operación”, así se actualizará también el efectivo y las comisiones.</p>':'')+
       '<div class="portfolio-form-status" data-position-status aria-live="polite"></div>' +
       '<button type="button" class="btn" data-save-position>Guardar posición</button>' +
     '</form>'
