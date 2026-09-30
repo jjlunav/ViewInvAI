@@ -9243,3 +9243,17 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  .broker-create-inline button{width:100%}
  .broker-fee-hint{font-size:8px}
 }
+
+
+/* Radar AI mobile keeps the same card information as desktop; only density changes. */
+@media(max-width:820px){
+ #view-recommendation .radar-ai-tier-list .asset-card-copy>small,
+ #view-recommendation .radar-ai-tier-list .list-copy-isin{
+  display:block!important;
+  font-size:5.6px!important;
+  line-height:1.05!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+ }
+}
