@@ -86,7 +86,7 @@ function initHelpSystem(){
   calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
   catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
-  settings:{title:'Settings',text:'Preferencias de la aplicación y del dispositivo. Por ahora permite mantener la pantalla del móvil activa mientras ViewInvAI está abierta; más adelante incorporará cuenta, sincronización, notificaciones y otras opciones.'}
+  settings:{title:'Configuración General',text:'Preferencias de la aplicación, notificaciones de la cuenta y opciones del dispositivo. Aquí puedes activar los avisos generales, elegir qué tipos de eventos quieres recibir y gestionar funciones locales como mantener la pantalla activa.'}
  };
  $$('.section-help').forEach(el=>{let x=sectionHelp[el.dataset.helpSection];if(x){el.dataset.help=x.text;el.dataset.helpTitle=x.title}});
  $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
