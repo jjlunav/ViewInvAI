@@ -30,7 +30,7 @@ function syncDeviceSettingsUi(){
  else setWakeLockStatus('Pendiente de activar');
 }
 
-let pushBackendConfigured=null,backendSourceStatus=null,accountAnalysisSettings=null,analysisSettingsBusy=false;
+let pushBackendConfigured=null,pushDeviceRegistered=null,backendSourceStatus=null,accountAnalysisSettings=null,analysisSettingsBusy=false;
 function sourceStatusText(source,key){
  if(!source)return{label:'Sin información',mode:'pending'};
  if(source.configured===false)return{label:'Pendiente',mode:'pending'};
@@ -74,6 +74,16 @@ async function refreshPushBackendStatus(){
  renderSourceSettingsStatus();
  renderAnalysisSettings(accountAnalysisSettings);
 }
+async function refreshPushDeviceStatus(){
+ const auth=window.ViewInvAIAuth;
+ if(!auth?.getUser?.()||!auth?.isNative?.()){pushDeviceRegistered=null;return}
+ try{
+  const response=await auth.apiFetch('/api/devices');
+  const data=await response.json().catch(()=>({}));
+  pushDeviceRegistered=response.ok&&Array.isArray(data.devices)&&data.devices.some(device=>Number(device.enabled)!==0);
+ }catch(_){pushDeviceRegistered=false}
+ renderPushSettingsStatus();
+}
 function renderPushSettingsStatus(detail=null){
  const status=$('#pushNotificationStatus'),button=$('#enablePushNotifications');
  if(!status||!button)return;
@@ -85,11 +95,14 @@ function renderPushSettingsStatus(detail=null){
  if(detail&&detail.permission==='denied'){status.textContent='Permiso denegado';status.classList.add('error');button.disabled=false;return}
  if(detail&&detail.error){status.textContent='No disponible';status.classList.add('error');button.disabled=false;return}
  if(detail&&detail.enabled===true){
-  status.textContent=pushBackendConfigured===false?'Dispositivo listo · servidor pendiente':'Activo';
+  pushDeviceRegistered=true;
+  status.textContent=pushBackendConfigured===false?'Dispositivo registrado · servidor pendiente':'Activo · dispositivo registrado';
   status.classList.add(pushBackendConfigured===false?'pending':'active');
   button.disabled=false;return;
  }
- if(auth.getUser?.()&&pushBackendConfigured===false){status.textContent='Servidor pendiente';status.classList.add('pending')}
+ if(auth.getUser?.()&&pushBackendConfigured===false){status.textContent=pushDeviceRegistered?'Dispositivo registrado · servidor pendiente':'Servidor pendiente · dispositivo sin verificar';status.classList.add('pending')}
+ else if(auth.getUser?.()&&pushDeviceRegistered===true){status.textContent='Activo · dispositivo registrado';status.classList.add('active')}
+ else if(auth.getUser?.()&&pushDeviceRegistered===false){status.textContent='Dispositivo no registrado';status.classList.add('pending')}
  else status.textContent=auth.getUser?.()?'Preparado':'Inicia sesión';
  button.disabled=!auth.getUser?.();
 }
@@ -97,8 +110,11 @@ async function retryPushRegistration(){
  const auth=window.ViewInvAIAuth;
  if(!auth?.ensurePushRegistration)return;
  const button=$('#enablePushNotifications');if(button){button.disabled=true;button.textContent='Activando…'}
- try{renderPushSettingsStatus({enabled:!!(await auth.ensurePushRegistration())})}
- finally{if(button){button.textContent='Activar / reintentar';button.disabled=false}}
+ try{
+  const enabled=!!(await auth.ensurePushRegistration());
+  renderPushSettingsStatus({enabled});
+  await refreshPushDeviceStatus();
+ }finally{if(button){button.textContent='Activar / reintentar';button.disabled=false}}
 }
 async function testPushNotification(){
  const auth=window.ViewInvAIAuth,button=$('#testPushNotification'),status=$('#pushNotificationStatus');
@@ -123,7 +139,8 @@ function renderAnalysisSettings(settings=null){
  const radar=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar)===1:false;
  const price=accountAnalysisSettings?Number(accountAnalysisSettings.notify_price)===1:false;
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
- const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadar:radar,globalNotifyPrice:price,globalNotifyPortfolio:portfolio};
+ const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
+ const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadar:radar,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
@@ -137,8 +154,8 @@ function renderAnalysisSettings(settings=null){
   if(accountAnalysisSettings&&enabled&&!analysisSettingsBusy)globalStatus.classList.add('active');
  }
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,price,portfolio};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,price,portfolio}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,pulseAi,radar,price,portfolio,portfolioGoal};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,pulseAi,radar,price,portfolio,portfolioGoal}}));
  }else window.ViewInvAINotificationSettings=null;
  const test=$('#testPushNotification');
  if(test)test.disabled=!accountAnalysisSettings||!enabled||pushBackendConfigured===false||analysisSettingsBusy;
@@ -151,7 +168,8 @@ async function saveAnalysisSettings(){
   notifyPulseAi:$('#globalNotifyPulseAi')?.checked===true,
   notifyRadar:$('#globalNotifyRadar')?.checked===true,
   notifyPrice:$('#globalNotifyPrice')?.checked===true,
-  notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true
+  notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true,
+  notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true
  };
  analysisSettingsBusy=true;renderAnalysisSettings(accountAnalysisSettings);
  try{
@@ -241,16 +259,18 @@ function initSettings(){
   await saveAnalysisSettings();
   if(event.target.checked&&window.ViewInvAIAuth?.isNative?.())retryPushRegistration();
  });
- ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPrice','globalNotifyPortfolio'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadar','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{
   renderAnalysisSettings(e.detail&&e.detail.settings||null);
   renderPushSettingsStatus();
+  refreshPushDeviceStatus();
  });
  window.addEventListener('viewinvai:auth-changed',e=>{
-  if(!(e.detail&&e.detail.user))renderAnalysisSettings(null);
+  if(!(e.detail&&e.detail.user)){renderAnalysisSettings(null);pushDeviceRegistered=null}
   renderPushSettingsStatus();
+  if(e.detail&&e.detail.user)refreshPushDeviceStatus();
  });
 
  let keepScreenAwakeToggle=$('#keepScreenAwake');
