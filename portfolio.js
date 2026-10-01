@@ -706,10 +706,13 @@ function portfolioGoalMetrics(){
   return{portfolio,rows,fxUsdEur,currentValue:capital,investedValue:currentComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
-function coachPriceLevels(stock,preferTr,score,entryPrice=null){
+function coachPriceLevels(stock,preferTr,score,entryPrice=null,riskBand=null){
   const market=currentMarket(stock,preferTr),price=num(entryPrice)??num(market.price),change=Math.abs(num(market.change)||0);
   if(price===null||price<=0)return{stop:null,take:null,stopPct:null,takePct:null,currency:market.currency||"EUR"};
-  const stopPct=Math.max(4.5,Math.min(12,5.5+change*.35+(score<50?1.5:0))),takePct=Math.max(8,Math.min(25,stopPct*(score>=70?2:1.7)));
+  const maxStop=num(riskBand&&riskBand.maxStopPct)??7;
+  const minRR=num(riskBand&&riskBand.minRR)??1.8;
+  const stopPct=Math.max(3.5,Math.min(maxStop,4.5+change*.12+(score<50?.75:0)));
+  const takePct=Math.max(7,Math.min(18,stopPct*Math.max(minRR,score>=70?2:1.8)));
   return{stop:price*(1-stopPct/100),take:price*(1+takePct/100),stopPct,takePct,currency:market.currency||(preferTr?"EUR":"USD")};
 }
 function portfolioCoachPositionRows(metrics){
@@ -727,7 +730,13 @@ function portfolioCoachPositionRows(metrics){
     const catalyst=portfolioGoalCatalyst(row.stock),catalystDays=num(catalyst.days);
     const imminentCatalyst=catalystDays!==null&&catalystDays<=3&&(num(catalyst.impact)||0)>=65;
     const stagnant=holdingDays!==null&&holdingDays>=7&&weekPerf!==null&&Math.abs(weekPerf)<1.25&&score<68&&!imminentCatalyst;
-    if(backendSignal==="SELL"||score<=35||stagnant)targetWeight=0;
+    const positionReturnPct=row.avgEur!==null&&row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null;
+    const stopLimit=num(metrics.riskBand&&metrics.riskBand.maxStopPct)??7;
+    const takeTrigger=stopLimit*(num(metrics.riskBand&&metrics.riskBand.minRR)??1.8);
+    const stopHit=positionReturnPct!==null&&positionReturnPct<=-stopLimit;
+    const takeHit=positionReturnPct!==null&&positionReturnPct>=takeTrigger;
+    if(stopHit||backendSignal==="SELL"||score<=35||stagnant)targetWeight=0;
+    else if(takeHit)targetWeight=Math.min(currentWeight,currentWeight*.5);
     else if(backendSignal==="REVIEW"||score<48)targetWeight=Math.min(currentWeight,12);
     else if(currentWeight>maxWeight+12)targetWeight=Math.min(currentWeight,score>=70?maxWeight:maxWeight*.8);
     else if(currentWeight>maxWeight&&score<65)targetWeight=Math.min(currentWeight,maxWeight);
@@ -741,13 +750,15 @@ function portfolioCoachPositionRows(metrics){
     const action=units<=0?"MANTENER":units>=Math.floor(row.qty+1e-9)&&Math.abs(row.qty-Math.floor(row.qty+1e-9))<1e-8?"SALIR":"REDUCIR",reasons=[];
     if(backendSignal)reasons.push("señal IA "+signalInfo(backendSignal)[0].toLowerCase());
     else reasons.push("pendiente de análisis IA de cartera");
+    if(stopHit)reasons.push("stop de riesgo alcanzado ("+formatNumber(positionReturnPct,2)+"%)");
+    if(takeHit)reasons.push("objetivo de beneficio alcanzado · asegurar parte");
     if(stagnant)reasons.push("sin avance semanal suficiente");
-    if(currentWeight>35)reasons.push("concentración "+formatNumber(currentWeight,1)+"%");
+    if(currentWeight>(metrics.riskBand&&metrics.riskBand.maxPosition||30))reasons.push("concentración "+formatNumber(currentWeight,1)+"%");
     reasons.push("score "+formatNumber(score,0)+"/100");
     if(quality)reasons.push("calidad "+formatNumber(quality,0)+"/100");
     if(goalReached)reasons.push("objetivo alcanzado");
-    const levels=action==="SALIR"?{stop:null,take:null,stopPct:null,takePct:null,currency:row.market.currency||"EUR"}:coachPriceLevels(row.stock,row.preferTr,score);
-    return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,releasedGross,execution,action,reasons,levels,holdingDays,weekPerf,stagnant};
+    const levels=action==="SALIR"?{stop:null,take:null,stopPct:null,takePct:null,currency:row.market.currency||"EUR"}:coachPriceLevels(row.stock,row.preferTr,score,null,metrics.riskBand);
+    return{...row,score,quality,currentWeight,targetWeight,reducePct,units,released,releasedGross,execution,action,reasons,levels,holdingDays,weekPerf,stagnant,positionReturnPct,stopHit,takeHit};
   }).sort((a,b)=>b.released-a.released||a.score-b.score);
 }
 function portfolioGoalCatalyst(stock){
