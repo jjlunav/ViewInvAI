@@ -35,7 +35,7 @@
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(chevronOnly?' data-end="chevron"':'')+(options.openAttrs||'')+'>'+
     '<div class="asset-card-marker">'+(options.leadingHtml||'')+'</div>'+
-    '<div class="asset-card-identity"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
+    '<div class="asset-card-identity'+(options.sparkHtml?' has-spark':'')+'"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+(options.sparkHtml||'')+'</div></div>'+
     '<div class="asset-card-quote-slot">'+cellHtml(quoteCell,'asset-card-quote-cell')+'</div>'+
     '<div class="asset-card-context-slot">'+contextHtml(contextual)+'</div>'+
     '<div class="asset-card-end-actions">'+

@@ -1533,3 +1533,15 @@ html[data-theme="light"] body .notification-price-card{background:#f8fbfc!import
  html body #view-future .future-filter-bar>#futureSector{grid-column:1 / span 6!important}
  html body #view-future .future-filter-bar>.check-inline{grid-column:7 / span 6!important;font-size:11px!important;padding:0 6px!important}
 }
+/* Trend mini-chart: the name keeps its own full line; the chart takes a 56px column beside
+   the short ticker/ISIN lines underneath, so neither the name nor the price is cut. */
+.asset-card-identity.has-spark .asset-card-copy{display:grid!important;grid-template-columns:minmax(0,1fr) 56px!important;column-gap:6px!important;align-items:center!important}
+.asset-card-identity.has-spark .asset-card-copy>strong{grid-column:1 / -1!important}
+.asset-card-identity.has-spark .asset-card-copy>small,
+.asset-card-identity.has-spark .asset-card-copy>.list-copy-isin{grid-column:1!important;min-width:0!important}
+.asset-card-spark{grid-column:2;grid-row:2 / span 2;align-self:center;width:56px;height:20px;overflow:visible;pointer-events:none}
+.asset-card-spark polyline{fill:none;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.asset-card-spark.up polyline{stroke:#43e4b2}
+.asset-card-spark.down polyline{stroke:#ff636e}
+html[data-theme="light"] .asset-card-spark.up polyline{stroke:#0f8a5f}
+html[data-theme="light"] .asset-card-spark.down polyline{stroke:#c2263a}
