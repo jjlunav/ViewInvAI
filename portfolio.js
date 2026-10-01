@@ -864,63 +864,75 @@ function portfolioCoachCandidates(metrics,positionRows){
   const band=metrics.riskBand||portfolioGoalRiskBand("aggressive");
   const ranked=[...merged.values()].map(row=>{
     const scores=[row.pulseScore,row.radarScore].filter(x=>x!==null);
-    const score=scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?3:0)):0;
-    const velocity=portfolioGoalVelocityScore(row.stock,score,row.quality);
+    const score=scores.length?Math.min(100,Math.max(...scores)+(scores.length>1?2:0)):0;
+    const velocity=portfolioGoalVelocityScore(row.stock,score,row.quality,row.preferTr);
     const catalyst=velocity.catalyst||{},multiSource=row.sources.length>1;
     const brokerName=brokerDefaultName(metrics.portfolio,row.preferTr);
     const execution=goalExecutionQuote(row.stock,row.preferTr,"BUY",metrics.fxUsdEur,brokerName,1);
-    const spread=num(execution.spreadPct),spreadPenalty=spread===null?4:Math.min(18,spread*2.2);
-    const confirmation=multiSource||score>=86||(num(catalyst.impact)||0)>=75;
-    const composite=Math.max(0,Math.min(100,score*.44+(num(row.quality)||0)*.20+velocity.score*.28+(multiSource?5:0)+Math.min(3,(num(catalyst.impact)||0)*.03)-spreadPenalty));
-    const spreadAcceptable=spread===null?row.quality>=75:spread<=8;
-    return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,brokerName,spreadAcceptable};
-  }).filter(row=>row.confirmation&&row.spreadAcceptable&&row.execution.executable===true&&row.execution.unitEur!==null&&row.execution.unitEur>0&&row.score>=band.minCandidate&&row.quality>=band.minQuality&&row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite)
-    .sort((x,y)=>y.composite-x.composite||y.velocityScore-x.velocityScore||y.score-x.score||y.quality-x.quality);
+    const entry=portfolioGoalEntryTiming(row.stock,row.preferTr,execution,band);
+    const spread=num(execution.spreadPct),spreadPenalty=spread===null?5:Math.min(16,spread*2);
+    const confirmation=multiSource||score>=88||(num(catalyst.impact)||0)>=80;
+    const composite=Math.max(0,Math.min(100,
+      score*.34+(num(row.quality)||0)*.20+velocity.score*.16+entry.timing*.22+
+      (multiSource?3:0)+Math.min(2,(num(catalyst.impact)||0)*.02)-spreadPenalty
+    ));
+    const spreadAcceptable=spread===null?row.quality>=80:spread<=6;
+    return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,entry,brokerName,spreadAcceptable};
+  }).filter(row=>
+    row.confirmation&&row.spreadAcceptable&&row.entry&&row.entry.eligible&&
+    row.execution.executable===true&&row.execution.unitEur!==null&&row.execution.unitEur>0&&
+    row.score>=band.minCandidate&&row.quality>=band.minQuality&&
+    row.velocityScore>=band.minVelocity&&row.composite>=band.minComposite
+  ).sort((x,y)=>
+    y.composite-x.composite||y.entry.timing-x.entry.timing||
+    y.velocityScore-x.velocityScore||y.score-x.score||y.quality-x.quality
+  );
   if(!ranked.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
+
   const finalists=[ranked[0]];
-  if(ranked[1]&&ranked[1].composite>=Math.max(82,ranked[0].composite-4))finalists.push(ranked[1]);
-  if(ranked[2]&&ranked[2].composite>=Math.max(84,ranked[0].composite-3))finalists.push(ranked[2]);
+  if(ranked[1]&&ranked[1].composite>=Math.max(band.minComposite,ranked[0].composite-3))finalists.push(ranked[1]);
   const priced=finalists.filter(row=>row.execution.unitEur+row.execution.feeEur<=rotationPool);
   if(!priced.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
-  const weights=priced.length===1?[1]:priced.length===2?[.65,.35]:[.55,.30,.15],remainingGoal=Math.max(0,num(metrics.remaining)||0);
+
+  const weights=priced.length===1?[1]:[.65,.35];
+  const remainingGoal=Math.max(0,num(metrics.remaining)||0);
+  const portfolioCapital=Math.max(rotationPool,num(metrics.currentValue)||0);
   let result=priced.map((row,index)=>{
-    const budget=rotationPool*weights[index],feeEur=row.execution.feeEur||0;
+    const feeEur=row.execution.feeEur||0;
+    const existing=metrics.rows.find(item=>portfolioStockKey(item.stock)===portfolioStockKey(row.stock));
+    const existingValue=Math.max(0,num(existing&&existing.valueEur)||0);
+    const maxPositionEur=Math.max(0,portfolioCapital*(band.maxPosition||30)/100-existingValue);
+    const riskBudgetEur=Math.max(0,portfolioCapital*(band.riskPerTradePct||2)/100);
+    const riskAllocationCap=row.entry.stopPct>0?riskBudgetEur/(row.entry.stopPct/100):0;
+    const allocationCap=Math.max(0,Math.min(maxPositionEur,riskAllocationCap));
+    const budget=Math.min(rotationPool*weights[index],allocationCap);
     const units=Math.floor(Math.max(0,budget-feeEur)/row.execution.unitEur);
-    const allocation=units*row.execution.unitEur,totalCost=units>0?allocation+feeEur:0,levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price);
+    if(units<1)return null;
+    const allocation=units*row.execution.unitEur,totalCost=allocation+feeEur;
+    const price=num(row.execution.price),currency=row.execution.currency||(row.preferTr?"EUR":"USD");
+    const levels=price===null
+      ?{stop:null,take:null,stopPct:row.entry.stopPct,takePct:row.entry.takePct,currency}
+      :{stop:price*(1-row.entry.stopPct/100),take:price*(1+row.entry.takePct/100),stopPct:row.entry.stopPct,takePct:row.entry.takePct,currency};
     const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
     const goalShare=remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0;
-    return{...row,rank:index+1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur,units,levels,potentialGain,goalShare,cashAvailable,released};
-  }).filter(row=>row.units>=1);
-  if(!result.length){
-    const row=priced[0],feeEur=row.execution.feeEur||0,units=Math.floor(Math.max(0,rotationPool-feeEur)/row.execution.unitEur);
-    if(units<1){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
-    const allocation=units*row.execution.unitEur,totalCost=allocation+feeEur,levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price);
-    const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
-    result=[{...row,rank:1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur,units,levels,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0,cashAvailable,released}];
-  }
-  let spent=result.reduce((sum,row)=>sum+(num(row.totalCost)||0),0),left=Math.max(0,rotationPool-spent);
-  for(const row of priced){
-    if(result.some(item=>portfolioStockKey(item.stock)===portfolioStockKey(row.stock)))continue;
-    const firstCost=row.execution.unitEur+(row.execution.feeEur||0);
-    if(result.length<3&&left>=firstCost){
-      const levels=coachPriceLevels(row.stock,row.preferTr,row.score,row.execution&&row.execution.price),allocation=row.execution.unitEur,totalCost=firstCost;
-      const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
-      result.push({...row,rank:result.length+1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur:row.execution.feeEur||0,units:1,levels,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0,cashAvailable,released});
-      left-=firstCost;
-    }
-  }
-  let safety=0;
-  while(result.length&&safety++<5000){
-    const row=result.find(item=>item.unitEur<=left+1e-9);
-    if(!row)break;
-    row.units+=1;row.allocation+=row.unitEur;row.totalCost+=row.unitEur;left=Math.max(0,left-row.unitEur);
-  }
+    return{...row,rank:index+1,unitEur:row.execution.unitEur,allocation,totalCost,feeEur,units,levels,potentialGain,goalShare,cashAvailable,released,maxPositionEur,riskBudgetEur,allocationCap};
+  }).filter(Boolean);
+
+  if(!result.length){state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:[]};return[]}
+
   result=result.sort((x,y)=>y.composite-x.composite).map((row,index)=>{
     const finalExecution=goalExecutionQuote(row.stock,row.preferTr,"BUY",metrics.fxUsdEur,row.brokerName,row.units);
+    const finalEntry=portfolioGoalEntryTiming(row.stock,row.preferTr,finalExecution,band);
+    if(!finalEntry.eligible)return null;
     const allocation=(num(finalExecution.unitEur)||0)*row.units,totalCost=allocation+(num(finalExecution.feeEur)||0);
-    const potentialGain=allocation>0&&row.levels.takePct!==null?allocation*row.levels.takePct/100:0;
-    return{...row,execution:finalExecution,unitEur:finalExecution.unitEur,feeEur:finalExecution.feeEur,allocation,totalCost,rank:index+1,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0};
-  });
+    if(allocation>row.allocationCap+0.01)return null;
+    const price=num(finalExecution.price),currency=finalExecution.currency||(row.preferTr?"EUR":"USD");
+    const levels=price===null
+      ?{stop:null,take:null,stopPct:finalEntry.stopPct,takePct:finalEntry.takePct,currency}
+      :{stop:price*(1-finalEntry.stopPct/100),take:price*(1+finalEntry.takePct/100),stopPct:finalEntry.stopPct,takePct:finalEntry.takePct,currency};
+    const potentialGain=allocation>0&&levels.takePct!==null?allocation*levels.takePct/100:0;
+    return{...row,entry:finalEntry,execution:finalExecution,levels,unitEur:finalExecution.unitEur,feeEur:finalExecution.feeEur,allocation,totalCost,rank:index+1,potentialGain,goalShare:remainingGoal>0?Math.min(100,potentialGain/remainingGoal*100):0};
+  }).filter(Boolean);
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
 function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
