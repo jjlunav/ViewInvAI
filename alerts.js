@@ -74,7 +74,7 @@
     leadingHtml:'',
     hint:'Aviso · '+String(item.title||'COMPRA'),
     openAttrs,
-    cells:[{label:'Aviso',html:context}],
+    cells:[{label:'',html:context}],
     detailsLabel:'Motivo del aviso',
     detailsHtml:details?'<p>'+esc(item.message||'')+'</p>'+(item.score?'<p>Convicción '+fmt(item.score,0)+'/100</p>':''):''
    });
@@ -85,7 +85,7 @@
    subtitle:[item&&item.ticker,item&&item.market].filter(Boolean).join(' · '),
    openAttrs,
    quoteCell:{label:'Señal',value:item&&item.title||'COMPRA',tone:'buy'},
-   contextCells:[{label:'Aviso',html:context}],
+   contextCells:[{label:'',html:context}],
    detailsLabel:'Motivo del aviso',
    detailsHtml:details?'<p>'+esc(item&&item.message||'')+'</p>':''
   });
