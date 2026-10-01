@@ -2973,3 +2973,122 @@ html[data-native-app="1"] .profile-wallet-action>span,
 html[data-native-app="1"] .portfolio-register-operation-icon>span{
  font-size:17px!important;
 }
+
+/* 2026-10-01 · native layout containment audit.
+   Page data uses document flow; only true overlays keep fixed/absolute coordinates. */
+html[data-native-app="1"] .view>.page-heading{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto!important;
+ align-items:start!important;
+ gap:6px 8px!important;
+ position:relative!important;
+ padding:1px 48px 6px 0!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+html[data-native-app="1"] .view>.page-heading>div:first-child{
+ grid-column:1!important;
+ grid-row:1!important;
+ min-width:0!important;
+ max-width:100%!important;
+ margin:0!important;
+}
+html[data-native-app="1"] .view>.page-heading .heading-actions,
+html[data-native-app="1"] .view>.page-heading>.section-help,
+html[data-native-app="1"] .view>.page-heading>.icon-btn{
+ position:static!important;
+ right:auto!important;
+ left:auto!important;
+ top:auto!important;
+ bottom:auto!important;
+ grid-column:2!important;
+ grid-row:1!important;
+ align-self:start!important;
+ justify-self:end!important;
+ max-width:100%!important;
+}
+html[data-native-app="1"] .view>.page-heading .heading-actions{
+ display:flex!important;
+ flex-wrap:wrap!important;
+ justify-content:flex-end!important;
+ gap:4px!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-workbar{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr)!important;
+ gap:6px!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-tabs-wrap{
+ grid-column:1!important;
+ grid-row:1!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions{
+ grid-column:1!important;
+ grid-row:2!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:100%!important;
+ display:grid!important;
+ grid-template-columns:repeat(6,minmax(0,1fr))!important;
+ gap:5px!important;
+ overflow:visible!important;
+}
+html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions>*{
+ position:static!important;
+ inset:auto!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:100%!important;
+ height:36px!important;
+ min-height:36px!important;
+ margin:0!important;
+ padding:0!important;
+}
+html[data-native-app="1"] .profile-quote-stack-us{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ align-items:start!important;
+ gap:5px!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+html[data-native-app="1"] .profile-quote-regular,
+html[data-native-app="1"] .profile-quote-extended,
+html[data-native-app="1"] .profile-quote-lsx{
+ min-width:0!important;
+ max-width:100%!important;
+ flex-wrap:wrap!important;
+ overflow:hidden!important;
+}
+html[data-native-app="1"] .notification-category-list .settings-status-row{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto!important;
+ gap:10px!important;
+ align-items:center!important;
+}
+html[data-native-app="1"] .notification-category-list .settings-status-row>span:first-child{
+ display:grid!important;
+ gap:3px!important;
+ min-width:0!important;
+}
+html[data-native-app="1"] .notification-category-list .settings-status-row>span:first-child>strong,
+html[data-native-app="1"] .notification-category-list .settings-status-row>span:first-child>small{
+ display:block!important;
+ max-width:100%!important;
+ white-space:normal!important;
+ overflow-wrap:anywhere!important;
+}
+@media(max-width:360px){
+ html[data-native-app="1"] .profile-quote-stack-us{
+  grid-template-columns:minmax(0,1fr)!important;
+ }
+ html[data-native-app="1"] #view-portfolios .portfolio-workbar-actions{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ }
+}
+
