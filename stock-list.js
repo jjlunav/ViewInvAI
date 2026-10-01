@@ -191,11 +191,28 @@ function compactInvestingQuoteData(s,preferTr=false){
   session,sessionLabel,sessionPrice,sessionPct,sessionAbs,sessionAt
  };
 }
+function compactQuoteFreshnessState(s,preferTr=false){
+ const info=quoteFreshnessInfo(s,preferTr),ms=N(info&&info.updatedAt);
+ let state=info&&info.state==='live'?'live':'delayed',label=state==='live'?'Precio en tiempo real':'Precio con retraso';
+ if(ms!==null){
+  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'});
+  if(day.format(new Date(ms))!==day.format(new Date())){
+   state='stale';label='Precio de la jornada anterior';
+  }
+ }else{
+  state='stale';label='Precio de la jornada anterior';
+ }
+ return{state,label};
+}
+function compactQuoteStatusHtml(s,preferTr=false){
+ const info=compactQuoteFreshnessState(s,preferTr),key=stockKey(s);
+ return '<span class="asset-quote-state '+E(info.state)+'" data-compact-freshness-key="'+E(key)+'" data-compact-freshness-tr="'+(preferTr?'1':'0')+'" data-status-label="'+E(info.label)+'" title="'+E(info.label)+'" aria-label="'+E(info.label)+'" tabindex="0"><i aria-hidden="true"></i></span>';
+}
 function compactInvestingQuoteHtml(s,preferTr=false){
  const q=compactInvestingQuoteData(s,preferTr);
  const dec=quotePrecision(s,preferTr,q.regularPrice),tone=C(q.regularPct);
  const main='<div class="asset-investing-main"><strong>'+quoteMoney(q.regularPrice,q.symbol,dec)+'</strong><span class="'+tone+'">'+compactSignedMoney(q.regularAbs,q.symbol,dec)+' <b>('+PC(q.regularPct)+')</b></span></div>';
- const status='<div class="asset-investing-status"><span class="asset-market-clock" aria-hidden="true">◷</span><span>'+E(q.status)+(q.statusAt?' · '+E(compactQuoteDate(q.statusAt)):'')+'</span></div>';
+ const status='<div class="asset-investing-status">'+compactQuoteStatusHtml(s,preferTr)+'</div>';
  let extended='';
  if(q.session&&q.sessionPrice!==null){
   const extTone=C(q.sessionPct),extDec=quotePrecision(s,false,q.sessionPrice),icon=q.session==='premarket'?'☀︎':'☾︎';
