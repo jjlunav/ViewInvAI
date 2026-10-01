@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={home:'01 Mercados',recommendation:'02 Radar AI',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Catálogo Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Configuración General'};
+const V={today:'00 Mi día',home:'01 Mercados',recommendation:'02 Radar AI',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Catálogo Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Configuración General'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -96,7 +96,6 @@ function restoreUiState(){
  try{
   let x=JSON.parse(localStorage.getItem(UI_KEY)||'{}');
   if(x&&x.view==='calendar')x.view='future';
-  if(x&&x.view==='entry')x.view='recommendation';
   if(x&&x.view==='alerts')x.view='home';
   if(x&&V[x.view])state.currentView=x.view;
   if(x&&['tr','us'].includes(x.entryMarket))state.entryMarket=x.entryMarket;
@@ -125,6 +124,11 @@ function restoreUiState(){
 
   let route=currentRouteState();
   let hs=history.state&&history.state.__viewinvai===1?history.state:null;
+  // A fresh launch opens «Mi día»; history navigation and deep links keep their view.
+  if(!route&&!hs){state.currentView='today';state.profileKey=null}
+  // Favoritos vive ahora como pestaña de Carteras.
+  if(state.currentView==='favorites'){state.currentView='portfolios';try{localStorage.setItem('viewinvai:portfolioAssetMode:v1','favorites')}catch(_){}}
+  if(state.profileOriginView==='favorites')state.profileOriginView='portfolios';
   if(route){
    state.currentView=route.view;
    state.profileKey=route.profileKey||null;
@@ -445,22 +449,34 @@ function renderFavoritesDashboard(){
   cells:[{label:'Valor',value:(window.ViewInvAIFunds?.getCurrentValue?.(p)==null?'—':String(window.ViewInvAIFunds.getCurrentValue(p).toLocaleString('es-ES',{maximumFractionDigits:4}))+' '+String(p.currency||'EUR'))},{label:'1 año',value:N(p.perf1Y)==null?'—':F(p.perf1Y,2)+'%',tone:N(p.perf1Y)>=0?'positive':'negative'}]
  })).join('');
  const total=tr.length+us.length+fundProducts.length;
- const empty=text=>'<div class="favorites-group-empty">'+text+'</div>';
- box.innerHTML=
-  '<div class="favorites-overview">'+
-   '<div><small>TOTAL</small><strong>'+total+'</strong><span>guardados</span></div>'+
-   '<div><small>TR / LSX</small><strong>'+tr.length+'</strong><span>acciones</span></div>'+
-   '<div><small>EEUU</small><strong>'+us.length+'</strong><span>acciones</span></div>'+
-   '<div><small>FONDOS / ÍNDICES</small><strong>'+fundProducts.length+'</strong><span>productos</span></div>'+
-  '</div>'+
-  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot tr"></span><h2>Trade Republic / LSX</h2></div><b>'+tr.length+'</b></header><div class="favorites-market-list">'+(tr.join('')||empty('No has marcado todavía acciones de TR / LSX como favoritas.'))+'</div></section>'+
-  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot us"></span><h2>Estados Unidos</h2></div><b>'+us.length+'</b></header><div class="favorites-market-list">'+(us.join('')||empty('No has marcado todavía acciones de EEUU como favoritas.'))+'</div></section>'+
-  '<section class="favorites-market-group"><header><div><span class="favorites-market-dot fund"></span><h2>Fondos / Índices</h2></div><b>'+fundProducts.length+'</b></header><div class="favorites-market-list">'+(fundsHtml||empty('Marca fondos o ETFs con la estrella del catálogo para verlos aquí.'))+'</div></section>';
+ // Segmented filter instead of four counter boxes: the counts live in the segments.
+ let filter='all';try{filter=localStorage.getItem('viewinvai:favorites-filter')||'all'}catch(e){}
+ if(!['all','tr','us','funds'].includes(filter))filter='all';
+ const seg=(key,label,n)=>'<button type="button" class="tab'+(filter===key?' active':'')+'" data-favorites-filter="'+key+'" aria-pressed="'+(filter===key)+'">'+label+' <b>'+n+'</b></button>';
+ const groups=[
+  ['tr','tr','Trade Republic / LSX',tr.join(''),tr.length],
+  ['us','us','Estados Unidos',us.join(''),us.length],
+  ['funds','fund','Fondos / Índices',fundsHtml,fundProducts.length]
+ ].filter(([key,,,,n])=>filter===key||(filter==='all'&&n>0));
+ const emptyText={all:'Pulsa la estrella ☆ de cualquier acción, fondo o ETF para guardarlo aquí.',tr:'No has marcado todavía acciones de TR / LSX como favoritas.',us:'No has marcado todavía acciones de EEUU como favoritas.',funds:'Marca fondos o ETFs con la estrella del catálogo para verlos aquí.'};
+ const body=groups.filter(g=>g[4]>0).map(([key,dot,title,html,n])=>
+  '<section class="favorites-market-group favorites-compact-group">'+(filter==='all'?'<header><div><span class="favorites-market-dot '+dot+'"></span><h2>'+title+'</h2></div><b>'+n+'</b></header>':'')+'<div class="favorites-market-list">'+html+'</div></section>').join('');
+ box.innerHTML='<div class="market-board-source-tabs favorites-segments" role="tablist" aria-label="Filtrar favoritos">'+
+   seg('all','Todos',total)+seg('tr','TR',tr.length)+seg('us','EEUU',us.length)+seg('funds','Fondos',fundProducts.length)+
+  '</div>'+(body||'<div class="favorites-group-empty favorites-empty-all"><span aria-hidden="true">☆</span>'+emptyText[filter]+'</div>');
 }
+window.addEventListener('viewinvai:portfolio-membership-changed',()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()});
+window.addEventListener('viewinvai:favorite-changed',()=>setTimeout(()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()},60));
+document.addEventListener('click',e=>{
+ const b=e.target.closest&&e.target.closest('[data-favorites-filter]');if(!b)return;
+ try{localStorage.setItem('viewinvai:favorites-filter',b.dataset.favoritesFilter)}catch(err){}
+ renderFavoritesDashboard();
+});
 
 function status(){}
 function renderCurrentView(){
- if(state.currentView==='home')renderHome();
+ if(state.currentView==='today'){if(window.ViewInvAIToday)window.ViewInvAIToday.render()}
+ else if(state.currentView==='home')renderHome();
  else if(state.currentView==='entry')renderEntry();
  else if(state.currentView==='recommendation')renderRecommendation();
  else if(state.currentView==='portfolios'){if(window.ViewInvAIPortfolios)window.ViewInvAIPortfolios.render()}

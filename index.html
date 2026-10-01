@@ -27,8 +27,9 @@
     })();
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261001r2">
-  <link rel="stylesheet" href="ui-density.css?v=20261001r15">
-  <link rel="stylesheet" href="asset-card.css?v=20261001r42">
+  <link rel="stylesheet" href="ui-density.css?v=20261001r16">
+  <link rel="stylesheet" href="asset-card.css?v=20261001r48">
+  <link rel="stylesheet" href="theme-ai.css?v=20261001r4">
 </head>
 <body>
 <div class="app-shell">
@@ -39,6 +40,7 @@
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
+      <button class="nav-item" data-view="today"><span>⌂</span>Mi día</button>
       <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
       <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Radar AI</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
@@ -64,6 +66,17 @@
         <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
       </div>
     </div>
+
+    <section class="view" id="view-today">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Mi día <span class="heading-badge ai-badge">IA</span></h1>
+          <p class="lead" id="todayDate"></p>
+        </div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="today" aria-label="Ayuda sobre Mi día">?</button></div>
+      </div>
+      <div id="todayResults" class="today-results"></div>
+    </section>
 
     <section class="view active" id="view-home">
       <div class="page-heading compact-heading">
@@ -247,13 +260,17 @@
       <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
         <button type="button" class="tab active" role="tab" id="portfolioStocksTab" aria-selected="true" aria-controls="portfolioApp" tabindex="0" data-portfolio-asset="stocks">Acciones</button>
         <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds">Fondos / ETFs</button>
-        <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo de la cartera</button>
+        <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo</button>
+        <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span> Favoritos</button>
       </div>
       <div id="portfolioApp" class="portfolio-app" role="tabpanel" aria-labelledby="portfolioStocksTab" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
       </div>
       <div id="fundPortfolioApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFundsTab" data-portfolio-asset-panel="funds" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
+      </div>
+      <div id="portfolioFavoritesApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFavoritesTab" data-portfolio-asset-panel="favorites" hidden>
+        <div id="favoritesDashboard" class="favorites-dashboard"></div>
       </div>
       <div id="portfolioGoalApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioGoalTab" data-portfolio-asset-panel="goal" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para usar Objetivo de la cartera.</div>
@@ -268,7 +285,7 @@
         </div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="favorites" aria-label="Ayuda sobre Favoritos">?</button></div>
       </div>
-      <div id="favoritesDashboard" class="favorites-dashboard"></div>
+      <p class="lead">Tus favoritos están ahora en Carteras · ★ Favoritos.</p>
     </section>
 
     <section class="view" id="view-funds">
@@ -343,14 +360,17 @@
         <div><h1>Potencial futuro <span class="heading-badge ai-badge">IA · CATALIZADORES</span></h1><p class="lead">Fusiona oportunidades, calendario y noticias en un único listado por acción: qué catalizador tiene, cuándo puede ocurrir, cotización actual y variación.</p></div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="future" aria-label="Ayuda sobre Potencial futuro">?</button><button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button></div>
       </div>
-      <div class="future-filter-bar">
+      <div class="future-filter-bar future-filter-compact">
         <select id="futureHorizon" class="select"><option value="1">1 día</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
-        <select id="futureType" class="select"><option value="all">Todos los catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
-        <select id="futureSector" class="select"><option value="all">Todos los sectores</option></select>
-        <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
-        <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
-        <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
-        <button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button>
+        <button type="button" class="filter-icon-button future-filter-open" data-filter-sheet-target="#futureFilterPanel" data-filter-sheet-title="Filtros · Potencial futuro" aria-label="Más filtros" title="Más filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="futureFilterCount" class="filter-count-badge" hidden></span></button>
+        <div id="futureFilterPanel" class="future-filter-panel filter-sheet-source">
+          <label class="future-sheet-field"><span>Catalizador</span><select id="futureType" class="select"><option value="all">Todos los catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select></label>
+          <label class="future-sheet-field"><span>Sector</span><select id="futureSector" class="select"><option value="all">Todos los sectores</option></select></label>
+          <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
+          <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
+          <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
+          <div class="filter-actions"><button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Listo</button></div>
+        </div>
       </div>
       <div id="futureResults" class="future-list"></div>
     </section>
@@ -490,15 +510,15 @@
           </div>
         </article>
 
-        <article class="settings-card source-health-settings-card compact-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></div>
+        <details class="settings-card source-health-settings-card compact-settings-card source-health-collapsible">
+          <summary class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></summary>
           <div class="settings-status-row" data-source-row="tradeRepublic"><span><strong>Trade Republic / LSX</strong></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="nasdaq"><span><strong>Nasdaq / EEUU</strong></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="sec"><span><strong>SEC / EDGAR</strong></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="clinicalTrials"><span><strong>ClinicalTrials.gov</strong></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="fda"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="push" id="sourceStatusPushRow"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
-        </article>
+        </details>
       </div>
     </section>
 
@@ -590,11 +610,18 @@
     </aside>
 
     <div class="market-quick-backdrop" id="marketQuickBackdrop" aria-hidden="true"></div>
-    <aside class="market-quick-sheet" id="marketQuickSheet" aria-label="Más visitados esta semana" aria-hidden="true">
-      <header><strong>Más visitados esta semana</strong></header>
-      <div id="marketQuickContent"></div>
+    <aside class="market-quick-sheet market-sheet" id="marketQuickSheet" role="dialog" aria-modal="true" aria-label="Mercados" aria-hidden="true">
+      <div class="market-sheet-handle" aria-hidden="true"></div>
+      <header class="market-sheet-head"><div><small>MERCADOS</small><strong>Situación del mercado</strong></div><button type="button" class="market-sheet-close" data-market-sheet-close aria-label="Cerrar">×</button></header>
+      <div class="market-sheet-status" id="marketSheetStatus"></div>
+      <nav class="market-sheet-tabs" role="tablist" aria-label="Secciones de Mercados">
+        <button type="button" role="tab" class="active" aria-selected="true" data-market-sheet-tab="situation">Situación</button>
+        <button type="button" role="tab" aria-selected="false" data-market-sheet-tab="viewed">Vistos</button>
+        <button type="button" data-market-sheet-view="home">Mercado completo</button>
+      </nav>
+      <div class="market-sheet-body" id="marketSheetBody"></div>
+      <div id="marketQuickContent" class="market-sheet-viewed" hidden></div>
     </aside>
-    <button type="button" class="market-quick-toggle" id="marketQuickToggle" aria-label="Abrir resumen rápido" aria-expanded="false">⌃</button>
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌁</span><small>Mercados</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>▣</span><small>Carteras</small></button>
@@ -608,28 +635,30 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20260925r3"></script>
-<script src="app.js?v=20261001r1"></script>
+<script src="app.js?v=20261001r4"></script>
 <script src="settings.js?v=20261001r20"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261001r30"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
-<script src="events.js?v=20261001r2"></script>
-<script src="asset-card.js?v=20261001r20"></script>
-<script src="stock-list.js?v=20261001r20"></script>
-<script src="recommendation.js?v=20261001r33"></script>
-<script src="help.js?v=20260925r1"></script>
-<script src="stock-profile.js?v=20261001r1"></script>
+<script src="events.js?v=20261001r4"></script>
+<script src="asset-card.js?v=20261001r23"></script>
+<script src="stock-list.js?v=20261001r23"></script>
+<script src="recommendation.js?v=20261001r34"></script>
+<script src="today.js?v=20261001r1"></script>
+<script src="help.js?v=20261001r1"></script>
+<script src="stock-profile.js?v=20261001r2"></script>
 <script src="catalog.js?v=20261001r32"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r2"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261001r1"></script>
+<script src="navigation.js?v=20261001r4"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
-<script src="funds.js?v=20261001r7"></script>
+<script src="ui-shell.js?v=20261001r1"></script>
+<script src="funds.js?v=20261001r8"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r3"></script>
 <script src="stock-notifications.js?v=20260930r3"></script>
 <script type="module" src="auth.js?v=20260930r2"></script>
-<script type="module" src="portfolio.js?v=20261001r41"></script>
+<script type="module" src="portfolio.js?v=20261001r43"></script>
 </body>
 </html>

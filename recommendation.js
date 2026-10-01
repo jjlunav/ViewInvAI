@@ -505,14 +505,14 @@ function radarAiCard(row){
  const s=row.s,preferTr=row.preferTr,a=row.analysis;
  const tierLabel=row.tier==='high'?'ALTA CONVICCIÓN':row.tier==='opportunity'?'OPORTUNIDAD':'VIGILANCIA';
  const venueNote=preferTr&&!row.liveVenue?' · LSX pendiente':'';
- const cells=[
-  {label:'Score',value:F(row.score,0)+'/100',tone:row.tier==='high'?'buy':row.tier==='opportunity'?'watch':'muted'},
-  {label:'Datos',value:F(row.quality,0)+'/100',tone:row.quality>=60?'positive':row.quality>=45?'watch':'muted'}
- ];
+ const ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ // Compact card: the score is the chip beside the name (ring colour by tier) and data
+ // quality joins the subtitle, so the Score/Datos row is no longer needed.
  return standardStockCard(s,0,{
-  se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
-  hint:'Radar AI · '+tierLabel,cells,
-  subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
+  se:a.se||currentMarketSession(),preferTr,rankLabel:F(row.score,0),context:'recommendation',
+  hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100',cells:[],
+  className:'radar-ai-card radar-ai-card-'+row.tier,
+  subtitle:[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Datos '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
   openAttrs:stockOpenAttrs(s,'Radar IA',preferTr),
   detailsHtml:''
  });

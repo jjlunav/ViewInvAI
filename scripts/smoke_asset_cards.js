@@ -77,6 +77,9 @@ window.checkAssetCards = async function () {
    {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
    {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
   ],watchlist:[],portfolioTransactionSummaries:{}});
+  // Positions are sortable; this fixture checks per-row market data, so keep insertion order
+  // (both rows are the same company, and sorting by name is stable).
+  try{localStorage.setItem('viewinvai:position-sort','name')}catch(_){}
   portfolio.render();view.style.display='block';
   const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
   assert(rows.length===2,'portfolio positions did not render');
@@ -144,13 +147,17 @@ window.checkAssetCards = async function () {
   const cashRow=view.querySelector('[data-portfolio-cash-edit="ci"]');
   assert(cashRow&&/Capital líquido/.test(cashRow.textContent),'manual liquid-capital row is missing');
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
-  assert(assetTabs.length===3&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
+  assert(assetTabs.length===4&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
   const fundsApi=window.ViewInvAIFunds,stockPanel=document.querySelector('#portfolioApp'),fundPanel=document.querySelector('#fundPortfolioApp');
   assert(fundsApi&&typeof fundsApi.setPortfolioAssetMode==='function','portfolio asset mode controller is missing');
   fundsApi.setPortfolioAssetMode('funds',false);
   assert(stockPanel.hidden&&stockPanel.classList.contains('is-hidden')&&!fundPanel.hidden&&!fundPanel.classList.contains('is-hidden'),'stock and fund portfolio panels are visible at the same time');
   fundsApi.setPortfolioAssetMode('stocks',false);
   assert(!stockPanel.hidden&&!stockPanel.classList.contains('is-hidden')&&fundPanel.hidden&&fundPanel.classList.contains('is-hidden'),'portfolio panels did not return to stocks-only mode');
+  const favPanel=document.querySelector('#portfolioFavoritesApp');
+  fundsApi.setPortfolioAssetMode('favorites',false);
+  assert(favPanel&&!favPanel.hidden&&stockPanel.hidden&&favPanel.querySelector('#favoritesDashboard'),'Carteras · Favoritos tab did not show the favourites panel');
+  fundsApi.setPortfolioAssetMode('stocks',false);
   fundsApi.setPortfolioAssetMode('goal',false);
   const goalView=document.querySelector('#portfolioGoalApp');
   assert(!goalView.hidden&&!goalView.classList.contains('is-hidden'),'portfolio goal panel did not open');
@@ -166,7 +173,7 @@ window.checkAssetCards = async function () {
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'portfolio row duplicated the shared detail');
   closeQuickProfile(false);
   const profileButton=view.querySelector('[data-portfolio-stock-profile]');
-  assert(profileButton&&/Ficha/.test(profileButton.textContent||''),'explicit Ficha button is missing');
+  assert(profileButton&&/ficha/i.test((profileButton.textContent||'')+' '+(profileButton.getAttribute('aria-label')||'')),'explicit Ficha button is missing');
   profileButton.click();
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'Ficha button did not open the shared detail');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'detail was duplicated');

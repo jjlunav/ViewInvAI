@@ -22,6 +22,7 @@
   '</div>';
  }
 
+ const FICHA_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="8.5" cy="10.5" r="2"/><path d="M5.8 16c.6-1.6 1.6-2.4 2.7-2.4s2.1.8 2.7 2.4M13.5 9.5h4.5M13.5 12.5h4.5M13.5 15.5h3"/></svg>';
  function render(options={}){
   const cells=Array.isArray(options.cells)?options.cells.filter(Boolean):[];
   const quoteCell=options.quoteCell||cells[0]||null;
@@ -35,14 +36,17 @@
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(chevronOnly?' data-end="chevron"':'')+(options.openAttrs||'')+'>'+
     '<div class="asset-card-marker">'+(options.leadingHtml||'')+'</div>'+
-    '<div class="asset-card-identity"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
+    '<div class="asset-card-identity'+(options.sparkHtml?' has-spark':'')+'"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+(options.sparkHtml||'')+'</div></div>'+
     '<div class="asset-card-quote-slot">'+cellHtml(quoteCell,'asset-card-quote-cell')+'</div>'+
     '<div class="asset-card-context-slot">'+contextHtml(contextual)+'</div>'+
     '<div class="asset-card-end-actions">'+
       (options.rowActionsHtml?'<div class="asset-card-row-actions">'+options.rowActionsHtml+'</div>':'')+
       (options.openLabel&&interactive
-        ?'<button type="button" class="asset-card-open asset-card-open-button"'+(options.openActionAttrs||'')+'>'+escape(options.openLabel)+' <b aria-hidden="true">›</b></button>'
-        :'<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>')+
+        ?(options.openIcon
+          // Icon-only variant: the caller's openActionAttrs carry the aria-label/title.
+          ?'<button type="button" class="asset-card-open asset-card-open-button asset-card-open-icon"'+(options.openActionAttrs||'')+'>'+FICHA_ICON+'</button>'
+          :'<button type="button" class="asset-card-open asset-card-open-button"'+(options.openActionAttrs||'')+'>'+escape(options.openLabel)+' <b aria-hidden="true">›</b></button>')
+        :'')+
     '</div>'+
    '</div>'+
    (options.metaHtml?'<div class="asset-card-meta" data-card-template="compact-slots"><span class="asset-card-meta-marker" aria-hidden="true"></span><div class="asset-card-meta-content">'+options.metaHtml+'</div><span class="asset-card-meta-action" aria-hidden="true"></span></div>':'')+

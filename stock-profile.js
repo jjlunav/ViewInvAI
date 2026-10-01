@@ -356,6 +356,25 @@ function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
  }
  return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current" data-us-current-hero-key="'+E(stockKey(s))+'">'+currentUsPrimaryHtml(s,se)+'</div></div>';
 }
+// Header strip: the AI verdict (taps through to the IA tab) and two key session figures,
+// so the essentials are visible without switching tabs.
+function profileAiStripHtml(s,isTr=false){
+ let chip='';
+ try{
+  const mode=isTr?'tr':'us',a=recommendationAnalysis(s,mode),score=N(a.score),q=stockDataQuality(s,mode,false);
+  if(score!==null){
+   const tone=q.score<55?'wait':score>=72?'high':score>=60?'watch':'wait';
+   const label=q.score<55?'Datos insuficientes':score>=72?'Alta convicción':score>=60?'Vigilar':'Esperar';
+   chip='<button type="button" class="profile-ai-verdict '+tone+'" data-profile-tab="ai" aria-label="Ver lectura IA: '+E(label)+' '+F(score,0)+' de 100"><span>✦ IA</span><b>'+E(label)+'</b><em>'+F(score,0)+'</em></button>';
+  }
+ }catch(e){}
+ const lo=N(s.dayLow),hi=N(s.dayHigh),vol=N(s.volume),avg=N(s.avgVolume);
+ const facts=[];
+ if(!isTr&&lo!==null&&hi!==null)facts.push('<span><small>Rango</small><b>'+F(lo,2)+' – '+F(hi,2)+'</b></span>');
+ if(vol!==null&&avg)facts.push('<span><small>Vol.</small><b>'+F(vol/avg,2)+'×</b></span>');
+ if(!chip&&!facts.length)return'';
+ return '<div class="profile-ai-strip">'+chip+facts.join('')+'</div>';
+}
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -371,6 +390,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
+    profileAiStripHtml(s,isTr)+
    '</div>'+
   '</header>';
 }

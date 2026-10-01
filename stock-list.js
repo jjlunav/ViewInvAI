@@ -240,6 +240,20 @@ function effectiveSessionChange(s,se=currentMarketSession()){
  return N(s.changePct);
 }
 
+// Trend mini-chart from the performance figures the snapshot already carries (YTD, 6M, 3M,
+// 1M, 1W): the price at each point is reconstructed as now / (1 + perf). No extra requests.
+function trendSparkHtml(s){
+ const now=N(s&&s.price);if(now===null||now<=0)return'';
+ const jan1=new Date(new Date().getFullYear(),0,1),ytdAge=Math.max(1,Math.round((Date.now()-jan1)/864e5));
+ const pts=[[ytdAge,s.perfYtd],[182,s.perf6M],[91,s.perf3M],[30,s.perfMonth],[7,s.perfWeek]]
+  .map(([age,p])=>{p=N(p);return p===null||p<=-99.9?null:[age,now/(1+p/100)]}).filter(Boolean);
+ if(pts.length<3)return'';
+ pts.push([0,now]);pts.sort((a,b)=>b[0]-a[0]);
+ const span=pts[0][0],vals=pts.map(p=>p[1]),mx=Math.max(...vals),mn=Math.min(...vals),rng=mx-mn||1;
+ const line=pts.map(([age,v])=>((span-age)/span*56).toFixed(1)+','+(17-(v-mn)/rng*14).toFixed(1)).join(' ');
+ const change=(now/pts[0][1]-1)*100,up=change>=0,label='Tendencia desde hace '+(span>=170?'6 meses':span+' días')+': '+(up?'+':'')+change.toFixed(1).replace('.',',')+'%';
+ return '<svg class="asset-card-spark '+(up?'up':'down')+'" viewBox="0 0 56 20" role="img" aria-label="'+label+'"><title>'+label+'</title><polyline points="'+line+'"/></svg>';
+}
 function standardStockCard(s,i=0,opts={}){
  let se=opts.se||currentMarketSession(),preferTr=opts.preferTr===true,ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
  let hint=opts.hint||why(s,se,preferTr),rank=opts.rankLabel!==undefined?opts.rankLabel:'#'+(i+1);
@@ -258,7 +272,8 @@ function standardStockCard(s,i=0,opts={}){
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
   metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,rowActionsHtml:opts.rowActionsHtml||'',className:opts.className,
-  openLabel:opts.openLabel||'',openActionAttrs:opts.openActionAttrs||''
+  openLabel:opts.openLabel||'',openIcon:opts.openIcon===true,openActionAttrs:opts.openActionAttrs||'',
+  sparkHtml:opts.spark===false?'':trendSparkHtml(s)
  });
 }
 function card(s,i,se=SES(),dense=false,rankText='',preferTr=false){

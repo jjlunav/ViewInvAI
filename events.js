@@ -70,10 +70,12 @@ function groupFutureEvents(events){
 function futureRow(group,index,trOnly){
  let e=group.first,s=stockForEvent(e)||e,preferTr=trOnly&&trTradable(s),label=EL(e),when=eventWhen(e);
  let details=group.items.map(eventItem).join('');
- let context='<div class="future-card-context">'+
-  '<span class="future-card-catalyst"><small>CATALIZADOR</small><b title="'+E(e.title||e.fact||'')+'">'+E(label)+'</b></span>'+
-  '<span><small>FECHA</small><b>'+E(when)+'</b></span>'+
-  (group.items.length>1?'<span><small>EVENTOS</small><b>'+group.items.length+'</b></span>':'')+
+ // One compact line: catalyst chip + date (+N when the stock has more events).
+ let shortWhen=String(when||'').replace('/'+new Date().getFullYear(),'');
+ let context='<div class="future-card-context future-chip-line">'+
+  '<span class="future-chip" title="'+E(e.title||e.fact||label)+'">'+E(label)+'</span>'+
+  '<span class="future-when">'+E(shortWhen)+'</span>'+
+  (group.items.length>1?'<span class="future-more">+'+(group.items.length-1)+'</span>':'')+
  '</div>';
  return standardStockCard(s,index,{
   se:currentMarketSession(),
@@ -82,13 +84,15 @@ function futureRow(group,index,trOnly){
   rankLabel:'#'+(index+1),
   hint:label+' · '+when,
   cells:[{label:'',html:context}],
-  detailsLabel:'Más información del catalizador',
+  detailsLabel:'Detalle del catalizador',
   detailsHtml:details
  });
 }
 function renderFuture(){
  const horizon=+document.querySelector('#futureHorizon')?.value||14,type=document.querySelector('#futureType')?.value||'all',sector=document.querySelector('#futureSector')?.value||'all',trOnly=!!document.querySelector('#futureTrOnly')?.checked,now=Date.now();
  const fromValue=document.querySelector('#futureDateFrom')?.value||'',toValue=document.querySelector('#futureDateTo')?.value||'';
+ const activeFilters=(type!=='all')+(sector!=='all')+!!fromValue+!!toValue+!trOnly,badge=document.querySelector('#futureFilterCount');
+ if(badge){badge.hidden=!activeFilters;badge.textContent=activeFilters?String(activeFilters):'';}
  const from=fromValue?new Date(fromValue+'T00:00:00').getTime():null,to=toValue?new Date(toValue+'T23:59:59').getTime():null;
  syncFutureSectorOptions();
  let filtered=(db.events||[]).filter(e=>{

@@ -78,7 +78,8 @@ function initHelpSystem(){
  const mark=(selector,key)=>{let el=$(selector);if(el)el.dataset.helpKey=key},markAll=(selector,key)=>$$(selector).forEach(el=>el.dataset.helpKey=key);
  const sectionHelp={
   entry:{title:'Radar de entrada',text:'Escanea acciones que cumplen el criterio seleccionado. Puedes cambiar sesión, mercado y filtros técnicos. La lista se recalcula con los datos disponibles y no aplica ningún precio mínimo.'},
-  recommendation:{title:'Ideas IA',text:'Selecciona oportunidades mediante análisis multifactor de momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores.'},
+  today:{title:'Mi día',text:'Tu resumen al abrir la app: valor de tus carteras con el cambio de hoy y el P&L neto, lo que la IA destaca, tus avisos recientes y los catalizadores de tus posiciones y favoritos en los próximos 14 días. Toca cualquier fila para ir a su detalle.'},
+  recommendation:{title:'Radar IA',text:'Un único radar para Trade Republic y EEUU con el mismo motor multifactor (momentum, volumen, tendencia, RSI, ADX, liquidez y catalizadores). El número junto a cada nombre es su score sobre 100; «Datos» es la calidad de la información. Alta convicción exige cotización ejecutable, calidad suficiente y validación de la IA; oportunidades y vigilancia detectan movimientos antes de que lleguen a ese nivel.'},
   portfolios:{title:'Carteras',text:'Organiza posiciones por bróker. Cada posición y cada favorito sincronizado puede analizarse de forma recurrente para detectar mantenimiento, revisión o posible salida.'},
   heatmap:{title:'Mapa de calor',text:'Agrupa visualmente el mercado por sectores. El tamaño representa capitalización cuando está disponible y el color muestra la variación de la sesión elegida.'},
   future:{title:'Potencial futuro',text:'Busca noticias y eventos próximos que pueden aumentar la volatilidad antes de que ocurra el movimiento: resultados, FDA, contratos, financiación, operaciones corporativas y otros catalizadores.'},

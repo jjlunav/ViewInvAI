@@ -5,8 +5,9 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
+const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
+ today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  recommendation:{icon:'✹',short:'Radar IA',desc:'Alta convicción, oportunidades y vigilancia'},
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
@@ -19,7 +20,34 @@ const NAV_META={
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
  settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
-const PRIMARY_MOBILE_VIEWS=['home','portfolios','recommendation','favorites'];
+// Bottom bar: Inicio · Radar IA · [⌃ Mercados, the centre arrow] · Carteras · Más.
+// Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
+const PRIMARY_MOBILE_VIEWS=['today','recommendation','portfolios'];
+const MORE_VIEWS=['catalog','catalogUS','funds','heatmap','settings'];
+const NAV_GROUPS={
+ today:['today'],
+ home:['home'],
+ recommendation:['recommendation','entry','future'],
+ portfolios:['portfolios'],
+ catalogs:['catalog','catalogUS','funds','heatmap'],
+ settings:['settings']
+};
+const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar IA',entry:'Entrada',future:'Futuro'};
+const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar IA',portfolios:'Carteras'};
+function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
+function renderSectionSwitcher(){
+ document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
+ const view=document.querySelector('.view.active');if(!view)return;
+ const group=NAV_GROUPS[navGroupOf(state.currentView)]||[];
+ if(group.length<2)return;
+ const nav=document.createElement('nav');
+ nav.className='section-switcher';nav.setAttribute('aria-label','Secciones');
+ nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(v===state.currentView?' active':'')+'" data-section-view="'+E(v)+'" aria-current="'+(v===state.currentView?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
+ const heading=view.querySelector(':scope>.page-heading');
+ if(heading)heading.after(nav);else view.prepend(nav);
+ const active=nav.querySelector('.active');
+ if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center'}));
+}
 
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
 function navigationIconHtml(v){let m=NAV_META[v]||{};return m.iconHtml||E(m.icon||'')}
@@ -32,11 +60,14 @@ function renderNavigation(){
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
  const direct=PRIMARY_MOBILE_VIEWS;
- const rest=order.filter(v=>!direct.includes(v));
+ const rest=MORE_VIEWS.filter(v=>NAV_META[v]);
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
-  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(NAV_META[v].short)+'</small></button>').join('')+
-   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
+  const item=v=>'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>';
+  bottom.innerHTML=item('today')+item('recommendation')+
+   '<button type="button" class="mobile-nav-bump" data-market-bump="1" aria-label="Abrir Mercados" title="Mercados" aria-haspopup="dialog" aria-controls="marketQuickSheet" aria-expanded="false"><span class="mobile-nav-bump-cap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 14.5 12 8.5l6 6"/></svg></span></button>'+
+   item('portfolios')+
+   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false" aria-controls="mobileMoreSheet"><span>•••</span><small>Más</small></button>';
  }
  if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
@@ -45,10 +76,11 @@ function renderNavigation(){
  syncMobileNavigation();
 }
 function syncMobileNavigation(){
- $$('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
- let direct=$$('.mobile-nav-item[data-mobile-view]').map(x=>x.dataset.mobileView);
- let more=$('.mobile-nav-item[data-mobile-more]');
- if(more)more.classList.toggle('active',!direct.includes(state.currentView));
+ const group=navGroupOf(state.currentView);
+ $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
+ const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
+ const more=$('.mobile-nav-item[data-mobile-more]');if(more)more.classList.toggle('active',MORE_VIEWS.includes(state.currentView));
+ renderSectionSwitcher();
 }
 function closeMobileMore(){
  let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('.mobile-nav-item[data-mobile-more]');
@@ -178,6 +210,8 @@ function initNativeBackHandling(){
 }
 function show(v,preserveProfile=false,recordHistory=true){
  if(v==='alerts')v='home';
+ // Favoritos vive ahora como pestaña de Carteras.
+ if(v==='favorites'){v='portfolios';setTimeout(()=>window.ViewInvAIFunds?.setPortfolioAssetMode?.('favorites',false),0)}
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
@@ -195,33 +229,86 @@ document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=
 document.addEventListener('click',e=>{
  let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
  if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
-  e.preventDefault();let v=mobileView.dataset.mobileView;if(v)show(v);return;
+  e.preventDefault();let v=mobileView.dataset.mobileView;
+  if(v&&mobileView.classList.contains('mobile-nav-item')){
+   const group=NAV_GROUPS[v]||[v];
+   if(group.includes(state.currentView)&&!document.body.classList.contains('stock-detail-open')){v=group[0]}
+   else{try{const last=localStorage.getItem('viewinvai:nav-last:'+v);if(last&&group.includes(last))v=last}catch(_){}}
+  }
+  if(v)show(v);return;
  }
+ let bump=e.target.closest&&e.target.closest('[data-market-bump]');
+ if(bump){e.preventDefault();toggleMobileMore(false);toggleMarketQuick();return}
  let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
- if(mobileMore){e.preventDefault();toggleMobileMore();return}
- let quick=e.target.closest&&e.target.closest('#marketQuickToggle');
- if(quick){e.preventDefault();toggleMarketQuick();return}
+ if(mobileMore){e.preventDefault();toggleMarketQuick(false);toggleMobileMore();return}
 });
+document.addEventListener('click',e=>{
+ const sw=e.target.closest&&e.target.closest('[data-section-view]');
+ if(sw){e.preventDefault();show(sw.dataset.sectionView)}
+});
+window.addEventListener('viewinvai:view-changed',()=>{try{localStorage.setItem('viewinvai:nav-last:'+navGroupOf(state.currentView),state.currentView)}catch(_){}});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 
 function toggleMarketQuick(force){
- const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),button=$('#marketQuickToggle'),nav=$('#mobileBottomNav');
- if(!sheet||!backdrop||!button)return;
+ const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),bump=$('.mobile-nav-bump');
+ if(!sheet||!backdrop)return;
  const open=typeof force==='boolean'?force:!sheet.classList.contains('open');
  sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
- button.setAttribute('aria-expanded',open?'true':'false');button.textContent=open?'⌄':'⌃';
- if(open){
-  button.classList.add('inside-sheet');
-  sheet.insertBefore(button,sheet.firstChild);
- }else{
-  button.classList.remove('inside-sheet');
-  if(nav&&nav.parentNode)nav.parentNode.insertBefore(button,nav);
- }
+ if(bump)bump.setAttribute('aria-expanded',open?'true':'false');
  document.body.classList.toggle('market-quick-open',open);
- if(open&&typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
+ if(open){document.body.classList.remove('chrome-hide');renderMarketSheet()}
 }
+/* Hoja de Mercados: situación (sesiones, amplitud y extremos del día) y accesos a cada sección. */
+let marketSheetTab='situation';
+function marketSheetRow(s,preferTr,change){
+ const ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ return '<div class="market-sheet-row" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0"><b>'+E(ticker||'—')+'</b><span>'+E(s.name||'')+'</span><em class="'+(change>=0?'positive':'negative')+'">'+(change>0?'+':'')+F(change,2)+'%</em></div>';
+}
+function marketSheetBreadth(label,values){
+ const up=values.filter(v=>v>0).length,down=values.filter(v=>v<0).length,total=up+down;
+ if(total<10)return'';
+ const pct=Math.round(up/total*100);
+ return '<div class="market-sheet-breadth"><div><span>'+E(label)+'</span><b>'+up+' suben · '+down+' bajan</b></div><i data-up="'+pct+'"><s></s></i></div>';
+}
+function renderMarketSheet(){
+ const status=$('#marketSheetStatus'),body=$('#marketSheetBody'),viewed=$('#marketQuickContent');
+ if(!status||!body)return;
+ const se=currentMarketSession(),ms=window.ViewInvAIMarketSession;
+ let lsx=null;try{lsx=ms&&ms.lsxOpen(ms.zoneClock('Europe/Berlin'))}catch(_){}
+ const usOpen=se==='regular',usExt=se==='premarket'||se==='postmarket';
+ status.innerHTML='<span class="'+(usOpen?'is-open':usExt?'is-ext':'is-closed')+'"><i></i>EEUU · '+E(SN(se))+'</span>'+
+  (lsx===null?'':'<span class="'+(lsx?'is-open':'is-closed')+'"><i></i>LSX · '+(lsx?'Abierto':'Cerrado')+'</span>')+
+  (db.meta&&db.meta.updatedAt?'<span class="is-muted">Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>':'');
+ $$('#marketQuickSheet [data-market-sheet-tab]').forEach(b=>{const on=b.dataset.marketSheetTab===marketSheetTab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
+ if(marketSheetTab==='viewed'){
+  if(typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
+  body.innerHTML='<h3 class="market-sheet-title">Más visitados esta semana</h3>'+(viewed?viewed.innerHTML:'');
+  return;
+ }
+ const us=(db.stocks||[]).filter(s=>market(s,'us')),tr=(db.stocks||[]).filter(s=>trTradable(s));
+ const usCh=us.map(s=>[s,SC(s,se)]).filter(x=>x[1]!==null);
+ const trCh=tr.map(s=>[s,trLiveChange(s)]).filter(x=>x[1]!==null);
+ const up=usCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3),down=usCh.slice().sort((a,b)=>a[1]-b[1]).slice(0,3);
+ const trUp=trCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3);
+ const list=(title,rows,preferTr)=>rows.length?'<section class="market-sheet-list"><h3 class="market-sheet-title">'+title+'</h3>'+rows.map(([s,c])=>marketSheetRow(s,preferTr,c)).join('')+'</section>':'';
+ body.innerHTML=marketSheetBreadth('EEUU · '+SN(se),usCh.map(x=>x[1]))+marketSheetBreadth('Trade Republic · LSX',trCh.map(x=>x[1]))+
+  list('Más suben · EEUU',up,false)+list('Más bajan · EEUU',down,false)+list('Más suben · LSX',trUp,true)+
+  '<button type="button" class="btn secondary market-sheet-more" data-market-sheet-view="home">Ver mercado completo</button>';
+ // CSP (style-src 'self') blocks inline style attributes; set the bar width through CSSOM.
+ body.querySelectorAll('.market-sheet-breadth i[data-up]').forEach(i=>i.style.setProperty('--up',i.dataset.up+'%'));
+}
+document.addEventListener('click',e=>{
+ const sheet=e.target.closest&&e.target.closest('#marketQuickSheet');if(!sheet)return;
+ const tab=e.target.closest('[data-market-sheet-tab]');
+ if(tab){e.preventDefault();marketSheetTab=tab.dataset.marketSheetTab;renderMarketSheet();return}
+ const go=e.target.closest('[data-market-sheet-view]');
+ if(go){e.preventDefault();toggleMarketQuick(false);show(go.dataset.marketSheetView);return}
+ if(e.target.closest('[data-market-sheet-close]')){toggleMarketQuick(false);return}
+ if(e.target.closest('[data-open-stock]'))setTimeout(()=>toggleMarketQuick(false),0);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('market-quick-open'))toggleMarketQuick(false)});
 $('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));
 
 
