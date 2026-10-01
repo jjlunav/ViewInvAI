@@ -2062,7 +2062,8 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
       engine: "viewinvai-hybrid/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
-      model
+      model,
+      aiValidated: true
     };
   } catch (error) {
     console.warn("Workers AI analysis failed", String(error && error.message || error));
@@ -2811,10 +2812,12 @@ async function scanNotificationPreferences(env,services){
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
         // Match the Radar IA screen: high conviction needs score>=68, data quality>=65, a chart and
         // an AI buy with confidence>=70; opportunities need score>=60 and quality>=48.
-        const radarQuality=finiteNumber(fallback.quality)??0;
-        const nextRadar=current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
+        // Opportunity uses the deterministic score like the screen; high conviction also needs a real
+        // model answer (aiValidated), never the deterministic fallback.
+        const radarQuality=finiteNumber(fallback.quality)??0,radarScore=finiteNumber(fallback.score)??0;
+        const nextRadar=current.aiValidated===true&&current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
           ?"HIGH"
-          :(current.score>=60&&radarQuality>=48&&["BUY","WATCH"].includes(current.signal)?"OPPORTUNITY":"");
+          :(radarScore>=60&&radarQuality>=48?"OPPORTUNITY":"");
         const nextPulse=String(current.signal||"WAIT").toUpperCase();
         const previousRadar=radarState;
         const previousPulse=pulseState;
@@ -3367,7 +3370,7 @@ async function scanPortfolioGoalNotifications(env,services){
       for(const p of positions){
         const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),preferTr=Number(p.prefer_tr)===1;
         const markPrice=await verifiedGoalPriceEur(stock,preferTr,"LAST"),sellPrice=await verifiedGoalPriceEur(stock,preferTr,"SELL");
-        if(qty>0&&(markPrice===null||sellPrice===null)){quotesIncomplete=true;break}
+        if(qty>0&&markPrice===null){quotesIncomplete=true;break}
         if(markPrice!==null)capital+=qty*markPrice;
         const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
         const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
@@ -3378,7 +3381,9 @@ async function scanPortfolioGoalNotifications(env,services){
         const stopHit=positionReturnPct!==null&&positionReturnPct<=-goalBand.maxStopPct;
         const takeHit=positionReturnPct!==null&&positionReturnPct>=goalBand.maxStopPct*goalBand.minRR;
         const pct=stopHit||signal==="SELL"||score<=35||stagnant?100:takeHit?50:signal==="REVIEW"||score<48?50:0;
-        if(pct<=0||qty<1||sellPrice===null)continue;
+        if(pct<=0||qty<1)continue;
+        // Only a planned sale needs the bid; without it this minute the plan is unknown, not changed.
+        if(sellPrice===null){quotesIncomplete=true;break}
         const units=Math.max(1,Math.min(Math.floor(qty),Math.round(qty*pct/100)));
         if(units<1)continue;
         const fee=preferTr?1:0;
