@@ -996,8 +996,10 @@ async function handleMe(request, env, user, json) {
   }, analysis || {}, {
     notifications_enabled: notifications.enabled ? 1 : 0,
     notify_news_events: notifications.newsEvents ? 1 : 0,
-    notify_pulse_ai: notifications.pulseAi ? 1 : 0,
     notify_radar: notifications.radar ? 1 : 0,
+    notify_radar_high: notifications.radarHigh ? 1 : 0,
+    notify_radar_opportunity: notifications.radarOpportunity ? 1 : 0,
+    notify_radar_watch: notifications.radarWatch ? 1 : 0,
     notify_price: notifications.price ? 1 : 0,
     notify_portfolio: notifications.portfolio ? 1 : 0,
     notify_portfolio_goal: notifications.portfolioGoal ? 1 : 0
@@ -2093,23 +2095,40 @@ async function ensureGlobalNotificationSettingsSchema(env){
       if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
     }
   }
+  // Radar AI tiers (2026-10): one switch per tier. On first migration high/opportunity inherit
+  // the old «Cambios en Radar AI»/«Pulso IA» choice; «En vigilancia» starts off.
+  let addedTierColumns=false;
+  for(const column of ["radar_high_enabled","radar_opportunity_enabled","radar_watch_enabled"]){
+    if(names.has(column))continue;
+    try{
+      await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" INTEGER NOT NULL DEFAULT 0").run();
+      addedTierColumns=true;
+    }catch(error){
+      if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
+    }
+  }
+  if(addedTierColumns){
+    await env.DB.prepare("UPDATE user_notification_settings SET radar_high_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END,radar_opportunity_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END").run();
+  }
   globalNotificationSettingsSchemaReady=true;
 }
 
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
-  const pulseAi=optedIn&&Number(row.pulse_ai_enabled)===1;
-  const radar=optedIn&&Number(row.radar_enabled)===1;
+  const radarHigh=optedIn&&Number(row.radar_high_enabled)===1;
+  const radarOpportunity=optedIn&&Number(row.radar_opportunity_enabled)===1;
+  const radarWatch=optedIn&&Number(row.radar_watch_enabled)===1;
+  const radar=radarHigh||radarOpportunity||radarWatch;
   return {
     enabled: optedIn&&Number(row.notifications_enabled)===1,
     newsEvents: optedIn&&Number(row.news_events_enabled)===1,
-    radarAi: pulseAi||radar,
-    pulseAi,
-    radar,
+    radarAi: radar,
+    pulseAi: false,
+    radar,radarHigh,radarOpportunity,radarWatch,
     price: optedIn&&Number(row.price_enabled)===1,
     portfolio: optedIn&&Number(row.portfolio_enabled)===1,
     portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1
@@ -2247,9 +2266,9 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
     const radarConfigured=globalNotifications.radarAi &&
       (notificationPreferenceAllows(assetPreference,"pulse_enabled",false)||notificationPreferenceAllows(assetPreference,"radar_enabled",false));
     if (!radarConfigured) return null;
-    if (current.signal === "BUY" && current.quoteVerified===true && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
+    if (globalNotifications.radarHigh && current.signal === "BUY" && current.quoteVerified===true && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "radar-ai"; severity = "high";
-    } else if (current.quoteVerified===true && previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
+    } else if (globalNotifications.radarOpportunity && current.quoteVerified===true && previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "radar-ai-improving"; severity = "info";
     }
   }
@@ -2572,8 +2591,10 @@ async function handleSettings(request, env, user, json) {
   },existing||{},{
     notifications_enabled:notifications.enabled?1:0,
     notify_news_events:notifications.newsEvents?1:0,
-    notify_pulse_ai:notifications.pulseAi?1:0,
     notify_radar:notifications.radar?1:0,
+    notify_radar_high:notifications.radarHigh?1:0,
+    notify_radar_opportunity:notifications.radarOpportunity?1:0,
+    notify_radar_watch:notifications.radarWatch?1:0,
     notify_price:notifications.price?1:0,
     notify_portfolio:notifications.portfolio?1:0,
     notify_portfolio_goal:notifications.portfolioGoal?1:0
@@ -2591,12 +2612,14 @@ async function handleSettings(request, env, user, json) {
     change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(current.notify_score_change) ?? 20))),
     enabled: body.notificationsEnabled === undefined ? Number(current.notifications_enabled)!==0 : booleanInt(body.notificationsEnabled)===1,
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
-    pulseAi: body.notifyPulseAi === undefined ? Number(current.notify_pulse_ai)!==0 : booleanInt(body.notifyPulseAi)===1,
-    radar: body.notifyRadar === undefined ? Number(current.notify_radar)!==0 : booleanInt(body.notifyRadar)===1,
+    radarHigh: body.notifyRadarHigh === undefined ? Number(current.notify_radar_high)!==0 : booleanInt(body.notifyRadarHigh)===1,
+    radarOpportunity: body.notifyRadarOpportunity === undefined ? Number(current.notify_radar_opportunity)!==0 : booleanInt(body.notifyRadarOpportunity)===1,
+    radarWatch: body.notifyRadarWatch === undefined ? Number(current.notify_radar_watch)!==0 : booleanInt(body.notifyRadarWatch)===1,
     price: body.notifyPrice === undefined ? Number(current.notify_price)!==0 : booleanInt(body.notifyPrice)===1,
     portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1,
     portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1
   };
+  next.radar=next.radarHigh||next.radarOpportunity||next.radarWatch;
   const now = nowIso();
   await env.DB.batch([
     env.DB.prepare(
@@ -2604,9 +2627,9 @@ async function handleSettings(request, env, user, json) {
       "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
     ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
     env.DB.prepare(
-      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) " +
-      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=excluded.pulse_ai_enabled,radar_enabled=excluded.radar_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.pulseAi?1:0,next.radar?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
+      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=0,radar_enabled=excluded.radar_enabled,radar_high_enabled=excluded.radar_high_enabled,radar_opportunity_enabled=excluded.radar_opportunity_enabled,radar_watch_enabled=excluded.radar_watch_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -2614,8 +2637,10 @@ async function handleSettings(request, env, user, json) {
   return json({settings:Object.assign({},saved||{},{
     notifications_enabled:next.enabled?1:0,
     notify_news_events:next.newsEvents?1:0,
-    notify_pulse_ai:next.pulseAi?1:0,
     notify_radar:next.radar?1:0,
+    notify_radar_high:next.radarHigh?1:0,
+    notify_radar_opportunity:next.radarOpportunity?1:0,
+    notify_radar_watch:next.radarWatch?1:0,
     notify_price:next.price?1:0,
     notify_portfolio:next.portfolio?1:0,
     notify_portfolio_goal:next.portfolioGoal?1:0
@@ -2752,7 +2777,7 @@ async function scanNotificationPreferences(env,services){
         continue;
       }
       const pulseConfigured=global.pulseAi&&Number(pref.pulse_enabled)===1;
-      const radarConfigured=global.radar&&Number(pref.radar_enabled)===1;
+      const radarConfigured=global.radar&&(Number(pref.radar_enabled)===1||Number(pref.pulse_enabled)===1);
       const signalConfigured=pulseConfigured||radarConfigured;
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
@@ -2815,32 +2840,30 @@ async function scanNotificationPreferences(env,services){
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
-        // Match the Radar IA screen: high conviction needs score>=68, data quality>=65, a chart and
+        // Match the Radar AI screen: high conviction needs score>=68, data quality>=65, a chart and
         // an AI buy with confidence>=70; opportunities need score>=60 and quality>=48.
         // Opportunity uses the deterministic score like the screen; high conviction also needs a real
         // model answer (aiValidated), never the deterministic fallback.
         const radarQuality=finiteNumber(fallback.quality)??0,radarScore=finiteNumber(fallback.score)??0;
+        // «En vigilancia» is the screen's third tier: a candidate worth following (score>=50,
+        // quality>=40) that does not yet reach the opportunity threshold.
         const nextRadar=current.aiValidated===true&&current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
           ?"HIGH"
-          :(radarScore>=60&&radarQuality>=48?"OPPORTUNITY":"");
+          :(radarScore>=60&&radarQuality>=48?"OPPORTUNITY":(radarScore>=50&&radarQuality>=40?"WATCH":""));
         const nextPulse=String(current.signal||"WAIT").toUpperCase();
         const previousRadar=radarState;
         const previousPulse=pulseState;
         if(radarConfigured){
-          if(nextRadar&&nextRadar!==previousRadar){
+          const tierOn={HIGH:global.radarHigh,OPPORTUNITY:global.radarOpportunity,WATCH:global.radarWatch};
+          const tierLabel={HIGH:"Alta convicción",OPPORTUNITY:"Oportunidad",WATCH:"En vigilancia"};
+          if(nextRadar&&nextRadar!==previousRadar&&tierOn[nextRadar]){
             await sendPreferenceAlert(
-              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar IA · "+pref.ticker,
-              current.thesis||(nextRadar==="HIGH"?"La acción ha alcanzado alta convicción en Radar IA.":"La acción ha entrado en oportunidades de Radar IA.")
+              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+tierLabel[nextRadar]+" · "+pref.ticker,
+              current.thesis||("La acción ha entrado en «"+tierLabel[nextRadar]+"» de Radar AI.")
             );
-          }else if(previousRadar&&!nextRadar){
-            await sendPreferenceAlert(env,pref,"radar-ai-exit","info","Salida de Radar IA · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios activos de Radar IA.");
+          }else if(previousRadar&&!nextRadar&&tierOn[previousRadar]){
+            await sendPreferenceAlert(env,pref,"radar-ai-exit","info","Salida de Radar AI · "+pref.ticker,current.riskSummary||"La acción ya no cumple los criterios activos de Radar AI.");
           }
-        }
-        if(pulseConfigured&&previousPulse&&nextPulse!==previousPulse){
-          await sendPreferenceAlert(
-            env,pref,"pulse-ai-change",nextPulse==="BUY"?"high":"info","Pulso IA · "+pref.ticker,
-            current.thesis||("La lectura IA ha cambiado de "+previousPulse+" a "+nextPulse+".")
-          );
         }
         pulseState=nextPulse;radarState=nextRadar;
       }

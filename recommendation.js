@@ -403,7 +403,7 @@ function setRecommendationMobileGroup(key){
  renderRecommendation();
 }
 function recommendationMobileTabs(){
- return '<nav class="reco-mobile-groups" aria-label="Datos de Ideas IA">'+RECO_MOBILE_GROUPS.map(g=>
+ return '<nav class="reco-mobile-groups" aria-label="Datos de Radar AI">'+RECO_MOBILE_GROUPS.map(g=>
   '<button type="button" class="'+(g.key===recommendationMobileGroup?'active':'')+'" data-reco-mobile-group="'+E(g.key)+'" aria-pressed="'+(g.key===recommendationMobileGroup?'true':'false')+'">'+E(g.label)+'</button>'
  ).join('')+'</nav>';
 }
@@ -513,7 +513,7 @@ function radarAiCard(row){
   hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100',cells:[],
   className:'radar-ai-card radar-ai-card-'+row.tier,
   subtitle:[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Datos '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
-  openAttrs:stockOpenAttrs(s,'Radar IA',preferTr),
+  openAttrs:stockOpenAttrs(s,'Radar AI',preferTr),
   detailsHtml:''
  });
 }

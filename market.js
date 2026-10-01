@@ -791,12 +791,12 @@ function pruneTrLiveSubscriptions(){
 }
 function usStockByKey(key){let s=stockByKey(key);return s&&market(s,'us')?s:null}
 function usVisibleKeys(){
- let nodes=liveNodes('[data-compact-quote-key][data-compact-quote-tr="0"],[data-us-current-hero-key],[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
+ let nodes=liveNodes('[data-compact-quote-key][data-compact-quote-tr="0"],[data-us-poll-key],[data-us-current-hero-key],[data-us-live-key],[data-us-spread-key],[data-us-live-change-key],[data-us-price-usd-key],[data-us-price-eur-key],[data-us-bid-key],[data-us-ask-key],[data-us-heat-key]');
  let h=window.innerHeight||900,seen=new Set(),out=[];
  for(let el of nodes){
   let r=el.getBoundingClientRect();
   if(r.bottom<-400||r.top>h+400)continue;
-  let key=el.dataset.compactQuoteKey||el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
+  let key=(el.dataset.compactQuoteTr==='1'?el.dataset.usPollKey:el.dataset.compactQuoteKey)||el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
   if(!key||seen.has(key))continue;
   let s=usStockByKey(key);if(!s)continue;
   seen.add(key);out.push(s);

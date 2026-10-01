@@ -19,7 +19,8 @@ window.checkAssetCards = async function () {
   test.innerHTML=standardStockCard(trStock,0,{se:'regular',preferTr:true,context:'ci-tr',detailsHtml:''});
   assert(test.querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'TR card does not use the shared compact quote block');
   assert(test.querySelector('.asset-investing-main')&&test.querySelector('.asset-quote-state'),'TR compact quote is incomplete');
-  assert(!test.querySelector('.asset-investing-extended'),'TR card leaked US pre/post data');
+  // A TR card may show the US pre/post line, but only labelled as US and in dollars.
+  test.querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),'TR card shows an unlabelled pre/post line'));
   test.innerHTML=quickProfileHtml(trStock,{preferTr:true});
   assert(test.querySelector('.profile-quote-lsx'),'TR profile hero does not use the LSX-only quote');
   assert(!test.querySelector('.profile-quote-extended'),'TR profile hero leaked US extended session');
@@ -50,7 +51,7 @@ window.checkAssetCards = async function () {
   assert(compact.querySelector('.asset-quote-state'),name+' compact row lost market state/date');
   const isTrRow=compact.dataset.compactQuoteTr==='1';
   const hasExtendedFixture=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
-  if(isTrRow)assert(!compact.querySelector('.asset-investing-extended'),name+' TR row leaked US pre/post data');
+  if(isTrRow)compact.querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),name+' TR row shows an unlabelled pre/post line'));
   else if(hasExtendedFixture&&['premarket','postmarket'].includes(currentMarketSession()))assert(compact.querySelector('.asset-investing-extended'),name+' US row lost available extended-session quote');
   assert(!/\bBID\b|\bASK\b/.test(test.textContent),name+' exposes BID/ASK in compact mode');
   const copy=test.querySelector('[data-copy-isin]');
@@ -92,7 +93,7 @@ window.checkAssetCards = async function () {
   assert(!rows[0].querySelector('[data-position-side="BUY"],[data-position-side="SELL"]'),'portfolio position reintroduced redundant buy/sell controls');
   assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
   assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
-  assert(!rows[1].querySelector('.asset-investing-extended,.asset-session-icon'),'portfolio TR position leaked US pre/post data');
+  rows[1].querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),'portfolio TR position shows an unlabelled pre/post line'));
 
   // A dual-listed company is not "in portfolio" on every venue just because
   // one listing exists. Membership and operation flows must stay market-specific.
