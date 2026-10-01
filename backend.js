@@ -2062,7 +2062,8 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
       engine: "viewinvai-hybrid/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
-      model
+      model,
+      aiValidated: true
     };
   } catch (error) {
     console.warn("Workers AI analysis failed", String(error && error.message || error));
@@ -2766,7 +2767,9 @@ async function scanNotificationPreferences(env,services){
       }
       const price=Number(pref.prefer_tr)===1
         ?(chart&&chart.available?finiteNumber(chart.last):null)
-        :finiteNumber((liveQuote&&liveQuote.price)??stock.usLivePrice??stock.postmarketPrice??stock.premarketPrice??stock.price);
+        // Only a live quote may move a price alert; snapshot pre/post/close prices can belong to a
+        // previous session and would fire false threshold crossings when the live quote fails.
+        :finiteNumber((liveQuote&&liveQuote.price)??stock.usLivePrice);
       let anchorPrice=finiteNumber(pref.anchor_price);
       if(anchorPrice===null&&price!==null){
         anchorPrice=price;
@@ -2807,9 +2810,14 @@ async function scanNotificationPreferences(env,services){
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
-        const nextRadar=current.signal==="BUY"&&current.confidence>=70&&current.score>=60
+        // Match the Radar IA screen: high conviction needs score>=68, data quality>=65, a chart and
+        // an AI buy with confidence>=70; opportunities need score>=60 and quality>=48.
+        // Opportunity uses the deterministic score like the screen; high conviction also needs a real
+        // model answer (aiValidated), never the deterministic fallback.
+        const radarQuality=finiteNumber(fallback.quality)??0,radarScore=finiteNumber(fallback.score)??0;
+        const nextRadar=current.aiValidated===true&&current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
           ?"HIGH"
-          :(current.score>=58&&["BUY","WATCH"].includes(current.signal)?"OPPORTUNITY":"");
+          :(radarScore>=60&&radarQuality>=48?"OPPORTUNITY":"");
         const nextPulse=String(current.signal||"WAIT").toUpperCase();
         const previousRadar=radarState;
         const previousPulse=pulseState;
@@ -3067,7 +3075,9 @@ async function handleAiChat(request, env, user, json, services) {
     });
   } catch (error) {
     console.warn("AI chat failed", String(error && error.message || error));
-    const signalMap = deterministic.score >= 45 ? "COMPRAR" : deterministic.score < -20 ? "EVITAR" : deterministic.score >= 15 ? "VIGILAR" : "ESPERAR";
+    let signalMap = deterministic.score >= 45 ? "COMPRAR" : deterministic.score < -20 ? "EVITAR" : deterministic.score >= 15 ? "VIGILAR" : "ESPERAR";
+    // Same rule as the model: without a server-verified quote there is no current buy signal.
+    if (!quoteVerified && signalMap === "COMPRAR") signalMap = "VIGILAR";
     return json({
       answer: deterministic.thesis + " " + deterministic.riskSummary,
       summary: deterministic.thesis,
@@ -3356,10 +3366,11 @@ async function scanPortfolioGoalNotifications(env,services){
       }
       if(!["tr","us"].includes(scope))continue;
       const goalBand=goalServerRiskBand(goal.risk_profile);
-      const sellKeys=new Set(),sells=[];let released=0,capital=0;
+      const sellKeys=new Set(),sells=[];let released=0,capital=0,quotesIncomplete=false;
       for(const p of positions){
         const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),preferTr=Number(p.prefer_tr)===1;
         const markPrice=await verifiedGoalPriceEur(stock,preferTr,"LAST"),sellPrice=await verifiedGoalPriceEur(stock,preferTr,"SELL");
+        if(qty>0&&markPrice===null){quotesIncomplete=true;break}
         if(markPrice!==null)capital+=qty*markPrice;
         const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
         const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
@@ -3370,7 +3381,9 @@ async function scanPortfolioGoalNotifications(env,services){
         const stopHit=positionReturnPct!==null&&positionReturnPct<=-goalBand.maxStopPct;
         const takeHit=positionReturnPct!==null&&positionReturnPct>=goalBand.maxStopPct*goalBand.minRR;
         const pct=stopHit||signal==="SELL"||score<=35||stagnant?100:takeHit?50:signal==="REVIEW"||score<48?50:0;
-        if(pct<=0||qty<1||sellPrice===null)continue;
+        if(pct<=0||qty<1)continue;
+        // Only a planned sale needs the bid; without it this minute the plan is unknown, not changed.
+        if(sellPrice===null){quotesIncomplete=true;break}
         const units=Math.max(1,Math.min(Math.floor(qty),Math.round(qty*pct/100)));
         if(units<1)continue;
         const fee=preferTr?1:0;
@@ -3378,6 +3391,7 @@ async function scanPortfolioGoalNotifications(env,services){
         sellKeys.add(String(p.stock_key||"").toUpperCase());
         sells.push({ticker:p.ticker||stock&&stock.ticker||"",units,fee});
       }
+      if(quotesIncomplete){processed++;continue}
       let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
       capital+=cashEur;
@@ -3409,9 +3423,12 @@ async function scanPortfolioGoalNotifications(env,services){
           .slice(0,12);
       }
       const finalistRows=goalServerFinalists(candidates,goalBand);
-      const finalists=(await Promise.all(finalistRows.map(async row=>({
+      const pricedFinalists=await Promise.all(finalistRows.map(async row=>({
         ...row,unitEur:await verifiedGoalPriceEur(row.stock,row.preferTr,"BUY"),fee:row.preferTr?1:0
-      })))).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur+row.fee<=pool);
+      })));
+      // A finalist without a quote this minute is unknown, not rejected: keep the previous plan.
+      if(pricedFinalists.some(row=>row.unitEur===null)){processed++;continue}
+      const finalists=pricedFinalists.filter(row=>row.unitEur>0&&row.unitEur+row.fee<=pool);
       const weights=finalists.length===1?[1]:[.65,.35],buys=[];
       finalists.slice(0,2).forEach((row,index)=>{
         const maxPositionEur=Math.max(0,capital*goalBand.maxPosition/100);
