@@ -9,6 +9,8 @@ const files = [
   'asset-card.js',
   'asset-card.css',
   'theme-ai.css',
+  'ui-shell.js',
+  'today.js',
   'styles.css',
   'web-mobile.css',
   'mobile-app.css',

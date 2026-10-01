@@ -27,9 +27,9 @@
     })();
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261001r2">
-  <link rel="stylesheet" href="ui-density.css?v=20261001r15">
-  <link rel="stylesheet" href="asset-card.css?v=20261001r45">
-  <link rel="stylesheet" href="theme-ai.css?v=20261001r3">
+  <link rel="stylesheet" href="ui-density.css?v=20261001r16">
+  <link rel="stylesheet" href="asset-card.css?v=20261001r46">
+  <link rel="stylesheet" href="theme-ai.css?v=20261001r4">
 </head>
 <body>
 <div class="app-shell">
@@ -40,6 +40,7 @@
     </div>
     <div class="workspace-label">ESPACIO DE TRABAJO</div>
     <nav class="nav">
+      <button class="nav-item" data-view="today"><span>⌂</span>Mi día</button>
       <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
       <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Radar AI</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
@@ -65,6 +66,17 @@
         <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
       </div>
     </div>
+
+    <section class="view" id="view-today">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Mi día <span class="heading-badge ai-badge">IA</span></h1>
+          <p class="lead" id="todayDate"></p>
+        </div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="today" aria-label="Ayuda sobre Mi día">?</button></div>
+      </div>
+      <div id="todayResults" class="today-results"></div>
+    </section>
 
     <section class="view active" id="view-home">
       <div class="page-heading compact-heading">
@@ -494,15 +506,15 @@
           </div>
         </article>
 
-        <article class="settings-card source-health-settings-card compact-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></div>
+        <details class="settings-card source-health-settings-card compact-settings-card source-health-collapsible">
+          <summary class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></summary>
           <div class="settings-status-row" data-source-row="tradeRepublic"><span><strong>Trade Republic / LSX</strong></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="nasdaq"><span><strong>Nasdaq / EEUU</strong></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="sec"><span><strong>SEC / EDGAR</strong></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="clinicalTrials"><span><strong>ClinicalTrials.gov</strong></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="fda"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="push" id="sourceStatusPushRow"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
-        </article>
+        </details>
       </div>
     </section>
 
@@ -612,28 +624,30 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20260925r3"></script>
-<script src="app.js?v=20261001r1"></script>
+<script src="app.js?v=20261001r2"></script>
 <script src="settings.js?v=20261001r20"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261001r30"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
-<script src="events.js?v=20261001r3"></script>
+<script src="events.js?v=20261001r4"></script>
 <script src="asset-card.js?v=20261001r22"></script>
-<script src="stock-list.js?v=20261001r21"></script>
-<script src="recommendation.js?v=20261001r33"></script>
-<script src="help.js?v=20260925r1"></script>
-<script src="stock-profile.js?v=20261001r1"></script>
+<script src="stock-list.js?v=20261001r22"></script>
+<script src="recommendation.js?v=20261001r34"></script>
+<script src="today.js?v=20261001r1"></script>
+<script src="help.js?v=20261001r1"></script>
+<script src="stock-profile.js?v=20261001r2"></script>
 <script src="catalog.js?v=20261001r32"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r2"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261001r1"></script>
+<script src="navigation.js?v=20261001r2"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
+<script src="ui-shell.js?v=20261001r1"></script>
 <script src="funds.js?v=20261001r7"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r3"></script>
 <script src="stock-notifications.js?v=20260930r3"></script>
 <script type="module" src="auth.js?v=20260930r2"></script>
-<script type="module" src="portfolio.js?v=20261001r41"></script>
+<script type="module" src="portfolio.js?v=20261001r42"></script>
 </body>
 </html>

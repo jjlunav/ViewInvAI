@@ -294,7 +294,7 @@ html:root:root body .asset-card *{font-variant-numeric:tabular-nums}
 html:not([data-theme="light"]):root:root body .asset-card-copy>strong{color:#f1f8fb!important}
 
 /* ---------- Encabezados de sección: línea de acento mercado→IA ---------- */
-html:root:root body .view>.page-heading{position:relative;border-bottom:0!important}
+html:root:root body .view>.page-heading{border-bottom:0!important}
 html:root:root body .view>.page-heading::after{
  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
  background:linear-gradient(90deg,var(--ai-2),var(--ai-1) 45%,transparent 90%);opacity:.55;pointer-events:none;
@@ -320,15 +320,15 @@ html:not([data-theme="light"]):root:root body :is(.market-board-tabs,.profile-ta
 html:not([data-theme="light"]):root:root body .profile-tabs>button.active,
 html:not([data-theme="light"]):root:root body .fund-mobile-groups>button.active{color:#ffffff!important;background:transparent!important}
 html:root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab.active::after,
-html:root:root body .profile-tabs>button.active::after,
+html:root:root body .profile-tabs>button.active:not(.profile-tab-ai)::after,
 html:root:root body .fund-mobile-groups>button.active::after{
  content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--ai-2);
  box-shadow:0 0 10px rgba(67,228,178,.55);
 }
 html[data-theme="light"]:root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab.active::after,
-html[data-theme="light"]:root:root body .profile-tabs>button.active::after,
+html[data-theme="light"]:root:root body .profile-tabs>button.active:not(.profile-tab-ai)::after,
 html[data-theme="light"]:root:root body .fund-mobile-groups>button.active::after{background:var(--pq-navy);box-shadow:none}
-html:root:root body .profile-tabs>button.profile-tab-ai.active::after{background:var(--ai-btn)!important;box-shadow:0 0 10px rgba(157,140,255,.5)}
+html:root:root body .profile-tabs>button.profile-tab-ai.active{box-shadow:inset 0 -2px 0 var(--ai-1)!important}
 
 /* ---------- Controles segmentados (EEUU / TR, carteras) ---------- */
 html:root:root body .market-board-source-tabs{
@@ -447,3 +447,11 @@ html:root:root body .market-board-source-tabs{width:max-content!important;max-wi
 html:root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){background:var(--mk-btn)!important;border:0!important;font-weight:700!important}
 html[data-theme="light"]:root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){color:#ffffff!important}
 html:not([data-theme="light"]):root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){color:#04221b!important}
+html:root:root body .view .favorites-segments{width:100%!important;display:flex!important}
+/* Carteras: barra de resumen con la piel del tema (en claro salía gris oscuro). */
+html:not([data-theme="light"]):root:root body .portfolio-summary-bar{background:var(--qg-card-hi),rgba(12,28,42,.66)!important;border:1px solid rgba(140,190,210,.14)!important;border-radius:16px!important}
+html[data-theme="light"]:root:root body .portfolio-summary-bar{background:#ffffff!important;border:1px solid var(--pq-line)!important;border-radius:16px!important;box-shadow:var(--pq-shadow)!important}
+html[data-theme="light"]:root:root body .portfolio-summary-bar *{color:var(--pq-text)}
+html[data-theme="light"]:root:root body .portfolio-summary-bar small{color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body .portfolio-summary-bar .positive{color:var(--pq-up)!important}
+html[data-theme="light"]:root:root body .portfolio-summary-bar .negative{color:var(--pq-down)!important}

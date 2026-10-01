@@ -552,17 +552,19 @@ function renderPositionRow(p, index = 0) {
   const pnlAfterFeesPct=investedValue!==null&&investedValue>0&&pnlAfterFees!==null?pnlAfterFees/investedValue*100:null;
   const brokerLabel=String(p.broker||'').trim();
   const exposureTone=pnlPct===null?'muted':pnlPct>=0?'positive':'negative';
+  const pnlNetTone=pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative';
+  // Lo que más importa primero: valor actual y P&L neto (tras comisiones) en la misma línea.
   const exposureHtml='<div class="portfolio-position-exposure">'+
+    '<span><small>Valor</small><b>'+esc(formatMoney(currentValue,entryCurrency))+'</b></span>'+
+    '<span class="'+pnlNetTone+'"><small>P&L neto</small><b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)))+(pnlAfterFeesPct===null?'':'<em> '+esc((pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')+'</em>')+'</b></span>'+
     '<span><small>Precio medio</small><b>'+esc(formatMoney(avg,entryCurrency))+'</b></span>'+
-    '<span class="'+exposureTone+'"><small>Desde compra</small><b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
-    '<span><small>Total</small><b>'+esc(formatMoney(currentValue,entryCurrency))+'</b></span>'+
   '</div>';
   const metaHtml='<div class="portfolio-position-strip">'+
     '<span><b>'+esc(formatNumber(qty,4))+'</b> uds.</span>'+
     (brokerLabel?'<span>Broker <b>'+esc(brokerLabel)+'</b></span>':'')+
     '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
     '<span>Comisiones <b>'+esc(formatMoney(feesTotal,entryCurrency))+'</b></span>'+
-    '<span class="'+(pnlAfterFees===null?'muted':pnlAfterFees>=0?'positive':'negative')+'">P&L neto <b>'+(pnlAfterFees===null?'—':esc((pnlAfterFees>0?'+':'')+formatMoney(pnlAfterFees,entryCurrency)+(pnlAfterFeesPct===null?'':' · '+(pnlAfterFeesPct>0?'+':'')+formatNumber(pnlAfterFeesPct,2)+'%')))+'</b></span>'+
+    '<span class="'+exposureTone+'">Desde compra <b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
   '</div>';
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
@@ -595,6 +597,39 @@ function renderPositionRowSafe(p, index = 0) {
   }
 }
 
+const POSITION_SORTS={value:'Valor',pnlPct:'P&L %',pnlAbs:'P&L €',name:'Nombre'};
+function positionSortKey(){try{const k=localStorage.getItem('viewinvai:position-sort');return POSITION_SORTS[k]?k:'value'}catch(_){return'value'}}
+// Comparable figures in EUR so positions in USD and EUR sort together.
+function positionSortMetrics(p){
+  const stock=stockByKey(p.stock_key);if(!stock)return{value:null,pnlAbs:null,pnlPct:null,name:String(p.name||p.stock_key||'')};
+  const preferTr=Number(p.prefer_tr)===1,market=currentMarket(stock,preferTr),qty=num(p.quantity),avg=num(p.avg_price);
+  const eur=marketValueInCurrency(market,'EUR'),entryCurrency=String(p.currency||(preferTr?'EUR':'USD')).toUpperCase(),inEntry=marketValueInCurrency(market,entryCurrency);
+  const value=qty!==null&&eur!==null?qty*eur:null;
+  const fee=brokerFeeInCurrency(p.broker,qty,avg,entryCurrency,'BUY',p.exchange||'');
+  const invested=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(fee.fee??0):null);
+  const current=qty!==null&&inEntry!==null?qty*inEntry:null;
+  const pnlEntry=current!==null&&invested!==null?current-invested:null;
+  const fx=inEntry&&eur?eur/inEntry:null;
+  return{value,pnlAbs:pnlEntry!==null&&fx!==null?pnlEntry*fx:pnlEntry,pnlPct:pnlEntry!==null&&invested>0?pnlEntry/invested*100:null,name:String(stock.name||stock.ticker||'')};
+}
+function sortPositions(positions){
+  const key=positionSortKey(),rows=positions.map(p=>({p,m:positionSortMetrics(p)}));
+  if(key==='name')rows.sort((a,b)=>a.m.name.localeCompare(b.m.name,'es'));
+  else rows.sort((a,b)=>(b.m[key]??-Infinity)-(a.m[key]??-Infinity));
+  return rows.map(r=>r.p);
+}
+function positionSortBarHtml(count){
+  if(count<2)return'';
+  const key=positionSortKey();
+  return '<div class="portfolio-sort-bar" role="group" aria-label="Ordenar posiciones"><span>Ordenar</span>'+
+    Object.entries(POSITION_SORTS).map(([k,label])=>'<button type="button" class="tab'+(k===key?' active':'')+'" data-position-sort="'+k+'" aria-pressed="'+(k===key)+'">'+label+'</button>').join('')+
+  '</div>';
+}
+document.addEventListener('click',event=>{
+  const b=event.target.closest&&event.target.closest('[data-position-sort]');if(!b)return;
+  try{localStorage.setItem('viewinvai:position-sort',b.dataset.positionSort)}catch(_){}
+  if(state.primaryTab!=='goal')renderApp();
+});
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
     return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
@@ -602,9 +637,10 @@ function portfolioContextHtml(selected, positions) {
   try {
     const summary = portfolioSummaryHtml(selected, positions);
     const rows = positions.length
-      ? positions.map(renderPositionRowSafe).join('')
+      ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
     return summary + portfolioCashRowHtml(selected) +
+      positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
       '</section>';
@@ -3074,8 +3110,32 @@ function openPositionEditorForStock(stockKey,portfolioId=null){
   return true;
 }
 
+// Resumen para «Mi día»: valor en EUR, cambio del día y P&L neto abierto por cartera.
+function portfolioDaySummary(){
+  if(!state.user)return{signedIn:false};
+  const open=state.positions.filter(p=>Number(p.active)!==0);
+  const rows=state.portfolios.map(pf=>{
+    let value=0,day=0,pnl=0,complete=true,count=0;
+    open.filter(p=>String(p.portfolio_id)===String(pf.id)).forEach(p=>{
+      count++;
+      const stock=stockByKey(p.stock_key);if(!stock){complete=false;return}
+      const market=currentMarket(stock,Number(p.prefer_tr)===1),qty=num(p.quantity),eur=marketValueInCurrency(market,'EUR');
+      if(qty===null||eur===null){complete=false;return}
+      const v=qty*eur;value+=v;
+      if(market.change!==null&&market.change>-100)day+=v-v/(1+market.change/100);
+      const m=positionSortMetrics(p);if(m.pnlAbs!==null)pnl+=m.pnlAbs;
+    });
+    const cash=String(pf.base_currency||'EUR').toUpperCase()==='EUR'?Math.max(0,num(pf.cash_balance)||0):0;
+    return{id:pf.id,name:pf.name,value:value+cash,day,pnl,count,complete};
+  });
+  const total=rows.reduce((t,r)=>({value:t.value+r.value,day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,day:0,pnl:0});
+  const keys=[...new Set([...open.map(p=>p.stock_key),...state.watchlist.map(w=>w.stock_key)].filter(Boolean))];
+  return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};
+}
+
 window.ViewInvAIPortfolios = {
   render: renderApp,
+  getDaySummary: portfolioDaySummary,
   renderGoal: renderGoalApp,
   reload: () => loadAll(),
   openNewPortfolio: openNewPortfolioModal,

@@ -5,8 +5,9 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
+const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
+ today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  recommendation:{icon:'✹',short:'Radar IA',desc:'Alta convicción, oportunidades y vigilancia'},
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
@@ -19,7 +20,31 @@ const NAV_META={
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
  settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
-const PRIMARY_MOBILE_VIEWS=['home','portfolios','recommendation','favorites'];
+// Five destinations; Mercados and Radar IA group related screens behind a section switcher.
+const PRIMARY_MOBILE_VIEWS=['today','home','recommendation','portfolios','settings'];
+const NAV_GROUPS={
+ today:['today'],
+ home:['home','favorites','catalog','catalogUS','funds','heatmap'],
+ recommendation:['recommendation','entry','future'],
+ portfolios:['portfolios'],
+ settings:['settings']
+};
+const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar IA',entry:'Entrada',future:'Futuro'};
+const MOBILE_NAV_LABELS={today:'Inicio',home:'Mercados',recommendation:'Radar IA',portfolios:'Carteras',settings:'Ajustes'};
+function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
+function renderSectionSwitcher(){
+ document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
+ const view=document.querySelector('.view.active');if(!view)return;
+ const group=NAV_GROUPS[navGroupOf(state.currentView)]||[];
+ if(group.length<2)return;
+ const nav=document.createElement('nav');
+ nav.className='section-switcher';nav.setAttribute('aria-label','Secciones');
+ nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(v===state.currentView?' active':'')+'" data-section-view="'+E(v)+'" aria-current="'+(v===state.currentView?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
+ const heading=view.querySelector(':scope>.page-heading');
+ if(heading)heading.after(nav);else view.prepend(nav);
+ const active=nav.querySelector('.active');
+ if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center'}));
+}
 
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
 function navigationIconHtml(v){let m=NAV_META[v]||{};return m.iconHtml||E(m.icon||'')}
@@ -35,8 +60,7 @@ function renderNavigation(){
  const rest=order.filter(v=>!direct.includes(v));
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
-  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(NAV_META[v].short)+'</small></button>').join('')+
-   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>';
+  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>').join('');
  }
  if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
@@ -45,10 +69,9 @@ function renderNavigation(){
  syncMobileNavigation();
 }
 function syncMobileNavigation(){
- $$('.mobile-nav-item[data-mobile-view]').forEach(x=>x.classList.toggle('active',x.dataset.mobileView===state.currentView));
- let direct=$$('.mobile-nav-item[data-mobile-view]').map(x=>x.dataset.mobileView);
- let more=$('.mobile-nav-item[data-mobile-more]');
- if(more)more.classList.toggle('active',!direct.includes(state.currentView));
+ const group=navGroupOf(state.currentView);
+ $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
+ renderSectionSwitcher();
 }
 function closeMobileMore(){
  let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('.mobile-nav-item[data-mobile-more]');
@@ -195,13 +218,24 @@ document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=
 document.addEventListener('click',e=>{
  let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
  if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
-  e.preventDefault();let v=mobileView.dataset.mobileView;if(v)show(v);return;
+  e.preventDefault();let v=mobileView.dataset.mobileView;
+  if(v&&mobileView.classList.contains('mobile-nav-item')){
+   const group=NAV_GROUPS[v]||[v];
+   if(group.includes(state.currentView)&&!document.body.classList.contains('stock-detail-open')){v=group[0]}
+   else{try{const last=localStorage.getItem('viewinvai:nav-last:'+v);if(last&&group.includes(last))v=last}catch(_){}}
+  }
+  if(v)show(v);return;
  }
  let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
  if(mobileMore){e.preventDefault();toggleMobileMore();return}
  let quick=e.target.closest&&e.target.closest('#marketQuickToggle');
  if(quick){e.preventDefault();toggleMarketQuick();return}
 });
+document.addEventListener('click',e=>{
+ const sw=e.target.closest&&e.target.closest('[data-section-view]');
+ if(sw){e.preventDefault();show(sw.dataset.sectionView)}
+});
+window.addEventListener('viewinvai:view-changed',()=>{try{localStorage.setItem('viewinvai:nav-last:'+navGroupOf(state.currentView),state.currentView)}catch(_){}});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 

@@ -77,6 +77,9 @@ window.checkAssetCards = async function () {
    {id:'ci-1',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:2,avg_price:8,currency:'USD',prefer_tr:0,active:1},
    {id:'ci-2',portfolio_id:'ci',stock_key:key,ticker:stock.ticker,quantity:3,avg_price:9,currency:'USD',prefer_tr:1,active:1}
   ],watchlist:[],portfolioTransactionSummaries:{}});
+  // Positions are sortable; this fixture checks per-row market data, so keep insertion order
+  // (both rows are the same company, and sorting by name is stable).
+  try{localStorage.setItem('viewinvai:position-sort','name')}catch(_){}
   portfolio.render();view.style.display='block';
   const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
   assert(rows.length===2,'portfolio positions did not render');
