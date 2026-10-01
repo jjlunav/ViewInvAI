@@ -49,7 +49,25 @@ async def direct(handshake):
         print("Directo", " ".join(label), "-> ERROR", repr(e)[:300])
 
 
+async def via_worker(origin):
+    """Same path the app uses: the Worker's /api/tr-live WebSocket bridge."""
+    label = "Worker origin=" + (origin or "-")
+    try:
+        async with websockets.connect("wss://viewinvai.sonarlab.workers.dev/api/tr-live", origin=origin,
+                                      user_agent_header="Mozilla/5.0", open_timeout=15) as ws:
+            await ws.send("connect 30")
+            hello = await asyncio.wait_for(ws.recv(), 15)
+            print(label, "-> saludo:", str(hello)[:200])
+            await ws.send("sub 1 " + json.dumps({"type": "ticker", "id": ISIN + ".LSX"}))
+            msg = await asyncio.wait_for(ws.recv(), 15)
+            print(label, "-> ticker:", str(msg)[:200])
+    except Exception as e:  # noqa: BLE001
+        print(label, "-> ERROR", repr(e)[:400])
+
+
 if __name__ == "__main__":
     worker_health()
     for h in HANDSHAKES:
         asyncio.run(direct(h))
+    for o in ("https://localhost", "https://viewinvai.sonarlab.workers.dev", None):
+        asyncio.run(via_worker(o))
