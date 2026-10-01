@@ -272,7 +272,7 @@ function standardStockCard(s,i=0,opts={}){
   openAttrs:opts.openAttrs!==undefined?opts.openAttrs:stockOpenAttrs(s,hint,preferTr),
   detailsHtml:details,detailsLabel:opts.detailsLabel,detailsClass:opts.detailsClass||'stock-card-details',
   metaHtml:opts.metaHtml||'',actionsHtml:opts.actionsHtml,rowActionsHtml:opts.rowActionsHtml||'',className:opts.className,
-  openLabel:opts.openLabel||'',openActionAttrs:opts.openActionAttrs||'',
+  openLabel:opts.openLabel||'',openIcon:opts.openIcon===true,openActionAttrs:opts.openActionAttrs||'',
   sparkHtml:opts.spark===false?'':trendSparkHtml(s)
  });
 }

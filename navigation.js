@@ -21,10 +21,10 @@ const NAV_META={
  settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
 // Five destinations; Mercados and Radar IA group related screens behind a section switcher.
-const PRIMARY_MOBILE_VIEWS=['today','home','recommendation','portfolios','settings'];
+const PRIMARY_MOBILE_VIEWS=['today','recommendation','home','portfolios','settings'];
 const NAV_GROUPS={
  today:['today'],
- home:['home','favorites','catalog','catalogUS','funds','heatmap'],
+ home:['home','catalog','catalogUS','funds','heatmap'],
  recommendation:['recommendation','entry','future'],
  portfolios:['portfolios'],
  settings:['settings']
@@ -60,7 +60,10 @@ function renderNavigation(){
  const rest=order.filter(v=>!direct.includes(v));
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
-  bottom.innerHTML=direct.map(v=>'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>').join('');
+  // Mercados is the raised centre tab: it opens the Mercados sheet upwards instead of navigating.
+  bottom.innerHTML=direct.map(v=>v==='home'
+   ?'<button type="button" class="mobile-nav-item mobile-nav-bump" data-mobile-view="home" aria-haspopup="dialog" aria-controls="marketQuickSheet" aria-expanded="false"><span class="mobile-nav-bump-cap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 14.5 12 8.5l6 6"/></svg></span><small>Mercados</small></button>'
+   :'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>').join('');
  }
  if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
@@ -201,6 +204,8 @@ function initNativeBackHandling(){
 }
 function show(v,preserveProfile=false,recordHistory=true){
  if(v==='alerts')v='home';
+ // Favoritos vive ahora como pestaña de Carteras.
+ if(v==='favorites'){v='portfolios';setTimeout(()=>window.ViewInvAIFunds?.setPortfolioAssetMode?.('favorites',false),0)}
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
@@ -217,6 +222,7 @@ function show(v,preserveProfile=false,recordHistory=true){
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
 document.addEventListener('click',e=>{
  let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
+ if(mobileView&&mobileView.classList.contains('mobile-nav-bump')){e.preventDefault();toggleMarketQuick();return}
  if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
   e.preventDefault();let v=mobileView.dataset.mobileView;
   if(v&&mobileView.classList.contains('mobile-nav-item')){
@@ -228,8 +234,6 @@ document.addEventListener('click',e=>{
  }
  let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
  if(mobileMore){e.preventDefault();toggleMobileMore();return}
- let quick=e.target.closest&&e.target.closest('#marketQuickToggle');
- if(quick){e.preventDefault();toggleMarketQuick();return}
 });
 document.addEventListener('click',e=>{
  const sw=e.target.closest&&e.target.closest('[data-section-view]');
@@ -240,22 +244,64 @@ $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 
 function toggleMarketQuick(force){
- const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),button=$('#marketQuickToggle'),nav=$('#mobileBottomNav');
- if(!sheet||!backdrop||!button)return;
+ const sheet=$('#marketQuickSheet'),backdrop=$('#marketQuickBackdrop'),bump=$('.mobile-nav-bump');
+ if(!sheet||!backdrop)return;
  const open=typeof force==='boolean'?force:!sheet.classList.contains('open');
  sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
- button.setAttribute('aria-expanded',open?'true':'false');button.textContent=open?'⌄':'⌃';
- if(open){
-  button.classList.add('inside-sheet');
-  sheet.insertBefore(button,sheet.firstChild);
- }else{
-  button.classList.remove('inside-sheet');
-  if(nav&&nav.parentNode)nav.parentNode.insertBefore(button,nav);
- }
+ if(bump)bump.setAttribute('aria-expanded',open?'true':'false');
  document.body.classList.toggle('market-quick-open',open);
- if(open&&typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
+ if(open){document.body.classList.remove('chrome-hide');renderMarketSheet()}
 }
+/* Hoja de Mercados: situación (sesiones, amplitud y extremos del día) y accesos a cada sección. */
+let marketSheetTab='situation';
+function marketSheetRow(s,preferTr,change){
+ const ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ return '<div class="market-sheet-row" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0"><b>'+E(ticker||'—')+'</b><span>'+E(s.name||'')+'</span><em class="'+(change>=0?'positive':'negative')+'">'+(change>0?'+':'')+F(change,2)+'%</em></div>';
+}
+function marketSheetBreadth(label,values){
+ const up=values.filter(v=>v>0).length,down=values.filter(v=>v<0).length,total=up+down;
+ if(total<10)return'';
+ const pct=Math.round(up/total*100);
+ return '<div class="market-sheet-breadth"><div><span>'+E(label)+'</span><b>'+up+' suben · '+down+' bajan</b></div><i data-up="'+pct+'"><s></s></i></div>';
+}
+function renderMarketSheet(){
+ const status=$('#marketSheetStatus'),body=$('#marketSheetBody'),viewed=$('#marketQuickContent');
+ if(!status||!body)return;
+ const se=currentMarketSession(),ms=window.ViewInvAIMarketSession;
+ let lsx=null;try{lsx=ms&&ms.lsxOpen(ms.zoneClock('Europe/Berlin'))}catch(_){}
+ const usOpen=se==='regular',usExt=se==='premarket'||se==='postmarket';
+ status.innerHTML='<span class="'+(usOpen?'is-open':usExt?'is-ext':'is-closed')+'"><i></i>EEUU · '+E(SN(se))+'</span>'+
+  (lsx===null?'':'<span class="'+(lsx?'is-open':'is-closed')+'"><i></i>LSX · '+(lsx?'Abierto':'Cerrado')+'</span>')+
+  (db.meta&&db.meta.updatedAt?'<span class="is-muted">Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>':'');
+ $$('#marketQuickSheet [data-market-sheet-tab]').forEach(b=>{const on=b.dataset.marketSheetTab===marketSheetTab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
+ if(marketSheetTab==='viewed'){
+  if(typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
+  body.innerHTML='<h3 class="market-sheet-title">Más visitados esta semana</h3>'+(viewed?viewed.innerHTML:'');
+  return;
+ }
+ const us=(db.stocks||[]).filter(s=>market(s,'us')),tr=(db.stocks||[]).filter(s=>trTradable(s));
+ const usCh=us.map(s=>[s,SC(s,se)]).filter(x=>x[1]!==null);
+ const trCh=tr.map(s=>[s,trLiveChange(s)]).filter(x=>x[1]!==null);
+ const up=usCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3),down=usCh.slice().sort((a,b)=>a[1]-b[1]).slice(0,3);
+ const trUp=trCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3);
+ const list=(title,rows,preferTr)=>rows.length?'<section class="market-sheet-list"><h3 class="market-sheet-title">'+title+'</h3>'+rows.map(([s,c])=>marketSheetRow(s,preferTr,c)).join('')+'</section>':'';
+ body.innerHTML=marketSheetBreadth('EEUU · '+SN(se),usCh.map(x=>x[1]))+marketSheetBreadth('Trade Republic · LSX',trCh.map(x=>x[1]))+
+  list('Más suben · EEUU',up,false)+list('Más bajan · EEUU',down,false)+list('Más suben · LSX',trUp,true)+
+  '<button type="button" class="btn secondary market-sheet-more" data-market-sheet-view="home">Ver mercado completo</button>';
+ // CSP (style-src 'self') blocks inline style attributes; set the bar width through CSSOM.
+ body.querySelectorAll('.market-sheet-breadth i[data-up]').forEach(i=>i.style.setProperty('--up',i.dataset.up+'%'));
+}
+document.addEventListener('click',e=>{
+ const sheet=e.target.closest&&e.target.closest('#marketQuickSheet');if(!sheet)return;
+ const tab=e.target.closest('[data-market-sheet-tab]');
+ if(tab){e.preventDefault();marketSheetTab=tab.dataset.marketSheetTab;renderMarketSheet();return}
+ const go=e.target.closest('[data-market-sheet-view]');
+ if(go){e.preventDefault();toggleMarketQuick(false);show(go.dataset.marketSheetView);return}
+ if(e.target.closest('[data-market-sheet-close]')){toggleMarketQuick(false);return}
+ if(e.target.closest('[data-open-stock]'))setTimeout(()=>toggleMarketQuick(false),0);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('market-quick-open'))toggleMarketQuick(false)});
 $('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));
 
 

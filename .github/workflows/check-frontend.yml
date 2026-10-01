@@ -712,15 +712,16 @@ jobs:
                 const nav=document.querySelector('#mobileBottomNav');
                 const navItems=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
                 const navOrder=navItems.map(item=>item.dataset.mobileView||'more').join('|');
-                if(navItems.length!==5||navOrder!=='today|home|recommendation|portfolios|settings')return fail('native bottom nav order invalid: '+navOrder);
+                if(navItems.length!==5||navOrder!=='today|recommendation|home|portfolios|settings')return fail('native bottom nav order invalid: '+navOrder);
                 const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
                 if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside native bottom bar');
                 const centers=navItems.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2});
                 const gaps=centers.slice(1).map((value,index)=>value-centers[index]);
                 if(Math.max(...gaps)-Math.min(...gaps)>3)return fail('native bottom nav is not evenly centered');
-                nav.querySelector('[data-mobile-view="home"]')?.click();
-                const fundsItem=document.querySelector('#view-home .section-switcher [data-section-view="funds"]');
-                if(!fundsItem)return fail('funds missing from Mercados section switcher');
+                nav.querySelector('.mobile-nav-bump')?.click();
+                if(!document.querySelector('#marketQuickSheet.open'))return fail('Mercados sheet did not open from the centre tab');
+                const fundsItem=document.querySelector('#marketQuickSheet [data-market-sheet-view="funds"]');
+                if(!fundsItem)return fail('funds missing from the Mercados sheet');
                 fundsItem.click();
                 window.ViewInvAIFunds.load(true).then(()=>{
                   const fundView=document.querySelector('#view-funds');

@@ -462,6 +462,8 @@ function renderFavoritesDashboard(){
    seg('all','Todos',total)+seg('tr','TR',tr.length)+seg('us','EEUU',us.length)+seg('funds','Fondos',fundProducts.length)+
   '</div>'+(body||'<div class="favorites-group-empty favorites-empty-all"><span aria-hidden="true">☆</span>'+emptyText[filter]+'</div>');
 }
+window.addEventListener('viewinvai:portfolio-membership-changed',()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()});
+window.addEventListener('viewinvai:favorite-changed',()=>setTimeout(()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()},60));
 document.addEventListener('click',e=>{
  const b=e.target.closest&&e.target.closest('[data-favorites-filter]');if(!b)return;
  try{localStorage.setItem('viewinvai:favorites-filter',b.dataset.favoritesFilter)}catch(err){}

@@ -28,7 +28,7 @@
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261001r2">
   <link rel="stylesheet" href="ui-density.css?v=20261001r16">
-  <link rel="stylesheet" href="asset-card.css?v=20261001r46">
+  <link rel="stylesheet" href="asset-card.css?v=20261001r47">
   <link rel="stylesheet" href="theme-ai.css?v=20261001r4">
 </head>
 <body>
@@ -260,13 +260,17 @@
       <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
         <button type="button" class="tab active" role="tab" id="portfolioStocksTab" aria-selected="true" aria-controls="portfolioApp" tabindex="0" data-portfolio-asset="stocks">Acciones</button>
         <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds">Fondos / ETFs</button>
-        <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo de la cartera</button>
+        <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo</button>
+        <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span> Favoritos</button>
       </div>
       <div id="portfolioApp" class="portfolio-app" role="tabpanel" aria-labelledby="portfolioStocksTab" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
       </div>
       <div id="fundPortfolioApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFundsTab" data-portfolio-asset-panel="funds" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
+      </div>
+      <div id="portfolioFavoritesApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFavoritesTab" data-portfolio-asset-panel="favorites" hidden>
+        <div id="favoritesDashboard" class="favorites-dashboard"></div>
       </div>
       <div id="portfolioGoalApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioGoalTab" data-portfolio-asset-panel="goal" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para usar Objetivo de la cartera.</div>
@@ -281,7 +285,7 @@
         </div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="favorites" aria-label="Ayuda sobre Favoritos">?</button></div>
       </div>
-      <div id="favoritesDashboard" class="favorites-dashboard"></div>
+      <p class="lead">Tus favoritos están ahora en Carteras · ★ Favoritos.</p>
     </section>
 
     <section class="view" id="view-funds">
@@ -606,11 +610,22 @@
     </aside>
 
     <div class="market-quick-backdrop" id="marketQuickBackdrop" aria-hidden="true"></div>
-    <aside class="market-quick-sheet" id="marketQuickSheet" aria-label="Más visitados esta semana" aria-hidden="true">
-      <header><strong>Más visitados esta semana</strong></header>
-      <div id="marketQuickContent"></div>
+    <aside class="market-quick-sheet market-sheet" id="marketQuickSheet" role="dialog" aria-modal="true" aria-label="Mercados" aria-hidden="true">
+      <div class="market-sheet-handle" aria-hidden="true"></div>
+      <header class="market-sheet-head"><div><small>MERCADOS</small><strong>Situación del mercado</strong></div><button type="button" class="market-sheet-close" data-market-sheet-close aria-label="Cerrar">×</button></header>
+      <div class="market-sheet-status" id="marketSheetStatus"></div>
+      <nav class="market-sheet-tabs" role="tablist" aria-label="Secciones de Mercados">
+        <button type="button" role="tab" class="active" aria-selected="true" data-market-sheet-tab="situation">Situación</button>
+        <button type="button" role="tab" aria-selected="false" data-market-sheet-tab="viewed">Vistos</button>
+        <button type="button" data-market-sheet-view="home">Mercado</button>
+        <button type="button" data-market-sheet-view="catalog">Catálogo TR</button>
+        <button type="button" data-market-sheet-view="catalogUS">EEUU</button>
+        <button type="button" data-market-sheet-view="funds">Fondos</button>
+        <button type="button" data-market-sheet-view="heatmap">Mapa</button>
+      </nav>
+      <div class="market-sheet-body" id="marketSheetBody"></div>
+      <div id="marketQuickContent" class="market-sheet-viewed" hidden></div>
     </aside>
-    <button type="button" class="market-quick-toggle" id="marketQuickToggle" aria-label="Abrir resumen rápido" aria-expanded="false">⌃</button>
     <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Navegación principal móvil">
       <button type="button" class="mobile-nav-item active" data-mobile-view="home"><span>⌁</span><small>Mercados</small></button>
       <button type="button" class="mobile-nav-item" data-mobile-view="portfolios"><span>▣</span><small>Carteras</small></button>
@@ -624,14 +639,14 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20260925r3"></script>
-<script src="app.js?v=20261001r2"></script>
+<script src="app.js?v=20261001r3"></script>
 <script src="settings.js?v=20261001r20"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261001r30"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
 <script src="events.js?v=20261001r4"></script>
-<script src="asset-card.js?v=20261001r22"></script>
-<script src="stock-list.js?v=20261001r22"></script>
+<script src="asset-card.js?v=20261001r23"></script>
+<script src="stock-list.js?v=20261001r23"></script>
 <script src="recommendation.js?v=20261001r34"></script>
 <script src="today.js?v=20261001r1"></script>
 <script src="help.js?v=20261001r1"></script>
@@ -640,14 +655,14 @@
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r2"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261001r2"></script>
+<script src="navigation.js?v=20261001r3"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
 <script src="ui-shell.js?v=20261001r1"></script>
-<script src="funds.js?v=20261001r7"></script>
+<script src="funds.js?v=20261001r8"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r3"></script>
 <script src="stock-notifications.js?v=20260930r3"></script>
 <script type="module" src="auth.js?v=20260930r2"></script>
-<script type="module" src="portfolio.js?v=20261001r42"></script>
+<script type="module" src="portfolio.js?v=20261001r43"></script>
 </body>
 </html>
