@@ -135,9 +135,12 @@ function currentUsQuote(s,se=currentMarketSession(),now=Date.now()){
  return explicit('postmarket')||explicit('premarket')||{price:null,change:null,kind:null,at:null,source:'EEUU',extended:false,realtime:false};
 }
 const usSessionBaselineCache=new Map();
+const US_DAY_FORMATTER=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+const usDayMemo={minute:-1,day:''};
 function usSessionCacheKey(s,kind,at=Date.now()){
- const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(at));
- return stockKey(s)+'|'+kind+'|'+day;
+ const minute=Math.floor(at/60000);
+ if(usDayMemo.minute!==minute){usDayMemo.minute=minute;usDayMemo.day=US_DAY_FORMATTER.format(new Date(at))}
+ return stockKey(s)+'|'+kind+'|'+usDayMemo.day;
 }
 function usRememberSessionBaseline(s,kind,price,at=Date.now()){
  price=N(price);if(!s||price===null||price<=0||!['premarket','regular','postmarket'].includes(kind))return null;

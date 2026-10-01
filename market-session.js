@@ -4,12 +4,26 @@
   function dateKey(year,month,day){
     return String(year).padStart(4,'0')+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
   }
+  const clockFormatters=new Map();
+  const clockCache=new Map();
+  function zoneFormatter(timeZone){
+    let f=clockFormatters.get(timeZone);
+    if(!f){
+      f=new Intl.DateTimeFormat('en-US',{
+        timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',
+        hour:'2-digit',minute:'2-digit',hour12:false
+      });
+      clockFormatters.set(timeZone,f);
+    }
+    return f;
+  }
   function zoneClock(timeZone,date=new Date()){
-    const parts=new Intl.DateTimeFormat('en-US',{
-      timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',
-      hour:'2-digit',minute:'2-digit',hour12:false
-    }).formatToParts(date);
-    return Object.fromEntries(parts.map(x=>[x.type,x.value]));
+    const minute=Math.floor(date.getTime()/60000);
+    const hit=clockCache.get(timeZone);
+    if(hit&&hit.minute===minute)return hit.parts;
+    const parts=Object.freeze(Object.fromEntries(zoneFormatter(timeZone).formatToParts(date).map(x=>[x.type,x.value])));
+    clockCache.set(timeZone,{minute,parts});
+    return parts;
   }
   function weekdayOpen(parts){
     return !!parts&&parts.weekday!=='Sat'&&parts.weekday!=='Sun';
@@ -39,7 +53,15 @@
     const month=Math.floor((h+l-7*m+114)/31),day=(h+l-7*m+114)%31+1;
     return new Date(Date.UTC(year,month-1,day));
   }
+  const usCalendarCache=new Map();
   function usMarketCalendar(parts){
+    const memoKey=parts&&parts.year+"-"+parts.month+"-"+parts.day+"-"+parts.weekday;
+    if(memoKey&&usCalendarCache.has(memoKey))return usCalendarCache.get(memoKey);
+    const result=usMarketCalendarCompute(parts);
+    if(memoKey)usCalendarCache.set(memoKey,result);
+    return result;
+  }
+  function usMarketCalendarCompute(parts){
     if(!weekdayOpen(parts))return{open:false,earlyClose:false,reason:'fin de semana'};
     const y=+parts.year,m=+parts.month,d=+parts.day,key=dateKey(y,m,d),closed=new Set();
     closed.add(observedFixedDate(y,1,1));
