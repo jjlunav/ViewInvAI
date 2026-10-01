@@ -21,14 +21,13 @@ function profileTabs(){
  '</nav>';
 }
 function profileSessionStrip(s){
- const se=currentMarketSession(),preExt=extendedSessionDisplay(s,'premarket'),postExt=extendedSessionDisplay(s,'postmarket'),key=stockKey(s);
- const regularLive=se==='regular'&&N(s.usLivePrice)!==null;
- const regularPrice=regularLive?N(s.usLivePrice):N(s.price),regularChange=regularLive?(N(s.usLiveChangePct)??N(s.changePct)):N(s.changePct);
- const regularVolume=regularLive?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
- const regularLabel=regularLive?'EEUU · Regular · actual':'EEUU · Regular · referencia';
- let regular='<div class="profile-session-cell" data-profile-regular-session-key="'+E(key)+'"><span>'+regularLabel+'</span><strong>'+snapshotPricePair(s,regularPrice,false)+'</strong><b class="'+C(regularChange)+'">'+PC(regularChange)+'</b><small>'+(regularLive?'Nasdaq actual':'Último cierre/snapshot regular')+' · Vol '+compactVol(regularVolume)+'</small></div>';
- let pre='<div class="profile-session-cell"><span>EEUU · Premarket · referencia</span><strong>'+snapshotPricePair(s,s.premarketPrice,false)+'</strong><b class="'+preExt.tone+'">'+PC(preExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.premarketVolume)+'</small></div>';
- let post='<div class="profile-session-cell"><span>EEUU · Postmarket · referencia</span><strong>'+snapshotPricePair(s,s.postmarketPrice,false)+'</strong><b class="'+postExt.tone+'">'+PC(postExt.change)+'</b><small>Variación vs regular · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
+ const se=currentMarketSession(),data=usSessionDisplayData(s,se),key=stockKey(s),r=data.regular,x=data.extended;
+ const regularVolume=se==='regular'?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
+ let regular='<div class="profile-session-cell" data-profile-regular-session-key="'+E(key)+'"><span>EEUU · Regular</span><strong>'+snapshotPricePair(s,r.price,false)+'</strong><b class="'+C(r.pct)+'">'+PC(r.pct)+'</b><small>Variación de la sesión · Vol '+compactVol(regularVolume)+'</small></div>';
+ const prePrice=se==='premarket'&&x?x.price:N(s.premarketPrice),prePct=se==='premarket'&&x?x.pct:N(s.premarketChangePct);
+ const postPrice=se==='postmarket'&&x?x.price:N(s.postmarketPrice),postPct=se==='postmarket'&&x?x.pct:N(s.postmarketChangePct);
+ let pre='<div class="profile-session-cell"><span>EEUU · Premarket</span><strong>'+snapshotPricePair(s,prePrice,false)+'</strong><b class="'+C(prePct)+'">'+PC(prePct)+'</b><small>Variación de la sesión · Vol '+compactVol(s.premarketVolume)+'</small></div>';
+ let post='<div class="profile-session-cell"><span>EEUU · Postmarket</span><strong>'+snapshotPricePair(s,postPrice,false)+'</strong><b class="'+C(postPct)+'">'+PC(postPct)+'</b><small>Variación de la sesión · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';
 }
 function profileAiPanel(s,mode='us'){
