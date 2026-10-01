@@ -1,4 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect x="3" y="3" width="58" height="58" rx="15" fill="#08131b" stroke="#315062" stroke-width="3"/>
-  <text x="32" y="43" text-anchor="middle" font-family="Segoe UI Symbol, Noto Sans Symbols, sans-serif" font-size="42" font-weight="800" fill="#43e4b2">⌁</text>
+  <!-- VIAI: V y A como velas pequeñas; I bajista (roja) e I alcista. Misma geometría que scripts/apply_android_branding.py -->
+  <path d="M9 14V24" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="7.9" y="16" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M11.17 22.67V32.67" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="10.07" y="24.67" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M13.33 31.33V41.33" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="12.23" y="33.33" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M15.5 40V50" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="14.4" y="42" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M17.67 31.33V41.33" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="16.57" y="33.33" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M19.83 22.67V32.67" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="18.73" y="24.67" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M22 14V24" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="20.9" y="16" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M28.5 13V51" stroke="#ff636e" stroke-width="1.4" stroke-linecap="round"/><rect x="26.2" y="17" width="4.6" height="30" rx="1" fill="#ff636e"/>
+  <path d="M34.5 40V50" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="33.4" y="42" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M36.67 31.33V41.33" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="35.57" y="33.33" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M38.83 22.67V32.67" stroke="#43e4b2" stroke-width="0.9" stroke-linecap="round"/><rect x="37.73" y="24.67" width="2.2" height="6" rx="1" fill="#43e4b2"/>
+  <path d="M41 14V24" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="39.9" y="16" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M43.17 22.67V32.67" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="42.07" y="24.67" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M45.33 31.33V41.33" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="44.23" y="33.33" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M47.5 40V50" stroke="#ff636e" stroke-width="0.9" stroke-linecap="round"/><rect x="46.4" y="42" width="2.2" height="6" rx="1" fill="#ff636e"/>
+  <path d="M54.5 13V51" stroke="#8df5d5" stroke-width="1.4" stroke-linecap="round"/><rect x="52.2" y="17" width="4.6" height="30" rx="1" fill="#8df5d5"/>
 </svg>
