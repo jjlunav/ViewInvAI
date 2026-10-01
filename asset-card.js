@@ -41,7 +41,7 @@
         :'<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>')+
     '</div>'+
    '</div>'+
-   (options.metaHtml?'<div class="asset-card-meta">'+options.metaHtml+'</div>':'')+
+   (options.metaHtml?'<div class="asset-card-meta" data-card-template="compact-slots"><span class="asset-card-meta-marker" aria-hidden="true"></span><div class="asset-card-meta-content">'+options.metaHtml+'</div><span class="asset-card-meta-action" aria-hidden="true"></span></div>':'')+
    (options.detailsHtml?'<details class="asset-card-details '+escape(options.detailsClass||'')+'"><summary><span>'+escape(options.detailsLabel||'Más datos')+'</span><i aria-hidden="true">＋</i></summary><div class="asset-card-detail-body">'+options.detailsHtml+'</div></details>':'')+
    (options.actionsHtml?'<div class="asset-card-actions">'+options.actionsHtml+'</div>':'')+
   '</article>';
