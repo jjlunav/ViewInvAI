@@ -392,8 +392,14 @@ jobs:
               raise SystemExit("Añadir posición debe usar el símbolo +")
           if 'name="targetDate"' in portfolio or "portfolioGoalRequiredContribution" in portfolio:
               raise SystemExit("Objetivo IA conserva opciones de planificación que no pertenecen al motor de rotación")
-          if "sin avance semanal suficiente" not in portfolio or "revisión IA continua" not in portfolio:
-              raise SystemExit("Objetivo IA no contempla rotación temprana o niveles operativos")
+          if "sin avance en las últimas semanas" not in portfolio or "revisión IA continua" not in portfolio:
+              raise SystemExit("Objetivo IA no contempla rotación de posiciones estancadas o niveles operativos")
+          for required in ("minHoldActive", "maxSpreadPct", "maxRoundTripFeePct", 'label:"Bajo"', 'label:"Moderado"', 'label:"Alto"'):
+              if required not in portfolio:
+                  raise SystemExit("Objetivo IA pierde una protección por nivel de riesgo: " + required)
+          for required in ("goalServerReviewClock", "risk_signature", "previousCandidates", "maxRoundTripFeePct"):
+              if required not in backend:
+                  raise SystemExit("Objetivo IA pierde la revisión diaria o la confirmación de entradas: " + required)
           if 'id="globalNotifyPortfolioGoal"' not in index or "notify_portfolio_goal" not in backend or "portfolio_goal_enabled" not in backend:
               raise SystemExit("Falta la categoría de notificación para Objetivo IA")
           if "scanPortfolioGoalNotifications" not in backend or 'route:"portfolio-goal"' not in backend:
