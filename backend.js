@@ -3243,11 +3243,11 @@ function goalServerRiskBand(riskProfile){
 }
 function goalServerEntryTiming(snapshot,stock,scope,spread,band){
   const preferTr=scope==="tr",eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
-  const trPrice=finiteNumber(stock&&stock.trLivePrice),usPrice=finiteNumber(stock&&stock.usLivePrice??stock&&stock.price);
+  const trPrice=finiteNumber(stock&&stock.trLivePrice),usPrice=finiteNumber((stock&&stock.usLivePrice)??(stock&&stock.price));
   const technicalPrice=preferTr?(trPrice!==null&&eurUsd!==null?trPrice*eurUsd:null):usPrice;
   const ema20=finiteNumber(stock&&stock.ema20),ema50=finiteNumber(stock&&stock.ema50);
-  const dayHigh=finiteNumber(stock&&stock.usLiveDayHigh??stock&&stock.dayHigh),dayLow=finiteNumber(stock&&stock.usLiveDayLow??stock&&stock.dayLow);
-  const dayChange=finiteNumber(preferTr?stock&&stock.trLiveChangePct:(stock&&stock.usLiveChangePct??stock&&stock.changePct))??0;
+  const dayHigh=finiteNumber((stock&&stock.usLiveDayHigh)??(stock&&stock.dayHigh)),dayLow=finiteNumber((stock&&stock.usLiveDayLow)??(stock&&stock.dayLow));
+  const dayChange=finiteNumber(preferTr?(stock&&stock.trLiveChangePct):((stock&&stock.usLiveChangePct)??(stock&&stock.changePct)))??0;
   const weekPerf=finiteNumber(stock&&stock.perfWeek);
   const extensionPct=technicalPrice!==null&&ema20!==null&&ema20>0?(technicalPrice/ema20-1)*100:null;
   const nearHighPct=technicalPrice!==null&&dayHigh!==null&&dayHigh>0&&technicalPrice<=dayHigh?(dayHigh-technicalPrice)/dayHigh*100:null;
@@ -3353,6 +3353,7 @@ async function scanPortfolioGoalNotifications(env,services){
         if(markets.size===1)scope=[...markets][0];
       }
       if(!["tr","us"].includes(scope))continue;
+      const goalBand=goalServerRiskBand(goal.risk_profile);
       const sellKeys=new Set(),sells=[];let released=0,capital=0;
       for(const p of positions){
         const stock=findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0),preferTr=Number(p.prefer_tr)===1;
@@ -3393,32 +3394,30 @@ async function scanPortfolioGoalNotifications(env,services){
       let candidates=[];
       if(pool>0){
         candidates=stocks.filter(stock=>goalServerAllowed(stock,scope)&&!sellKeys.has(goalServerKey(stock)))
-          .map(stock=>goalServerCandidate(snapshot,stock,scope))
-          .filter(row=>row&&row.score>=78&&row.quality>=62&&row.confidence>=76&&row.velocity>=78&&row.composite>=80&&(row.spread===null||row.spread<=8))
-          .sort((x,y)=>y.composite-x.composite||y.velocity-x.velocity||y.score-x.score)
+          .map(stock=>goalServerCandidate(snapshot,stock,scope,goalBand))
+          .filter(row=>row&&row.entry&&row.entry.eligible&&
+            row.score>=goalBand.minCandidate&&row.quality>=goalBand.minQuality&&row.confidence>=goalBand.minConfidence&&
+            row.velocity>=goalBand.minVelocity&&row.composite>=goalBand.minComposite&&(row.spread===null||row.spread<=6))
+          .sort((x,y)=>y.composite-x.composite||y.entry.timing-x.entry.timing||y.velocity-x.velocity||y.score-x.score)
           .slice(0,12);
       }
-      const finalistRows=goalServerFinalists(candidates);
+      const finalistRows=goalServerFinalists(candidates,goalBand);
       const finalists=(await Promise.all(finalistRows.map(async row=>({
         ...row,unitEur:await verifiedGoalPriceEur(row.stock,row.preferTr,"BUY"),fee:row.preferTr?1:0
       })))).filter(row=>row.unitEur&&row.unitEur>0&&row.unitEur+row.fee<=pool);
-      const weights=finalists.length===1?[1]:finalists.length===2?[.65,.35]:[.55,.30,.15],buys=[];
-      finalists.slice(0,3).forEach((row,index)=>{
-        const units=Math.floor(Math.max(0,pool*weights[index]-row.fee)/row.unitEur);
-        if(units>=1)buys.push({ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,score:Math.round(row.composite),fee:row.fee});
-      });
-      let used=buys.reduce((sum,buy)=>{
-        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);return sum+(row?row.unitEur*buy.units+buy.fee:0);
-      },0),left=Math.max(0,pool-used),safety=0;
-      while(buys.length&&safety++<5000){
-        const buy=buys.find(item=>{
-          const row=finalists.find(x=>goalServerKey(x.stock)===item.stockKey);
-          return row&&row.unitEur<=left+1e-9;
+      const weights=finalists.length===1?[1]:[.65,.35],buys=[];
+      finalists.slice(0,2).forEach((row,index)=>{
+        const maxPositionEur=Math.max(0,capital*goalBand.maxPosition/100);
+        const riskBudgetEur=Math.max(0,capital*goalBand.riskPerTradePct/100);
+        const riskAllocationCap=row.entry&&row.entry.stopPct>0?riskBudgetEur/(row.entry.stopPct/100):0;
+        const allocationCap=Math.max(0,Math.min(maxPositionEur,riskAllocationCap));
+        const budget=Math.min(pool*weights[index],allocationCap);
+        const units=Math.floor(Math.max(0,budget-row.fee)/row.unitEur);
+        if(units>=1)buys.push({
+          ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,
+          score:Math.round(row.composite),timing:Math.round(row.entry.timing),rr:Math.round(row.entry.rr*100)/100,fee:row.fee
         });
-        if(!buy)break;
-        const row=finalists.find(x=>goalServerKey(x.stock)===buy.stockKey);
-        buy.units+=1;used+=row.unitEur;left=Math.max(0,pool-used);
-      }
+      });
       const signature=JSON.stringify({sells:sells.map(x=>[x.ticker,x.units]),buys:buys.map(x=>[x.ticker,x.units])});
       const pieces=[];
       if(sells.length)pieces.push("Vender "+sells.map(x=>x.units+" "+x.ticker).join(", "));
