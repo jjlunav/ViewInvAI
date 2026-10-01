@@ -81,7 +81,7 @@ function futureRow(group,index,trOnly){
   context:'future',
   rankLabel:'#'+(index+1),
   hint:label+' · '+when,
-  cells:[{label:'Contexto',html:context}],
+  cells:[{label:'',html:context}],
   detailsLabel:'Más información del catalizador',
   detailsHtml:details
  });
