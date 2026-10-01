@@ -126,6 +126,9 @@ function restoreUiState(){
   let hs=history.state&&history.state.__viewinvai===1?history.state:null;
   // A fresh launch opens «Mi día»; history navigation and deep links keep their view.
   if(!route&&!hs){state.currentView='today';state.profileKey=null}
+  // Favoritos vive ahora como pestaña de Carteras.
+  if(state.currentView==='favorites'){state.currentView='portfolios';try{localStorage.setItem('viewinvai:portfolioAssetMode:v1','favorites')}catch(_){}}
+  if(state.profileOriginView==='favorites')state.profileOriginView='portfolios';
   if(route){
    state.currentView=route.view;
    state.profileKey=route.profileKey||null;
