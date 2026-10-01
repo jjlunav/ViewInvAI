@@ -959,8 +959,9 @@ function goalTradeInstructionHtml(row){
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?" · spread "+formatNumber(execution.spreadPct,2)+"%":"";
   const fee=execution.feeEur?(" · comisión "+formatMoney(execution.feeEur,"EUR")):"";
   const button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:sellUnits,price:execution.price,fees:execution.feeNative??execution.feeEur,currency:execution.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
+  const reason=row.reasons&&row.reasons.length?'<small>Motivo: '+esc(row.reasons.join(" · "))+'</small>':'';
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
+    '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+reason+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
 function goalCandidateHtml(row){
   const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
