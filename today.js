@@ -35,7 +35,7 @@
   const picks=(high.length?high:rows.filter(r=>r.tier==='opportunity')).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,3);
   const title=high.length?'Alta convicción hoy':'Lo que la IA vigila hoy';
   const body=picks.length?picks.map(radarAiCard).join(''):'<div class="today-empty">Sin señales destacadas ahora mismo. La IA prefiere esperar a forzar una entrada.</div>';
-  return '<section class="today-card today-ai"><header><small>✦ IA</small><h2>'+title+'</h2><button type="button" class="today-link" data-today-go="recommendation">Radar IA ›</button></header><div class="today-list">'+body+'</div></section>';
+  return '<section class="today-card today-ai"><header><small>✦ IA</small><h2>'+title+'</h2><button type="button" class="today-link" data-today-go="recommendation">Radar AI ›</button></header><div class="today-list">'+body+'</div></section>';
  }
 
  function alertsHtml(){

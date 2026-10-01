@@ -180,13 +180,15 @@ function renderAnalysisSettings(settings=null){
  accountAnalysisSettings=settings&&typeof settings==='object'?settings:null;
  const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)===1:false;
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)===1:false;
- const pulseAi=accountAnalysisSettings?Number(accountAnalysisSettings.notify_pulse_ai)===1:false;
- const radar=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar)===1:false;
+ const radarHigh=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_high)===1:false;
+ const radarOpportunity=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_opportunity)===1:false;
+ const radarWatch=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_watch)===1:false;
+ const radar=radarHigh||radarOpportunity||radarWatch,pulseAi=false;
  const price=accountAnalysisSettings?Number(accountAnalysisSettings.notify_price)===1:false;
- const radarAi=pulseAi||radar;
+ const radarAi=radar;
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
  const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
- const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyPulseAi:pulseAi,globalNotifyRadarAi:radar,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
+ const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyRadarHigh:radarHigh,globalNotifyRadarOpportunity:radarOpportunity,globalNotifyRadarWatch:radarWatch,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
@@ -200,8 +202,8 @@ function renderAnalysisSettings(settings=null){
   if(accountAnalysisSettings&&enabled&&!analysisSettingsBusy)globalStatus.classList.add('active');
  }
  if(accountAnalysisSettings){
-  window.ViewInvAINotificationSettings={enabled,newsEvents,radarAi,pulseAi,radar,price,portfolio,portfolioGoal};
-  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,radarAi,pulseAi,radar,price,portfolio,portfolioGoal}}));
+  window.ViewInvAINotificationSettings={enabled,newsEvents,radarAi,pulseAi,radar,radarHigh,radarOpportunity,radarWatch,price,portfolio,portfolioGoal};
+  window.dispatchEvent(new CustomEvent('viewinvai:notification-settings',{detail:{enabled,newsEvents,radarAi,pulseAi,radar,radarHigh,radarOpportunity,radarWatch,price,portfolio,portfolioGoal}}));
  }else window.ViewInvAINotificationSettings=null;
  const test=$('#testPushNotification');
  if(test)test.disabled=!accountAnalysisSettings||!enabled||pushBackendConfigured===false||analysisSettingsBusy;
@@ -211,8 +213,9 @@ async function saveAnalysisSettings(){
  const body={
   notificationsEnabled:$('#globalNotificationsEnabled')?.checked===true,
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked===true,
-  notifyPulseAi:$('#globalNotifyPulseAi')?.checked===true,
-  notifyRadar:$('#globalNotifyRadarAi')?.checked===true,
+  notifyRadarHigh:$('#globalNotifyRadarHigh')?.checked===true,
+  notifyRadarOpportunity:$('#globalNotifyRadarOpportunity')?.checked===true,
+  notifyRadarWatch:$('#globalNotifyRadarWatch')?.checked===true,
   notifyPrice:$('#globalNotifyPrice')?.checked===true,
   notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true,
   notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true
@@ -305,7 +308,7 @@ function initSettings(){
   if(event.target.checked)await retryPushRegistration();
   renderPushSettingsStatus();
  });
- ['globalNotifyNewsEvents','globalNotifyPulseAi','globalNotifyRadarAi','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyRadarHigh','globalNotifyRadarOpportunity','globalNotifyRadarWatch','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{

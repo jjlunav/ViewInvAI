@@ -161,9 +161,12 @@ function compactRegularMove(price,pct,previousClose=null){
 function compactInvestingQuoteData(s,preferTr=false){
  if(preferTr&&trTradable(s)){
   const q=canonicalQuote(s,true),price=N(q&&q.price),pct=N(q&&q.change),prev=trLivePre(s);
+  // Same compact format everywhere: an LSX card still shows the US pre/post-market line
+  // (in $) when the company also trades in the US.
+  const x=market(s,'us')?usSessionDisplayData(s,currentMarketSession()).extended:null;
   return{
    symbol:'€',regularPrice:price,regularPct:pct,regularAbs:compactRegularMove(price,pct,prev),
-   session:null,sessionLabel:'',sessionPrice:null,sessionPct:null,sessionAbs:null,sessionAt:null
+   session:x&&x.kind||null,sessionLabel:x?(x.label||'')+' EEUU':'',sessionPrice:x?x.price:null,sessionPct:x?x.pct:null,sessionAbs:x?x.abs:null,sessionAt:x?x.at:null,usExtended:!!x
   };
  }
  const se=currentMarketSession(),data=usSessionDisplayData(s,se),r=data.regular,x=data.extended;
@@ -204,7 +207,9 @@ function compactInvestingQuoteHtml(s,preferTr=false){
   const extTone=C(q.sessionPct),extDec=quotePrecision(s,false,q.sessionPrice),icon=q.session==='premarket'?'☀︎':'☾︎';
   extended='<div class="asset-investing-extended '+extTone+'"><span class="asset-session-name"><i aria-hidden="true">'+icon+'</i>'+E(q.sessionLabel)+'</span><strong>'+quoteMoney(q.sessionPrice,'\u0024',extDec)+'</strong><span>'+compactSignedMoney(q.sessionAbs,'\u0024',extDec)+' <b>('+PC(q.sessionPct)+')</b></span>'+(q.sessionAt?'<time>'+E(compactQuoteTime(q.sessionAt))+'</time>':'')+'</div>';
  }
- return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'">'+main+extended+'</div>';
+ // LSX cards of US-listed stocks also poll the US quote so their pre/post line stays live.
+ const usPoll=preferTr&&market(s,'us')?' data-us-poll-key="'+E(stockKey(s))+'"':'';
+ return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'"'+usPoll+'>'+main+extended+'</div>';
 }
 function compactInvestingQuoteCell(s,preferTr=false){
  return{label:'Cotización',value:'',tone:'',html:compactInvestingQuoteHtml(s,preferTr)};

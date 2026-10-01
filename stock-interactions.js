@@ -63,7 +63,7 @@ function initStockInteractions(){
   const pref=row.dataset.stockPreferTr||row.dataset.positionPreferTr;
   event.preventDefault();
   event.stopPropagation();
-  openStock(stock,row.dataset.stockReason||'Radar IA',pref==='1'?true:pref==='0'?false:null);
+  openStock(stock,row.dataset.stockReason||'Radar AI',pref==='1'?true:pref==='0'?false:null);
   return true;
  };
  radarRoot?.addEventListener('click',event=>{openRadarCard(event)},true);

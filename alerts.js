@@ -157,7 +157,7 @@
    status.innerHTML='<strong>Avisos desactivados</strong><span>Actívalos para evaluar cambios de alta convicción de Radar AI.</span>';
   }else if(globalNotifications.enabled===false){
    status.innerHTML='<strong>Notificaciones globales desactivadas</strong><span>El interruptor maestro de Settings está apagado.</span>';
-  }else if(globalNotifications.radarAi===false||globalNotifications.pulseAi===false){
+  }else if(globalNotifications.radarAi===false||globalNotifications.radarHigh===false){
    status.innerHTML='<strong>Radar AI global desactivado</strong><span>Puedes volver a activar estas notificaciones desde Configuración.</span>';
   }else if(evaluating){
    status.innerHTML='<strong>Analizando mercado…</strong><span>Contrastando gráfico, tendencia, volumen, RSI/ADX, liquidez, noticias y eventos.</span>';
@@ -268,7 +268,8 @@
     enabled:detail.enabled!==false,
     newsEvents:detail.newsEvents!==false,
     radarAi:detail.radarAi!==false,
-    pulseAi:detail.radarAi!==false
+    pulseAi:detail.radarAi!==false,
+    radarHigh:detail.radarHigh!==false
    };
    if(globalNotifications.enabled===false||globalNotifications.radarAi===false){
     state.activeKey=null;seeded=false;saveState();

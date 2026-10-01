@@ -494,3 +494,11 @@ html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-
  grid-template-columns:24px minmax(0,1fr)!important;grid-template-areas:"marker identity" ". quote" ". context"!important;
 }
 html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-quote-slot{justify-self:start!important}
+
+/* Configuración · grupo Radar AI con sus tres niveles. */
+html:root:root body .radar-tier-group{display:grid;gap:0;margin:6px 0;padding:10px 12px 4px;border-radius:14px;border:1px solid var(--ai-line);background:linear-gradient(135deg,var(--ai-soft),transparent 70%)}
+html:root:root body .radar-tier-head{display:grid;gap:3px;padding-bottom:6px}
+html:root:root body .radar-tier-head>strong{color:var(--ai-1);font-size:14px}
+html:root:root body .radar-tier-head>small{font-size:11px;opacity:.75}
+html:root:root body .radar-tier-group .settings-status-row{padding-left:0!important;padding-right:0!important}
+html:root:root body .radar-tier-group.is-disabled{opacity:.55}
