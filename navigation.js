@@ -259,6 +259,22 @@ function toggleMarketQuick(force){
  if(bump)bump.setAttribute('aria-expanded',open?'true':'false');
  document.body.classList.toggle('market-quick-open',open);
  if(open){document.body.classList.remove('chrome-hide');renderMarketSheet()}
+ else restoreMarketBoard();
+}
+/* The full Mercados board (tabs Más activos/Subidas/…, EEUU/TR, list) lives in #view-home.
+   While the sheet shows its «Mercado» tab, those same nodes are moved into the sheet, so
+   every existing handler and live update keeps working; they go back when the sheet closes. */
+const MARKET_BOARD_PARTS=['#view-home .market-board-tabs','#marketBoardSourceTabs','#homeGroups','#view-home .market-status-line'];
+let marketBoardSlots=null;
+function adoptMarketBoard(){
+ const host=$('#marketSheetBoard');if(!host||marketBoardSlots)return;
+ marketBoardSlots=[];
+ MARKET_BOARD_PARTS.forEach(sel=>{const el=$(sel);if(!el)return;const mark=document.createComment('market-board-slot');el.before(mark);marketBoardSlots.push([mark,el]);host.appendChild(el)});
+}
+function restoreMarketBoard(){
+ if(!marketBoardSlots)return;
+ marketBoardSlots.forEach(([mark,el])=>{if(mark.parentNode){mark.before(el);mark.remove()}});
+ marketBoardSlots=null;
 }
 /* Hoja de Mercados: situación (sesiones, amplitud y extremos del día) y accesos a cada sección. */
 let marketSheetTab='situation';
@@ -281,21 +297,32 @@ function renderMarketSheet(){
  status.innerHTML='<span class="'+(usOpen?'is-open':usExt?'is-ext':'is-closed')+'"><i></i>EEUU · '+E(SN(se))+'</span>'+
   (lsx===null?'':'<span class="'+(lsx?'is-open':'is-closed')+'"><i></i>LSX · '+(lsx?'Abierto':'Cerrado')+'</span>')+
   (db.meta&&db.meta.updatedAt?'<span class="is-muted">Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>':'');
- $$('#marketQuickSheet [data-market-sheet-tab]').forEach(b=>{const on=b.dataset.marketSheetTab===marketSheetTab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
+ $$('#marketQuickSheet [role="tab"][data-market-sheet-tab]').forEach(b=>{const on=b.dataset.marketSheetTab===marketSheetTab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
+ const board=$('#marketSheetBoard');
+ if(marketSheetTab==='market'){
+  body.hidden=true;if(board)board.hidden=false;
+  adoptMarketBoard();
+  if(typeof renderHome==='function')renderHome();
+  requestAnimationFrame(()=>window.ViewInvAI?.observeLiveQuotes?.(board||document));
+  return;
+ }
+ body.hidden=false;if(board)board.hidden=true;restoreMarketBoard();
  if(marketSheetTab==='viewed'){
   if(typeof renderMarketQuickSheet==='function')renderMarketQuickSheet();
   body.innerHTML='<h3 class="market-sheet-title">Más visitados esta semana</h3>'+(viewed?viewed.innerHTML:'');
+  requestAnimationFrame(()=>window.ViewInvAI?.observeLiveQuotes?.(body));
   return;
  }
  const us=(db.stocks||[]).filter(s=>market(s,'us')),tr=(db.stocks||[]).filter(s=>trTradable(s));
- const usCh=us.map(s=>[s,SC(s,se)]).filter(x=>x[1]!==null);
+ // Outside regular hours few stocks carry an extended-session change, so use the day's result.
+ const usLive=se==='regular',usCh=us.map(s=>[s,usLive?SC(s,se):N(s.changePct)]).filter(x=>x[1]!==null);
  const trCh=tr.map(s=>[s,trLiveChange(s)]).filter(x=>x[1]!==null);
  const up=usCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3),down=usCh.slice().sort((a,b)=>a[1]-b[1]).slice(0,3);
  const trUp=trCh.slice().sort((a,b)=>b[1]-a[1]).slice(0,3);
  const list=(title,rows,preferTr)=>rows.length?'<section class="market-sheet-list"><h3 class="market-sheet-title">'+title+'</h3>'+rows.map(([s,c])=>marketSheetRow(s,preferTr,c)).join('')+'</section>':'';
- body.innerHTML=marketSheetBreadth('EEUU · '+SN(se),usCh.map(x=>x[1]))+marketSheetBreadth('Trade Republic · LSX',trCh.map(x=>x[1]))+
+ body.innerHTML=marketSheetBreadth(usLive?'EEUU · Sesión regular':'EEUU · última sesión',usCh.map(x=>x[1]))+marketSheetBreadth('Trade Republic · LSX',trCh.map(x=>x[1]))+
   list('Más suben · EEUU',up,false)+list('Más bajan · EEUU',down,false)+list('Más suben · LSX',trUp,true)+
-  '<button type="button" class="btn secondary market-sheet-more" data-market-sheet-view="home">Ver mercado completo</button>';
+  '<button type="button" class="btn secondary market-sheet-more" data-market-sheet-tab="market">Ver todo el mercado</button>';
  // CSP (style-src 'self') blocks inline style attributes; set the bar width through CSSOM.
  body.querySelectorAll('.market-sheet-breadth i[data-up]').forEach(i=>i.style.setProperty('--up',i.dataset.up+'%'));
 }
@@ -309,6 +336,12 @@ document.addEventListener('click',e=>{
  if(e.target.closest('[data-open-stock]'))setTimeout(()=>toggleMarketQuick(false),0);
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('market-quick-open'))toggleMarketQuick(false)});
+// Keep the open sheet live: re-render the visible tab at most every 2 s while quotes arrive.
+let marketSheetRefreshTimer=null;
+window.addEventListener('viewinvai:quote-updated',()=>{
+ if(!document.body.classList.contains('market-quick-open')||marketSheetRefreshTimer)return;
+ marketSheetRefreshTimer=setTimeout(()=>{marketSheetRefreshTimer=null;if(document.body.classList.contains('market-quick-open')&&marketSheetTab!=='viewed')renderMarketSheet()},2000);
+});
 $('#marketQuickBackdrop')?.addEventListener('click',()=>toggleMarketQuick(false));
 
 
