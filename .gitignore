@@ -41,3 +41,4 @@ credentials.*
 
 # Generated market deltas
 data/market-catalog-delta.json
+__pycache__/
