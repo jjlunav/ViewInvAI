@@ -1802,3 +1802,22 @@ html[data-theme="light"] .market-sheet-tabs>.market-sheet-close{border-color:#dd
 .market-sheet-board[hidden],.market-sheet-body[hidden]{display:none!important}
 .market-sheet-board .market-board-tabs{margin:0!important}
 .market-sheet-board .market-status-line{font-size:11px;opacity:.7;text-align:center;margin:4px 0 0}
+
+/* Objetivo: valor, riesgo y guardar en una sola fila compacta. */
+html:root:root body #view-portfolios .portfolio-goal-hero.compact-goal-hero{padding:8px 10px!important;gap:6px!important}
+html:root:root body #view-portfolios .compact-goal-hero .portfolio-goal-intro h2{font-size:15px!important;line-height:1.2!important}
+html:root:root body #view-portfolios .compact-goal-hero .portfolio-goal-intro small{font-size:9px!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto!important;align-items:center!important;gap:6px!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label{display:block!important;min-width:0!important;gap:0!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label>div,
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label>select{height:36px!important;min-height:36px!important;width:100%!important;padding-top:0!important;padding-bottom:0!important;font-size:13px!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label>div>input{height:100%!important;min-height:0!important;font-size:14px!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>.btn{grid-column:auto!important;height:36px!important;min-height:36px!important;padding:0 14px!important;font-size:12px!important;width:auto!important}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>.portfolio-goal-form-status{grid-column:1/-1!important}
+
+/* Editar carteras: nombre editable, orden y borrar. */
+html:root:root body .portfolio-order-row{grid-template-columns:minmax(0,1fr) auto!important;padding:6px 7px!important}
+html:root:root body .portfolio-order-name{min-width:0;width:100%;height:32px;box-sizing:border-box;padding:0 9px;border:1px solid var(--line,#2b4a55);border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:750}
+html:root:root body .portfolio-order-name:focus{outline:2px solid var(--ai-1,#5b8cff);outline-offset:1px}
+html:root:root body .portfolio-order-row button.portfolio-order-delete{color:var(--negative,#ff6b6b)}
+html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label>div>input{border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;outline:0}

@@ -1147,9 +1147,9 @@ function portfolioGoalViewHtml(){
   return '<section class="portfolio-goal-view" data-goal-portfolio="'+esc(portfolio.id)+'">'+
     '<div class="portfolio-goal-hero compact-goal-hero"><div class="portfolio-goal-intro"><h2>Objetivo IA · '+esc(portfolio.name)+'</h2><small>'+esc(marketLabel)+'</small></div>'+
       '<form id="portfolioGoalForm" class="portfolio-goal-form compact-goal-form" data-portfolio-id="'+esc(portfolio.id)+'">'+
-        '<label><span>Objetivo</span><div><input name="targetValueEur" type="number" min="1" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label>'+
-        '<label><span>Riesgo</span><select name="riskProfile"><option value="conservative"'+(riskProfile==="conservative"?' selected':'')+'>Bajo</option><option value="balanced"'+(riskProfile==="balanced"?' selected':'')+'>Moderado</option><option value="aggressive"'+(riskProfile==="aggressive"?' selected':'')+'>Alto</option></select></label>'+
-        '<input name="targetProfitEur" class="portfolio-goal-legacy-input" type="number" min="1" step="0.01" value="'+esc(targetValue)+'" hidden aria-hidden="true" tabindex="-1"><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
+        '<label><span class="sr-only">Objetivo</span><div><input name="targetValueEur" aria-label="Valor objetivo en euros" type="number" min="1" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label>'+
+        '<label><span class="sr-only">Riesgo</span><select name="riskProfile" aria-label="Riesgo"><option value="conservative"'+(riskProfile==="conservative"?' selected':'')+'>Riesgo bajo</option><option value="balanced"'+(riskProfile==="balanced"?' selected':'')+'>Riesgo medio</option><option value="aggressive"'+(riskProfile==="aggressive"?' selected':'')+'>Riesgo alto</option></select></label>'+
+        '<input name="targetProfitEur" class="portfolio-goal-legacy-input" type="number" min="1" step="0.01" value="'+esc(targetValue)+'" hidden aria-hidden="true" tabindex="-1"><button type="submit" class="btn">'+(target===null?'Crear':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
@@ -1346,55 +1346,125 @@ function updatePortfolioTabOverflow() {
     }
   });
 }
+let portfolioNameDrafts = {};
+
+function portfolioDraftName(p) {
+  const draft = portfolioNameDrafts[String(p.id)];
+  return draft !== undefined ? draft : (p.name || "");
+}
+
+function captureNameDrafts() {
+  document.querySelectorAll("[data-portfolio-name-input]").forEach(input => {
+    portfolioNameDrafts[String(input.dataset.portfolioNameInput)] = input.value;
+  });
+}
+
 function portfolioOrderRows() {
   return state.portfolios.map((p, index) =>
     '<div class="portfolio-order-row" data-portfolio-order-id="' + esc(p.id) + '">' +
-      '<span class="portfolio-order-handle">≡</span>' +
-      '<strong>' + esc(p.name) + '</strong>' +
+      '<input type="text" class="portfolio-order-name" maxlength="80" data-portfolio-name-input="' + esc(p.id) + '" value="' + esc(portfolioDraftName(p)) + '" aria-label="Nombre de la cartera">' +
       '<div>' +
         '<button type="button" data-portfolio-order-move="-1" aria-label="Subir cartera"' + (index === 0 ? ' disabled' : '') + '>↑</button>' +
         '<button type="button" data-portfolio-order-move="1" aria-label="Bajar cartera"' + (index === state.portfolios.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '<button type="button" class="portfolio-order-delete" data-portfolio-delete="' + esc(p.id) + '" aria-label="Borrar cartera ' + esc(p.name) + '" title="Borrar cartera">🗑</button>' +
       '</div>' +
     '</div>'
   ).join("");
 }
 
 function refreshPortfolioOrderModal() {
+  captureNameDrafts();
   const list = $("#portfolioOrderList");
   if (list) list.innerHTML = portfolioOrderRows();
 }
 
-function openPortfolioOrderModal() {
-  if (!state.portfolios.length) return;
-  openModal("Ordenar carteras",
+function openPortfolioOrderModal(keepDrafts = false) {
+  if (!state.portfolios.length) { closeModal(); return; }
+  if (!keepDrafts) portfolioNameDrafts = {};
+  openModal("Editar carteras",
     '<div class="portfolio-order-editor">' +
-      '<p>Ordena las carteras como quieres que aparezcan en la barra.</p>' +
+      '<p>Cambia el nombre, el orden o borra una cartera.</p>' +
       '<div id="portfolioOrderList" class="portfolio-order-list">' + portfolioOrderRows() + '</div>' +
-      '<button type="button" class="btn" data-portfolio-order-save>Guardar orden</button>' +
+      '<button type="button" class="btn" data-portfolio-order-save>Guardar cambios</button>' +
     '</div>'
   );
 }
 
+function openPortfolioDeleteConfirm(id) {
+  captureNameDrafts();
+  const p = state.portfolios.find(x => String(x.id) === String(id));
+  if (!p) return;
+  const count = state.positions.filter(x => String(x.portfolio_id) === String(id) && Number(x.active ?? 1) !== 0).length;
+  openModal("Borrar cartera",
+    '<div class="portfolio-remove-confirm">' +
+      '<strong>' + esc(p.name) + '</strong>' +
+      '<p>Se borrará la cartera con ' + (count === 1 ? '1 posición' : count + ' posiciones') + ', su historial de operaciones y su objetivo. No se puede deshacer.</p>' +
+      '<div class="portfolio-remove-confirm-actions">' +
+        '<button type="button" class="btn ghost" data-portfolio-delete-cancel>Cancelar</button>' +
+        '<button type="button" class="btn danger" data-portfolio-delete-confirm="' + esc(p.id) + '">Borrar cartera</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+async function deletePortfolio(id, button) {
+  if (button) { button.disabled = true; button.textContent = "Borrando…"; }
+  try {
+    const response = await api("/api/portfolios/" + encodeURIComponent(id), { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "No se pudo borrar la cartera.");
+    const removed = state.portfolios.find(p => String(p.id) === String(id));
+    const keys = state.positions.filter(p => String(p.portfolio_id) === String(id)).map(p => p.stock_key);
+    state.portfolios = state.portfolios.filter(p => String(p.id) !== String(id));
+    state.positions = state.positions.filter(p => String(p.portfolio_id) !== String(id));
+    delete state.goals[String(id)];
+    delete state.portfolioTransactionSummaries[String(id)];
+    delete portfolioNameDrafts[String(id)];
+    if (String(state.selectedPortfolioId) === String(id)) {
+      state.selectedPortfolioId = state.portfolios[0] ? state.portfolios[0].id : null;
+      state.goal = state.goals[String(state.selectedPortfolioId)] || null;
+    }
+    state.goalCandidateCache = { at:0, key:"", rows:[] };
+    savePortfolioUi();
+    syncPortfolioStars();
+    keys.forEach(stockKey => window.dispatchEvent(new CustomEvent("viewinvai:portfolio-membership-changed", { detail:{ stockKey } })));
+    renderApp();
+    if (state.portfolios.length) openPortfolioOrderModal(true); else closeModal();
+    toast("Cartera «" + (removed && removed.name || "") + "» borrada");
+  } catch (error) {
+    toast(error.message || "No se pudo borrar la cartera.", true);
+    if (button && button.isConnected) { button.disabled = false; button.textContent = "Borrar cartera"; }
+  }
+}
+
 async function savePortfolioOrder() {
+  captureNameDrafts();
+  const names = state.portfolios.map(p => String(portfolioDraftName(p)).trim());
+  if (names.some(name => !name)) { toast("Cada cartera necesita un nombre.", true); return; }
   const button = document.querySelector("[data-portfolio-order-save]");
   if (button) { button.disabled = true; button.textContent = "Guardando…"; }
   try {
-    await Promise.all(state.portfolios.map((p, index) =>
-      api("/api/portfolios/" + encodeURIComponent(p.id), {
+    await Promise.all(state.portfolios.map((p, index) => {
+      const name = names[index], body = { sortOrder: index };
+      if (name !== p.name) body.name = name;
+      if (Number(p.sort_order) === index && body.name === undefined) return null;
+      return api("/api/portfolios/" + encodeURIComponent(p.id), {
         method: "PATCH",
-        body: JSON.stringify({ sortOrder: index })
+        body: JSON.stringify(body)
       }).then(async response => {
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "No se pudo guardar el orden.");
+        if (!response.ok) throw new Error(data.error || "No se pudieron guardar los cambios.");
         p.sort_order = index;
-      })
-    ));
+        if (data.portfolio && data.portfolio.name) p.name = data.portfolio.name; else if (body.name) p.name = body.name;
+      });
+    }));
+    portfolioNameDrafts = {};
     closeModal();
     renderApp();
-    toast("Orden de carteras guardado");
+    toast("Carteras actualizadas");
   } catch (error) {
-    toast(error.message || "No se pudo guardar el orden.", true);
-    if (button && button.isConnected) { button.disabled = false; button.textContent = "Guardar orden"; }
+    toast(error.message || "No se pudieron guardar los cambios.", true);
+    if (button && button.isConnected) { button.disabled = false; button.textContent = "Guardar cambios"; }
   }
 }
 
@@ -2713,6 +2783,23 @@ function bind() {
         state.portfolios.splice(to, 0, item);
         refreshPortfolioOrderModal();
       }
+      return;
+    }
+
+    const deletePf = event.target.closest?.("[data-portfolio-delete]");
+    if (deletePf) {
+      openPortfolioDeleteConfirm(deletePf.dataset.portfolioDelete);
+      return;
+    }
+
+    if (event.target.closest?.("[data-portfolio-delete-cancel]")) {
+      openPortfolioOrderModal(true);
+      return;
+    }
+
+    const confirmDeletePf = event.target.closest?.("[data-portfolio-delete-confirm]");
+    if (confirmDeletePf) {
+      deletePortfolio(confirmDeletePf.dataset.portfolioDeleteConfirm, confirmDeletePf);
       return;
     }
 
