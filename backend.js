@@ -3344,7 +3344,7 @@ async function scanPortfolioGoalNotifications(env,services){
   for(const goal of goals.results||[]){
     try{
       const positionsResult=await env.DB.prepare(
-        "SELECT id,stock_key,ticker,prefer_tr,quantity,opened_at,last_signal,last_score,last_confidence FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at ASC"
+        "SELECT id,stock_key,ticker,prefer_tr,quantity,avg_price,currency,opened_at,last_signal,last_score,last_confidence FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all();
       const positions=positionsResult.results||[];
       let scope=String(goal.market_scope||"auto").toLowerCase();
@@ -3362,7 +3362,12 @@ async function scanPortfolioGoalNotifications(env,services){
         const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
         const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0,week=Math.abs(finiteNumber(stock&&stock.perfWeek)??99);
         const stagnant=heldDays>=7&&week<1.25&&score<68;
-        const pct=signal==="SELL"||score<=35||stagnant?100:signal==="REVIEW"||score<48?50:0;
+        const avg=finiteNumber(p.avg_price),entryCurrency=String(p.currency||(preferTr?"EUR":"USD")).toUpperCase();
+        const avgEur=avg===null?null:entryCurrency==="EUR"?avg:entryCurrency==="USD"&&usdToEur!==null?avg*usdToEur:null;
+        const positionReturnPct=avgEur!==null&&avgEur>0&&markPrice!==null?(markPrice/avgEur-1)*100:null;
+        const stopHit=positionReturnPct!==null&&positionReturnPct<=-goalBand.maxStopPct;
+        const takeHit=positionReturnPct!==null&&positionReturnPct>=goalBand.maxStopPct*goalBand.minRR;
+        const pct=stopHit||signal==="SELL"||score<=35||stagnant?100:takeHit?50:signal==="REVIEW"||score<48?50:0;
         if(pct<=0||qty<1||sellPrice===null)continue;
         const units=Math.max(1,Math.min(Math.floor(qty),Math.round(qty*pct/100)));
         if(units<1)continue;
