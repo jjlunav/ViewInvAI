@@ -76,8 +76,6 @@ html:not([data-theme="light"]):root:root body .portfolio-icon-action,
 html:not([data-theme="light"]):root:root body .portfolio-refresh{
  background-color:var(--qg-field)!important;border-color:var(--qg-line-2)!important;
 }
-html:not([data-theme="light"]):root:root body .btn.secondary,
-html:not([data-theme="light"]):root:root body .btn.primary{background:rgba(67,228,178,.16)!important;border-color:rgba(67,228,178,.5)!important;color:#d9fff2!important}
 
 /* Tabs and navigation. */
 html:not([data-theme="light"]):root:root body .tab.active{background:rgba(67,228,178,.12)!important;border-color:var(--qg-teal)!important;color:#eafff8!important}
@@ -157,8 +155,6 @@ html[data-theme="light"]:root:root body .portfolio-icon-action,
 html[data-theme="light"]:root:root body .portfolio-refresh{
  background-color:var(--pq-field)!important;border-color:var(--pq-line-2)!important;color:var(--pq-navy)!important;
 }
-html[data-theme="light"]:root:root body .btn.secondary,
-html[data-theme="light"]:root:root body .btn.primary{background:var(--pq-navy)!important;border-color:var(--pq-navy)!important;color:#ffffff!important}
 
 html[data-theme="light"]:root:root body .tab{background:transparent!important;border-color:transparent!important;color:var(--pq-muted)!important}
 html[data-theme="light"]:root:root body .tab.active{background:transparent!important;border-color:transparent!important;border-bottom:2px solid var(--pq-navy)!important;color:var(--pq-navy)!important;font-weight:700!important}
@@ -250,3 +246,200 @@ html[data-theme="light"]:root:root body .catalog-sheet-wrap,
 html[data-theme="light"]:root:root body .catalog-table-wrap{border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important}
 html:not([data-theme="light"]):root:root body .catalog-sheet-wrap,
 html:not([data-theme="light"]):root:root body .catalog-table-wrap{border-color:var(--qg-line)!important}
+
+/* =====================================================================================
+   v2 · el tema llega a todos los componentes (listas, pestañas, botones, campos, barra
+   inferior, hojas y paneles), no solo a las superficies.
+   ===================================================================================== */
+:root{
+ --qg-card-hi:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.012) 55%);
+ --qg-glow-teal:0 0 0 1px rgba(67,228,178,.35),0 6px 22px rgba(67,228,178,.14);
+ --ai-btn:linear-gradient(135deg,#7c6cff 0%,#5b8cff 48%,#2fd3b0 100%);
+ --mk-btn:linear-gradient(135deg,#2fd3b0,#1fb59a);
+ --r-card:16px;--r-ctl:12px;
+}
+html[data-theme="light"]{
+ --ai-btn:linear-gradient(135deg,#4f46e5 0%,#3b6fe0 50%,#14b8a6 100%);
+ --mk-btn:linear-gradient(135deg,#0f1e3a,#1d3263);
+}
+
+/* ---------- Listas: cada valor es su propia tarjeta de cristal, separadas por aire ---------- */
+html:root:root body .market-board-list,
+html:root:root body .future-list,
+html:root:root body .catalog-mobile-rows,
+html:root:root body .fund-mobile-rows,
+html:root:root body .radar-ai-tier-list,
+html:root:root body .stock-mobile-rows{
+ display:grid!important;gap:8px!important;border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0!important;overflow:visible!important;
+}
+html:root:root body .view .asset-card{
+ border-width:1px!important;border-style:solid!important;border-radius:var(--r-card)!important;margin:0!important;overflow:hidden!important;
+ transition:border-color .15s,box-shadow .15s,transform .15s;
+}
+html:not([data-theme="light"]):root:root body .view .asset-card{
+ background:var(--qg-card-hi),rgba(16,34,52,.62)!important;border-color:rgba(140,190,210,.15)!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 8px 22px rgba(0,0,0,.18)!important;
+}
+html:not([data-theme="light"]):root:root body .view .asset-card:active{border-color:rgba(67,228,178,.45)!important}
+html[data-theme="light"]:root:root body .view .asset-card{
+ background:#ffffff!important;border-color:#e1e7f1!important;box-shadow:0 1px 2px rgba(15,30,58,.04),0 6px 18px rgba(15,30,58,.05)!important;
+}
+/* Rank chip, name, numbers. */
+html:root:root body .asset-card-copy>strong>em{
+ font-style:normal!important;font-size:.78em!important;font-weight:800!important;padding:1px 5px!important;margin-right:5px!important;border-radius:6px!important;
+ background:var(--ai-soft)!important;color:var(--ai-1)!important;
+}
+html:root:root body .asset-card,
+html:root:root body .asset-card *{font-variant-numeric:tabular-nums}
+html:not([data-theme="light"]):root:root body .asset-card-copy>strong{color:#f1f8fb!important}
+
+/* ---------- Encabezados de sección: línea de acento mercado→IA ---------- */
+html:root:root body .view>.page-heading{position:relative;border-bottom:0!important}
+html:root:root body .view>.page-heading::after{
+ content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+ background:linear-gradient(90deg,var(--ai-2),var(--ai-1) 45%,transparent 90%);opacity:.55;pointer-events:none;
+}
+
+/* ---------- Pestañas subrayadas (secciones) ---------- */
+html:root:root body .market-board-tabs,
+html:root:root body .profile-tabs,
+html:root:root body .portfolio-asset-switch,
+html:root:root body .fund-mobile-groups,
+html:root:root body .entry-market-tabs{border-bottom:1px solid var(--qg-line)!important}
+html[data-theme="light"]:root:root body .market-board-tabs,
+html[data-theme="light"]:root:root body .profile-tabs,
+html[data-theme="light"]:root:root body .portfolio-asset-switch,
+html[data-theme="light"]:root:root body .fund-mobile-groups,
+html[data-theme="light"]:root:root body .entry-market-tabs{border-bottom-color:var(--pq-line)!important}
+html:root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab,
+html:root:root body .profile-tabs>button,
+html:root:root body .fund-mobile-groups>button{
+ background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;position:relative!important;
+}
+html:not([data-theme="light"]):root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab.active,
+html:not([data-theme="light"]):root:root body .profile-tabs>button.active,
+html:not([data-theme="light"]):root:root body .fund-mobile-groups>button.active{color:#ffffff!important;background:transparent!important}
+html:root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab.active::after,
+html:root:root body .profile-tabs>button.active::after,
+html:root:root body .fund-mobile-groups>button.active::after{
+ content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--ai-2);
+ box-shadow:0 0 10px rgba(67,228,178,.55);
+}
+html[data-theme="light"]:root:root body :is(.market-board-tabs,.profile-tabs,.portfolio-asset-switch,.entry-market-tabs)>.tab.active::after,
+html[data-theme="light"]:root:root body .profile-tabs>button.active::after,
+html[data-theme="light"]:root:root body .fund-mobile-groups>button.active::after{background:var(--pq-navy);box-shadow:none}
+html:root:root body .profile-tabs>button.profile-tab-ai.active::after{background:var(--ai-btn)!important;box-shadow:0 0 10px rgba(157,140,255,.5)}
+
+/* ---------- Controles segmentados (EEUU / TR, carteras) ---------- */
+html:root:root body .market-board-source-tabs{
+ display:inline-flex!important;gap:2px!important;padding:3px!important;border-radius:14px!important;border:1px solid var(--qg-line)!important;
+}
+html:not([data-theme="light"]):root:root body .market-board-source-tabs{background:rgba(9,22,34,.7)!important}
+html[data-theme="light"]:root:root body .market-board-source-tabs{background:#eef2f9!important;border-color:var(--pq-line)!important}
+html:root:root body .market-board-source-tabs>.tab{border:0!important;border-radius:11px!important;background:transparent!important;box-shadow:none!important;min-height:34px!important}
+html:not([data-theme="light"]):root:root body .market-board-source-tabs>.tab.active{background:linear-gradient(135deg,rgba(67,228,178,.22),rgba(67,228,178,.1))!important;color:#eafff8!important;box-shadow:inset 0 0 0 1px rgba(67,228,178,.45)!important}
+html[data-theme="light"]:root:root body .market-board-source-tabs>.tab.active{background:#ffffff!important;color:var(--pq-navy)!important;box-shadow:0 1px 4px rgba(15,30,58,.12)!important;border:0!important}
+html:not([data-theme="light"]):root:root body .portfolio-tab{background:rgba(9,22,34,.7)!important;border-color:var(--qg-line-2)!important;border-radius:14px!important}
+html:not([data-theme="light"]):root:root body .portfolio-tab.active{background:linear-gradient(135deg,rgba(67,228,178,.2),rgba(67,228,178,.08))!important;border-color:rgba(67,228,178,.5)!important}
+
+/* ---------- Botones ---------- */
+/* Base: cristal con brillo superior; iconos cuadrados con la misma piel. */
+html:root:root body :is(.btn,.section-help,.filter-icon-button,.catalog-toolbar-mini,.portfolio-icon-action,.portfolio-refresh,.profile-back-inline,.profile-wallet-action,.profile-notification-bell,.field-lock){
+ border-radius:var(--r-ctl)!important;transition:box-shadow .15s,border-color .15s,background .15s;
+}
+html:not([data-theme="light"]):root:root body :is(.btn,.section-help,.filter-icon-button,.catalog-toolbar-mini,.portfolio-icon-action,.portfolio-refresh,.profile-back-inline,.profile-wallet-action,.profile-notification-bell){
+ background:var(--qg-card-hi),rgba(12,28,44,.8)!important;border:1px solid rgba(140,190,210,.22)!important;color:#d9e8ee!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important;
+}
+html:not([data-theme="light"]):root:root body :is(.btn,.section-help,.filter-icon-button,.catalog-toolbar-mini,.portfolio-icon-action,.portfolio-refresh):active{box-shadow:var(--qg-glow-teal)!important}
+html[data-theme="light"]:root:root body :is(.btn,.section-help,.filter-icon-button,.catalog-toolbar-mini,.portfolio-icon-action,.portfolio-refresh,.profile-back-inline,.profile-wallet-action,.profile-notification-bell){
+ background:#ffffff!important;border:1px solid var(--pq-line-2)!important;color:var(--pq-navy)!important;box-shadow:0 1px 2px rgba(15,30,58,.06)!important;
+}
+/* Principal (aplicar, guardar, entrar): relleno de mercado. */
+html:root:root body :is(.btn.secondary,.btn[type="submit"],.portfolio-google-login,.btn.exposure-buy){
+ background:var(--mk-btn)!important;border:0!important;color:#04221b!important;font-weight:700!important;
+ box-shadow:0 6px 18px rgba(31,181,154,.25)!important;
+}
+html[data-theme="light"]:root:root body :is(.btn.secondary,.btn[type="submit"],.portfolio-google-login,.btn.exposure-buy){color:#ffffff!important;box-shadow:0 6px 16px rgba(15,30,58,.18)!important}
+/* Peligro. */
+html:root:root body :is(.btn.danger,.btn.exposure-sell){border-color:rgba(255,99,110,.55)!important;color:#ff8e96!important}
+html[data-theme="light"]:root:root body :is(.btn.danger,.btn.exposure-sell){color:var(--pq-down)!important;border-color:rgba(194,38,58,.45)!important}
+/* Acciones de IA: degradado violeta→turquesa y destello. */
+html:root:root body :is(.profile-ai-chat,.ai-chat-quick,[data-goal-refresh-plan],.profile-chatgpt-open){
+ background:var(--ai-btn)!important;border:0!important;color:#ffffff!important;font-weight:700!important;
+ box-shadow:0 8px 24px rgba(124,108,255,.32)!important;
+}
+html:root:root body .profile-chatgpt-open{background:transparent!important;border:1px solid var(--ai-line)!important;color:var(--ai-1)!important;box-shadow:none!important;font-weight:600!important}
+html:root:root body .ai-chat-form button[type="submit"]{background:var(--ai-btn)!important;border:0!important;color:#fff!important}
+
+/* ---------- Campos ---------- */
+html:root:root body :is(.input,.select,select,input[type="search"],input[type="text"],input[type="number"],input[type="date"],textarea){border-radius:var(--r-ctl)!important}
+html:not([data-theme="light"]):root:root body :is(.input,.select,select,input[type="search"],input[type="text"],input[type="number"],input[type="date"],textarea){
+ background:rgba(8,20,32,.85)!important;border:1px solid rgba(140,190,210,.2)!important;color:#eaf4f8!important;
+}
+html:root:root body :is(.input,.select,select,input,textarea):focus{outline:none!important;border-color:var(--ai-2)!important;box-shadow:0 0 0 3px rgba(67,228,178,.18)!important}
+html[data-theme="light"]:root:root body :is(.input,.select,select,input,textarea):focus{border-color:var(--ai-1)!important;box-shadow:0 0 0 3px rgba(79,70,229,.14)!important}
+
+/* ---------- Interruptores ---------- */
+html:root:root body input:checked+.settings-switch-track,
+html:root:root body input:checked+.toggle-switch{background:var(--ai-btn)!important;box-shadow:none!important}
+
+/* ---------- Paneles ---------- */
+html:root:root body :is(.settings-card,.profile-section,.radar-ai-market,.favorites-market-group,.portfolio-goal-hero,.portfolio-goal-decision,.portfolio-goal-controls,.portfolio-goal-summary){border-radius:18px!important}
+html:not([data-theme="light"]):root:root body :is(.settings-card,.profile-section,.radar-ai-market,.favorites-market-group,.portfolio-goal-hero,.portfolio-goal-decision,.portfolio-goal-controls,.portfolio-goal-summary,.portfolio-block){
+ background:var(--qg-card-hi),rgba(12,28,42,.66)!important;border:1px solid rgba(140,190,210,.14)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)!important;
+}
+html:root:root body .settings-card :is(small,.settings-kicker):first-child{color:var(--ai-2)!important;letter-spacing:.12em!important}
+html[data-theme="light"]:root:root body .settings-card :is(small,.settings-kicker):first-child{color:var(--ai-1)!important}
+html:not([data-theme="light"]):root:root body .theme-setting-option{background:rgba(9,22,34,.7)!important;border-color:rgba(140,190,210,.2)!important;border-radius:14px!important}
+html:not([data-theme="light"]):root:root body .theme-setting-option.active{background:linear-gradient(135deg,rgba(67,228,178,.18),rgba(157,140,255,.12))!important;border-color:rgba(67,228,178,.55)!important}
+
+/* ---------- Barra inferior: cristal flotante, Radar IA con anillo de IA ---------- */
+html:root:root body .mobile-bottom-nav{border-top-left-radius:20px!important;border-top-right-radius:20px!important}
+html:not([data-theme="light"]):root:root body .mobile-bottom-nav{background:rgba(6,15,24,.86)!important;border:1px solid rgba(140,190,210,.14)!important;border-bottom:0!important;box-shadow:0 -10px 30px rgba(0,0,0,.35)!important}
+html:root:root body .mobile-nav-item{border-radius:14px!important}
+html:not([data-theme="light"]):root:root body .mobile-nav-item.active:not([data-mobile-view="recommendation"]){background:rgba(67,228,178,.12)!important;border:1px solid rgba(67,228,178,.32)!important;color:#bff7e6!important}
+html:root:root body .mobile-nav-item[data-mobile-view="recommendation"]{
+ border:1px solid transparent!important;
+ background:linear-gradient(var(--nav-ai-bg,#0b1626),var(--nav-ai-bg,#0b1626)) padding-box,var(--ai-btn) border-box!important;
+}
+html[data-theme="light"]:root:root body .mobile-nav-item[data-mobile-view="recommendation"]{--nav-ai-bg:#ffffff}
+html:root:root body .mobile-nav-item[data-mobile-view="recommendation"].active{box-shadow:0 0 18px rgba(124,108,255,.38)!important}
+html:root:root body .mobile-nav-item[data-mobile-view="recommendation"]>span{color:var(--ai-1)!important}
+
+/* ---------- Hojas y modales ---------- */
+html:root:root body :is(.mobile-more-sheet,.shared-filter-panel,.market-quick-sheet){border-top-left-radius:22px!important;border-top-right-radius:22px!important}
+html:not([data-theme="light"]):root:root body :is(.mobile-more-sheet,.shared-filter-panel,.market-quick-sheet,.app-modal,.ai-chat-panel){
+ background:linear-gradient(180deg,rgba(22,44,66,.96),rgba(8,18,30,.98))!important;border:1px solid rgba(140,190,210,.2)!important;box-shadow:0 -18px 40px rgba(0,0,0,.45)!important;
+}
+html:root:root body .app-modal{border-radius:20px!important}
+html:not([data-theme="light"]):root:root body .mobile-more-item{background:var(--qg-card-hi),rgba(14,30,46,.8)!important;border:1px solid rgba(140,190,210,.16)!important;border-radius:14px!important}
+html:root:root body .mobile-more-item>span{color:var(--ai-2)!important}
+html[data-theme="light"]:root:root body .mobile-more-item>span{color:var(--ai-1)!important}
+
+/* ---------- Ficha: celdas interiores, cabecera y gráfico con la misma piel ---------- */
+html:root:root body :is(.profile-identity,.profile-stat-row,.profile-session-cell,.event-verification,.profile-performance-strip,.profile-data-quality,.profile-ai-live,.profile-ai-state){border-radius:12px!important}
+html:not([data-theme="light"]):root:root body :is(.profile-identity,.profile-stat-row,.profile-session-cell,.event-verification,.profile-performance-strip){
+ background:rgba(255,255,255,.028)!important;border:1px solid rgba(140,190,210,.12)!important;
+}
+html[data-theme="light"]:root:root body :is(.profile-identity,.profile-stat-row,.profile-session-cell,.event-verification,.profile-performance-strip){
+ background:#f7f9fd!important;border:1px solid var(--pq-line)!important;
+}
+html:root:root body .profile-section-head{background:transparent!important;border-bottom:1px solid var(--qg-line)!important}
+html[data-theme="light"]:root:root body .profile-section-head{border-bottom-color:var(--pq-line)!important}
+html:root:root body .profile-section-head :is(h2,h3){font-weight:800!important}
+html:not([data-theme="light"]):root:root body .profile-sticky-shell{background:rgba(6,15,24,.9)!important;backdrop-filter:blur(12px)}
+html:not([data-theme="light"]):root:root body .profile-hero.investing-profile-header{background:radial-gradient(120% 120% at 100% 0%,rgba(67,228,178,.08),transparent 55%),rgba(6,15,24,.92)!important}
+html:root:root body :is(.mini-chart-block,.tv-chart-block){border-radius:14px!important;overflow:hidden!important}
+html:not([data-theme="light"]):root:root body .chart-retry{background:var(--mk-btn)!important;color:#04221b!important;border:0!important;border-radius:var(--r-ctl)!important;font-weight:700!important}
+html[data-theme="light"]:root:root body .chart-retry{background:var(--mk-btn)!important;color:#fff!important;border:0!important;border-radius:var(--r-ctl)!important}
+
+/* ---------- Interruptores de Configuración ---------- */
+html:root:root body .settings-switch-track{border-radius:999px!important;transition:background .2s}
+html:not([data-theme="light"]):root:root body .settings-switch-track{background:rgba(140,190,210,.16)!important;border:1px solid rgba(140,190,210,.25)!important}
+html[data-theme="light"]:root:root body .settings-switch-track{background:#e4e9f2!important;border:1px solid var(--pq-line-2)!important}
+html:root:root body .settings-switch-track>span{background:#ffffff!important;box-shadow:0 1px 3px rgba(0,0,0,.3)!important}
+html:root:root body .settings-switch input:checked+.settings-switch-track{background:var(--ai-btn)!important;border-color:transparent!important}
+html:root:root body .profile-stat-row{padding:8px 10px!important}
+html:root:root body .fund-ter-filter input{border:0!important;background:transparent!important;box-shadow:none!important}
+html:root:root body .market-board-source-tabs{width:max-content!important;max-width:100%!important}
