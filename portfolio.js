@@ -769,7 +769,7 @@ function portfolioGoalCatalyst(stock){
 }
 function portfolioGoalVelocityScore(stock,score,quality,preferTr=false){
   const catalyst=portfolioGoalCatalyst(stock),days=num(catalyst.days);
-  const rawChange=num(preferTr?stock&&stock.trLiveChangePct:(stock&&stock.usLiveChangePct??stock&&stock.changePct))??0;
+  const rawChange=num(preferTr?(stock&&stock.trLiveChangePct):((stock&&stock.usLiveChangePct)??(stock&&stock.changePct)))??0;
   const relVolume=num(stock&&stock.relVolume);
   const adx=num(stock&&stock.adx);
   const ema20=num(stock&&stock.ema20),ema50=num(stock&&stock.ema50);
