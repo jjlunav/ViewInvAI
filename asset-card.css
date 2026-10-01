@@ -737,3 +737,361 @@
  }
 }
 
+/* 2026-10-01 · one reusable five-slot compact-card template.
+   Marker | identity | quote | contextual data | actions.
+   Slots stay present in every menu even when a context leaves one visually empty. */
+.asset-card{
+ container-type:inline-size;
+ container-name:compact-card;
+}
+.asset-card-row[data-card-template="compact-slots"],
+.asset-card-meta[data-card-template="compact-slots"]{
+ --asset-slot-marker:30px;
+ --asset-slot-actions:116px;
+ display:grid!important;
+ grid-template-columns:
+  var(--asset-slot-marker)
+  minmax(0,1.65fr)
+  minmax(190px,1fr)
+  minmax(170px,.9fr)
+  minmax(96px,var(--asset-slot-actions))!important;
+ column-gap:10px!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:100%!important;
+ box-sizing:border-box!important;
+}
+.asset-card-row[data-card-template="compact-slots"]{
+ grid-template-areas:"marker identity quote context actions";
+ align-items:center!important;
+ min-height:64px!important;
+ padding:7px 8px!important;
+ overflow:visible!important;
+}
+.asset-card-row[data-card-template="compact-slots"]>.asset-card-marker{grid-area:marker}
+.asset-card-row[data-card-template="compact-slots"]>.asset-card-identity{grid-area:identity}
+.asset-card-row[data-card-template="compact-slots"]>.asset-card-quote-slot{grid-area:quote}
+.asset-card-row[data-card-template="compact-slots"]>.asset-card-context-slot{grid-area:context}
+.asset-card-row[data-card-template="compact-slots"]>.asset-card-end-actions{grid-area:actions}
+
+.asset-card-marker{
+ display:grid;
+ place-items:center;
+ width:100%;
+ min-width:0;
+ min-height:1px;
+}
+.asset-card-marker .fav-star{
+ width:26px!important;
+ min-width:26px!important;
+ height:30px!important;
+ margin:0!important;
+}
+.asset-card-identity{
+ display:block!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+.asset-card-copy{
+ width:100%;
+ min-width:0!important;
+ max-width:100%!important;
+}
+.asset-card-copy>strong{
+ display:block!important;
+ max-width:100%!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+ white-space:nowrap!important;
+ -webkit-line-clamp:unset!important;
+}
+.asset-card-copy>strong em{
+ display:inline;
+}
+.asset-card-copy>small,
+.asset-card .list-copy-isin{
+ display:block!important;
+ max-width:100%!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+ white-space:nowrap!important;
+}
+.asset-card-quote-slot,
+.asset-card-context-slot,
+.asset-card-end-actions{
+ min-width:0!important;
+ max-width:100%!important;
+ width:100%!important;
+}
+.asset-card-quote-slot{
+ overflow:visible!important;
+}
+.asset-card-quote-slot>.asset-card-cell{
+ overflow:visible!important;
+}
+.asset-card-context-slot{
+ overflow:hidden!important;
+}
+.asset-card-context-grid{
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(72px,1fr));
+ align-items:center;
+ gap:7px 10px;
+ width:100%;
+ min-width:0;
+ max-width:100%;
+}
+.asset-card-context-grid:empty{
+ min-height:1px;
+}
+.asset-card-context-cell{
+ min-width:0!important;
+ max-width:100%!important;
+ overflow:hidden!important;
+}
+.asset-card-context-cell>span{
+ display:block;
+ min-width:0;
+ max-width:100%;
+}
+.asset-card-cell-empty{
+ min-height:1px;
+ padding:0!important;
+}
+.asset-card-end-actions{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:flex-end!important;
+ gap:6px!important;
+ overflow:hidden!important;
+}
+.asset-card-end-actions:empty{
+ min-height:1px;
+}
+.asset-card-end-actions .asset-card-row-actions{
+ display:flex;
+ align-items:center;
+ justify-content:flex-end;
+ min-width:0;
+ max-width:100%;
+}
+.asset-card-end-actions .asset-card-open{
+ flex:0 0 auto;
+}
+.asset-card-meta[data-card-template="compact-slots"]{
+ grid-template-areas:"meta-marker meta-content meta-content meta-content meta-action";
+ align-items:center;
+ gap:0 10px!important;
+ padding:0 8px 6px!important;
+ color:var(--asset-muted);
+ font-size:7.5px;
+ line-height:1.2;
+}
+.asset-card-meta-marker{grid-area:meta-marker}
+.asset-card-meta-content{
+ grid-area:meta-content;
+ min-width:0;
+ max-width:100%;
+ overflow:hidden;
+}
+.asset-card-meta-action{grid-area:meta-action}
+.asset-card-meta-content>.portfolio-position-strip{
+ padding:0!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+.portfolio-position-card .asset-card-row[data-card-template="compact-slots"]{
+ grid-template-columns:
+  var(--asset-slot-marker)
+  minmax(0,1.55fr)
+  minmax(190px,1fr)
+  minmax(210px,1fr)
+  minmax(96px,var(--asset-slot-actions))!important;
+}
+.portfolio-position-card .portfolio-position-exposure{
+ grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ gap:6px!important;
+}
+.portfolio-position-card .asset-card-end-actions{
+ overflow:visible!important;
+}
+[data-card-context="favorites"] .asset-card-context-slot,
+[data-card-context="favorites"] .asset-card-end-actions,
+[data-card-context="home"] .asset-card-context-slot,
+[data-card-context="catalog"] .asset-card-context-slot{
+ min-height:1px;
+}
+
+/* The Investing-style quote is the same in Markets, Radar, Favorites and Portfolios. */
+.asset-card-quote-slot .asset-investing-quote{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr)!important;
+ gap:4px!important;
+ width:100%;
+ min-width:0;
+ max-width:100%;
+}
+.asset-card-quote-slot .asset-investing-main{
+ display:flex!important;
+ align-items:baseline!important;
+ flex-wrap:wrap!important;
+ gap:4px 7px!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+.asset-card-quote-slot .asset-investing-main>strong{
+ font-size:16px!important;
+ line-height:1!important;
+}
+.asset-card-quote-slot .asset-investing-main>span{
+ font-size:10px!important;
+ line-height:1.05!important;
+}
+.asset-card-quote-slot .asset-investing-status{
+ min-height:8px!important;
+ margin-top:0!important;
+}
+.asset-card-quote-slot .asset-investing-extended{
+ display:flex!important;
+ align-items:baseline!important;
+ flex-wrap:wrap!important;
+ gap:3px 6px!important;
+ min-width:0!important;
+ max-width:100%!important;
+ padding-top:0!important;
+}
+.asset-card-quote-slot .asset-investing-extended time{
+ margin-left:auto;
+}
+
+/* Context-specific information uses the same reserved fourth slot. */
+.radar-card-context,
+.future-card-context,
+.alert-card-context{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:5px 10px;
+ width:100%;
+ min-width:0;
+}
+.radar-card-context>span,
+.future-card-context>span,
+.alert-card-context>span{
+ display:grid;
+ gap:2px;
+ min-width:0;
+}
+.radar-card-context small,
+.future-card-context small,
+.alert-card-context small{
+ color:var(--asset-muted);
+ font-size:7px;
+ line-height:1.05;
+ white-space:nowrap;
+}
+.radar-card-context b,
+.future-card-context b,
+.alert-card-context b{
+ min-width:0;
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ color:var(--asset-text);
+ font-size:9.5px;
+ line-height:1.1;
+}
+.future-card-context .future-card-catalyst{
+ grid-column:1/-1;
+}
+.future-card-context .future-card-catalyst b{
+ white-space:normal;
+ display:-webkit-box;
+ -webkit-box-orient:vertical;
+ -webkit-line-clamp:2;
+}
+.radar-card-context .positive b,
+.alert-card-context .positive b{color:var(--positive)}
+.radar-card-context .negative b,
+.alert-card-context .negative b{color:var(--negative)}
+.radar-card-context .watch b{color:var(--amber,#d9c96a)}
+
+/* Container-responsive, so narrow cards (including desktop two-column Radar) adapt
+   without relying on screen coordinates or a particular viewport width. */
+@container compact-card (max-width:760px){
+ .asset-card-row[data-card-template="compact-slots"]{
+  --asset-slot-marker:26px;
+  grid-template-columns:var(--asset-slot-marker) minmax(0,1.25fr) minmax(128px,.9fr)!important;
+  grid-template-areas:
+   "marker identity quote"
+   ". context actions"!important;
+  row-gap:5px!important;
+  column-gap:7px!important;
+  padding:6px!important;
+ }
+ .asset-card-context-slot{
+  align-self:start;
+ }
+ .asset-card-end-actions{
+  align-self:start!important;
+ }
+ .asset-card-meta[data-card-template="compact-slots"]{
+  grid-template-columns:var(--asset-slot-marker) minmax(0,1fr) minmax(128px,.9fr)!important;
+  grid-template-areas:"meta-marker meta-content meta-content"!important;
+  padding:0 6px 6px!important;
+  column-gap:7px!important;
+ }
+ .asset-card-meta-action{display:none}
+ .asset-card-copy>strong{font-size:10px!important}
+ .asset-card-copy>small,
+ .asset-card .list-copy-isin{font-size:7px!important}
+ .asset-card-quote-slot .asset-investing-main>strong{font-size:13px!important}
+ .asset-card-quote-slot .asset-investing-main>span{font-size:8.5px!important}
+ .asset-card-quote-slot .asset-investing-extended{font-size:7.5px!important}
+ .asset-card-quote-slot .asset-investing-extended>strong{font-size:9px!important}
+ .asset-card-open-button{
+  min-width:52px!important;
+  max-width:100%!important;
+  padding:0 5px!important;
+ }
+}
+@container compact-card (max-width:500px){
+ .asset-card-row[data-card-template="compact-slots"]{
+  grid-template-columns:24px minmax(0,1fr) minmax(116px,.72fr)!important;
+  grid-template-areas:
+   "marker identity quote"
+   ". context context"
+   ". actions actions"!important;
+  row-gap:4px!important;
+ }
+ .asset-card-context-grid{
+  grid-template-columns:repeat(auto-fit,minmax(64px,1fr));
+  gap:4px 7px;
+ }
+ .asset-card-end-actions{
+  justify-content:flex-end!important;
+ }
+ .portfolio-position-card .portfolio-position-exposure{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ }
+ .asset-card-meta[data-card-template="compact-slots"]{
+  grid-template-columns:24px minmax(0,1fr)!important;
+  grid-template-areas:"meta-marker meta-content"!important;
+ }
+}
+@container compact-card (max-width:350px){
+ .asset-card-row[data-card-template="compact-slots"]{
+  grid-template-columns:24px minmax(0,1fr)!important;
+  grid-template-areas:
+   "marker identity"
+   ". quote"
+   ". context"
+   ". actions"!important;
+ }
+ .asset-card-quote-slot .asset-investing-extended time{
+  margin-left:0;
+ }
+ .portfolio-position-card .portfolio-position-exposure{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ }
+}
+
