@@ -68,26 +68,23 @@ function groupFutureEvents(events){
  });
 }
 function futureRow(group,index,trOnly){
- let e=group.first,s=stockForEvent(e)||e,preferTr=trOnly&&trTradable(s),key=stockKey(s),label=EL(e),when=eventWhen(e);
- let q=canonicalQuote(s,preferTr),price=N(q&&q.price),change=preferTr?trLiveChange(s):(usLiveChange(s)??SC(s,currentMarketSession()));
- let priceHtml=preferTr&&trTradable(s)
-  ?'<span class="future-price" data-tr-live-key="'+E(key)+'">'+pricePairInner(s,price,true)+'</span>'
-  :'<span class="future-price">'+pricePair(s,price,false)+'</span>';
- let changeHtml=preferTr&&trTradable(s)
-  ?'<span class="future-change '+C(change)+'" data-tr-live-change-key="'+E(key)+'">'+PC(change)+'</span>'
-  :'<span class="future-change '+C(change)+'">'+PC(change)+'</span>';
+ let e=group.first,s=stockForEvent(e)||e,preferTr=trOnly&&trTradable(s),label=EL(e),when=eventWhen(e);
  let details=group.items.map(eventItem).join('');
- return '<article class="future-list-item">'+
-  '<div class="future-list-row stock-open-row"'+stockOpenAttrs(s,label+' · '+when,preferTr)+'>'+
-   '<div class="future-identity">'+favButton(s,preferTr)+'<div><strong><em>#'+(index+1)+'</em>'+E(s.name||s.ticker||'—')+'</strong><small>'+E([preferTr?(s.trTicker||s.ticker):s.ticker,preferTr?(s.trExchange||'LSX'):s.exchange].filter(Boolean).join(' · '))+'</small></div></div>'+
-   '<div class="future-catalyst"><small>CATALIZADOR</small><strong>'+E(label)+'</strong><span title="'+E(e.title||e.fact||'')+'">'+E(e.title||e.fact||label)+'</span></div>'+
-   '<div class="future-when"><small>FECHA</small><strong>'+E(when)+'</strong>'+(group.items.length>1?'<span>'+group.items.length+' eventos/noticias</span>':'')+'</div>'+
-   '<div class="future-quote"><small>PRECIO</small>'+priceHtml+'</div>'+
-   '<div class="future-move"><small>VARIACIÓN</small>'+changeHtml+'</div>'+
-   '<span class="future-open">›</span>'+
-  '</div>'+
-  '<details class="future-row-details"><summary>Más información del catalizador</summary><div>'+details+'</div></details>'+
- '</article>';
+ let context='<div class="future-card-context">'+
+  '<span class="future-card-catalyst"><small>CATALIZADOR</small><b title="'+E(e.title||e.fact||'')+'">'+E(label)+'</b></span>'+
+  '<span><small>FECHA</small><b>'+E(when)+'</b></span>'+
+  (group.items.length>1?'<span><small>EVENTOS</small><b>'+group.items.length+'</b></span>':'')+
+ '</div>';
+ return standardStockCard(s,index,{
+  se:currentMarketSession(),
+  preferTr,
+  context:'future',
+  rankLabel:'#'+(index+1),
+  hint:label+' · '+when,
+  cells:[{label:'Contexto',html:context}],
+  detailsLabel:'Más información del catalizador',
+  detailsHtml:details
+ });
 }
 function renderFuture(){
  const horizon=+document.querySelector('#futureHorizon')?.value||14,type=document.querySelector('#futureType')?.value||'all',sector=document.querySelector('#futureSector')?.value||'all',trOnly=!!document.querySelector('#futureTrOnly')?.checked,now=Date.now();
