@@ -9194,7 +9194,6 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  #view-recommendation .radar-ai-tier>header span{font-size:6px;min-width:14px;padding:1px 3px}
  #view-recommendation .radar-ai-tier-list{gap:3px}
  #view-recommendation .radar-ai-tier-list .asset-card-row{
-  grid-template-columns:minmax(0,1.25fr) minmax(0,.9fr) minmax(0,.52fr) 7px!important;
   gap:2px!important;
   min-height:52px!important;
   padding:4px 3px!important;

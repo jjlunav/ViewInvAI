@@ -906,13 +906,16 @@
  min-width:0!important;
  max-width:100%!important;
 }
-.portfolio-position-card .asset-card-row[data-card-template="compact-slots"]{
- grid-template-columns:
-  var(--asset-slot-marker)
-  minmax(0,1.55fr)
-  minmax(190px,1fr)
-  minmax(210px,1fr)
-  minmax(96px,var(--asset-slot-actions))!important;
+/* Desktop-only: these minimum widths cannot fit a phone card and collapsed the name to 0px. */
+@container compact-card (min-width:501px){
+ .portfolio-position-card .asset-card-row[data-card-template="compact-slots"]{
+  grid-template-columns:
+   var(--asset-slot-marker)
+   minmax(0,1.55fr)
+   minmax(190px,1fr)
+   minmax(210px,1fr)
+   minmax(96px,var(--asset-slot-actions))!important;
+ }
 }
 .portfolio-position-card .portfolio-position-exposure{
  grid-template-columns:repeat(3,minmax(0,1fr))!important;
@@ -1256,4 +1259,23 @@ html[data-theme="light"] .mobile-nav-item[data-mobile-view="recommendation"].act
  background:linear-gradient(180deg,rgba(96,118,230,.20),rgba(96,118,230,.08))!important;
  border-color:rgba(84,104,214,.5)!important;
  color:#2f3b94!important;
+}
+/* Fondos on phones: the status line stays on one wrapped line of text, and the
+   heading refresh button matches the other square heading buttons. */
+@media(max-width:820px){
+ #view-funds .funds-status{display:block!important;font-size:11px!important;line-height:1.4!important;white-space:normal!important}
+ #view-funds .funds-status>*{display:inline!important;margin:0 3px 0 0!important}
+ #view-funds .page-heading .heading-actions .btn.icon-btn{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important;padding:0!important}
+}
+/* Carteras on phones: name, then the position figures at full width, then actions. */
+@container compact-card (max-width:500px){
+ .portfolio-position-card .asset-card-row[data-card-template="compact-slots"]{
+  grid-template-columns:24px minmax(0,1fr)!important;
+  grid-template-areas:"marker identity" ". quote" ". context" ". actions"!important;
+  row-gap:6px!important;
+ }
+ .portfolio-position-card .asset-card-end-actions,
+ .portfolio-position-card .asset-card-end-actions .asset-card-row-actions{
+  flex-direction:row!important;justify-content:flex-end!important;align-items:center!important;gap:8px!important;
+ }
 }
