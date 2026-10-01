@@ -14,11 +14,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "android" / "app" / "src" / "main" / "res"
 
-BG = (7, 16, 24, 255)
+BG = (8, 19, 27, 255)
 BORDER = (49, 80, 98, 255)
+GRID = (49, 80, 98, 140)
 TEAL = (67, 228, 178, 255)
 TEAL_LIGHT = (141, 245, 213, 255)
+RED = (255, 99, 110, 255)
 TRANSPARENT = (0, 0, 0, 0)
+
+# Candlestick mark in favicon.svg coordinates (64x64). Keep both in sync.
+# Wicks: (x, y_top, y_bottom, color); bodies: (x, y, width, height, color).
+WICK_WIDTH = 2.6
+WICKS = [(18, 32, 52, TEAL), (32, 23, 45, RED), (46, 11, 41, TEAL)]
+BODIES = [(13, 36, 10, 12, TEAL), (27, 27, 10, 12, RED), (41, 15, 10, 21, TEAL_LIGHT)]
+BODY_RADIUS = 2.0
+GRID_YS = (22, 32, 42)
+SUPERSAMPLE = 4
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -42,75 +53,77 @@ def write_png(path: Path, size: int, pixels: list[tuple[int, int, int, int]]) ->
     path.write_bytes(payload)
 
 
-def rounded_rect_contains(x: float, y: float, size: int, radius: float) -> bool:
-    if radius <= x <= size - radius or radius <= y <= size - radius:
-        return 0 <= x < size and 0 <= y < size
-    cx = radius if x < radius else size - radius
-    cy = radius if y < radius else size - radius
-    return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2
+def in_rounded_rect(x: float, y: float, rx: float, ry: float, w: float, h: float, r: float) -> bool:
+    if not (rx <= x <= rx + w and ry <= y <= ry + h):
+        return False
+    cx = min(max(x, rx + r), rx + w - r)
+    cy = min(max(y, ry + r), ry + h - r)
+    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
 
 
-def distance_to_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
-    vx, vy = bx - ax, by - ay
-    wx, wy = px - ax, py - ay
-    vv = vx * vx + vy * vy
-    if vv == 0:
-        return math.hypot(px - ax, py - ay)
-    t = max(0.0, min(1.0, (wx * vx + wy * vy) / vv))
-    cx, cy = ax + t * vx, ay + t * vy
-    return math.hypot(px - cx, py - cy)
+def blend(dst: tuple[int, int, int, int], src: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    a = src[3] / 255
+    if a >= 1 or dst[3] == 0:
+        return src
+    return (
+        round(src[0] * a + dst[0] * (1 - a)),
+        round(src[1] * a + dst[1] * (1 - a)),
+        round(src[2] * a + dst[2] * (1 - a)),
+        dst[3],
+    )
+
+
+def sample(u: float, v: float, round_icon: bool) -> tuple[int, int, int, int]:
+    """Colour at (u, v) in the 64x64 favicon space."""
+    if round_icon:
+        d = math.hypot(u - 32, v - 32)
+        if d > 30.5:
+            return TRANSPARENT
+        color = BORDER if d > 27.5 else BG
+    else:
+        if not in_rounded_rect(u, v, 1.5, 1.5, 61, 61, 16.5):
+            return TRANSPARENT
+        color = BG if in_rounded_rect(u, v, 4.5, 4.5, 55, 55, 13.5) else BORDER
+    if color is BORDER:
+        return color
+
+    if 10 <= u <= 54 and any(abs(v - gy) <= 0.5 for gy in GRID_YS):
+        color = blend(color, GRID)
+    for x, top, bottom, wick_color in WICKS:
+        half = WICK_WIDTH / 2
+        if abs(u - x) <= half and top - half <= v <= bottom + half:
+            if top <= v <= bottom or math.hypot(u - x, v - (top if v < top else bottom)) <= half:
+                color = wick_color
+    for x, y, w, h, body_color in BODIES:
+        if in_rounded_rect(u, v, x, y, w, h, BODY_RADIUS):
+            color = body_color
+    return color
 
 
 def make_icon(size: int, round_icon: bool = False) -> list[tuple[int, int, int, int]]:
-    radius = size * 0.22
-    border = max(1.0, size * 0.025)
-    cx = cy = size / 2
-    outer_circle = size * 0.49
-    inner_circle = outer_circle - border
-    line_width = max(2.0, size * 0.055)
-
-    left_a = (size * 0.29, size * 0.29)
-    center_b = (size * 0.50, size * 0.72)
-    right_a = (size * 0.72, size * 0.29)
-
-    diamond_cx, diamond_cy = size * 0.78, size * 0.23
-    diamond_r = size * 0.055
-
+    scale = 64 / size
+    n = SUPERSAMPLE
     pixels: list[tuple[int, int, int, int]] = []
     for y in range(size):
         for x in range(size):
-            px, py = x + 0.5, y + 0.5
-
-            if round_icon:
-                d = math.hypot(px - cx, py - cy)
-                if d > outer_circle:
-                    color = TRANSPARENT
-                elif d > inner_circle:
-                    color = BORDER
-                else:
-                    color = BG
+            acc = [0, 0, 0, 0]
+            for sy in range(n):
+                for sx in range(n):
+                    c = sample((x + (sx + 0.5) / n) * scale, (y + (sy + 0.5) / n) * scale, round_icon)
+                    a = c[3]
+                    acc[0] += c[0] * a
+                    acc[1] += c[1] * a
+                    acc[2] += c[2] * a
+                    acc[3] += a
+            if acc[3] == 0:
+                pixels.append(TRANSPARENT)
             else:
-                inside = rounded_rect_contains(px, py, size, radius)
-                inside_inner = rounded_rect_contains(px, py, size, max(1.0, radius - border))
-                if not inside:
-                    color = TRANSPARENT
-                elif not inside_inner or px < border or py < border or px > size - border or py > size - border:
-                    color = BORDER
-                else:
-                    color = BG
-
-            if color[3]:
-                if (
-                    distance_to_segment(px, py, *left_a, *center_b) <= line_width / 2
-                    or distance_to_segment(px, py, *center_b, *right_a) <= line_width / 2
-                ):
-                    color = TEAL
-
-                if abs(px - diamond_cx) + abs(py - diamond_cy) <= diamond_r:
-                    color = TEAL_LIGHT
-
-            pixels.append(color)
-
+                pixels.append((
+                    round(acc[0] / acc[3]),
+                    round(acc[1] / acc[3]),
+                    round(acc[2] / acc[3]),
+                    round(acc[3] / (n * n)),
+                ))
     return pixels
 
 
@@ -138,6 +151,48 @@ def write_legacy_icons() -> None:
         write_png(folder / "ic_launcher_round.png", size, make_icon(size, True))
 
 
+def hex_color(rgba: tuple[int, int, int, int]) -> str:
+    return "#{:02X}{:02X}{:02X}{:02X}".format(rgba[3], rgba[0], rgba[1], rgba[2])
+
+
+def rounded_rect_path(x: float, y: float, w: float, h: float, r: float) -> str:
+    f = lambda n: f"{n:.2f}".rstrip("0").rstrip(".")
+    return (
+        f"M{f(x + r)},{f(y)} H{f(x + w - r)} A{f(r)},{f(r)} 0 0 1 {f(x + w)},{f(y + r)} "
+        f"V{f(y + h - r)} A{f(r)},{f(r)} 0 0 1 {f(x + w - r)},{f(y + h)} "
+        f"H{f(x + r)} A{f(r)},{f(r)} 0 0 1 {f(x)},{f(y + h - r)} "
+        f"V{f(y + r)} A{f(r)},{f(r)} 0 0 1 {f(x + r)},{f(y)} Z"
+    )
+
+
+def adaptive_foreground_xml() -> str:
+    """Candlestick mark centred in the 108dp adaptive canvas, inside the 66dp safe zone."""
+    k = 1.35
+    tx = lambda u: 54 + (u - 32) * k
+    paths = []
+    for gy in GRID_YS:
+        paths.append((GRID, rounded_rect_path(tx(10), tx(gy) - 0.5 * k, 44 * k, 1 * k, 0.01)))
+    half = WICK_WIDTH / 2
+    for x, top, bottom, color in WICKS:
+        paths.append((color, rounded_rect_path(tx(x - half), tx(top - half), WICK_WIDTH * k, (bottom - top + WICK_WIDTH) * k, half * k)))
+    for x, y, w, h, color in BODIES:
+        paths.append((color, rounded_rect_path(tx(x), tx(y), w * k, h * k, BODY_RADIUS * k)))
+    body = "".join(
+        f'    <path\n        android:fillColor="{hex_color(color)}"\n        android:pathData="{data}" />\n'
+        for color, data in paths
+    )
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="108dp"\n'
+        '    android:height="108dp"\n'
+        '    android:viewportWidth="108"\n'
+        '    android:viewportHeight="108">\n'
+        f"{body}"
+        "</vector>\n"
+    )
+
+
 def write_adaptive_icon() -> None:
     values = RES / "values"
     drawable = RES / "drawable"
@@ -149,32 +204,13 @@ def write_adaptive_icon() -> None:
     (values / "viewinvai_icon_colors.xml").write_text(
         """<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="viewinvai_icon_background">#071018</color>
+    <color name="viewinvai_icon_background">#08131B</color>
 </resources>
 """,
         encoding="utf-8",
     )
 
-    (drawable / "viewinvai_foreground.xml").write_text(
-        """<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#43E4B2"
-        android:pathData="M27,30 L36,30 L54,69 L50,80 Z" />
-    <path
-        android:fillColor="#43E4B2"
-        android:pathData="M72,30 L81,30 L58,80 L50,80 Z" />
-    <path
-        android:fillColor="#8DF5D5"
-        android:pathData="M84,18 L90,24 L84,30 L78,24 Z" />
-</vector>
-""",
-        encoding="utf-8",
-    )
+    (drawable / "viewinvai_foreground.xml").write_text(adaptive_foreground_xml(), encoding="utf-8")
 
     adaptive_xml = """<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
