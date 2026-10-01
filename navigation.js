@@ -20,17 +20,20 @@ const NAV_META={
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
  settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
-// Five destinations; Mercados and Radar IA group related screens behind a section switcher.
-const PRIMARY_MOBILE_VIEWS=['today','recommendation','home','portfolios','settings'];
+// Bottom bar: Inicio · Radar IA · [⌃ Mercados, the centre arrow] · Carteras · Más.
+// Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
+const PRIMARY_MOBILE_VIEWS=['today','recommendation','portfolios'];
+const MORE_VIEWS=['catalog','catalogUS','funds','heatmap','settings'];
 const NAV_GROUPS={
  today:['today'],
- home:['home','catalog','catalogUS','funds','heatmap'],
+ home:['home'],
  recommendation:['recommendation','entry','future'],
  portfolios:['portfolios'],
+ catalogs:['catalog','catalogUS','funds','heatmap'],
  settings:['settings']
 };
 const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar IA',entry:'Entrada',future:'Futuro'};
-const MOBILE_NAV_LABELS={today:'Inicio',home:'Mercados',recommendation:'Radar IA',portfolios:'Carteras',settings:'Ajustes'};
+const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar IA',portfolios:'Carteras'};
 function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
  document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
@@ -57,13 +60,14 @@ function renderNavigation(){
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
  const direct=PRIMARY_MOBILE_VIEWS;
- const rest=order.filter(v=>!direct.includes(v));
+ const rest=MORE_VIEWS.filter(v=>NAV_META[v]);
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
-  // Mercados is the raised centre tab: it opens the Mercados sheet upwards instead of navigating.
-  bottom.innerHTML=direct.map(v=>v==='home'
-   ?'<button type="button" class="mobile-nav-item mobile-nav-bump" data-mobile-view="home" aria-haspopup="dialog" aria-controls="marketQuickSheet" aria-expanded="false"><span class="mobile-nav-bump-cap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 14.5 12 8.5l6 6"/></svg></span><small>Mercados</small></button>'
-   :'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>').join('');
+  const item=v=>'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>';
+  bottom.innerHTML=item('today')+item('recommendation')+
+   '<button type="button" class="mobile-nav-bump" data-market-bump="1" aria-label="Abrir Mercados" title="Mercados" aria-haspopup="dialog" aria-controls="marketQuickSheet" aria-expanded="false"><span class="mobile-nav-bump-cap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 14.5 12 8.5l6 6"/></svg></span></button>'+
+   item('portfolios')+
+   '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false" aria-controls="mobileMoreSheet"><span>•••</span><small>Más</small></button>';
  }
  if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
@@ -74,6 +78,8 @@ function renderNavigation(){
 function syncMobileNavigation(){
  const group=navGroupOf(state.currentView);
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
+ const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
+ const more=$('.mobile-nav-item[data-mobile-more]');if(more)more.classList.toggle('active',MORE_VIEWS.includes(state.currentView));
  renderSectionSwitcher();
 }
 function closeMobileMore(){
@@ -222,7 +228,6 @@ function show(v,preserveProfile=false,recordHistory=true){
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
 document.addEventListener('click',e=>{
  let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
- if(mobileView&&mobileView.classList.contains('mobile-nav-bump')){e.preventDefault();toggleMarketQuick();return}
  if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
   e.preventDefault();let v=mobileView.dataset.mobileView;
   if(v&&mobileView.classList.contains('mobile-nav-item')){
@@ -232,8 +237,10 @@ document.addEventListener('click',e=>{
   }
   if(v)show(v);return;
  }
+ let bump=e.target.closest&&e.target.closest('[data-market-bump]');
+ if(bump){e.preventDefault();toggleMobileMore(false);toggleMarketQuick();return}
  let mobileMore=e.target.closest&&e.target.closest('[data-mobile-more]');
- if(mobileMore){e.preventDefault();toggleMobileMore();return}
+ if(mobileMore){e.preventDefault();toggleMarketQuick(false);toggleMobileMore();return}
 });
 document.addEventListener('click',e=>{
  const sw=e.target.closest&&e.target.closest('[data-section-view]');

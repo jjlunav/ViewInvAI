@@ -712,16 +712,19 @@ jobs:
                 const nav=document.querySelector('#mobileBottomNav');
                 const navItems=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
                 const navOrder=navItems.map(item=>item.dataset.mobileView||'more').join('|');
-                if(navItems.length!==5||navOrder!=='today|recommendation|home|portfolios|settings')return fail('native bottom nav order invalid: '+navOrder);
+                if(navItems.length!==4||navOrder!=='today|recommendation|portfolios|more')return fail('native bottom nav order invalid: '+navOrder);
+                const bump=nav.querySelector(':scope > .mobile-nav-bump[data-market-bump]');if(!bump)return fail('Mercados centre arrow missing from the bottom bar');
                 const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
                 if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside native bottom bar');
                 const centers=navItems.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2});
-                const gaps=centers.slice(1).map((value,index)=>value-centers[index]);
-                if(Math.max(...gaps)-Math.min(...gaps)>3)return fail('native bottom nav is not evenly centered');
-                nav.querySelector('.mobile-nav-bump')?.click();
-                if(!document.querySelector('#marketQuickSheet.open'))return fail('Mercados sheet did not open from the centre tab');
-                const fundsItem=document.querySelector('#marketQuickSheet [data-market-sheet-view="funds"]');
-                if(!fundsItem)return fail('funds missing from the Mercados sheet');
+                const bumpRect=bump.getBoundingClientRect(),mid=bumpRect.left+bumpRect.width/2;
+                if(Math.abs((centers[0]+centers[3])/2-mid)>3||Math.abs((centers[1]+centers[2])/2-mid)>3)return fail('native bottom nav is not symmetric around the centre arrow');
+                bump.click();
+                if(!document.querySelector('#marketQuickSheet.open'))return fail('Mercados sheet did not open from the centre arrow');
+                bump.click();
+                nav.querySelector('[data-mobile-more]')?.click();
+                const fundsItem=document.querySelector('.mobile-more-item[data-mobile-view="funds"]');
+                if(!fundsItem)return fail('funds missing from native More menu');
                 fundsItem.click();
                 window.ViewInvAIFunds.load(true).then(()=>{
                   const fundView=document.querySelector('#view-funds');
