@@ -485,12 +485,12 @@ function bidAskHtml(s,preferTr=false){
 function trPriceCell(s,which,se){
  let x=trPriceValues(s,SP(s,se)),value=which==='eur'?x.eur:x.usd,sym=which==='eur'?'€':'\u0024',dec=quotePrecision(s,true,SP(s,se));
  let cls=quoteDirClass(s&&s.trLiveDirection);
- return '<span class="table-price-wrap"><span class="table-price-cell'+(cls?' '+cls:'')+'" data-tr-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,true)+'</small></span>';
+ return '<span class="table-price-wrap"><span class="table-price-inline">'+quoteFreshnessDotHtml(s,true,'table-price-freshness')+'<span class="table-price-cell'+(cls?' '+cls:'')+'" data-tr-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span></span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,true)+'</small></span>';
 }
 function usPriceCell(s,which,se){
  let x=usPriceValues(s,SP(s,se)),value=which==='usd'?x.usd:x.eur,sym=which==='usd'?'\u0024':'€',dec=quotePrecision(s,false,SP(s,se));
  let cls=quoteDirClass(s&&s.usLiveDirection);
- return '<span class="table-price-wrap"><span class="table-price-cell'+(cls?' '+cls:'')+'" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,false)+'</small></span>';
+ return '<span class="table-price-wrap"><span class="table-price-inline">'+quoteFreshnessDotHtml(s,false,'table-price-freshness')+'<span class="table-price-cell'+(cls?' '+cls:'')+'" data-us-price-'+which+'-key="'+E(stockKey(s))+'">'+quoteMoney(value,sym,dec)+'</span></span><small class="quote-updated table-quote-updated">'+quoteUpdatedLabel(s,false)+'</small></span>';
 }
 function liveChangeHtml(s,fallback,preferTr=false){
  let trExact=preferTr&&trTradable(s),value=trExact?trLiveChange(s):(usLiveChange(s)??N(fallback));
