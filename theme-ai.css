@@ -1,0 +1,252 @@
+/* ViewInvAI · tema "financiero con IA".
+   Oscuro = Quant Glass (azul profundo, cristal, verde azulado para mercado, violeta para IA).
+   Claro  = Pearl Quant (blanco perla frío, títulos con serifa, índigo→turquesa para IA).
+   Se carga el último: solo redefine superficies, bordes, acentos y elementos de IA; no toca
+   tamaños ni maquetación. */
+
+:root{
+ --ai-1:#9d8cff;--ai-2:#43e4b2;--ai-grad:linear-gradient(90deg,#9d8cff,#43e4b2);
+ --ai-soft:rgba(157,140,255,.13);--ai-line:rgba(157,140,255,.42);--ai-glow:0 0 26px rgba(157,140,255,.22);
+ --qg-bg:#050d15;--qg-card:rgba(18,38,56,.58);--qg-panel:rgba(12,28,42,.72);--qg-inner:rgba(255,255,255,.035);
+ --qg-field:rgba(9,22,34,.86);--qg-line:rgba(140,190,210,.16);--qg-line-2:rgba(140,190,210,.26);
+ --qg-text:#eaf4f8;--qg-muted:#86a0ad;--qg-teal:#43e4b2;--qg-radius:14px;
+}
+html[data-theme="light"]{
+ --ai-1:#4f46e5;--ai-2:#14b8a6;--ai-grad:linear-gradient(90deg,#4f46e5,#14b8a6);
+ --ai-soft:#eef0ff;--ai-line:#c9c4ff;--ai-glow:0 10px 28px rgba(79,70,229,.16);
+ --pq-card:#ffffff;--pq-panel:rgba(255,255,255,.9);--pq-inner:#f7f9fd;--pq-field:#ffffff;
+ --pq-line:#dde3ee;--pq-line-2:#cfd7e6;--pq-text:#0f1e3a;--pq-muted:#64708a;--pq-navy:#0f1e3a;
+ --pq-up:#0f8a5f;--pq-down:#c2263a;--pq-shadow:0 2px 10px rgba(15,30,58,.05);--pq-radius:14px;
+ --green:#0f8a5f;--red:#c2263a;--positive:#0f8a5f;--negative:#c2263a;
+}
+
+/* ============================== OSCURO · QUANT GLASS ============================== */
+html:not([data-theme="light"]):root:root body{
+ background:radial-gradient(120% 55% at 85% -5%,#16314a 0%,#0a1a2a 42%,var(--qg-bg) 78%) fixed!important;
+ background-color:var(--qg-bg)!important;color:var(--qg-text)!important;
+}
+html:not([data-theme="light"]):root:root body .main,
+html:not([data-theme="light"]):root:root body .view{background:transparent!important}
+html:not([data-theme="light"]):root:root body .sidebar{background:rgba(6,15,24,.82)!important;border-right-color:var(--qg-line)!important;backdrop-filter:blur(10px)}
+html:not([data-theme="light"]):root:root body .topbar{background:rgba(6,15,24,.78)!important;border-bottom-color:var(--qg-line)!important}
+html:not([data-theme="light"]):root:root body .nav-item.active{background:rgba(67,228,178,.12)!important;box-shadow:inset 2px 0 var(--qg-teal)!important}
+
+/* Cards and panels: translucent glass over the gradient. */
+html:not([data-theme="light"]):root:root body .asset-card,
+html:not([data-theme="light"]):root:root body .stock-card,
+html:not([data-theme="light"]):root:root body .event-item,
+html:not([data-theme="light"]):root:root body .portfolio-auth-gate{
+ background:var(--qg-card)!important;border-color:var(--qg-line)!important;
+}
+html:not([data-theme="light"]):root:root body .asset-card{border-radius:var(--qg-radius)!important}
+html:not([data-theme="light"]):root:root body .profile-section,
+html:not([data-theme="light"]):root:root body .radar-ai-market,
+html:not([data-theme="light"]):root:root body .favorites-market-group,
+html:not([data-theme="light"]):root:root body .filter-panel,
+html:not([data-theme="light"]):root:root body .future-filter-bar,
+html:not([data-theme="light"]):root:root body .settings-card,
+html:not([data-theme="light"]):root:root body .settings-section,
+html:not([data-theme="light"]):root:root body .portfolio-block,
+html:not([data-theme="light"]):root:root body .portfolio-goal-hero,
+html:not([data-theme="light"]):root:root body .portfolio-goal-summary,
+html:not([data-theme="light"]):root:root body .portfolio-goal-decision,
+html:not([data-theme="light"]):root:root body .portfolio-goal-controls{
+ background:var(--qg-panel)!important;border-color:var(--qg-line)!important;
+}
+html:not([data-theme="light"]):root:root body .profile-section-head{background:rgba(255,255,255,.025)!important;border-color:var(--qg-line)!important}
+html:not([data-theme="light"]):root:root body .profile-identity,
+html:not([data-theme="light"]):root:root body .event-verification,
+html:not([data-theme="light"]):root:root body .profile-session-cell,
+html:not([data-theme="light"]):root:root body .profile-session-strip{background:var(--qg-inner)!important;border-color:var(--qg-line)!important}
+html:not([data-theme="light"]):root:root body .empty-state{background:rgba(9,22,34,.5)!important;border-color:var(--qg-line-2)!important}
+
+/* Fields and buttons. */
+html:not([data-theme="light"]):root:root body .input,
+html:not([data-theme="light"]):root:root body .select,
+html:not([data-theme="light"]):root:root body select,
+html:not([data-theme="light"]):root:root body input[type="search"],
+html:not([data-theme="light"]):root:root body input[type="text"],
+html:not([data-theme="light"]):root:root body input[type="number"],
+html:not([data-theme="light"]):root:root body input[type="date"],
+html:not([data-theme="light"]):root:root body .btn,
+html:not([data-theme="light"]):root:root body .filter-icon-button,
+html:not([data-theme="light"]):root:root body .catalog-toolbar-mini,
+html:not([data-theme="light"]):root:root body .section-help,
+html:not([data-theme="light"]):root:root body .portfolio-icon-action,
+html:not([data-theme="light"]):root:root body .portfolio-refresh{
+ background-color:var(--qg-field)!important;border-color:var(--qg-line-2)!important;
+}
+html:not([data-theme="light"]):root:root body .btn.secondary,
+html:not([data-theme="light"]):root:root body .btn.primary{background:rgba(67,228,178,.16)!important;border-color:rgba(67,228,178,.5)!important;color:#d9fff2!important}
+
+/* Tabs and navigation. */
+html:not([data-theme="light"]):root:root body .tab.active{background:rgba(67,228,178,.12)!important;border-color:var(--qg-teal)!important;color:#eafff8!important}
+html:not([data-theme="light"]):root:root body .mobile-bottom-nav{background:rgba(5,13,21,.9)!important;border-top-color:var(--qg-line)!important;backdrop-filter:blur(12px)}
+html:not([data-theme="light"]):root:root body .profile-hero.investing-profile-header,
+html:not([data-theme="light"]):root:root body .profile-tabs{background:rgba(6,15,24,.9)!important;border-color:var(--qg-line)!important;backdrop-filter:blur(10px)}
+html:not([data-theme="light"]):root:root body .market-quick-sheet,
+html:not([data-theme="light"]):root:root body .mobile-more-sheet,
+html:not([data-theme="light"]):root:root body .shared-filter-panel,
+html:not([data-theme="light"]):root:root body .app-modal{background:#0a1826!important;border-color:var(--qg-line-2)!important}
+html:not([data-theme="light"]):root:root body .mobile-more-item{background:var(--qg-card)!important;border-color:var(--qg-line)!important}
+
+html:not([data-theme="light"]):root:root body .market-board-list{border-color:var(--qg-line)!important;border-radius:var(--qg-radius)!important}
+
+/* ================================ CLARO · PEARL QUANT ================================ */
+html[data-theme="light"]:root:root body{
+ background:linear-gradient(180deg,#f6f8fc 0%,#eef2f9 100%) fixed!important;background-color:#f1f4fa!important;color:var(--pq-text)!important;
+}
+html[data-theme="light"]:root:root body .main,
+html[data-theme="light"]:root:root body .view{background:transparent!important}
+html[data-theme="light"]:root:root body .sidebar{background:rgba(255,255,255,.88)!important;border-right-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .topbar{background:rgba(246,248,252,.92)!important;border-bottom-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .nav-item{color:#3b4a66!important}
+html[data-theme="light"]:root:root body .nav-item.active{background:var(--ai-soft)!important;color:var(--pq-navy)!important;box-shadow:inset 2px 0 var(--ai-1)!important}
+
+/* Serif headings, the private-banking touch. */
+html[data-theme="light"]:root:root body .view>.page-heading h1,
+html[data-theme="light"]:root:root body .profile-company-name,
+html[data-theme="light"]:root:root body .profile-section-head h2,
+html[data-theme="light"]:root:root body .profile-section-head h3,
+html[data-theme="light"]:root:root body .portfolio-goal-intro h2{
+ font-family:Georgia,"Noto Serif","DejaVu Serif","Times New Roman",serif!important;color:var(--pq-navy)!important;letter-spacing:0!important;
+}
+
+html[data-theme="light"]:root:root body .asset-card,
+html[data-theme="light"]:root:root body .stock-card,
+html[data-theme="light"]:root:root body .event-item,
+html[data-theme="light"]:root:root body .portfolio-auth-gate{
+ background:var(--pq-card)!important;border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important;color:var(--pq-text)!important;
+}
+html[data-theme="light"]:root:root body .asset-card{border-radius:var(--pq-radius)!important}
+html[data-theme="light"]:root:root body .profile-section,
+html[data-theme="light"]:root:root body .radar-ai-market,
+html[data-theme="light"]:root:root body .favorites-market-group,
+html[data-theme="light"]:root:root body .filter-panel,
+html[data-theme="light"]:root:root body .future-filter-bar,
+html[data-theme="light"]:root:root body .settings-card,
+html[data-theme="light"]:root:root body .settings-section,
+html[data-theme="light"]:root:root body .portfolio-block,
+html[data-theme="light"]:root:root body .portfolio-goal-hero,
+html[data-theme="light"]:root:root body .portfolio-goal-summary,
+html[data-theme="light"]:root:root body .portfolio-goal-decision,
+html[data-theme="light"]:root:root body .portfolio-goal-controls{
+ background:var(--pq-panel)!important;border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important;
+}
+html[data-theme="light"]:root:root body .market-board-list{border-color:var(--pq-line)!important;border-radius:var(--pq-radius)!important;background:transparent!important}
+html[data-theme="light"]:root:root body .radar-ai-market-head{border-color:var(--pq-line)!important;background:transparent!important}
+html[data-theme="light"]:root:root body .profile-section-head{background:#f4f6fb!important;border-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .profile-identity,
+html[data-theme="light"]:root:root body .event-verification,
+html[data-theme="light"]:root:root body .profile-session-cell,
+html[data-theme="light"]:root:root body .profile-session-strip{background:var(--pq-inner)!important;border-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .empty-state{background:rgba(255,255,255,.7)!important;border-color:var(--pq-line-2)!important;color:var(--pq-muted)!important}
+
+html[data-theme="light"]:root:root body .input,
+html[data-theme="light"]:root:root body .select,
+html[data-theme="light"]:root:root body select,
+html[data-theme="light"]:root:root body input[type="search"],
+html[data-theme="light"]:root:root body input[type="text"],
+html[data-theme="light"]:root:root body input[type="number"],
+html[data-theme="light"]:root:root body input[type="date"],
+html[data-theme="light"]:root:root body .btn,
+html[data-theme="light"]:root:root body .filter-icon-button,
+html[data-theme="light"]:root:root body .catalog-toolbar-mini,
+html[data-theme="light"]:root:root body .section-help,
+html[data-theme="light"]:root:root body .portfolio-icon-action,
+html[data-theme="light"]:root:root body .portfolio-refresh{
+ background-color:var(--pq-field)!important;border-color:var(--pq-line-2)!important;color:var(--pq-navy)!important;
+}
+html[data-theme="light"]:root:root body .btn.secondary,
+html[data-theme="light"]:root:root body .btn.primary{background:var(--pq-navy)!important;border-color:var(--pq-navy)!important;color:#ffffff!important}
+
+html[data-theme="light"]:root:root body .tab{background:transparent!important;border-color:transparent!important;color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body .tab.active{background:transparent!important;border-color:transparent!important;border-bottom:2px solid var(--pq-navy)!important;color:var(--pq-navy)!important;font-weight:700!important}
+html[data-theme="light"]:root:root body .portfolio-tab.active,
+html[data-theme="light"]:root:root body .market-board-source-tabs .tab.active{background:var(--pq-navy)!important;border:1px solid var(--pq-navy)!important;color:#ffffff!important}
+html[data-theme="light"]:root:root body .mobile-bottom-nav{background:rgba(255,255,255,.95)!important;border-top-color:var(--pq-line)!important;box-shadow:0 -6px 18px rgba(15,30,58,.06)!important}
+html[data-theme="light"]:root:root body .mobile-nav-item{color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body .mobile-nav-item.active,
+html[data-theme="light"]:root:root body .mobile-nav-item.active>span,
+html[data-theme="light"]:root:root body .mobile-nav-item.active>small{color:var(--ai-1)!important}
+html[data-theme="light"]:root:root body .mobile-nav-item.active:not([data-mobile-view="recommendation"]){background:var(--ai-soft)!important;border-color:var(--ai-line)!important}
+html[data-theme="light"]:root:root body .profile-hero.investing-profile-header,
+html[data-theme="light"]:root:root body .profile-tabs{background:rgba(255,255,255,.96)!important;border-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .market-quick-sheet,
+html[data-theme="light"]:root:root body .mobile-more-sheet,
+html[data-theme="light"]:root:root body .shared-filter-panel,
+html[data-theme="light"]:root:root body .app-modal{background:#ffffff!important;border-color:var(--pq-line)!important;color:var(--pq-text)!important}
+html[data-theme="light"]:root:root body .mobile-more-item{background:var(--pq-inner)!important;border-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .mobile-more-item>span{color:var(--ai-1)!important}
+html[data-theme="light"]:root:root body .theme-setting-option.active{background:var(--ai-soft)!important;border-color:var(--ai-1)!important;color:var(--pq-navy)!important}
+
+/* ========================= IA · común a los dos temas ========================= */
+/* Everything produced by the AI gets its own colour (violeta / índigo), so it never reads
+   as a market signal (verde = sube). */
+html:root:root body .ai-badge,
+html:root:root body .heading-badge.ai-badge{
+ background:var(--ai-soft)!important;border:1px solid var(--ai-line)!important;color:var(--ai-1)!important;
+}
+html:root:root body .profile-tabs .profile-tab-ai{color:var(--ai-1)!important}
+html:root:root body .profile-tabs .profile-tab-ai.active{border-bottom-color:var(--ai-1)!important;color:var(--ai-1)!important}
+html:root:root body .profile-ai-panel{border-color:var(--ai-line)!important;box-shadow:var(--ai-glow)!important}
+html:not([data-theme="light"]):root:root body .profile-ai-panel{background:linear-gradient(135deg,rgba(157,140,255,.16),rgba(67,228,178,.06) 70%),rgba(10,22,36,.9)!important}
+html[data-theme="light"]:root:root body .profile-ai-panel{background:linear-gradient(135deg,#ffffff,#f3f2ff 60%,#ecfaf7)!important}
+html:root:root body .profile-ai-head small{color:var(--ai-1)!important;letter-spacing:.12em!important}
+html:root:root body .profile-ai-score{border-color:var(--ai-1)!important;box-shadow:0 0 0 3px var(--ai-soft)!important}
+
+/* Radar IA: the "Alta convicción" tier is the AI's highlighted pick. */
+html:root:root body .radar-ai-tier-high{border-radius:var(--qg-radius)!important;border:1px solid var(--ai-line)!important;box-shadow:var(--ai-glow)!important;padding:6px!important}
+html:not([data-theme="light"]):root:root body .radar-ai-tier-high{background:linear-gradient(135deg,rgba(157,140,255,.14),rgba(67,228,178,.05))!important}
+html[data-theme="light"]:root:root body .radar-ai-tier-high{background:linear-gradient(135deg,#ffffff,#f3f2ff 60%,#ecfaf7)!important}
+html:root:root body .radar-ai-tier-high>header strong{color:var(--ai-1)!important}
+html:root:root body .radar-ai-tier-high>header strong::before{content:"✦ ";color:var(--ai-1)}
+html:root:root body .radar-ai-tier>header span{background:var(--ai-soft)!important;color:var(--ai-1)!important;border-color:var(--ai-line)!important}
+/* Score chip in the Radar cards. */
+html:root:root body .radar-ai-tier .asset-card-context-cell:first-child .asset-card-cell-value{
+ color:var(--ai-1)!important;background:var(--ai-soft)!important;border-radius:6px!important;padding:0 5px!important;display:inline-block!important;font-weight:800!important;
+}
+html:root:root body .radar-ai-tier .radar-ai-empty{border-color:var(--ai-line)!important;color:var(--ai-1)!important;background:transparent!important}
+/* Radar intro: the AI explains the engine, so it wears the AI gradient. */
+html:root:root body #view-recommendation .recommendation-intro{border:1px solid var(--ai-line)!important;color:inherit!important}
+html:not([data-theme="light"]):root:root body #view-recommendation .recommendation-intro{background:linear-gradient(120deg,rgba(157,140,255,.18),rgba(12,28,42,.8) 55%,rgba(67,228,178,.08))!important}
+html[data-theme="light"]:root:root body #view-recommendation .recommendation-intro{background:linear-gradient(120deg,#f1f0ff,#ffffff 55%,#ecfaf7)!important;color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body #view-recommendation .recommendation-intro strong,
+html[data-theme="light"]:root:root body #view-recommendation .recommendation-intro b{color:var(--ai-1)!important}
+/* Badges next to the titles keep the sans font even under serif headings. */
+html:root:root body .heading-badge{font-family:Inter,ui-sans-serif,system-ui,Roboto,Arial,sans-serif!important}
+
+/* Chat and the "Preguntar a ViewInvAI" entry points. */
+html:root:root body .ai-chat-head{border-bottom-color:var(--ai-line)!important}
+html:root:root body .ai-chat-quick,
+html:root:root body .profile-ai-chat{border-color:var(--ai-line)!important;color:var(--ai-1)!important}
+html:not([data-theme="light"]):root:root body .ai-chat-panel{background:#0a1826!important;border-color:var(--ai-line)!important}
+html[data-theme="light"]:root:root body .ai-chat-panel{background:#ffffff!important;border-color:var(--ai-line)!important}
+/* A thin AI gradient underlines the active Radar IA nav item. */
+html:root:root body .mobile-nav-item[data-mobile-view="recommendation"].active{box-shadow:inset 0 -2px 0 var(--ai-1)!important}
+html:root:root body #view-recommendation .recommendation-intro::before{color:var(--ai-1)!important;opacity:.14!important}
+html[data-theme="light"]:root:root body #accountButton .account-avatar{background:var(--pq-navy)!important;border-color:var(--pq-navy)!important;color:#ffffff!important}
+/* Ficha · panel IA en claro: anillo blanco con cifra índigo, textos legibles. */
+html[data-theme="light"]:root:root body .profile-ai-score{background:#ffffff!important;color:var(--ai-1)!important}
+html[data-theme="light"]:root:root body .profile-ai-score strong{color:var(--ai-1)!important}
+html[data-theme="light"]:root:root body .profile-ai-score span{color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body .profile-ai-panel h3{color:var(--pq-navy)!important}
+html[data-theme="light"]:root:root body .profile-ai-catalyst{background:#ffffff!important;border-color:var(--pq-line)!important}
+html[data-theme="light"]:root:root body .profile-ai-catalyst *{color:var(--pq-muted)!important}
+html[data-theme="light"]:root:root body .profile-ai-catalyst strong,
+html[data-theme="light"]:root:root body .profile-ai-catalyst b,
+html[data-theme="light"]:root:root body .profile-ai-catalyst h4{color:var(--pq-navy)!important}
+
+/* APK: the native layer paints through its own tokens, so they follow the theme too. */
+html[data-native-app="1"]:not([data-theme="light"]):root:root{
+ --native-surface:rgba(14,30,46,.72);--native-surface-2:rgba(18,38,56,.6);--native-line:rgba(140,190,210,.16);
+ --native-text:#eaf4f8;--native-muted:#86a0ad;background:#050d15!important;
+}
+html[data-native-app="1"][data-theme="light"]:root:root{
+ --native-surface:#ffffff;--native-surface-2:#f7f9fd;--native-line:#dde3ee;--native-text:#0f1e3a;--native-muted:#64708a;background:#f1f4fa!important;
+}
+/* Catálogo table frame. */
+html[data-theme="light"]:root:root body .catalog-sheet-wrap,
+html[data-theme="light"]:root:root body .catalog-table-wrap{border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important}
+html:not([data-theme="light"]):root:root body .catalog-sheet-wrap,
+html:not([data-theme="light"]):root:root body .catalog-table-wrap{border-color:var(--qg-line)!important}
