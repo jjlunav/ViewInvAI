@@ -9410,3 +9410,62 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  .profile-us-extended>strong{font-size:12px}
  .profile-us-extended>span:last-child{font-size:9px}
 }
+
+/* 2026-10-01 · application-wide content containment audit.
+   Coordinates remain only for overlays (modals, menus, toasts, floating chrome);
+   market/account data stays in normal grid/flex flow. */
+:where(.view,.page-heading,.stock-profile-page,.stock-profile,.profile-section,.profile-section-body,
+.portfolio-workbar,.portfolio-tabs-wrap,.portfolio-workbar-actions,.portfolio-block,.portfolio-position,
+.settings-card,.settings-status-row,.notification-category-list,.stock-list,.market-board-list,
+.recommendation-results,.catalog-mobile-list,.fund-position-grid,.event-list,.heatmap-grid){
+ min-width:0;
+ max-width:100%;
+ box-sizing:border-box;
+}
+:where(.view,.stock-profile-page,.stock-profile,.profile-section,.portfolio-block,.settings-card,
+.stock-list,.market-board-list,.catalog-mobile-list,.fund-position-grid,.event-list)>*{
+ min-width:0;
+ max-width:100%;
+}
+.notification-category-list .settings-status-row{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto!important;
+ align-items:center!important;
+ gap:10px!important;
+}
+.notification-category-list .settings-status-row>span:first-child{
+ display:grid!important;
+ gap:3px!important;
+ min-width:0!important;
+ max-width:100%!important;
+}
+.notification-category-list .settings-status-row>span:first-child>strong,
+.notification-category-list .settings-status-row>span:first-child>small{
+ display:block!important;
+ min-width:0!important;
+ max-width:100%!important;
+ white-space:normal!important;
+ overflow-wrap:anywhere!important;
+}
+.notification-category-list .settings-switch{
+ justify-self:end;
+ flex:0 0 auto;
+}
+:where(.profile-quote-stack,.profile-quote-stack-us,.profile-quote-regular,.profile-quote-extended,.profile-quote-lsx,
+.quote-spread,.price-pair,.portfolio-position-numbers,.portfolio-position-actions,.reco-live,.reco-title){
+ min-width:0!important;
+ max-width:100%!important;
+}
+:where(.profile-quote-regular,.profile-quote-extended,.profile-quote-lsx,.quote-spread,.reco-live){
+ flex-wrap:wrap!important;
+}
+:where(.catalog-table-wrap,.table-scroll,.table-responsive,.fund-table-wrap){
+ max-width:100%;
+ overflow-x:auto;
+ overscroll-behavior-inline:contain;
+}
+:where(.lead,.profile-data-note,.source-note,.why-line,.meta-line,.reco-thesis,.event-context,.event-impact,
+.notification-pref-note,.settings-note){
+ overflow-wrap:anywhere;
+}
+
