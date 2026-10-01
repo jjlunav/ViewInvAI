@@ -159,7 +159,7 @@ function usSessionDisplayData(s,se=currentMarketSession()){
  let extended=null;
  if((se==='premarket'||se==='postmarket')&&kind===se&&current!==null){
   let base=null;
-  const explicitPct=N(s&&s[se+'ChangePct']);
+  const explicitPct=N(q&&q.change)??N(s&&s[se+'ChangePct']);
   if(explicitPct!==null&&explicitPct>-99.999){
    base=current/(1+explicitPct/100);
   }
