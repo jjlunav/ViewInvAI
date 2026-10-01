@@ -1352,3 +1352,29 @@ html[data-theme="light"] body.stock-detail-open #stockQuickDetail .profile-stick
  #stockQuickDetail .profile-stat-row>strong>.price-pair{display:grid!important;grid-template-columns:auto auto!important;column-gap:4px!important;justify-content:end!important;align-items:baseline!important}
  #stockQuickDetail .profile-stat-row>strong>.price-pair>.quote-updated{grid-column:1/-1!important;justify-self:end!important}
 }
+/* Light theme, part 2: shared bottom sheet (filters and per-asset notifications), the
+   phone "Más" menu, desktop catalog tables and the account button. */
+html[data-theme="light"] body .shared-filter-panel,
+html[data-theme="light"] body .mobile-more-sheet{background:#ffffff!important;color:#14242c!important;border-color:#d3e0e5!important}
+html[data-theme="light"] body .shared-filter-panel :is(strong,b,h2,h3,label,legend){color:#14242c!important}
+html[data-theme="light"] body .shared-filter-panel :is(small,p,.catalog-filter-hint){color:#5d727c!important}
+html[data-theme="light"] body .shared-filter-panel button:not(.active):not([aria-pressed="true"]){background:#f3f7f9!important;color:#20343e!important;border-color:#c9d8de!important}
+html[data-theme="light"] body .shared-filter-panel :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea){background:#ffffff!important;color:#14242c!important;border:1px solid #c9d8de!important}
+html[data-theme="light"] body .shared-filter-handle{background:#c9d8de!important}
+html[data-theme="light"] body .mobile-more-item{background:#f8fbfc!important;border-color:#d3e0e5!important;color:#20343e!important}
+html[data-theme="light"] body .mobile-more-item b{color:#14242c!important}
+html[data-theme="light"] body .mobile-more-item small{color:#5d727c!important}
+html[data-theme="light"] body .catalog-table-wrap{background:#ffffff!important;scrollbar-color:#c4d3d9 #f3f7f9}
+html[data-theme="light"] body .catalog-table-footer{background:#f8fbfc!important;color:#50656f!important;border-color:#d3e0e5!important}
+html[data-theme="light"] body .catalog-table-footer strong{color:#14242c!important}
+html[data-theme="light"] body .table-ticker{color:#087f68!important}
+html[data-theme="light"] body .table-us-ticker{color:#50656f!important}
+html[data-theme="light"] body .table-live-number:not(.positive):not(.negative):not(.up):not(.down){color:#7d929c!important}
+html[data-theme="light"] body .fund-platform.ok{color:#0b7a5e!important;border-color:#9fd8c4!important}
+html[data-theme="light"] body .fund-freshness-text{color:#8a6516!important}
+html[data-theme="light"] body .account-button{background:#ffffff!important;border:1px solid #d3e0e5!important;box-shadow:0 4px 14px rgba(20,36,44,.08)!important}
+html[data-theme="light"] body .account-button #accountName{color:#14242c!important}
+html[data-theme="light"] body .account-button #accountEmail{color:#5d727c!important}
+html[data-theme="light"] body .mobile-more-sheet button{background:#f8fbfc!important;border-color:#d3e0e5!important;color:#20343e!important}
+html[data-theme="light"] body .mobile-more-item>span{color:#0b6b57!important}
+html[data-theme="light"] body .notification-price-card{background:#f8fbfc!important;border-color:#d3e0e5!important}
