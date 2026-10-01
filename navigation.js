@@ -5,14 +5,13 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['home','recommendation','alerts','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
+const NAV_ORDER=['home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  recommendation:{icon:'✹',short:'Radar IA',desc:'Alta convicción, oportunidades y vigilancia'},
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
  favorites:{icon:'★',short:'Favoritos',desc:'Acciones, fondos e índices guardados'},
  funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
- alerts:{icon:'●',short:'Avisos',desc:'Señales de alta convicción'},
  catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
  heatmap:{icon:'▦',short:'Mapa',desc:'Mercado por sectores'},
  future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
@@ -178,6 +177,7 @@ function initNativeBackHandling(){
  });
 }
 function show(v,preserveProfile=false,recordHistory=true){
+ if(v==='alerts')v='home';
  if(!V[v])return;
  if(recordHistory)replaceCurrentAppHistory();
  if(!preserveProfile){document.body.classList.remove('stock-detail-open');let q=$('#stockQuickDetail');if(q){q.classList.add('is-hidden');q.innerHTML=''}state.profileKey=null;state.profileReason='';state.profileOriginView=null;state.profileOriginScroll=0;state.profilePreferTr=null;}
