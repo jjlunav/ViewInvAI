@@ -9556,3 +9556,24 @@ html[data-theme="light"] .notification-head-actions #notificationHistory.active{
  color:#087f68;
 }
 
+/* 2026-10-01 · Funds filter trigger always remains a funnel; active filters use a count badge. */
+#fundMobileFiltersToggle{position:relative!important}
+#fundMobileFiltersToggle .fund-filter-count{
+ display:grid!important;
+ place-items:center;
+ position:absolute;
+ top:-5px;
+ right:-5px;
+ min-width:15px;
+ height:15px;
+ padding:0 3px;
+ border:2px solid var(--bg);
+ border-radius:999px;
+ background:var(--teal);
+ color:#04100d;
+ font-size:7px!important;
+ font-weight:900;
+ line-height:1;
+ margin:0!important;
+}
+
