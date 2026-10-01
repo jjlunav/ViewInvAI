@@ -49,6 +49,29 @@ function initStockInteractions(){
   askAiChat($('#aiChatInput')?.value||'');
  });
 
+ const radarRoot=$('#recommendationResults');
+ const openRadarCard=(event)=>{
+  const card=event.target&&event.target.closest?event.target.closest('.asset-card[data-card-context="recommendation"]'):null;
+  if(!card||!radarRoot||!radarRoot.contains(card))return false;
+  const control=event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label,[data-reco-mobile-group]');
+  if(control)return false;
+  const row=card.querySelector('[data-stock-key],[data-open-stock]');
+  if(!row)return false;
+  const key=row.dataset.stockKey||row.dataset.openStock;
+  const stock=stockByKey(key);
+  if(!stock)return false;
+  const pref=row.dataset.stockPreferTr||row.dataset.positionPreferTr;
+  event.preventDefault();
+  event.stopPropagation();
+  openStock(stock,row.dataset.stockReason||'Radar IA',pref==='1'?true:pref==='0'?false:null);
+  return true;
+ };
+ radarRoot?.addEventListener('click',event=>{openRadarCard(event)},true);
+ radarRoot?.addEventListener('keydown',event=>{
+  if(!['Enter',' '].includes(event.key))return;
+  if(openRadarCard(event))event.preventDefault();
+ },true);
+
  document.addEventListener('click',e=>{
   let isinCopy=e.target.closest&&e.target.closest('[data-copy-isin]');
   if(isinCopy){
