@@ -2445,3 +2445,18 @@ main{
  }
 }
 
+/* 2026-10-01 · final phone flow: no inline control is anchored over content */
+@media(max-width:820px){
+ #view-entry>.entry-filter-launch{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:6px!important;
+  padding-right:0!important;
+ }
+ #view-entry>.entry-filter-launch .filter-icon-button{
+  position:static!important;
+  inset:auto!important;
+  justify-self:end!important;
+ }
+}
+
