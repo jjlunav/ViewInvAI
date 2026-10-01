@@ -512,7 +512,7 @@ function radarAiCard(row){
   se:a.se||currentMarketSession(),preferTr,rankLabel:'',context:'recommendation',
   hint:'Radar AI · '+tierLabel,cells,
   subtitle:(preferTr?'TR / LSX':'EEUU')+' · '+tierLabel+venueNote,
-  openAttrs:' data-open-stock="'+E(stockKey(s))+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" data-stock-reason="Radar IA" role="button" tabindex="0"',
+  openAttrs:stockOpenAttrs(s,'Radar IA',preferTr),
   detailsHtml:''
  });
 }
