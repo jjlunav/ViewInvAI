@@ -139,11 +139,16 @@ jobs:
                 }
                 const nav=document.querySelector('#mobileBottomNav'),items=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
                 const order=items.map(item=>item.dataset.mobileView||'more').join('|');
-                if(items.length!==5||order!=='home|portfolios|recommendation|favorites|more')return fail('bottom nav order invalid: '+order);
+                if(items.length!==4||order!=='today|recommendation|portfolios|more')return fail('bottom nav order invalid: '+order);
+                const bump=nav.querySelector(':scope > .mobile-nav-bump[data-market-bump]');
+                if(!bump)return fail('Mercados centre arrow missing from bottom bar');
                 const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
                 if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside bottom bar');
-                const centers=items.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2}),gaps=centers.slice(1).map((value,index)=>value-centers[index]);
-                if(Math.max(...gaps)-Math.min(...gaps)>3)return fail('bottom nav items are not centered evenly');
+                const centers=items.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2}),bumpRect=bump.getBoundingClientRect(),mid=bumpRect.left+bumpRect.width/2;
+                if(Math.abs((centers[0]+centers[3])/2-mid)>3||Math.abs((centers[1]+centers[2])/2-mid)>3)return fail('bottom nav is not symmetric around the centre arrow');
+                bump.click();
+                if(!document.querySelector('#marketQuickSheet.open #marketSheetBody'))return fail('Mercados sheet did not open from the centre arrow');
+                bump.click();
                 const more=document.querySelector('#mobileBottomNav [data-mobile-more]');
                 more?.click();
                 if(!document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]'))return fail('funds missing from More menu');
