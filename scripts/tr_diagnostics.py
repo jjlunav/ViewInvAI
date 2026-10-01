@@ -7,11 +7,11 @@
 """
 import asyncio
 import json
-import urllib.request
+import http.client
 
 import websockets
 
-WORKER = "https://viewinvai.sonarlab.workers.dev/api/tr-health"
+WORKER_HOST = "viewinvai.sonarlab.workers.dev"
 ISIN = "US0378331005"
 HANDSHAKES = [
     "connect 30",
@@ -21,12 +21,15 @@ HANDSHAKES = [
 
 
 def worker_health():
+    conn = http.client.HTTPSConnection(WORKER_HOST, timeout=30)
     try:
-        with urllib.request.urlopen(urllib.request.Request(WORKER, headers={"User-Agent": "ViewInvAI-diagnostics"}), timeout=30) as r:
-            print("Worker /api/tr-health", r.status, r.read().decode()[:600])
+        conn.request("GET", "/api/tr-health", headers={"User-Agent": "ViewInvAI-diagnostics"})
+        r = conn.getresponse()
+        print("Worker /api/tr-health", r.status, r.read().decode()[:600])
     except Exception as e:  # noqa: BLE001 - diagnostics print every failure
-        body = getattr(e, "read", lambda: b"")()
-        print("Worker /api/tr-health ERROR", repr(e), body[:300])
+        print("Worker /api/tr-health ERROR", repr(e))
+    finally:
+        conn.close()
 
 
 async def direct(handshake):
