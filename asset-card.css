@@ -1138,3 +1138,11 @@
  .asset-list-head-actions{display:none}
 }
 
+/* 2026-10-01 · Compact quote status dot is part of the price line, never its own row. */
+.asset-investing-main>.asset-quote-state{
+ align-self:center;
+ flex:0 0 12px;
+ margin-right:1px;
+}
+.asset-investing-status{display:none!important}
+
