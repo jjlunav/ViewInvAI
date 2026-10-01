@@ -167,10 +167,10 @@ function compactInvestingQuoteData(s,preferTr=false){
   regularPrice:r.price,regularPct:r.pct,regularAbs:r.abs,
   session:x&&x.kind||null,
   sessionLabel:x&&x.label||'',
-  sessionPrice:x&&x.price??null,
-  sessionPct:x&&x.pct??null,
-  sessionAbs:x&&x.abs??null,
-  sessionAt:x&&x.at??null
+  sessionPrice:x?x.price:null,
+  sessionPct:x?x.pct:null,
+  sessionAbs:x?x.abs:null,
+  sessionAt:x?x.at:null
  };
 }
 function compactQuoteFreshnessState(s,preferTr=false){
