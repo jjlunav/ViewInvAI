@@ -964,7 +964,7 @@ function goalCandidateHtml(row){
   const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
-    '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
+    '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · timing '+formatNumber(row.entry&&row.entry.timing,0)+'/100 · R:R '+formatNumber(row.entry&&row.entry.rr,2)+' · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(row.entry&&num(row.entry.extensionPct)!==null?' · extensión EMA20 '+formatNumber(row.entry.extensionPct,1)+'%':'')+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 
 function goalHistoryRound(value,decimals=4){
@@ -1057,7 +1057,7 @@ function portfolioGoalViewHtml(){
   let decisionHtml='';
   if(metrics.marketScope==="auto")decisionHtml='<div class="portfolio-goal-no-action">Configura el mercado de esta cartera antes de pedir una rotación.</div>';
   else if(num(metrics.remaining)!==null&&metrics.remaining<=0)decisionHtml='<div class="portfolio-goal-no-action">Objetivo alcanzado. El modelo no fuerza nuevas operaciones.</div>';
-  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera simultáneamente los filtros estrictos de Radar AI, velocidad, catalizadores y calidad de datos.</div>';
+  else if(!candidate)decisionHtml='<div class="portfolio-goal-no-action"><strong>No hacer cambios ahora.</strong> Ninguna entrada supera a la vez convicción, calidad, timing, riesgo/beneficio, spread y control de sobreextensión. El motor prefiere mantener liquidez antes que perseguir una subida.</div>';
   else{
     const sells=rotationRows.map(goalTradeInstructionHtml).join('');
     const cashSource=(num(metrics.cashEur)||0)>0?'<div class="portfolio-goal-trade cash"><em>EFECTIVO</em><div><strong>Capital ya disponible</strong><small>Se suma al capital neto liberado por las ventas.</small></div><b>'+formatMoney(metrics.cashEur,"EUR")+'</b></div>':'';
@@ -1080,7 +1080,7 @@ function portfolioGoalViewHtml(){
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
       '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
-      '<p class="portfolio-goal-note compact-note">El plan intenta reasignar en una sola jugada todo el capital ejecutable, descontando comisiones y respetando acciones enteras. Si el BID/ASK no justifica entrar al precio actual, propone una orden límite y no persigue el precio.</p>')+
+      '<p class="portfolio-goal-note compact-note">El plan ya no fuerza a invertir todo el efectivo. Cada entrada debe superar timing, R:R, spread y sobreextensión, y además respeta un presupuesto máximo de riesgo por operación. El remanente puede quedarse líquido si no existe una entrada suficientemente buena.</p>')+
     '</section>';
 }
 
