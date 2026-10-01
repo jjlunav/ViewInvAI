@@ -156,39 +156,21 @@ function compactRegularMove(price,pct,previousClose=null){
 function compactInvestingQuoteData(s,preferTr=false){
  if(preferTr&&trTradable(s)){
   const q=canonicalQuote(s,true),price=N(q&&q.price),pct=N(q&&q.change),prev=trLivePre(s);
-  const ts=N(q&&q.updatedAt)||N(s&&s.trLiveUpdatedAt)||N(s&&s.trLiveReceivedAt)||Date.now();
   return{
    symbol:'€',regularPrice:price,regularPct:pct,regularAbs:compactRegularMove(price,pct,prev),
-   status:trMarketOpen()?'Mercado abierto':'Mercado cerrado',statusAt:ts,
    session:null,sessionLabel:'',sessionPrice:null,sessionPct:null,sessionAbs:null,sessionAt:null
   };
  }
- const se=currentMarketSession();
- const live=N(usLivePrice(s)),regularOpen=se==='regular';
- const regularPrice=regularOpen&&live!==null?live:N(s&&s.price);
- const regularPct=regularOpen?(usLiveChange(s)??N(s&&s.changePct)):N(s&&s.changePct);
- const regularAbs=compactRegularMove(regularPrice,regularPct,N(s&&s.previousClose));
- let regularAt=regularOpen?(quoteTimestampMs(s,false)||N(s&&s.usLiveReceivedAt)):null;
- if(regularAt===null)regularAt=parseMarketTimestamp(s&&s.priceTime||s&&s.updatedAt,'America/New_York')||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'America/New_York');
- let session=null,sessionLabel='',sessionPrice=null,sessionPct=null,sessionAbs=null,sessionAt=null;
- if(se==='premarket'||se==='postmarket'){
-  session=se;
-  sessionLabel=se==='premarket'?'Preapertura':'Posmercado';
-  const explicit=N(s&&s[se+'Price']);
-  sessionPrice=live!==null?live:explicit;
-  if(sessionPrice!==null&&regularPrice!==null&&regularPrice>0){
-   sessionAbs=sessionPrice-regularPrice;
-   sessionPct=(sessionPrice/regularPrice-1)*100;
-  }else{
-   sessionPct=N(s&&s[se+'ChangePct']);
-   sessionAbs=compactRegularMove(sessionPrice,sessionPct,regularPrice);
-  }
-  sessionAt=live!==null?(quoteTimestampMs(s,false)||N(s&&s.usLiveReceivedAt)):sessionQuoteTimestamp(s&&s[se+'Time']);
- }
+ const se=currentMarketSession(),data=usSessionDisplayData(s,se),r=data.regular,x=data.extended;
  return{
-  symbol:'\u0024',regularPrice,regularPct,regularAbs,
-  status:regularOpen?'Mercado abierto':'Mercado cerrado',statusAt:regularAt,
-  session,sessionLabel,sessionPrice,sessionPct,sessionAbs,sessionAt
+  symbol:'\u0024',
+  regularPrice:r.price,regularPct:r.pct,regularAbs:r.abs,
+  session:x&&x.kind||null,
+  sessionLabel:x&&x.label||'',
+  sessionPrice:x&&x.price??null,
+  sessionPct:x&&x.pct??null,
+  sessionAbs:x&&x.abs??null,
+  sessionAt:x&&x.at??null
  };
 }
 function compactQuoteFreshnessState(s,preferTr=false){
@@ -246,19 +228,11 @@ function regularChangeCell(s,se=currentMarketSession(),preferTr=false){
 }
 
 function effectiveSessionChange(s,se=currentMarketSession()){
- if(se==='premarket'||se==='postmarket'){
-  // Extended-session rankings must use the same live move that is rendered in
-  // the compact market row. During pre/post Nasdaq's /api/us-live quote is the
-  // freshest source; the static premarket/postmarket snapshot is only fallback.
-  const live=currentUsQuote(s,se),regular=N(s&&s.price);
-  if(live&&live.kind===se){
-   const p=N(live.price);
-   if(p!==null&&regular!==null&&regular>0)return(p/regular-1)*100;
-  }
-  let ch=N(s&&s[se+'ChangePct']),p=N(s&&s[se+'Price']);
-  return ch!==null?ch:(p!==null&&regular>0?(p/regular-1)*100:null);
+ if(se==='premarket'||se==='regular'||se==='postmarket'){
+  const data=usSessionDisplayData(s,se);
+  if(se==='regular')return N(data&&data.regular&&data.regular.pct);
+  return N(data&&data.extended&&data.extended.pct);
  }
- if(se==='regular')return usLiveChange(s)??N(s.changePct);
  return N(s.changePct);
 }
 
