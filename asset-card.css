@@ -1095,3 +1095,40 @@
  }
 }
 
+/* Shared compact-list header follows the same invisible columns as every row. */
+.asset-list-head[data-card-template="compact-slots"]{
+ display:grid!important;
+ grid-template-columns:30px minmax(0,1.65fr) minmax(190px,1fr) minmax(170px,.9fr) minmax(96px,116px)!important;
+ grid-template-areas:"marker identity quote context actions";
+ align-items:center!important;
+ column-gap:10px!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:100%!important;
+ box-sizing:border-box!important;
+}
+.asset-list-head-marker{grid-area:marker}
+.asset-list-head-identity{grid-area:identity;min-width:0}
+.asset-list-head-quote{grid-area:quote;min-width:0}
+.asset-list-head-context{
+ grid-area:context;
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(72px,1fr));
+ gap:6px 10px;
+ min-width:0;
+ max-width:100%;
+}
+.asset-list-head-context>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.asset-list-head-actions{grid-area:actions}
+@media(max-width:820px){
+ .asset-list-head[data-card-template="compact-slots"]{
+  grid-template-columns:24px minmax(0,1fr) minmax(116px,.72fr)!important;
+  grid-template-areas:
+   "marker identity quote"
+   ". context context"!important;
+  row-gap:4px!important;
+  column-gap:7px!important;
+ }
+ .asset-list-head-actions{display:none}
+}
+
