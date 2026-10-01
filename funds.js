@@ -341,7 +341,7 @@
   '</details>';
  }
  const FUND_COLUMNS=[
-  ['name','Fondo'],
+  ['name','Producto'],
   ['platform','Plataformas'],
   ['current','VL / Precio'],
   ['freshness','Actualización'],
@@ -499,8 +499,10 @@
  function updateMobileFiltersState(){
   const toolbar=q('.fund-toolbar'),button=q('#fundMobileFiltersToggle');if(!toolbar||!button)return;
   const active=[state.platform!=='all',state.type!=='all',state.provider!=='all',state.region!=='all',state.distribution!=='all',state.maxTer!==null].filter(Boolean).length;
-  button.textContent=active?'Filtros · '+active:'Filtros';
+  button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg>'+(active?'<span class="fund-filter-count" aria-hidden="true">'+active+'</span>':'');
   button.classList.toggle('active',active>0);
+  button.setAttribute('aria-label',active?'Abrir filtros generales · '+active+' activo'+(active===1?'':'s'):'Abrir filtros generales');
+  button.title=active?'Filtros generales · '+active+' activo'+(active===1?'':'s'):'Filtros generales';
  }
  function renderFundDetail(p){
   const risk=[
