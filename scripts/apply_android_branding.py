@@ -16,19 +16,33 @@ RES = ROOT / "android" / "app" / "src" / "main" / "res"
 
 BG = (8, 19, 27, 255)
 BORDER = (49, 80, 98, 255)
-GRID = (49, 80, 98, 140)
 TEAL = (67, 228, 178, 255)
 TEAL_LIGHT = (141, 245, 213, 255)
 RED = (255, 99, 110, 255)
 TRANSPARENT = (0, 0, 0, 0)
 
-# Candlestick mark in favicon.svg coordinates (64x64). Keep both in sync.
-# Wicks: (x, y_top, y_bottom, color); bodies: (x, y, width, height, color).
-WICK_WIDTH = 2.6
-WICKS = [(18, 32, 52, TEAL), (32, 23, 45, RED), (46, 11, 41, TEAL)]
-BODIES = [(13, 36, 10, 12, TEAL), (27, 27, 10, 12, RED), (41, 15, 10, 21, TEAL_LIGHT)]
-BODY_RADIUS = 2.0
-GRID_YS = (22, 32, 42)
+# "VIAI" candlestick mark in favicon.svg coordinates (64x64). Keep both in sync.
+# V and A are runs of small candles; the two I are a bearish and a bullish candle.
+# (x, wick_top, wick_bottom, body_top, body_bottom, body_width, wick_width, color)
+CANDLES = [
+    (9, 14, 24, 16, 22, 2.2, 0.9, RED),
+    (11.17, 22.67, 32.67, 24.67, 30.67, 2.2, 0.9, RED),
+    (13.33, 31.33, 41.33, 33.33, 39.33, 2.2, 0.9, RED),
+    (15.5, 40, 50, 42, 48, 2.2, 0.9, TEAL),
+    (17.67, 31.33, 41.33, 33.33, 39.33, 2.2, 0.9, TEAL),
+    (19.83, 22.67, 32.67, 24.67, 30.67, 2.2, 0.9, TEAL),
+    (22, 14, 24, 16, 22, 2.2, 0.9, TEAL),
+    (28.5, 13, 51, 17, 47, 4.6, 1.4, RED),
+    (34.5, 40, 50, 42, 48, 2.2, 0.9, TEAL),
+    (36.67, 31.33, 41.33, 33.33, 39.33, 2.2, 0.9, TEAL),
+    (38.83, 22.67, 32.67, 24.67, 30.67, 2.2, 0.9, TEAL),
+    (41, 14, 24, 16, 22, 2.2, 0.9, RED),
+    (43.17, 22.67, 32.67, 24.67, 30.67, 2.2, 0.9, RED),
+    (45.33, 31.33, 41.33, 33.33, 39.33, 2.2, 0.9, RED),
+    (47.5, 40, 50, 42, 48, 2.2, 0.9, RED),
+    (54.5, 13, 51, 17, 47, 4.6, 1.4, TEAL_LIGHT),
+]
+ROUND_MARK_SCALE = 0.84
 SUPERSAMPLE = 4
 
 
@@ -61,18 +75,6 @@ def in_rounded_rect(x: float, y: float, rx: float, ry: float, w: float, h: float
     return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
 
 
-def blend(dst: tuple[int, int, int, int], src: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    a = src[3] / 255
-    if a >= 1 or dst[3] == 0:
-        return src
-    return (
-        round(src[0] * a + dst[0] * (1 - a)),
-        round(src[1] * a + dst[1] * (1 - a)),
-        round(src[2] * a + dst[2] * (1 - a)),
-        dst[3],
-    )
-
-
 def sample(u: float, v: float, round_icon: bool) -> tuple[int, int, int, int]:
     """Colour at (u, v) in the 64x64 favicon space."""
     if round_icon:
@@ -87,16 +89,15 @@ def sample(u: float, v: float, round_icon: bool) -> tuple[int, int, int, int]:
     if color is BORDER:
         return color
 
-    if 10 <= u <= 54 and any(abs(v - gy) <= 0.5 for gy in GRID_YS):
-        color = blend(color, GRID)
-    for x, top, bottom, wick_color in WICKS:
-        half = WICK_WIDTH / 2
-        if abs(u - x) <= half and top - half <= v <= bottom + half:
-            if top <= v <= bottom or math.hypot(u - x, v - (top if v < top else bottom)) <= half:
-                color = wick_color
-    for x, y, w, h, body_color in BODIES:
-        if in_rounded_rect(u, v, x, y, w, h, BODY_RADIUS):
-            color = body_color
+    # The round frame is narrower than the square one: shrink the mark so the outer I fits.
+    if round_icon:
+        u, v = 32 + (u - 32) / ROUND_MARK_SCALE, 32 + (v - 32) / ROUND_MARK_SCALE
+    for x, wick_top, wick_bottom, body_top, body_bottom, body_w, wick_w, candle_color in CANDLES:
+        half = wick_w / 2
+        if in_rounded_rect(u, v, x - half, wick_top - half, wick_w, wick_bottom - wick_top + wick_w, half):
+            color = candle_color
+        if in_rounded_rect(u, v, x - body_w / 2, body_top, body_w, body_bottom - body_top, min(1.0, body_w / 2)):
+            color = candle_color
     return color
 
 
@@ -167,16 +168,14 @@ def rounded_rect_path(x: float, y: float, w: float, h: float, r: float) -> str:
 
 def adaptive_foreground_xml() -> str:
     """Candlestick mark centred in the 108dp adaptive canvas, inside the 66dp safe zone."""
-    k = 1.35
+    k = 1.05
     tx = lambda u: 54 + (u - 32) * k
     paths = []
-    for gy in GRID_YS:
-        paths.append((GRID, rounded_rect_path(tx(10), tx(gy) - 0.5 * k, 44 * k, 1 * k, 0.01)))
-    half = WICK_WIDTH / 2
-    for x, top, bottom, color in WICKS:
-        paths.append((color, rounded_rect_path(tx(x - half), tx(top - half), WICK_WIDTH * k, (bottom - top + WICK_WIDTH) * k, half * k)))
-    for x, y, w, h, color in BODIES:
-        paths.append((color, rounded_rect_path(tx(x), tx(y), w * k, h * k, BODY_RADIUS * k)))
+    for x, wick_top, wick_bottom, body_top, body_bottom, body_w, wick_w, color in CANDLES:
+        half = wick_w / 2
+        paths.append((color, rounded_rect_path(tx(x - half), tx(wick_top - half), wick_w * k, (wick_bottom - wick_top + wick_w) * k, half * k)))
+        radius = min(1.0, body_w / 2)
+        paths.append((color, rounded_rect_path(tx(x - body_w / 2), tx(body_top), body_w * k, (body_bottom - body_top) * k, radius * k)))
     body = "".join(
         f'    <path\n        android:fillColor="{hex_color(color)}"\n        android:pathData="{data}" />\n'
         for color, data in paths
