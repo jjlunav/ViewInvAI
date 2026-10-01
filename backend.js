@@ -3233,7 +3233,52 @@ function goalServerPriceEur(stock,preferTr,usdToEur,side="LAST"){
       :finiteNumber(stock.usLivePrice);
   return usd!==null&&usdToEur!==null?usd*usdToEur:null;
 }
-function goalServerCandidate(snapshot,stock,scope){
+function goalServerRiskBand(riskProfile){
+  const bands={
+    conservative:{maxPosition:15,riskPerTradePct:.75,minCandidate:84,minQuality:75,minConfidence:80,minVelocity:80,minComposite:85,minTiming:78,minRR:2.2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,maxStopPct:5},
+    balanced:{maxPosition:22,riskPerTradePct:1.25,minCandidate:82,minQuality:70,minConfidence:78,minVelocity:78,minComposite:83,minTiming:72,minRR:2,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,maxStopPct:6},
+    aggressive:{maxPosition:30,riskPerTradePct:2,minCandidate:80,minQuality:66,minConfidence:76,minVelocity:76,minComposite:82,minTiming:68,minRR:1.8,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,maxStopPct:7}
+  };
+  return bands[String(riskProfile||"aggressive").toLowerCase()]||bands.aggressive;
+}
+function goalServerEntryTiming(snapshot,stock,scope,spread,band){
+  const preferTr=scope==="tr",eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
+  const trPrice=finiteNumber(stock&&stock.trLivePrice),usPrice=finiteNumber(stock&&stock.usLivePrice??stock&&stock.price);
+  const technicalPrice=preferTr?(trPrice!==null&&eurUsd!==null?trPrice*eurUsd:null):usPrice;
+  const ema20=finiteNumber(stock&&stock.ema20),ema50=finiteNumber(stock&&stock.ema50);
+  const dayHigh=finiteNumber(stock&&stock.usLiveDayHigh??stock&&stock.dayHigh),dayLow=finiteNumber(stock&&stock.usLiveDayLow??stock&&stock.dayLow);
+  const dayChange=finiteNumber(preferTr?stock&&stock.trLiveChangePct:(stock&&stock.usLiveChangePct??stock&&stock.changePct))??0;
+  const weekPerf=finiteNumber(stock&&stock.perfWeek);
+  const extensionPct=technicalPrice!==null&&ema20!==null&&ema20>0?(technicalPrice/ema20-1)*100:null;
+  const nearHighPct=technicalPrice!==null&&dayHigh!==null&&dayHigh>0&&technicalPrice<=dayHigh?(dayHigh-technicalPrice)/dayHigh*100:null;
+  const supportCandidates=[ema20,dayLow].filter(v=>v!==null&&technicalPrice!==null&&v>0&&v<technicalPrice);
+  const support=supportCandidates.length?Math.max(...supportCandidates):null;
+  let stopPct=support!==null&&technicalPrice>0?(technicalPrice-support)/technicalPrice*100+.7:4.5+Math.min(1.5,Math.abs(dayChange)*.1);
+  stopPct=Math.max(3.5,Math.min(band.maxStopPct||7,stopPct));
+  let takePct=12;
+  if(extensionPct!==null)takePct-=Math.max(0,extensionPct)*.45;
+  takePct-=Math.max(0,dayChange-3)*.22;
+  if(weekPerf!==null)takePct-=Math.max(0,weekPerf-8)*.08;
+  takePct=Math.max(5.5,Math.min(16,takePct));
+  const rr=stopPct>0?takePct/stopPct:null;
+  let timing=100;
+  if(extensionPct!==null&&extensionPct>0)timing-=Math.min(34,extensionPct*3.1);
+  if(dayChange>3)timing-=Math.min(24,(dayChange-3)*2);
+  if(weekPerf!==null&&weekPerf>8)timing-=Math.min(18,(weekPerf-8)*.8);
+  if(nearHighPct!==null&&nearHighPct<.8&&dayChange>4)timing-=10;
+  if(spread!==null)timing-=Math.min(14,spread*1.8);
+  if(ema20!==null&&ema50!==null&&ema20<ema50)timing-=14;
+  if(dayChange<-.75)timing-=Math.min(18,Math.abs(dayChange+.75)*3);
+  timing=Math.max(0,Math.min(100,timing));
+  const eligible=
+    !(extensionPct!==null&&extensionPct>band.maxExtensionPct)&&
+    !(dayChange>band.maxDayChangePct)&&
+    !(weekPerf!==null&&weekPerf>band.maxWeekPerfPct)&&
+    dayChange>=-.75&&rr!==null&&rr>=band.minRR&&timing>=band.minTiming&&
+    !(nearHighPct!==null&&nearHighPct<.5&&dayChange>6);
+  return{eligible,timing,rr,stopPct,takePct,extensionPct,dayChange,weekPerf};
+}
+function goalServerCandidate(snapshot,stock,scope,band){
   const preferTr=scope==="tr",trPrice=preferTr?finiteNumber(stock.trLivePrice):null;
   const chart=preferTr&&trPrice!==null?{available:true,last:trPrice,return20:finiteNumber(stock.trLiveChangePct)}:{available:false};
   const target={subject_type:"watchlist",subject_id:"goal-scan",user_id:"",stock_key:goalServerKey(stock),ticker:stock.ticker||stock.trTicker||"",prefer_tr:preferTr?1:0};
@@ -3242,19 +3287,26 @@ function goalServerCandidate(snapshot,stock,scope){
     const when=new Date(event&&event.date||0).getTime();
     return Number.isFinite(when)&&when>=Date.now()-3600000&&when<=Date.now()+14*86400000;
   }).sort((x,y)=>(finiteNumber(y&&y.impactScore)??0)-(finiteNumber(x&&x.impactScore)??0))[0]||null;
-  const impact=finiteNumber(catalyst&&catalyst.impactScore)??0,rel=finiteNumber(stock.relVolume)??1,change=Math.abs(finiteNumber(stock.usLiveChangePct??stock.changePct??stock.trLiveChangePct)??0);
-  const bid=preferTr?null:finiteNumber(stock.usLiveBid??stock.usBid),ask=preferTr?null:finiteNumber(stock.usLiveAsk??stock.usAsk);
+  const impact=finiteNumber(catalyst&&catalyst.impactScore)??0,rel=finiteNumber(stock.relVolume)??1;
+  const signedChange=finiteNumber(preferTr?stock.trLiveChangePct:(stock.usLiveChangePct??stock.changePct))??0;
+  const bid=preferTr?finiteNumber(stock.trLiveBid):finiteNumber(stock.usLiveBid??stock.usBid);
+  const ask=preferTr?finiteNumber(stock.trLiveAsk):finiteNumber(stock.usLiveAsk??stock.usAsk);
   const mid=bid!==null&&ask!==null&&ask>=bid?(bid+ask)/2:null,spread=mid&&mid>0?(ask-bid)/mid*100:null;
-  const spreadPenalty=spread===null?(preferTr?0:4):Math.min(18,spread*2.2);
-  const velocity=Math.min(100,a.score*.58+a.quality*.18+a.confidence*.14+Math.min(6,Math.max(0,rel-1)*4)+Math.min(5,change*.18)+Math.min(6,impact*.06));
-  const composite=Math.max(0,Math.min(100,a.score*.46+a.quality*.20+a.confidence*.16+velocity*.18-spreadPenalty));
-  return{stock,score:a.score,quality:a.quality,confidence:a.confidence,velocity,composite,catalyst,preferTr,spread};
+  const spreadPenalty=spread===null?5:Math.min(16,spread*2);
+  const adx=finiteNumber(stock.adx),ema20=finiteNumber(stock.ema20),ema50=finiteNumber(stock.ema50);
+  const momentum=Math.max(0,Math.min(34,(signedChange+1.5)*3.2));
+  const volume=Math.max(0,Math.min(22,rel*8));
+  const trendStrength=adx===null?6:Math.max(0,Math.min(16,(adx-10)*.8));
+  const trend=ema20!==null&&ema50!==null&&ema20>=ema50?12:ema20!==null&&ema50!==null?-4:0;
+  const velocity=Math.max(0,Math.min(100,momentum+volume+trendStrength+trend+Math.min(12,impact*.12)+Math.min(6,a.quality*.06)+Math.min(6,a.score*.06)));
+  const entry=goalServerEntryTiming(snapshot,stock,scope,spread,band);
+  const composite=Math.max(0,Math.min(100,a.score*.34+a.quality*.20+velocity*.16+entry.timing*.22+Math.min(2,impact*.02)-spreadPenalty));
+  return{stock,score:a.score,quality:a.quality,confidence:a.confidence,velocity,composite,catalyst,preferTr,spread,entry};
 }
-function goalServerFinalists(rows){
+function goalServerFinalists(rows,band){
   if(!rows.length)return[];
   const out=[rows[0]];
-  if(rows[1]&&rows[1].composite>=Math.max(82,rows[0].composite-4))out.push(rows[1]);
-  if(rows[2]&&rows[2].composite>=Math.max(84,rows[0].composite-3))out.push(rows[2]);
+  if(rows[1]&&rows[1].composite>=Math.max(band.minComposite,rows[0].composite-3))out.push(rows[1]);
   return out;
 }
 async function scanPortfolioGoalNotifications(env,services){
