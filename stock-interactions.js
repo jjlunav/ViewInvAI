@@ -127,10 +127,11 @@ function initStockInteractions(){
   if(compactCard){
    let control=e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,[data-copy-isin],[data-reco-mobile-group]');
    if(!control){
-    let row=compactCard.querySelector('[data-stock-key]');
+    let row=compactCard.querySelector('[data-stock-key],[data-open-stock]');
     if(row){
      e.preventDefault();e.stopPropagation();
-     let s=stockByKey(row.dataset.stockKey),pref=row.dataset.stockPreferTr;
+     let key=row.dataset.stockKey||row.dataset.openStock;
+     let s=stockByKey(key),pref=row.dataset.stockPreferTr||row.dataset.positionPreferTr;
      if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
      return;
     }
