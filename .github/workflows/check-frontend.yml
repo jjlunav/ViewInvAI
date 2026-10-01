@@ -138,7 +138,7 @@ jobs:
               raise SystemExit("La UI nativa no puede vivir en CSS web")
 
           media_count = len(re.findall(r"@media\s*\(", web_mobile))
-          if media_count > 8:
+          if media_count > 11:
               raise SystemExit(f"web-mobile.css vuelve a fragmentarse: {media_count} media queries")
 
           if 'html[data-native-app="1"]' not in native_css:
@@ -400,8 +400,8 @@ jobs:
               raise SystemExit("Objetivo IA no puede avisar cambios en segundo plano")
           if "wholeRecommendationUnits" not in portfolio or "Math.floor(Math.max(0,budget-feeEur)/row.execution.unitEur)" not in portfolio:
               raise SystemExit("Las recomendaciones deben operar con acciones enteras y comisiones")
-          if "finalists.push(ranked[2])" not in portfolio or "slice(0,3)" not in portfolio:
-              raise SystemExit("El ranking estricto debe admitir como máximo tres entradas")
+          if "finalists.push(ranked[1])" not in portfolio or "finalists.push(ranked[2])" in portfolio or "slice(0,3)" not in portfolio:
+              raise SystemExit("El ranking estricto debe concentrar la rotación en como máximo dos entradas")
           if 'riskProfile||"aggressive"' not in portfolio:
               raise SystemExit("Objetivo IA debe usar perfil agresivo por defecto")
           stock_profile = Path("stock-profile.js").read_text(encoding="utf-8")

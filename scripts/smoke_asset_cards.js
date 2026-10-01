@@ -18,7 +18,7 @@ window.checkAssetCards = async function () {
  if(trStock){
   test.innerHTML=standardStockCard(trStock,0,{se:'regular',preferTr:true,context:'ci-tr',detailsHtml:''});
   assert(test.querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'TR card does not use the shared compact quote block');
-  assert(test.querySelector('.asset-investing-main')&&test.querySelector('.asset-investing-status'),'TR compact quote is incomplete');
+  assert(test.querySelector('.asset-investing-main')&&test.querySelector('.asset-quote-state'),'TR compact quote is incomplete');
   assert(!test.querySelector('.asset-investing-extended'),'TR card leaked US pre/post data');
   test.innerHTML=quickProfileHtml(trStock,{preferTr:true});
   assert(test.querySelector('.profile-quote-lsx'),'TR profile hero does not use the LSX-only quote');
@@ -47,7 +47,7 @@ window.checkAssetCards = async function () {
   const compact=test.querySelector('.asset-investing-quote');
   assert(compact,name+' compact row lost the shared quote block');
   assert(compact.querySelector('.asset-investing-main'),name+' compact row lost regular/current market price');
-  assert(compact.querySelector('.asset-investing-status'),name+' compact row lost market state/date');
+  assert(compact.querySelector('.asset-quote-state'),name+' compact row lost market state/date');
   const isTrRow=compact.dataset.compactQuoteTr==='1';
   const hasExtendedFixture=[stock.premarketPrice,stock.postmarketPrice].some(v=>Number.isFinite(Number(v)));
   if(isTrRow)assert(!compact.querySelector('.asset-investing-extended'),name+' TR row leaked US pre/post data');
@@ -60,8 +60,9 @@ window.checkAssetCards = async function () {
  assert(!test.querySelector('img,script'),'untrusted text is interpreted as markup');
  test.remove();
 
+ document.body.appendChild(test);
  test.innerHTML='<div id="recommendationResults">'+radarAiCard({s:stock,preferTr:false,tier:'opportunity',score:80,quality:65,liveVenue:true,analysis:{se:'regular'}})+'</div>';
- const radarRow=test.querySelector('.asset-card-row[data-open-stock]');
+ const radarRow=test.querySelector('.asset-card-row.stock-open-row[data-stock-key]');
  assert(radarRow,'Radar AI card lost the shared stock navigation target');
  radarRow.querySelector('.asset-card-copy strong')?.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
  assert(state.profileKey===key,'Radar AI card click did not set the selected stock');

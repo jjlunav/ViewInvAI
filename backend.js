@@ -152,7 +152,9 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
   if (!response.ok) {
     const status = String(payload && payload.error && payload.error.status || "");
     const details = JSON.stringify(payload && payload.error || {});
-    const invalid = status === "NOT_FOUND" || status === "INVALID_ARGUMENT" || /UNREGISTERED|registration-token-not-registered/i.test(details);
+    // Only a dead registration token may disable a device. A malformed payload also answers INVALID_ARGUMENT and must not wipe every user's devices.
+    const invalid = status === "NOT_FOUND" || /UNREGISTERED|registration-token-not-registered/i.test(details) ||
+      (status === "INVALID_ARGUMENT" && /registration token|not a valid FCM/i.test(details));
     if (invalid) {
       await env.DB.prepare("UPDATE devices SET enabled=0,updated_at=? WHERE id=?").bind(nowIso(), device.id).run();
     }
