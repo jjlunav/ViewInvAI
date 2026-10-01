@@ -142,9 +142,9 @@ function portfolioGoalConfig(){
 }
 function portfolioGoalRiskBand(riskProfile){
   const bands={
-    conservative:{label:"Conservador",maxPosition:18,minCandidate:82,minQuality:72,minVelocity:82,minComposite:84},
-    balanced:{label:"Equilibrado",maxPosition:30,minCandidate:80,minQuality:68,minVelocity:80,minComposite:82},
-    aggressive:{label:"Agresivo",maxPosition:45,minCandidate:78,minQuality:62,minVelocity:78,minComposite:80}
+    conservative:{label:"Conservador",maxPosition:15,riskPerTradePct:.75,minCandidate:84,minQuality:75,minVelocity:80,minComposite:85,minTiming:78,minRR:2.2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,maxStopPct:5},
+    balanced:{label:"Equilibrado",maxPosition:22,riskPerTradePct:1.25,minCandidate:82,minQuality:70,minVelocity:78,minComposite:83,minTiming:72,minRR:2,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,maxStopPct:6},
+    aggressive:{label:"Agresivo",maxPosition:30,riskPerTradePct:2,minCandidate:80,minQuality:66,minVelocity:76,minComposite:82,minTiming:68,minRR:1.8,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,maxStopPct:7}
   };
   return bands[riskProfile]||bands.aggressive;
 }
@@ -767,12 +767,72 @@ function portfolioGoalCatalyst(stock){
   try{when=typeof eventWhen==="function"?eventWhen(event):String(event.date||"")}catch(_){when=String(event.date||"")}
   return{label,when,impact:Math.max(0,Math.min(100,num(event.impactScore)||50)),days,title:String(event.title||event.fact||"")};
 }
-function portfolioGoalVelocityScore(stock,score,quality){
+function portfolioGoalVelocityScore(stock,score,quality,preferTr=false){
   const catalyst=portfolioGoalCatalyst(stock),days=num(catalyst.days);
-  const timeBonus=days===null?0:days<=1?14:days<=3?11:days<=7?8:days<=14?5:2;
-  const catalystBonus=catalyst.impact*.08;
-  const value=Math.min(100,(num(score)||0)*.72+(num(quality)||0)*.14+catalystBonus+timeBonus);
+  const rawChange=num(preferTr?stock&&stock.trLiveChangePct:(stock&&stock.usLiveChangePct??stock&&stock.changePct))??0;
+  const relVolume=num(stock&&stock.relVolume);
+  const adx=num(stock&&stock.adx);
+  const ema20=num(stock&&stock.ema20),ema50=num(stock&&stock.ema50);
+  const trend=ema20!==null&&ema50!==null&&ema20>=ema50?12:ema20!==null&&ema50!==null?-4:0;
+  const momentum=Math.max(0,Math.min(34,(rawChange+1.5)*3.2));
+  const volume=relVolume===null?6:Math.max(0,Math.min(22,relVolume*8));
+  const trendStrength=adx===null?6:Math.max(0,Math.min(16,(adx-10)*.8));
+  const timeBonus=days===null?0:days<=1?10:days<=3?8:days<=7?6:days<=14?3:1;
+  const catalystBonus=Math.min(12,(num(catalyst.impact)||0)*.12);
+  const qualityBonus=Math.min(6,(num(quality)||0)*.06);
+  const scoreTieBreaker=Math.min(6,(num(score)||0)*.06);
+  const value=Math.max(0,Math.min(100,momentum+volume+trendStrength+trend+timeBonus+catalystBonus+qualityBonus+scoreTieBreaker));
   return{score:value,catalyst};
+}
+
+function portfolioGoalEntryTiming(stock,preferTr,execution,band){
+  const market=execution&&execution.market||currentMarket(stock,preferTr);
+  const nativePrice=num(execution&&execution.price)??num(market&&market.price);
+  const eurUsd=window.ViewInvAI&&typeof window.ViewInvAI.getEurUsd==="function"?num(window.ViewInvAI.getEurUsd()):null;
+  const technicalPrice=preferTr
+    ?(num(market&&market.usd)??(nativePrice!==null&&eurUsd!==null?nativePrice*eurUsd:null))
+    :nativePrice;
+  const ema20=num(stock&&stock.ema20),ema50=num(stock&&stock.ema50);
+  const dayHigh=num(stock&&stock.usLiveDayHigh)??num(stock&&stock.dayHigh);
+  const dayLow=num(stock&&stock.usLiveDayLow)??num(stock&&stock.dayLow);
+  const dayChange=num(market&&market.change)??0,weekPerf=num(stock&&stock.perfWeek);
+  const spread=num(execution&&execution.spreadPct);
+
+  const extensionPct=technicalPrice!==null&&ema20!==null&&ema20>0?(technicalPrice/ema20-1)*100:null;
+  const nearHighPct=technicalPrice!==null&&dayHigh!==null&&dayHigh>0&&technicalPrice<=dayHigh?(dayHigh-technicalPrice)/dayHigh*100:null;
+  const supportCandidates=[ema20,dayLow].filter(v=>v!==null&&technicalPrice!==null&&v>0&&v<technicalPrice);
+  const support=supportCandidates.length?Math.max(...supportCandidates):null;
+  let stopPct=support!==null&&technicalPrice>0?(technicalPrice-support)/technicalPrice*100+0.7:4.5+Math.min(1.5,Math.abs(dayChange)*.10);
+  stopPct=Math.max(3.5,Math.min(num(band&&band.maxStopPct)||7,stopPct));
+
+  let takePct=12;
+  if(extensionPct!==null)takePct-=Math.max(0,extensionPct)*.45;
+  takePct-=Math.max(0,dayChange-3)*.22;
+  if(weekPerf!==null)takePct-=Math.max(0,weekPerf-8)*.08;
+  takePct=Math.max(5.5,Math.min(16,takePct));
+  const rr=stopPct>0?takePct/stopPct:null;
+
+  let timing=100;
+  if(extensionPct!==null&&extensionPct>0)timing-=Math.min(34,extensionPct*3.1);
+  if(dayChange>3)timing-=Math.min(24,(dayChange-3)*2);
+  if(weekPerf!==null&&weekPerf>8)timing-=Math.min(18,(weekPerf-8)*.8);
+  if(nearHighPct!==null&&nearHighPct<.8&&dayChange>4)timing-=10;
+  if(spread!==null)timing-=Math.min(14,spread*1.8);
+  if(ema20!==null&&ema50!==null&&ema20<ema50)timing-=14;
+  if(dayChange<-.75)timing-=Math.min(18,Math.abs(dayChange+.75)*3);
+  timing=Math.max(0,Math.min(100,timing));
+
+  const reasons=[];
+  if(extensionPct!==null&&extensionPct>(band.maxExtensionPct||7))reasons.push("demasiado alejada de EMA20");
+  if(dayChange>(band.maxDayChangePct||10))reasons.push("subida intradía demasiado extendida");
+  if(weekPerf!==null&&weekPerf>(band.maxWeekPerfPct||20))reasons.push("subida semanal demasiado extendida");
+  if(dayChange<-.75)reasons.push("momentum de entrada deteriorado");
+  if(rr!==null&&rr<(band.minRR||1.8))reasons.push("riesgo/beneficio insuficiente");
+  if(timing<(band.minTiming||68))reasons.push("punto de entrada débil");
+  if(nearHighPct!==null&&nearHighPct<.5&&dayChange>6)reasons.push("riesgo de perseguir máximos");
+
+  const eligible=reasons.length===0&&rr!==null;
+  return{eligible,timing,rr,stopPct,takePct,extensionPct,nearHighPct,dayChange,weekPerf,reasons};
 }
 
 function portfolioCoachCandidates(metrics,positionRows){
