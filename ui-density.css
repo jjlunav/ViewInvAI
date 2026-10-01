@@ -300,3 +300,30 @@ html body .fund-table thead th:is(:first-child,[data-fund-column],.fund-actions-
     box-shadow:0 -8px 24px rgba(0,0,0,.28)!important;
   }
 }
+
+/* Phones and tablets: search + filter + reset share one row in every catalog, and the Potencial futuro filters form a 2-column grid. */
+@media(max-width:820px){
+  html body :is(.catalog-toolbar.compact-search-toolbar,.fund-toolbar.compact-fund-toolbar){
+    display:grid!important;grid-template-columns:minmax(0,1fr) 44px 44px!important;gap:8px!important;align-items:center!important;
+  }
+  html body :is(.catalog-toolbar.compact-search-toolbar,.fund-toolbar.compact-fund-toolbar)>:is(.input,.fund-search){grid-column:1!important;width:100%!important;min-width:0!important}
+  html body :is(.catalog-toolbar.compact-search-toolbar,.fund-toolbar.compact-fund-toolbar)>.catalog-toolbar-mini{
+    width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;grid-column:auto!important;
+  }
+  html body .fund-toolbar.compact-fund-toolbar>:not(.fund-search):not(.catalog-toolbar-mini){grid-column:1/-1!important}
+  html body #view-future .future-filter-bar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;align-items:end!important}
+  html body #view-future .future-filter-bar>*{flex:none!important;min-width:0!important;width:100%!important}
+  html body #view-future .future-filter-bar>#futureSector{grid-column:1/-1!important}
+  html body #view-future .future-filter-bar .select,html body #view-future .future-filter-bar .input,html body #view-future .future-filter-bar .btn{min-height:44px!important}
+}
+@media(max-width:820px){
+  html body :is(#view-catalog,#view-catalogUS) .catalog-toolbar.compact-search-toolbar{grid-template-columns:minmax(0,1fr) 44px 44px!important}
+  html body :is(#view-catalog,#view-catalogUS) .catalog-toolbar.compact-search-toolbar>.catalog-toolbar-spacer{display:none!important}
+}
+@media(max-width:820px){
+  html body #view-funds .fund-toolbar.compact-fund-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) 44px 44px!important;gap:8px!important;align-items:center!important}
+  html body #view-funds .fund-toolbar.compact-fund-toolbar>.fund-search{grid-column:1!important;width:100%!important;min-width:0!important}
+  html body #view-funds .fund-toolbar.compact-fund-toolbar>.catalog-toolbar-mini{grid-column:auto!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important}
+  html body #view-funds .fund-toolbar.compact-fund-toolbar>.fund-toolbar-spacer{display:none!important}
+  html body #view-funds .fund-toolbar.compact-fund-toolbar>:not(.fund-search):not(.catalog-toolbar-mini):not(.fund-toolbar-spacer){grid-column:1/-1!important}
+}
