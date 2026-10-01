@@ -208,7 +208,7 @@ function catalogMobileCell(mode,s,se,colId){
   value=quoteMoney(n,sym,quotePrecision(s,q&&q.nativeCurrency==='EUR',SP(s,se)));
   let tone=n===null?'muted':change===null?'text':change>=0?'positive':'negative';
   let source=q&&q.fallback?'<small class="asset-quote-source">EEUU ref.</small>':'';
-  return{label:col.label,value,tone,html:'<span class="asset-price-value">'+E(value)+'</span>'+source};
+  return{label:col.label,value,tone,html:'<span class="asset-price-inline">'+quoteFreshnessDotHtml(s,preferTr,'catalog-price-freshness')+'<span class="asset-price-value">'+E(value)+'</span></span>'+source};
  }else if(colId==='change'){
   let q=mode==='tr'?canonicalQuote(s,true):verifiedDisplayQuote(s,false,se),n=N(q&&q.change);value=PC(n);
   return{label:col.label,value,tone:n===null?'muted':n>=0?'positive':'negative'};
