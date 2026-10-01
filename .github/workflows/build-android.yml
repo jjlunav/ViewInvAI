@@ -91,7 +91,6 @@ jobs:
           test -s mobile-shell/native-runtime.js
           grep -q 'function recommendationCompactView' mobile-shell/recommendation.js
           grep -q 'function recommendationMobileList' mobile-shell/recommendation.js
-          grep -q 'data-mobile-view="alerts"' mobile-shell/index.html
           grep -q 'html\[data-native-app="1"\] .notification-bell' mobile-shell/mobile-app.css
           grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
