@@ -55,21 +55,49 @@
   return isNaN(d)?'':d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
  }
 
+ function alertCompactCard(item,{details=false}={}){
+  const stock=item&&item.stockKey&&window.ViewInvAI?.getStockByKey?.(item.stockKey);
+  const signal=esc(item&&item.title||'COMPRA');
+  const score=item&&item.score?fmt(item.score,0)+'/100':'—';
+  const context='<div class="alert-card-context">'+
+   '<span><small>SEÑAL</small><b>'+signal+'</b></span>'+
+   '<span><small>SCORE</small><b>'+esc(score)+'</b></span>'+
+   '<span><small>HORA</small><b>'+esc(formatTime(item&&item.createdAt))+'</b></span>'+
+  '</div>';
+  const openAttrs=item&&item.stockKey?' role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0')+'"':'';
+  if(stock&&window.ViewInvAI?.renderStandardStockCard){
+   return window.ViewInvAI.renderStandardStockCard(stock,{
+    index:0,
+    preferTr:item.preferTr===true,
+    context:'alerts',
+    rankLabel:'',
+    leadingHtml:'',
+    hint:'Aviso · '+String(item.title||'COMPRA'),
+    openAttrs,
+    cells:[{label:'Aviso',html:context}],
+    detailsLabel:'Motivo del aviso',
+    detailsHtml:details?'<p>'+esc(item.message||'')+'</p>'+(item.score?'<p>Convicción '+fmt(item.score,0)+'/100</p>':''):''
+   });
+  }
+  return window.ViewInvAICards.render({
+   context:'alerts',
+   title:item&&item.name||item&&item.ticker||item&&item.title||'Aviso',
+   subtitle:[item&&item.ticker,item&&item.market].filter(Boolean).join(' · '),
+   openAttrs,
+   quoteCell:{label:'Señal',value:item&&item.title||'COMPRA',tone:'buy'},
+   contextCells:[{label:'Aviso',html:context}],
+   detailsLabel:'Motivo del aviso',
+   detailsHtml:details?'<p>'+esc(item&&item.message||'')+'</p>':''
+  });
+ }
+
  function renderCenter(){
   let list=q('#notificationList'),badge=q('#notificationBadge'),status=q('#notificationStatus');
   if(!list||!badge||!status)return;
   badge.textContent=String(Math.min(99,state.unread||0));
   badge.classList.toggle('is-hidden',!(state.unread>0));
   status.textContent=state.unread>0?(state.unread+' sin leer'):(state.history.length?state.history.length+' guardados':'Sin avisos nuevos');
-  list.innerHTML=state.history.length?state.history.map(item=>{
-   return window.ViewInvAICards.render({
-    context:'alerts',title:item.name||item.ticker||item.title||'Aviso',subtitle:[item.ticker,item.market].filter(Boolean).join(' · '),
-    openAttrs:item.stockKey?' role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0')+'"':'',
-    cells:[{label:'Señal',value:item.title||'COMPRA'},{label:'Hora',value:formatTime(item.createdAt)}],
-    detailsLabel:'Motivo del aviso',detailsHtml:'<p>'+esc(item.message||'')+'</p>'+(item.score?'<p>Convicción '+fmt(item.score,0)+'/100</p>':'')
-   });
-
-  }).join(''):'<div class="notification-empty">No hay avisos recientes.</div>';
+  list.innerHTML=state.history.length?state.history.map(item=>alertCompactCard(item,{details:true})).join(''):'<div class="notification-empty">No hay avisos recientes.</div>';
  }
 
  function setCenterOpen(open,{auto=false}={}){
@@ -119,13 +147,7 @@
   }else{
    status.innerHTML='<strong>Sin compra de alta convicción ahora</strong><span>No hay una candidata con datos suficientes que cumpla simultáneamente todos los criterios. Esto no se interpreta como señal de compra.</span>';
   }
-  list.innerHTML=state.history.length?state.history.slice(0,20).map(item=>window.ViewInvAICards.render({
-   context:'alerts',title:item.name||item.ticker||item.title||'Aviso',subtitle:[item.ticker,item.market].filter(Boolean).join(' · '),
-   openAttrs:item.stockKey?' role="button" tabindex="0" data-alert-stock-key="'+esc(item.stockKey)+'" data-alert-prefer-tr="'+(item.preferTr?'1':'0')+'"':'',
-   cells:[{label:'Señal',value:item.title||'COMPRA',tone:'buy'},{label:'Score',value:item.score?fmt(item.score,0)+'/100':'—'}],
-   metaHtml:'<span>'+esc(formatTime(item.createdAt))+'</span>',
-   detailsHtml:''
-  })).join(''):'<div class="notification-empty alert-page-empty">Todavía no hay compras registradas. La pantalla seguirá mostrando el resultado del último análisis aunque no exista señal.</div>';
+  list.innerHTML=state.history.length?state.history.slice(0,20).map(item=>alertCompactCard(item)).join(''):'<div class="notification-empty alert-page-empty">Todavía no hay compras registradas. La pantalla seguirá mostrando el resultado del último análisis aunque no exista señal.</div>';
  }
  function renderSettings(){
   let el=q('#autoAlertHighConviction');if(el)el.checked=state.enabled!==false;
