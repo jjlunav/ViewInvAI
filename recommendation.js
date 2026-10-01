@@ -300,7 +300,8 @@ async function pulseAiValidate(result){
   if(!response.ok)return result;
   const ai=await response.json(),aiSignal=String(ai.signal||'').toUpperCase(),confidence=N(ai.confidence)??0;
   const hardSafe=result.dataQuality&&result.dataQuality.score>=65&&result.gates.quoteFresh&&result.gates.book&&result.gates.volume&&result.gates.spread&&result.gates.catalyst&&result.gates.chart&&result.gates.trend&&result.gates.momentum;
-  const eligible=hardSafe&&aiSignal==='COMPRAR'&&confidence>=70&&result.score>=68;
+  // A deterministic fallback (model unavailable) is not an AI validation.
+  const eligible=hardSafe&&ai.fallback!==true&&aiSignal==='COMPRAR'&&confidence>=70&&result.score>=68;
   const value={eligible,ai,aiValidated:true,reasons:[...(result.reasons||[]),...(Array.isArray(ai.keyPoints)?ai.keyPoints.slice(0,2):[])]};
   pulseAiCache.set(cacheKey,{at:Date.now(),value});return Object.assign({},result,value);
  }catch(e){console.warn('Pulse AI validation failed',e);return result}
