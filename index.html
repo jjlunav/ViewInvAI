@@ -28,7 +28,7 @@
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261001r2">
   <link rel="stylesheet" href="ui-density.css?v=20261001r16">
-  <link rel="stylesheet" href="asset-card.css?v=20261001r48">
+  <link rel="stylesheet" href="asset-card.css?v=20261001r49">
   <link rel="stylesheet" href="theme-ai.css?v=20261001r5">
 </head>
 <body>
@@ -612,13 +612,14 @@
     <div class="market-quick-backdrop" id="marketQuickBackdrop" aria-hidden="true"></div>
     <aside class="market-quick-sheet market-sheet" id="marketQuickSheet" role="dialog" aria-modal="true" aria-label="Mercados" aria-hidden="true">
       <div class="market-sheet-handle" aria-hidden="true"></div>
-      <header class="market-sheet-head"><div><small>MERCADOS</small><strong>Situación del mercado</strong></div><button type="button" class="market-sheet-close" data-market-sheet-close aria-label="Cerrar">×</button></header>
       <div class="market-sheet-status" id="marketSheetStatus"></div>
-      <nav class="market-sheet-tabs" role="tablist" aria-label="Secciones de Mercados">
+      <nav class="market-sheet-tabs" role="tablist" aria-label="Mercados">
         <button type="button" role="tab" class="active" aria-selected="true" data-market-sheet-tab="situation">Situación</button>
+        <button type="button" role="tab" aria-selected="false" data-market-sheet-tab="market">Mercado</button>
         <button type="button" role="tab" aria-selected="false" data-market-sheet-tab="viewed">Vistos</button>
-        <button type="button" data-market-sheet-view="home">Mercado completo</button>
+        <button type="button" class="market-sheet-close" data-market-sheet-close aria-label="Cerrar Mercados">×</button>
       </nav>
+      <div class="market-sheet-board" id="marketSheetBoard" hidden></div>
       <div class="market-sheet-body" id="marketSheetBody"></div>
       <div id="marketQuickContent" class="market-sheet-viewed" hidden></div>
     </aside>
@@ -651,7 +652,7 @@
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r2"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261001r4"></script>
+<script src="navigation.js?v=20261001r5"></script>
 <script src="mobile-app.js?v=20260925r1"></script>
 <script src="ui-shell.js?v=20261001r1"></script>
 <script src="funds.js?v=20261001r8"></script>
@@ -659,6 +660,6 @@
 <script src="alerts.js?v=20261001r3"></script>
 <script src="stock-notifications.js?v=20260930r3"></script>
 <script type="module" src="auth.js?v=20260930r2"></script>
-<script type="module" src="portfolio.js?v=20261001r43"></script>
+<script type="module" src="portfolio.js?v=20261001r44"></script>
 </body>
 </html>

@@ -3078,13 +3078,13 @@ function bind() {
   window.addEventListener("viewinvai:quote-updated", event => {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
-    if(state.currentView!=="portfolios"||document.hidden)return;
+    if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
     clearTimeout(renderApp.quoteTimer);
     renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
   });
   window.addEventListener("viewinvai:fx-updated", () => {
     state.goalCandidateCache={at:0,key:"",rows:[]};
-    if(state.currentView!=="portfolios"||document.hidden)return;
+    if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
     clearTimeout(renderApp.quoteTimer);
     renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
   });
