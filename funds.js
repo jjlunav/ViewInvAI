@@ -129,9 +129,27 @@
   if(p.type==='fund')return {kind:'nav',label:'VL oficial · '+ageText(at),title:'Valor liquidativo oficial · '+dateText(p.valueDate)};
   return {kind:'snapshot',label:'Último dato · '+ageText(at),title:'Último dato disponible · '+dateText(p.valueDate)};
  }
+ function fundFreshnessDotState(p){
+  const x=fundFreshness(p);
+  if(x.kind==='live')return'live';
+  const at=p&&((p.valueDate)||(p.sourceUpdatedAt)),t=at?new Date(at).getTime():NaN;
+  if(!Number.isFinite(t))return'stale';
+  return Date.now()-t>96*60*60*1000?'stale':'delayed';
+ }
+ function fundFreshnessDotHtml(p){
+  const x=fundFreshness(p),tone=fundFreshnessDotState(p);
+  return '<span class="quote-freshness-dot '+tone+' fund-price-freshness" data-fund-freshness-dot-isin="'+esc(p.isin)+'" data-status-label="'+esc(x.label)+'" title="'+esc(x.title)+'" aria-label="'+esc(x.label)+'" tabindex="0"><i aria-hidden="true"></i></span>';
+ }
+ function freshnessTextHtml(p){
+  const x=fundFreshness(p);
+  return '<span class="fund-freshness fund-freshness-text '+esc(x.kind)+'" title="'+esc(x.title)+'">'+esc(x.label)+'</span>';
+ }
  function freshnessHtml(p){
   const x=fundFreshness(p);
   return '<span class="fund-freshness '+esc(x.kind)+'" title="'+esc(x.title)+'"><i></i>'+esc(x.label)+'</span>';
+ }
+ function fundPriceInlineHtml(p,value=fundCurrentValue(p)){
+  return '<span class="fund-price-inline" data-fund-current-value>'+fundFreshnessDotHtml(p)+'<span class="fund-current-price-text">'+money(value,p.currency)+'</span></span>';
  }
  function subscribeFund(isin){
   isin=String(isin||'').toUpperCase();if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return;
@@ -183,8 +201,9 @@
   document.querySelectorAll('[data-fund-live-isin]').forEach(el=>{
    if(isin&&el.dataset.fundLiveIsin!==isin)return;
    const p=state.products.find(x=>x.isin===el.dataset.fundLiveIsin);if(!p)return;
-   const value=el.querySelector('[data-fund-current-value]');if(value)value.textContent=money(fundCurrentValue(p),p.currency);
-   const fresh=el.querySelector('.fund-freshness');if(fresh){const x=fundFreshness(p);fresh.className='fund-freshness '+x.kind;fresh.title=x.title;fresh.innerHTML='<i></i>'+esc(x.label)}
+   const value=el.querySelector('[data-fund-current-value] .fund-current-price-text');if(value)value.textContent=money(fundCurrentValue(p),p.currency);
+   const dot=el.querySelector('[data-fund-freshness-dot-isin]');if(dot){const x=fundFreshness(p),tone=fundFreshnessDotState(p);dot.classList.remove('live','delayed','stale');dot.classList.add(tone);dot.dataset.statusLabel=x.label;dot.title=x.title;dot.setAttribute('aria-label',x.label)}
+   const fresh=el.querySelector('.fund-freshness');if(fresh){const x=fundFreshness(p);fresh.className='fund-freshness fund-freshness-text '+x.kind;fresh.title=x.title;fresh.textContent=x.label}
   });
   renderPortfolio();
  }
@@ -388,8 +407,8 @@
   const current=fundCurrentValue(p),kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'FONDO INDEXADO';
   if(key==='name')return '<td class="fund-table-fund"><div class="fund-table-fund-main"><span class="fund-kind">'+kind+'</span><strong title="'+esc(p.name||p.isin)+'">'+esc(p.name||p.isin)+'</strong><small>'+esc(p.isin)+'</small></div></td>';
   if(key==='platform')return '<td class="fund-table-platforms"><div class="fund-platforms">'+platformLabel(p)+'</div></td>';
-  if(key==='current')return '<td class="fund-table-value"><strong data-fund-current-value>'+money(current,p.currency)+'</strong></td>';
-  if(key==='freshness')return '<td class="fund-table-freshness">'+freshnessHtml(p)+'</td>';
+  if(key==='current')return '<td class="fund-table-value"><strong>'+fundPriceInlineHtml(p,current)+'</strong></td>';
+  if(key==='freshness')return '<td class="fund-table-freshness">'+freshnessTextHtml(p)+'</td>';
   if(PERIODS.some(([,period])=>period===key))return performanceCell(p,key);
   if(key==='ter')return '<td class="fund-table-number">'+(num(p.ter)===null?'—':esc(num(p.ter).toLocaleString('es-ES',{maximumFractionDigits:3})+'%'))+'</td>';
   if(key==='index')return '<td class="fund-table-text" title="'+esc(p.index||p.category||'')+'">'+esc(p.index||p.category||'—')+'</td>';
@@ -511,7 +530,7 @@
   ];
   const sources=(p.sources||[]).map(s=>{const url=safeHttpsUrl(s&&s.url);return url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+esc(s.label||s.url||'Fuente')+'</a>':''}).filter(Boolean).join(' · ');
   return '<div class="fund-detail-sheet">'+
-   '<div class="fund-detail-hero"><div><span class="fund-kind">'+(p.type==='fund'?'FONDO INDEXADO':p.type==='etf'?'ETF':'ETP / ETC')+'</span><h3>'+esc(p.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div><div><strong>'+money(fundCurrentValue(p),p.currency)+'</strong>'+freshnessHtml(p)+'</div></div>'+
+   '<div class="fund-detail-hero"><div><span class="fund-kind">'+(p.type==='fund'?'FONDO INDEXADO':p.type==='etf'?'ETF':'ETP / ETC')+'</span><h3>'+esc(p.name||p.isin)+'</h3><p>'+esc(p.isin)+'</p></div><div><strong>'+fundPriceInlineHtml(p)+'</strong>'+freshnessTextHtml(p)+'</div></div>'+
    platformLabel(p)+
    '<h4>Rentabilidad</h4>'+perfStrip(p)+
    '<h4>Datos del producto</h4>'+compactFacts(p)+
@@ -559,7 +578,7 @@
   return root.ViewInvAICards.render({context:'funds-market',title:p.name||p.isin,rank:'#'+(i+1),isin:p.isin,
    subtitle:[type,p.provider,p.indexName].filter(Boolean).join(' · '),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
-   cells:[{label:'Valor',value:money(value,p.currency),tone},{label:'1 año',value:pct(ret),tone}]});
+   cells:[{label:'Valor',value:'',tone,html:fundFreshnessDotHtml(p)+'<span>'+money(value,p.currency)+'</span>'},{label:'1 año',value:pct(ret),tone}]});
  }
  async function renderMarketTop10(target,limit=10,platform='all'){
   const box=typeof target==='string'?q(target):target;if(!box)return;
@@ -649,7 +668,7 @@
   return root.ViewInvAICards.render({context:'fund-portfolio',title:p.name||position.name||p.isin,isin:p.isin,
    subtitle:(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo')+' · '+(position.platform||'—'),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
-   cells:[{label:'Valor actual',value:money(value,position.currency||p.currency)},{label:'P&L',value:pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)),tone:pnl===null?'muted':pnl>=0?'positive':'negative'}],
+   cells:[{label:'Valor actual',value:'',html:fundFreshnessDotHtml(p)+'<span>'+money(value,position.currency||p.currency)+'</span>'},{label:'P&L',value:pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)),tone:pnl===null?'muted':pnl>=0?'positive':'negative'}],
    detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Media <b>'+money(avg,position.currency||p.currency)+'</b></span></div>'+compactFacts(p)+perfStrip(p),
    actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
   });
