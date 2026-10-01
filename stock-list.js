@@ -193,14 +193,13 @@ function compactQuoteStatusHtml(s,preferTr=false){
 function compactInvestingQuoteHtml(s,preferTr=false){
  const q=compactInvestingQuoteData(s,preferTr);
  const dec=quotePrecision(s,preferTr,q.regularPrice),tone=C(q.regularPct);
- const main='<div class="asset-investing-main"><strong>'+quoteMoney(q.regularPrice,q.symbol,dec)+'</strong><span class="'+tone+'">'+compactSignedMoney(q.regularAbs,q.symbol,dec)+' <b>('+PC(q.regularPct)+')</b></span></div>';
- const status='<div class="asset-investing-status">'+compactQuoteStatusHtml(s,preferTr)+'</div>';
+ const main='<div class="asset-investing-main">'+compactQuoteStatusHtml(s,preferTr)+'<strong>'+quoteMoney(q.regularPrice,q.symbol,dec)+'</strong><span class="'+tone+'">'+compactSignedMoney(q.regularAbs,q.symbol,dec)+' <b>('+PC(q.regularPct)+')</b></span></div>';
  let extended='';
  if(q.session&&q.sessionPrice!==null){
   const extTone=C(q.sessionPct),extDec=quotePrecision(s,false,q.sessionPrice),icon=q.session==='premarket'?'☀︎':'☾︎';
   extended='<div class="asset-investing-extended '+extTone+'"><span class="asset-session-name"><i aria-hidden="true">'+icon+'</i>'+E(q.sessionLabel)+'</span><strong>'+quoteMoney(q.sessionPrice,'\u0024',extDec)+'</strong><span>'+compactSignedMoney(q.sessionAbs,'\u0024',extDec)+' <b>('+PC(q.sessionPct)+')</b></span>'+(q.sessionAt?'<time>'+E(compactQuoteTime(q.sessionAt))+'</time>':'')+'</div>';
  }
- return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'">'+main+status+extended+'</div>';
+ return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'">'+main+extended+'</div>';
 }
 function compactInvestingQuoteCell(s,preferTr=false){
  return{label:'Cotización',value:'',tone:'',html:compactInvestingQuoteHtml(s,preferTr)};
