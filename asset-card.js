@@ -27,12 +27,13 @@
   const quoteCell=options.quoteCell||cells[0]||null;
   const contextual=Array.isArray(options.contextCells)?options.contextCells:cells.slice(1);
   const interactive=!!options.openAttrs;
+  const chevronOnly=!options.rowActionsHtml&&!(options.openLabel&&interactive);
   const identifier=options.isin&&options.isin!=='—'
    ?'<span class="list-copy-isin '+(options.context==='catalog'?'catalog-row-isin':options.context==='portfolio'?'portfolio-row-isin':'')+'">'+escape(options.isin)+'</span>'
    :'';
 
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'">'+
-   '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(options.openAttrs||'')+'>'+
+   '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(chevronOnly?' data-end="chevron"':'')+(options.openAttrs||'')+'>'+
     '<div class="asset-card-marker">'+(options.leadingHtml||'')+'</div>'+
     '<div class="asset-card-identity"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+'</div></div>'+
     '<div class="asset-card-quote-slot">'+cellHtml(quoteCell,'asset-card-quote-cell')+'</div>'+
@@ -54,13 +55,14 @@
   const rows=Array.isArray(columns)?columns:[];
   const quote=rows[0];
   const contextual=rows.slice(1);
-  return '<div class="asset-list-head" data-card-template="compact-slots">'+
+  // The shell is a compact-card container so the head switches layout at the same widths as the rows.
+  return '<div class="asset-list-head-shell"><div class="asset-list-head" data-card-template="compact-slots" data-end="chevron">'+
    '<span class="asset-list-head-marker" aria-hidden="true"></span>'+
    '<span class="asset-list-head-identity">'+(options.firstHtml||escape(options.firstLabel||'Valor / ISIN'))+'</span>'+
    '<span class="asset-list-head-quote">'+(quote?content(typeof quote==='string'?{value:quote}:quote):'')+'</span>'+
    '<span class="asset-list-head-context">'+contextual.map(cell=>'<span>'+content(typeof cell==='string'?{value:cell}:cell)+'</span>').join('')+'</span>'+
    '<span class="asset-list-head-actions" aria-hidden="true"></span>'+
-  '</div>';
+  '</div></div>';
  }
 
  window.ViewInvAICards=Object.freeze({render,head});
