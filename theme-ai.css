@@ -455,3 +455,42 @@ html[data-theme="light"]:root:root body .portfolio-summary-bar *{color:var(--pq-
 html[data-theme="light"]:root:root body .portfolio-summary-bar small{color:var(--pq-muted)!important}
 html[data-theme="light"]:root:root body .portfolio-summary-bar .positive{color:var(--pq-up)!important}
 html[data-theme="light"]:root:root body .portfolio-summary-bar .negative{color:var(--pq-down)!important}
+
+/* ===== Radar IA con protagonismo: tipografía legible en tarjetas y cabeceras ===== */
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-copy>strong{font-size:15px!important;line-height:1.3!important;font-weight:800!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-copy>strong>em{font-size:12.5px!important;min-width:34px!important;height:24px!important;padding:0 7px!important;margin-right:8px!important;vertical-align:1px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-copy>small{font-size:11.5px!important;line-height:1.35!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .list-copy-isin{font-size:11px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-investing-main>strong{font-size:19px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-investing-main>span{font-size:12.5px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-spark{width:72px!important;height:26px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-identity.has-spark .asset-card-copy{grid-template-columns:minmax(0,1fr) 72px!important}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-row{padding:12px 12px!important;row-gap:8px!important}
+html:root:root body #view-recommendation .radar-ai-tier-list{gap:10px!important}
+html:root:root body #view-recommendation .radar-ai-tier>header strong{font-size:14px!important;font-weight:800!important}
+html:root:root body #view-recommendation .radar-ai-tier>header span{font-size:12px!important;min-width:24px!important;height:22px!important}
+html:root:root body #view-recommendation .radar-ai-market-head strong{font-size:17px!important}
+html:root:root body #view-recommendation .radar-ai-market-head span,
+html:root:root body #view-recommendation .radar-ai-market-head b{font-size:12px!important}
+html:root:root body #view-recommendation .radar-ai-empty{font-size:13px!important;padding:14px!important}
+html:root:root body #view-recommendation #recommendationUpdated{font-size:12px!important}
+
+/* ===== Barra inferior: Radar IA solo se resalta cuando estás en él ===== */
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"]:not(.active){
+ background:transparent!important;border:1px solid transparent!important;box-shadow:none!important;color:inherit!important;
+}
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"]:not(.active)>span,
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"]:not(.active)>small{color:inherit!important}
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"]>small{font-size:10px!important;font-weight:600!important}
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"].active{
+ border:1px solid transparent!important;
+ background:linear-gradient(var(--nav-ai-bg,#0b1626),var(--nav-ai-bg,#0b1626)) padding-box,var(--ai-btn) border-box!important;
+ box-shadow:0 0 18px rgba(124,108,255,.38)!important;
+}
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"].active>span{color:var(--ai-1)!important}
+html:root:root body .mobile-bottom-nav .mobile-nav-item[data-mobile-view="recommendation"].active>small{font-weight:800!important}
+/* Radar cards stacked: name (with ring and trend) on top at full width, price underneath. */
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-row[data-card-template="compact-slots"]{
+ grid-template-columns:24px minmax(0,1fr)!important;grid-template-areas:"marker identity" ". quote" ". context"!important;
+}
+html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-quote-slot{justify-self:start!important}
