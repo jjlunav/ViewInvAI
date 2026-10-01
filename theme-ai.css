@@ -443,3 +443,7 @@ html:root:root body .settings-switch input:checked+.settings-switch-track{backgr
 html:root:root body .profile-stat-row{padding:8px 10px!important}
 html:root:root body .fund-ter-filter input{border:0!important;background:transparent!important;box-shadow:none!important}
 html:root:root body .market-board-source-tabs{width:max-content!important;max-width:100%!important}
+/* Primary buttons inside sheets beat the sheets' own light-theme button reset. */
+html:root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){background:var(--mk-btn)!important;border:0!important;font-weight:700!important}
+html[data-theme="light"]:root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){color:#ffffff!important}
+html:not([data-theme="light"]):root:root body .shared-filter-sheet .shared-filter-panel :is(.btn.secondary,.btn[type="submit"]){color:#04221b!important}

@@ -1481,22 +1481,6 @@ html[data-theme="light"] body .notification-price-card{background:#f8fbfc!import
  /* Fondos: the sortable column head is two short rows instead of two tall ones. */
  html body #view-funds .asset-list-head{grid-template-rows:auto auto!important;row-gap:2px!important;padding:3px 6px!important}
  html body #view-funds .asset-list-head .fund-mobile-sort{height:22px!important;min-height:22px!important}
- /* Potencial futuro: three rows of filters instead of four. */
- html body #view-future .future-filter-bar{
-  display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;grid-template-rows:none!important;
-  gap:6px!important;padding:6px!important;align-items:end!important;
- }
- html body #view-future .future-filter-bar>*{min-width:0!important;margin:0!important;height:40px!important;min-height:40px!important;box-sizing:border-box!important}
- html body #view-future .future-filter-bar>#futureHorizon{grid-column:1 / span 5!important;grid-row:1!important}
- html body #view-future .future-filter-bar>#futureType{grid-column:6 / span 7!important;grid-row:1!important}
- html body #view-future .future-filter-bar>#futureSector{grid-column:1 / span 7!important;grid-row:2!important}
- html body #view-future .future-filter-bar>.check-inline{grid-column:8 / span 5!important;grid-row:2!important;padding:0 8px!important;font-size:12px!important;white-space:nowrap!important;overflow:hidden!important}
- html body #view-future .future-filter-bar>.future-date-filter{grid-row:3!important;grid-column:1 / span 5!important;height:auto!important;display:grid!important;gap:2px!important}
- html body #view-future .future-filter-bar>.future-date-filter>span{font-size:10px!important;line-height:12px!important}
- html body #view-future .future-filter-bar>.future-date-filter>input{height:40px!important;min-height:40px!important}
- html body #view-future .future-filter-bar>.future-date-filter+.future-date-filter{grid-column:6 / span 5!important}
- html body #view-future .future-filter-bar>#futureResetFilters{grid-row:3!important;grid-column:11 / span 2!important;padding:0!important;font-size:0!important;display:grid!important;place-items:center!important}
- html body #view-future .future-filter-bar>#futureResetFilters::before{content:"↺";font-size:18px;line-height:1}
  /* Radar de entrada: starts at the top like every other section, tabs on the left and the
    status line wraps instead of running off the left edge. */
  html body #view-entry.view.active{display:block!important;justify-content:normal!important;align-items:stretch!important;padding:12px 12px calc(var(--mobile-nav-h,64px) + 34px)!important}
@@ -1530,8 +1514,6 @@ html[data-theme="light"] body .notification-price-card{background:#f8fbfc!import
 }
 @media(max-width:380px){
  html[data-native-app="1"]{--ph-title-size:20px}
- html body #view-future .future-filter-bar>#futureSector{grid-column:1 / span 6!important}
- html body #view-future .future-filter-bar>.check-inline{grid-column:7 / span 6!important;font-size:11px!important;padding:0 6px!important}
 }
 /* Trend mini-chart: the name keeps its own full line; the chart takes a 56px column beside
    the short ticker/ISIN lines underneath, so neither the name nor the price is cut. */
@@ -1545,3 +1527,25 @@ html[data-theme="light"] body .notification-price-card{background:#f8fbfc!import
 .asset-card-spark.down polyline{stroke:#ff636e}
 html[data-theme="light"] .asset-card-spark.up polyline{stroke:#0f8a5f}
 html[data-theme="light"] .asset-card-spark.down polyline{stroke:#c2263a}
+/* Potencial futuro: horizon + funnel on one row; the rest lives in the shared filter sheet. */
+html body #view-future .future-filter-bar.future-filter-compact{
+ display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;grid-template-rows:none!important;gap:8px!important;
+ padding:0!important;border:0!important;background:none!important;box-shadow:none!important;margin:0 0 10px!important;
+}
+html body #view-future .future-filter-compact>#futureHorizon{grid-column:1!important;grid-row:1!important;height:44px!important;min-height:44px!important}
+html body #view-future .future-filter-compact>.future-filter-open{grid-column:2!important;grid-row:1!important;width:44px!important;height:44px!important;position:relative!important;display:grid!important;place-items:center!important;padding:0!important}
+.future-filter-open svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.filter-count-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;font:700 10px/17px Inter,system-ui,sans-serif;text-align:center;background:#9d8cff;color:#fff}
+html[data-theme="light"] .filter-count-badge{background:#4f46e5}
+#futureFilterPanel.in-filter-sheet{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#futureFilterPanel.in-filter-sheet>label{display:grid;gap:4px;margin:0;min-width:0}
+#futureFilterPanel.in-filter-sheet>label>span{font-size:11px;opacity:.75}
+#futureFilterPanel.in-filter-sheet>label>:is(select,input:not([type=checkbox])){width:100%;height:42px;min-width:0;box-sizing:border-box}
+#futureFilterPanel.in-filter-sheet>.future-sheet-field,
+#futureFilterPanel.in-filter-sheet>.check-inline,
+#futureFilterPanel.in-filter-sheet>.filter-actions{grid-column:1 / -1}
+#futureFilterPanel.in-filter-sheet>.check-inline{display:flex!important;align-items:center;justify-content:flex-start;gap:10px;min-height:40px;font-size:13px;padding:0 4px!important;border:0!important;background:none!important}
+#futureFilterPanel.in-filter-sheet>.check-inline>input{width:18px!important;height:18px!important;margin:0!important;flex:0 0 18px}
+.filter-count-badge[hidden]{display:none!important}
+#futureFilterPanel.in-filter-sheet>.filter-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+#futureFilterPanel.in-filter-sheet>.filter-actions>.btn{height:42px}

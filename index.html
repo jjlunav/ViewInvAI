@@ -28,8 +28,8 @@
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261001r2">
   <link rel="stylesheet" href="ui-density.css?v=20261001r15">
-  <link rel="stylesheet" href="asset-card.css?v=20261001r44">
-  <link rel="stylesheet" href="theme-ai.css?v=20261001r2">
+  <link rel="stylesheet" href="asset-card.css?v=20261001r45">
+  <link rel="stylesheet" href="theme-ai.css?v=20261001r3">
 </head>
 <body>
 <div class="app-shell">
@@ -344,14 +344,17 @@
         <div><h1>Potencial futuro <span class="heading-badge ai-badge">IA · CATALIZADORES</span></h1><p class="lead">Fusiona oportunidades, calendario y noticias en un único listado por acción: qué catalizador tiene, cuándo puede ocurrir, cotización actual y variación.</p></div>
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="future" aria-label="Ayuda sobre Potencial futuro">?</button><button class="btn icon-btn" id="refreshFuture" title="Actualizar">↻</button></div>
       </div>
-      <div class="future-filter-bar">
+      <div class="future-filter-bar future-filter-compact">
         <select id="futureHorizon" class="select"><option value="1">1 día</option><option value="2">2 días</option><option value="3">3 días</option><option value="4">4 días</option><option value="5">5 días</option><option value="6">6 días</option><option value="7">7 días</option><option value="14" selected>14 días</option><option value="30">30 días</option><option value="60">60 días</option></select>
-        <select id="futureType" class="select"><option value="all">Todos los catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select>
-        <select id="futureSector" class="select"><option value="all">Todos los sectores</option></select>
-        <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
-        <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
-        <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
-        <button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button>
+        <button type="button" class="filter-icon-button future-filter-open" data-filter-sheet-target="#futureFilterPanel" data-filter-sheet-title="Filtros · Potencial futuro" aria-label="Más filtros" title="Más filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"/></svg><span id="futureFilterCount" class="filter-count-badge" hidden></span></button>
+        <div id="futureFilterPanel" class="future-filter-panel filter-sheet-source">
+          <label class="future-sheet-field"><span>Catalizador</span><select id="futureType" class="select"><option value="all">Todos los catalizadores</option><option value="news">Noticias / actualidad</option><option value="medical">Clínicos / FDA / sanitario</option><option value="earnings">Resultados / guidance</option><option value="contract">Contratos / adjudicaciones</option><option value="corporate">Operaciones corporativas</option><option value="financing">Financiación / dilución</option><option value="analyst">Analistas / ratings</option><option value="event">Eventos / conferencias</option><option value="regulatory">Regulatorio / legal</option><option value="other">Otros</option></select></label>
+          <label class="future-sheet-field"><span>Sector</span><select id="futureSector" class="select"><option value="all">Todos los sectores</option></select></label>
+          <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
+          <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
+          <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
+          <div class="filter-actions"><button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Listo</button></div>
+        </div>
       </div>
       <div id="futureResults" class="future-list"></div>
     </section>
@@ -614,7 +617,7 @@
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261001r30"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
-<script src="events.js?v=20261001r2"></script>
+<script src="events.js?v=20261001r3"></script>
 <script src="asset-card.js?v=20261001r22"></script>
 <script src="stock-list.js?v=20261001r21"></script>
 <script src="recommendation.js?v=20261001r33"></script>

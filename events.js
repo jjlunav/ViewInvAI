@@ -89,6 +89,8 @@ function futureRow(group,index,trOnly){
 function renderFuture(){
  const horizon=+document.querySelector('#futureHorizon')?.value||14,type=document.querySelector('#futureType')?.value||'all',sector=document.querySelector('#futureSector')?.value||'all',trOnly=!!document.querySelector('#futureTrOnly')?.checked,now=Date.now();
  const fromValue=document.querySelector('#futureDateFrom')?.value||'',toValue=document.querySelector('#futureDateTo')?.value||'';
+ const activeFilters=(type!=='all')+(sector!=='all')+!!fromValue+!!toValue+!trOnly,badge=document.querySelector('#futureFilterCount');
+ if(badge){badge.hidden=!activeFilters;badge.textContent=activeFilters?String(activeFilters):'';}
  const from=fromValue?new Date(fromValue+'T00:00:00').getTime():null,to=toValue?new Date(toValue+'T23:59:59').getTime():null;
  syncFutureSectorOptions();
  let filtered=(db.events||[]).filter(e=>{
