@@ -9658,3 +9658,18 @@ html[data-theme="light"] .notification-head-actions #notificationHistory.active{
  display:inline-block!important;
 }
 
+.table-price-inline,
+.asset-price-inline{
+ display:inline-flex;
+ align-items:baseline;
+ gap:3px;
+ min-width:0;
+ max-width:100%;
+ white-space:nowrap;
+}
+.table-price-inline>.quote-freshness-dot,
+.asset-price-inline>.quote-freshness-dot{
+ align-self:center;
+ margin-right:1px;
+}
+
