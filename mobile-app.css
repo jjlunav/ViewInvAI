@@ -3092,3 +3092,20 @@ html[data-native-app="1"] .notification-category-list .settings-status-row>span:
  }
 }
 
+/* 2026-10-01 · final native flow: inline controls never use content coordinates */
+html[data-native-app="1"] #view-entry>.entry-filter-launch{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) auto!important;
+ align-items:center!important;
+ gap:6px!important;
+ min-width:0!important;
+ max-width:100%!important;
+ padding-right:0!important;
+ position:relative!important;
+}
+html[data-native-app="1"] #view-entry>.entry-filter-launch .filter-icon-button{
+ position:static!important;
+ inset:auto!important;
+ justify-self:end!important;
+}
+
