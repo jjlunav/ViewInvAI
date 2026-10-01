@@ -1205,17 +1205,17 @@
  .catalog-toolbar.compact-search-toolbar,
  #view-funds .fund-toolbar{
   display:grid!important;
-  grid-template-columns:minmax(0,1fr) 40px 40px!important;
+  grid-template-columns:minmax(0,1fr) 44px 44px!important;
   grid-auto-flow:column!important;
   align-items:stretch!important;
   gap:8px!important;
  }
  .catalog-toolbar.compact-search-toolbar>.input,
- #view-funds .fund-toolbar>.fund-search{grid-column:1!important;width:100%!important;min-width:0!important;height:40px!important;margin:0!important}
+ #view-funds .fund-toolbar>.fund-search{grid-column:1!important;width:100%!important;min-width:0!important;height:44px!important;margin:0!important}
  .catalog-toolbar.compact-search-toolbar>.catalog-toolbar-mini,
  #view-funds .fund-toolbar>#fundMobileFiltersToggle,
  #view-funds .fund-toolbar>#fundResetColumns{
-  grid-row:1!important;width:40px!important;min-width:40px!important;height:40px!important;
+  grid-row:1!important;width:44px!important;min-width:44px!important;height:44px!important;
   padding:0!important;margin:0!important;display:grid!important;place-items:center!important;
  }
  .catalog-toolbar.compact-search-toolbar>.catalog-toolbar-spacer,
