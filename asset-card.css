@@ -1378,3 +1378,5 @@ html[data-theme="light"] body .account-button #accountEmail{color:#5d727c!import
 html[data-theme="light"] body .mobile-more-sheet button{background:#f8fbfc!important;border-color:#d3e0e5!important;color:#20343e!important}
 html[data-theme="light"] body .mobile-more-item>span{color:#0b6b57!important}
 html[data-theme="light"] body .notification-price-card{background:#f8fbfc!important;border-color:#d3e0e5!important}
+/* Objetivo IA: one-line summary of the limits that the chosen risk level applies. */
+.portfolio-goal-risk-summary{margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--muted)}

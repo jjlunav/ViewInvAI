@@ -141,10 +141,12 @@ function portfolioGoalConfig(){
   };
 }
 function portfolioGoalRiskBand(riskProfile){
+  // Shared with backend.js goalServerRiskBand: the user picks the risk level and these limits follow.
+  // maxSpreadPct caps the bid/ask spread of a buy; maxRoundTripFeePct caps buy+sell fees vs. the ticket.
   const bands={
-    conservative:{label:"Conservador",maxPosition:15,riskPerTradePct:.75,minCandidate:84,minQuality:75,minVelocity:80,minComposite:85,minTiming:78,minRR:2.2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,maxStopPct:5},
-    balanced:{label:"Equilibrado",maxPosition:22,riskPerTradePct:1.25,minCandidate:82,minQuality:70,minVelocity:78,minComposite:83,minTiming:72,minRR:2,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,maxStopPct:6},
-    aggressive:{label:"Agresivo",maxPosition:30,riskPerTradePct:2,minCandidate:80,minQuality:66,minVelocity:76,minComposite:82,minTiming:68,minRR:1.8,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,maxStopPct:7}
+    conservative:{label:"Bajo",maxPosition:8,riskPerTradePct:.5,maxSpreadPct:2,maxRoundTripFeePct:.5,minCandidate:84,minQuality:75,minVelocity:80,minComposite:85,minTiming:78,minRR:2.2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,maxStopPct:5},
+    balanced:{label:"Moderado",maxPosition:15,riskPerTradePct:1,maxSpreadPct:3,maxRoundTripFeePct:1,minCandidate:82,minQuality:70,minVelocity:78,minComposite:83,minTiming:72,minRR:2,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,maxStopPct:6},
+    aggressive:{label:"Alto",maxPosition:25,riskPerTradePct:2,maxSpreadPct:5,maxRoundTripFeePct:1.5,minCandidate:80,minQuality:66,minVelocity:76,minComposite:82,minTiming:68,minRR:1.8,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,maxStopPct:7}
   };
   return bands[riskProfile]||bands.aggressive;
 }
@@ -724,20 +726,27 @@ function portfolioCoachPositionRows(metrics){
     const backendSignal=String(row.p.last_signal||"").toUpperCase();
     let targetWeight=currentWeight;
     const maxWeight=metrics.riskBand?metrics.riskBand.maxPosition:28;
-    const openedAt=new Date(row.p.opened_at||row.p.created_at||0).getTime();
-    const holdingDays=Number.isFinite(openedAt)?Math.max(0,(Date.now()-openedAt)/86400000):null;
+    // Holding time counts from the latest buy, so a repurchase restarts the 3-day minimum.
+    const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
+    const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const weekPerf=num(row.stock&&row.stock.perfWeek);
     const catalyst=portfolioGoalCatalyst(row.stock),catalystDays=num(catalyst.days);
     const imminentCatalyst=catalystDays!==null&&catalystDays<=3&&(num(catalyst.impact)||0)>=65;
-    const stagnant=holdingDays!==null&&holdingDays>=7&&weekPerf!==null&&Math.abs(weekPerf)<1.25&&score<68&&!imminentCatalyst;
+    // A position is only "stagnant" after three weeks without progress; a week of calm is normal.
+    const monthPerf=num(row.stock&&row.stock.perfMonth)??weekPerf;
+    const stagnant=holdingDays!==null&&holdingDays>=21&&monthPerf!==null&&Math.abs(monthPerf)<2&&score<60&&!imminentCatalyst;
+    const minHoldActive=holdingDays!==null&&holdingDays<3;
     const positionReturnPct=row.avgEur!==null&&row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null;
     const stopLimit=num(metrics.riskBand&&metrics.riskBand.maxStopPct)??7;
     const takeTrigger=stopLimit*(num(metrics.riskBand&&metrics.riskBand.minRR)??1.8);
     const stopHit=positionReturnPct!==null&&positionReturnPct<=-stopLimit;
     const takeHit=positionReturnPct!==null&&positionReturnPct>=takeTrigger;
-    if(stopHit||backendSignal==="SELL"||score<=35||stagnant)targetWeight=0;
+    // Exits use lower thresholds than entries and respect a 3-day minimum hold (except the stop).
+    if(stopHit)targetWeight=0;
+    else if(minHoldActive)targetWeight=currentWeight;
+    else if(backendSignal==="SELL"||score<=35||stagnant)targetWeight=0;
     else if(takeHit)targetWeight=Math.min(currentWeight,currentWeight*.5);
-    else if(backendSignal==="REVIEW"||score<48)targetWeight=Math.min(currentWeight,12);
+    else if(score<40)targetWeight=Math.min(currentWeight,12);
     else if(currentWeight>maxWeight+12)targetWeight=Math.min(currentWeight,score>=70?maxWeight:maxWeight*.8);
     else if(currentWeight>maxWeight&&score<65)targetWeight=Math.min(currentWeight,maxWeight);
     if(goalReached&&backendSignal==="HOLD"&&score>=55)targetWeight=Math.min(targetWeight,currentWeight);
@@ -752,7 +761,8 @@ function portfolioCoachPositionRows(metrics){
     else reasons.push("pendiente de análisis IA de cartera");
     if(stopHit)reasons.push("stop de riesgo alcanzado ("+formatNumber(positionReturnPct,2)+"%)");
     if(takeHit)reasons.push("objetivo de beneficio alcanzado · asegurar parte");
-    if(stagnant)reasons.push("sin avance semanal suficiente");
+    if(stagnant)reasons.push("sin avance en las últimas semanas");
+    if(minHoldActive&&!stopHit)reasons.push("permanencia mínima de 3 días");
     if(currentWeight>(metrics.riskBand&&metrics.riskBand.maxPosition||30))reasons.push("concentración "+formatNumber(currentWeight,1)+"%");
     reasons.push("score "+formatNumber(score,0)+"/100");
     if(quality)reasons.push("calidad "+formatNumber(quality,0)+"/100");
@@ -887,7 +897,7 @@ function portfolioCoachCandidates(metrics,positionRows){
       score*.34+(num(row.quality)||0)*.20+velocity.score*.16+entry.timing*.22+
       (multiSource?3:0)+Math.min(2,(num(catalyst.impact)||0)*.02)-spreadPenalty
     ));
-    const spreadAcceptable=spread===null?row.quality>=80:spread<=6;
+    const spreadAcceptable=spread===null?row.quality>=80:spread<=(band.maxSpreadPct||6);
     return{...row,score,velocityScore:velocity.score,catalyst,confirmation,composite,execution,entry,brokerName,spreadAcceptable};
   }).filter(row=>
     row.confirmation&&row.spreadAcceptable&&row.entry&&row.entry.eligible&&
@@ -920,6 +930,8 @@ function portfolioCoachCandidates(metrics,positionRows){
     const units=Math.floor(Math.max(0,budget-feeEur)/row.execution.unitEur);
     if(units<1)return null;
     const allocation=units*row.execution.unitEur,totalCost=allocation+feeEur;
+    // Not worth it when buying and later selling costs too much relative to the ticket.
+    if(allocation>0&&feeEur*2/allocation*100>(band.maxRoundTripFeePct||1.5))return null;
     const price=num(row.execution.price),currency=row.execution.currency||(row.preferTr?"EUR":"USD");
     const levels=price===null
       ?{stop:null,take:null,stopPct:row.entry.stopPct,takePct:row.entry.takePct,currency}
@@ -963,8 +975,18 @@ function goalTradeInstructionHtml(row){
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+reason+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
+// A buy is only actionable once it also qualified in the server's previous daily review.
+function goalCandidateConfirmed(stock){
+  const goal=selectedPortfolioGoal();
+  let list=[];
+  try{list=JSON.parse(goal&&goal.review_candidates||"[]")}catch(_){list=[]}
+  if(!Array.isArray(list)||!list.length)return false;
+  const keys=new Set(list.map(x=>String(x||"").toUpperCase()));
+  const variants=[portfolioStockKey(stock),stock&&stock.tvSymbol,stock&&((stock.exchange||"")+":"+(stock.ticker||""))].map(x=>String(x||"").trim().toUpperCase()).filter(Boolean);
+  return variants.some(x=>keys.has(x));
+}
 function goalCandidateHtml(row){
-  const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
+  const key=portfolioStockKey(row.stock),confirmed=goalCandidateConfirmed(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{},execution=row.execution||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
   const take=levels.take!==null&&levels.take!==undefined?formatMoney(levels.take,levels.currency||"EUR"):"—";
@@ -973,9 +995,13 @@ function goalCandidateHtml(row){
   const spread=execution.spreadPct!==null&&execution.spreadPct!==undefined?formatNumber(execution.spreadPct,2)+"%":"N/D";
   const entry=execution.price!==null&&execution.price!==undefined?formatMoney(execution.price,execution.currency||"EUR"):"—";
   const fee=row.feeEur?(" · comisión "+formatMoney(row.feeEur,"EUR")):"";
-  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
+  const spreadCost=num(execution.spreadPct)!==null&&num(row.allocation)>0?row.allocation*num(execution.spreadPct)/200:null;
+  const costLine=spreadCost!==null||row.feeEur?'<small>Coste estimado de entrar: '+esc(formatMoney((num(row.feeEur)||0)+(spreadCost||0),"EUR"))+' (comisión + medio spread)</small>':"";
+  const button=confirmed
+    ?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason})
+    :'<span class="portfolio-goal-execution-blocked">En observación · se confirma si vuelve a superar el filtro en la próxima revisión diaria</span>';
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
+    '<em>#'+esc(row.rank||1)+' · '+(confirmed?'COMPRAR':'EN OBSERVACIÓN')+'</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+costLine+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · timing '+formatNumber(row.entry&&row.entry.timing,0)+'/100 · R:R '+formatNumber(row.entry&&row.entry.rr,2)+' · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(row.entry&&num(row.entry.extensionPct)!==null?' · extensión EMA20 '+formatNumber(row.entry.extensionPct,1)+'%':'')+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 
@@ -1086,14 +1112,19 @@ function portfolioGoalViewHtml(){
     '<div class="portfolio-goal-hero compact-goal-hero"><div class="portfolio-goal-intro"><h2>Objetivo IA · '+esc(portfolio.name)+'</h2><small>'+esc(marketLabel)+'</small></div>'+
       '<form id="portfolioGoalForm" class="portfolio-goal-form compact-goal-form" data-portfolio-id="'+esc(portfolio.id)+'">'+
         '<label><span>Objetivo</span><div><input name="targetValueEur" type="number" min="1" step="0.01" inputmode="decimal" value="'+esc(targetValue)+'" placeholder="1000"><b>€</b></div></label>'+
-        '<label><span>Riesgo</span><select name="riskProfile"><option value="conservative"'+(riskProfile==="conservative"?' selected':'')+'>Conservador</option><option value="balanced"'+(riskProfile==="balanced"?' selected':'')+'>Equilibrado</option><option value="aggressive"'+(riskProfile==="aggressive"?' selected':'')+'>Agresivo</option></select></label>'+
+        '<label><span>Riesgo</span><select name="riskProfile"><option value="conservative"'+(riskProfile==="conservative"?' selected':'')+'>Bajo</option><option value="balanced"'+(riskProfile==="balanced"?' selected':'')+'>Moderado</option><option value="aggressive"'+(riskProfile==="aggressive"?' selected':'')+'>Alto</option></select></label>'+
         '<input name="targetProfitEur" class="portfolio-goal-legacy-input" type="number" min="1" step="0.01" value="'+esc(targetValue)+'" hidden aria-hidden="true" tabindex="-1"><button type="submit" class="btn">'+(target===null?'Crear objetivo':'Guardar')+'</button><div class="portfolio-goal-form-status" data-goal-form-status aria-live="polite"></div></form>'+
     '</div>'+errorHtml+
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
-      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · ranking estricto</h3></div><div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
-      '<p class="portfolio-goal-note compact-note">El plan ya no fuerza a invertir todo el efectivo. Cada entrada debe superar timing, R:R, spread y sobreextensión, y además respeta un presupuesto máximo de riesgo por operación. El remanente puede quedarse líquido si no existe una entrada suficientemente buena.</p>')+
+      '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · riesgo '+esc((metrics.riskBand&&metrics.riskBand.label)||"Alto")+'</h3></div>'+goalRiskSummaryHtml(metrics.riskBand)+'<div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
+      '<p class="portfolio-goal-note compact-note">Se revisa una vez al día, tras el cierre de EEUU: las compras deben confirmarse en dos revisiones seguidas y solo los stop-loss avisan al momento. No se vende antes de 3 días salvo stop, ni se compra si la comisión de ida y vuelta pesa demasiado. El remanente puede quedarse líquido si no hay una entrada suficientemente buena.</p>')+
     '</section>';
+}
+
+function goalRiskSummaryHtml(band){
+  if(!band)return"";
+  return '<p class="portfolio-goal-risk-summary">Máx. '+formatNumber(band.maxPosition,0)+'% por acción · riesgo '+formatNumber(band.riskPerTradePct,1)+'% de la cartera por operación · spread ≤ '+formatNumber(band.maxSpreadPct,0)+'% · stop hasta '+formatNumber(band.maxStopPct,0)+'%</p>';
 }
 
 async function savePortfolioGoal(targetValueEur,portfolioId=state.selectedPortfolioId,options={}){
