@@ -205,7 +205,8 @@ function compactInvestingQuoteHtml(s,preferTr=false){
  let extended='';
  if(q.session&&q.sessionPrice!==null){
   const extTone=C(q.sessionPct),extDec=quotePrecision(s,false,q.sessionPrice),icon=q.session==='premarket'?'☀︎':'☾︎';
-  extended='<div class="asset-investing-extended '+extTone+'"><span class="asset-session-name"><i aria-hidden="true">'+icon+'</i>'+E(q.sessionLabel)+'</span><strong>'+quoteMoney(q.sessionPrice,'\u0024',extDec)+'</strong><span>'+compactSignedMoney(q.sessionAbs,'\u0024',extDec)+' <b>('+PC(q.sessionPct)+')</b></span>'+(q.sessionAt?'<time>'+E(compactQuoteTime(q.sessionAt))+'</time>':'')+'</div>';
+  // Only the sun/moon is shown; the session name stays for screen readers and as a tooltip.
+  extended='<div class="asset-investing-extended '+extTone+'" title="'+E(q.sessionLabel)+'"><span class="asset-session-name"><i aria-hidden="true">'+icon+'</i><span class="sr-only">'+E(q.sessionLabel)+'</span></span><strong>'+quoteMoney(q.sessionPrice,'\u0024',extDec)+'</strong><span>'+compactSignedMoney(q.sessionAbs,'\u0024',extDec)+' <b>('+PC(q.sessionPct)+')</b></span>'+(q.sessionAt?'<time>'+E(compactQuoteTime(q.sessionAt))+'</time>':'')+'</div>';
  }
  // LSX cards of US-listed stocks also poll the US quote so their pre/post line stays live.
  const usPoll=preferTr&&market(s,'us')?' data-us-poll-key="'+E(stockKey(s))+'"':'';

@@ -502,3 +502,13 @@ html:root:root body .radar-tier-head>strong{color:var(--ai-1);font-size:14px}
 html:root:root body .radar-tier-head>small{font-size:11px;opacity:.75}
 html:root:root body .radar-tier-group .settings-status-row{padding-left:0!important;padding-right:0!important}
 html:root:root body .radar-tier-group.is-disabled{opacity:.55}
+
+/* Pre/post-market line: only ☀︎/☾︎, larger, because it matters as much as the main price. */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+html:root:root body .asset-investing-quote .asset-investing-extended{display:flex!important;align-items:baseline!important;gap:6px!important;flex-wrap:wrap!important;font-size:13px!important;line-height:1.3!important;margin-top:3px!important}
+html:root:root body .asset-investing-quote .asset-investing-extended .asset-session-name{display:inline-flex!important;align-items:center!important;gap:0!important;font-size:0!important}
+html:root:root body .asset-investing-quote .asset-investing-extended .asset-session-name>i{font-style:normal!important;font-size:16px!important;line-height:1!important}
+html:root:root body .asset-investing-quote .asset-investing-extended>strong{font-size:16px!important;font-weight:800!important}
+html:root:root body .asset-investing-quote .asset-investing-extended>span:not(.asset-session-name){font-size:12.5px!important;font-weight:700!important}
+html:root:root body .asset-investing-quote .asset-investing-extended>span>b{font-size:inherit!important}
+html:root:root body .asset-investing-quote .asset-investing-extended>time{font-size:11px!important;opacity:.7}
