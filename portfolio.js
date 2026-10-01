@@ -726,8 +726,9 @@ function portfolioCoachPositionRows(metrics){
     const backendSignal=String(row.p.last_signal||"").toUpperCase();
     let targetWeight=currentWeight;
     const maxWeight=metrics.riskBand?metrics.riskBand.maxPosition:28;
-    const openedAt=new Date(row.p.opened_at||row.p.created_at||0).getTime();
-    const holdingDays=Number.isFinite(openedAt)?Math.max(0,(Date.now()-openedAt)/86400000):null;
+    // Holding time counts from the latest buy, so a repurchase restarts the 3-day minimum.
+    const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
+    const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const weekPerf=num(row.stock&&row.stock.perfWeek);
     const catalyst=portfolioGoalCatalyst(row.stock),catalystDays=num(catalyst.days);
     const imminentCatalyst=catalystDays!==null&&catalystDays<=3&&(num(catalyst.impact)||0)>=65;
@@ -974,8 +975,18 @@ function goalTradeInstructionHtml(row){
   return '<div class="portfolio-goal-trade sell" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>VENDER</em><div><strong>'+esc(row.stock.name||row.p.ticker||row.p.stock_key)+'</strong><small>'+esc(detail)+'</small><small>'+esc((execution.instruction||"Venta límite")+" · "+price+spread+fee)+'</small>'+reason+button+'</div><b>≈ '+formatMoney(row.released,"EUR")+'</b></div>';
 }
+// A buy is only actionable once it also qualified in the server's previous daily review.
+function goalCandidateConfirmed(stock){
+  const goal=selectedPortfolioGoal();
+  let list=[];
+  try{list=JSON.parse(goal&&goal.review_candidates||"[]")}catch(_){list=[]}
+  if(!Array.isArray(list)||!list.length)return false;
+  const keys=new Set(list.map(x=>String(x||"").toUpperCase()));
+  const variants=[portfolioStockKey(stock),stock&&stock.tvSymbol,stock&&((stock.exchange||"")+":"+(stock.ticker||""))].map(x=>String(x||"").trim().toUpperCase()).filter(Boolean);
+  return variants.some(x=>keys.has(x));
+}
 function goalCandidateHtml(row){
-  const key=portfolioStockKey(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
+  const key=portfolioStockKey(row.stock),confirmed=goalCandidateConfirmed(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{},execution=row.execution||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
   const take=levels.take!==null&&levels.take!==undefined?formatMoney(levels.take,levels.currency||"EUR"):"—";
@@ -986,9 +997,11 @@ function goalCandidateHtml(row){
   const fee=row.feeEur?(" · comisión "+formatMoney(row.feeEur,"EUR")):"";
   const spreadCost=num(execution.spreadPct)!==null&&num(row.allocation)>0?row.allocation*num(execution.spreadPct)/200:null;
   const costLine=spreadCost!==null||row.feeEur?'<small>Coste estimado de entrar: '+esc(formatMoney((num(row.feeEur)||0)+(spreadCost||0),"EUR"))+' (comisión + medio spread)</small>':"";
-  const button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason});
+  const button=confirmed
+    ?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason})
+    :'<span class="portfolio-goal-execution-blocked">En observación · se confirma si vuelve a superar el filtro en la próxima revisión diaria</span>';
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>#'+esc(row.rank||1)+' · COMPRAR</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+costLine+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
+    '<em>#'+esc(row.rank||1)+' · '+(confirmed?'COMPRAR':'EN OBSERVACIÓN')+'</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+costLine+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · timing '+formatNumber(row.entry&&row.entry.timing,0)+'/100 · R:R '+formatNumber(row.entry&&row.entry.rr,2)+' · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(row.entry&&num(row.entry.extensionPct)!==null?' · extensión EMA20 '+formatNumber(row.entry.extensionPct,1)+'%':'')+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 

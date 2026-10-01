@@ -1,4 +1,5 @@
 import "./score-engine.js";
+import "./market-session.js";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const FIREBASE_JWKS = createRemoteJWKSet(
@@ -1105,8 +1106,8 @@ async function handlePositions(request, env, user, json, parts, url) {
   if (request.method === "GET" && !id) {
     const portfolioId = trimText(url.searchParams.get("portfolioId"), 80);
     let stmt = portfolioId
-      ? env.DB.prepare("SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at DESC").bind(user.id, portfolioId)
-      : env.DB.prepare("SELECT * FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id);
+      ? env.DB.prepare("SELECT positions.*,(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=positions.id AND t.user_id=positions.user_id AND t.side='BUY') AS last_buy_at FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at DESC").bind(user.id, portfolioId)
+      : env.DB.prepare("SELECT positions.*,(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=positions.id AND t.user_id=positions.user_id AND t.side='BUY') AS last_buy_at FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id);
     const rows = await stmt.all();
     return json({ positions: rows.results || [] });
   }
@@ -2444,16 +2445,17 @@ async function ensurePortfolioGoalSchema(env){
 async function handlePortfolioGoal(request,env,user,json,url){
   await ensurePortfolioGoalSchema(env);
   if(request.method==="GET"){
+    await ensurePortfolioGoalNotificationStateSchema(env);
     const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
     if(portfolioId){
       if(!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
       const goal=await env.DB.prepare(
-        "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+        "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id WHERE g.portfolio_id=? AND g.user_id=?"
       ).bind(portfolioId,user.id).first();
       return json({goal:goal||null});
     }
     const rows=await env.DB.prepare(
-      "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE user_id=? ORDER BY updated_at DESC"
+      "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id WHERE g.user_id=? ORDER BY g.updated_at DESC"
     ).bind(user.id).all();
     return json({goals:rows.results||[]});
   }
@@ -2483,7 +2485,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
       "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,target_date=excluded.target_date,monthly_contribution_eur=excluded.monthly_contribution_eur,risk_profile=excluded.risk_profile,updated_at=excluded.updated_at"
     ).bind(portfolioId,user.id,target,targetDate,monthlyContribution,riskProfile,now,now).run();
     const goal=await env.DB.prepare(
-      "SELECT portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,created_at,updated_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+      "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id WHERE g.portfolio_id=? AND g.user_id=?"
     ).bind(portfolioId,user.id).first();
     return json({goal},existing?200:201);
   }
@@ -3262,11 +3264,17 @@ function goalServerRiskBand(riskProfile){
   return bands[String(riskProfile||"aggressive").toLowerCase()]||bands.aggressive;
 }
 const GOAL_NY_PARTS=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
-// The goal plan is reviewed once per US trading day, after the close (16:15-16:59 New York).
+// The goal plan is reviewed once per real US trading day, 15-60 minutes after the close
+// (exchange holidays and early closes come from the shared market-session calendar).
 function goalServerReviewClock(now=Date.now()){
   const parts=Object.fromEntries(GOAL_NY_PARTS.formatToParts(new Date(now)).map(p=>[p.type,p.value]));
-  const minutes=Number(parts.hour)*60+Number(parts.minute),weekday=!["Sat","Sun"].includes(parts.weekday);
-  return{day:parts.year+"-"+parts.month+"-"+parts.day,inWindow:weekday&&minutes>=16*60+15&&minutes<17*60};
+  const minutes=Number(parts.hour)*60+Number(parts.minute);
+  const calendarApi=globalThis.ViewInvAIMarketSession;
+  const calendar=calendarApi&&typeof calendarApi.usMarketCalendar==="function"
+    ?calendarApi.usMarketCalendar(parts)
+    :{open:!["Sat","Sun"].includes(parts.weekday),earlyClose:false};
+  const close=calendar.earlyClose?13*60:16*60;
+  return{day:parts.year+"-"+parts.month+"-"+parts.day,inWindow:!!calendar.open&&minutes>=close+15&&minutes<close+60};
 }
 function goalServerEntryTiming(snapshot,stock,scope,spread,band){
   const preferTr=scope==="tr",eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
@@ -3340,15 +3348,21 @@ async function scanPortfolioGoalNotifications(env,services){
   if(!services.loadMarketSnapshot)return{processed:0,alerts:0};
   await ensurePortfolioGoalNotificationStateSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.risk_profile,p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance "+
+    // Every goal gets its daily review (the screen shows which buys are confirmed);
+    // notifications are only sent to users who opted in to goal alerts.
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.risk_profile,p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
+    "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
     "LEFT JOIN portfolio_market_settings m ON m.portfolio_id=g.portfolio_id AND m.user_id=g.user_id "+
-    "JOIN user_notification_settings n ON n.user_id=g.user_id "+
-    "WHERE n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 ORDER BY g.updated_at DESC LIMIT 8"
+    "LEFT JOIN user_notification_settings n ON n.user_id=g.user_id "+
+    "ORDER BY g.updated_at DESC LIMIT 40"
   ).all();
   if(!(goals.results||[]).length)return{processed:0,alerts:0};
-  const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
   const clock=goalServerReviewClock();
+  // Outside the review window only notified users need the intraday stop check.
+  const work=(goals.results||[]).filter(goal=>clock.inWindow||Number(goal.notify)===1);
+  if(!work.length)return{processed:0,alerts:0};
+  const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
   const quoteCache=new Map();
   const verifiedGoalPriceEur=async(stock,preferTr,side="LAST")=>{
     if(!stock||!services.loadQuote)return null;
@@ -3373,16 +3387,20 @@ async function scanPortfolioGoalNotifications(env,services){
     "ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,review_day=excluded.review_day,candidates=excluded.candidates,risk_signature=excluded.risk_signature,updated_at=excluded.updated_at"
   ).bind(goal.portfolio_id,goal.user_id,fields.signature,fields.summary,fields.review_day,fields.candidates,fields.risk_signature,nowIso()).run();
   const pushGoal=async(goal,{title,message,severity,stockKey="",ticker="",preferTr=0})=>{
+    if(Number(goal.notify)!==1)return false;
     const id=uid("al_"),now=nowIso();
     await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-      .bind(id,goal.user_id,stockKey,"","","portfolio-goal",severity,title,message,now).run();
+      .bind(id,goal.user_id,stockKey,trimText(ticker,24),"","portfolio-goal",severity,title,message,now).run();
     await dispatchPushAlert(env,{id,alert_type:"portfolio-goal",severity,title,message},{user_id:goal.user_id,route:"portfolio-goal",portfolio_id:goal.portfolio_id,stock_key:stockKey,ticker,prefer_tr:preferTr});
+    return true;
   };
   let processed=0,alerts=0;
-  for(const goal of goals.results||[]){
+  for(const goal of work){
     try{
       const positionsResult=await env.DB.prepare(
-        "SELECT id,stock_key,ticker,prefer_tr,quantity,avg_price,currency,opened_at,last_signal,last_score,last_confidence FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at ASC"
+        "SELECT id,stock_key,ticker,prefer_tr,quantity,avg_price,currency,opened_at,broker,exchange,last_signal,last_score,last_confidence,"+
+        "(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=positions.id AND t.user_id=positions.user_id AND t.side='BUY') AS last_buy_at "+
+        "FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 ORDER BY created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all();
       const positions=positionsResult.results||[];
       let scope=String(goal.market_scope||"auto").toLowerCase();
@@ -3400,17 +3418,19 @@ async function scanPortfolioGoalNotifications(env,services){
         const markPrice=await verifiedGoalPriceEur(stock,preferTr,"LAST"),sellPrice=await verifiedGoalPriceEur(stock,preferTr,"SELL");
         if(qty>0&&markPrice===null){quotesIncomplete=true;break}
         if(markPrice!==null)capital+=qty*markPrice;
-        const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase(),opened=new Date(p.opened_at||0).getTime();
-        const heldDays=Number.isFinite(opened)?Math.max(0,(Date.now()-opened)/86400000):0;
+        const score=finiteNumber(p.last_score)??50,signal=String(p.last_signal||"").toUpperCase();
+        // Holding time counts from the latest buy (a repurchase restarts it); unknown dates do not block exits.
+        const heldSince=new Date(p.last_buy_at||p.opened_at||"").getTime();
+        const heldDays=Number.isFinite(heldSince)&&heldSince>0?Math.max(0,(Date.now()-heldSince)/86400000):null;
         const monthMove=Math.abs(finiteNumber(stock&&stock.perfMonth)??finiteNumber(stock&&stock.perfWeek)??99);
-        const stagnant=heldDays>=21&&monthMove<2&&score<60;
+        const stagnant=heldDays!==null&&heldDays>=21&&monthMove<2&&score<60;
         const avg=finiteNumber(p.avg_price),entryCurrency=String(p.currency||(preferTr?"EUR":"USD")).toUpperCase();
         const avgEur=avg===null?null:entryCurrency==="EUR"?avg:entryCurrency==="USD"&&usdToEur!==null?avg*usdToEur:null;
         const positionReturnPct=avgEur!==null&&avgEur>0&&markPrice!==null?(markPrice/avgEur-1)*100:null;
         const stopHit=positionReturnPct!==null&&positionReturnPct<=-goalBand.maxStopPct;
         const takeHit=positionReturnPct!==null&&positionReturnPct>=goalBand.maxStopPct*goalBand.minRR;
         // Exits: the stop always applies; anything else waits a 3-day minimum hold.
-        const pct=stopHit?100:heldDays<3?0:signal==="SELL"||score<=35||stagnant?100:takeHit?50:score<40?50:0;
+        const pct=stopHit?100:heldDays!==null&&heldDays<3?0:signal==="SELL"||score<=35||stagnant?100:takeHit?50:score<40?50:0;
         if(pct<=0||qty<1)continue;
         // Only a planned sale needs the bid; without it this minute the plan is unknown, not changed.
         if(sellPrice===null){quotesIncomplete=true;break}
@@ -3424,17 +3444,19 @@ async function scanPortfolioGoalNotifications(env,services){
       if(quotesIncomplete){processed++;continue}
 
       // Risk events are the only intraday notifications: a newly hit stop is sent at once.
-      const riskSignature=stops.map(x=>x.ticker).sort().join(",");
-      if(riskSignature!==state.risk_signature){
-        const known=new Set(state.risk_signature?state.risk_signature.split(","):[]);
-        const fresh=stops.filter(x=>!known.has(x.ticker));
-        if(prev&&fresh.length){
-          await pushGoal(goal,{title:"Riesgo · "+goal.name,severity:"high",stockKey:fresh[0].stockKey,ticker:fresh[0].ticker,preferTr:fresh[0].preferTr?1:0,
-            message:trimText("Stop alcanzado: vender "+fresh.map(x=>x.units+" "+x.ticker).join(", ")+" para limitar la pérdida.",500)});
-          alerts++;
-        }
-        state.risk_signature=riskSignature;
+      // Stop alerts are latched per position and New York day ("day|T1,T2"), so a price that
+      // oscillates around the stop produces one alert, not one per crossing.
+      const [riskDay,riskList]=state.risk_signature.includes("|")?state.risk_signature.split("|"):["",""];
+      const known=new Set(riskDay===clock.day&&riskList?riskList.split(","):[]);
+      const fresh=stops.filter(x=>!known.has(x.ticker));
+      let riskSignature=state.risk_signature;
+      if(fresh.length){
+        if(prev&&await pushGoal(goal,{title:"Riesgo · "+goal.name,severity:"high",stockKey:fresh[0].stockKey,ticker:fresh[0].ticker,preferTr:fresh[0].preferTr?1:0,
+          message:trimText("Stop alcanzado: vender "+fresh.map(x=>x.units+" "+x.ticker).join(", ")+" para limitar la pérdida.",500)}))alerts++;
+        for(const x of fresh)known.add(x.ticker);
+        riskSignature=clock.day+"|"+[...known].sort().join(",");
       }
+      state.risk_signature=riskSignature;
       if(!clock.inWindow||state.review_day===clock.day){
         if(prev&&riskSignature!==String(prev.risk_signature||""))await saveState(goal,{...state,summary:String(prev.summary||"")});
         else if(!prev)await saveState(goal,state);
@@ -3448,7 +3470,7 @@ async function scanPortfolioGoalNotifications(env,services){
       if(target!==null&&capital>=target){
         const signature="GOAL_REACHED",summary="Objetivo alcanzado · no se fuerza una nueva operación.";
         await saveState(goal,{...state,signature,summary,review_day:clock.day,candidates:"[]"});
-        if(state.signature&&state.signature!==signature){await pushGoal(goal,{title:"Objetivo IA · "+goal.name,message:summary,severity:"info"});alerts++}
+        if(state.review_day&&state.signature&&state.signature!==signature&&await pushGoal(goal,{title:"Objetivo IA · "+goal.name,message:summary,severity:"info"}))alerts++;
         processed++;continue;
       }
       const pool=cashEur+released;
@@ -3468,27 +3490,44 @@ async function scanPortfolioGoalNotifications(env,services){
       const confirmedSet=new Set(Array.isArray(previousCandidates)?previousCandidates:[]);
       const confirmed=candidates.filter(row=>confirmedSet.has(goalServerKey(row.stock)));
       const finalistRows=goalServerFinalists(confirmed,goalBand);
-      const pricedFinalists=await Promise.all(finalistRows.map(async row=>({
-        ...row,unitEur:await verifiedGoalPriceEur(row.stock,row.preferTr,"BUY"),fee:row.preferTr?1:0
-      })));
+      // Buy fees come from the broker this portfolio already uses for that market (TR / IBKR built-ins).
+      const brokerFor=preferTr=>{
+        const counts=new Map();
+        for(const p of positions)if((Number(p.prefer_tr)===1)===preferTr&&p.broker)counts.set(p.broker,(counts.get(p.broker)||0)+1);
+        return [...counts.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0]||(preferTr?"Trade Republic":"IBKR");
+      };
+      const feeEurFor=async(row,units,unitEur)=>{
+        const currency=row.preferTr?"EUR":"USD",nativePrice=row.preferTr?unitEur:(usdToEur?unitEur/usdToEur:null);
+        if(nativePrice===null)return null;
+        const info=await brokerFeeForTrade(env,goal.user_id,brokerFor(row.preferTr),units,nativePrice,currency,"BUY",row.preferTr?"LSX":String(row.stock.exchange||"NASDAQ"));
+        if(info.fee===null)return null;
+        return row.preferTr?info.fee:(usdToEur?info.fee*usdToEur:null);
+      };
+      const pricedFinalists=await Promise.all(finalistRows.map(async row=>{
+        const unitEur=await verifiedGoalPriceEur(row.stock,row.preferTr,"BUY");
+        return{...row,unitEur,fee:unitEur===null?null:await feeEurFor(row,1,unitEur)};
+      }));
       // A finalist without a quote this minute is unknown, not rejected: retry within the window.
       if(pricedFinalists.some(row=>row.unitEur===null)){processed++;continue}
-      const finalists=pricedFinalists.filter(row=>row.unitEur>0&&row.unitEur+row.fee<=pool);
+      // Without a known fee the ticket cannot be checked against the fee limit, so it is not proposed.
+      const finalists=pricedFinalists.filter(row=>row.fee!==null&&row.unitEur>0&&row.unitEur+row.fee<=pool);
       const weights=finalists.length===1?[1]:[.65,.35],buys=[];
-      finalists.slice(0,2).forEach((row,index)=>{
+      for(const [index,row] of finalists.slice(0,2).entries()){
         const maxPositionEur=Math.max(0,capital*goalBand.maxPosition/100);
         const riskBudgetEur=Math.max(0,capital*goalBand.riskPerTradePct/100);
         const riskAllocationCap=row.entry&&row.entry.stopPct>0?riskBudgetEur/(row.entry.stopPct/100):0;
         const allocationCap=Math.max(0,Math.min(maxPositionEur,riskAllocationCap));
         const budget=Math.min(pool*weights[index],allocationCap);
         const units=Math.floor(Math.max(0,budget-row.fee)/row.unitEur);
-        const allocation=units*row.unitEur;
+        if(units<1)continue;
+        const allocation=units*row.unitEur,fee=await feeEurFor(row,units,row.unitEur);
         // Skip tickets where buying and later selling would cost too much relative to the position.
-        if(units>=1&&!(allocation>0&&row.fee*2/allocation*100>goalBand.maxRoundTripFeePct))buys.push({
+        if(fee===null||fee*2/allocation*100>goalBand.maxRoundTripFeePct)continue;
+        buys.push({
           ticker:row.stock.trTicker||row.stock.ticker||"",stockKey:goalServerKey(row.stock),units,
-          score:Math.round(row.composite),timing:Math.round(row.entry.timing),rr:Math.round(row.entry.rr*100)/100,fee:row.fee
+          score:Math.round(row.composite),timing:Math.round(row.entry.timing),rr:Math.round(row.entry.rr*100)/100,fee
         });
-      });
+      }
       const signature=JSON.stringify({sells:sells.map(x=>[x.ticker,x.units]),buys:buys.map(x=>[x.ticker,x.units])});
       const pieces=[];
       if(sells.length)pieces.push("Vender "+sells.map(x=>x.units+" "+x.ticker).join(", "));
@@ -3496,10 +3535,9 @@ async function scanPortfolioGoalNotifications(env,services){
       if(!pieces.length)pieces.push("Sin cambios: ningún candidato supera dos revisiones seguidas con el filtro estricto.");
       const summary=trimText(pieces.join(" · "),500);
       await saveState(goal,{...state,signature,summary,review_day:clock.day,candidates:JSON.stringify(candidates.map(row=>goalServerKey(row.stock)))});
-      // The first review only records the plan; later reviews notify when it changes.
-      if(state.signature&&state.signature!==signature){
-        await pushGoal(goal,{title:"Revisión diaria · "+goal.name,message:summary,severity:"high",stockKey:buys[0]&&buys[0].stockKey||"",ticker:buys[0]&&buys[0].ticker||"",preferTr:scope==="tr"?1:0});
-        alerts++;
+      // The first daily review (including rows migrated from the old per-minute state) only records the plan.
+      if(state.review_day&&state.signature&&state.signature!==signature){
+        if(await pushGoal(goal,{title:"Revisión diaria · "+goal.name,message:summary,severity:"high",stockKey:buys[0]&&buys[0].stockKey||"",ticker:buys[0]&&buys[0].ticker||"",preferTr:scope==="tr"?1:0}))alerts++;
       }
       processed++;
     }catch(error){
