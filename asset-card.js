@@ -7,9 +7,12 @@
 
  function cellHtml(cell,extraClass=''){
   if(!cell)return '<div class="asset-card-cell '+extraClass+' asset-card-cell-empty" aria-hidden="true"></div>';
+  const body=cell.html!==undefined
+   ?'<div class="asset-card-cell-content">'+String(cell.html)+'</div>'
+   :'<span class="asset-card-cell-value">'+escape(cell.value??'—')+'</span>';
   return '<div class="asset-card-cell '+extraClass+' '+escape(cell.tone||'')+'">'+
    (cell.label?'<small class="asset-card-label">'+escape(cell.label)+'</small>':'')+
-   '<span>'+content(cell)+'</span></div>';
+   body+'</div>';
  }
 
  function contextHtml(cells=[]){
