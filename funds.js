@@ -21,7 +21,7 @@
   {key:'ratios',label:'Ratios',columns:[['volatility3Y','Vol. 3A'],['sharpe3Y','Sharpe'],['maxDrawdown','Drawdown']]},
   {key:'other',label:'Otros',columns:[['assetsUnderManagement','Patrimonio'],['freshness','Actualización']]}
  ];
- const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null,columnFilters:{}};
+ const state={products:[],meta:{},loaded:false,loading:false,query:'',platform:'all',type:'all',provider:'all',region:'all',distribution:'all',maxTer:null,sort:'perf1Y',sortDir:'desc',selectedIsin:null,mobileGroup:'returns',columnOrder:null,columnWidths:null,columnFilters:{},limit:0,limitSignature:''};
  const FUND_FAVORITES_KEY='viewinvai:fundFavorites:v1';
  const favoriteIsins=new Set((()=>{try{const x=JSON.parse(localStorage.getItem(FUND_FAVORITES_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return[]}})());
  function saveFundFavorites(){try{localStorage.setItem(FUND_FAVORITES_KEY,JSON.stringify([...favoriteIsins]))}catch(_){}}
@@ -449,13 +449,31 @@
   menu.style.width=width+'px';menu.style.left=Math.min(innerWidth-width-10,Math.max(10,rect.left-120))+'px';menu.style.top=Math.max(10,Math.min(innerHeight-320,rect.bottom+6))+'px';menu.hidden=false;
   setTimeout(()=>menu.querySelector('[data-fund-filter-input]')?.focus(),0);
  }
+
+ const FUND_PAGE_DESKTOP=150,FUND_PAGE_COMPACT=40;
+ function fundPageSize(){return compactFundsView()?FUND_PAGE_COMPACT:FUND_PAGE_DESKTOP}
+ function fundListSignature(){
+  return [state.query,state.platform,state.type,state.provider,state.region,state.distribution,state.maxTer,state.sort,state.sortDir,JSON.stringify(state.columnFilters||{}),compactFundsView()?'c':'d'].join('|');
+ }
+ function fundVisibleRows(rows){
+  const signature=fundListSignature();
+  if(signature!==state.limitSignature||!state.limit){state.limitSignature=signature;state.limit=fundPageSize()}
+  return rows.length>state.limit?rows.slice(0,state.limit):rows;
+ }
+ function fundMoreButton(shown,total){
+  if(shown>=total)return'';
+  const next=Math.min(fundPageSize(),total-shown);
+  return '<div class="catalog-more fund-more"><button type="button" class="btn secondary" data-fund-more="1">Mostrar '+next.toLocaleString('es-ES')+' más</button></div>';
+ }
  function fundTable(rows){
+  const visible=fundVisibleRows(rows);
   const columns=fundColumns(),layout=fundLayout();
   const colgroup='<colgroup>'+columns.map(([key])=>'<col data-fund-col-width="'+esc(key)+'" style="width:'+Math.round(layout.widths[key]||110)+'px">').join('')+'</colgroup>';
   return '<div class="fund-table-scroll" role="region" aria-label="Comparador de fondos indexados y ETFs" tabindex="0">'+
    '<table class="fund-table fund-resizable-table">'+colgroup+'<thead><tr>'+columns.map(([key,label])=>sortHeader(key,label)).join('')+'</tr></thead>'+
-   '<tbody>'+rows.map(p=>fundTableRow(p,columns)).join('')+'</tbody></table></div>'+
-   '<div class="fund-table-footer"><span><strong>'+rows.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+state.products.length.toLocaleString('es-ES')+'</strong> productos</span><span>Arrastra columnas · ajusta ancho · filtros por cabecera</span></div>';
+   '<tbody>'+visible.map(p=>fundTableRow(p,columns)).join('')+'</tbody></table></div>'+
+   fundMoreButton(visible.length,rows.length)+
+   '<div class="fund-table-footer"><span><strong>'+visible.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+rows.length.toLocaleString('es-ES')+'</strong> productos</span><span>Arrastra columnas · ajusta ancho · filtros por cabecera</span></div>';
  }
  function mobileSortHead(key,label){
   const active=state.sort===key;
@@ -501,13 +519,15 @@
    cells:group.columns.map(([key,label])=>({...fundMobileCellValue(p,key),label}))});
  }
  function fundMobileList(rows){
+  const visible=fundVisibleRows(rows);
   const group=fundMobileGroup(),cols=group.columns.length;
   return fundMobileTabs()+
    '<div class="fund-mobile-compare fund-mobile-cols-'+cols+'">'+
     root.ViewInvAICards.head(group.columns.map(([key,label])=>({html:mobileSortHead(key,label)})),{firstHtml:mobileSortHead('name','Nombre / ISIN')})+
-    '<div class="fund-mobile-rows">'+rows.map(p=>fundMobileRow(p,group)).join('')+'</div>'+
+    '<div class="fund-mobile-rows">'+visible.map(p=>fundMobileRow(p,group)).join('')+'</div>'+
    '</div>'+
-   '<div class="fund-table-footer"><span><strong>'+rows.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+state.products.length.toLocaleString('es-ES')+'</strong> productos</span></div>';
+   fundMoreButton(visible.length,rows.length)+
+   '<div class="fund-table-footer"><span><strong>'+visible.length.toLocaleString('es-ES')+'</strong> mostrados de <strong>'+rows.length.toLocaleString('es-ES')+'</strong> productos</span></div>';
  }
  function fundSortLabel(key){
   const desktop=FUND_COLUMNS.find(([column])=>column===key);
@@ -593,6 +613,8 @@
  function render(){
   const box=q('#fundsApp');if(!box)return;
   if(state.loading){box.innerHTML='<div class="empty-state">Actualizando fondos y ETFs…</div>';return}
+  if(!state.loading&&!document.querySelector('#view-funds.active')){state.renderDirty=true;return}
+  state.renderDirty=false;
   const rows=filtered();
   const updated=state.meta&&state.meta.updatedAt?new Date(state.meta.updatedAt):null;
   const stamp=updated&&Number.isFinite(updated.getTime())?updated.toLocaleString('es-ES'):'sin actualización verificada';
@@ -924,6 +946,8 @@
     render();
     return;
    }
+   const moreButton=e.target.closest&&e.target.closest('[data-fund-more]');
+   if(moreButton){e.preventDefault();state.limit=(state.limit||fundPageSize())+fundPageSize();render();return}
    const sortButton=e.target.closest&&e.target.closest('[data-fund-sort-col]');
    if(sortButton){setFundSort(sortButton.dataset.fundSortCol);return}
    if(e.target.closest&&e.target.closest('#fundResetColumns')){

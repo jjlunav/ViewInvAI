@@ -176,12 +176,14 @@ function applySecurityHeaders(headers) {
 
 function secureResponse(response, pathname = "") {
   const headers = applySecurityHeaders(response.headers);
-  // The APK is a remote-shell WebView. Do not let it keep stale HTML/JS/CSS
-  // between deploys, otherwise it can continue running an old UI after a fix.
+  // HTML/JS/CSS are always revalidated against the server so a deploy is picked
+  // up immediately, but "no-cache" (not "no-store") lets the browser answer with
+  // a cheap 304 when nothing changed instead of re-downloading ~1.2 MB of
+  // scripts and styles on every visit. The APK packages these files locally.
   if (pathname === "/" || /\.(?:html|js|css)$/i.test(pathname)) {
-    headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-    headers.set("Pragma", "no-cache");
-    headers.set("Expires", "0");
+    headers.set("Cache-Control", "no-cache");
+    headers.delete("Pragma");
+    headers.delete("Expires");
   }
   return new Response(response.body, {
     status: response.status,
