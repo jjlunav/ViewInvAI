@@ -41,7 +41,6 @@
     <nav class="nav">
       <button class="nav-item active" data-view="home"><span>⌁</span>Mercados</button>
       <button class="nav-item ai-nav-item" data-view="recommendation"><span>✹</span>Radar AI</button>
-      <button class="nav-item" data-view="alerts"><span>●</span>Avisos</button>
       <button class="nav-item" data-view="future"><span>✦</span>Potencial futuro</button>
       <button class="nav-item" data-view="portfolios"><span>▣</span>Carteras</button>
       <button class="nav-item" data-view="favorites"><span>★</span>Favoritos</button>
@@ -538,7 +537,7 @@
     <aside id="notificationCenter" class="notification-center" aria-label="Centro de avisos" aria-live="polite">
       <div class="notification-head">
         <div><strong>Avisos</strong><span id="notificationStatus">Sin avisos nuevos</span></div>
-        <div class="notification-head-actions"><button type="button" id="notificationClear" aria-label="Borrar historial">Limpiar</button><button type="button" id="notificationClose" aria-label="Cerrar avisos">×</button></div>
+        <div class="notification-head-actions"><button type="button" id="notificationHistory" aria-pressed="false" aria-label="Mostrar histórico de avisos de los últimos 7 días">Histórico</button><button type="button" id="notificationClear" aria-label="Borrar historial">Limpiar</button><button type="button" id="notificationClose" aria-label="Cerrar avisos">×</button></div>
       </div>
       <div id="notificationList" class="notification-list"><div class="notification-empty">Todavía no hay avisos.</div></div>
     </aside>
@@ -586,7 +585,6 @@
         <button type="button" class="mobile-more-item" data-mobile-view="heatmap"><span>▦</span><b>Mapa de calor</b><small>Visión rápida por sectores</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="future"><span>✦</span><b>Potencial futuro</b><small>Catalizadores próximos</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="catalogUS"><span>▥</span><b>Catálogo EEUU</b><small>Nasdaq, NYSE y AMEX</small></button>
-        <button type="button" class="mobile-more-item" data-mobile-view="alerts"><span>🔔</span><b>Avisos</b><small>Alertas y notificaciones</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="settings"><span>⚙</span><b>Configuración General</b><small>Preferencias, avisos y dispositivo</small></button>
       </div>
     </aside>
