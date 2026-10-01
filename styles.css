@@ -9351,3 +9351,62 @@ body.leaders-open,body.leaders-pinned{--leaders-dock-space:0px!important}
  align-self:center;
  white-space:nowrap;
 }
+
+
+/* 2026-10-01 · Investing-style US regular + extended quote stack */
+.profile-us-regular{
+ display:flex;
+ align-items:baseline;
+ flex-wrap:wrap;
+ gap:7px 10px;
+ min-width:0;
+}
+.profile-us-regular>strong{
+ font-size:30px;
+ line-height:1;
+ font-weight:850;
+ white-space:nowrap;
+}
+.profile-us-regular>span{
+ font-size:14px;
+ line-height:1;
+ font-weight:800;
+ white-space:nowrap;
+}
+.profile-us-regular>span.positive{color:var(--positive)}
+.profile-us-regular>span.negative{color:var(--negative)}
+.profile-us-regular b{font:inherit}
+.profile-us-extended{
+ display:flex;
+ align-items:baseline;
+ flex-wrap:wrap;
+ gap:5px 8px;
+ margin-top:5px;
+ font-weight:780;
+}
+.profile-us-extended>small{
+ color:var(--muted);
+ font-size:10px;
+}
+.profile-us-extended>strong{
+ font-size:15px;
+ color:inherit;
+ white-space:nowrap;
+}
+.profile-us-extended>span:last-child{
+ font-size:11px;
+ color:inherit;
+ white-space:nowrap;
+}
+.profile-us-extended.positive{color:var(--positive)}
+.profile-us-extended.negative{color:var(--negative)}
+.profile-us-extended b{font:inherit}
+@media(max-width:820px){
+ .profile-us-regular{gap:5px 7px}
+ .profile-us-regular>strong{font-size:24px}
+ .profile-us-regular>span{font-size:11px}
+ .profile-us-extended{gap:4px 6px;margin-top:3px}
+ .profile-us-extended>small{font-size:8px}
+ .profile-us-extended>strong{font-size:12px}
+ .profile-us-extended>span:last-child{font-size:9px}
+}
