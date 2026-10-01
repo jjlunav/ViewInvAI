@@ -1157,27 +1157,27 @@
 .asset-list-head-shell{container-type:inline-size;container-name:compact-card}
 .asset-list-head-shell~div .asset-card-label{display:none}
 .asset-card-context-slot:has(>.asset-card-context-grid[data-context-items="0"]){display:none!important}
-.asset-card-row[data-end="chevron"]>.asset-card-end-actions{align-self:center!important;justify-content:center!important}
+.asset-card-row[data-end="chevron"]>.asset-card-end-actions,
+.asset-list-head[data-end="chevron"]>.asset-list-head-actions{display:none!important}
 @container compact-card (max-width:500px){
  .asset-card-row[data-card-template="compact-slots"][data-end="chevron"],
  .asset-list-head[data-card-template="compact-slots"][data-end="chevron"]{
-  grid-template-columns:24px minmax(0,1fr) minmax(116px,.72fr) 12px!important;
+  grid-template-columns:24px minmax(0,1fr) minmax(116px,.72fr)!important;
   grid-template-areas:
-   "marker identity quote actions"
-   ". context context actions"!important;
+   "marker identity quote"
+   ". context context"!important;
   row-gap:4px!important;
   column-gap:7px!important;
  }
- .asset-list-head[data-end="chevron"] .asset-list-head-actions{display:block}
 }
 @container compact-card (max-width:350px){
  .asset-card-row[data-card-template="compact-slots"][data-end="chevron"],
  .asset-list-head[data-card-template="compact-slots"][data-end="chevron"]{
-  grid-template-columns:24px minmax(0,1fr) 12px!important;
+  grid-template-columns:24px minmax(0,1fr)!important;
   grid-template-areas:
-   "marker identity actions"
-   ". quote actions"
-   ". context actions"!important;
+   "marker identity"
+   ". quote"
+   ". context"!important;
  }
 }
 /* Fund comparison on phones: name on the first line, every metric side by side on the
@@ -1187,11 +1187,11 @@
 @container compact-card (max-width:500px){
  .fund-mobile-compare .asset-card-row[data-end="chevron"],
  .fund-mobile-compare .asset-list-head[data-end="chevron"]{
-  grid-template-columns:24px repeat(var(--fund-cols),minmax(0,1fr)) 12px!important;
+  grid-template-columns:24px repeat(var(--fund-cols),minmax(0,1fr))!important;
   grid-template-areas:none!important;
  }
  .fund-mobile-compare .asset-card-marker,.fund-mobile-compare .asset-list-head-marker{grid-area:1/1/2/2!important}
- .fund-mobile-compare .asset-card-identity,.fund-mobile-compare .asset-list-head-identity{grid-area:1/2/2/-2!important}
+ .fund-mobile-compare .asset-card-identity,.fund-mobile-compare .asset-list-head-identity{grid-area:1/2/2/-1!important}
  .fund-mobile-compare .asset-card-end-actions,.fund-mobile-compare .asset-list-head-actions{grid-area:1/-2/3/-1!important}
  .fund-mobile-compare .asset-card-quote-slot,.fund-mobile-compare .asset-list-head-quote{grid-area:2/2/3/3!important}
  .fund-mobile-compare .asset-card-context-slot,

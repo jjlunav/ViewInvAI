@@ -42,7 +42,7 @@
       (options.rowActionsHtml?'<div class="asset-card-row-actions">'+options.rowActionsHtml+'</div>':'')+
       (options.openLabel&&interactive
         ?'<button type="button" class="asset-card-open asset-card-open-button"'+(options.openActionAttrs||'')+'>'+escape(options.openLabel)+' <b aria-hidden="true">›</b></button>'
-        :'<span class="asset-card-open" aria-hidden="true">'+(interactive?'›':'')+'</span>')+
+        :'')+
     '</div>'+
    '</div>'+
    (options.metaHtml?'<div class="asset-card-meta" data-card-template="compact-slots"><span class="asset-card-meta-marker" aria-hidden="true"></span><div class="asset-card-meta-content">'+options.metaHtml+'</div><span class="asset-card-meta-action" aria-hidden="true"></span></div>':'')+
