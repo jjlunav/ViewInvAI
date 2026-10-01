@@ -172,7 +172,7 @@ function usSessionDisplayData(s,se=currentMarketSession()){
 }
 function currentUsPrimaryHtml(s,se=currentMarketSession()){
  const data=usSessionDisplayData(s,se),r=data.regular,dec=quotePrecision(s,false,r.price);
- let html='<div class="profile-us-regular"><strong>'+E(r.price===null?'—':quoteMoney(r.price,'\u0024',dec))+'</strong><span class="'+C(r.pct)+'">'+E(compactSignedMoney(r.abs,'\u0024',dec))+' <b>('+PC(r.pct)+')</b></span></div>';
+ let html='<div class="profile-us-regular">'+quoteFreshnessDotHtml(s,false,'profile-price-freshness')+'<strong>'+E(r.price===null?'—':quoteMoney(r.price,'\u0024',dec))+'</strong><span class="'+C(r.pct)+'">'+E(compactSignedMoney(r.abs,'\u0024',dec))+' <b>('+PC(r.pct)+')</b></span></div>';
  if(data.extended){
   const x=data.extended,icon=x.kind==='premarket'?'☀︎':'☾︎',iconClass=x.kind==='premarket'?'session-icon-sun':'session-icon-moon',xdec=quotePrecision(s,false,x.price);
   html+='<div class="profile-us-extended '+C(x.pct)+'"><span class="session-icon '+iconClass+'" aria-hidden="true">'+icon+'</span><small>'+E(x.label)+'</small><strong>'+E(quoteMoney(x.price,'\u0024',xdec))+'</strong><span>'+E(compactSignedMoney(x.abs,'\u0024',xdec))+' <b>('+PC(x.pct)+')</b></span></div>';
@@ -405,6 +405,18 @@ function quoteFreshnessInfo(s,preferTr=false){
  let title=(source?source+' · ':'')+exact+(delay!==null?' · retraso declarado '+delay+' min':'');
  return{state,label,title,updatedAt:ms,ageMs:age,delayMinutes:delay,source,live:state==='live'};
 }
+function quoteFreshnessDotState(info){
+ const raw=String(info&&info.state||'unknown');
+ if(raw==='live')return'live';
+ if(raw==='delayed'||raw==='closed')return'delayed';
+ return'stale';
+}
+function quoteFreshnessDotHtml(s,preferTr=false,extraClass=''){
+ if(!s)return'';
+ const info=quoteFreshnessInfo(s,preferTr),tone=quoteFreshnessDotState(info),key=stockKey(s);
+ const label=info&&info.label?info.label:(tone==='live'?'Tiempo real':tone==='delayed'?'Con retraso':'Sin actualizar');
+ return '<span class="quote-freshness-dot '+E(tone)+(extraClass?' '+E(extraClass):'')+'" data-quote-freshness-key="'+E(key)+'" data-quote-freshness-tr="'+(preferTr?'1':'0')+'" data-quote-freshness-dot="1" data-status-label="'+E(label)+'" title="'+E(info.title||label)+'" aria-label="'+E(label)+'" tabindex="0"><i aria-hidden="true"></i></span>';
+}
 function quoteFreshnessHtml(s,preferTr=false,extraClass=''){
  if(!s)return '';
  let info=quoteFreshnessInfo(s,preferTr),key=stockKey(s);
@@ -415,9 +427,18 @@ function refreshQuoteFreshnessDom(root=document){
  root.querySelectorAll('[data-quote-freshness-key]').forEach(el=>{
   let s=stockByKey(el.dataset.quoteFreshnessKey);if(!s)return;
   let preferTr=el.dataset.quoteFreshnessTr==='1',info=quoteFreshnessInfo(s,preferTr);
+  if(el.dataset.quoteFreshnessDot==='1'){
+   const tone=quoteFreshnessDotState(info),label=info&&info.label?info.label:(tone==='live'?'Tiempo real':tone==='delayed'?'Con retraso':'Sin actualizar');
+   el.classList.remove('live','delayed','closed','stale','unknown');
+   el.classList.add(tone);
+   el.dataset.statusLabel=label;
+   el.setAttribute('aria-label',label);
+   el.title=info.title||label;
+   return;
+  }
   el.classList.remove('live','delayed','closed','stale','unknown');
   el.classList.add(info.state);
-  let text=el.querySelector('span');if(text)text.textContent=info.label;else el.textContent=info.label;
+  let text=el.querySelector('span');if(text)text.textContent=info.label;
   el.title=info.title;
  });
 }
