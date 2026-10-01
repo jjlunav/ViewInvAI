@@ -849,6 +849,12 @@
  max-width:100%!important;
  overflow:hidden!important;
 }
+.asset-card-cell-content,
+.asset-card-cell-value{
+ display:block;
+ min-width:0;
+ max-width:100%;
+}
 .asset-card-context-cell>span{
  display:block;
  min-width:0;
