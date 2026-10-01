@@ -529,3 +529,60 @@
   text-overflow:ellipsis!important;
  }
 }
+
+
+/* 2026-10-01 · compact quote freshness dot only */
+.asset-investing-status{
+ display:flex;
+ align-items:center;
+ min-height:10px;
+ overflow:visible;
+}
+.asset-quote-state{
+ position:relative;
+ display:inline-grid;
+ place-items:center;
+ width:12px;
+ height:12px;
+ min-width:12px;
+ padding:0;
+ outline:none;
+ cursor:help;
+}
+.asset-quote-state>i{
+ width:7px;
+ height:7px;
+ border-radius:50%;
+ background:#d7b96a;
+ box-shadow:0 0 0 1px rgba(255,255,255,.06);
+}
+.asset-quote-state.live>i{background:#45d6a7}
+.asset-quote-state.delayed>i{background:#d7a64a}
+.asset-quote-state.stale>i{background:#ff667a}
+.asset-quote-state::after{
+ content:attr(data-status-label);
+ position:absolute;
+ left:50%;
+ bottom:calc(100% + 7px);
+ transform:translateX(-50%);
+ z-index:80;
+ display:none;
+ width:max-content;
+ max-width:210px;
+ padding:5px 7px;
+ border:1px solid var(--asset-line);
+ border-radius:6px;
+ background:#0b1820;
+ color:var(--asset-text);
+ font-size:8px;
+ line-height:1.2;
+ font-weight:650;
+ white-space:nowrap;
+ box-shadow:0 8px 22px rgba(0,0,0,.34);
+ pointer-events:none;
+}
+.asset-quote-state:hover::after,
+.asset-quote-state:focus::after,
+.asset-quote-state:focus-visible::after{
+ display:block;
+}
