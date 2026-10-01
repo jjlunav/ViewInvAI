@@ -133,7 +133,7 @@ function profileQuoteFreshness(q){
  return 'hace '+hours+' h';
 }
 function profileGeneralExtraStats(s,isTr,se){
- let currentPrice=pricePair(s,SP(s,se),isTr),quote=canonicalQuote(s,isTr),exactTr=isTr?quote:null;
+ let currentPrice=quoteFreshnessDotHtml(s,isTr,'profile-kpi-price-freshness')+pricePair(s,SP(s,se),isTr),quote=canonicalQuote(s,isTr),exactTr=isTr?quote:null;
  let currentChange=isTr?'<span class="quote-change '+C(exactTr&&exactTr.change)+'">'+PC(exactTr&&exactTr.change)+'</span>':liveChangeHtml(s,SC(s,se),false);
  let source=String(quote&&quote.source|| (isTr?'Trade Republic / LSX':'EEUU')).trim()||'—';
  let freshness=quoteFreshnessInfo(s,isTr),quality=freshness.state==='live'?'Tiempo real':freshness.state==='delayed'||freshness.state==='closed'?'Diferido':'Sin actualizar';
@@ -352,7 +352,7 @@ function profileNotificationActionHtml(s,isTr=false){
 function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
  if(isTr){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
-  return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx"><strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
+  return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx">'+quoteFreshnessDotHtml(s,true,'profile-price-freshness')+'<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
  }
  return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current" data-us-current-hero-key="'+E(stockKey(s))+'">'+currentUsPrimaryHtml(s,se)+'</div></div>';
 }
@@ -369,7 +369,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
-    '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div>'+quoteFreshnessHtml(s,isTr,'profile-quote-freshness')+'</div>'+
+    '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
   '</header>';
