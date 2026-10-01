@@ -341,7 +341,15 @@ function waitForWsMessage(ws, timeout = 8000) {
   });
 }
 
-async function openTradeRepublicSocket() {
+// Trade Republic has used two handshakes for its public feed. Try the last one that
+// worked first, then the other, so a protocol change does not silently blank LSX prices.
+const TR_CONNECT_MESSAGES = [
+  "connect 30",
+  "connect 31 " + JSON.stringify({ locale: "es", platformId: "webtrading", platformVersion: "chrome - 120.0.0", clientId: "app.traderepublic.com", clientVersion: "3.151.3" })
+];
+let trPreferredConnect = 0;
+
+async function upgradeTradeRepublicSocket() {
   const response = await fetch("https://api.traderepublic.com", {
     headers: {
       "Upgrade": "websocket",
@@ -350,15 +358,47 @@ async function openTradeRepublicSocket() {
     }
   });
   const ws = response.webSocket;
-  if (!ws) throw new Error("Trade Republic rejected WebSocket upgrade");
+  if (!ws) throw new Error("Trade Republic rejected WebSocket upgrade (HTTP " + response.status + ")");
   ws.accept({ allowHalfOpen: true });
-  ws.send("connect 30");
-  const hello = await waitForWsMessage(ws, 8000);
-  if (!hello.startsWith("connected")) {
-    try { ws.close(1000, "invalid greeting"); } catch (_) {}
-    throw new Error("Trade Republic unexpected greeting");
-  }
   return ws;
+}
+
+async function openTradeRepublicSocket() {
+  let lastError = null;
+  for (let attempt = 0; attempt < TR_CONNECT_MESSAGES.length; attempt++) {
+    const index = (trPreferredConnect + attempt) % TR_CONNECT_MESSAGES.length;
+    let ws = null;
+    try {
+      ws = await upgradeTradeRepublicSocket();
+      ws.send(TR_CONNECT_MESSAGES[index]);
+      const hello = await waitForWsMessage(ws, 8000);
+      if (hello.startsWith("connected")) {
+        trPreferredConnect = index;
+        return ws;
+      }
+      lastError = new Error("Trade Republic unexpected greeting: " + hello.slice(0, 80));
+    } catch (error) {
+      lastError = error;
+    }
+    try { if (ws) ws.close(1000, "retry handshake"); } catch (_) {}
+  }
+  throw lastError || new Error("Trade Republic handshake failed");
+}
+
+const TR_HEALTH_ISIN = "US0378331005";
+let trHealthCache = null;
+
+async function tradeRepublicHealthResponse() {
+  if (!trHealthCache || Date.now() - trHealthCache.checkedAt > 60000) {
+    const checkedAt = Date.now();
+    try {
+      const quote = await fetchTradeRepublicTicker(TR_HEALTH_ISIN, "LSX");
+      trHealthCache = { ok: quote.price !== null || quote.bid !== null, isin: TR_HEALTH_ISIN, price: quote.price, bid: quote.bid, ask: quote.ask, quoteTime: quote.timestamp, handshake: TR_CONNECT_MESSAGES[trPreferredConnect].split(" ", 2).join(" "), checkedAt };
+    } catch (error) {
+      trHealthCache = { ok: false, isin: TR_HEALTH_ISIN, error: String(error && error.message || error).slice(0, 200), checkedAt };
+    }
+  }
+  return jsonResponse(trHealthCache, 200, { "Cache-Control": "no-store" });
 }
 
 async function fetchTradeRepublicTicker(isin, exchange = "LSX") {
@@ -641,16 +681,8 @@ async function proxyTradeRepublic(request) {
 
   let upstream;
   try {
-    const response = await fetch("https://api.traderepublic.com", {
-      headers: {
-        "Upgrade": "websocket",
-        "Origin": "https://app.traderepublic.com",
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
-    upstream = response.webSocket;
-    if (!upstream) throw new Error("Trade Republic rejected WebSocket upgrade");
-    upstream.accept({ allowHalfOpen: true });
+    // The Worker negotiates the upstream handshake; the browser's "connect" is answered locally.
+    upstream = await openTradeRepublicSocket();
   } catch (error) {
     browser.close(1011, "Upstream unavailable");
     return new Response(null, { status: 101, webSocket: client });
@@ -672,6 +704,10 @@ async function proxyTradeRepublic(request) {
     if (!validTrClientMessage(event.data, clientState)) {
       safeClose(browser, 1008, "Policy violation");
       safeClose(upstream, 1008, "Policy violation");
+      return;
+    }
+    if (event.data === "connect 30") {
+      safeSend(browser, "connected");
       return;
     }
     safeSend(upstream, event.data);
@@ -1738,6 +1774,7 @@ export default {
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/tr-health")limited=await enforcedRateLimit(request,env,"tr-health",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/stock-events-live")limited=await enforcedRateLimit(request,env,"stock-events-live",60,60000,"MARKET_RATE_LIMITER");
     else if(isBackendApiPath(url.pathname))limited=await enforcedRateLimit(request,env,"backend",180,60000,"API_RATE_LIMITER");
@@ -1767,6 +1804,10 @@ export default {
     }
     if (url.pathname === "/api/tr-live") {
       return proxyTradeRepublic(request);
+    }
+    if (url.pathname === "/api/tr-health") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await tradeRepublicHealthResponse());
     }
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;

@@ -41,6 +41,9 @@ function sourceStatusText(source,key){
   const required=String(source.requiredConfig||'').trim();
   return{label:'Sin configurar',mode:'pending',title:required?'Falta configuración: '+required:'La integración requiere configuración adicional.'};
  }
+ if(key==='tradeRepublic'&&source.live===false){
+  return{label:'Sin precios',mode:'error',title:'Trade Republic no devuelve cotizaciones'+(source.liveError?': '+source.liveError:'.')};
+ }
  if(key==='fda'&&source.enhancedConfig===false){
   return{label:'Operativa',mode:'active',title:'Fuente pública operativa. La clave openFDA es opcional y solo amplía capacidad.'};
  }
@@ -82,6 +85,12 @@ async function refreshPushBackendStatus(){
   if(!response.ok)return;
   backendSourceStatus=await response.json();
   pushBackendConfigured=backendSourceStatus&&backendSourceStatus.push===true;
+  // Trade Republic status comes from a real quote check, not from configuration alone.
+  try{
+   const tr=await fetch('/api/tr-health',{cache:'no-store'});
+   const health=tr.ok?await tr.json():{ok:false,error:'HTTP '+tr.status};
+   if(backendSourceStatus.sources&&backendSourceStatus.sources.tradeRepublic)Object.assign(backendSourceStatus.sources.tradeRepublic,{live:health.ok===true,liveError:health.error||''});
+  }catch(_){if(backendSourceStatus.sources&&backendSourceStatus.sources.tradeRepublic)backendSourceStatus.sources.tradeRepublic.live=false}
  }catch(_){
   backendSourceStatus={error:true,sources:{},updatedAt:new Date().toISOString()};pushBackendConfigured=false;
  }

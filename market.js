@@ -115,6 +115,8 @@ function currentUsQuote(s,se=currentMarketSession(),now=Date.now()){
  const explicit=kind=>{
   const price=N(s&&s[kind+'Price']);if(price===null||price<=0)return null;
   const at=sessionQuoteTimestamp(s&&s[kind+'Time'],now);
+  // During a live pre/post session only that day's quote counts; yesterday's must not pose as current.
+  if(kind===se&&!usQuoteFromToday(at,now))return null;
   let change=N(s&&s[kind+'ChangePct']);
   return{price,change,kind,at,source:kind==='premarket'?'EEUU · Premarket':'EEUU · Postmarket',extended:true,realtime:false};
  };

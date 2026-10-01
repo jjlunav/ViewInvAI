@@ -3246,7 +3246,7 @@ html[data-theme="light"] .mobile-bottom-nav{
 }
 
 /* Desktop catalog rows remain dense; full detail is where data expands */
-.catalog-sheet-wrap{background:#081219!important}
+html:not([data-theme="light"]) .catalog-sheet-wrap{background:#081219!important}
 /* Mobile/APK: close to Investing's visual logic - flat rows, fixed nav, chart then key stats *//* Light theme equivalents for the new architecture */
 
 

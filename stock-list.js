@@ -113,11 +113,16 @@ function sessionQuoteTimestamp(value,now=Date.now()){
  }
  return Number.isFinite(timestamp)&&timestamp>0&&timestamp<=now+60000?timestamp:null;
 }
+const US_QUOTE_DAY=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+// A pre/post quote stamped on another New York day belongs to a previous session.
+function usQuoteFromToday(at,now=Date.now()){
+ return at===null||at===undefined||US_QUOTE_DAY.format(new Date(at))===US_QUOTE_DAY.format(new Date(now));
+}
 function selectExtendedSessionQuote(s,se=currentMarketSession(),now=Date.now()){
  const quotes=['premarket','postmarket'].map(kind=>({
   kind,price:N(s[kind+'Price']),change:N(s[kind+'ChangePct']),at:sessionQuoteTimestamp(s[kind+'Time'],now)
  })).filter(q=>q.price!==null&&q.price>0);
- if(se==='premarket'||se==='postmarket')return quotes.find(q=>q.kind===se)||null;
+ if(se==='premarket'||se==='postmarket')return quotes.find(q=>q.kind===se&&usQuoteFromToday(q.at,now))||null;
  if(quotes.length<2)return quotes[0]||null;
  if(quotes.some(q=>q.at===null)||quotes[0].at===quotes[1].at)return null;
  return quotes.reduce((latest,q)=>q.at>latest.at?q:latest);
