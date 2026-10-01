@@ -48,9 +48,16 @@
  }
 
  function head(columns,options={}){
-  return '<div class="asset-list-head" data-asset-columns="'+Math.max(1,columns.length)+'">'+
-   (options.firstHtml||'<span>'+escape(options.firstLabel||'Valor / ISIN')+'</span>')+
-   columns.map(cell=>'<span>'+content(typeof cell==='string'?{value:cell}:cell)+'</span>').join('')+'<span></span></div>';
+  const rows=Array.isArray(columns)?columns:[];
+  const quote=rows[0];
+  const contextual=rows.slice(1);
+  return '<div class="asset-list-head" data-card-template="compact-slots">'+
+   '<span class="asset-list-head-marker" aria-hidden="true"></span>'+
+   '<span class="asset-list-head-identity">'+(options.firstHtml||escape(options.firstLabel||'Valor / ISIN'))+'</span>'+
+   '<span class="asset-list-head-quote">'+(quote?content(typeof quote==='string'?{value:quote}:quote):'')+'</span>'+
+   '<span class="asset-list-head-context">'+contextual.map(cell=>'<span>'+content(typeof cell==='string'?{value:cell}:cell)+'</span>').join('')+'</span>'+
+   '<span class="asset-list-head-actions" aria-hidden="true"></span>'+
+  '</div>';
  }
 
  window.ViewInvAICards=Object.freeze({render,head});
