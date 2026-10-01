@@ -86,6 +86,12 @@ const CATALOG_DEFAULT_WIDTHS={
  postmarketChange:82,postmarketVolume:100,tr:118,updated:132
 };
 function catalogPrefScope(mode){return 'catalog:'+mode}
+// Fixed-layout tables must measure exactly their column widths; width:max-content let the
+// Empresa column grow to the longest company name (≈1000px in the US catalog).
+function catalogTableWidth(table){
+ let total=0;for(const col of table.querySelectorAll('col[data-catalog-col-width]'))total+=parseFloat(col.style.width)||0;
+ table.style.setProperty('width',Math.round(total)+'px','important');
+}
 function catalogDefaultWidths(mode){
  const out={};for(const c of CATALOG_COLUMNS[mode])out[c.id]=CATALOG_DEFAULT_WIDTHS[c.id]||110;return out;
 }
@@ -326,7 +332,7 @@ function catalogTable(mode,rows,se){
    '<button type="button" class="catalog-column-resizer" data-catalog-resize="'+E(col.id)+'" data-mode="'+mode+'" aria-label="Cambiar ancho de '+E(col.label)+'" title="Arrastra para cambiar el ancho"></button></th>';
  }).join('');
  let body=shown.map(s=>'<tr class="catalog-row stock-open-row"'+stockOpenAttrs(s,'',mode==='tr')+'>'+cols.map(col=>'<td data-col="'+E(col.id)+'">'+col.cell(s,se)+'</td>').join('')+'</tr>').join('');
- return {html:'<div class="catalog-table-wrap"><table class="catalog-table catalog-resizable-table" data-mode="'+mode+'">'+colgroup+'<thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>'+footer,count:total,shown:shown.length};
+ return {html:'<div class="catalog-table-wrap"><table class="catalog-table catalog-resizable-table" data-mode="'+mode+'" style="width:'+cols.reduce((sum,c)=>sum+Math.round(widths[c.id]||110),0)+'px !important">'+colgroup+'<thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>'+footer,count:total,shown:shown.length};
 }
 function renderCatalogTable(mode){
  let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
@@ -432,7 +438,7 @@ function initCatalogInteractions(){
   const {mode,id,startX,startWidth}=catalogResize,next=Math.max(id==='fav'?36:48,Math.min(720,Math.round(startWidth+e.clientX-startX)));
   catalogWidths(mode)[id]=next;
   const table=document.querySelector('.catalog-table[data-mode="'+mode+'"]'),col=table&&table.querySelector('col[data-catalog-col-width="'+id+'"]');
-  if(col)col.style.width=next+'px';
+  if(col){col.style.width=next+'px';catalogTableWidth(table)}
  });
  document.addEventListener('pointerup',()=>{
   if(!catalogResize)return;

@@ -632,13 +632,14 @@ function connectTrLive(){
  if(trLive.connected||trLive.connecting)return;
  if(typeof WebSocket==='undefined')return;
  trLive.connecting=true;
- let ws,url=trLive.usingDirect?TR_LIVE_DIRECT:trProxyUrl();
+ let ws,url=trLive.usingDirect?TR_LIVE_DIRECT:trProxyUrl(),opened=false;
  try{ws=new WebSocket(url)}catch(_){trLive.connecting=false;trScheduleReconnect();return}
  trLive.ws=ws;
  ws.onopen=()=>{try{ws.send('connect 30')}catch(_){}};
  ws.onmessage=e=>{
   let msg=String(e.data||'');
   if(msg==='connected'||msg.startsWith('connected')){
+   opened=true;
    trLive.connected=true;trLive.connecting=false;trLive.reconnectAttempt=0;trLive.proxyFailures=0;trLive.subByKey.clear();trLive.keyBySub.clear();trLive.payloadBySub.clear();trSendSubscriptions();return;
   }
   let m=msg.match(/^(\d+)\s+([A-Z])(?:\s+([\s\S]+))?$/);
@@ -664,7 +665,11 @@ function connectTrLive(){
  ws.onerror=()=>{};
  ws.onclose=()=>{
   trLive.connected=false;trLive.connecting=false;trLive.ws=null;trLive.subByKey.clear();trLive.keyBySub.clear();trLive.payloadBySub.clear();
-  if(!trLive.usingDirect&&++trLive.proxyFailures>=2)trLive.usingDirect=true;
+  // Closures are routine on phones (sleep, network change, background). The direct
+  // Trade Republic socket is only a one-off fallback: browsers and the APK cannot send
+  // TR's expected Origin, so always return to the Worker bridge afterwards.
+  if(trLive.usingDirect)trLive.usingDirect=false;
+  else if(!opened&&++trLive.proxyFailures>=2){trLive.usingDirect=true;trLive.proxyFailures=0}
   trScheduleReconnect();
  };
 }
