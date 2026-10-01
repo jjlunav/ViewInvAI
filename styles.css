@@ -9577,3 +9577,84 @@ html[data-theme="light"] .notification-head-actions #notificationHistory.active{
  margin:0!important;
 }
 
+/* 2026-10-01 · Quote freshness always sits immediately before the price. */
+.quote-freshness-dot{
+ position:relative;
+ display:inline-grid;
+ place-items:center;
+ width:12px;
+ height:12px;
+ min-width:12px;
+ padding:0;
+ margin:0 3px 0 0;
+ vertical-align:middle;
+ outline:none;
+ cursor:help;
+ flex:0 0 12px;
+}
+.quote-freshness-dot>i{
+ width:7px;
+ height:7px;
+ border-radius:50%;
+ background:#ff667a;
+ box-shadow:0 0 0 1px rgba(255,255,255,.06);
+}
+.quote-freshness-dot.live>i{background:#45d6a7}
+.quote-freshness-dot.delayed>i{background:#d7a64a}
+.quote-freshness-dot.stale>i{background:#ff667a}
+.quote-freshness-dot::after{
+ content:attr(data-status-label);
+ position:absolute;
+ left:50%;
+ bottom:calc(100% + 7px);
+ transform:translateX(-50%);
+ z-index:90;
+ display:none;
+ width:max-content;
+ max-width:min(240px,70vw);
+ padding:5px 7px;
+ border:1px solid #31515d;
+ border-radius:6px;
+ background:#0d1b24;
+ color:#dce8ec;
+ font-size:8px;
+ font-weight:650;
+ line-height:1.2;
+ white-space:normal;
+ box-shadow:0 8px 24px rgba(0,0,0,.32);
+ pointer-events:none;
+}
+.quote-freshness-dot:hover::after,
+.quote-freshness-dot:focus-visible::after,
+.quote-freshness-dot:focus::after{display:block}
+
+.profile-us-regular,
+.profile-quote-lsx{
+ display:flex;
+ align-items:baseline;
+ flex-wrap:wrap;
+}
+.profile-us-regular>.quote-freshness-dot,
+.profile-quote-lsx>.quote-freshness-dot{
+ align-self:center;
+ margin-right:4px;
+}
+.profile-kpi-price-freshness{
+ margin-right:4px;
+}
+.fund-price-inline{
+ display:inline-flex;
+ align-items:baseline;
+ gap:3px;
+ min-width:0;
+ white-space:nowrap;
+}
+.fund-price-inline>.quote-freshness-dot,
+.fund-table-value .quote-freshness-dot{
+ align-self:center;
+ margin-right:2px;
+}
+.fund-freshness-text{
+ display:inline-block!important;
+}
+
