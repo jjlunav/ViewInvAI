@@ -3,11 +3,15 @@
 
  const STORAGE_KEY='viewinvai:alerts:v2';
  const LEGACY_KEYS=['viewinvai:alerts:v1','catalystpulse:alerts:v1'];
- const MAX_HISTORY=60;
+ const MAX_HISTORY=500;
+ const HISTORY_DAYS=7;
+ const HISTORY_WINDOW_MS=HISTORY_DAYS*24*60*60*1000;
+ const RECENT_VISIBLE=8;
  const AUTO_HIDE_MS=6500;
  const ALERT_COOLDOWN_MS=6*60*60*1000;
 
  let centerTimer=null;
+ let historyMode=false;
  let evaluating=false;
  let seeded=false;
  let lastScan={at:0,results:[],best:null,error:''};
@@ -19,6 +23,15 @@
  function nowIso(){return new Date().toISOString()}
  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
  function fmt(v,d=0){let n=Number(v);return Number.isFinite(n)?n.toLocaleString('es-ES',{maximumFractionDigits:d}):'—'}
+
+ function alertCreatedAtMs(item){
+  const ms=Date.parse(item&&item.createdAt||'');
+  return Number.isFinite(ms)?ms:0;
+ }
+ function historyRows(){
+  const cutoff=Date.now()-HISTORY_WINDOW_MS;
+  return state.history.filter(item=>alertCreatedAtMs(item)>=cutoff).sort((a,b)=>alertCreatedAtMs(b)-alertCreatedAtMs(a));
+ }
 
  function readState(){
   const base={enabled:true,history:[],unread:0,activeKey:null,lastFired:{}};
@@ -32,7 +45,7 @@
    if(typeof raw.enabled==='boolean')base.enabled=raw.enabled;
    else if(raw.auto&&typeof raw.auto.recommendation==='boolean')base.enabled=raw.auto.recommendation;
    if(Array.isArray(raw.history)){
-    base.history=raw.history.filter(x=>x&&x.kind==='recommendation').slice(0,MAX_HISTORY).map(x=>({
+    base.history=raw.history.filter(Boolean).slice(0,MAX_HISTORY).map(x=>({
      id:x.id||uid(),kind:'recommendation',title:x.title||'COMPRA',message:x.message||'',ticker:x.ticker||'',name:x.name||'',market:x.market||'',
      stockKey:x.stockKey||'',preferTr:x.preferTr===true,score:Number(x.score)||null,fingerprint:x.fingerprint||'',createdAt:x.createdAt||nowIso()
     }));
@@ -45,7 +58,9 @@
  }
  function saveState(){
   try{
-   state.history=state.history.slice(0,MAX_HISTORY);
+   const cutoff=Date.now()-HISTORY_WINDOW_MS;
+   state.history=state.history.filter(item=>alertCreatedAtMs(item)>=cutoff).slice(0,MAX_HISTORY);
+   state.unread=Math.min(state.unread||0,state.history.length);
    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
   }catch(_){}
  }
@@ -92,14 +107,24 @@
  }
 
  function renderCenter(){
-  let list=q('#notificationList'),badge=q('#notificationBadge'),status=q('#notificationStatus');
+  let list=q('#notificationList'),badge=q('#notificationBadge'),status=q('#notificationStatus'),historyButton=q('#notificationHistory');
   if(!list||!badge||!status)return;
+  const rows=historyRows();
+  const visible=historyMode?rows:rows.slice(0,RECENT_VISIBLE);
   badge.textContent=String(Math.min(99,state.unread||0));
   badge.classList.toggle('is-hidden',!(state.unread>0));
-  status.textContent=state.unread>0?(state.unread+' sin leer'):(state.history.length?state.history.length+' guardados':'Sin avisos nuevos');
-  list.innerHTML=state.history.length?state.history.map(item=>alertCompactCard(item,{details:true})).join(''):'<div class="notification-empty">No hay avisos recientes.</div>';
+  if(historyMode){
+   status.textContent='Últimos '+HISTORY_DAYS+' días · '+rows.length+' aviso'+(rows.length===1?'':'s');
+  }else{
+   status.textContent=state.unread>0?(state.unread+' sin leer'):(rows.length?rows.length+' guardado'+(rows.length===1?'':'s'):'Sin avisos nuevos');
+  }
+  if(historyButton){
+   historyButton.textContent=historyMode?'Recientes':'Histórico';
+   historyButton.setAttribute('aria-pressed',historyMode?'true':'false');
+   historyButton.classList.toggle('active',historyMode);
+  }
+  list.innerHTML=visible.length?visible.map(item=>alertCompactCard(item,{details:true})).join(''):'<div class="notification-empty">'+(historyMode?'No hay avisos en los últimos 7 días.':'No hay avisos recientes.')+'</div>';
  }
-
  function setCenterOpen(open,{auto=false}={}){
   let center=q('#notificationCenter'),bell=q('#notificationBell');
   if(!center||!bell)return;
@@ -212,7 +237,8 @@
  function initEvents(){
   q('#notificationBell')?.addEventListener('click',()=>setCenterOpen(!q('#notificationCenter')?.classList.contains('open')));
   q('#notificationClose')?.addEventListener('click',()=>setCenterOpen(false));
-  q('#notificationClear')?.addEventListener('click',()=>{state.history=[];state.unread=0;saveState();renderCenter();renderAlertPage()});
+  q('#notificationHistory')?.addEventListener('click',()=>{historyMode=!historyMode;renderCenter()});
+  q('#notificationClear')?.addEventListener('click',()=>{state.history=[];state.unread=0;historyMode=false;saveState();renderCenter();renderAlertPage()});
   q('#autoAlertHighConviction')?.addEventListener('change',e=>{
    state.enabled=!!e.target.checked;state.activeKey=null;seeded=false;saveState();renderAlertPage();
    if(state.enabled)setTimeout(evaluate,100);
@@ -270,6 +296,6 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)evaluate()});
  }
 
- window.AppAlerts={evaluate,renderSettings,renderAlertPage,pushNotice,setCenterOpen};
+ window.AppAlerts={evaluate,renderSettings,renderAlertPage,pushNotice,setCenterOpen,getHistory:()=>historyRows().slice(),getHistoryDays:()=>HISTORY_DAYS};
  init();
 })();
