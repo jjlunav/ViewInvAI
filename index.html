@@ -27,9 +27,9 @@
     })();
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261002c1">
-  <link rel="stylesheet" href="ui-density.css?v=20261002c1">
+  <link rel="stylesheet" href="ui-density.css?v=20261002f2">
   <link rel="stylesheet" href="asset-card.css?v=20261002c1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261002c1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261002f2">
 </head>
 <body>
 <div class="app-shell">
@@ -50,6 +50,7 @@
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Catálogo Fondos y ETFs</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
+      <button class="nav-item" data-view="tax"><span>§</span>Fiscal (IRPF)</button>
       <button class="nav-item" data-view="settings"><span>⚙</span>Configuración General</button>
     </nav>
 
@@ -435,6 +436,17 @@
     </section>
 
 
+    <section class="view" id="view-tax">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Fiscal <span class="heading-badge ai-badge">IRPF · ES</span></h1>
+          <p class="lead">Plusvalías y minusvalías FIFO en euros con el cambio del BCE, regla de los dos meses y control del modelo 720 con tus operaciones.</p>
+        </div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="tax" aria-label="Ayuda sobre Fiscal">?</button></div>
+      </div>
+      <div id="taxResults" class="tax-results"></div>
+    </section>
+
     <section class="view" id="view-settings">
       <div class="page-heading compact-heading">
         <div>
@@ -502,6 +514,7 @@
           <div class="settings-card-head"><div><span class="settings-kicker">TIPOS DE AVISO</span><h2>Notificarme cuando…</h2></div></div>
           <div class="notification-category-list">
             <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos importantes</strong><small>Avisos generales de noticias y eventos relevantes.</small></span><label class="settings-switch" aria-label="Noticias y eventos importantes"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+            <div class="settings-status-row" data-notification-child-setting><span><strong>Catalizadores mañana</strong><small>La víspera, desde las 17:00: resultados, FDA y ensayos clínicos de tus posiciones y favoritos.</small></span><label class="settings-switch" aria-label="Catalizadores mañana"><input id="globalNotifyCatalystEve" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
             <div class="radar-tier-group" data-notification-child-setting><div class="radar-tier-head"><strong>✦ Radar AI</strong><small>Elige de qué niveles quieres enterarte. Se aplica a tus favoritos y a los valores con avisos activados.</small></div>
             <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Alta convicción</strong><small>Cuando una acción alcanza el nivel más alto: validada por el motor y la IA.</small></span><label class="settings-switch" aria-label="Radar AI · Alta convicción"><input id="globalNotifyRadarHigh" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
             <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Oportunidades</strong><small>Cuando una acción entra en oportunidades o mejora claramente su puntuación.</small></span><label class="settings-switch" aria-label="Radar AI · Oportunidades"><input id="globalNotifyRadarOpportunity" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
@@ -639,31 +652,32 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20260925r3"></script>
-<script src="app.js?v=20261001r4"></script>
-<script src="settings.js?v=20261001r21"></script>
+<script src="app.js?v=20261002f1"></script>
+<script src="settings.js?v=20261002f1"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261001r31"></script>
 <script src="stock-charts.js?v=20260925r2"></script>
-<script src="events.js?v=20261002r1"></script>
+<script src="events.js?v=20261002f2"></script>
 <script src="asset-card.js?v=20261001r23"></script>
 <script src="stock-list.js?v=20261001r25"></script>
 <script src="recommendation.js?v=20261002r1"></script>
 <script src="today.js?v=20261001r2"></script>
-<script src="help.js?v=20261002r1"></script>
-<script src="stock-profile.js?v=20261001r2"></script>
+<script src="help.js?v=20261002f1"></script>
+<script src="stock-profile.js?v=20261002f2"></script>
 <script src="catalog.js?v=20261001r32"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r3"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261001r6"></script>
-<script src="mobile-app.js?v=20260925r1"></script>
+<script src="navigation.js?v=20261002f1"></script>
+<script src="mobile-app.js?v=20261002f1"></script>
 <script src="ui-shell.js?v=20261002r1"></script>
-<script src="broker-import.js?v=20261002r1"></script>
+<script src="broker-import.js?v=20261002r2"></script>
+<script src="tax.js?v=20261002r1"></script>
 <script src="funds.js?v=20261001r8"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261001r1"></script>
 <script type="module" src="auth.js?v=20260930r2"></script>
-<script type="module" src="portfolio.js?v=20261002r2"></script>
+<script type="module" src="portfolio.js?v=20261002f1"></script>
 </body>
 </html>

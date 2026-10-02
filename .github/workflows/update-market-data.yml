@@ -37,7 +37,7 @@ jobs:
           python -m pip check
       - name: Comprobar integraciones de producción
         env:
-          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
+          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT || 'ViewInvAI/1.0 (https://viewinvai.firebaseapp.com)' }}
           MARKET_PUBLISH_URL: ${{ vars.MARKET_PUBLISH_URL }}
           MARKET_PUBLISH_TOKEN: ${{ secrets.MARKET_PUBLISH_TOKEN }}
         run: |
@@ -49,7 +49,7 @@ jobs:
           fi
       - name: Actualizar datos
         env:
-          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
+          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT || 'ViewInvAI/1.0 (https://viewinvai.firebaseapp.com)' }}
         run: python scripts/update_market.py
       - name: Publicar snapshot en R2 cuando esté configurado
         env:

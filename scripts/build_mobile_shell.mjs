@@ -11,6 +11,7 @@ const files = [
   'theme-ai.css',
   'ui-shell.js',
   'broker-import.js',
+  'tax.js',
   'today.js',
   'styles.css',
   'web-mobile.css',

@@ -1318,6 +1318,41 @@ def impact_score(category, urgency, title):
         base += 5
     return min(base, 100)
 
+EARNINGS_FACT = "Fecha de resultados indicada por el proveedor de mercado."
+# Keys that hold epoch times or identifiers: never rounded.
+NO_ROUND_KEYS = {"premarketTime", "postmarketTime", "lastBarUpdateTime", "momentumSnapshotMinutes"}
+
+
+def round_sig(value, digits=6):
+    if not isinstance(value, float) or value != value or value in (float("inf"), float("-inf")):
+        return value
+    if value == 0:
+        return 0
+    rounded = float(f"{value:.{digits}g}")
+    return int(rounded) if rounded.is_integer() and abs(rounded) >= 1e6 else rounded
+
+
+def compact_snapshot(obj):
+    """Shrink the published JSON without losing what the app shows: floats to six
+    significant digits and the per-event boilerplate the app already knows
+    (earnings hypothesis/fact and the TR flags, which the app reads from the stock)."""
+    for stock in obj.get("stocks") or []:
+        for key, value in list(stock.items()):
+            if key not in NO_ROUND_KEYS and isinstance(value, float):
+                stock[key] = round_sig(value)
+    earnings_hypothesis = hypothesis_for("earnings")
+    for event in obj.get("events") or []:
+        event.pop("tradeRepublicVerified", None)
+        event.pop("tradeRepublicTradable", None)
+        if event.get("type") == "earnings" and event.get("eventKind") == "scheduled":
+            if event.get("hypothesis") == earnings_hypothesis:
+                event.pop("hypothesis", None)
+            if event.get("fact") == EARNINGS_FACT:
+                event.pop("fact", None)
+            if event.get("sources") == [{"name": "TradingView", "url": None, "tier": 2, "kind": "medio financiero reputado"}]:
+                event.pop("sources", None)
+
+
 def hypothesis_for(category):
     return {
         "medical": "Datos clínicos, decisiones FDA o avances sanitarios pueden provocar movimientos bruscos, especialmente en biotech. No determinan por sí solos la dirección.",
@@ -1796,6 +1831,7 @@ def main():
         "events": events,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
+    compact_snapshot(obj)
     OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
     VERSION_OUT.write_text(json.dumps({
         "updatedAt": obj["meta"]["updatedAt"],

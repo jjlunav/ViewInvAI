@@ -581,3 +581,96 @@ html[data-theme="light"] .broker-import-list li{background:rgba(20,40,90,.04)}
 .broker-import-list li>small{grid-area:d;color:var(--muted,#8ea0bf)}
 .broker-import-done{display:grid;gap:4px}
 .broker-import-done strong{font-size:15px;color:var(--positive,#2fd39a)}
+
+/* Fiscal (IRPF). Misma piel que «Mi día». */
+.tax-results{display:grid;gap:12px;max-width:860px}
+html:root:root body .tax-year-tabs{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;width:100%!important;margin:0!important;height:auto!important;overflow:visible!important}
+html:root:root body .tax-year-tabs .tab{width:100%!important;justify-content:center!important;text-align:center!important;font-size:14px!important;min-height:40px!important}
+.tax-card{border-radius:18px;padding:14px;border:1px solid rgba(140,190,210,.14);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.012) 55%),rgba(12,28,42,.66);display:grid;gap:10px}
+html[data-theme="light"] .tax-card{background:#fff;border-color:#dde3ee;box-shadow:0 2px 10px rgba(15,30,58,.05)}
+.tax-card small{font-size:10px;letter-spacing:.12em;font-weight:800;opacity:.7}
+.tax-card>header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:2px 8px}
+.tax-card>header>small{grid-column:1/-1;color:#9d8cff;opacity:1}
+html[data-theme="light"] .tax-card>header>small{color:#4f46e5}
+.tax-card>header h2{margin:0;font-size:15px}
+.tax-summary>strong{font-size:30px;font-weight:850;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.tax-chips{display:flex;flex-wrap:wrap;gap:6px}
+.tax-chips span{padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:750;border:1px solid rgba(140,170,255,.2);background:rgba(255,255,255,.03)}
+html[data-theme="light"] .tax-chips span{border-color:#dde3ee;background:#f7f9fd}
+.tax-card .positive{color:var(--positive,#2fd39a)}
+.tax-card .negative{color:var(--negative,#ff6b6b)}
+.tax-chips .warn,.tax-badge{color:#e3b84d}
+html[data-theme="light"] :is(.tax-chips .warn,.tax-badge){color:#8a5a12}
+.tax-card p{margin:0;font-size:13px;line-height:1.5}
+.tax-hint{color:var(--muted,#8ea0bf);font-size:12.5px!important}
+.tax-warn{padding:8px 10px;border-radius:10px;background:rgba(227,184,77,.1);color:#e3b84d;font-size:12.5px!important}
+html[data-theme="light"] .tax-warn{color:#8a5a12;background:rgba(183,121,31,.1)}
+.tax-row,.tax-sale>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer}
+html[data-theme="light"] :is(.tax-row,.tax-sale>summary){background:#f7f9fd}
+.tax-sale>summary{list-style:none}
+.tax-sale>summary::-webkit-details-marker{display:none}
+.tax-row>div:first-child,.tax-sale-main{display:grid;gap:2px;min-width:0}
+.tax-row b,.tax-sale-main b{font-size:15px}
+.tax-row small,.tax-sale-main small,.tax-row-num small{font-size:12px!important;letter-spacing:0!important;font-weight:600!important;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tax-row-num{display:grid;justify-items:end;gap:2px}
+.tax-row-num>span{font-size:16px;font-weight:850;font-variant-numeric:tabular-nums}
+.tax-badge{font-style:normal;font-size:11.5px;font-weight:800}
+.tax-sale{display:grid;gap:6px}
+.tax-sale-detail{display:grid;gap:6px;padding:4px 12px 8px}
+.tax-lots{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.tax-lots li{display:grid;grid-template-columns:1.2fr .9fr 1fr 1fr;gap:6px;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}
+.tax-meter{height:8px;border-radius:8px;background:rgba(140,170,255,.14);overflow:hidden}
+.tax-meter i{display:block;height:100%;width:0;border-radius:8px;background:linear-gradient(90deg,#2fd39a,#5b8cff)}
+.tax-meter i.over{background:linear-gradient(90deg,#e3b84d,#ff6b6b)}
+.tax-notes ul{margin:0;padding-left:18px;font-size:12.5px;color:#e3b84d}
+html[data-theme="light"] .tax-notes ul{color:#8a5a12}
+
+/* Carteras · Riesgo y dividendos. */
+.portfolio-insights{margin:8px 0;border-radius:16px;border:1px solid rgba(140,190,210,.16);background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.01)),rgba(12,28,42,.6)}
+html[data-theme="light"] .portfolio-insights{background:#fff;border-color:#dde3ee}
+.portfolio-insights>summary{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:11px 14px;cursor:pointer}
+.portfolio-insights>summary::-webkit-details-marker{display:none}
+.insights-title{font-size:14px;font-weight:800;display:flex;justify-content:space-between}
+.insights-title::after{content:"⌄";opacity:.6;transition:transform .2s}
+.portfolio-insights[open] .insights-title::after{transform:rotate(180deg)}
+.insights-chips{display:flex;flex-wrap:wrap;gap:6px}
+.insights-chips b{padding:3px 9px;border-radius:999px;font-size:12px;font-weight:750;border:1px solid rgba(140,170,255,.22);font-variant-numeric:tabular-nums}
+.insights-chips b.warn{color:#e3b84d;border-color:rgba(227,184,77,.4)}
+html[data-theme="light"] .insights-chips b{border-color:#dde3ee}
+html[data-theme="light"] .insights-chips b.warn{color:#8a5a12;border-color:rgba(183,121,31,.4)}
+.insights-body{display:grid;gap:12px;padding:0 14px 14px}
+.insights-alert{margin:0;padding:8px 10px;border-radius:10px;background:rgba(227,184,77,.1);color:#e3b84d;font-size:13px}
+html[data-theme="light"] .insights-alert{color:#8a5a12;background:rgba(183,121,31,.1)}
+.insights-scenario{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03)}
+html[data-theme="light"] .insights-scenario{background:#f7f9fd}
+.insights-scenario small,.insights-group>small{grid-column:1/-1;font-size:10px;letter-spacing:.12em;font-weight:800;color:#9d8cff}
+html[data-theme="light"] :is(.insights-scenario small,.insights-group>small){color:#4f46e5}
+.insights-scenario strong{font-size:14px}
+.insights-scenario>b{font-size:16px;font-weight:850;font-variant-numeric:tabular-nums;text-align:right}
+.insights-scenario>b.negative{color:var(--negative,#ff6b6b)}
+.insights-scenario>span{grid-column:1/-1;font-size:12px;color:var(--muted,#8ea0bf)}
+.insights-group{display:grid;gap:6px}
+.insight-bar{display:grid;grid-template-columns:minmax(0,9fr) minmax(0,10fr) 40px;gap:8px;align-items:center;font-size:12.5px}
+.insight-bar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insight-bar i{height:7px;border-radius:7px;background:rgba(140,170,255,.12);overflow:hidden}
+.insight-bar i b{display:block;height:100%;width:0;border-radius:7px;background:linear-gradient(90deg,#8b7bff,#2dd4bf)}
+.insight-bar.muted i b{background:rgba(140,170,255,.35)}
+.insight-bar em{font-style:normal;text-align:right;font-weight:750;font-variant-numeric:tabular-nums}
+
+/* Ficha · ¿Por qué se mueve hoy? */
+.profile-why{margin:8px 0 2px;border-radius:14px;border:1px solid rgba(140,170,255,.18);background:linear-gradient(90deg,rgba(139,123,255,.12),rgba(45,212,191,.05));overflow:hidden}
+html[data-theme="light"] .profile-why{background:linear-gradient(90deg,rgba(79,70,229,.07),rgba(13,148,136,.04));border-color:#dfe3f3}
+.profile-why>summary{list-style:none;display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;cursor:pointer}
+.profile-why>summary::-webkit-details-marker{display:none}
+.profile-why-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;font-size:12px;font-weight:900}
+.profile-why-icon.up{color:var(--positive,#2fd39a);background:rgba(47,211,154,.14)}
+.profile-why-icon.down{color:var(--negative,#ff6b6b);background:rgba(255,107,107,.14)}
+.profile-why summary>span:last-child{display:grid;gap:1px;min-width:0}
+.profile-why small{font-size:10px;letter-spacing:.12em;font-weight:800;color:#9d8cff}
+html[data-theme="light"] .profile-why small{color:#4f46e5}
+.profile-why b{font-size:14px;line-height:1.3}
+.profile-why ul{list-style:none;margin:0;padding:0 12px 10px;display:grid;gap:6px}
+.profile-why li{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.4}
+.profile-why li em{font-style:normal;font-weight:800;font-size:11.5px;opacity:.8}
+.profile-why p{margin:0;padding:0 12px 12px;font-size:12.5px;color:var(--muted,#8ea0bf)}
+html body .unified-stock-header .profile-why{grid-column:1 / -1!important;width:100%;box-sizing:border-box}

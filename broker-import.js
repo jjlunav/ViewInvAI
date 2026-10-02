@@ -226,6 +226,7 @@
    status('<div class="broker-import-done"><strong>'+imported+(imported===1?' operación importada':' operaciones importadas')+'</strong>'+(skipped?'<span>'+skipped+' ya estaban importadas</span>':'')+
     (errors.length?'<p class="broker-import-warn">'+errors.length+' no se pudieron registrar: '+esc(errors.slice(0,5).map(e=>(e.ticker||'')+' · '+e.error).join(' | '))+'</p>':'')+'</div>',errors.length&&!imported);
    if(typeof P().reload==='function')await P().reload();
+   if(window.ViewInvAITax)window.ViewInvAITax._invalidate();
    if(flow.source==='ibkr'){const saved=readIbkr();if(saved){saved.lastSyncAt=Date.now();saved.portfolioId=portfolioId;writeIbkr(saved)}}
   }catch(e){status(esc(e.message||'No se pudo importar.'),true);if(button){button.disabled=false;button.textContent='Reintentar importación'}}
  }

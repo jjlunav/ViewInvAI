@@ -375,6 +375,53 @@ function profileAiStripHtml(s,isTr=false){
  if(!chip&&!facts.length)return'';
  return '<div class="profile-ai-strip">'+chip+facts.join('')+'</div>';
 }
+
+// «¿Por qué se mueve hoy?»: une en una frase lo que ya sabemos del valor (noticias de
+// las últimas 24 h, resultados, volumen relativo y el movimiento de su sector).
+let profileSectorCache={stamp:'',map:new Map()};
+function profileSectorMoves(){
+ const stamp=String((db.meta&&db.meta.updatedAt)||'')+':'+(db.stocks||[]).length;
+ if(profileSectorCache.stamp===stamp)return profileSectorCache.map;
+ const groups=new Map();
+ for(const x of db.stocks||[]){
+  const c=N(x.changePct),cap=N(x.marketCap);
+  if(c===null||Math.abs(c)>40||!x.sector||(cap!==null&&cap<3e8))continue;
+  if(!groups.has(x.sector))groups.set(x.sector,[]);
+  groups.get(x.sector).push(c);
+ }
+ const map=new Map();
+ for(const [k,v] of groups){if(v.length<8)continue;v.sort((a,b)=>a-b);map.set(k,{median:v[Math.floor(v.length/2)],n:v.length})}
+ profileSectorCache={stamp,map};return map;
+}
+function profileWhyMovingHtml(s,isTr=false){
+ const chg=isTr?(N(s.trLiveChangePct)??N(s.changePct)):N(s.changePct);
+ if(chg===null||Math.abs(chg)<1.5)return'';
+ const up=chg>0,reasons=[];
+ const now=Date.now();
+ let events=[];try{events=stockEvents(s)||[]}catch(_){}
+ // Prefer news that name the company itself (some feeds attach market round-ups to every ticker).
+ const nameWord=String(s.name||'').split(/[\s,.]+/).find(w=>w.length>=4)||'',ticker=String(s.ticker||'');
+ const own=e=>{const t=String(e.title||''),low=t.toLowerCase(),w=nameWord.toLowerCase();const at=Math.min(...[w?low.indexOf(w):-1,ticker?t.search(new RegExp('\\b'+ticker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b')):-1].filter(i=>i>=0).concat([999]));return at<=12?2:at<999?1:0};
+ const news=events.filter(e=>{const t=new Date(e.date).getTime();return e.eventKind==='news'&&now-t<72*3600e3&&now-t>-3600e3}).sort((a,b)=>(own(b)-own(a))||(new Date(b.date)-new Date(a.date)));
+ const ago=e=>{const h=Math.max(0,(now-new Date(e.date).getTime())/3600e3);return h<1?'hace minutos':h<24?'hace '+Math.round(h)+' h':'hace '+Math.round(h/24)+' d'};
+ const earnings=events.find(e=>e.type==='earnings'&&Math.abs(new Date(e.date).getTime()-now)<36*3600e3);
+ if(earnings)reasons.push({k:'Resultados',t:'Publica o acaba de publicar resultados'});
+ if(news[0])reasons.push({k:EL(news[0]),t:String(news[0].title||news[0].fact||'').slice(0,140)+' · '+ago(news[0])});
+ const rel=N(s.relVolume)??(N(s.volume)&&N(s.avgVolume)?N(s.volume)/N(s.avgVolume):null);
+ if(rel!==null&&rel>=2)reasons.push({k:'Volumen',t:'×'+F(rel,1)+' sobre su media: el movimiento tiene participación'});
+ else if(rel!==null&&rel<0.8)reasons.push({k:'Volumen',t:'Por debajo de su media (×'+F(rel,1)+'): movimiento poco respaldado'});
+ const sec=s.sector&&profileSectorMoves().get(s.sector),secName=typeof window.ViewInvAISectorEs==='function'?window.ViewInvAISectorEs(s.sector):s.sector;
+ if(sec){
+  if(Math.abs(sec.median)>=1&&Math.sign(sec.median)===Math.sign(chg))reasons.push({k:'Sector',t:secName+' '+(sec.median>0?'sube':'cae')+' un '+F(Math.abs(sec.median),1)+'% hoy: parte es arrastre sectorial'});
+  else reasons.push({k:'Sector',t:'Movimiento propio: '+secName+' '+(Math.abs(sec.median)<0.5?'apenas varía':'va '+(sec.median>0?'al alza':'a la baja')+' ('+(sec.median>0?'+':'')+F(sec.median,1)+'%)')});
+ }
+ const cause=earnings?'por sus resultados':news[0]?'tras una noticia':rel!==null&&rel>=2?'con volumen alto':sec&&Math.abs(sec.median)>=1&&Math.sign(sec.median)===Math.sign(chg)?'junto a su sector':'sin noticia clara';
+ const head=(up?'Sube':'Cae')+' un '+F(Math.abs(chg),1)+'% '+cause;
+ return '<details class="profile-why"><summary><span class="profile-why-icon '+(up?'up':'down')+'">'+(up?'▲':'▼')+'</span><span><small>¿POR QUÉ SE MUEVE HOY?</small><b>'+E(head)+'</b></span></summary>'+
+  '<ul>'+reasons.map(r=>'<li><em>'+E(r.k)+'</em><span>'+E(r.t)+'</span></li>').join('')+'</ul>'+
+  (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Pregunta a la IA en la pestaña ✦ IA para un análisis más amplio.</p>')+
+ '</details>';
+}
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -390,7 +437,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
-    profileAiStripHtml(s,isTr)+
+    profileAiStripHtml(s,isTr)+profileWhyMovingHtml(s,isTr)+
    '</div>'+
   '</header>';
 }
