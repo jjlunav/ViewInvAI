@@ -122,13 +122,49 @@ def tr_universe():
             idx.setdefault(k, []).append((isin, name))
     return idx, len(rows), source
 
-def tr_match(name, idx):
+US_EXCHANGES = {"NASDAQ", "NYSE", "AMEX", "NYSE ARCA", "NYSEARCA", "ARCA", "BATS", "CBOE", "OTC"}
+
+
+def tr_compact_index(idx):
+    compact = {}
+    for key, vals in idx.items():
+        compact.setdefault(key.replace(" ", ""), []).extend(vals)
+    return compact
+
+
+def tr_filter_candidates(items, exchange=None):
+    """Trade Republic lists big US names twice: the share (US…) and a Canadian
+    depositary receipt «(CDR)» (CA…). Keep the listing that matches the stock."""
+    unique = list(dict.fromkeys(items))
+    if len(unique) <= 1:
+        return unique
+    no_cdr = [item for item in unique if "(cdr)" not in item[1].lower()] or unique
+    if str(exchange or "").upper() in US_EXCHANGES:
+        us = [item for item in no_cdr if item[0].startswith("US")]
+        if us:
+            return us
+    return no_cdr
+
+
+def tr_candidates(name, idx, exchange=None, compact=None):
+    k = norm(name)
+    if not k:
+        return []
+    exact = idx.get(k)
+    if not exact and compact is not None:
+        exact = compact.get(k.replace(" ", ""))
+    return tr_filter_candidates(exact or [], exchange)
+
+
+def tr_match(name, idx, exchange=None, compact=None):
+    exact = tr_candidates(name, idx, exchange, compact)
+    if len(exact) == 1:
+        return exact[0][0]
+    if len(exact) > 1:
+        return None  # ambiguous (share classes): resolved later with the stock's own ISIN
     k = norm(name)
     if not k:
         return None
-    exact = idx.get(k)
-    if exact and len(exact) == 1:
-        return exact[0][0]
 
     p = k[:18]
     if len(p) < 10:
@@ -152,6 +188,46 @@ def tr_match(name, idx):
     if len(scored) == 1 or (len(scored) > 1 and scored[0][0] - scored[1][0] > 0.03):
         return scored[0][1][0]
     return None
+
+
+def resolve_ambiguous_tr(stocks, idx, compact, previous, limit=400):
+    """Several TR listings share one company name (Alphabet A/C, Berkshire A/B…).
+    Ask for the stock's own ISIN (cached from earlier snapshots) and keep the
+    candidate that is exactly that ISIN."""
+    prev_by_symbol = {
+        row.get("tvSymbol"): row for row in previous.get("stocks") or [] if row.get("tvSymbol")
+    }
+    pending = []
+    for stock in stocks:
+        if stock.get("trIsin"):
+            continue
+        options = tr_candidates(stock.get("name"), idx, stock.get("exchange"), compact)
+        if len(options) < 2:
+            continue
+        isins = {item[0] for item in options}
+        cached = (prev_by_symbol.get(stock.get("tvSymbol")) or {}).get("usIsin")
+        if cached:
+            if cached in isins:
+                stock["trIsin"] = cached
+                stock["usIsin"] = cached
+            continue
+        pending.append((stock, isins))
+    pending.sort(key=lambda pair: -(pair[0].get("marketCap") or 0))
+    resolved = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_map = {pool.submit(fetch_us_isin, stock): (stock, isins) for stock, isins in pending[:limit]}
+        for future in as_completed(future_map):
+            stock, isins = future_map[future]
+            try:
+                own = future.result()
+            except Exception:
+                own = None
+            if own and own in isins:
+                stock["trIsin"] = own
+                stock["usIsin"] = own
+                resolved += 1
+    return resolved, len(pending)
+
 
 def tv():
     # Do not restrict to is_primary. US pre-market leaderboards also contain
@@ -1590,17 +1666,15 @@ def main():
 
     attach_previous_snapshot(stocks, previous, now)
 
-    if idx:
-        for probe in ("nvidia", "microsoft", "alphabet", "meta platforms", "broadcom", "advanced micro", "jpmorgan", "jp morgan", "taiwan semiconductor"):
-            hits = [(k, v[:3]) for k, v in idx.items() if k.startswith(probe)][:6]
-            print("TR DIAG", probe, hits)
-        big = sorted(stocks, key=lambda x: -(x.get("marketCap") or 0))[:40]
-        print("TR DIAG unmatched big:", [(x.get("ticker"), norm(x.get("name"))) for x in big if not tr_match(x.get("name"), idx)][:25])
-
     matched = 0
+    tr_compact = tr_compact_index(idx) if idx else {}
     for s in stocks:
-        isin = tr_match(s["name"], idx) if idx else None
-        s["trIsin"] = isin
+        s["trIsin"] = tr_match(s["name"], idx, s.get("exchange"), tr_compact) if idx else None
+    if idx:
+        ambiguous_resolved, ambiguous_total = resolve_ambiguous_tr(stocks, idx, tr_compact, previous)
+        print("TR ambiguous names:", ambiguous_total, "resolved by ISIN:", ambiguous_resolved)
+    for s in stocks:
+        isin = s.get("trIsin")
         s["tradeRepublicCandidate"] = bool(isin)
         if isin:
             matched += 1

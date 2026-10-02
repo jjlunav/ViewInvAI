@@ -84,6 +84,7 @@ jobs:
           test -s mobile-shell/asset-card.css
           test -s mobile-shell/theme-ai.css
           test -s mobile-shell/ui-shell.js
+          test -s mobile-shell/broker-import.js
           test -s mobile-shell/today.js
           test -s mobile-shell/filter-sheet.js
           test -s mobile-shell/stock-profile.js

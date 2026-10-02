@@ -10,6 +10,7 @@ const files = [
   'asset-card.css',
   'theme-ai.css',
   'ui-shell.js',
+  'broker-import.js',
   'today.js',
   'styles.css',
   'web-mobile.css',

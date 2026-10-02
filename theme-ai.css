@@ -566,3 +566,38 @@ html:root:root body #view-recommendation .radar-market-tabs{display:grid!importa
 html:root:root body #view-recommendation .radar-market-tabs .tab{width:100%!important;justify-content:center!important;text-align:center!important;font-size:14px!important;min-height:42px!important;background:transparent!important}
 html:root:root body #view-recommendation .radar-market-tabs .tab.active{background:transparent!important}
 @media (max-width:480px){html:root:root body .radar-tier-chip{height:32px;padding:0 9px;gap:5px;font-size:12px}html:root:root body .radar-tier-chip b{font-size:11px}}
+
+/* Importar operaciones del bróker. */
+.broker-import{display:grid;gap:12px}
+html:root:root body .broker-import-tabs{display:grid!important;grid-template-columns:repeat(3,1fr)!important;margin:0!important;width:100%!important}
+html:root:root body .broker-import-tabs .tab{width:100%!important;justify-content:center!important;text-align:center!important;font-size:13px!important}
+.broker-import-help,.broker-import-note{margin:0;font-size:13px;line-height:1.5;color:var(--muted,#8ea0bf)}
+.broker-import-help b,.broker-import-help i{color:var(--text,#e8f0ff);font-style:normal}
+.broker-import-note{font-size:12px;padding:9px 11px;border-radius:12px;border:1px dashed var(--qg-line,rgba(140,170,255,.25))}
+.broker-import-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.broker-import-field{display:grid;gap:5px;min-width:0}
+.broker-import-field>span{font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+.broker-import-field input,.broker-import-field select{height:42px;width:100%;box-sizing:border-box;border-radius:11px;padding:0 11px;font:inherit;font-size:14px}
+.broker-import-check{display:flex;align-items:center;gap:8px;font-size:13px}
+.broker-import-file{position:relative;display:flex;align-items:center;justify-content:center;height:52px;border-radius:14px;border:1.5px dashed var(--ai-1,#8b7bff);font-weight:800;font-size:14px;cursor:pointer}
+.broker-import-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.broker-import-go{width:100%;min-height:44px}
+.broker-import-status:empty{display:none}
+.broker-import-status.error{color:var(--negative,#ff6b6b);font-size:13px}
+.broker-import-preview{display:grid;gap:10px}
+.broker-import-counts{display:flex;flex-wrap:wrap;gap:6px}
+.broker-import-counts span{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:750;border:1px solid var(--qg-line,rgba(140,170,255,.2))}
+.broker-import-counts .buy,.broker-import-list .buy{color:var(--positive,#2fd39a)}
+.broker-import-counts .sell,.broker-import-list .sell{color:var(--negative,#ff6b6b)}
+.broker-import-counts .warn{color:#e3b84d}
+.broker-import-warn{margin:0;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.45;background:rgba(227,184,77,.1);color:#e3b84d}
+html[data-theme="light"] .broker-import-warn{color:#8a5a12;background:rgba(183,121,31,.1)}
+.broker-import-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:260px;overflow:auto}
+.broker-import-list li{display:grid;grid-template-columns:62px minmax(0,1fr) auto;grid-template-areas:"s t d" "s q q";gap:1px 8px;align-items:center;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.03);font-size:13px}
+html[data-theme="light"] .broker-import-list li{background:rgba(20,40,90,.04)}
+.broker-import-list li>span{grid-area:s;font-weight:800;font-size:12px}
+.broker-import-list li>b{grid-area:t}
+.broker-import-list li>em{grid-area:q;font-style:normal;color:var(--muted,#8ea0bf);font-size:12px}
+.broker-import-list li>small{grid-area:d;color:var(--muted,#8ea0bf)}
+.broker-import-done{display:grid;gap:4px}
+.broker-import-done strong{font-size:15px;color:var(--positive,#2fd39a)}

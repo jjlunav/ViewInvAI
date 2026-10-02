@@ -1821,3 +1821,6 @@ html:root:root body .portfolio-order-name{min-width:0;width:100%;height:32px;box
 html:root:root body .portfolio-order-name:focus{outline:2px solid var(--ai-1,#5b8cff);outline-offset:1px}
 html:root:root body .portfolio-order-row button.portfolio-order-delete{color:var(--negative,#ff6b6b)}
 html:root:root body #view-portfolios .portfolio-goal-form.compact-goal-form>label>div>input{border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;outline:0}
+
+/* Barra de acciones de Carteras: siempre en una fila, sea cual sea el número de botones. */
+html:root:root body #view-portfolios .portfolio-workbar .portfolio-workbar-actions{grid-template-columns:none!important;grid-auto-flow:column!important;grid-auto-columns:minmax(0,1fr)!important}
