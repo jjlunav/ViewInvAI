@@ -1,0 +1,130 @@
+"""Diagnóstico temporal: qué fuentes públicas listan los fondos de Trade Republic y MyInvestor.
+No usa credenciales. Se borra cuando el actualizador use la fuente elegida."""
+import io, json, re, time, urllib.request
+from pypdf import PdfReader
+
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36", "Accept-Language": "es-ES,es;q=0.9"}
+WANT = ["IE00BYWYCC39", "IE00BYX5MX67", "IE000ZYRH0Q7", "ES0119199018"]
+
+def get(url, data=None, headers=None, timeout=40):
+    req = urllib.request.Request(url, data=data, headers={**UA, **(headers or {})})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status, r.headers.get("content-type", ""), r.read()
+
+def section(title):
+    print("\n==== " + title, flush=True)
+
+def try_(title, fn):
+    section(title)
+    try:
+        fn()
+    except Exception as e:
+        print("ERROR", type(e).__name__, str(e)[:300])
+
+def tr_pdf():
+    for url in ["https://assets.traderepublic.com/assets/files/ES/Instrument_Universe_ES_es.pdf",
+                "https://assets.traderepublic.com/assets/files/ES/Fund_Universe_ES_es.pdf",
+                "https://assets.traderepublic.com/assets/files/ES/Funds_Universe_ES_es.pdf",
+                "https://assets.traderepublic.com/assets/files/ES/Instrument_Universe_ES_en.pdf"]:
+        try:
+            st, ct, body = get(url)
+        except Exception as e:
+            print(url, "->", type(e).__name__, str(e)[:120]); continue
+        print(url, "->", st, ct, len(body))
+        if b"%PDF" not in body[:10]:
+            continue
+        reader = PdfReader(io.BytesIO(body))
+        heads, isins, sec_counts, cur = [], 0, {}, "?"
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            for line in text.splitlines():
+                m = re.search(r"UNIVERSO DE INVERSI[ÓO]N\s*-?\s*([A-Za-zÁÉÍÓÚáéíóúñ ]+)", line, re.I)
+                if m:
+                    cur = m.group(1).strip()[:40]
+                    if cur not in heads: heads.append(cur)
+                if re.match(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]\b", line.strip()):
+                    sec_counts[cur] = sec_counts.get(cur, 0) + 1
+        print("  pages", len(reader.pages), "sections", heads)
+        print("  isins per section", sec_counts)
+        alltext = "\n".join((p.extract_text() or "") for p in reader.pages)
+        for w in WANT:
+            i = alltext.find(w)
+            print("  ", w, "found" if i >= 0 else "missing", alltext[i:i+90].replace("\n", " ") if i >= 0 else "")
+
+def tr_ws():
+    import asyncio, websockets
+    async def run():
+        async with websockets.connect("wss://api.traderepublic.com", origin="https://app.traderepublic.com", user_agent_header=UA["User-Agent"], open_timeout=15) as ws:
+            await ws.send('connect 31 {"locale":"es","platformId":"webtrading","platformVersion":"chrome - 126.0.0","clientId":"app.traderepublic.com","clientVersion":"3.151.3"}')
+            print("hello", (await asyncio.wait_for(ws.recv(), 10))[:60])
+            subs = [
+                ("instrument", {"type": "instrument", "id": "IE00BYWYCC39"}),
+                ("search fund", {"type": "neonSearch", "data": {"q": "emerging", "page": 1, "pageSize": 5, "filter": [{"key": "type", "value": "fund"}]}}),
+                ("search mutualFund", {"type": "neonSearch", "data": {"q": "emerging", "page": 1, "pageSize": 5, "filter": [{"key": "type", "value": "mutualFund"}]}}),
+                ("search all", {"type": "neonSearch", "data": {"q": "IE00BYWYCC39", "page": 1, "pageSize": 5}}),
+                ("history FND", {"type": "aggregateHistoryLight", "id": "IE00BYWYCC39.FND", "range": "1m", "resolution": 86400000}),
+            ]
+            for n, (label, payload) in enumerate(subs, start=1):
+                await ws.send(f"sub {n} " + json.dumps(payload))
+                try:
+                    end = time.time() + 8
+                    while time.time() < end:
+                        msg = await asyncio.wait_for(ws.recv(), 8)
+                        if msg.startswith(f"{n} "):
+                            print(label, "->", msg[:600]); break
+                except Exception as e:
+                    print(label, "->", type(e).__name__)
+                await ws.send(f"unsub {n}")
+    asyncio.run(run())
+
+def myinvestor():
+    st, ct, body = get("https://myinvestor.es/inversion/fondos-inversion/buscador/")
+    html = body.decode("utf-8", "replace")
+    print("buscador", st, ct, len(html))
+    for m in sorted(set(re.findall(r"https?://[a-zA-Z0-9.\-]*myinvestor[a-zA-Z0-9.\-]*/[^\"' )<>]{0,120}", html)))[:40]:
+        print("  url", m)
+    for m in sorted(set(re.findall(r"(?:src|href)=\"([^\"]+\.js[^\"]*)\"", html)))[:25]:
+        print("  js", m)
+    for m in sorted(set(re.findall(r"[\"'](/[a-zA-Z0-9_\-/]*(?:api|rest|fondo|fund)[a-zA-Z0-9_\-/]*)[\"']", html)))[:40]:
+        print("  path", m)
+    print("  sample", re.sub(r"\s+", " ", html[:1500]))
+
+def myinvestor_js():
+    st, ct, body = get("https://myinvestor.es/inversion/fondos-inversion/buscador/")
+    html = body.decode("utf-8", "replace")
+    js = [u for u in set(re.findall(r"(?:src)=\"([^\"]+\.js[^\"]*)\"", html))]
+    seen = 0
+    for u in js[:30]:
+        full = u if u.startswith("http") else "https://myinvestor.es" + (u if u.startswith("/") else "/" + u)
+        try:
+            _, _, b = get(full, timeout=20)
+        except Exception as e:
+            continue
+        t = b.decode("utf-8", "replace")
+        hits = sorted(set(re.findall(r"[\"'`](https?://[^\"'`]{0,40}(?:api|server|rest)[^\"'`]{0,120}|/(?:myinvestor-server|api|rest)[^\"'`]{0,120})[\"'`]", t)))
+        hits = [h for h in hits if re.search(r"fond|fund|product|search|buscador|isin", h, re.I)] or hits[:5]
+        if hits:
+            seen += 1
+            print(full[:120]); [print("   ", h) for h in hits[:20]]
+    print("bundles with hits", seen)
+
+def morningstar():
+    url = ("https://lt.morningstar.com/api/rest.svc/klr5zyak8x/security/screener?outputType=json&version=1&languageId=es-ES&currencyId=EUR"
+           "&universeIds=FOESP%24%24ALL&securityDataPoints=SecId%7CName%7Cisin%7COngoingCharge%7CClosePrice%7CClosePriceDate%7CReturnM12"
+           "&filters=ISIN%3AIN%3AIE00BYWYCC39%3AIE00BYX5MX67&page=1&pageSize=5")
+    st, ct, body = get(url)
+    print(st, ct, body[:800])
+    url2 = ("https://lt.morningstar.com/api/rest.svc/klr5zyak8x/security/screener?outputType=json&version=1&languageId=es-ES&currencyId=EUR"
+            "&universeIds=FOESP%24%24ALL&securityDataPoints=SecId%7Cisin&page=1&pageSize=1")
+    st, ct, body = get(url2)
+    print("total universe:", body[:300])
+
+def ft():
+    st, ct, body = get("https://markets.ft.com/data/funds/tearsheet/summary?s=IE00BYWYCC39:EUR")
+    html = body.decode("utf-8", "replace")
+    m = re.search(r"Price \(EUR\)</span><span[^>]*>([^<]+)", html)
+    oc = re.search(r"Ongoing charge</th><td[^>]*>([^<]+)", html)
+    print(st, len(html), "price", m and m.group(1), "ongoing", oc and oc.group(1))
+
+for title, fn in [("TR PDF", tr_pdf), ("TR websocket (sin login)", tr_ws), ("MyInvestor buscador", myinvestor), ("MyInvestor JS", myinvestor_js), ("Morningstar screener", morningstar), ("FT tearsheet", ft)]:
+    try_(title, fn)
