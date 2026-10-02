@@ -434,6 +434,17 @@ function portfolioSummaryHtml(portfolio, positions) {
     const stock = stockByKey(p.stock_key);
     const qty = num(p.quantity);
     if (p.last_signal) analyzed++;
+    if (!stock && qty !== null && positionIsin(p)) {
+      // Fuera del catálogo: cotización por ISIN de Trade Republic (en EUR).
+      const F = window.ViewInvAIFunds, q = F && typeof F.getLiveQuote === "function" ? F.getLiveQuote(positionIsin(p)) : null;
+      const entryCurrency = String(p.currency || "EUR").toUpperCase(), unit = q && entryCurrency === "EUR" ? num(q.price) : null;
+      const unitBase = unit === null ? null : portfolioConvertAmount(unit, "EUR", baseCurrency, fxUsdEur);
+      if (unitBase === null) currentComplete = false; else positionsValue += qty * unitBase;
+      const avg = num(p.avg_price), rawCost = num(p.cost_basis) ?? (avg !== null ? qty * avg : null);
+      const costBase = portfolioConvertAmount(rawCost, entryCurrency, baseCurrency, fxUsdEur);
+      if (costBase === null) costComplete = false; else invested += costBase;
+      continue;
+    }
     if (!stock || qty === null) { currentComplete = false; costComplete = false; continue; }
     const preferTr = Number(p.prefer_tr) === 1;
     const market = currentMarket(stock, preferTr);
@@ -528,10 +539,59 @@ function renderUnavailablePosition(p = {}, message = "El valor no está disponib
   });
 }
 
+// Acciones fuera del catálogo (p. ej. europeas importadas de Trade Republic): se guardan con su
+// ISIN y se cotizan directamente en LSX por ISIN, con la misma tarjeta que el resto.
+function positionIsin(p) {
+  const isin = String(p.isin || p.stock_key || "").toUpperCase();
+  return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin) ? isin : "";
+}
+function renderIsinPosition(p, isin) {
+  const F = window.ViewInvAIFunds;
+  if (F && typeof F.subscribeIsin === "function") F.subscribeIsin(isin);
+  const q = F && typeof F.getLiveQuote === "function" ? F.getLiveQuote(isin) : null;
+  const currency = String(p.currency || "EUR").toUpperCase();
+  const price = q && currency === "EUR" ? num(q.price) : null, prev = q ? num(q.prev) : null;
+  const qty = num(p.quantity), avg = num(p.avg_price);
+  const value = qty !== null && price !== null ? qty * price : null;
+  const estimatedFee = brokerFeeInCurrency(p.broker, qty, avg, currency, "BUY", p.exchange || "");
+  const invested = num(p.cost_basis) ?? (qty !== null && avg !== null ? qty * avg + (estimatedFee.fee ?? 0) : null);
+  const fees = num(p.fees_total) ?? (estimatedFee.fee ?? 0);
+  const pnl = value !== null && invested !== null ? value - invested : null;
+  const pnlPct = pnl !== null && invested > 0 ? pnl / invested * 100 : null;
+  const fromBuy = price !== null && avg ? (price / avg - 1) * 100 : null;
+  const tone = pnl === null ? "muted" : pnl >= 0 ? "positive" : "negative";
+  const change = price !== null && prev ? price - prev : null, changePct = change !== null && prev ? change / prev * 100 : null;
+  const quoteHtml = price === null
+    ? '<span class="portfolio-isin-quote muted">Cotización de Trade Republic…</span>'
+    : '<span class="portfolio-isin-quote"><b>' + esc(formatMoney(price, currency)) + '</b>' + (change !== null ? ' <em class="' + (change >= 0 ? "positive" : "negative") + '">' + esc((change > 0 ? "+" : "") + formatMoney(change, currency) + " (" + (changePct > 0 ? "+" : "") + formatNumber(changePct, 2) + "%)") + '</em>' : "") + '</span>';
+  const exposureHtml = '<div class="portfolio-position-exposure">' +
+    '<span><small>Valor</small><b>' + esc(formatMoney(value, currency)) + '</b></span>' +
+    '<span class="' + tone + '"><small>P&L neto</small><b>' + (pnl === null ? "—" : esc((pnl > 0 ? "+" : "") + formatMoney(pnl, currency))) + (pnlPct === null ? "" : '<em> ' + esc((pnlPct > 0 ? "+" : "") + formatNumber(pnlPct, 2) + "%") + '</em>') + '</b></span>' +
+    '<span><small>Precio medio</small><b>' + esc(formatMoney(avg, currency)) + '</b></span>' +
+  '</div>';
+  const brokerLabel = String(p.broker || "").trim();
+  const metaHtml = '<div class="portfolio-position-strip">' +
+    '<span><b>' + esc(formatNumber(qty, 4)) + '</b> uds.</span>' +
+    (brokerLabel ? '<span>Broker <b>' + esc(brokerLabel) + '</b></span>' : "") +
+    '<span>Coste <b>' + esc(formatMoney(invested, currency)) + '</b></span>' +
+    '<span>Comisiones <b>' + esc(formatMoney(fees, currency)) + '</b></span>' +
+    '<span class="' + (fromBuy === null ? "muted" : fromBuy >= 0 ? "positive" : "negative") + '" title="Precio actual frente a tu precio medio, sin comisiones">Precio vs. media <b>' + (fromBuy === null ? "—" : esc((fromBuy > 0 ? "+" : "") + formatNumber(fromBuy, 2) + "%")) + '</b></span>' +
+  '</div>' + positionDecisionChip(p, avg, currency);
+  return window.ViewInvAICards.render({
+    context: "portfolio", className: "portfolio-position-card portfolio-isin-position", title: p.name || isin, isin,
+    subtitle: (p.ticker && p.ticker !== isin ? p.ticker + " · " : "") + "LSX · fuera del catálogo",
+    leadingHtml: "",
+    cells: [{ label: "Cotización", html: quoteHtml }, { label: "Posición", html: exposureHtml, tone }],
+    metaHtml,
+    rowActionsHtml: '<button type="button" class="portfolio-register-operation-icon" data-position-transactions="' + esc(p.id) + '" aria-label="Registrar operación" title="Registrar operación"><span aria-hidden="true">💼</span></button>',
+    detailsHtml: ""
+  });
+}
+
 // portfolio-position-more: el detalle progresivo se abre ahora en la ficha completa de la acción.
 function renderPositionRow(p, index = 0) {
   const stock = stockByKey(p.stock_key);
-  if (!stock) return renderUnavailablePosition(p);
+  if (!stock) { const isin = positionIsin(p); return isin ? renderIsinPosition(p, isin) : renderUnavailablePosition(p); }
   const preferTr = Number(p.prefer_tr) === 1;
   const market = currentMarket(stock, preferTr);
   const qty = num(p.quantity);
@@ -564,7 +624,7 @@ function renderPositionRow(p, index = 0) {
     (brokerLabel?'<span>Broker <b>'+esc(brokerLabel)+'</b></span>':'')+
     '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
     '<span>Comisiones <b>'+esc(formatMoney(feesTotal,entryCurrency))+'</b></span>'+
-    '<span class="'+exposureTone+'">Desde compra <b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
+    '<span class="'+exposureTone+'" title="Precio actual frente a tu precio medio, sin comisiones">Precio vs. media <b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
   '</div>'+positionDecisionChip(p,avg,entryCurrency);
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
@@ -3370,6 +3430,12 @@ function bind() {
   });
 
   window.addEventListener("viewinvai:decisions-changed", () => { if (state.user) renderActivePortfolioPanel(); });
+  // Cotización por ISIN de una posición fuera del catálogo: repinta como mucho cada 2 s.
+  let isinQuoteTimer = null;
+  window.addEventListener("viewinvai:tr-isin-quote", () => {
+    if (!state.user || isinQuoteTimer || !document.querySelector(".portfolio-isin-position")) return;
+    isinQuoteTimer = setTimeout(() => { isinQuoteTimer = null; if (!document.querySelector("#view-portfolios.active, #view-portfolios:not([hidden])")) return; if (!document.activeElement || !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) renderActivePortfolioPanel(); }, 2000);
+  });
   window.addEventListener("viewinvai:auth-changed", event => {
     state.user = event.detail && event.detail.user || null;
     if (!state.user) {
