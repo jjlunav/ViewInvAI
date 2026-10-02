@@ -300,7 +300,7 @@ function openStock(s,reason='',preferTr=null,originView=null){
  state.profileReason=reason||'';
  state.profileOriginView=originView&&V[originView]?originView:state.currentView;
  state.profileOriginScroll=Math.max(0,Math.round(window.scrollY||0));
- state.profilePreferTr=preferTr===true?true:preferTr===false?false:inferProfilePreferTr(s);
+ state.profilePreferTr=typeof intlListing==='function'&&intlListing(s)?true:preferTr===true?true:preferTr===false?false:inferProfilePreferTr(s);
  let box=$('#stockQuickDetail');
  if(box){
   box.dataset.profileOriginView=state.profileOriginView||'';
