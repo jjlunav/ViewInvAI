@@ -174,7 +174,7 @@ html[data-native-app="1"]{
 .view{overflow-x:clip}
 
 /* Page heading: title block on the left, actions on the right, same everywhere. */
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading{
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading{
   display:grid!important;
   grid-template-columns:minmax(0,1fr) auto!important;
   align-items:start!important;
@@ -190,7 +190,7 @@ html[data-native-app="1"]{
   padding:0 var(--ph-reserve) 10px 0!important;
   text-align:left!important;
 }
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>div:first-child{
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>div:first-child{
   grid-column:1!important;
   grid-row:1!important;
   width:auto!important;
@@ -199,7 +199,7 @@ html[data-native-app="1"]{
   margin:0!important;
   text-align:left!important;
 }
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>:is(.heading-actions,.section-help){
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>:is(.heading-actions,.section-help){
   position:static!important;
   inset:auto!important;
   grid-column:2!important;
@@ -208,21 +208,21 @@ html[data-native-app="1"]{
   justify-self:end!important;
   margin:0!important;
 }
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>.heading-actions{
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading>.heading-actions{
   display:flex!important;
   flex-wrap:nowrap!important;
   align-items:center!important;
   justify-content:flex-end!important;
   gap:6px!important;
 }
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading h1{
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading h1{
   font-size:var(--ph-title-size)!important;
   line-height:1.1!important;
   margin:0!important;
   text-align:left!important;
   justify-content:flex-start!important;
 }
-:is(#view-today,#view-tax,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading .lead{
+:is(#view-today,#view-tax,#view-inbox,#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings)>.page-heading .lead{
   max-width:none!important;
   margin:4px 0 0!important;
   text-align:left!important;

@@ -2625,13 +2625,18 @@ async function handleAlerts(request, env, user, json, parts) {
   const action = parts[1] || "";
   if (request.method === "GET" && !action) {
     const rows = await env.DB.prepare(
-      "SELECT * FROM alert_events WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+      "SELECT id,stock_key,ticker,name,alert_type,severity,title,message,created_at,read_at FROM alert_events WHERE user_id=? ORDER BY created_at DESC LIMIT 150"
     ).bind(user.id).all();
-    return json({ alerts: rows.results || [] });
+    const unread = await env.DB.prepare("SELECT COUNT(*) AS n FROM alert_events WHERE user_id=? AND read_at IS NULL").bind(user.id).first();
+    return json({ alerts: rows.results || [], unread: Number(unread && unread.n) || 0 });
   }
 
   if (request.method === "POST" && action === "read") {
     const body = await readJson(request);
+    if (body.all === true) {
+      const r = await env.DB.prepare("UPDATE alert_events SET read_at=? WHERE user_id=? AND read_at IS NULL").bind(nowIso(), user.id).run();
+      return json({ updated: Number(r && r.meta && r.meta.changes) || 0 });
+    }
     const ids = Array.isArray(body.ids) ? body.ids.map(x => trimText(x, 80)).filter(Boolean).slice(0, 100) : [];
     if (!ids.length) return json({ updated: 0 });
     const stamp = nowIso();

@@ -39,15 +39,19 @@
  }
 
  function alertsHtml(){
-  const rows=(window.AppAlerts&&typeof window.AppAlerts.getHistory==='function'?window.AppAlerts.getHistory():[])
-   .filter(r=>Date.now()-new Date(r.createdAt||0).getTime()<36*3600e3).slice(0,3);
-  if(!rows.length)return'';
+  // Server push alerts (Avisos) first; the local detector history fills in when signed out.
+  const inbox=window.ViewInvAIInbox&&typeof window.ViewInvAIInbox.recent==='function'?window.ViewInvAIInbox.recent(20):[];
+  const server=inbox.map(r=>({title:r.title,message:r.message,createdAt:r.created_at,stockKey:r.stock_key,preferTr:false,unread:!r.read_at}));
+  const local=(window.AppAlerts&&typeof window.AppAlerts.getHistory==='function'?window.AppAlerts.getHistory():[]);
+  const rows=(server.length?server:local).filter(r=>Date.now()-new Date(r.createdAt||0).getTime()<36*3600e3).slice(0,3);
+  const unread=window.ViewInvAIInbox&&typeof window.ViewInvAIInbox.unread==='function'?window.ViewInvAIInbox.unread():0;
+  if(!rows.length&&!unread)return'';
   const item=r=>{
    const when=new Date(r.createdAt||Date.now()).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
    const open=r.stockKey?' data-open-stock="'+E(r.stockKey)+'" data-stock-prefer-tr="'+(r.preferTr?'1':'0')+'" role="button" tabindex="0"':'';
-   return '<div class="today-alert"'+open+'><span>'+E(when)+'</span><div><strong>'+E(r.title||'Aviso')+'</strong><small>'+E(r.message||'')+'</small></div></div>';
+   return '<div class="today-alert'+(r.unread?' unread':'')+'"'+open+'><span>'+E(when)+'</span><div><strong>'+E(r.title||'Aviso')+'</strong><small>'+E(r.message||'')+'</small></div></div>';
   };
-  return '<section class="today-card today-alerts"><header><small>AVISOS</small><h2>Últimas 36 horas</h2></header>'+rows.map(item).join('')+'</section>';
+  return '<section class="today-card today-alerts"><header><small>AVISOS</small><h2>'+(unread?unread+' sin leer':'Últimas 36 horas')+'</h2><button type="button" class="today-link" data-today-go="inbox">Ver todos ›</button></header>'+rows.map(item).join('')+'</section>';
  }
 
  function catalystsHtml(sum){
@@ -79,6 +83,6 @@
   if(go){e.preventDefault();if(typeof show==='function')show(go.dataset.todayGo)}
  });
  const refresh=()=>{if(typeof state!=='undefined'&&state.currentView==='today')render()};
- ['viewinvai:portfolio-membership-changed','viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
+ ['viewinvai:portfolio-membership-changed','viewinvai:account-ready','viewinvai:auth-changed','viewinvai:inbox-updated'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
  window.ViewInvAIToday={render};
 })();

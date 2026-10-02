@@ -13,6 +13,7 @@ const files = [
   'broker-import.js',
   'tax.js',
   'search.js',
+  'inbox.js',
   'today.js',
   'styles.css',
   'web-mobile.css',
