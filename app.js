@@ -538,6 +538,7 @@ async function load(force=false){
   }
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   rebuildMarketIndexes();
+  if(typeof reapplyMarketLive==='function')reapplyMarketLive();
   render();
   if(window.AppAlerts)window.AppAlerts.evaluate('snapshot');
   if(!uiRestoredScroll){
