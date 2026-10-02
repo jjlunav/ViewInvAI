@@ -1870,7 +1870,7 @@ async function attentionRankingResponse(env,request){
 // Every root routed by handleBackendApi (backend.js). Keep both lists in sync: a root
 // missing here falls through to the static assets and answers 404.
 const BACKEND_API_ROOTS = new Set([
-  "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends",
+  "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "watchlist",
   "analysis", "ai", "alerts", "notification-preferences", "portfolio-goal",
   "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"

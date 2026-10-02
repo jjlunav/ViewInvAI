@@ -1250,7 +1250,7 @@ const IMPORT_MAX_ROWS = 80;
 async function handleTransactionImport(request, env, user, json) {
   const body = await readJson(request);
   const portfolioId = trimText(body.portfolioId, 80);
-  const source = ["tr","ibkr","csv"].includes(String(body.source||"")) ? String(body.source) : "csv";
+  const source = ["tr","ibkr","csv","backup"].includes(String(body.source||"")) ? String(body.source) : "csv";
   const broker = trimText(body.broker, 80);
   const rows = Array.isArray(body.rows) ? body.rows.slice(0, IMPORT_MAX_ROWS) : [];
   if (!portfolioId || !rows.length) return json({ error: "portfolioId and rows are required" }, 400);
@@ -1268,6 +1268,9 @@ async function handleTransactionImport(request, env, user, json) {
     if (!externalId) { errors.push({ externalId: "", error: "Falta el identificador de la operación" }); continue; }
     const existing = await env.DB.prepare("SELECT id FROM transactions WHERE user_id=? AND external_id=? LIMIT 1").bind(user.id, externalId).first();
     if (existing) { skipped++; continue; }
+    // Restoring a backup into the account it came from: the original row is still there.
+    const originalId = source === "backup" ? trimText(row && row.originalId, 80) : "";
+    if (originalId && await env.DB.prepare("SELECT id FROM transactions WHERE user_id=? AND id=? LIMIT 1").bind(user.id, originalId).first()) { skipped++; continue; }
     const data = transactionPayload({ ...row, portfolioId, broker: broker || row.broker, positionId: "" });
     try {
       const result = await createTransactionRecord(env, user, data, {
@@ -1604,6 +1607,32 @@ async function handleTaxReport(request,env,user,json,url){
   return json(report);
 }
 
+/* ---------------- Copia de seguridad ----------------
+ * Todo lo que el usuario ha introducido, en un JSON descargable: carteras, posiciones,
+ * operaciones, dividendos, favoritos sincronizados, avisos por valor y preferencias.
+ * Nunca incluye tokens ni credenciales (el token de IBKR vive solo en el dispositivo).
+ */
+async function handleBackup(request,env,user,json){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  await ensureTransactionsSchema(env);
+  await ensureDividendsSchema(env);
+  await ensureNotificationPreferenceSchema(env);
+  await ensureUiPreferencesSchema(env);
+  const all=async(sql)=>{try{return(await env.DB.prepare(sql).bind(user.id).all()).results||[]}catch(_){return[]}};
+  const [portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences]=await Promise.all([
+    all("SELECT id,name,broker,base_currency,cash_balance,sort_order,created_at FROM portfolios WHERE user_id=? ORDER BY sort_order,created_at"),
+    all("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,active FROM positions WHERE user_id=?"),
+    all("SELECT id,portfolio_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id FROM transactions WHERE user_id=? ORDER BY executed_at,created_at"),
+    all("SELECT id,portfolio_id,external_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? ORDER BY paid_at"),
+    all("SELECT stock_key,ticker,name,exchange,isin,prefer_tr,notes FROM watchlist WHERE user_id=?"),
+    all("SELECT stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,price_above,price_below FROM notification_preferences WHERE user_id=?"),
+    all("SELECT scope,preferences_json FROM user_ui_preferences WHERE user_id=?")
+  ]);
+  const prefs={};
+  for(const r of uiPreferences){try{prefs[r.scope]=JSON.parse(r.preferences_json||"{}")}catch(_){}}
+  return json({app:"ViewInvAI",kind:"backup",version:1,exportedAt:nowIso(),portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences:prefs},200,{"Cache-Control":"no-store"});
+}
+
 /* ---------------- Dividendos y retenciones ----------------
  * Cobros de dividendos con su retención en origen (y la española si la hubo). Se
  * importan de Trade Republic (CSV) e IBKR (Flex · Cash Transactions) o se añaden a mano;
@@ -1664,6 +1693,8 @@ async function handleDividends(request,env,user,json,parts,url){
       const d=dividendFromBody(Object.assign({},raw,{portfolioId,broker:body.broker,origin:body.source||"import"}));
       if(d.error){errors.push({ticker:raw&&(raw.ticker||raw.isin)||"",error:d.error});continue}
       if(!d.externalId){errors.push({ticker:d.ticker||d.isin,error:"Falta el identificador del bróker."});continue}
+      const originalId=String(body.source||"")==="backup"?trimText(raw&&raw.originalId,80):"";
+      if(originalId&&await env.DB.prepare("SELECT id FROM dividends WHERE user_id=? AND id=?").bind(user.id,originalId).first()){skipped++;continue}
       if(await insertDividend(env,user.id,d))imported++;else skipped++;
     }
     return json({imported,skipped,errors:errors.slice(0,20)});
@@ -4087,6 +4118,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
     if (root === "tax-report") return handleTaxReport(request, env, user, json, url);
     if (root === "dividends") return handleDividends(request, env, user, json, parts, url);
+    if (root === "backup") return handleBackup(request, env, user, json);
     if (root === "portfolio-performance") return handlePortfolioPerformance(request, env, user, json, url, services);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);

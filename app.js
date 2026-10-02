@@ -439,10 +439,12 @@ function favoriteStockCard(item,preferTr){
 }
 function renderFavoritesDashboard(){
  const box=$('#favoritesDashboard');if(!box)return;
- const watch=window.ViewInvAIPortfolios?.getWatchlist?.()||[];
+ // Named list selected (Listas): show only its members.
+ const listKeys=window.ViewInvAIFavLists?.activeKeys?.()||null;
+ const watch=(window.ViewInvAIPortfolios?.getWatchlist?.()||[]).filter(x=>!listKeys||listKeys.has(String(x.stock_key)));
  const tr=watch.filter(x=>Number(x.prefer_tr)===1).map(x=>favoriteStockCard(x,true)).filter(Boolean);
  const us=watch.filter(x=>Number(x.prefer_tr)!==1).map(x=>favoriteStockCard(x,false)).filter(Boolean);
- const fundProducts=window.ViewInvAIFunds?.getFavoriteProducts?.()||[];
+ const fundProducts=(window.ViewInvAIFunds?.getFavoriteProducts?.()||[]).filter(p=>!listKeys||listKeys.has('FUND:'+p.isin));
  const fundsHtml=fundProducts.map(p=>window.ViewInvAICards.render({
   context:'favorites-funds',title:p.name||p.isin,isin:p.isin,subtitle:[p.type==='etf'?'ETF':p.type==='fund'?'Fondo indexado':p.type||'',p.provider||'',p.index||''].filter(Boolean).join(' · '),
   openAttrs:' data-fund-detail="'+E(p.isin)+'" role="button" tabindex="0"',
@@ -463,9 +465,10 @@ function renderFavoritesDashboard(){
   '<section class="favorites-market-group favorites-compact-group">'+(filter==='all'?'<header><div><span class="favorites-market-dot '+dot+'"></span><h2>'+title+'</h2></div><b>'+n+'</b></header>':'')+'<div class="favorites-market-list">'+html+'</div></section>').join('');
  box.innerHTML='<div class="market-board-source-tabs favorites-segments" role="tablist" aria-label="Filtrar favoritos">'+
    seg('all','Todos',total)+seg('tr','TR',tr.length)+seg('us','EEUU',us.length)+seg('funds','Fondos',fundProducts.length)+
-  '</div>'+(body||'<div class="favorites-group-empty favorites-empty-all"><span aria-hidden="true">☆</span>'+emptyText[filter]+'</div>');
+  '</div>'+(window.ViewInvAIFavLists?.chipsHtml?.()||'')+(body||(listKeys?'<div class="favorites-group-empty favorites-empty-all"><span aria-hidden="true">☆</span>Esta lista está vacía: pulsa ✎ para añadir favoritos.</div>':'')||'<div class="favorites-group-empty favorites-empty-all"><span aria-hidden="true">☆</span>'+emptyText[filter]+'</div>');
 }
 window.addEventListener('viewinvai:portfolio-membership-changed',()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()});
+window.addEventListener('viewinvai:favorite-lists-changed',()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()});
 window.addEventListener('viewinvai:favorite-changed',()=>setTimeout(()=>{if(document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites')renderFavoritesDashboard()},60));
 document.addEventListener('click',e=>{
  const b=e.target.closest&&e.target.closest('[data-favorites-filter]');if(!b)return;

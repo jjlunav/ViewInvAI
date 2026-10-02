@@ -29,7 +29,7 @@
   <link rel="stylesheet" href="mobile-app.css?v=20261002c1">
   <link rel="stylesheet" href="ui-density.css?v=20261002u1">
   <link rel="stylesheet" href="asset-card.css?v=20261002c1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261002u1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261002v1">
 </head>
 <body>
 <div class="app-shell">
@@ -547,6 +547,15 @@
           <div class="settings-status-row" data-source-row="fda"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
           <div class="settings-status-row" data-source-row="push" id="sourceStatusPushRow"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
         </details>
+
+        <article class="settings-card compact-settings-card backup-settings-card">
+          <div class="settings-card-head"><div><span class="settings-kicker">TUS DATOS</span><h2>Copia de seguridad</h2></div></div>
+          <div class="backup-actions">
+            <button type="button" class="btn" data-backup-download>Descargar copia</button>
+            <label class="btn ghost backup-restore"><input type="file" accept=".json,application/json" data-backup-file hidden>Restaurar copia…</label>
+          </div>
+          <div class="backup-status" data-backup-status aria-live="polite">Carteras, operaciones, dividendos, favoritos, listas y avisos en un archivo JSON. Restaurarla no duplica nada y nunca incluye contraseñas ni tokens.</div>
+        </article>
       </div>
     </section>
 
@@ -664,7 +673,7 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261002s1"></script>
-<script src="app.js?v=20261002u1"></script>
+<script src="app.js?v=20261002v1"></script>
 <script src="settings.js?v=20261002f1"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261002L1"></script>
@@ -674,7 +683,7 @@
 <script src="stock-list.js?v=20261001r25"></script>
 <script src="recommendation.js?v=20261002p1"></script>
 <script src="today.js?v=20261002u1"></script>
-<script src="help.js?v=20261002u1"></script>
+<script src="help.js?v=20261002v1"></script>
 <script src="stock-profile.js?v=20261002p1"></script>
 <script src="catalog.js?v=20261001r32"></script>
 <script src="heatmap.js?v=20260930r5"></script>
@@ -686,6 +695,8 @@
 <script src="broker-import.js?v=20261002t1"></script>
 <script src="tax.js?v=20261002t1"></script>
 <script src="inbox.js?v=20261002u1"></script>
+<script src="favlists.js?v=20261002v1"></script>
+<script src="backup.js?v=20261002v1"></script>
 <script src="search.js?v=20261002s1"></script>
 <script src="funds.js?v=20261001r8"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
