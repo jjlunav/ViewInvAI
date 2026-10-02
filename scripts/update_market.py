@@ -386,36 +386,67 @@ def tv():
 
 
 
-# Bolsas europeas en euros. Trade Republic vende miles de acciones que no cotizan en EE. UU.
-# (Bayer, LVMH, Inditex…): entran en el catálogo solo si su ISIN está en el universo oficial de TR.
-EU_MARKETS = ["germany", "france", "spain", "italy", "netherlands", "belgium", "portugal",
-              "austria", "finland", "ireland", "greece", "luxembourg"]
+# Bolsas fuera de EE. UU. Trade Republic vende miles de acciones que no cotizan en Nueva York
+# (Bayer, LVMH, Inditex, Nestlé, Toyota…): entran en el catálogo solo si su ISIN está en el
+# universo oficial de TR. En la app su precio es el de TR (LSX, en euros); el de su bolsa se
+# guarda pasado a euros como último cierre de referencia.
+TR_WORLD_MARKETS = [
+    "germany", "france", "spain", "italy", "netherlands", "belgium", "portugal", "austria",
+    "finland", "ireland", "greece", "luxembourg",
+    "uk", "switzerland", "sweden", "denmark", "norway", "poland",
+    "canada", "japan", "hongkong", "australia", "singapore", "israel", "brazil", "mexico",
+]
 EU_COLS = COLS + ["isin", "is_primary"]
+PRICE_FIELDS = ("price", "dayHigh", "dayLow", "ema20", "ema50", "atr")
+MONEY_FIELDS = ("marketCap", "enterpriseValue", "revenueTtm", "netIncomeTtm")
 
 
-def tv_europe(tr_isins, known_isins):
+def fetch_eur_rates(currencies):
+    """Unidades de cada divisa por 1 EUR (FX_IDC:EURxxx). GBX = peniques."""
+    wanted = sorted({c for c in currencies if c and c not in ("EUR", "GBX")} | ({"GBP"} if "GBX" in currencies else set()))
+    rates = {"EUR": 1.0}
+    if not wanted:
+        return rates
     headers = dict(HEADERS)
     headers["Content-Type"] = "application/json"
-    out, seen = [], set()
-    for market in EU_MARKETS:
+    payload = {"symbols": {"tickers": ["FX_IDC:EUR" + c for c in wanted], "query": {"types": []}}, "columns": ["close"]}
+    try:
+        r = requests.post(TV_FOREX_URL, json=payload, headers=headers, timeout=30)
+        r.raise_for_status()
+        for row in (r.json() or {}).get("data") or []:
+            code = str(row.get("s", ""))[-3:]
+            val = (row.get("d") or [None])[0]
+            if isinstance(val, (int, float)) and val > 0:
+                rates[code] = float(val)
+    except Exception as exc:
+        print("fx rates warning", str(exc)[:160])
+    if "GBP" in rates:
+        rates["GBX"] = rates["GBP"] * 100
+    return rates
+
+
+def tv_world(tr_isins, known_isins):
+    headers = dict(HEADERS)
+    headers["Content-Type"] = "application/json"
+    raw, seen = [], set()
+    for market in TR_WORLD_MARKETS:
         payload = {
             "filter": [
                 {"left": "type", "operation": "equal", "right": "stock"},
                 {"left": "is_primary", "operation": "equal", "right": True},
-                {"left": "currency", "operation": "equal", "right": "EUR"},
             ],
             "options": {"lang": "en"},
             "markets": [market],
             "columns": EU_COLS,
             "sort": {"sortBy": "name", "sortOrder": "asc"},
-            "range": [0, 5000],
+            "range": [0, 10000],
         }
         try:
             r = requests.post(f"https://scanner.tradingview.com/{market}/scan", json=payload, headers=headers, timeout=90)
             r.raise_for_status()
             rows = r.json().get("data") or []
         except Exception as exc:
-            print("tradingview europe warning", market, str(exc)[:160])
+            print("tradingview world warning", market, str(exc)[:160])
             continue
         kept = 0
         for row in rows:
@@ -425,26 +456,45 @@ def tv_europe(tr_isins, known_isins):
             if not sym or ":" not in sym or not isin or isin not in tr_isins or isin in known_isins or isin in seen:
                 continue
             seen.add(isin)
-            ex, ticker = sym.split(":", 1)
-            stock = tv_row(sym, ex, ticker, d)
-            stock.update({
-                "currency": "EUR",
-                "region": "eu",
-                "isin": isin,
-                "trIsin": isin,
-                "instrumentLinkStatus": "same_isin",
-                "isinLinkVerified": True,
-                "tradeRepublicVerified": True,
-                "tradeRepublicCandidate": True,
-            })
-            # Sin preapertura/posmercado de EE. UU. en estas bolsas.
-            for key in [k for k in stock if k.startswith(("premarket", "postmarket"))]:
-                stock.pop(key, None)
-            out.append(stock)
+            raw.append((sym, d, isin))
             kept += 1
-        print("TradingView", market, "rows", len(rows), "TR stocks added", kept)
-    return out
+        print("TradingView", market, "rows", len(rows), "TR stocks", kept)
 
+    rates = fetch_eur_rates({str(d.get("currency") or "").upper() for _, d, _ in raw})
+    out = []
+    for sym, d, isin in raw:
+        ex, ticker = sym.split(":", 1)
+        stock = tv_row(sym, ex, ticker, d)
+        local = str(d.get("currency") or "EUR").upper()
+        rate = rates.get(local)
+        if rate is None:
+            continue  # sin cambio fiable: mejor fuera que con un precio falso
+        if local != "EUR":
+            for key in PRICE_FIELDS:
+                if isinstance(stock.get(key), (int, float)):
+                    stock[key] = round(stock[key] / rate, 6)
+            fund_cur = str(d.get("fundamental_currency_code") or local).upper()
+            frate = rates.get(fund_cur)
+            for key in MONEY_FIELDS:
+                if isinstance(stock.get(key), (int, float)):
+                    stock[key] = round(stock[key] / frate) if frate else None
+            if frate:
+                stock["fundamentalCurrency"] = "EUR"
+            stock["localCurrency"] = local
+        stock.update({
+            "currency": "EUR",
+            "region": "intl",
+            "isin": isin,
+            "trIsin": isin,
+            "instrumentLinkStatus": "same_isin",
+            "isinLinkVerified": True,
+            "tradeRepublicVerified": True,
+            "tradeRepublicCandidate": True,
+        })
+        for key in [k for k in stock if k.startswith(("premarket", "postmarket", "usBid", "usAsk"))]:
+            stock.pop(key, None)
+        out.append(stock)
+    return out
 
 def clean_tv_text(value):
     return re.sub(r"</?em>", "", str(value or "")).strip()
@@ -1826,16 +1876,16 @@ def main():
     same_isin, different_isin, unresolved_isin = verify_us_isins(stocks, previous)
     sec_cik_count, sec_map_refreshed = attach_sec_ciks(stocks, previous)
 
-    eu_count = 0
+    intl_count = 0
     if idx:
         tr_isins = {isin for rows in idx.values() for isin, _ in rows}
         known = {str(s.get(k) or "").upper() for s in stocks for k in ("isin", "trIsin", "usIsin") if s.get(k)}
-        eu_stocks = tv_europe(tr_isins, known)
-        attach_previous_snapshot(eu_stocks, previous, now)
-        stocks.extend(eu_stocks)
-        eu_count = len(eu_stocks)
-        matched += eu_count
-        print("TR European stocks added:", eu_count)
+        intl_stocks = tv_world(tr_isins, known)
+        attach_previous_snapshot(intl_stocks, previous, now)
+        stocks.extend(intl_stocks)
+        intl_count = len(intl_stocks)
+        matched += intl_count
+        print("TR stocks outside the US added:", intl_count)
 
     tr_meta = fetch_tr_metadata(stocks, previous)
     tr_ticker_count = 0
@@ -1854,7 +1904,7 @@ def main():
         s["tradeRepublicTradable"] = bool(
             s.get("tradeRepublicVerified")
             and s.get("trIsin")
-            and (s.get("trTicker") or s.get("region") == "eu")
+            and (s.get("trTicker") or s.get("region") == "intl")
             and s.get("trActive", True) is not False
         )
         if s["tradeRepublicTradable"]:
@@ -1920,6 +1970,7 @@ def main():
             "totalProvider": total,
             "trOfficialCount": tr_count,
             "trMatchedCount": matched,
+            "trInternationalCount": intl_count,
             "trTickerCount": tr_ticker_count,
             "trTradableCount": tr_tradable_count,
             "sameIsinCount": same_isin,

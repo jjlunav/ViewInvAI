@@ -540,7 +540,7 @@ async function refreshProfileLiveEvents(s){
 }
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
- let isTr=(requested||euListing(s))&&trTradable(s),se=currentMarketSession();
+ let isTr=(requested||intlListing(s))&&trTradable(s),se=currentMarketSession();
  return profileStickyShellHtml(s,isTr,{backKind:'quick'})+
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+

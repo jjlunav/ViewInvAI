@@ -216,7 +216,7 @@ async function loadMiniChart(el){
  // Availability of the selector is structural: a verified TR instrument should
  // be selectable immediately. Historical data is fetched only when LSX is the
  // active market, so opening a US chart never waits on Trade Republic.
- let usAvailable=!!tradingViewChartSymbol(s,false)&&!euListing(s);
+ let usAvailable=!!tradingViewChartSymbol(s,false)&&!intlListing(s);
  let trAvailable=!!(trTradable(s)&&trIsin(s));
  let preferTr=block.dataset.chartPreferTr==='1';
  let market=preferTr&&trAvailable?'tr':usAvailable?'us':trAvailable?'tr':'';

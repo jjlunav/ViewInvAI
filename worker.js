@@ -1238,8 +1238,8 @@ async function loadMarketSnapshotForBackend(env) {
 }
 
 async function loadQuoteForBackend(stock,target){
-  // Acciones europeas del universo de TR: no cotizan en Nasdaq.
-  if((target&&Number(target.prefer_tr)===1)||(stock&&stock.region==="eu")){
+  // Acciones de TR que no cotizan en EE. UU.: no están en Nasdaq.
+  if((target&&Number(target.prefer_tr)===1)||(stock&&stock.region==="intl")){
     const isin=String((target&&target.isin)||(stock&&stock.trIsin)||(stock&&stock.isin)||"").trim().toUpperCase();
     if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return null;
     return fetchTradeRepublicTicker(isin,"LSX");
@@ -1251,7 +1251,7 @@ async function loadQuoteForBackend(stock,target){
 }
 
 async function loadChartForBackend(stock, target) {
-  const preferTr = (target && Number(target.prefer_tr) === 1) || (stock && stock.region === "eu");
+  const preferTr = (target && Number(target.prefer_tr) === 1) || (stock && stock.region === "intl");
   const isin = String((target && target.isin) || (stock && stock.trIsin) || (stock && stock.isin) || "").trim().toUpperCase();
   if (preferTr && /^[A-Z]{2}[A-Z0-9]{10}$/.test(isin)) {
     return fetchTradeRepublicHistory(isin, "LSX", "1d", 60000);
