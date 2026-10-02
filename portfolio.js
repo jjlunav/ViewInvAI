@@ -796,6 +796,26 @@ document.addEventListener('click',event=>{
   if(retry){event.preventDefault();loadPortfolioPerformance(retry.dataset.pfPerfRetry,true)}
 });
 
+// Same value twice in one portfolio: usually the position typed by hand plus the one
+// imported from the broker. One tap keeps the broker history.
+function portfolioDuplicatesHtml(selected, positions) {
+  if (!selected || !positions || positions.length < 2) return '';
+  const seen = new Map();
+  positions.forEach(p => {
+    const stock = stockByKey(p.stock_key) || {};
+    const ref = String(p.isin || stock.isin || stock.trIsin || p.stock_key || '').toUpperCase();
+    if (!ref) return;
+    if (!seen.has(ref)) seen.set(ref, []);
+    seen.get(ref).push(p);
+  });
+  const dup = [...seen.values()].filter(list => list.length > 1);
+  if (!dup.length) return '';
+  const names = dup.map(list => list[0].ticker || stockByKey(list[0].stock_key)?.ticker || list[0].stock_key);
+  return '<div class="portfolio-dup-banner" role="status"><div><strong>' + dup.length + (dup.length === 1 ? ' valor aparece dos veces' : ' valores aparecen dos veces') + '</strong>' +
+    '<span>' + esc(names.slice(0, 6).join(', ')) + (names.length > 6 ? '…' : '') + ': lo que apuntaste a mano y lo importado del bróker.</span></div>' +
+    '<button type="button" class="btn small" data-portfolio-dedupe="' + esc(selected.id) + '">Quedarme con el historial del bróker</button></div>';
+}
+
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
     return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
@@ -805,7 +825,7 @@ function portfolioContextHtml(selected, positions) {
     const rows = positions.length
       ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
-    return summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
+    return portfolioDuplicatesHtml(selected, positions) + summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
       positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
@@ -2951,6 +2971,20 @@ function bind() {
 
     if (event.target.closest?.("#newPortfolioButton,[data-new-portfolio]")) {
       openNewPortfolioModal();
+      return;
+    }
+
+    const dedupe = event.target.closest?.("[data-portfolio-dedupe]");
+    if (dedupe) {
+      dedupe.disabled = true; dedupe.textContent = "Limpiando…";
+      try {
+        const res = await api("/api/portfolios/" + encodeURIComponent(dedupe.dataset.portfolioDedupe) + "/dedupe", { method: "POST", body: "{}" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "No se pudo limpiar la cartera.");
+        toast(data.removed ? "Quitados " + data.removed + " apuntes manuales repetidos" : "No había apuntes manuales que quitar: revisa si tienes la misma posición importada dos veces.");
+        await loadAll();
+        if (window.ViewInvAITax) window.ViewInvAITax._invalidate();
+      } catch (error) { toast(error.message || "No se pudo limpiar la cartera.", true); dedupe.disabled = false; dedupe.textContent = "Reintentar"; }
       return;
     }
 

@@ -798,9 +798,10 @@
  function ensureModal(){
   let backdrop=q('#fundModalBackdrop'),modal=q('#fundModal');
   if(backdrop&&modal)return modal;
-  backdrop=document.createElement('div');backdrop.id='fundModalBackdrop';backdrop.className='portfolio-modal-backdrop';backdrop.setAttribute('aria-hidden','true');
-  modal=document.createElement('section');modal.id='fundModal';modal.className='portfolio-modal';modal.setAttribute('aria-hidden','true');
-  modal.innerHTML='<div class="portfolio-modal-card"><div class="portfolio-modal-head"><h2 id="fundModalTitle">Fondos</h2><button type="button" data-fund-modal-close aria-label="Cerrar">×</button></div><div id="fundModalBody"></div></div>';
+  // Same sheet as the stock portfolio modal (#portfolioModal): app-modal styles.
+  backdrop=document.createElement('div');backdrop.id='fundModalBackdrop';backdrop.className='app-modal-backdrop';backdrop.setAttribute('aria-hidden','true');
+  modal=document.createElement('section');modal.id='fundModal';modal.className='app-modal';modal.setAttribute('aria-hidden','true');modal.setAttribute('aria-label','Fondos');
+  modal.innerHTML='<div class="app-modal-head"><strong id="fundModalTitle">Fondos</strong><button type="button" data-fund-modal-close aria-label="Cerrar">×</button></div><div id="fundModalBody" class="app-modal-body"></div>';
   document.body.append(backdrop,modal);return modal;
  }
  function closeModal(){
