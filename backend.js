@@ -2647,8 +2647,9 @@ export function detectSavingsPlans(rows,nowMs=Date.now()){
     all.sort((a,b)=>a.t-b.t);
     // Rows the broker marks as plan executions; otherwise infer the plan from regular
     // buys: at least 3, evenly spaced (6-100 days) and of an almost fixed amount.
+    // A single execution the broker labels as plan is enough (a plan started last month).
     const flagged=all.filter(x=>x.plan);
-    let list=flagged.length>=2?flagged:null;
+    let list=flagged.length>=1?flagged:null;
     if(!list){
       const recent=all.slice(-6);
       if(recent.length<3)continue;
@@ -2664,7 +2665,7 @@ export function detectSavingsPlans(rows,nowMs=Date.now()){
     const recent=list.slice(-4);
     const gaps=[];for(let i=1;i<recent.length;i++)gaps.push((recent[i].t-recent[i-1].t)/864e5);
     const gap=median(gaps);
-    const frequency=gap<10?"weekly":gap>70&&gap<120?"quarterly":"monthly";
+    const frequency=!Number.isFinite(gap)?"monthly":gap<10?"weekly":gap>70&&gap<120?"quarterly":"monthly";
     const days=recent.map(x=>new Date(x.t).getUTCDate());
     const day=days.sort((a,b)=>days.filter(v=>v===b).length-days.filter(v=>v===a).length)[0];
     out.push({isin,amount:Math.round(median(recent.map(x=>x.amount))*100)/100,currency:last.currency,frequency,dayOfMonth:day,count:list.length,lastAt:new Date(last.t).toISOString()});
@@ -2731,7 +2732,7 @@ async function handleFundTransactionImport(request,env,user,json){
         continue;
       }
       await env.DB.prepare("INSERT INTO fund_contribution_plans (id,fund_portfolio_id,fund_position_id,user_id,isin,label,kind,amount,currency,day_of_month,frequency,start_date,status,next_contribution_at,enabled,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(uid("fplan_"),portfolio.id,pos.id,user.id,plan.isin,"Plan "+(platform||"")+" · "+String(pos.name||plan.isin).slice(0,80),"monthly",plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,plan.lastAt.slice(0,10),"active",next,1,"Detectado en la importación ("+plan.count+" ejecuciones)",now,now).run();
+        .bind(uid("fplan_"),portfolio.id,pos.id,user.id,plan.isin,"Plan "+(platform||"")+" · "+String(pos.name||plan.isin).slice(0,80),"monthly",plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,plan.lastAt.slice(0,10),"active",next,1,"Detectado en la importación ("+plan.count+(plan.count===1?" ejecución)":" ejecuciones)"),now,now).run();
       plans++;
     }
   }
