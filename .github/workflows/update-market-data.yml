@@ -3,7 +3,9 @@ name: Actualizar datos de mercado
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    # The Cloudflare Worker dispatches this workflow on a market-session schedule
+    # (GITHUB_DISPATCH_TOKEN). This cron is only a fallback if that token expires.
+    - cron: "17 */3 * * *"
   push:
     branches: [main]
     paths:
@@ -16,7 +18,8 @@ permissions:
 
 concurrency:
   group: market-data
-  cancel-in-progress: true
+  # Never throw away a run that is already halfway: a new trigger waits instead.
+  cancel-in-progress: false
 
 jobs:
   update:
