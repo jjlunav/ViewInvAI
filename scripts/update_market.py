@@ -271,6 +271,63 @@ def match_tr_by_own_isin(stocks, idx, previous, limit=1500):
     return matched, looked
 
 
+def tv_row(sym, ex, ticker, d):
+    return {
+        "tvSymbol": sym,
+        "ticker": ticker,
+        "name": d.get("description") or ticker,
+        "instrumentType": d.get("type") or "stock",
+        "exchange": d.get("exchange") or ex,
+        "currency": d.get("currency") or "USD",
+        "sector": d.get("sector"),
+        "industry": d.get("industry"),
+        "marketCap": d.get("market_cap_basic"),
+        "price": d.get("close"),
+        "changePct": d.get("change"),
+        "dayHigh": d.get("high"),
+        "dayLow": d.get("low"),
+        "usBid": d.get("bid"),
+        "usAsk": d.get("ask"),
+        "volume": d.get("volume"),
+        "avgVolume": d.get("average_volume_10d_calc"),
+        "relVolume": d.get("relative_volume_10d_calc"),
+        "premarketPrice": d.get("premarket_close"),
+        "premarketChangePct": d.get("premarket_change"),
+        "premarketVolume": d.get("premarket_volume"),
+        "premarketTime": d.get("premarket_time"),
+        "postmarketPrice": d.get("postmarket_close"),
+        "postmarketChangePct": d.get("postmarket_change"),
+        "postmarketVolume": d.get("postmarket_volume"),
+        "postmarketTime": d.get("postmarket_time"),
+        "rsi": d.get("RSI"),
+        "adx": d.get("ADX"),
+        "atr": d.get("ATR"),
+        "ema20": d.get("EMA20"),
+        "ema50": d.get("EMA50"),
+        "perfWeek": d.get("Perf.W"),
+        "perfMonth": d.get("Perf.1M"),
+        "perf3M": d.get("Perf.3M"),
+        "perf6M": d.get("Perf.6M"),
+        "perfYtd": d.get("Perf.YTD"),
+        "perf1Y": d.get("Perf.1Y"),
+        "peRatio": d.get("price_earnings_ttm"),
+        "epsDilutedTtm": d.get("earnings_per_share_diluted_ttm"),
+        "dividendYield": d.get("dividends_yield_current"),
+        "beta1Y": d.get("beta_1_year"),
+        "sharesOutstanding": d.get("total_shares_outstanding"),
+        "revenueTtm": d.get("total_revenue"),
+        "netIncomeTtm": d.get("net_income_ttm"),
+        "priceBook": d.get("price_book_fq"),
+        "enterpriseValue": d.get("enterprise_value_fq"),
+        "fundamentalCurrency": d.get("fundamental_currency_code"),
+        "earningsDate": d.get("earnings_release_next_date") or d.get("earnings_release_next_calendar_date") or d.get("earnings_release_next_trading_date_fq"),
+        "earningsCalendarDate": d.get("earnings_release_next_calendar_date"),
+        "earningsTimeCode": d.get("earnings_release_next_time"),
+        "updateMode": d.get("update_mode"),
+        "lastBarUpdateTime": d.get("last_bar_update_time"),
+    }
+
+
 def tv():
     # Do not restrict to is_primary. US pre-market leaderboards also contain
     # ADRs / secondary US listings, and excluding them drops real movers.
@@ -324,62 +381,69 @@ def tv():
         else:
             ex, ticker = d.get("exchange") or "", d.get("name") or sym
 
-        out.append({
-            "tvSymbol": sym,
-            "ticker": ticker,
-            "name": d.get("description") or ticker,
-            "instrumentType": d.get("type") or "stock",
-            "exchange": d.get("exchange") or ex,
-            "currency": d.get("currency") or "USD",
-            "sector": d.get("sector"),
-            "industry": d.get("industry"),
-            "marketCap": d.get("market_cap_basic"),
-            "price": d.get("close"),
-            "changePct": d.get("change"),
-            "dayHigh": d.get("high"),
-            "dayLow": d.get("low"),
-            "usBid": d.get("bid"),
-            "usAsk": d.get("ask"),
-            "volume": d.get("volume"),
-            "avgVolume": d.get("average_volume_10d_calc"),
-            "relVolume": d.get("relative_volume_10d_calc"),
-            "premarketPrice": d.get("premarket_close"),
-            "premarketChangePct": d.get("premarket_change"),
-            "premarketVolume": d.get("premarket_volume"),
-            "premarketTime": d.get("premarket_time"),
-            "postmarketPrice": d.get("postmarket_close"),
-            "postmarketChangePct": d.get("postmarket_change"),
-            "postmarketVolume": d.get("postmarket_volume"),
-            "postmarketTime": d.get("postmarket_time"),
-            "rsi": d.get("RSI"),
-            "adx": d.get("ADX"),
-            "atr": d.get("ATR"),
-            "ema20": d.get("EMA20"),
-            "ema50": d.get("EMA50"),
-            "perfWeek": d.get("Perf.W"),
-            "perfMonth": d.get("Perf.1M"),
-            "perf3M": d.get("Perf.3M"),
-            "perf6M": d.get("Perf.6M"),
-            "perfYtd": d.get("Perf.YTD"),
-            "perf1Y": d.get("Perf.1Y"),
-            "peRatio": d.get("price_earnings_ttm"),
-            "epsDilutedTtm": d.get("earnings_per_share_diluted_ttm"),
-            "dividendYield": d.get("dividends_yield_current"),
-            "beta1Y": d.get("beta_1_year"),
-            "sharesOutstanding": d.get("total_shares_outstanding"),
-            "revenueTtm": d.get("total_revenue"),
-            "netIncomeTtm": d.get("net_income_ttm"),
-            "priceBook": d.get("price_book_fq"),
-            "enterpriseValue": d.get("enterprise_value_fq"),
-            "fundamentalCurrency": d.get("fundamental_currency_code"),
-            "earningsDate": d.get("earnings_release_next_date") or d.get("earnings_release_next_calendar_date") or d.get("earnings_release_next_trading_date_fq"),
-            "earningsCalendarDate": d.get("earnings_release_next_calendar_date"),
-            "earningsTimeCode": d.get("earnings_release_next_time"),
-            "updateMode": d.get("update_mode"),
-            "lastBarUpdateTime": d.get("last_bar_update_time"),
-        })
+        out.append(tv_row(sym, ex, ticker, d))
     return out, total
 
+
+
+# Bolsas europeas en euros. Trade Republic vende miles de acciones que no cotizan en EE. UU.
+# (Bayer, LVMH, Inditex…): entran en el catálogo solo si su ISIN está en el universo oficial de TR.
+EU_MARKETS = ["germany", "france", "spain", "italy", "netherlands", "belgium", "portugal",
+              "austria", "finland", "ireland", "greece", "luxembourg"]
+EU_COLS = COLS + ["isin", "is_primary"]
+
+
+def tv_europe(tr_isins, known_isins):
+    headers = dict(HEADERS)
+    headers["Content-Type"] = "application/json"
+    out, seen = [], set()
+    for market in EU_MARKETS:
+        payload = {
+            "filter": [
+                {"left": "type", "operation": "equal", "right": "stock"},
+                {"left": "is_primary", "operation": "equal", "right": True},
+                {"left": "currency", "operation": "equal", "right": "EUR"},
+            ],
+            "options": {"lang": "en"},
+            "markets": [market],
+            "columns": EU_COLS,
+            "sort": {"sortBy": "name", "sortOrder": "asc"},
+            "range": [0, 5000],
+        }
+        try:
+            r = requests.post(f"https://scanner.tradingview.com/{market}/scan", json=payload, headers=headers, timeout=90)
+            r.raise_for_status()
+            rows = r.json().get("data") or []
+        except Exception as exc:
+            print("tradingview europe warning", market, str(exc)[:160])
+            continue
+        kept = 0
+        for row in rows:
+            d = dict(zip(EU_COLS, row.get("d") or []))
+            sym = row.get("s", "")
+            isin = str(d.get("isin") or "").strip().upper()
+            if not sym or ":" not in sym or not isin or isin not in tr_isins or isin in known_isins or isin in seen:
+                continue
+            seen.add(isin)
+            ex, ticker = sym.split(":", 1)
+            stock = tv_row(sym, ex, ticker, d)
+            stock.update({
+                "currency": "EUR",
+                "region": "eu",
+                "isin": isin,
+                "trIsin": isin,
+                "instrumentLinkStatus": "same_isin",
+                "isinLinkVerified": True,
+                "tradeRepublicVerified": True,
+                "tradeRepublicCandidate": True,
+            })
+            # Sin preapertura/posmercado de EE. UU. en estas bolsas.
+            for key in [k for k in stock if k.startswith(("premarket", "postmarket"))]:
+                stock.pop(key, None)
+            out.append(stock)
+            kept += 1
+        print("TradingView", market, "rows", len(rows), "TR stocks added", kept)
+    return out
 
 
 def clean_tv_text(value):
@@ -1762,6 +1826,17 @@ def main():
     same_isin, different_isin, unresolved_isin = verify_us_isins(stocks, previous)
     sec_cik_count, sec_map_refreshed = attach_sec_ciks(stocks, previous)
 
+    eu_count = 0
+    if idx:
+        tr_isins = {isin for rows in idx.values() for isin, _ in rows}
+        known = {str(s.get(k) or "").upper() for s in stocks for k in ("isin", "trIsin", "usIsin") if s.get(k)}
+        eu_stocks = tv_europe(tr_isins, known)
+        attach_previous_snapshot(eu_stocks, previous, now)
+        stocks.extend(eu_stocks)
+        eu_count = len(eu_stocks)
+        matched += eu_count
+        print("TR European stocks added:", eu_count)
+
     tr_meta = fetch_tr_metadata(stocks, previous)
     tr_ticker_count = 0
     tr_tradable_count = 0
@@ -1779,7 +1854,7 @@ def main():
         s["tradeRepublicTradable"] = bool(
             s.get("tradeRepublicVerified")
             and s.get("trIsin")
-            and s.get("trTicker")
+            and (s.get("trTicker") or s.get("region") == "eu")
             and s.get("trActive", True) is not False
         )
         if s["tradeRepublicTradable"]:

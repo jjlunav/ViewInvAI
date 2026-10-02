@@ -630,6 +630,44 @@ async function fetchNasdaqQuote(symbol) {
   finally { nasdaqQuoteInflight.delete(safe); }
 }
 
+// Buscador de fondos: universo público de Morningstar España (fondos registrados para la venta en
+// España, donde están los que ofrece MyInvestor). Solo lectura, sin credenciales, con caché de 12 h.
+const MS_FUND_SCREENER = "https://lt.morningstar.com/api/rest.svc/klr5zyak8x/security/screener";
+async function fundSearch(request, ctx) {
+  const url = new URL(request.url);
+  const q = String(url.searchParams.get("q") || "").replace(/[^\p{L}\p{N} &.,'()\/-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (q.length < 3) return jsonResponse({ results: [], error: "Escribe al menos 3 caracteres" }, 400, { "Cache-Control": "no-store" });
+  const cacheKey = new Request("https://cache.viewinvai.local/fund-search?q=" + encodeURIComponent(q.toLowerCase()));
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  if (cache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
+  const isin = /^[A-Za-z]{2}[A-Za-z0-9]{9}[0-9]$/.test(q) ? q.toUpperCase() : "";
+  const params = new URLSearchParams({ outputType: "json", version: "1", languageId: "es-ES", currencyId: "EUR", universeIds: "FOESP$$ALL",
+    securityDataPoints: "SecId|Name|isin|OngoingCharge|ClosePrice|ClosePriceDate|ReturnM12|ReturnM36|ReturnM60|CategoryName|BrandingCompanyName",
+    page: "1", pageSize: "30" });
+  if (isin) params.set("filters", "ISIN:IN:" + isin); else params.set("term", q);
+  let rows = [];
+  try {
+    const res = await fetch(MS_FUND_SCREENER + "?" + params.toString(), { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0 ViewInvAI" }, signal: AbortSignal.timeout(9000) });
+    if (!res.ok) throw new Error("Morningstar " + res.status);
+    const data = await res.json();
+    rows = (data && data.rows || []).map(r => ({
+      isin: String(r.isin || "").toUpperCase(), name: String(r.Name || "").slice(0, 160),
+      provider: String(r.BrandingCompanyName || "").slice(0, 80), category: String(r.CategoryName || "").slice(0, 80),
+      ter: Number.isFinite(Number(r.OngoingCharge)) && r.OngoingCharge !== null ? Number(r.OngoingCharge) : null,
+      nav: Number.isFinite(Number(r.ClosePrice)) && r.ClosePrice !== null ? Number(r.ClosePrice) : null,
+      navDate: String(r.ClosePriceDate || "").slice(0, 20) || null,
+      perf1Y: Number.isFinite(Number(r.ReturnM12)) && r.ReturnM12 !== null ? Number(r.ReturnM12) : null,
+      perf3Y: Number.isFinite(Number(r.ReturnM36)) && r.ReturnM36 !== null ? Number(r.ReturnM36) : null,
+      perf5Y: Number.isFinite(Number(r.ReturnM60)) && r.ReturnM60 !== null ? Number(r.ReturnM60) : null
+    })).filter(r => /^[A-Z]{2}[A-Z0-9]{10}$/.test(r.isin));
+  } catch (error) {
+    return jsonResponse({ results: [], error: "El buscador de Morningstar no responde ahora" }, 502, { "Cache-Control": "no-store" });
+  }
+  const response = jsonResponse({ results: rows, source: "Morningstar · fondos registrados en España", fetchedAt: new Date().toISOString() }, 200, { "Cache-Control": "public, max-age=43200" });
+  if (cache && ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
 async function nasdaqQuotes(request) {
   const url = new URL(request.url);
   const rawSymbols = url.searchParams.get("symbols") || "";
@@ -1200,7 +1238,8 @@ async function loadMarketSnapshotForBackend(env) {
 }
 
 async function loadQuoteForBackend(stock,target){
-  if(target&&Number(target.prefer_tr)===1){
+  // Acciones europeas del universo de TR: no cotizan en Nasdaq.
+  if((target&&Number(target.prefer_tr)===1)||(stock&&stock.region==="eu")){
     const isin=String((target&&target.isin)||(stock&&stock.trIsin)||(stock&&stock.isin)||"").trim().toUpperCase();
     if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return null;
     return fetchTradeRepublicTicker(isin,"LSX");
@@ -1212,7 +1251,7 @@ async function loadQuoteForBackend(stock,target){
 }
 
 async function loadChartForBackend(stock, target) {
-  const preferTr = target && Number(target.prefer_tr) === 1;
+  const preferTr = (target && Number(target.prefer_tr) === 1) || (stock && stock.region === "eu");
   const isin = String((target && target.isin) || (stock && stock.trIsin) || (stock && stock.isin) || "").trim().toUpperCase();
   if (preferTr && /^[A-Z]{2}[A-Z0-9]{10}$/.test(isin)) {
     return fetchTradeRepublicHistory(isin, "LSX", "1d", 60000);
@@ -1907,7 +1946,7 @@ async function dispatchMarketUpdate(env){
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
@@ -1925,6 +1964,7 @@ export default {
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/fund-search")limited=await enforcedRateLimit(request,env,"fund-search",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-health")limited=await enforcedRateLimit(request,env,"tr-health",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-live")limited=await enforcedRateLimit(request,env,"tr-live",30,60000,"MARKET_RATE_LIMITER");
@@ -1981,6 +2021,10 @@ export default {
         console.warn("Live stock events upstream error", String(error && error.message || error));
         return nativeCorsResponse(request, jsonResponse({ error: "Live stock events unavailable" }, 502, { "Cache-Control": "no-store" }));
       }
+    }
+    if (url.pathname === "/api/fund-search") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await fundSearch(request, ctx));
     }
     if (url.pathname === "/api/fx-live") {
       const guard = requestGuard(request); if (guard) return guard;

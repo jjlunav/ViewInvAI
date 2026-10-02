@@ -19,3 +19,4 @@ from collections import Counter
 print(Counter(s["exchange"] for s in eu))
 left = len(tr_isins - known - {s["isin"] for s in eu})
 print("TR ISINs still outside catalog (ETFs, other currencies, etc.)", left)
+# rerun
