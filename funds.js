@@ -190,8 +190,9 @@
     else return;
     const payload=JSON.parse(full||'{}'),price=num(payload.last&&payload.last.price);
     if(price!==null){
-     fundLive.quotes.set(isin,{price,bid:num(payload.bid&&payload.bid.price),ask:num(payload.ask&&payload.ask.price),receivedAt:Date.now()});
+     fundLive.quotes.set(isin,{price,bid:num(payload.bid&&payload.bid.price),ask:num(payload.ask&&payload.ask.price),prev:num(payload.pre&&payload.pre.price),receivedAt:Date.now()});
      refreshFundLiveDom(isin);
+     root.dispatchEvent&&root.dispatchEvent(new CustomEvent('viewinvai:tr-isin-quote',{detail:{isin}}));
     }
    }catch(_){}
   };
@@ -1259,5 +1260,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
+ root.ViewInvAIFunds={subscribeIsin:subscribeFund,getLiveQuote:liveQuote,init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
 })(window);
