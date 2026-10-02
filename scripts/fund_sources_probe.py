@@ -265,5 +265,22 @@ def myinvestor_api3():
     except urllib.error.HTTPError as e:
         print("400 body:", e.read()[:600])
 
-for title, fn in [("MyInvestor API 3", myinvestor_api3)]:
+
+def updater_dry_run():
+    import sys
+    sys.path.insert(0, "scripts")
+    import update_funds as u
+    funds = u.tr_mutual_funds()
+    print("total", len(funds), "sample", [(f["isin"], f["name"], f["provider"], f["region"]) for f in funds[:5]])
+    want = {"IE00BYWYCC39", "IE00BYX5MX67"}
+    print("user funds present:", [f["isin"] for f in funds if f["isin"] in want])
+    subset = [f for f in funds if f["isin"] in want] + funds[:150]
+    n = u.enrich_morningstar_funds(subset)
+    print("morningstar enriched", n, "of", len(subset), "with ter", sum(1 for f in subset if f.get("ter") is not None))
+    for f in subset[:4]:
+        print("  ", f["isin"], f["name"], "TER", f.get("ter"), "NAV", f.get("nav"), f.get("valueDate"), "1Y", f.get("perf1Y"), "3Y", f.get("perf3Y"), f.get("category"))
+    p, ok = u.enrich_one_tr_product(dict(subset[0]))
+    print("TR VST history", ok, p.get("nav"), p.get("valueDate"), p.get("perf1Y"))
+
+for title, fn in [("Actualizador (prueba en seco)", updater_dry_run), ("MyInvestor API 3", myinvestor_api3)]:
     try_(title, fn)
