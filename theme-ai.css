@@ -535,3 +535,34 @@ html[data-theme="light"] .select-sheet-backdrop{background:rgba(20,30,50,.32)}
 html[data-theme="light"] .select-sheet-panel{background:#fbfcff;border-color:var(--pq-line,#dfe5f1);color:var(--pq-text,#15203a);box-shadow:0 -14px 40px rgba(30,40,80,.18)}
 html[data-theme="light"] .select-sheet-option{background:rgba(20,40,90,.035)}
 html[data-theme="light"] .select-sheet-option.selected{background:linear-gradient(90deg,rgba(79,70,229,.10),rgba(13,148,136,.08))}
+
+/* Radar AI · lista por mercado coloreada por nivel. */
+:root{--tier-high:#a593ff;--tier-opp:#e3b84d;--tier-watch:#6fa3b6}
+html[data-theme="light"]:root{--tier-high:#4f46e5;--tier-opp:#b7791f;--tier-watch:#5b7083}
+html:root:root body #view-recommendation .radar-list-shell{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)!important;max-width:980px}
+html:root:root body #view-recommendation .radar-market-tabs{margin:0!important}
+html:root:root body #view-recommendation .radar-list-meta{font-size:13px;color:var(--muted,#8ea0bf);padding:0 2px}
+html:root:root body #view-recommendation .radar-tier-filter{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px 1px 2px}
+html:root:root body #view-recommendation .radar-tier-filter::-webkit-scrollbar{display:none}
+html:root:root body .radar-tier-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--qg-line,rgba(140,170,255,.2));background:rgba(255,255,255,.03);color:inherit;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+html:root:root body .radar-tier-chip i{width:9px;height:9px;border-radius:50%;background:var(--muted,#8ea0bf)}
+html:root:root body .radar-tier-chip b{font-size:12px;opacity:.75;font-variant-numeric:tabular-nums}
+html:root:root body .radar-tier-chip-high i{background:var(--tier-high);box-shadow:0 0 8px var(--tier-high)}
+html:root:root body .radar-tier-chip-opportunity i{background:var(--tier-opp)}
+html:root:root body .radar-tier-chip-watch i{background:var(--tier-watch)}
+html:root:root body .radar-tier-chip-all i{background:linear-gradient(135deg,var(--tier-high),var(--tier-opp),var(--tier-watch))}
+html:root:root body .radar-tier-chip.active{border-color:var(--ai-1,#8b7bff);background:linear-gradient(90deg,rgba(139,123,255,.2),rgba(45,212,191,.1))}
+html[data-theme="light"]:root:root body .radar-tier-chip{border-color:var(--pq-line,#dde3ee);background:#fff;color:var(--pq-text,#0f1e3a)}
+html:root:root body #view-recommendation .radar-list{display:grid;gap:8px}
+html:root:root body #view-recommendation .radar-list .radar-ai-card{--tier:var(--tier-watch);position:relative;overflow:hidden;border-color:color-mix(in srgb,var(--tier) 45%,transparent)!important;background-image:linear-gradient(100deg,color-mix(in srgb,var(--tier) 16%,transparent),transparent 62%)!important}
+html:root:root body #view-recommendation .radar-list .radar-ai-card::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:4px;border-radius:0 4px 4px 0;background:var(--tier);box-shadow:0 0 10px color-mix(in srgb,var(--tier) 60%,transparent)}
+html:root:root body #view-recommendation .radar-list .radar-ai-card-high{--tier:var(--tier-high)}
+html:root:root body #view-recommendation .radar-list .radar-ai-card-opportunity{--tier:var(--tier-opp)}
+html:root:root body #view-recommendation .radar-list .radar-ai-card-watch{--tier:var(--tier-watch)}
+html:root:root body #view-recommendation .radar-list .radar-ai-card-high{box-shadow:0 0 0 1px color-mix(in srgb,var(--tier-high) 35%,transparent),0 8px 26px color-mix(in srgb,var(--tier-high) 22%,transparent)!important}
+html:root:root body #view-recommendation .radar-list .radar-ai-empty{padding:18px;border:1px dashed var(--qg-line,rgba(140,170,255,.25));border-radius:14px;text-align:center;color:var(--muted,#8ea0bf);font-size:14px}
+html:root:root body #view-recommendation .recommendation-intro{display:none!important}
+html:root:root body #view-recommendation .radar-market-tabs{display:grid!important;grid-template-columns:1fr 1fr!important;gap:0!important;width:100%!important}
+html:root:root body #view-recommendation .radar-market-tabs .tab{width:100%!important;justify-content:center!important;text-align:center!important;font-size:14px!important;min-height:42px!important;background:transparent!important}
+html:root:root body #view-recommendation .radar-market-tabs .tab.active{background:transparent!important}
+@media (max-width:480px){html:root:root body .radar-tier-chip{height:32px;padding:0 9px;gap:5px;font-size:12px}html:root:root body .radar-tier-chip b{font-size:11px}}
