@@ -2396,7 +2396,17 @@ async function handleFundPlans(request, env, user, json, parts, url) {
     const stmt=portfolioId
       ? env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? AND fund_portfolio_id=? ORDER BY enabled DESC,day_of_month ASC,created_at ASC").bind(user.id,portfolioId)
       : env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? ORDER BY enabled DESC,created_at ASC").bind(user.id);
-    const rows=await stmt.all();return json({plans:rows.results||[]});
+    const rows=await stmt.all();
+    // Saveback y Redondeo (Trade Republic): no son planes que el usuario configure, pero
+    // aportan cada mes; se resumen con lo invertido en los últimos 90 días.
+    const since=new Date(Date.now()-90*864e5).toISOString();
+    const benefits=await env.DB.prepare(
+      "SELECT t.fund_portfolio_id,t.isin,p.name,t.notes AS kind,COUNT(*) AS n,SUM(t.units*t.price) AS total,MAX(t.executed_at) AS last_at," +
+      " (SELECT x.units*x.price FROM fund_transactions x WHERE x.user_id=t.user_id AND x.isin=t.isin AND x.notes=t.notes ORDER BY x.executed_at DESC LIMIT 1) AS last_amount" +
+      " FROM fund_transactions t LEFT JOIN fund_positions p ON p.id=t.fund_position_id WHERE t.user_id=? AND t.notes IN ('Saveback','Redondeo') AND t.executed_at>=?" +
+      (portfolioId?" AND t.fund_portfolio_id=?":"") + " GROUP BY t.fund_portfolio_id,t.isin,t.notes"
+    ).bind(...(portfolioId?[user.id,since,portfolioId]:[user.id,since])).all();
+    return json({plans:rows.results||[],benefits:benefits.results||[]});
   }
   if(request.method==="POST"&&!id){
     const body=await readJson(request);
@@ -2638,6 +2648,7 @@ export function detectSavingsPlans(rows,nowMs=Date.now()){
     const amount=(Number(r.units)||0)*(Number(r.price)||0)+(Number(r.fees)||0);
     if(!isin||!Number.isFinite(t)||!(amount>0))continue;
     if(String(r.side||"BUY").toUpperCase()!=="BUY")continue;
+    if(r.benefit)continue; // Saveback y Redondeo no son el plan, aunque inviertan en el mismo producto
     if(!byIsin.has(isin))byIsin.set(isin,[]);
     byIsin.get(isin).push({t,amount,currency:String(r.currency||"EUR").toUpperCase(),plan:r.plan===true});
   }
@@ -2652,7 +2663,15 @@ export function detectSavingsPlans(rows,nowMs=Date.now()){
     let list=flagged.length>=1?flagged:null;
     if(!list){
       const recent=all.slice(-6);
-      if(recent.length<3)continue;
+      // Two buys a month apart of the same amount on the same day: a monthly plan whose
+      // executions the export does not label (Trade Republic's newer CSV lists them as BUY).
+      if(recent.length===2){
+        const gap=(recent[1].t-recent[0].t)/864e5,a0=recent[0].amount,a1=recent[1].amount;
+        const sameDay=Math.abs(new Date(recent[0].t).getUTCDate()-new Date(recent[1].t).getUTCDate())<=3; // weekends move it
+        if(!(gap>=26&&gap<=35&&sameDay&&Math.abs(a0-a1)<=Math.max(a0,a1)*0.02))continue;
+        list=recent;
+      }
+      if(!list&&recent.length<3)continue;
       const g=[];for(let i=1;i<recent.length;i++)g.push((recent[i].t-recent[i-1].t)/864e5);
       const mg=median(g),ma=median(recent.map(x=>x.amount));
       if(!(mg>=6&&mg<=100))continue;
@@ -2711,7 +2730,7 @@ async function handleFundTransactionImport(request,env,user,json){
       }
       const now=nowIso();
       await env.DB.prepare("INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,external_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(uid("ftx_"),portfolio.id,pos.id,user.id,isin,side,units,price,fees,String(r.currency||"EUR").toUpperCase(),when.toISOString(),r.plan?"Plan de ahorro":"Importado",externalId,now,now).run();
+        .bind(uid("ftx_"),portfolio.id,pos.id,user.id,isin,side,units,price,fees,String(r.currency||"EUR").toUpperCase(),when.toISOString(),r.benefit==="saveback"?"Saveback":r.benefit==="roundup"?"Redondeo":r.plan?"Plan de ahorro":"Importado",externalId,now,now).run();
       touched.add(pos.id);imported++;
     }catch(error){
       if(/UNIQUE/i.test(String(error&&error.message)))skipped++;

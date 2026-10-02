@@ -1183,3 +1183,5 @@ html[data-theme="light"] .decision-plan em.neg{color:#c0262d}html[data-theme="li
 .position-decision-chip button{width:22px;height:22px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:inherit;font-size:14px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
 html[data-theme="light"] .position-decision-chip{color:#8a5a12;background:#fff7e6}
 html[data-theme="light"] .position-decision-chip button{background:rgba(0,0,0,.06)}
+.fund-benefit-tag{font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.04em;padding:1px 6px;border-radius:6px;margin-right:4px;background:rgba(47,211,154,.14);color:var(--positive,#2fd39a);text-transform:uppercase}
+html[data-theme="light"] .fund-benefit-tag{background:#e7f7f0;color:#0f7a54}

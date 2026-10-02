@@ -714,15 +714,20 @@
  }
 
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
+ // Saveback / Redondeo de los últimos 90 días en esta cartera, como aportación mensual media.
+ function fundBenefits(portfolioId){return (account.benefits||[]).filter(b=>String(b.fund_portfolio_id)===String(portfolioId)).map(b=>({...b,monthly:(num(b.total)||0)/3}))}
  function planSummaryHtml(portfolioId){
-  const plans=fundPlans(portfolioId);if(!plans.length)return'';
+  const plans=fundPlans(portfolioId),benefits=fundBenefits(portfolioId);if(!plans.length&&!benefits.length)return'';
   const freqLabel={weekly:'/sem',monthly:'/mes',quarterly:'/trim',annual:'/año',manual:''};
-  const total=plans.filter(p=>String(p.status||'active')!=='paused'&&p.frequency==='monthly').reduce((a,p)=>a+(num(p.amount)||0),0);
+  const total=plans.filter(p=>String(p.status||'active')!=='paused'&&p.frequency==='monthly').reduce((a,p)=>a+(num(p.amount)||0),0)+benefits.reduce((a,b)=>a+b.monthly,0);
   return '<section class="fund-plan-list" aria-label="Planes de aportación"><header><small>PLANES DE APORTACIÓN</small>'+(total?'<b>'+amount(total)+'/mes</b>':'')+'</header>'+plans.slice(0,6).map(p=>{
    const prod=p.isin?state.products.find(x=>x.isin===p.isin):null;
    const name=prod&&prod.name||String(p.label||p.isin||'Aportación').replace(/^Plan [^·]+·\s*/,'');
    const paused=String(p.status||'active')==='paused';
    return '<div class="fund-plan-row'+(paused?' paused':'')+'"><span>'+esc(name)+'</span><b>'+(num(p.amount)===null?'variable':amount(p.amount,p.currency||'EUR')+esc(freqLabel[p.frequency]??''))+'</b><small>'+(paused?'En pausa':p.next_contribution_at?'Próx. '+esc(shortDate(p.next_contribution_at)):'')+'</small></div>';
+  }).join('')+benefits.map(b=>{
+   const prod=b.isin?state.products.find(x=>x.isin===b.isin):null,label=b.kind==='Saveback'?'Saveback':'Redondeo';
+   return '<div class="fund-plan-row benefit" title="'+esc(label+': '+(num(b.n)||0)+' compras en 90 días, '+amount(b.total)+' en total')+'"><span><em class="fund-benefit-tag">'+label+'</em> '+esc(prod&&prod.name||b.name||b.isin)+'</span><b>≈ '+amount(b.monthly)+'/mes</b><small>'+(b.last_at?'Últ. '+esc(shortDate(b.last_at)):'')+'</small></div>';
   }).join('')+'</section>';
  }
  // ----- Costes, solapamiento y simulador de aportaciones (cartera de fondos) -----
@@ -781,7 +786,7 @@
   pairs.sort((x,y)=>y.o-x.o);
   // Simulator defaults: active plans per month, weighted 3-year return net of fees.
   const plans=fundPlans(portfolioId).filter(p=>String(p.status||'active')!=='paused'&&p.frequency!=='manual'&&num(p.amount)>0);
-  const perMonth=plans.reduce((a,p)=>a+num(p.amount)*(p.frequency==='weekly'?52/12:p.frequency==='quarterly'?1/3:p.frequency==='annual'?1/12:1),0);
+  const perMonth=plans.reduce((a,p)=>a+num(p.amount)*(p.frequency==='weekly'?52/12:p.frequency==='quarterly'?1/3:p.frequency==='annual'?1/12:1),0)+fundBenefits(portfolioId).reduce((a,b)=>a+b.monthly,0);
   let ret=null;{let w=0,acc=0;items.forEach(x=>{const p3=num(x.p.perf3Y);if(p3!==null&&p3>-90){acc+=x.value*(Math.pow(1+p3/100,1/3)-1);w+=x.value}});if(w>0)ret=acc/w*100}
   const prefs=dcaPrefs();
   const monthly=num(prefs.monthly)??Math.round(perMonth||100),years=num(prefs.years)??20,expected=num(prefs.ret)??Math.max(2,Math.min(8,ret===null?7:Math.round(ret*10)/10));
@@ -907,7 +912,7 @@
    if(!pr.ok)throw Error(pd.error||'No se pudieron cargar las carteras de fondos.');
    if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
    if(!pl.ok)throw Error(ld.error||'No se pudieron cargar los planes de aportación.');
-   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];
+   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];account.benefits=ld.benefits||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
   }catch(e){console.warn('Fund portfolio loading failed',e)}
   finally{account.loading=false;renderPortfolio()}
