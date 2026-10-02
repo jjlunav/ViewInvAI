@@ -1831,24 +1831,18 @@ async function attentionRankingResponse(env,request){
   return jsonResponse(payload,200,{"Cache-Control":kind==="stocks"?"public, max-age=300":"public, max-age=1800"});
 }
 
+// Every root routed by handleBackendApi (backend.js). Keep both lists in sync: a root
+// missing here falls through to the static assets and answers 404.
+const BACKEND_API_ROOTS = new Set([
+  "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report",
+  "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "watchlist",
+  "analysis", "ai", "alerts", "notification-preferences", "portfolio-goal",
+  "portfolio-goal-history", "settings", "ui-preferences", "devices"
+]);
 function isBackendApiPath(pathname) {
-  return pathname === "/api/backend/status" ||
-    pathname === "/api/me" ||
-    pathname === "/api/portfolios" || pathname.startsWith("/api/portfolios/") ||
-    pathname === "/api/positions" || pathname.startsWith("/api/positions/") ||
-    pathname === "/api/transactions" || pathname.startsWith("/api/transactions/") ||
-    pathname === "/api/fund-portfolios" || pathname.startsWith("/api/fund-portfolios/") ||
-    pathname === "/api/fund-positions" || pathname.startsWith("/api/fund-positions/") ||
-    pathname === "/api/fund-transactions" || pathname.startsWith("/api/fund-transactions/") ||
-    pathname === "/api/watchlist" || pathname.startsWith("/api/watchlist/") ||
-    pathname === "/api/analysis" || pathname.startsWith("/api/analysis/") ||
-    pathname === "/api/ai" || pathname.startsWith("/api/ai/") ||
-    pathname === "/api/alerts" || pathname.startsWith("/api/alerts/") ||
-    pathname === "/api/settings" ||
-    pathname === "/api/notification-preferences" ||
-    pathname === "/api/portfolio-goal" ||
-    pathname === "/api/portfolio-goal-history" ||
-    pathname === "/api/devices" || pathname.startsWith("/api/devices/");
+  if (pathname === "/api/backend/status") return true;
+  const parts = String(pathname || "").split("/");
+  return parts[1] === "api" && BACKEND_API_ROOTS.has(parts[2] || "");
 }
 
 const MARKET_WORKFLOW_URL="https://api.github.com/repos/jjlunav/ViewInvAI/actions/workflows/update-market-data.yml/dispatches";
