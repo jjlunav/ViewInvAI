@@ -507,6 +507,21 @@ async function load(force=false){
  if(loading)return;
  loading=true;
  try{
+  const RT0=window.ViewInvAIRuntime;
+  if(!force&&!db.stocks.length&&RT0&&RT0.isPackagedNative){
+   // APK: arranca al instante con la copia guardada en el móvil; a continuación solo se
+   // descarga del servidor si hay una versión más nueva.
+   try{
+    const lr=await RT0.loadOffline('market'),lj=lr?await lr.json():null;
+    if(lj&&Array.isArray(lj.stocks)&&lj.stocks.length){
+     db={stocks:lj.stocks,events:Array.isArray(lj.events)?lj.events:[],meta:lj.meta||{}};
+     lastDataStamp=String((lj.meta&&lj.meta.updatedAt)||'');
+     rebuildMarketIndexes();
+     if(typeof reapplyMarketLive==='function')reapplyMarketLive();
+     render();
+    }
+   }catch(_){}
+  }
   if(!force&&db.stocks.length&&lastDataStamp){
    try{
     let vr=await fetch(DATA_VERSION,{cache:'no-cache'});
