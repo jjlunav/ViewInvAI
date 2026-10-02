@@ -14,8 +14,26 @@
  const fmt=(v,d=2)=>Number.isFinite(+v)?Number(v).toLocaleString('es-ES',{maximumFractionDigits:d}):'—';
  let flow={source:'tr',rows:[],positions:[],unmatched:[],portfolioId:''};
 
+ // En localStorage solo quedan Query ID, cartera y fecha de sincronización; el token va al almacén cifrado.
+ const SECURE=()=>window.ViewInvAISecure||null;
  function readIbkr(){try{return JSON.parse(localStorage.getItem(IBKR_KEY)||'null')||null}catch(_){return null}}
- function writeIbkr(v){try{v?localStorage.setItem(IBKR_KEY,JSON.stringify(v)):localStorage.removeItem(IBKR_KEY)}catch(_){}}
+ function writeIbkr(v){try{if(v){const meta={...v};if(meta.hasToken)delete meta.token;localStorage.setItem(IBKR_KEY,JSON.stringify(meta))}else localStorage.removeItem(IBKR_KEY)}catch(_){}}
+ async function ibkrToken(){
+  const saved=readIbkr();if(!saved)return '';
+  if(saved.token){ // versión anterior: token en texto plano → se mueve al almacén cifrado
+   const legacy=String(saved.token);
+   try{if(SECURE()){await SECURE().set('ibkr-token',legacy);writeIbkr({...saved,hasToken:true})}}catch(_){}
+   return legacy;
+  }
+  if(!saved.hasToken||!SECURE())return '';
+  return (await SECURE().get('ibkr-token'))||'';
+ }
+ async function rememberIbkr(token,meta){
+  if(!SECURE())throw new Error('Este dispositivo no permite guardar el token cifrado.');
+  if(token)await SECURE().set('ibkr-token',token);
+  writeIbkr({...(readIbkr()||{}),...meta,hasToken:true});
+ }
+ async function forgetIbkr(){writeIbkr(null);try{if(SECURE())await SECURE().remove('ibkr-token')}catch(_){}}
 
  /* ---------- CSV ---------- */
  function parseCsv(text){
@@ -230,10 +248,10 @@
   if(flow.source==='ibkr'){
    const saved=readIbkr()||{};
    return '<p class="broker-import-help">Conexión oficial de solo lectura (<b>Flex Web Service</b>). En el portal de IBKR: <i>Rendimiento e informes → Flex Queries</i>, crea una <b>Activity Flex Query</b> en XML con las secciones <b>Trades</b>, <b>Open Positions</b> y <b>Cash Transactions</b> (dividendos y retenciones) (periodo: últimos 365 días) y apunta su <b>Query ID</b>. Después activa <i>Flex Web Service</i> y genera el <b>token</b>.</p>'+
-    '<div class="broker-import-grid"><label class="broker-import-field"><span>Token Flex</span><input data-ibkr-token type="password" autocomplete="off" inputmode="numeric" value="'+esc(saved.token||'')+'" placeholder="Token de Flex Web Service"></label>'+
+    '<div class="broker-import-grid"><label class="broker-import-field"><span>Token Flex</span><input data-ibkr-token type="password" autocomplete="off" inputmode="numeric" value="" placeholder="'+(saved.hasToken||saved.token?'Guardado cifrado · escribe otro para cambiarlo':'Token de Flex Web Service')+'"></label>'+
     '<label class="broker-import-field"><span>Query ID</span><input data-ibkr-query inputmode="numeric" value="'+esc(saved.queryId||'')+'" placeholder="123456"></label></div>'+
     portfolioSelect()+
-    '<label class="broker-import-check"><input type="checkbox" data-ibkr-remember'+(saved.token?' checked':'')+'> Recordar en este dispositivo y sincronizar solo al abrir Carteras</label>'+
+    '<label class="broker-import-check"><input type="checkbox" data-ibkr-remember'+(saved.hasToken||saved.token?' checked':'')+'> Recordar cifrado en este dispositivo y sincronizar solo al abrir Carteras</label>'+
     '<button type="button" class="btn secondary broker-import-go" data-ibkr-fetch>Leer operaciones de IBKR</button>';
   }
   const tr=flow.source==='tr';
@@ -379,9 +397,10 @@
   if(t.closest&&t.closest('[data-import-commit]')){commit();return}
   const go=t.closest&&t.closest('[data-ibkr-fetch]');
   if(go){
-   const token=(document.querySelector('[data-ibkr-token]')?.value||'').trim(),queryId=(document.querySelector('[data-ibkr-query]')?.value||'').trim();
+   const typed=(document.querySelector('[data-ibkr-token]')?.value||'').trim(),queryId=(document.querySelector('[data-ibkr-query]')?.value||'').trim();
+   const token=typed||await ibkrToken();
    if(!token||!queryId){status('Indica el token y el Query ID.',true);return}
-   if(document.querySelector('[data-ibkr-remember]')?.checked)writeIbkr({...(readIbkr()||{}),token,queryId,portfolioId:flow.portfolioId});else writeIbkr(null);
+   if(document.querySelector('[data-ibkr-remember]')?.checked){try{await rememberIbkr(typed,{queryId,portfolioId:flow.portfolioId})}catch(err){status(esc(err.message),true)}}else await forgetIbkr();
    go.disabled=true;go.textContent='Consultando IBKR…';status('');
    try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.dividends=data.dividends||[];showPreview(data.trades||[],'ibkr')}
    catch(err){status(esc(err.message),true)}
@@ -406,12 +425,14 @@
  // Sincronización silenciosa de IBKR al abrir Carteras (como mucho cada 6 h).
  async function autoSync(){
   const saved=readIbkr();
-  if(!saved||!saved.token||!saved.queryId||!saved.portfolioId)return;
+  if(!saved||!(saved.token||saved.hasToken)||!saved.queryId||!saved.portfolioId)return;
   if(Date.now()-(saved.lastSyncAt||0)<6*3600e3)return;
   if(!window.ViewInvAIAuth||typeof window.ViewInvAIAuth.getUser!=='function'||!window.ViewInvAIAuth.getUser())return;
-  saved.lastSyncAt=Date.now();writeIbkr(saved);
+  saved.lastSyncAt=Date.now();
+  const token=await ibkrToken();if(!token)return;
+  writeIbkr({...readIbkr(),lastSyncAt:saved.lastSyncAt});
   try{
-   const data=await fetchIbkr(saved);
+   const data=await fetchIbkr({token,queryId:saved.queryId});
    const {matched}=matchRows(data.trades||[],'ibkr');
    let imported=0;
    const divs=enrichDividends(data.dividends||[]);
