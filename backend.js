@@ -3362,6 +3362,148 @@ async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
   return created;
 }
 
+
+// ---------------------------------------------------------------------------
+// Decisiones ante avisos de venta («¿vendo en pérdidas o mantengo?»).
+// Los avisos position-sell/review/deterioration/recovered quedan pendientes hasta que el
+// usuario decide. Con «mantener» se dejan de enviar avisos de venta y se pasa a vigilar
+// la recuperación: vuelta al precio de compra, oportunidad de promediar y caídas adicionales.
+// ---------------------------------------------------------------------------
+let positionDecisionsSchemaReady=false;
+// Solo avisos que piden una acción: vender (o vender sin pérdidas al recuperar) y comprar.
+const DECISION_ALERT_TYPES=["position-sell","position-recovered","radar-ai"];
+async function ensurePositionDecisionsSchema(env){
+  if(positionDecisionsSchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS position_decisions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,position_id TEXT NOT NULL,stock_key TEXT NOT NULL DEFAULT '',ticker TEXT NOT NULL DEFAULT '',subject_type TEXT NOT NULL DEFAULT 'position',decision TEXT NOT NULL CHECK(decision IN ('hold','sell','later','buy','skip')),alert_id TEXT,avg_price REAL,price_at_decision REAL,loss_pct_at_decision REAL,last_risk_loss_pct REAL,review_at TEXT,recovered_notified_at TEXT,average_notified_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_position_decisions_position ON position_decisions(user_id,position_id)")
+  ]);
+  const cols=await env.DB.prepare("PRAGMA table_info(alert_events)").all();
+  if(!(cols.results||[]).some(c=>c.name==="subject_id"))await env.DB.prepare("ALTER TABLE alert_events ADD COLUMN subject_id TEXT").run();
+  positionDecisionsSchemaReady=true;
+}
+async function positionDecisionFor(env,userId,positionId){
+  await ensurePositionDecisionsSchema(env);
+  return env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=? AND position_id=?").bind(userId,positionId).first();
+}
+function decisionIsCurrent(decision,nowMs=Date.now()){
+  if(!decision)return false;
+  if(decision.decision==="hold")return true;
+  const until=new Date(decision.review_at||0).getTime();
+  return Number.isFinite(until)&&until>nowMs;
+}
+async function handlePositionDecisions(request,env,user,json,parts){
+  await ensurePositionDecisionsSchema(env);
+  const positionId=trimText(parts[1]||"",80);
+  if(request.method==="GET"&&!positionId){
+    const since=new Date(Date.now()-21*24*3600e3).toISOString();
+    const alerts=await env.DB.prepare(
+      "SELECT id,stock_key,ticker,name,alert_type,severity,title,message,created_at,read_at,subject_id FROM alert_events WHERE user_id=? AND created_at>=? AND alert_type IN ("+DECISION_ALERT_TYPES.map(()=>"?").join(",")+") ORDER BY created_at DESC LIMIT 200"
+    ).bind(user.id,since,...DECISION_ALERT_TYPES).all();
+    const positions=await env.DB.prepare(
+      "SELECT p.id,p.portfolio_id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_signal,p.last_score,f.name AS portfolio_name FROM positions p LEFT JOIN portfolios f ON f.id=p.portfolio_id WHERE p.user_id=? AND p.active=1"
+    ).bind(user.id).all();
+    const watch=await env.DB.prepare(
+      "SELECT id,stock_key,ticker,name,prefer_tr,last_signal,last_score,last_confidence FROM watchlist WHERE user_id=?"
+    ).bind(user.id).all();
+    const decisions=await env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=?").bind(user.id).all();
+    const byPosition=new Map((decisions.results||[]).map(d=>[d.position_id,d]));
+    const posRows=positions.results||[],watchRows=watch.results||[];
+    const pending=[],seen=new Set(),buyCutoff=new Date(Date.now()-3*24*3600e3).toISOString();
+    for(const alert of alerts.results||[]){
+      if(alert.alert_type==="radar-ai"){
+        // Señal de compra en un favorito: vigente 3 días.
+        if(String(alert.created_at||"")<buyCutoff)continue;
+        const w=alert.subject_id?watchRows.find(x=>x.id===alert.subject_id):watchRows.find(x=>x.stock_key===alert.stock_key);
+        if(!w||seen.has(w.id))continue;
+        seen.add(w.id);
+        const d=byPosition.get(w.id);
+        if(d&&String(d.updated_at||"")>=String(alert.created_at||""))continue;
+        pending.push({kind:"buy",alert,watch:w,decision:d||null});
+        continue;
+      }
+      const targets=alert.subject_id?posRows.filter(p=>p.id===alert.subject_id):posRows.filter(p=>p.stock_key===alert.stock_key);
+      for(const pos of targets){
+        if(seen.has(pos.id))continue;
+        seen.add(pos.id); // solo el aviso más reciente de cada posición
+        const d=byPosition.get(pos.id);
+        const decidedAfter=d&&String(d.updated_at||"")>=String(alert.created_at||"");
+        if(decidedAfter&&(decisionIsCurrent(d)||d.decision==="hold"))continue;
+        if(decidedAfter&&d.decision==="sell")continue;
+        pending.push({kind:"sell",alert,position:pos,decision:d||null});
+      }
+    }
+    return json({pending,decisions:decisions.results||[],positions:posRows.filter(p=>byPosition.has(p.id))});
+  }
+  if(request.method==="POST"&&!positionId){
+    const body=await readJson(request);
+    const id=trimText(body.positionId,80);
+    const decision=String(body.decision||"");
+    const watchId=trimText(body.watchId,80);
+    if(watchId){
+      if(!["buy","skip","later"].includes(decision))return json({error:"Decisión no válida."},400);
+      const w=await env.DB.prepare("SELECT id,stock_key,ticker FROM watchlist WHERE id=? AND user_id=?").bind(watchId,user.id).first();
+      if(!w)return json({error:"Favorito no encontrado."},404);
+      const now=nowIso(),days=decision==="skip"?14:decision==="buy"?7:3;
+      const reviewAt=new Date(Date.now()+days*24*3600e3).toISOString(),alertId=trimText(body.alertId,80)||null;
+      await env.DB.prepare(
+        "INSERT INTO position_decisions (id,user_id,position_id,subject_type,stock_key,ticker,decision,alert_id,price_at_decision,review_at,created_at,updated_at) VALUES (?,?,?,'watch',?,?,?,?,?,?,?,?) "+
+        "ON CONFLICT(user_id,position_id) DO UPDATE SET decision=excluded.decision,alert_id=excluded.alert_id,price_at_decision=excluded.price_at_decision,review_at=excluded.review_at,updated_at=excluded.updated_at"
+      ).bind(uid("pd_"),user.id,w.id,w.stock_key,w.ticker,decision,alertId,finiteNumber(body.price),reviewAt,now,now).run();
+      if(alertId)await env.DB.prepare("UPDATE alert_events SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?").bind(now,alertId,user.id).run();
+      return json({decision:await env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=? AND position_id=?").bind(user.id,w.id).first()});
+    }
+    if(!["hold","sell","later"].includes(decision))return json({error:"Decisión no válida."},400);
+    const pos=await env.DB.prepare("SELECT id,stock_key,ticker,avg_price FROM positions WHERE id=? AND user_id=?").bind(id,user.id).first();
+    if(!pos)return json({error:"Posición no encontrada."},404);
+    const price=finiteNumber(body.price);
+    const avg=finiteNumber(pos.avg_price);
+    const lossPct=price!==null&&avg!==null&&avg>0?(price/avg-1)*100:null;
+    const now=nowIso();
+    const days=Math.max(1,Math.min(60,finiteNumber(body.days)??7));
+    const reviewAt=decision==="later"?new Date(Date.now()+days*24*3600e3).toISOString():decision==="sell"?new Date(Date.now()+3*24*3600e3).toISOString():null;
+    const alertId=trimText(body.alertId,80)||null;
+    await env.DB.prepare(
+      "INSERT INTO position_decisions (id,user_id,position_id,stock_key,ticker,decision,alert_id,avg_price,price_at_decision,loss_pct_at_decision,last_risk_loss_pct,review_at,recovered_notified_at,average_notified_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?) "+
+      "ON CONFLICT(user_id,position_id) DO UPDATE SET decision=excluded.decision,alert_id=excluded.alert_id,avg_price=excluded.avg_price,price_at_decision=excluded.price_at_decision,loss_pct_at_decision=excluded.loss_pct_at_decision,last_risk_loss_pct=excluded.last_risk_loss_pct,review_at=excluded.review_at,recovered_notified_at=excluded.recovered_notified_at,average_notified_at=NULL,updated_at=excluded.updated_at"
+    ).bind(uid("pd_"),user.id,pos.id,pos.stock_key,pos.ticker,decision,alertId,avg,price,lossPct,lossPct,reviewAt,lossPct!==null&&lossPct>=0?now:null,now,now).run();
+    if(alertId)await env.DB.prepare("UPDATE alert_events SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?").bind(now,alertId,user.id).run();
+    return json({decision:await env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=? AND position_id=?").bind(user.id,pos.id).first()});
+  }
+  if(request.method==="DELETE"&&positionId){
+    await env.DB.prepare("DELETE FROM position_decisions WHERE user_id=? AND position_id=?").bind(user.id,positionId).run();
+    return json({deleted:true});
+  }
+  return json({error:"Method not allowed"},405);
+}
+// Avisos para una posición que el usuario decidió mantener en pérdidas.
+const esNumber=(v,d)=>Number(v).toFixed(d).replace(".",",");
+function holdModeAlert(target,current,decision,nowMs=Date.now()){
+  const price=finiteNumber(current.quotePrice),avg=finiteNumber(target.avg_price);
+  const sameCurrency=String(current.quoteCurrency||"").toUpperCase()===String(target.currency||"").toUpperCase();
+  if(price===null||avg===null||avg<=0||!sameCurrency||current.quoteVerified!==true)return null;
+  const lossPct=(price/avg-1)*100;
+  if(lossPct>=0&&!decision.recovered_notified_at){
+    return {type:"position-recovered",severity:"high",field:"recovered_notified_at",
+      title:"Recuperada · "+target.ticker,
+      message:"Vuelve a tu precio de compra ("+esNumber(avg,2)+"). Puedes vender sin pérdidas o seguir manteniendo."};
+  }
+  const lastAverage=new Date(decision.average_notified_at||0).getTime();
+  if(lossPct<=-8&&current.signal==="HOLD"&&finiteNumber(current.score)!==null&&current.score>=62&&
+     (!Number.isFinite(lastAverage)||nowMs-lastAverage>14*24*3600e3)){
+    return {type:"position-average",severity:"info",field:"average_notified_at",
+      title:"Oportunidad de promediar · "+target.ticker,
+      message:"El análisis mejora (score "+Math.round(current.score)+") y cotiza un "+esNumber(Math.abs(lossPct),1)+" % por debajo de tu precio medio. Comprar más ahora bajaría tu precio de equilibrio."};
+  }
+  const lastRisk=finiteNumber(decision.last_risk_loss_pct)??finiteNumber(decision.loss_pct_at_decision);
+  if(lastRisk!==null&&lossPct<=lastRisk-15){
+    return {type:"position-hold-risk",severity:"warning",field:"last_risk_loss_pct",value:lossPct,
+      title:"Sigue cayendo · "+target.ticker,
+      message:"Desde que decidiste mantener ha bajado hasta "+esNumber(lossPct,1)+" % frente a tu precio medio. Revisa si la tesis sigue en pie."};
+  }
+  return null;
+}
+
 async function maybeCreateAlert(env, target, stock, current, previous, notificationSettings=null, assetPreference=null) {
   const previousEngine = previous ? String(previous.engine || "") : "";
   const previousCompatible = previous && (previousEngine.startsWith("viewinvai-score/") || previousEngine.startsWith("viewinvai-hybrid/"));
@@ -3376,6 +3518,21 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
 
   if (target.subject_type === "position") {
     if (!globalNotifications.portfolio) return null;
+    const decision = await positionDecisionFor(env, target.user_id, target.subject_id);
+    if (decision && decision.decision === "hold") {
+      const hold = holdModeAlert(target, current, decision);
+      if (!hold) return null;
+      const id = uid("al_"), now = nowIso();
+      await env.DB.prepare(
+        "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+      ).bind(id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "", hold.type, hold.severity, hold.title, hold.message, current.snapshotId, target.subject_id, now).run();
+      await env.DB.prepare("UPDATE position_decisions SET " + hold.field + "=?,updated_at=updated_at WHERE id=?").bind(hold.field === "last_risk_loss_pct" ? hold.value : now, decision.id).run();
+      const alert = { id, alert_type: hold.type, severity: hold.severity, title: hold.title, message: hold.message };
+      try { await dispatchPushAlert(env, alert, target); }
+      catch (error) { console.warn("Push alert dispatch failed", String(error && error.message || error)); }
+      return id;
+    }
+    if (decisionIsCurrent(decision)) return null; // «decidir más tarde» o «venderé»: sin repetir el aviso
     if (current.signal === "SELL" && current.quoteVerified===true && current.confidence >= settings.minSellConfidence && (!previous || previous.signal !== "SELL")) {
       should = true; type = "position-sell"; severity = "critical";
     } else if (current.signal === "REVIEW" && current.quoteVerified===true && current.confidence >= Math.max(60, settings.minSellConfidence - 2) && (!previous || previous.signal === "HOLD")) {
@@ -3387,7 +3544,9 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
     const radarConfigured=globalNotifications.radarAi &&
       (notificationPreferenceAllows(assetPreference,"pulse_enabled",false)||notificationPreferenceAllows(assetPreference,"radar_enabled",false));
     if (!radarConfigured) return null;
-    if (globalNotifications.radarHigh && current.signal === "BUY" && current.quoteVerified===true && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
+    const watchDecision = await positionDecisionFor(env, target.user_id, target.subject_id);
+    const buyHeld = decisionIsCurrent(watchDecision); // «compraré», «no compro» o «más tarde»: sin repetir la señal
+    if (!buyHeld && globalNotifications.radarHigh && current.signal === "BUY" && current.quoteVerified===true && current.confidence >= settings.minBuyConfidence && (!previous || previous.signal !== "BUY")) {
       should = true; type = "radar-ai"; severity = "high";
     } else if (globalNotifications.radarOpportunity && current.quoteVerified===true && previousScore !== null && delta >= settings.notifyScoreChange && current.score > 20) {
       should = true; type = "radar-ai-improving"; severity = "info";
@@ -3403,11 +3562,12 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
     : (type === "radar-ai" ? "Radar AI · " : "Radar AI mejora · ") + target.ticker;
   const message = current.thesis || current.riskSummary || "Cambio relevante detectado en el análisis.";
 
+  await ensurePositionDecisionsSchema(env);
   await env.DB.prepare(
-    "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+    "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
   ).bind(
     id, target.user_id, target.stock_key, target.ticker, stock.name || target.name || "",
-    type, severity, title, message, current.snapshotId, now
+    type, severity, title, message, current.snapshotId, target.subject_id || null, now
   ).run();
 
   const alert = { id, alert_type: type, severity, title, message };
@@ -3467,6 +3627,8 @@ async function analyzeTarget(env, target, services) {
   current.quoteVerified=quoteVerified;
   current.quoteSource=trimText(verifiedQuote&&verifiedQuote.source,120);
   current.quoteTimestamp=verifiedQuote&&verifiedQuote.timestamp||null;
+  current.quotePrice=quoteVerified?finiteNumber(verifiedQuote.price):null;
+  current.quoteCurrency=Number(target.prefer_tr)===1?"EUR":"USD";
 
   const previous = await env.DB.prepare(
     "SELECT signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
@@ -4329,6 +4491,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
+    if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);

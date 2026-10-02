@@ -1159,3 +1159,27 @@ html body [data-card-context="fund-portfolio"] .asset-card-cell-content .fund-va
 html body [data-card-context="fund-portfolio"] .asset-card-details{margin-top:2px}
 html:root:root body .fund-insights>summary .insights-title{font-size:15px}
 html body #view-portfolios .fund-position-grid{gap:10px!important}
+
+/* Decisiones ante avisos de venta (globo flotante) */
+.task-pill.decision{border-color:#e3b84d}
+.decision-item .task-question{gap:10px}
+.decision-plan{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.decision-plan li{display:grid;gap:1px;font-size:12.5px;line-height:1.4}
+.decision-plan li b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9d8cff}
+.decision-plan li span{color:var(--text,#e8eefc)}
+.decision-plan em{font-style:normal;font-weight:800;font-variant-numeric:tabular-nums}
+.decision-plan em.neg{color:var(--negative,#ff6b6b)}.decision-plan em.pos{color:var(--positive,#2fd39a)}
+.decision-note{display:block;font-size:12px;color:var(--muted,#8ea0bf);line-height:1.4}
+.decision-link{border:0;background:none;padding:0;color:#9d8cff;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+.decision-item.is-busy{opacity:.6}
+.task-error{margin:0;font-size:12px;color:var(--negative,#ff6b6b)}
+html[data-theme="light"] .decision-plan li b,html[data-theme="light"] .decision-link{color:#4f46e5}
+html[data-theme="light"] .decision-plan li span{color:#111827}
+html[data-theme="light"] .decision-plan em.neg{color:#c0262d}html[data-theme="light"] .decision-plan em.pos{color:#0f7a54}
+/* Chip en la tarjeta de la posición */
+.position-decision-chip{display:inline-flex;align-items:center;gap:6px;margin:6px 0 0;padding:3px 4px 3px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid rgba(227,184,77,.45);background:rgba(227,184,77,.1);color:#e3b84d}
+.position-decision-chip.is-later{border-color:rgba(140,190,210,.35);background:rgba(140,190,210,.08);color:var(--muted,#8ea0bf)}
+.position-decision-chip.is-sell{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.08);color:var(--negative,#ff6b6b)}
+.position-decision-chip button{width:22px;height:22px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:inherit;font-size:14px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+html[data-theme="light"] .position-decision-chip{color:#8a5a12;background:#fff7e6}
+html[data-theme="light"] .position-decision-chip button{background:rgba(0,0,0,.06)}

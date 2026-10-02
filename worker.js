@@ -1872,7 +1872,7 @@ async function attentionRankingResponse(env,request){
 const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "watchlist",
-  "analysis", "ai", "alerts", "notification-preferences", "portfolio-goal",
+  "analysis", "ai", "alerts", "position-decisions", "notification-preferences", "portfolio-goal",
   "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
 ]);
 function isBackendApiPath(pathname) {
