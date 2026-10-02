@@ -271,17 +271,16 @@
   const funds=flow.funds||[],fundIsins=new Set(funds.map(f=>f.isin)),planIsins=new Set(funds.filter(f=>f.plan).map(f=>f.isin));
   const outside=(flow.uncatalogued||[]).length;
   // Values of the import already in the portfolio, typed by hand (would be counted twice).
-  const have=typeof P().getPositionsDetail==='function'?P().getPositionsDetail(flow.portfolioId||null):[];
-  const importedRefs=new Set();matched.forEach(r=>{importedRefs.add(r.stockKey);if(r.isin)importedRefs.add(r.isin)});
-  const overlap=[...new Set(have.filter(h=>importedRefs.has(h.stockKey)||(h.isin&&importedRefs.has(h.isin))).map(h=>h.ticker||h.stockKey))];
+  const overlap=manualOverlap(matched,flow.portfolioId).names;
   const total=matched.length+divs.length+funds.length;
   return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(funds.length?'<span>'+funds.length+' de fondos/ETF</span>':'')+(divs.length?'<span>'+divs.length+' dividendos</span>':'')+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+divHtml+
-   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> productos ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; <b>'+planIsins.size+(planIsins.size===1?' plan de ahorro':' planes de ahorro')+'</b> se crearán con su importe y día':'')+'.</p>':'')+
-   (outside?'<p class="broker-import-help">'+outside+' operaciones de valores que ViewInvAI aún no cotiza (acciones europeas, asiáticas…): se guardan con su ISIN y tendrán precio en cuanto el catálogo los incluya.</p>':'')+
-   (overlap.length?'<label class="broker-import-check"><input type="checkbox" data-import-replace checked> Sustituir lo que apuntaste a mano de '+overlap.length+(overlap.length===1?' valor':' valores')+' ('+esc(overlap.slice(0,5).join(', '))+(overlap.length>5?'…':'')+') por el historial del bróker</label>':'')+
+   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> se creará':'<b>'+planIsins.size+' planes de ahorro</b> se crearán')+' con su importe y día':'')+'.</p>':'')+
+   (outside?'<p class="broker-import-help">'+outside+(outside===1?' operación':' operaciones')+' de valores que ViewInvAI aún no cotiza (acciones europeas, asiáticas…): se guardan con su ISIN y tendrán precio en cuanto el catálogo los incluya.</p>':'')+
+   (overlap.length?'<p class="broker-import-warn">'+overlap.length+(overlap.length===1?' valor ya está apuntado a mano':' valores ya están apuntados a mano')+' ('+esc(overlap.slice(0,5).join(', '))+(overlap.length>5?'…':'')+'): al importar te preguntaré qué mantener; lo recomendado es el historial del bróker.</p>':'')+
    warn+(unmatched.length?'<p class="broker-import-warn">No están en el catálogo de ViewInvAI: '+esc([...new Set(unmatched.map(u=>u.symbol||u.isin||u.name))].slice(0,8).join(', '))+(unmatched.length>8?'…':'')+'.</p>':'')+
    '<ul class="broker-import-list">'+list+'</ul>'+
    '<label class="broker-import-check"><input type="checkbox" data-import-cash> Ajustar también el efectivo de la cartera</label>'+
+   '<p class="broker-import-help">La importación sigue en segundo plano: puedes cerrar esta ventana y seguir usando la app; el progreso aparece arriba.</p>'+
    '<button type="button" class="btn secondary broker-import-go" data-import-commit'+(total?'':' disabled')+'>Importar '+(total?[matched.length?matched.length+(matched.length===1?' operación':' operaciones'):'',funds.length?funds.length+' de fondos':'',divs.length?divs.length+(divs.length===1?' dividendo':' dividendos'):''].filter(Boolean).join(' · '):'0 operaciones')+'</button></div>';
  }
  function showPreview(rows,source,extra=''){
@@ -289,46 +288,82 @@
   flow.matched=matched;flow.unmatched=unmatched;flow.funds=funds;flow.uncatalogued=uncatalogued;flow.dividends=enrichDividends(flow.dividends);
   status(extra+previewHtml());
  }
- async function commit(button){
-  const portfolioId=flow.portfolioId,rows=flow.matched||[],divs=flow.dividends||[],funds=flow.funds||[];if(!portfolioId||!(rows.length||divs.length||funds.length))return;
-  const adjustCash=!!document.querySelector('[data-import-cash]')?.checked;
-  const replaceManual=!!document.querySelector('[data-import-replace]')?.checked;
-  let retired=0,fundImported=0,fundSkipped=0,plans=0;
-  const broker=flow.source==='ibkr'?'Interactive Brokers':flow.source==='tr'?'Trade Republic':'';
-  let imported=0,skipped=0,errors=[];
-  if(button){button.disabled=true}
+ // Values of the import the portfolio already holds as manual entries (counted twice
+ // if both were kept): manual buys, the initial position, manual adjustments.
+ function manualOverlap(rows,portfolioId){
+  const have=typeof P().getPositionsDetail==='function'?P().getPositionsDetail(portfolioId||null):[];
+  const refs=new Set();rows.forEach(r=>{refs.add(r.stockKey);if(r.isin)refs.add(r.isin)});
+  const hits=have.filter(h=>(refs.has(h.stockKey)||(h.isin&&refs.has(h.isin)))&&!/^(trade republic|interactive brokers)$/i.test(String(h.broker||'').trim()));
+  const keys=new Set();hits.forEach(h=>{keys.add(h.stockKey);if(h.isin)keys.add(h.isin)});
+  return{names:[...new Set(hits.map(h=>h.ticker||h.stockKey))],keys};
+ }
+ async function post(path,body){
+  const res=await window.ViewInvAIAuth.apiFetch(path,{method:'POST',body:JSON.stringify(body)});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(data.error||'El servidor no respondió ('+res.status+').');
+  return data;
+ }
+ // The import runs in the background (ViewInvAITasks): the window closes at once and
+ // the floating task pill shows progress, errors and the duplicate question.
+ async function commit(){
+  const job={portfolioId:flow.portfolioId,source:flow.source,rows:(flow.matched||[]).slice(),divs:(flow.dividends||[]).slice(),funds:(flow.funds||[]).slice(),
+   adjustCash:!!document.querySelector('[data-import-cash]')?.checked};
+  if(!job.portfolioId||!(job.rows.length||job.divs.length||job.funds.length))return;
+  if(typeof P().closeModal==='function')P().closeModal();
+  const broker=job.source==='ibkr'?'Interactive Brokers':job.source==='tr'?'Trade Republic':'';
+  const T=window.ViewInvAITasks;
+  const task=T?T.start('Importar '+(broker||'CSV')):{progress(){},log(){},ask:async(t,o)=>o[0].id,done(){},fail(){}};
+  const total=job.rows.length+job.funds.length+job.divs.length;let doneCount=0;
+  const step=(n,label)=>{doneCount+=n;task.progress(Math.min(doneCount,total),total,label)};
+  let imported=0,skipped=0,retired=0,fundImported=0,fundSkipped=0,plans=0,divImported=0,divSkipped=0,errors=0;
+  const logErrors=list=>(list||[]).forEach(e=>{errors++;task.log((e.ticker||e.externalId||'')+' · '+e.error,'error')});
   try{
-   for(let i=0;i<rows.length;i+=CHUNK){
-    if(button)button.textContent='Importando '+Math.min(i+CHUNK,rows.length)+'/'+rows.length+'…';
-    const res=await window.ViewInvAIAuth.apiFetch('/api/transactions/import',{method:'POST',body:JSON.stringify({portfolioId,source:flow.source,broker,adjustCash,replaceManual,rows:rows.slice(i,i+CHUNK)})});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok)throw new Error(data.error||'No se pudo importar.');
-    imported+=data.imported||0;skipped+=data.skipped||0;errors=errors.concat(data.errors||[]);
-    retired+=(data.retired&&data.retired.removed)||0;
+   // Imported data prevails by default; the user can keep the manual entries instead.
+   let replaceManual=true;
+   const overlap=manualOverlap(job.rows,job.portfolioId);
+   if(overlap.names.length){
+    const choice=await task.ask(overlap.names.length+(overlap.names.length===1?' valor ya estaba apuntado a mano':' valores ya estaban apuntados a mano')+'. ¿Qué mantengo?',
+     [{id:'broker',label:'Lo importado del bróker'},{id:'manual',label:'Lo que apunté a mano'}],
+     {detail:overlap.names.slice(0,8).join(', ')+(overlap.names.length>8?'…':''),remember:'import-duplicates'});
+    if(choice==='manual'){
+     replaceManual=false;
+     const before=job.rows.length;
+     job.rows=job.rows.filter(r=>!overlap.keys.has(r.stockKey)&&!(r.isin&&overlap.keys.has(r.isin)));
+     step(before-job.rows.length,'Operaciones');
+     task.log((before-job.rows.length)+' operaciones de esos valores no se importan: se mantiene lo apuntado a mano.');
+    }
    }
-   for(let i=0;i<funds.length;i+=CHUNK){
-    if(button)button.textContent='Importando fondos '+Math.min(i+CHUNK,funds.length)+'/'+funds.length+'…';
-    const res=await window.ViewInvAIAuth.apiFetch('/api/fund-transactions/import',{method:'POST',body:JSON.stringify({source:flow.source,platform:broker,replaceManual,detectPlans:i+CHUNK>=funds.length,rows:funds.slice(i,i+CHUNK),allRows:i+CHUNK>=funds.length?funds.filter(f=>f.side==='BUY').map(f=>({isin:f.isin,side:'BUY',plan:!!f.plan,units:f.units,price:f.price,fees:f.fees,executedAt:f.executedAt,currency:f.currency})):[]})});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok)throw new Error(data.error||'No se pudieron importar los fondos.');
-    fundImported+=data.imported||0;fundSkipped+=data.skipped||0;plans+=data.plans||0;errors=errors.concat(data.errors||[]);
+   for(let i=0;i<job.rows.length;i+=CHUNK){
+    const chunk=job.rows.slice(i,i+CHUNK);
+    const data=await post('/api/transactions/import',{portfolioId:job.portfolioId,source:job.source,broker,adjustCash:job.adjustCash,replaceManual,rows:chunk});
+    imported+=data.imported||0;skipped+=data.skipped||0;retired+=(data.retired&&data.retired.removed)||0;logErrors(data.errors);
+    step(chunk.length,'Operaciones');
    }
-   let divImported=0,divSkipped=0;
-   for(let i=0;i<divs.length;i+=200){
-    if(button)button.textContent='Importando dividendos…';
-    const res=await window.ViewInvAIAuth.apiFetch('/api/dividends/import',{method:'POST',body:JSON.stringify({portfolioId,source:flow.source,broker,rows:divs.slice(i,i+200)})});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok)throw new Error(data.error||'No se pudieron importar los dividendos.');
-    divImported+=data.imported||0;divSkipped+=data.skipped||0;errors=errors.concat(data.errors||[]);
+   for(let i=0;i<job.funds.length;i+=CHUNK){
+    const chunk=job.funds.slice(i,i+CHUNK),last=i+CHUNK>=job.funds.length;
+    const data=await post('/api/fund-transactions/import',{source:job.source,platform:broker,replaceManual,detectPlans:last,rows:chunk,
+     allRows:last?job.funds.filter(f=>f.side==='BUY').map(f=>({isin:f.isin,side:'BUY',plan:!!f.plan,units:f.units,price:f.price,fees:f.fees,executedAt:f.executedAt,currency:f.currency})):[]});
+    fundImported+=data.imported||0;fundSkipped+=data.skipped||0;plans+=data.plans||0;logErrors(data.errors);
+    step(chunk.length,'Fondos y ETF');
    }
-   status('<div class="broker-import-done"><strong>'+imported+(imported===1?' operación importada':' operaciones importadas')+(funds.length?' · '+fundImported+' de fondos':'')+(divs.length?' · '+divImported+' dividendos':'')+'</strong>'+(skipped||divSkipped||fundSkipped?'<span>'+(skipped+divSkipped+fundSkipped)+' ya estaban importados</span>':'')+
-    (retired?'<span>'+retired+' apuntes manuales sustituidos por el historial del bróker</span>':'')+(plans?'<span>'+plans+(plans===1?' plan de ahorro creado':' planes de ahorro creados')+' en tu cartera de fondos</span>':'')+
-    (errors.length?'<p class="broker-import-warn">'+errors.length+' no se pudieron registrar: '+esc(errors.slice(0,5).map(e=>(e.ticker||'')+' · '+e.error).join(' | '))+'</p>':'')+'</div>',errors.length&&!imported);
+   for(let i=0;i<job.divs.length;i+=200){
+    const chunk=job.divs.slice(i,i+200);
+    const data=await post('/api/dividends/import',{portfolioId:job.portfolioId,source:job.source,broker,rows:chunk});
+    divImported+=data.imported||0;divSkipped+=data.skipped||0;logErrors(data.errors);
+    step(chunk.length,'Dividendos');
+   }
+   const parts=[imported+(imported===1?' operación':' operaciones')];
+   if(job.funds.length)parts.push(fundImported+' de fondos');
+   if(job.divs.length)parts.push(divImported+' dividendos');
+   if(skipped+fundSkipped+divSkipped)task.log((skipped+fundSkipped+divSkipped)+' ya estaban importados.');
+   if(retired)task.log(retired+' apuntes manuales sustituidos por el historial del bróker.');
+   if(plans)task.log(plans+(plans===1?' plan de ahorro creado':' planes de ahorro creados')+' en tu cartera de fondos.');
+   task.done('Importación terminada: '+parts.join(' · ')+(errors?' · '+errors+' con error':''));
    if(typeof P().reload==='function')await P().reload();
    if(window.ViewInvAITax)window.ViewInvAITax._invalidate();
-   if(funds.length&&window.ViewInvAIFunds&&typeof window.ViewInvAIFunds.loadPortfolio==='function'){try{await window.ViewInvAIFunds.loadPortfolio(true)}catch(_){}}
-   if(flow.source==='ibkr'){const saved=readIbkr();if(saved){saved.lastSyncAt=Date.now();saved.portfolioId=portfolioId;writeIbkr(saved)}}
-  }catch(e){status(esc(e.message||'No se pudo importar.'),true);if(button){button.disabled=false;button.textContent='Reintentar importación'}}
+   if(job.funds.length&&window.ViewInvAIFunds&&typeof window.ViewInvAIFunds.loadPortfolio==='function'){try{await window.ViewInvAIFunds.loadPortfolio(true)}catch(_){}}
+   if(job.source==='ibkr'){const saved=readIbkr();if(saved){saved.lastSyncAt=Date.now();saved.portfolioId=job.portfolioId;writeIbkr(saved)}}
+  }catch(e){task.fail('Importación detenida: '+(e.message||'error')+(doneCount?' ('+doneCount+' de '+total+' procesadas; vuelve a importar el archivo para completar, no se duplica nada)':''))}
  }
  async function fetchIbkr(creds){
   const res=await window.ViewInvAIAuth.apiFetch('/api/broker-sync/ibkr',{method:'POST',body:JSON.stringify({token:creds.token,queryId:creds.queryId})});
@@ -341,7 +376,7 @@
   const t=e.target;
   const src=t.closest&&t.closest('[data-import-source]');
   if(src){flow={source:src.dataset.importSource,rows:[],positions:[],portfolioId:guessPortfolio(src.dataset.importSource)};render();return}
-  if(t.closest&&t.closest('[data-import-commit]')){commit(t.closest('[data-import-commit]'));return}
+  if(t.closest&&t.closest('[data-import-commit]')){commit();return}
   const go=t.closest&&t.closest('[data-ibkr-fetch]');
   if(go){
    const token=(document.querySelector('[data-ibkr-token]')?.value||'').trim(),queryId=(document.querySelector('[data-ibkr-query]')?.value||'').trim();
