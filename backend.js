@@ -2488,14 +2488,22 @@ async function handleFundPortfolios(request, env, user, json, parts) {
   return json({ error:"Method not allowed" },405);
 }
 
+// Último precio conocido por operación (p. ej. ejecuciones de un plan importadas), para fondos
+// sin valor liquidativo en el catálogo.
+const FUND_POSITION_SELECT =
+  "SELECT p.*," +
+  " (SELECT t.price FROM fund_transactions t WHERE t.fund_position_id=p.id AND t.user_id=p.user_id AND t.price>0 ORDER BY t.executed_at DESC,t.created_at DESC LIMIT 1) AS last_price," +
+  " (SELECT t.executed_at FROM fund_transactions t WHERE t.fund_position_id=p.id AND t.user_id=p.user_id AND t.price>0 ORDER BY t.executed_at DESC,t.created_at DESC LIMIT 1) AS last_price_at" +
+  " FROM fund_positions p WHERE p.user_id=?";
+
 async function handleFundPositions(request, env, user, json, parts, url) {
   await ensureFundSchema(env);
   const id = parts[1] || "";
   if (request.method === "GET" && !id) {
     const portfolioId = trimText(url.searchParams.get("portfolioId"),80);
     const stmt = portfolioId
-      ? env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND fund_portfolio_id=? AND active=1 ORDER BY created_at DESC").bind(user.id,portfolioId)
-      : env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id);
+      ? env.DB.prepare(FUND_POSITION_SELECT + " AND p.fund_portfolio_id=? AND p.active=1 ORDER BY p.created_at DESC").bind(user.id,portfolioId)
+      : env.DB.prepare(FUND_POSITION_SELECT + " AND p.active=1 ORDER BY p.created_at DESC").bind(user.id);
     const rows = await stmt.all();
     return json({ positions: rows.results || [] });
   }

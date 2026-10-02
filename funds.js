@@ -83,6 +83,7 @@
  function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
  function pct(v){v=num(v);return v===null?'—':(v>=0?'+':'')+v.toLocaleString('es-ES',{maximumFractionDigits:2})+'%'}
  function money(v,c='EUR'){v=num(v);if(v===null)return'—';try{return v.toLocaleString('es-ES',{style:'currency',currency:c||'EUR',maximumFractionDigits:4})}catch(_){return v.toLocaleString('es-ES',{maximumFractionDigits:4})+' '+c}}
+ function amount(v,c='EUR'){v=num(v);if(v===null)return'—';try{return v.toLocaleString('es-ES',{style:'currency',currency:c||'EUR',minimumFractionDigits:2,maximumFractionDigits:2})}catch(_){return v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+c}}
  function dateText(v){if(!v)return'—';let d=new Date(v);return Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES'):'—'}
  function safeHttpsUrl(v){
   try{const u=new URL(String(v||''),location.href);return u.protocol==='https:'?u.href:''}catch(_){return''}
@@ -685,17 +686,29 @@
  function fundPositions(portfolioId){
   return account.positions.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.active)!==0);
  }
- function fundPositionCard(position){
-  const p=productForPosition(position),units=num(position.units),avg=num(position.avg_price),current=fundCurrentValue(p);
-  const value=units!==null&&current!==null?units*current:null;
+ // Precio para valorar una posición: cotización/NAV del catálogo; si el fondo no lo tiene,
+ // el precio de la última operación importada (p. ej. la última ejecución del plan).
+ function positionValuation(position,p=productForPosition(position)){
+  const units=num(position.units),avg=num(position.avg_price);
+  let price=fundCurrentValue(p),source='market',at=null;
+  if(price===null&&num(position.last_price)!==null){price=num(position.last_price);source='last';at=position.last_price_at||null}
+  const value=units!==null&&price!==null?units*price:null;
   const invested=units!==null&&avg!==null?units*avg:null;
   const pnl=value!==null&&invested!==null?value-invested:null;
-  const pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
-  return root.ViewInvAICards.render({context:'fund-portfolio',title:p.name||position.name||p.isin,isin:p.isin,
-   subtitle:(p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo')+' · '+(position.platform||'—'),
+  return{units,avg,price,source,at,value,invested,pnl,pnlPct:pnl!==null&&invested>0?pnl/invested*100:null};
+ }
+ function shortDate(v){const d=new Date(v);return Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES',{day:'numeric',month:'short'}):''}
+ function fundPositionCard(position){
+  const p=productForPosition(position),v=positionValuation(position,p),cur=position.currency||p.currency;
+  const kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo';
+  const valueHtml=v.value===null
+   ?'<span class="fund-value-missing">Sin precio</span>'
+   :(v.source==='last'?'':fundFreshnessDotHtml(p))+'<span>'+amount(v.value,cur)+'</span>'+(v.source==='last'?'<small class="fund-value-source">precio del '+esc(shortDate(v.at)||'última compra')+'</small>':'');
+  return root.ViewInvAICards.render({context:'fund-portfolio',className:'portfolio-position-card fund-position-card',title:p.name||position.name||p.isin,isin:p.isin,
+   subtitle:kind+' · '+(position.platform||'—'),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
-   cells:[{label:'Valor actual',value:'',html:fundFreshnessDotHtml(p)+'<span>'+money(value,position.currency||p.currency)+'</span>'},{label:'P&L',value:pnl===null?'—':money(pnl,position.currency||p.currency)+(pnlPct===null?'':' · '+pct(pnlPct)),tone:pnl===null?'muted':pnl>=0?'positive':'negative'}],
-   detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(units===null?'—':units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Media <b>'+money(avg,position.currency||p.currency)+'</b></span></div>'+compactFacts(p)+perfStrip(p),
+   cells:[{label:'Valor actual',value:'',html:valueHtml},{label:'P&L',value:v.pnl===null?'—':amount(v.pnl,cur)+(v.pnlPct===null?'':' · '+pct(v.pnlPct)),tone:v.pnl===null?'muted':v.pnl>=0?'positive':'negative'}],
+   detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(v.units===null?'—':v.units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Precio medio <b>'+money(v.avg,cur)+'</b></span>'+(v.price!==null?'<span>'+(v.source==='last'?'Último precio ('+esc(shortDate(v.at))+')':'Precio actual')+' <b>'+money(v.price,cur)+'</b></span>':'')+'</div>'+(v.source==='last'?'<p class="fund-note">Este fondo no tiene valor liquidativo en el catálogo: se valora con el precio de tu última operación importada.</p>':'')+compactFacts(p)+perfStrip(p),
    actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
   });
  }
@@ -703,8 +716,14 @@
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
  function planSummaryHtml(portfolioId){
   const plans=fundPlans(portfolioId);if(!plans.length)return'';
-  const freqLabel={weekly:'semanal',monthly:'mensual',quarterly:'trimestral',annual:'anual',manual:'manual'};
-  return '<div class="fund-plan-strip">'+plans.slice(0,4).map(p=>'<span><b>'+esc(p.label||p.isin||'Aportación')+'</b> '+(num(p.amount)===null?'variable':money(p.amount,p.currency||'EUR'))+' · '+esc(freqLabel[p.frequency]||p.frequency||'mensual')+(p.next_contribution_at?' · próxima '+dateText(p.next_contribution_at):'')+(String(p.status||'active')==='paused'?' · pausada':'')+'</span>').join('')+'</div>';
+  const freqLabel={weekly:'/sem',monthly:'/mes',quarterly:'/trim',annual:'/año',manual:''};
+  const total=plans.filter(p=>String(p.status||'active')!=='paused'&&p.frequency==='monthly').reduce((a,p)=>a+(num(p.amount)||0),0);
+  return '<section class="fund-plan-list" aria-label="Planes de aportación"><header><small>PLANES DE APORTACIÓN</small>'+(total?'<b>'+amount(total)+'/mes</b>':'')+'</header>'+plans.slice(0,6).map(p=>{
+   const prod=p.isin?state.products.find(x=>x.isin===p.isin):null;
+   const name=prod&&prod.name||String(p.label||p.isin||'Aportación').replace(/^Plan [^·]+·\s*/,'');
+   const paused=String(p.status||'active')==='paused';
+   return '<div class="fund-plan-row'+(paused?' paused':'')+'"><span>'+esc(name)+'</span><b>'+(num(p.amount)===null?'variable':amount(p.amount,p.currency||'EUR')+esc(freqLabel[p.frequency]??''))+'</b><small>'+(paused?'En pausa':p.next_contribution_at?'Próx. '+esc(shortDate(p.next_contribution_at)):'')+'</small></div>';
+  }).join('')+'</section>';
  }
  // ----- Costes, solapamiento y simulador de aportaciones (cartera de fondos) -----
  // Index family from the tracked index (TradingView) or the name.
@@ -749,7 +768,7 @@
  }
  function dcaPrefs(){try{return JSON.parse(localStorage.getItem('viewinvai:dca')||'{}')||{}}catch(_){return{}}}
  function fundInsightsHtml(portfolioId,rows){
-  const items=rows.map(pos=>{const p=productForPosition(pos),units=num(pos.units),nav=fundCurrentValue(p)??num(pos.avg_price);return{pos,p,value:units!==null&&nav!==null?units*nav:null,family:indexFamily(p)}}).filter(x=>x.value>0);
+  const items=rows.map(pos=>{const p=productForPosition(pos),v=positionValuation(pos,p);return{pos,p,value:v.value??v.invested,family:indexFamily(p)}}).filter(x=>x.value>0);
   if(!items.length)return'';
   const total=items.reduce((a,x)=>a+x.value,0);
   const known=items.filter(x=>num(x.p.ter)!==null),knownValue=known.reduce((a,x)=>a+x.value,0);
@@ -852,14 +871,15 @@
   }
   account.selectedPortfolioId=selected.id;
   const rows=fundPositions(selected.id);
-  let total=0,invested=0,complete=true;
+  let total=0,complete=true;
+  let missing=0,pnlTotal=0,pnlBase=0,pnlCount=0,approx=false;
   for(const position of rows){
-   const p=productForPosition(position),units=num(position.units),avg=num(position.avg_price),nav=fundCurrentValue(p);
-   if(units===null||nav===null){complete=false;continue}
-   total+=units*nav;
-   if(avg!==null)invested+=units*avg;else complete=false;
+   const v=positionValuation(position);
+   if(v.value===null){complete=false;missing++;continue}
+   total+=v.value;if(v.source==='last')approx=true;
+   if(v.pnl!==null){pnlTotal+=v.pnl;pnlBase+=v.invested;pnlCount++}
   }
-  const pnl=complete?total-invested:null,pnlPct=pnl!==null&&invested>0?pnl/invested*100:null;
+  const pnl=pnlCount?pnlTotal:null,pnlPct=pnl!==null&&pnlBase>0?pnl/pnlBase*100:null,base=selected.base_currency||'EUR';
   box.innerHTML=
    '<div class="fund-portfolio-toolbar portfolio-inline-tools"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div>'+
    '<button type="button" class="portfolio-icon-action" data-fund-new-portfolio title="Nueva cartera" aria-label="Nueva cartera">＋</button>'+
@@ -869,8 +889,8 @@
    '</div>'+
    '<div class="portfolio-summary-bar">'+
     '<div><small>CARTERA</small><strong>'+esc(selected.name)+'</strong></div>'+
-    '<div><small>VALOR ACTUAL</small><strong>'+(complete?money(total,selected.base_currency||'EUR'):'—')+'</strong></div>'+
-    '<div><small>P&L</small><strong class="'+((pnl||0)>=0?'pnl-up':'pnl-down')+'">'+(pnl===null?'—':money(pnl,selected.base_currency||'EUR')+(pnlPct===null?'':' · '+pct(pnlPct)))+'</strong></div>'+
+    '<div><small>VALOR ACTUAL</small><strong>'+(rows.length&&missing<rows.length?(approx||!complete?'≈ ':'')+amount(total,base):'—')+'</strong>'+(missing?'<em class="fund-summary-note">'+missing+' sin precio</em>':'')+'</div>'+
+    '<div><small>P&L</small><strong class="'+(pnl===null?'':(pnl>=0?'pnl-up':'pnl-down'))+'">'+(pnl===null?'—':amount(pnl,base)+(pnlPct===null?'':' · '+pct(pnlPct)))+'</strong></div>'+
     '<div><small>POSICIONES</small><strong>'+rows.length+'</strong></div>'+
    '</div>'+planSummaryHtml(selected.id)+fundInsightsHtml(selected.id,rows)+
    (rows.length?'<div class="fund-position-grid">'+rows.map(fundPositionCard).join('')+'</div>':'<div class="portfolio-empty-state compact">Todavía no hay fondos en esta cartera. Añádelos desde el menú Fondos y ETFs.</div>');
