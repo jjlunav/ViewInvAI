@@ -1552,6 +1552,245 @@ async function handleTaxReport(request,env,user,json,url){
   return json(report);
 }
 
+/* ---------------- Rentabilidad de la cartera ----------------
+ * Curva diaria en EUR reconstruida con tus operaciones y los cierres diarios (Trade
+ * Republic / LSX en EUR; Nasdaq en USD si el valor no tiene ISIN negociable). La
+ * rentabilidad es ponderada por tiempo (TWR): las compras y ventas no la alteran, así
+ * que se puede comparar con un índice. Índices: ETF iShares Core MSCI World y S&P 500
+ * de acumulación en EUR (rentabilidad total). El efecto divisa es la diferencia entre
+ * la curva en EUR y la misma curva con el tipo EUR/USD fijo.
+ */
+export const PERF_BENCHMARKS=[
+  {key:"msci",isin:"IE00B4L5Y983",label:"MSCI World"},
+  {key:"sp500",isin:"IE00B5BMR087",label:"S&P 500"}
+];
+let priceDailySchemaReady=false;
+async function ensurePriceDailySchema(env){
+  if(priceDailySchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS price_daily (key TEXT NOT NULL,date TEXT NOT NULL,close REAL NOT NULL CHECK(close>0),PRIMARY KEY(key,date))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS price_daily_meta (key TEXT PRIMARY KEY,currency TEXT NOT NULL,source TEXT NOT NULL,first_day TEXT NOT NULL DEFAULT '',fetched_at INTEGER NOT NULL)")
+  ]);
+  priceDailySchemaReady=true;
+}
+const PRICE_DAILY_TTL_MS=60*60000;
+function perfRangeFor(fromDay){
+  const days=(Date.now()-Date.parse(fromDay))/864e5;
+  return days<=355?"1y":days<=1810?"5y":"max";
+}
+// Daily closes for one instrument, cached in D1. Returns {currency,source,rows:[{date,close}]}.
+async function loadPriceDaily(env,services,inst,fromDay){
+  const key=inst.key;
+  const meta=await env.DB.prepare("SELECT currency,source,first_day,fetched_at FROM price_daily_meta WHERE key=?").bind(key).first();
+  const fresh=meta&&Date.now()-Number(meta.fetched_at||0)<PRICE_DAILY_TTL_MS&&(!meta.first_day||meta.first_day<=fromDay||meta.source==="none");
+  if(!fresh&&services.loadDailyHistory){
+    let got=null;
+    try{got=await services.loadDailyHistory(inst,perfRangeFor(fromDay),fromDay)}
+    catch(error){console.warn("Daily history unavailable",key,String(error&&error.message||error))}
+    const rows=(got&&Array.isArray(got.rows)?got.rows:[]).filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.close>0);
+    if(rows.length){
+      for(let i=0;i<rows.length;i+=90){
+        await env.DB.batch(rows.slice(i,i+90).map(r=>env.DB.prepare("INSERT OR REPLACE INTO price_daily (key,date,close) VALUES (?,?,?)").bind(key,r.date,r.close)));
+      }
+      await env.DB.prepare("INSERT OR REPLACE INTO price_daily_meta (key,currency,source,first_day,fetched_at) VALUES (?,?,?,?,?)")
+        .bind(key,String(got.currency||"EUR").toUpperCase(),String(got.source||""),rows[0].date,Date.now()).run();
+    }else if(!meta){
+      // Remember the miss for an hour so a broken symbol does not refetch on every open.
+      await env.DB.prepare("INSERT OR REPLACE INTO price_daily_meta (key,currency,source,first_day,fetched_at) VALUES (?,?,?,?,?)")
+        .bind(key,"EUR","none","",Date.now()).run();
+    }
+  }
+  const m=await env.DB.prepare("SELECT currency,source FROM price_daily_meta WHERE key=?").bind(key).first();
+  const res=await env.DB.prepare("SELECT date,close FROM price_daily WHERE key=? AND date>=? ORDER BY date").bind(key,isoDay(Date.parse(fromDay)-10*864e5)).all();
+  return{currency:String(m&&m.currency||"EUR").toUpperCase(),source:String(m&&m.source||""),rows:res.results||[]};
+}
+function perfInstrumentKey(row){
+  const isin=String(row.isin||"").trim().toUpperCase();
+  if(/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return"ISIN:"+isin;
+  const ticker=String(row.ticker||"").trim().toUpperCase();
+  return ticker?"US:"+ticker:"";
+}
+function closeLookup(rows){
+  return day=>{
+    let lo=0,hi=rows.length-1,hit=null;
+    while(lo<=hi){const mid=(lo+hi)>>1;if(rows[mid].date<=day){hit=rows[mid];lo=mid+1}else hi=mid-1}
+    return hit?hit.close:null;
+  };
+}
+
+/* Pure computation (exported for tests).
+ *   transactions: rows of the transactions table (BUY/SELL/position-adjustment)
+ *   prices: Map key -> {currency, rows:[{date,close}]}
+ *   fx(currency, day) -> units of currency per 1 EUR (ECB), or null
+ *   calendar: sorted trading days (YYYY-MM-DD)
+ *   benchmarks: {key: [{date,close}]}
+ */
+export function computePortfolioPerformance({transactions=[],prices=new Map(),fx=()=>null,calendar=[],benchmarks={},live=new Map()}={}){
+  const toEur=(amount,currency,day)=>{
+    currency=String(currency||"EUR").toUpperCase();
+    if(currency==="EUR")return amount;
+    const rate=fx(currency,day);
+    return rate>0?amount/rate:null;
+  };
+  const txs=transactions.slice().filter(t=>finiteNumber(t.quantity)>0&&finiteNumber(t.price)!==null)
+    .sort((a,b)=>String(a.executed_at).localeCompare(String(b.executed_at)));
+  if(!txs.length||!calendar.length)return null;
+  const firstDay=isoDay(txs[0].executed_at);
+  const days=calendar.filter(d=>d>=firstDay);
+  if(!days.length)return null;
+  const instruments=new Map();
+  for(const t of txs){
+    const key=perfInstrumentKey(t);if(!key)continue;
+    const holdKey=String(t.position_id||"")||key+"|"+String(t.portfolio_id||"");
+    if(!instruments.has(key)){
+      const p=prices.get(key);
+      instruments.set(key,{key,ticker:String(t.ticker||""),foreign:String(t.currency||"").toUpperCase()==="USD"||/^US/.test(String(t.isin||"").toUpperCase()),
+        price:p&&p.rows&&p.rows.length?closeLookup(p.rows):null,priceCurrency:p&&p.currency||"EUR",firstPriceDay:p&&p.rows&&p.rows.length?p.rows[0].date:null,
+        lastTrade:null,holds:new Set()});
+    }
+    instruments.get(key).holds.add(holdKey);
+    t.__key=key;t.__hold=holdKey;t.__day=isoDay(t.executed_at);
+  }
+  const qty=new Map();
+  const fx0=fx("USD",days[0])||null;
+  const out={days:[],value:[],flow:[],twr:[],twrLocal:[],invested:[]};
+  let idx=1,idxLocal=1,prevV=0,prevVLocal=0,ti=0,invested=0;
+  const missing=new Set(),approx=new Set();
+  for(const day of days){
+    let flow=0,flowLocal=0;
+    while(ti<txs.length&&txs[ti].__day<=day){
+      const t=txs[ti++];if(!t.__key)continue;
+      const inst=instruments.get(t.__key),q=finiteNumber(t.quantity),p=finiteNumber(t.price),fees=Math.max(0,finiteNumber(t.fees)||0);
+      const before=qty.get(t.__hold)||0;
+      let delta=0,cash=0;
+      if(t.origin==="position-adjustment"){delta=q-before;cash=delta*p+fees}
+      else if(String(t.side).toUpperCase()==="SELL"){delta=-Math.min(q,before);cash=delta*p+fees}
+      else{delta=q;cash=q*p+fees}
+      qty.set(t.__hold,before+delta);
+      const cashEur=toEur(cash,t.currency,t.__day);
+      const unitEur=toEur(p,t.currency,t.__day);
+      if(unitEur!==null)inst.lastTrade=unitEur;
+      if(cashEur!==null){
+        flow+=cashEur;invested+=cashEur;
+        const r=inst.foreign&&fx0?(fx("USD",day)||fx0)/fx0:1;
+        flowLocal+=cashEur*r;
+      }
+    }
+    let V=0,VLocal=0;
+    const usd=fx("USD",day);
+    for(const inst of instruments.values()){
+      let q=0;for(const h of inst.holds)q+=qty.get(h)||0;
+      if(q<=1e-9)continue;
+      let pe=null;
+      const lv=live.get(inst.key);
+      if(lv&&lv.day===day&&lv.priceEur>0)pe=lv.priceEur;
+      if(pe===null&&inst.price&&(!inst.firstPriceDay||inst.firstPriceDay<=day)){
+        const c=inst.price(day);
+        if(c!==null)pe=inst.priceCurrency==="EUR"?c:toEur(c,inst.priceCurrency,day);
+      }
+      if(pe===null){pe=inst.lastTrade;if(inst.price)approx.add(inst.ticker);else missing.add(inst.ticker)}
+      if(pe===null)continue;
+      const val=q*pe;V+=val;
+      VLocal+=inst.foreign&&fx0&&usd?val*usd/fx0:val;
+    }
+    const denom=prevV+Math.max(flow,0),denomL=prevVLocal+Math.max(flowLocal,0);
+    let r=denom>1e-6?(V-prevV-flow)/denom:0,rl=denomL>1e-6?(VLocal-prevVLocal-flowLocal)/denomL:0;
+    if(!Number.isFinite(r))r=0;if(!Number.isFinite(rl))rl=0;
+    r=Math.max(-0.9,Math.min(3,r));rl=Math.max(-0.9,Math.min(3,rl));
+    idx*=1+r;idxLocal*=1+rl;
+    out.days.push(day);out.value.push(Math.round(V*100)/100);out.flow.push(Math.round(flow*100)/100);
+    out.invested.push(Math.round(invested*100)/100);
+    out.twr.push(Math.round(idx*1e6)/1e6);out.twrLocal.push(Math.round(idxLocal*1e6)/1e6);
+    prevV=V;prevVLocal=VLocal;
+  }
+  const bench={};
+  for(const [k,rows] of Object.entries(benchmarks)){
+    if(!rows||!rows.length)continue;
+    const look=closeLookup(rows);
+    const series=out.days.map(d=>look(d));
+    const base=series.find(x=>x>0);
+    if(base)bench[k]=series.map(x=>x>0?Math.round(x/base*1e6)/1e6:null);
+  }
+  out.benchmarks=bench;
+  out.missing=[...missing].filter(Boolean).slice(0,20);
+  out.approx=[...approx].filter(t=>t&&!missing.has(t)).slice(0,20);
+  out.instruments=instruments.size;
+  return out;
+}
+
+const perfMemo=new Map();
+async function handlePortfolioPerformance(request,env,user,json,url,services){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  await ensureTransactionsSchema(env);
+  await ensurePriceDailySchema(env);
+  const pid=trimText(url.searchParams.get("portfolioId"),80)||"all";
+  if(pid!=="all"&&!(await onePortfolio(env,user.id,pid)))return json({error:"Portfolio not found"},404);
+  // The memo is keyed by the ledger state, so a new or edited operation recomputes at once.
+  const sig=pid==="all"
+    ? await env.DB.prepare("SELECT COUNT(*) AS n,MAX(updated_at) AS u FROM transactions WHERE user_id=?").bind(user.id).first()
+    : await env.DB.prepare("SELECT COUNT(*) AS n,MAX(updated_at) AS u FROM transactions WHERE user_id=? AND portfolio_id=?").bind(user.id,pid).first();
+  const memoKey=user.id+"|"+pid,memoSig=String(sig&&sig.n||0)+"|"+String(sig&&sig.u||""),hit=perfMemo.get(memoKey);
+  if(hit&&hit.sig===memoSig&&Date.now()-hit.at<5*60000&&url.searchParams.get("fresh")!=="1")return json(hit.payload);
+  const res=pid==="all"
+    ? await env.DB.prepare("SELECT position_id,portfolio_id,stock_key,ticker,isin,side,quantity,price,fees,currency,executed_at,origin FROM transactions WHERE user_id=? ORDER BY executed_at ASC,created_at ASC").bind(user.id).all()
+    : await env.DB.prepare("SELECT position_id,portfolio_id,stock_key,ticker,isin,side,quantity,price,fees,currency,executed_at,origin FROM transactions WHERE user_id=? AND portfolio_id=? ORDER BY executed_at ASC,created_at ASC").bind(user.id,pid).all();
+  const txs=res.results||[];
+  if(!txs.length){const payload={portfolioId:pid,empty:true,generatedAt:nowIso()};return json(payload)}
+  const firstDay=isoDay(txs[0].executed_at)||isoDay(Date.now());
+  const today=isoDay(Date.now());
+  const fromDay=isoDay(Date.parse(firstDay)-7*864e5);
+  // Instruments (unique by ISIN / ticker) plus the two benchmark ETFs.
+  const insts=new Map();
+  for(const t of txs){const key=perfInstrumentKey(t);if(key&&!insts.has(key))insts.set(key,{key,isin:key.startsWith("ISIN:")?key.slice(5):"",ticker:String(t.ticker||"").toUpperCase(),stockKey:String(t.stock_key||"")})}
+  if(insts.size>60)return json({error:"Demasiados valores para calcular la curva (máximo 60)."},422);
+  for(const b of PERF_BENCHMARKS)insts.set("ISIN:"+b.isin,{key:"ISIN:"+b.isin,isin:b.isin,ticker:b.label,benchmark:b.key});
+  const prices=new Map(),list=[...insts.values()];
+  for(let i=0;i<list.length;i+=4){
+    const chunk=list.slice(i,i+4);
+    const got=await Promise.all(chunk.map(inst=>loadPriceDaily(env,services,inst,fromDay).catch(()=>({currency:"EUR",rows:[]}))));
+    chunk.forEach((inst,j)=>prices.set(inst.key,got[j]));
+  }
+  // ECB EUR/USD (and any other trade currency).
+  const currencies=new Set(["USD"]);
+  for(const t of txs){const c=String(t.currency||"EUR").toUpperCase();if(c!=="EUR"&&/^[A-Z]{3}$/.test(c))currencies.add(c)}
+  for(const p of prices.values())if(p.currency!=="EUR")currencies.add(p.currency);
+  const lookups={};
+  for(const c of currencies){try{lookups[c]=fxLookup(await loadEcbRates(env,c,isoDay(Date.parse(fromDay)-12*864e5),today))}catch(_){lookups[c]=()=>null}}
+  const fx=(c,d)=>{const hit=lookups[c]&&lookups[c](d);return hit?hit.rate:null};
+  // Trading calendar: LSX days from the MSCI World ETF, plus every day with a price, plus today on weekdays.
+  const daySet=new Set();
+  for(const [key,p] of prices)for(const r of p.rows)if(r.date>=firstDay&&(key==="ISIN:"+PERF_BENCHMARKS[0].isin||!insts.get(key).benchmark))daySet.add(r.date);
+  const wd=new Date(today+"T12:00:00Z").getUTCDay();
+  if(wd!==0&&wd!==6)daySet.add(today);
+  const calendar=[...daySet].filter(d=>{const w=new Date(d+"T12:00:00Z").getUTCDay();return w!==0&&w!==6&&d<=today}).sort();
+  // Live overlay for today's point on instruments priced from Nasdaq (no intraday bar).
+  const live=new Map();
+  if(services.loadMarketSnapshot){
+    try{
+      const snapshot=await services.loadMarketSnapshot(env);
+      const eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
+      for(const inst of insts.values()){
+        if(inst.benchmark)continue;
+        const p=prices.get(inst.key);
+        const lastRow=p&&p.rows.length?p.rows[p.rows.length-1].date:"";
+        if(p&&p.currency==="EUR"&&lastRow===today)continue;
+        const stock=findStock(snapshot,{stock_key:inst.stockKey,ticker:inst.ticker});
+        const usd=finiteNumber(stock&&(stock.usLivePrice??stock.price));
+        if(usd>0&&eurUsd>0)live.set(inst.key,{day:today,priceEur:usd/eurUsd});
+      }
+    }catch(_){}
+  }
+  const benchmarks={};
+  for(const b of PERF_BENCHMARKS)benchmarks[b.key]=(prices.get("ISIN:"+b.isin)||{rows:[]}).rows;
+  const result=computePortfolioPerformance({transactions:txs,prices,fx,calendar,benchmarks,live});
+  const payload=result
+    ? Object.assign({portfolioId:pid,currency:"EUR",benchmarkLabels:Object.fromEntries(PERF_BENCHMARKS.map(b=>[b.key,b.label])),generatedAt:nowIso()},result)
+    : {portfolioId:pid,empty:true,generatedAt:nowIso()};
+  perfMemo.set(memoKey,{at:Date.now(),sig:memoSig,payload});
+  if(perfMemo.size>500)perfMemo.delete(perfMemo.keys().next().value);
+  return json(payload);
+}
+
 /* ---------------- Radar AI · marcador de aciertos ----------------
  * Cada día de mercado, a las 15:45 de Nueva York (12:45 en cierre anticipado), se
  * guarda la foto del Radar AI calculada con el mismo motor que la pantalla y con los
@@ -3643,6 +3882,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
     if (root === "tax-report") return handleTaxReport(request, env, user, json, url);
+    if (root === "portfolio-performance") return handlePortfolioPerformance(request, env, user, json, url, services);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);

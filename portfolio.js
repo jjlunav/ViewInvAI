@@ -675,6 +675,126 @@ function portfolioInsightsHtml(portfolio){
     '</div></details>';
 }
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-pf-insights]')){try{localStorage.setItem('viewinvai:pf-insights-open',e.target.open?'1':'0')}catch(_){}}},true);
+// ----- Rentabilidad: curva TWR en EUR frente a MSCI World y S&P 500 (servidor: /api/portfolio-performance) -----
+const PERF_RANGES={'1m':'1M','3m':'3M','6m':'6M','ytd':'Año','1y':'1A','all':'Todo'};
+const perfCache=new Map();
+function perfRangeKey(){try{const k=localStorage.getItem('viewinvai:pf-perf-range');return PERF_RANGES[k]?k:'1y'}catch(_){return'1y'}}
+function perfStartIndex(days,range){
+  if(range==='all'||!days.length)return 0;
+  const last=new Date(days[days.length-1]+'T12:00:00Z');
+  let cutoff;
+  if(range==='ytd')cutoff=(last.getUTCFullYear()-1)+'-12-31';
+  else{const d=new Date(last);d.setUTCMonth(d.getUTCMonth()-({'1m':1,'3m':3,'6m':6,'1y':12}[range]||12));cutoff=d.toISOString().slice(0,10)}
+  let i0=0;for(let i=0;i<days.length;i++){if(days[i]<=cutoff)i0=i;else break}
+  return i0;
+}
+function perfMetrics(p,range){
+  const n=p.days.length-1,i0=perfStartIndex(p.days,range);
+  if(n<1||i0>=n)return null;
+  const ratio=(arr)=>arr&&arr[i0]>0&&arr[n]>0?arr[n]/arr[i0]-1:null;
+  const twr=ratio(p.twr),local=ratio(p.twrLocal);
+  let peak=-Infinity,dd=0;
+  for(let i=i0;i<=n;i++){const v=p.twr[i];if(v>peak)peak=v;if(peak>0)dd=Math.min(dd,v/peak-1)}
+  let flows=0;for(let i=i0+1;i<=n;i++)flows+=p.flow[i]||0;
+  const gain=p.value[n]-(i0===0?0:p.value[i0])-(i0===0?flows+(p.flow[0]||0):flows);
+  const bench={};for(const k of Object.keys(p.benchmarks||{}))bench[k]=ratio(p.benchmarks[k]);
+  return{i0,n,twr,local,fx:twr!==null&&local!==null?twr-local:null,dd,gain,bench,from:p.days[i0],partial:i0===0&&range!=='all'};
+}
+const perfPct=(v,d=1)=>v===null||v===undefined||!Number.isFinite(v)?'—':(v>0?'+':'')+formatNumber(v*100,d)+' %';
+const perfPp=v=>v===null||!Number.isFinite(v)?'—':(v>0?'+':'')+formatNumber(v*100,1)+' pp';
+const perfDay=d=>{const[y,m,dd]=String(d||'').split('-');return dd?dd+'/'+m+'/'+y:''};
+function perfChartSvg(p,m){
+  const keys=[['twr','perf-line-pf'],['msci','perf-line-msci'],['sp500','perf-line-sp']];
+  const series=keys.map(([k,cls])=>{
+    const arr=k==='twr'?p.twr:(p.benchmarks||{})[k];
+    if(!arr||!(arr[m.i0]>0))return null;
+    const pts=[];const step=Math.max(1,Math.ceil((m.n-m.i0+1)/220));
+    for(let i=m.i0;i<=m.n;i+=step)if(arr[i]>0)pts.push([i,arr[i]/arr[m.i0]-1]);
+    if(pts.length&&pts[pts.length-1][0]!==m.n&&arr[m.n]>0)pts.push([m.n,arr[m.n]/arr[m.i0]-1]);
+    return{cls,pts};
+  }).filter(Boolean);
+  let lo=0,hi=0;series.forEach(s=>s.pts.forEach(([,y])=>{lo=Math.min(lo,y);hi=Math.max(hi,y)}));
+  const pad=(hi-lo)*.08||.01;lo-=pad;hi+=pad;
+  const W=320,H=120,x=i=>(i-m.i0)/Math.max(1,m.n-m.i0)*W,y=v=>H-(v-lo)/(hi-lo)*H;
+  const path=pts=>pts.map(([i,v],j)=>(j?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join('');
+  return '<div class="perf-chart-wrap"><span class="perf-y top">'+perfPct(hi,0)+'</span><span class="perf-y bottom">'+perfPct(lo,0)+'</span><svg class="perf-chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Curva de rentabilidad frente a los índices">'+
+    '<line class="perf-zero" x1="0" x2="'+W+'" y1="'+y(0).toFixed(1)+'" y2="'+y(0).toFixed(1)+'"/>'+
+    series.slice().reverse().map(s=>'<path class="'+s.cls+'" d="'+path(s.pts)+'"/>').join('')+
+  '</svg></div>'+
+  '<div class="perf-axis"><span>'+esc(perfDay(p.days[m.i0]))+'</span><span>'+esc(perfDay(p.days[m.n]))+'</span></div>';
+}
+function perfStat(label,value,cls,note){
+  return '<div class="perf-stat"><small>'+esc(label)+'</small><b class="'+(cls||'')+'">'+value+'</b>'+(note?'<span>'+esc(note)+'</span>':'')+'</div>';
+}
+const perfTone=v=>v===null||!Number.isFinite(v)?'':v>0?'positive':v<0?'negative':'';
+function portfolioPerformanceHtml(portfolio){
+  if(!portfolio)return'';
+  const id=String(portfolio.id),entry=perfCache.get(id),range=perfRangeKey();
+  let open=false;try{open=localStorage.getItem('viewinvai:pf-perf-open')==='1'}catch(_){}
+  const shell=(chips,body)=>'<details class="portfolio-insights portfolio-perf" data-pf-perf="'+esc(id)+'"'+(open?' open':'')+'>'+
+    '<summary><span class="insights-title">Rentabilidad</span><span class="insights-chips">'+chips+'</span></summary>'+
+    '<div class="insights-body">'+body+'</div></details>';
+  if(!entry||(!entry.data&&entry.loading))return shell('<b>Calculando…</b>','<p class="perf-note">Reconstruyendo la curva con tus operaciones y los cierres diarios…</p>');
+  if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">No se pudo calcular ahora mismo. <button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">Reintentar</button></p>');
+  const p=entry.data;
+  if(p.empty||!p.days||p.days.length<2)return'';
+  const m=perfMetrics(p,range);
+  if(!m)return'';
+  const labels=p.benchmarkLabels||{msci:'MSCI World',sp500:'S&P 500'};
+  const vsMsci=m.twr!==null&&m.bench.msci!=null?m.twr-m.bench.msci:null;
+  const chips='<b class="'+perfTone(m.twr)+'">'+perfPct(m.twr)+' · '+esc(PERF_RANGES[range])+'</b>'+
+    (vsMsci!==null?'<b class="'+perfTone(vsMsci)+'">vs MSCI '+perfPp(vsMsci)+'</b>':'')+
+    '<b>Máx. caída '+perfPct(m.dd)+'</b>';
+  const tabs='<div class="portfolio-sort-bar perf-ranges" role="group" aria-label="Periodo">'+
+    Object.entries(PERF_RANGES).map(([k,l])=>'<button type="button" class="tab'+(k===range?' active':'')+'" data-pf-perf-range="'+k+'" aria-pressed="'+(k===range)+'">'+l+'</button>').join('')+'</div>';
+  const legend='<div class="perf-legend"><span class="pf">Cartera</span><span class="msci">'+esc(labels.msci||'MSCI World')+'</span><span class="sp">'+esc(labels.sp500||'S&P 500')+'</span></div>';
+  const coverage=[];
+  if(p.missing&&p.missing.length)coverage.push('Sin histórico de precios para '+p.missing.join(', ')+': se valoran al precio de compra.');
+  if(p.approx&&p.approx.length)coverage.push('Histórico incompleto para '+p.approx.join(', ')+'.');
+  const body=tabs+(m.partial?'<p class="perf-note">Tu primera operación es del '+esc(perfDay(m.from))+': el periodo empieza ahí.</p>':'')+
+    perfChartSvg(p,m)+legend+
+    '<div class="perf-stats">'+
+      perfStat('Rentabilidad',perfPct(m.twr),perfTone(m.twr),'Ponderada por tiempo')+
+      perfStat('Ganancia',formatMoney(m.gain,'EUR'),perfTone(m.gain),'Valor final − inicial − aportaciones')+
+      perfStat('Máx. caída',perfPct(m.dd),m.dd<0?'negative':'','Desde el máximo previo')+
+      perfStat(labels.msci||'MSCI World',perfPct(m.bench.msci),perfTone(m.bench.msci),vsMsci!==null?'Tú '+perfPp(vsMsci):'')+
+      perfStat(labels.sp500||'S&P 500',perfPct(m.bench.sp500),perfTone(m.bench.sp500),m.twr!==null&&m.bench.sp500!=null?'Tú '+perfPp(m.twr-m.bench.sp500):'')+
+      perfStat('Divisa',perfPp(m.fx),perfTone(m.fx),'Efecto del EUR/USD en tus valores en dólares')+
+    '</div>'+
+    (coverage.length?'<p class="insights-alert">'+esc(coverage.join(' '))+'</p>':'')+
+    '<p class="perf-note">Rentabilidad ponderada por tiempo en EUR: tus compras y ventas no la distorsionan, así que se puede comparar con los índices. Índices: ETF de acumulación en EUR (con dividendos). No incluye el efectivo ni los dividendos cobrados.</p>';
+  return shell(chips,body);
+}
+function refreshPerfCard(id){
+  const el=document.querySelector('[data-pf-perf="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  const selected=state.portfolios.find(p=>String(p.id)===String(id));
+  if(!el||!selected)return;
+  const html=portfolioPerformanceHtml(selected);
+  if(!html){el.remove();return}
+  const tmp=document.createElement('div');tmp.innerHTML=html;el.replaceWith(tmp.firstElementChild);
+}
+async function loadPortfolioPerformance(id,force=false){
+  id=String(id||'');if(!id)return;
+  const entry=perfCache.get(id)||{};
+  if(entry.loading)return;
+  if(!force&&entry.at&&Date.now()-entry.at<(entry.data?5*60000:60000))return;
+  entry.loading=true;perfCache.set(id,entry);
+  try{entry.data=await fetchJson('/api/portfolio-performance?portfolioId='+encodeURIComponent(id))}
+  catch(error){console.warn('Portfolio performance unavailable',error)}
+  entry.loading=false;entry.at=Date.now();
+  refreshPerfCard(id);
+}
+document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-pf-perf]')){try{localStorage.setItem('viewinvai:pf-perf-open',e.target.open?'1':'0')}catch(_){}}},true);
+document.addEventListener('click',event=>{
+  const r=event.target.closest&&event.target.closest('[data-pf-perf-range]');
+  if(r){
+    try{localStorage.setItem('viewinvai:pf-perf-range',r.dataset.pfPerfRange)}catch(_){}
+    const card=r.closest('[data-pf-perf]');if(card)refreshPerfCard(card.dataset.pfPerf);
+    return;
+  }
+  const retry=event.target.closest&&event.target.closest('[data-pf-perf-retry]');
+  if(retry){event.preventDefault();loadPortfolioPerformance(retry.dataset.pfPerfRetry,true)}
+});
 
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
@@ -685,7 +805,7 @@ function portfolioContextHtml(selected, positions) {
     const rows = positions.length
       ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
-    return summary + portfolioCashRowHtml(selected) + portfolioInsightsHtml(selected) +
+    return summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
       positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
@@ -1282,6 +1402,7 @@ function renderApp() {
     updatePortfolioTabOverflow();
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
     if(state.primaryTab==="goal")persistPendingGoalHistory();
+    else if(selected)loadPortfolioPerformance(selected.id);
   });
 }
 
@@ -1593,6 +1714,7 @@ async function loadAll({ syncFavorites = false } = {}) {
   if(portfolioLoadPromise)return portfolioLoadPromise;
   portfolioLoadPromise=(async()=>{
   if (!state.user || state.loading) return;
+  perfCache.forEach(entry=>{entry.at=0});
   let ok = true;
   state.loading = true;
   renderActivePortfolioPanel();
