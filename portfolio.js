@@ -3508,7 +3508,17 @@ function portfolioDaySummary(){
     let value=0,day=0,pnl=0,complete=true,count=0;
     open.filter(p=>String(p.portfolio_id)===String(pf.id)).forEach(p=>{
       count++;
-      const stock=stockByKey(p.stock_key);if(!stock){complete=false;return}
+      const stock=stockByKey(p.stock_key);
+      if(!stock){
+        // Fuera del catálogo: misma valoración por ISIN de Trade Republic que en Carteras.
+        const isin=positionIsin(p),F=window.ViewInvAIFunds,q=isin&&F&&typeof F.getLiveQuote==='function'?F.getLiveQuote(isin):null;
+        const qty=num(p.quantity),px=q&&String(p.currency||'EUR').toUpperCase()==='EUR'?num(q.price):null;
+        if(qty===null||px===null){complete=false;return}
+        const v=qty*px;value+=v;
+        const prev=num(q.prev);if(prev!==null&&prev>0)day+=qty*(px-prev);
+        const avg=num(p.avg_price),cost=num(p.cost_basis)??(avg!==null?qty*avg:null);if(cost!==null)pnl+=v-cost;
+        return;
+      }
       const market=currentMarket(stock,Number(p.prefer_tr)===1),qty=num(p.quantity),eur=marketValueInCurrency(market,'EUR');
       if(qty===null||eur===null){complete=false;return}
       const v=qty*eur;value+=v;
