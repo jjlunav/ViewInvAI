@@ -1338,6 +1338,44 @@ function parseFlexTrades(xml) {
   }
   return out;
 }
+// Dividends and their withholding from the Flex «Cash Transactions» section. IBKR books
+// the dividend and the tax as separate rows sharing actionID (or ISIN + day).
+export function parseFlexDividends(xml) {
+  const groups = new Map();
+  for (const tag of String(xml || "").match(/<CashTransaction\s[^>]*?\/?>/g) || []) {
+    const type = flexAttr(tag, "type").toLowerCase();
+    const isDividend = /dividend/.test(type) && !/withholding/.test(type);
+    const isTax = /withholding tax/.test(type);
+    if (!isDividend && !isTax) continue;
+    const level = flexAttr(tag, "levelOfDetail").toUpperCase();
+    if (level && level !== "DETAIL") continue;
+    const amount = Number(flexAttr(tag, "amount"));
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const isin = flexAttr(tag, "isin").toUpperCase(), symbol = flexAttr(tag, "symbol").toUpperCase();
+    const when = flexAttr(tag, "dateTime") || flexAttr(tag, "settleDate") || flexAttr(tag, "reportDate");
+    // Payment date as booked by IBKR (no time-zone shift: a 20:20 New York entry is that day).
+    const dm = String(when || "").match(/^(\d{4})-?(\d{2})-?(\d{2})/);
+    if (!dm) continue;
+    const day = dm[1] + "-" + dm[2] + "-" + dm[3];
+    const currency = flexAttr(tag, "currency").toUpperCase() || "USD";
+    const actionId = flexAttr(tag, "actionID");
+    const key = (actionId ? "a" + actionId : (isin || symbol) + ":" + day) + ":" + currency;
+    const g = groups.get(key) || { key, isin, symbol, name: "", currency, day, gross: 0, withholding: 0 };
+    if (isDividend) { g.gross += amount; g.name = g.name || flexAttr(tag, "description"); }
+    else g.withholding -= amount; // tax rows are negative; refunds positive
+    groups.set(key, g);
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    if (!(g.gross > 0)) continue;
+    out.push({
+      externalId: "ibkr-div:" + g.key,
+      paidAt: g.day + "T12:00:00.000Z", isin: g.isin, ticker: g.symbol, name: g.name.replace(/\s*\(.*$/, "").slice(0, 160),
+      currency: g.currency, gross: Math.round(g.gross * 1e4) / 1e4, withholding: Math.max(0, Math.round(g.withholding * 1e4) / 1e4)
+    });
+  }
+  return out.sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+}
 function parseFlexPositions(xml) {
   const out = [];
   for (const tag of xml.match(/<OpenPosition\s[^>]*?\/?>/g) || []) {
@@ -1372,7 +1410,7 @@ async function handleBrokerSync(request, env, user, json, parts) {
     const res = await fetch(statementUrl + "?t=" + encodeURIComponent(token) + "&q=" + encodeURIComponent(reference) + "&v=3", { headers });
     const xml = await res.text();
     if (/<FlexQueryResponse/.test(xml)) {
-      return json({ trades: parseFlexTrades(xml), positions: parseFlexPositions(xml), fetchedAt: nowIso() });
+      return json({ trades: parseFlexTrades(xml), positions: parseFlexPositions(xml), dividends: parseFlexDividends(xml), fetchedAt: nowIso() });
     }
     const code = flexTag(xml, "ErrorCode");
     if (code === "1019" || code === "1021") continue; // statement still being generated
@@ -1540,16 +1578,153 @@ async function handleTaxReport(request,env,user,json,url){
     const d=isoDay(r.executed_at);if(!d)continue;
     const cur=needed.get(c)||{from:d,to:d};if(d<cur.from)cur.from=d;if(d>cur.to)cur.to=d;needed.set(c,cur);
   }
+  await ensureDividendsSchema(env);
+  const divRes=await env.DB.prepare("SELECT id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? AND paid_at>=? AND paid_at<? ORDER BY paid_at ASC").bind(user.id,year+"-01-01",(year+1)+"-01-01").all();
+  const divRows=divRes.results||[];
+  for(const r of divRows){
+    const c=String(r.currency||"EUR").toUpperCase();if(c==="EUR")continue;
+    const d=isoDay(r.paid_at);if(!d)continue;
+    const cur=needed.get(c)||{from:d,to:d};if(d<cur.from)cur.from=d;if(d>cur.to)cur.to=d;needed.set(c,cur);
+  }
   const lookups={};
   for(const [currency,range] of needed){
     if(!/^[A-Z]{3}$/.test(currency))continue;
     const from=new Date(Date.parse(range.from)-12*864e5).toISOString().slice(0,10);
     try{lookups[currency]=fxLookup(await loadEcbRates(env,currency,from,range.to))}catch(_){lookups[currency]=()=>null}
   }
-  const report=computeSpanishTax(rows,(c,d)=>lookups[c]?lookups[c](d):null,year);
+  const fxFor=(c,d)=>lookups[c]?lookups[c](d):null;
+  const report=computeSpanishTax(rows,fxFor,year);
+  report.dividends=computeDividendTax(divRows,fxFor);
+  report.savings=savingsTaxEstimate(report.totals.netEur,report.dividends.totals.grossEur);
+  report.savings.deductionEur=report.dividends.totals.deductibleEur;
+  report.savings.withheldEsEur=report.dividends.totals.withholdingEsEur;
+  report.savings.dueEur=Math.max(0,report.savings.taxEur-report.savings.deductionEur)-report.savings.withheldEsEur;
   report.asOf=year<nowYear?year+"-12-31":isoDay(Date.now());
   report.transactions=rows.length;
   return json(report);
+}
+
+/* ---------------- Dividendos y retenciones ----------------
+ * Cobros de dividendos con su retención en origen (y la española si la hubo). Se
+ * importan de Trade Republic (CSV) e IBKR (Flex · Cash Transactions) o se añaden a mano;
+ * el external_id evita duplicados al reimportar.
+ */
+let dividendsSchemaReady=false;
+async function ensureDividendsSchema(env){
+  if(dividendsSchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS dividends (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,portfolio_id TEXT NOT NULL DEFAULT '',external_id TEXT,paid_at TEXT NOT NULL,isin TEXT NOT NULL DEFAULT '',ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'EUR',gross REAL NOT NULL CHECK(gross>0),withholding REAL NOT NULL DEFAULT 0 CHECK(withholding>=0),withholding_es REAL NOT NULL DEFAULT 0 CHECK(withholding_es>=0),origin TEXT NOT NULL DEFAULT 'manual',broker TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_dividends_external ON dividends(user_id,external_id) WHERE external_id IS NOT NULL"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_dividends_user_date ON dividends(user_id,paid_at)")
+  ]);
+  dividendsSchemaReady=true;
+}
+function dividendFromBody(body){
+  const positive=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>=0?n:null};
+  const paid=new Date(String(body.paidAt||body.date||""));
+  if(!Number.isFinite(paid.getTime()))return{error:"Fecha de cobro no válida."};
+  const gross=positive(body.gross);
+  if(!(gross>0)||gross>1e8)return{error:"El importe bruto debe ser mayor que 0."};
+  const withholding=positive(body.withholding)||0,withholdingEs=positive(body.withholdingEs)||0;
+  if(withholding+withholdingEs>gross+1e-9)return{error:"La retención no puede superar el importe bruto."};
+  const currency=trimText(body.currency||"EUR",3).toUpperCase();
+  if(!/^[A-Z]{3}$/.test(currency))return{error:"Divisa no válida."};
+  const isin=trimText(body.isin,12).toUpperCase();
+  if(isin&&!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return{error:"ISIN no válido."};
+  const ticker=trimText(body.ticker,24).toUpperCase(),name=trimText(body.name,160);
+  if(!isin&&!ticker&&!name)return{error:"Indica el valor (ISIN, ticker o nombre)."};
+  // Spanish issuers: the withholding is a Spanish retention (creditable), not foreign tax.
+  const es=isin.startsWith("ES");
+  return{
+    paidAt:paid.toISOString(),gross,currency,isin,ticker,name,
+    withholding:es?0:withholding,withholdingEs:es?withholding+withholdingEs:withholdingEs,
+    externalId:trimText(body.externalId,160)||null,
+    portfolioId:trimText(body.portfolioId,80),broker:trimText(body.broker,80),origin:trimText(body.origin||"manual",24)
+  };
+}
+async function insertDividend(env,userId,d){
+  const res=await env.DB.prepare("INSERT OR IGNORE INTO dividends (id,user_id,portfolio_id,external_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(uid("dv_"),userId,d.portfolioId||"",d.externalId,d.paidAt,d.isin,d.ticker,d.name,d.currency,d.gross,d.withholding,d.withholdingEs,d.origin,d.broker,nowIso()).run();
+  return Number(res&&res.meta&&res.meta.changes)>0;
+}
+async function handleDividends(request,env,user,json,parts,url){
+  await ensureDividendsSchema(env);
+  if(request.method==="GET"){
+    const y=Math.round(finiteNumber(url.searchParams.get("year"))||new Date().getUTCFullYear());
+    const rows=await env.DB.prepare("SELECT id,portfolio_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? AND paid_at>=? AND paid_at<? ORDER BY paid_at DESC").bind(user.id,y+"-01-01",(y+1)+"-01-01").all();
+    return json({year:y,dividends:rows.results||[]});
+  }
+  if(request.method==="POST"&&parts[1]==="import"){
+    const body=await readJson(request),rows=Array.isArray(body.rows)?body.rows:[];
+    if(rows.length>300)return json({error:"Máximo 300 dividendos por lote."},413);
+    const portfolioId=trimText(body.portfolioId,80);
+    if(portfolioId&&!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    let imported=0,skipped=0;const errors=[];
+    for(const raw of rows){
+      const d=dividendFromBody(Object.assign({},raw,{portfolioId,broker:body.broker,origin:body.source||"import"}));
+      if(d.error){errors.push({ticker:raw&&(raw.ticker||raw.isin)||"",error:d.error});continue}
+      if(!d.externalId){errors.push({ticker:d.ticker||d.isin,error:"Falta el identificador del bróker."});continue}
+      if(await insertDividend(env,user.id,d))imported++;else skipped++;
+    }
+    return json({imported,skipped,errors:errors.slice(0,20)});
+  }
+  if(request.method==="POST"){
+    const d=dividendFromBody(await readJson(request));
+    if(d.error)return json({error:d.error},400);
+    if(d.portfolioId&&!(await onePortfolio(env,user.id,d.portfolioId)))return json({error:"Portfolio not found"},404);
+    d.externalId=null;d.origin="manual";
+    await insertDividend(env,user.id,d);
+    return json({ok:true},201);
+  }
+  if(request.method==="DELETE"&&parts[1]){
+    const r=await env.DB.prepare("DELETE FROM dividends WHERE id=? AND user_id=?").bind(trimText(parts[1],80),user.id).run();
+    return json({deleted:Number(r&&r.meta&&r.meta.changes)>0});
+  }
+  return json({error:"Method not allowed"},405);
+}
+
+// Withholding the Spanish tax office lets you deduct (art. 80 LIRPF): what was paid abroad,
+// capped at the treaty rate. Most Spanish treaties cap dividends at 15%; Ireland and the
+// UK do not withhold. Anything above the cap has to be reclaimed in the source country.
+const DIVIDEND_TREATY_CAP={US:.15,DE:.15,FR:.15,NL:.15,CH:.15,CA:.15,IT:.15,BE:.15,AT:.15,DK:.15,SE:.15,NO:.15,FI:.15,JP:.15,AU:.15,PT:.15,LU:.15,GB:0,IE:0};
+export function computeDividendTax(rows,fxFor){
+  const warnings=new Set(),items=[],byCountry={};
+  for(const r of rows||[]){
+    const day=isoDay(r.paid_at);if(!day)continue;
+    const currency=String(r.currency||"EUR").toUpperCase();
+    let rate=1;
+    if(currency!=="EUR"){const hit=fxFor(currency,day);if(!hit){warnings.add("Sin tipo BCE para "+currency+" el "+day);continue}rate=hit.rate}
+    const gross=Number(r.gross)/rate,wht=(Number(r.withholding)||0)/rate,whtEs=(Number(r.withholding_es)||0)/rate;
+    const country=/^[A-Z]{2}/.test(String(r.isin||""))?String(r.isin).slice(0,2).toUpperCase():"";
+    const cap=country==="ES"?0:(DIVIDEND_TREATY_CAP[country]??.15);
+    const deductible=Math.min(wht,gross*cap);
+    const excess=Math.max(0,wht-deductible);
+    if(wht>0&&!country)warnings.add((r.ticker||r.name||"Un dividendo")+": sin ISIN, se aplica el límite general del 15 %.");
+    items.push({id:r.id,date:day,ticker:r.ticker,name:r.name,isin:r.isin,country,currency,fxRate:rate,
+      grossEur:gross,withholdingEur:wht,withholdingEsEur:whtEs,deductibleEur:deductible,excessEur:excess,
+      netEur:gross-wht-whtEs,broker:r.broker||"",origin:r.origin||""});
+    const c=byCountry[country||"—"]=byCountry[country||"—"]||{country:country||"—",grossEur:0,withholdingEur:0,deductibleEur:0,excessEur:0,cap};
+    c.grossEur+=gross;c.withholdingEur+=wht;c.deductibleEur+=deductible;c.excessEur+=excess;
+  }
+  const sum=k=>items.reduce((a,x)=>a+x[k],0);
+  return{
+    items:items.sort((a,b)=>b.date.localeCompare(a.date)),
+    byCountry:Object.values(byCountry).sort((a,b)=>b.grossEur-a.grossEur),
+    totals:{grossEur:sum("grossEur"),withholdingEur:sum("withholdingEur"),withholdingEsEur:sum("withholdingEsEur"),deductibleEur:sum("deductibleEur"),excessEur:sum("excessEur"),netEur:sum("netEur"),count:items.length},
+    warnings:[...warnings]
+  };
+}
+// Savings base tax (base del ahorro) for the year. Losses from sales offset up to 25% of
+// dividends and vice versa (art. 49 LIRPF); prior-year balances are not known here.
+const SAVINGS_BRACKETS=[[6000,.19],[50000,.21],[200000,.23],[300000,.27],[Infinity,.30]];
+export function savingsTaxEstimate(netGainsEur,dividendsGrossEur){
+  let gains=Number(netGainsEur)||0,income=Number(dividendsGrossEur)||0;
+  if(gains<0&&income>0){const off=Math.min(-gains,income*.25);income-=off;gains+=off}
+  else if(income<0&&gains>0){const off=Math.min(-income,gains*.25);gains-=off;income+=off}
+  const base=Math.max(0,gains)+Math.max(0,income);
+  let tax=0,prev=0;
+  for(const [top,rate] of SAVINGS_BRACKETS){if(base<=prev)break;tax+=(Math.min(base,top)-prev)*rate;prev=top}
+  return{baseEur:base,taxEur:tax,lossCarryEur:Math.min(0,gains)};
 }
 
 /* ---------------- Rentabilidad de la cartera ----------------
@@ -3906,6 +4081,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
     if (root === "tax-report") return handleTaxReport(request, env, user, json, url);
+    if (root === "dividends") return handleDividends(request, env, user, json, parts, url);
     if (root === "portfolio-performance") return handlePortfolioPerformance(request, env, user, json, url, services);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
