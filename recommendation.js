@@ -478,11 +478,12 @@ function recommendationMobileList(usResult,trResult){
 }
 
 function radarAiCandidateRows(mode,advanced=null){
- const preferTr=mode==='tr',rows=[];
+ const preferTr=mode==='tr',rows=[];let analyzed=0;
  for(const s of (db.stocks||[])){
   if(preferTr){
    if(!trTradable(s))continue;
   }else if(!market(s,'us'))continue;
+  analyzed++;
   if(recommendationSoldRecently(mode,stockKey(s)))continue;
   const liveVenue=!preferTr||trLivePrice(s)!==null;
   const analysisMode=preferTr&&liveVenue?'tr':'us';
@@ -495,11 +496,14 @@ function radarAiCandidateRows(mode,advanced=null){
    :(score>=72&&quality>=60?'BUY':score>=60?'WATCH':'WAIT');
   let tier='watch';
   if(score>=60&&quality>=48)tier='opportunity';
-  else if(score<48&&quality<40)continue;
+  // Same floor as the server's «En vigilancia» alerts (score ≥ 50 y calidad ≥ 40).
+  else if(score<50||quality<40)continue;
   if(advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
   rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }
- return rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
+ rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
+ rows.analyzed=analyzed;
+ return rows;
 }
 function radarAiCard(row){
  const s=row.s,preferTr=row.preferTr,a=row.analysis;
@@ -517,28 +521,46 @@ function radarAiCard(row){
   detailsHtml:''
  });
 }
-function radarAiTier(mode,tier,rows){
- const title=tier==='high'?'Alta convicción':tier==='opportunity'?'Oportunidades':'En vigilancia';
- const limits=tier==='high'?3:tier==='opportunity'?5:6;
- const items=rows.filter(x=>x.tier===tier).slice(0,limits);
- return '<section class="radar-ai-tier radar-ai-tier-'+tier+'">'+
-  '<header><strong>'+title+'</strong><span>'+items.length+'</span></header>'+
-  '<div class="radar-ai-tier-list">'+(items.length?items.map(radarAiCard).join(''):'<div class="radar-ai-empty">Sin valores en este nivel ahora mismo</div>')+'</div>'+
- '</section>';
+// Radar AI as one list per market, like Radar de entrada: tabs TR / EEUU, a tier filter
+// with counts and every card tinted by tier (alta convicción · oportunidad · vigilancia).
+const RADAR_TIER_LABEL={high:'Alta convicción',opportunity:'Oportunidades',watch:'En vigilancia'};
+const RADAR_TIER_LIMIT={high:5,opportunity:12,watch:15};
+let radarAiMarket=(()=>{try{return localStorage.getItem('viewinvai:radar-market')==='us'?'us':'tr'}catch(_){return'tr'}})();
+let radarAiTierFilter='all',radarAiLastAdvanced={};
+function radarAiVisibleRows(rows){
+ const byTier=t=>rows.filter(x=>x.tier===t);
+ if(radarAiTierFilter!=='all')return byTier(radarAiTierFilter).slice(0,30);
+ return ['high','opportunity','watch'].flatMap(t=>byTier(t).slice(0,RADAR_TIER_LIMIT[t]));
 }
-function radarAiColumn(mode,rows){
- const isTr=mode==='tr';
- return '<section class="radar-ai-market radar-ai-market-'+mode+'">'+
-  '<header class="radar-ai-market-head"><div><strong>'+(isTr?'Trade Republic':'EEUU')+'</strong><span>'+(isTr?'LSX · EUR':'NASDAQ / NYSE / AMEX · USD')+'</span></div><b>'+rows.length+' analizadas</b></header>'+
-  radarAiTier(mode,'high',rows)+
-  radarAiTier(mode,'opportunity',rows)+
-  radarAiTier(mode,'watch',rows)+
- '</section>';
+function radarAiShell(advanced=radarAiLastAdvanced){
+ radarAiLastAdvanced=advanced||{};
+ const mode=radarAiMarket,isTr=mode==='tr';
+ const rows=radarAiCandidateRows(mode,radarAiLastAdvanced[mode]||null);
+ const counts={high:0,opportunity:0,watch:0};rows.forEach(r=>counts[r.tier]++);
+ const visible=radarAiVisibleRows(rows);
+ const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
+ const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';
+ const list=visible.length?visible.map(radarAiCard).join(''):'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
+ return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+'">'+
+  '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EEUU / NASDAQ')+'</nav>'+
+  '<div class="radar-list-meta">'+(isTr?'Trade Republic / LSX · EUR':'NASDAQ / NYSE / AMEX · USD')+' · '+(rows.analyzed||rows.length)+' analizadas</div>'+
+  '<div class="radar-tier-filter" role="group" aria-label="Filtrar por nivel">'+
+   chip('high','Alta',counts.high)+chip('opportunity','Oportunidad',counts.opportunity)+chip('watch','Vigilancia',counts.watch)+
+  '</div>'+
+  '<div class="radar-list unified-asset-list">'+list+'</div>'+
+ '</div>';
 }
-function radarAiShell(advanced={}){
- const tr=radarAiCandidateRows('tr',advanced.tr||null),us=radarAiCandidateRows('us',advanced.us||null);
- return '<div class="radar-ai-shell">'+radarAiColumn('tr',tr)+radarAiColumn('us',us)+'</div>';
+function rerenderRadarAiList(){
+ const box=$('#recommendationResults');if(!box)return;
+ box.innerHTML=radarAiShell();
+ requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
 }
+document.addEventListener('click',e=>{
+ const m=e.target.closest&&e.target.closest('[data-radar-market]');
+ if(m){radarAiMarket=m.dataset.radarMarket==='us'?'us':'tr';try{localStorage.setItem('viewinvai:radar-market',radarAiMarket)}catch(_){}rerenderRadarAiList();return}
+ const t=e.target.closest&&e.target.closest('[data-radar-tier]');
+ if(t){radarAiTierFilter=t.dataset.radarTier===radarAiTierFilter?'all':t.dataset.radarTier;rerenderRadarAiList()}
+});
 
 function recommendationLoadingSection(mode){
  const isTr=mode==='tr';
@@ -582,7 +604,7 @@ function recommendationCard(mode,s,group=null,pulseResult=null){
 async function renderRecommendation(force=false){
  let box=$('#recommendationResults');if(!box)return;
  if(state.currentView==='recommendation')seedTradeRepublicMarketBoard(120);
- box.innerHTML=radarAiShell();
+ box.innerHTML=radarAiShell(force?{}:radarAiLastAdvanced);
  let stamp=$('#recommendationUpdated');
  if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · validando alta convicción…';
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
