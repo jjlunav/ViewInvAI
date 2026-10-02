@@ -706,6 +706,108 @@
   const freqLabel={weekly:'semanal',monthly:'mensual',quarterly:'trimestral',annual:'anual',manual:'manual'};
   return '<div class="fund-plan-strip">'+plans.slice(0,4).map(p=>'<span><b>'+esc(p.label||p.isin||'Aportación')+'</b> '+(num(p.amount)===null?'variable':money(p.amount,p.currency||'EUR'))+' · '+esc(freqLabel[p.frequency]||p.frequency||'mensual')+(p.next_contribution_at?' · próxima '+dateText(p.next_contribution_at):'')+(String(p.status||'active')==='paused'?' · pausada':'')+'</span>').join('')+'</div>';
  }
+ // ----- Costes, solapamiento y simulador de aportaciones (cartera de fondos) -----
+ // Index family from the tracked index (TradingView) or the name.
+ function indexFamily(p){
+  const t=String((p&&p.index)||'')+' '+String((p&&p.name)||'');
+  if(/nasdaq[- ]?100/i.test(t))return'ndx';
+  if(/s&p ?500/i.test(t))return'spx';
+  if(/msci usa|total us|us total market|crsp us/i.test(t))return'usa';
+  if(/acwi|all[- ]world|global all cap|all country/i.test(t))return'acwi';
+  if(/msci world|developed world|ftse developed(?! europe)|core world/i.test(t))return'world';
+  if(/emerging|\bem\b/i.test(t))return'em';
+  if(/euro ?stoxx ?50/i.test(t))return'es50';
+  if(/msci emu|eurozone/i.test(t))return'emu';
+  if(/msci europe|stoxx europe 600|developed europe|europe 600/i.test(t))return'europe';
+  if(/japan|topix|nikkei/i.test(t))return'japan';
+  if(/gold|lbma|\boro\b/i.test(t))return'gold';
+  if(/ibex/i.test(t))return'ibex';
+  return null;
+ }
+ const eur=(v,d=0)=>Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR',minimumFractionDigits:d,maximumFractionDigits:d});
+ const terText=v=>Number(v).toLocaleString('es-ES',{maximumFractionDigits:2})+' %';
+ // Approximate weight overlap between index families (share of holdings in common).
+ const OVERLAP={'spx|usa':.9,'ndx|spx':.45,'ndx|usa':.45,'spx|world':.65,'acwi|spx':.6,'usa|world':.7,'acwi|usa':.62,'ndx|world':.3,'acwi|ndx':.28,'acwi|world':.88,'acwi|em':.1,'europe|world':.15,'acwi|europe':.13,'emu|europe':.5,'emu|es50':.6,'es50|europe':.35,'emu|world':.08,'japan|world':.06,'acwi|japan':.05};
+ function overlapOf(a,b){if(!a||!b)return 0;if(a===b)return 1;return OVERLAP[[a,b].sort().join('|')]||0}
+ const normIndex=v=>String(v||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/\b(index|net|total return|tr|usd|eur|ntr)\b/g,' ').replace(/[^a-z0-9&]+/g,' ').trim();
+ function cheaperTwin(p,platform){
+  const key=normIndex(p.index),ter=num(p.ter);
+  if(!key||key==='no underlying'||ter===null)return null;
+  const hedged=/hedged/i.test(p.name||'');
+  const wantTr=/trade republic/i.test(platform||''),wantMi=/myinvestor/i.test(platform||'');
+  let best=null;
+  for(const c of state.products){
+   if(c.isin===p.isin||normIndex(c.index)!==key)continue;
+   const t=num(c.ter);if(t===null||t>ter-0.04)continue;
+   if(/hedged/i.test(c.name||'')!==hedged)continue;
+   if(p.distribution&&c.distribution&&p.distribution!==c.distribution)continue;
+   if(wantTr&&!verified(c.platforms.tradeRepublic))continue;
+   if(wantMi&&!verified(c.platforms.myInvestor))continue;
+   if(!best||t<num(best.ter)||(t===num(best.ter)&&(num(c.assetsUnderManagement)||0)>(num(best.assetsUnderManagement)||0)))best=c;
+  }
+  return best;
+ }
+ function dcaPrefs(){try{return JSON.parse(localStorage.getItem('viewinvai:dca')||'{}')||{}}catch(_){return{}}}
+ function fundInsightsHtml(portfolioId,rows){
+  const items=rows.map(pos=>{const p=productForPosition(pos),units=num(pos.units),nav=fundCurrentValue(p)??num(pos.avg_price);return{pos,p,value:units!==null&&nav!==null?units*nav:null,family:indexFamily(p)}}).filter(x=>x.value>0);
+  if(!items.length)return'';
+  const total=items.reduce((a,x)=>a+x.value,0);
+  const known=items.filter(x=>num(x.p.ter)!==null),knownValue=known.reduce((a,x)=>a+x.value,0);
+  const ter=knownValue>0?known.reduce((a,x)=>a+x.value*num(x.p.ter),0)/knownValue:null;
+  const yearly=ter===null?null:total*ter/100;
+  const twins=items.map(x=>({x,c:cheaperTwin(x.p,x.pos.platform)})).filter(t=>t.c);
+  const saving=twins.reduce((a,t)=>a+t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,0);
+  const pairs=[];
+  for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){const o=overlapOf(items[i].family,items[j].family);if(o>=.25)pairs.push({a:items[i],b:items[j],o})}
+  pairs.sort((x,y)=>y.o-x.o);
+  // Simulator defaults: active plans per month, weighted 3-year return net of fees.
+  const plans=fundPlans(portfolioId).filter(p=>String(p.status||'active')!=='paused'&&p.frequency!=='manual'&&num(p.amount)>0);
+  const perMonth=plans.reduce((a,p)=>a+num(p.amount)*(p.frequency==='weekly'?52/12:p.frequency==='quarterly'?1/3:p.frequency==='annual'?1/12:1),0);
+  let ret=null;{let w=0,acc=0;items.forEach(x=>{const p3=num(x.p.perf3Y);if(p3!==null&&p3>-90){acc+=x.value*(Math.pow(1+p3/100,1/3)-1);w+=x.value}});if(w>0)ret=acc/w*100}
+  const prefs=dcaPrefs();
+  const monthly=num(prefs.monthly)??Math.round(perMonth||100),years=num(prefs.years)??20,expected=num(prefs.ret)??Math.max(2,Math.min(8,ret===null?7:Math.round(ret*10)/10));
+  let open=false;try{open=localStorage.getItem('viewinvai:fund-insights-open')==='1'}catch(_){}
+  const cur='EUR';
+  return '<details class="portfolio-insights fund-insights" data-fund-insights'+(open?' open':'')+'>'+
+   '<summary><span class="insights-title">Costes, solapamiento y simulador</span><span class="insights-chips">'+
+    (ter!==null?'<b>TER '+ter.toLocaleString('es-ES',{maximumFractionDigits:2})+' %</b>':'')+(yearly!==null?'<b>'+eur(yearly,yearly<100?2:0)+'/año</b>':'')+
+    (saving>=1?'<b class="warn">Ahorro posible '+eur(saving,saving<100?2:0)+'/año</b>':'')+(pairs.length?'<b class="warn">Solapamiento</b>':'')+'</span></summary>'+
+   '<div class="insights-body">'+
+    '<div class="insights-scenario"><small>COSTES</small><strong>'+(ter===null?'Sin TER conocido':'Pagas ≈ '+eur(yearly,yearly<100?2:0)+' al año')+'</strong><b>'+(ter===null?'—':ter.toLocaleString('es-ES',{maximumFractionDigits:2})+' %')+'</b>'+
+     '<span>TER medio ponderado por valor'+(known.length<items.length?' ('+(items.length-known.length)+' sin dato)':'')+'. En 20 años, cada 0,1 % de comisión cuesta ≈ 2 % del capital final.</span></div>'+
+    (twins.length?'<div class="insights-group"><small>MISMO ÍNDICE, MÁS BARATO</small>'+twins.map(t=>'<div class="fund-twin" data-fund-detail="'+esc(t.c.isin)+'" role="button" tabindex="0"><div><b>'+esc(t.x.p.name)+'</b><span>'+terText(t.x.p.ter)+' → <em>'+esc(t.c.name)+(t.c.provider?' · '+esc(t.c.provider):'')+'</em> '+terText(t.c.ter)+'</span></div><strong>−'+eur(t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,2)+'/año</strong></div>').join('')+'<span class="fund-note">Misma réplica del índice, misma política de dividendos y disponible en tu plataforma. Cambiar de fondo puede tener coste fiscal (traspaso solo entre fondos, no entre ETF).</span></div>':'')+
+    (pairs.length?'<div class="insights-group"><small>SOLAPAMIENTO</small>'+pairs.slice(0,4).map(x=>'<div class="fund-overlap"><span>'+esc(x.a.p.name)+' <i>+</i> '+esc(x.b.p.name)+'</span><b>≈ '+Math.round(x.o*100)+' %</b><i class="fund-overlap-bar"><em data-w="'+Math.round(x.o*100)+'"></em></i></div>').join('')+'<span class="fund-note">Cada pareja comparte buena parte de las mismas empresas: diversificas menos de lo que parece. Cifra aproximada según el índice que replican.</span></div>':'')+
+    '<div class="insights-group fund-dca" data-fund-dca data-initial="'+total.toFixed(2)+'" data-ter="'+(ter||0)+'"><small>SIMULADOR DE APORTACIONES</small>'+
+     '<div class="fund-dca-inputs"><label><span>Al mes</span><input type="number" min="0" step="10" inputmode="decimal" data-dca="monthly" value="'+monthly+'"></label>'+
+     '<label><span>Años</span><input type="number" min="1" max="50" step="1" inputmode="numeric" data-dca="years" value="'+years+'"></label>'+
+     '<label><span>% anual</span><input type="number" min="-5" max="20" step="0.5" inputmode="decimal" data-dca="ret" value="'+expected+'"></label></div>'+
+     '<div data-dca-out>'+dcaResultHtml(total,monthly,years,expected,ter||0)+'</div>'+
+     '<span class="fund-note">Parte del valor actual de la cartera'+(perMonth?' y de tus planes ('+eur(perMonth)+'/mes)':'')+'. Rentabilidad '+(ret===null?'supuesta':'basada en los últimos 3 años (máx. 8 %)')+', menos el TER. No es una previsión.</span></div>'+
+   '</div></details>';
+ }
+ function dcaSeries(initial,monthly,years,ret,ter){
+  const r=Math.pow(1+(ret-ter)/100,1/12)-1,pts=[];let v=initial,c=initial;
+  pts.push({y:0,v,c});
+  for(let m=1;m<=years*12;m++){v=v*(1+r)+monthly;c+=monthly;if(m%12===0)pts.push({y:m/12,v,c})}
+  return pts;
+ }
+ function dcaResultHtml(initial,monthly,years,ret,ter){
+  years=Math.max(1,Math.min(50,Math.round(years||0)));monthly=Math.max(0,monthly||0);
+  const pts=dcaSeries(initial,monthly,years,ret,ter),last=pts[pts.length-1],max=Math.max(...pts.map(p=>Math.max(p.v,p.c)),1);
+  const W=320,H=110,x=y=>y/years*W,yv=v=>H-v/max*H;
+  const line=k=>pts.map((p,i)=>(i?'L':'M')+x(p.y).toFixed(1)+' '+yv(p[k]).toFixed(1)).join('');
+  return '<svg class="fund-dca-chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Evolución simulada"><path class="dca-area" d="'+line('v')+'L'+W+' '+H+'L0 '+H+'Z"/><path class="dca-v" d="'+line('v')+'"/><path class="dca-c" d="'+line('c')+'"/></svg>'+
+   '<div class="fund-dca-stats"><div><small>En '+years+' años</small><b>'+eur(last.v)+'</b></div><div><small>Aportado</small><b>'+eur(last.c)+'</b></div><div><small>Ganancia</small><b class="'+(last.v>=last.c?'pnl-up':'pnl-down')+'">'+eur(last.v-last.c)+'</b></div></div>';
+ }
+ document.addEventListener('input',e=>{
+  const inp=e.target.closest&&e.target.closest('[data-dca]');if(!inp)return;
+  const box=inp.closest('[data-fund-dca]');if(!box)return;
+  const val=k=>num(box.querySelector('[data-dca="'+k+'"]').value);
+  const prefs={monthly:val('monthly')??0,years:val('years')??20,ret:val('ret')??7};
+  try{localStorage.setItem('viewinvai:dca',JSON.stringify(prefs))}catch(_){}
+  box.querySelector('[data-dca-out]').innerHTML=dcaResultHtml(num(box.dataset.initial)||0,prefs.monthly,prefs.years,prefs.ret,num(box.dataset.ter)||0);
+ });
+ document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-fund-insights]')){try{localStorage.setItem('viewinvai:fund-insights-open',e.target.open?'1':'0')}catch(_){}}},true);
  async function openFundPlanForm(position=null){
   const selected=selectedFundPortfolio();if(!selected)return;
   const product=position?productForPosition(position):null;
@@ -770,8 +872,9 @@
     '<div><small>VALOR ACTUAL</small><strong>'+(complete?money(total,selected.base_currency||'EUR'):'—')+'</strong></div>'+
     '<div><small>P&L</small><strong class="'+((pnl||0)>=0?'pnl-up':'pnl-down')+'">'+(pnl===null?'—':money(pnl,selected.base_currency||'EUR')+(pnlPct===null?'':' · '+pct(pnlPct)))+'</strong></div>'+
     '<div><small>POSICIONES</small><strong>'+rows.length+'</strong></div>'+
-   '</div>'+planSummaryHtml(selected.id)+
+   '</div>'+planSummaryHtml(selected.id)+fundInsightsHtml(selected.id,rows)+
    (rows.length?'<div class="fund-position-grid">'+rows.map(fundPositionCard).join('')+'</div>':'<div class="portfolio-empty-state compact">Todavía no hay fondos en esta cartera. Añádelos desde el menú Fondos y ETFs.</div>');
+  box.querySelectorAll('.fund-overlap-bar em[data-w]').forEach(el=>el.style.setProperty('width',el.dataset.w+'%'));
  }
  async function loadPortfolio(force=false){
   account.user=root.ViewInvAIAuth?.getUser?.()||null;
