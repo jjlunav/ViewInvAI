@@ -15,9 +15,6 @@
   const absoluteRemoteUrl = value => {
     const raw = String(value || '');
     if (!localNativeOrigin) return raw;
-    if (/^\/?data\/(?:funds|market|market-version)\.json\?(?:[^#]*&)?local=1(?:&|#|$)/i.test(raw)) {
-      return raw.replace(/^\//, '').replace(/\?[^#]*/, '');
-    }
     if (/^https?:\/\//i.test(raw) || /^wss?:\/\//i.test(raw)) return raw;
     if (raw.startsWith('/api/')) return BACKEND_ORIGIN + raw;
     if (/^\/data\/(?:funds|market|market-version)\.json(?:[?#].*)?$/i.test(raw)) return BACKEND_ORIGIN + raw;
@@ -40,11 +37,32 @@
     return 'wss://viewinvai.sonarlab.workers.dev' + (raw.startsWith('/') ? raw : '/' + raw);
   };
 
+  // La APK no lleva catálogos dentro: guarda en el móvil la última copia descargada del
+  // servidor y solo la usa si al abrir no hay conexión.
+  const OFFLINE_CACHE = 'viewinvai-data-v1';
+  const saveOffline = async (name, response) => {
+    try {
+      if (!localNativeOrigin || !('caches' in window) || !response) return false;
+      const cache = await caches.open(OFFLINE_CACHE);
+      await cache.put('/offline/' + name, response);
+      return true;
+    } catch (_) { return false; }
+  };
+  const loadOffline = async name => {
+    try {
+      if (!('caches' in window)) return null;
+      const cache = await caches.open(OFFLINE_CACHE);
+      return (await cache.match('/offline/' + name)) || null;
+    } catch (_) { return null; }
+  };
+
   window.ViewInvAIRuntime = Object.freeze({
     isPackagedNative: localNativeOrigin,
     backendOrigin: BACKEND_ORIGIN,
     url: absoluteRemoteUrl,
-    websocketUrl
+    websocketUrl,
+    saveOffline,
+    loadOffline
   });
 
   if (!localNativeOrigin) return;
