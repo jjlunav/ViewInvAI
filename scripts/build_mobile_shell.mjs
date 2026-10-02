@@ -10,6 +10,7 @@ const files = [
   'asset-card.css',
   'theme-ai.css',
   'ui-shell.js',
+  'onboarding.js',
   'tasks.js',
   'broker-import.js',
   'tax.js',

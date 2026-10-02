@@ -519,7 +519,7 @@ function radarAiCard(row){
   se:a.se||currentMarketSession(),preferTr,rankLabel:F(row.score,0),context:'recommendation',
   hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100'+(row.speculative?' · Especulativo: '+row.specReasons.join(', '):''),cells:[],
   className:'radar-ai-card radar-ai-card-'+(row.speculative?'spec':row.tier),
-  subtitle:(row.speculative?'⚠ Especulativo · ':'')+[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Datos '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
+  subtitle:(row.speculative?'⚠ Especulativo · ':'')+[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Calidad '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
   openAttrs:stockOpenAttrs(s,'Radar AI',preferTr),
   detailsHtml:''
  });

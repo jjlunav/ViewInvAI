@@ -1023,3 +1023,53 @@ html[data-theme="light"] .task-item{background:#f7f9fd}
 .task-log li{font-size:12px;line-height:1.4;color:var(--muted,#8ea0bf)}
 .task-log li.error{color:#ff8b8b}
 html[data-theme="light"] .task-log li.error{color:#c0392b}
+
+/* ----- Frescura de datos: «● En vivo» ----- */
+#homeUpdated.is-live,.market-sheet-status .is-live{color:var(--positive,#2fd39a);font-weight:800}
+html[data-theme="light"] #homeUpdated.is-live,html[data-theme="light"] .market-sheet-status .is-live{color:#0f7a55}
+.market-sheet-status .is-live i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:currentColor;animation:livepulse 1.6s ease-in-out infinite;vertical-align:middle}
+@keyframes livepulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.market-sheet-status .is-live i{animation:none}}
+
+/* ----- Legibilidad en móvil y APK: ningún texto de lectura por debajo de 11 px -----
+ * (las etiquetas en mayúsculas espaciadas, 10 px). Solo los elementos que la medición de
+ * todas las vistas encontró por debajo; los que ya eran más grandes no cambian. */
+@media (max-width:900px){
+ html:root:root:root body:not(#a11y-floor) .asset-card .asset-card-copy>strong{font-size:12px!important}
+ html:root:root:root body:not(#a11y-floor) .asset-card .asset-card-copy>small,
+ html:root:root:root body:not(#a11y-floor) .asset-card .list-copy-isin,
+ html:root:root:root body:not(#a11y-floor) .asset-card .asset-card-copy em,
+ html:root:root:root body:not(#a11y-floor) .asset-investing-main :is(span,b),
+ html:root:root:root body:not(#a11y-floor) .asset-card-cell-value,
+ html:root:root:root body:not(#a11y-floor) .mobile-nav-item small,
+ html:root:root:root body:not(#a11y-floor) .future-more,
+ html:root:root:root body:not(#a11y-floor) :is(.event-item-head time,.event-item-head strong,.event-item-head span,.event-impact,.event-impact strong,.event-context,.event-sources a,.event-sources span),
+ html:root:root:root body:not(#a11y-floor) :is(.fund-mobile-groups button,.fund-mobile-sort,.fund-data-note,.funds-status,.funds-status strong,.catalog-table-footer span,.fund-table-footer span),
+ html:root:root:root body:not(#a11y-floor) :is(.portfolio-asset-switch .tab,.market-tabs .tab),
+ html:root:root:root body:not(#a11y-floor) :is(.portfolio-google-login,.catalog-table-footer .btn,.catalog-more .btn,.push-settings-button-group .btn,.backup-actions .btn),
+ html:root:root:root body:not(#a11y-floor) .home-summary-line span,
+ html:root:root:root body:not(#a11y-floor) :is(.settings-status,.settings-status-row>span,.settings-status-row strong),
+ html:root:root:root body:not(#a11y-floor) .filter-icon-button span,
+ html:root:root:root body:not(#a11y-floor) :is(.catalog-table-footer strong,.fund-table-footer strong,.asset-card summary span),
+ html:root:root:root body:not(#a11y-floor) :is(.fund-mobile-groups button,.stock-mobile-groups button,.catalog-mobile-groups button,.reco-mobile-groups button,.event-mobile-groups button),
+ html:root:root:root body:not(#a11y-floor) .portfolio-auth-gate p{font-size:11px!important}
+ html:root:root:root body:not(#a11y-floor) .event-item .event-title{font-size:12px!important}
+ html:root:root:root body:not(#a11y-floor) :is(.heading-badge,.settings-kicker,.radar-scoreboard summary small){font-size:10px!important}
+}
+
+/* ----- Primeros pasos (onboarding.js) ----- */
+body.onb-open{overflow:hidden}
+.onb-overlay{position:fixed;inset:0;z-index:7600;display:grid;place-items:center;padding:16px;background:rgba(2,8,12,.72);backdrop-filter:blur(4px)}
+.onb-card{position:relative;width:min(440px,100%);display:grid;gap:12px;justify-items:center;text-align:center;padding:28px 22px 20px;border-radius:22px;border:1px solid rgba(124,108,255,.35);background:linear-gradient(180deg,rgba(124,108,255,.12),rgba(12,28,42,.96) 45%),#0b1a24;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+html[data-theme="light"] .onb-card{background:linear-gradient(180deg,#f1efff,#fff 45%);border-color:#d9d4ff;box-shadow:0 30px 80px rgba(30,40,80,.2)}
+.onb-skip{position:absolute;top:12px;right:12px;border:0;background:none;color:var(--muted,#8ea0bf);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 8px}
+.onb-icon{display:grid;place-items:center;width:64px;height:64px;border-radius:20px;font-size:30px;background:rgba(124,108,255,.18);color:#a99cff}
+html[data-theme="light"] .onb-icon{color:#4f46e5;background:#e9e6ff}
+.onb-card h2{margin:4px 0 0;font-size:21px;line-height:1.25}
+.onb-card p{margin:0;font-size:14.5px;line-height:1.55;color:var(--muted,#9fb0c6)}
+html[data-theme="light"] .onb-card p{color:#4a5670}
+.onb-dots{display:flex;gap:6px;margin-top:4px}
+.onb-dots i{width:8px;height:8px;border-radius:4px;background:rgba(140,170,255,.3);transition:width .2s}
+.onb-dots i.on{width:22px;background:#7c6cff}
+.onb-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:6px}
+.onboarding-settings-card .settings-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
