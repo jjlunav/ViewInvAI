@@ -948,3 +948,27 @@ html[data-theme="light"] :is(.inbox-row.sev-high,.inbox-row.sev-critical) .inbox
 .mobile-nav-item[data-mobile-more].has-unread>span{position:relative}
 .mobile-nav-item[data-mobile-more].has-unread>span::after{content:"";position:absolute;top:-2px;right:-7px;width:8px;height:8px;border-radius:50%;background:#7c6cff;box-shadow:0 0 0 2px var(--bg,#061017)}
 .today-alert.unread strong::before{content:"";display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:#7c6cff;vertical-align:middle}
+
+/* ----- Favoritos · listas con nombre (favlists.js) ----- */
+html:root:root body .fav-lists{display:flex;align-items:center;gap:6px;margin:8px 0 4px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.fav-lists::-webkit-scrollbar{display:none}
+.fav-lists>span{flex:0 0 auto;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:800;color:var(--muted,#8ea0bf);margin-right:2px}
+html:root:root body .fav-lists .tab{flex:0 0 auto;white-space:nowrap}
+.fav-lists .tab b{font-weight:800;opacity:.7}
+html:root:root body .fav-lists .fav-list-new{border-style:dashed}
+.fav-list-form{display:grid;gap:10px}
+.fav-list-items{display:grid;gap:4px;max-height:50vh;overflow:auto;overscroll-behavior:contain}
+.fav-list-item{display:grid;grid-template-columns:22px minmax(0,1fr);align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.03);cursor:pointer}
+html[data-theme="light"] .fav-list-item{background:#f7f9fd}
+.fav-list-item input{width:18px;height:18px;margin:0}
+.fav-list-item span{display:grid;gap:1px;min-width:0}
+.fav-list-item b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-list-item small{font-size:12px;color:var(--muted,#8ea0bf)}
+.fav-list-actions{display:flex;justify-content:space-between;gap:8px}
+
+/* ----- Configuración · copia de seguridad ----- */
+.backup-actions{display:flex;flex-wrap:wrap;gap:8px}
+.backup-restore{cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.backup-actions>*{flex:1 1 140px}
+.backup-status{margin:6px 0 0;font-size:12.5px;line-height:1.45;color:var(--muted,#8ea0bf)}
+.backup-status.error{color:var(--negative,#ff6b6b)}

@@ -88,6 +88,8 @@ jobs:
           test -s mobile-shell/tax.js
           test -s mobile-shell/search.js
           test -s mobile-shell/inbox.js
+          test -s mobile-shell/favlists.js
+          test -s mobile-shell/backup.js
           test -s mobile-shell/today.js
           test -s mobile-shell/filter-sheet.js
           test -s mobile-shell/stock-profile.js

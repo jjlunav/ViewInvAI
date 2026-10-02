@@ -14,6 +14,8 @@ const files = [
   'tax.js',
   'search.js',
   'inbox.js',
+  'favlists.js',
+  'backup.js',
   'today.js',
   'styles.css',
   'web-mobile.css',
