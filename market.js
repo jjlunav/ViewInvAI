@@ -60,8 +60,12 @@ function priceCurrencies(s,p){
  return{usd:p,eur:fx?p/fx:null};
 }
 function trIsin(s){return String((s&&s.trIsin)||(s&&s.tradeRepublicVerified&&s&&s.isin)||'').trim()}
+// Acciones del universo de Trade Republic que no cotizan en EE. UU. (Xetra, París, Madrid, Londres…):
+// su precio es el de TR en euros.
+function intlListing(s){return !!s&&s.region==='intl'}
 function trTradable(s){
  if(!s)return false;
+ if(intlListing(s))return !!(trIsin(s)&&s.trActive!==false);
  if(s.tradeRepublicTradable===true)return true;
  if(s.tradeRepublicTradable===false)return false;
  return !!(s.tradeRepublicVerified&&trIsin(s)&&String(s.trTicker||'').trim()&&s.trActive!==false);
@@ -216,18 +220,21 @@ function usPriceValues(s,fallback){
 }
 function canonicalQuote(s,preferTr=false){
  let fx=eurUsd();
+ if(intlListing(s))preferTr=true;
  if(preferTr&&trTradable(s)){
   const direct=trLivePrice(s),closed=direct===null?trClosedQuote(s):null;
-  const eur=direct??N(closed&&closed.price);
+  // Europeas: si aún no hay precio de TR, el último cierre de su bolsa (ya en euros).
+  const snap=direct===null&&!closed&&intlListing(s)?{price:N(s.price),change:N(s.changePct),updatedAt:N(s.lastBarUpdateTime)?N(s.lastBarUpdateTime)*1000:null}:null;
+  const eur=direct??N(closed&&closed.price)??N(snap&&snap.price);
   return{
    market:'tr',
-   source:direct!==null?'Trade Republic / '+String(s&&s.trExchange||'LSX'):'Último cierre · Trade Republic / '+String(s&&s.trExchange||'LSX'),
+   source:direct!==null?'Trade Republic / '+String(s&&s.trExchange||'LSX'):snap?'Último cierre · '+String(s.exchange||'bolsa europea'):'Último cierre · Trade Republic / '+String(s&&s.trExchange||'LSX'),
    nativeCurrency:'EUR',
    price:eur,
    eur,
    usd:eur!==null&&fx?eur*fx:null,
-   change:trLiveChange(s),
-   updatedAt:direct!==null?quoteTimestampMs(s,true):(N(closed&&closed.updatedAt)||null),
+   change:trLiveChange(s)??N(snap&&snap.change),
+   updatedAt:direct!==null?quoteTimestampMs(s,true):(N(closed&&closed.updatedAt)||N(snap&&snap.updatedAt)||null),
    fx,
    fxUpdatedAt:fxLive.updatedAt||parseMarketTimestamp(db.meta&&db.meta.updatedAt,'Europe/Madrid')||null,
    live:direct!==null,
@@ -262,6 +269,7 @@ function canonicalQuote(s,preferTr=false){
  * This keeps price and percentage on the same source while avoiding fake data.
  */
 function verifiedDisplayQuote(s,preferTr=false,se=SES()){
+ if(intlListing(s))preferTr=true;
  let exact=canonicalQuote(s,preferTr);
  if(N(exact&&exact.price)!==null){
   return Object.assign({},exact,{fallback:false,requestedMarket:preferTr?'tr':'us'});

@@ -244,6 +244,44 @@
   }catch(_){}
  }
  root.addEventListener&&root.addEventListener('viewinvai:auth-changed',()=>{learned=[];if(state.loaded)mergeLearned(true)});
+ // Fondos que no están en el catálogo: buscador del universo público de Morningstar España
+ // (fondos registrados para la venta en España, entre ellos los de MyInvestor).
+ const remote={q:'',rows:[],loading:false,error:'',timer:null,seq:0};
+ function remoteSearch(){
+  clearTimeout(remote.timer);
+  const query=state.query.trim();
+  if(query.length<3){remote.q='';remote.rows=[];remote.error='';remote.loading=false;return}
+  remote.timer=setTimeout(async()=>{
+   const seq=++remote.seq;remote.loading=true;remote.error='';render();
+   try{
+    const r=await fetch('/api/fund-search?q='+encodeURIComponent(query));
+    const d=await r.json().catch(()=>({}));
+    if(seq!==remote.seq)return;
+    if(!r.ok)throw Error(d.error||'Buscador no disponible');
+    remote.q=query;remote.rows=(d.results||[]).filter(x=>x&&x.isin);
+   }catch(e){if(seq===remote.seq){remote.rows=[];remote.error=String(e.message||e)}}
+   finally{if(seq===remote.seq){remote.loading=false;render()}}
+  },450);
+ }
+ function adoptRemote(isin){
+  const have=state.products.find(x=>x.isin===isin);if(have)return have;
+  const x=remote.rows.find(r=>r.isin===isin);if(!x)return null;
+  const p=norm({isin:x.isin,name:x.name,type:'fund',provider:x.provider||'',category:x.category||'',currency:'EUR',ter:num(x.ter),nav:num(x.nav),valueDate:x.navDate||null,
+   perf1Y:num(x.perf1Y),perf3Y:num(x.perf3Y),perf5Y:num(x.perf5Y),platforms:{tradeRepublic:'unknown',myInvestor:'unknown'},remote:true,
+   sources:[{label:'Morningstar · fondo registrado en España',url:'https://www.morningstar.es/'}]});
+  state.products.push(p);return p;
+ }
+ function remoteFundsHtml(){
+  if(state.query.trim().length<3)return'';
+  if(remote.loading&&!remote.rows.length)return '<section class="fund-remote"><h3>Más fondos registrados en España</h3><div class="empty-state">Buscando en Morningstar…</div></section>';
+  if(remote.error)return '<section class="fund-remote"><h3>Más fondos registrados en España</h3><div class="empty-state">'+esc(remote.error)+'</div></section>';
+  const known=new Set(state.products.filter(p=>!p.remote).map(p=>p.isin)),rows=remote.rows.filter(r=>!known.has(r.isin));
+  if(!rows.length)return'';
+  return '<section class="fund-remote"><h3>Más fondos registrados en España · '+rows.length+'</h3><p class="fund-note">Universo de Morningstar España: incluye los fondos que vende MyInvestor. Comprueba en tu bróker que el fondo está disponible antes de invertir.</p>'+
+   '<div class="fund-remote-list">'+rows.map(r=>'<article class="fund-remote-row"><div><strong>'+esc(r.name)+'</strong><small>'+esc([r.isin,r.provider,r.category].filter(Boolean).join(' · '))+'</small></div>'+
+    '<span>TER <b>'+(num(r.ter)===null?'—':pct(num(r.ter)).replace('+',''))+'</b></span><span>1 año <b class="'+((num(r.perf1Y)||0)>=0?'positive':'negative')+'">'+pct(r.perf1Y)+'</b></span>'+
+    '<div class="fund-remote-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(r.isin)+'">Ficha</button><button type="button" class="btn small" data-fund-position="'+esc(r.isin)+'">＋ Cartera</button></div></article>').join('')+'</div></section>';
+ }
  function norm(p){
   const platforms=p&&p.platforms&&typeof p.platforms==='object'?p.platforms:{};
   return Object.assign({
@@ -661,7 +699,7 @@
     '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
    '<div class="funds-status"><strong>'+rows.length+' productos</strong><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(fundSortLabel(state.sort))+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
-   results;
+   results+remoteFundsHtml();
   updateMobileFiltersState();
   requestAnimationFrame(()=>observeFundLive(box));
  }
@@ -753,6 +791,20 @@
   });
  }
 
+ // Totales por cartera de fondos en EUR, para «Mi día»: el mismo valor que enseñan sus tarjetas.
+ function portfolioTotals(){
+  return account.portfolios.map(pf=>{
+   let value=0,day=0,pnl=0,complete=true;const list=fundPositions(pf.id);
+   for(const position of list){
+    const p=productForPosition(position),v=positionValuation(position,p),cur=String(position.currency||p.currency||'EUR').toUpperCase();
+    if(v.value===null||cur!=='EUR'){complete=false;continue}
+    value+=v.value;if(v.pnl!==null)pnl+=v.pnl;
+    const q=v.source==='market'?liveQuote(p.isin):null,prev=num(q&&q.prev);
+    if(prev!==null&&prev>0&&v.units!==null&&num(q.price)!==null)day+=v.units*(num(q.price)-prev);
+   }
+   return{id:pf.id,name:pf.name,value,day,pnl,count:list.length,complete};
+  });
+ }
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
  // Saveback / Redondeo de los últimos 90 días en esta cartera, como aportación mensual media.
  // Saveback y Redondeo: suma de lo aportado a cada fondo (no son importes fijos). «monthly» solo
@@ -974,7 +1026,7 @@
    account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];account.benefits=ld.benefits||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
   }catch(e){console.warn('Fund portfolio loading failed',e)}
-  finally{account.loading=false;renderPortfolio()}
+  finally{account.loading=false;renderPortfolio();try{root.dispatchEvent(new CustomEvent('viewinvai:fund-portfolios-changed'))}catch(_){}}
  }
  async function ensureDefaultFundPortfolio(){
   if(account.portfolios.length)return account.portfolios[0];
@@ -1106,7 +1158,7 @@
   openModal('Nueva cartera de fondos','<form id="fundPortfolioForm" class="portfolio-form"><label><span>Nombre</span><input name="name" maxlength="80" required value="Fondos y ETFs"></label><label><span>Plataforma principal</span><select name="platform"><option value="">Mixta / varias</option><option>MyInvestor</option><option>Trade Republic</option><option>Otra</option></select></label><button type="submit" class="btn">Crear cartera</button></form>');
  }
  function bind(){
-  q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render()});
+  q('#fundSearch')?.addEventListener('input',e=>{state.query=String(e.target.value||'');render();remoteSearch()});
   q('#fundPlatform')?.addEventListener('change',e=>{state.platform=e.target.value;render()});
   q('#fundType')?.addEventListener('change',e=>{state.type=e.target.value;render()});
   q('#fundProvider')?.addEventListener('change',e=>{state.provider=e.target.value;render()});
@@ -1159,13 +1211,13 @@
    if(e.target.closest?.('[data-fund-modal-close]')||e.target.id==='fundModalBackdrop'){closeModal();return}
    const detailButton=e.target.closest&&e.target.closest('[data-fund-detail]');
    if(detailButton){
-    const p=state.products.find(x=>x.isin===detailButton.dataset.fundDetail);
+    const p=state.products.find(x=>x.isin===detailButton.dataset.fundDetail)||adoptRemote(detailButton.dataset.fundDetail);
     if(p){openModal('Ficha · '+(p.name||p.isin),renderFundDetail(p));requestAnimationFrame(()=>observeFundLive(q('#fundModal')))}
     return;
    }
    const add=e.target.closest&&e.target.closest('[data-fund-position]');
    if(add){
-    const p=state.products.find(x=>x.isin===add.dataset.fundPosition);if(p)await openPositionForm(p);return;
+    const p=state.products.find(x=>x.isin===add.dataset.fundPosition)||adoptRemote(add.dataset.fundPosition);if(p)await openPositionForm(p);return;
    }
    const transactions=e.target.closest&&e.target.closest('[data-fund-transactions]');
    if(transactions){await openFundTransactions(transactions.dataset.fundTransactions);return}
@@ -1260,5 +1312,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={subscribeIsin:subscribeFund,getLiveQuote:liveQuote,init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
+ root.ViewInvAIFunds={subscribeIsin:subscribeFund,getLiveQuote:liveQuote,init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getPortfolioTotals:portfolioTotals,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
 })(window);

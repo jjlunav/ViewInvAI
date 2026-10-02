@@ -1197,3 +1197,20 @@ html[data-theme="light"] .fund-benefit-tag{background:#e7f7f0;color:#0f7a54}
 html[data-theme="light"] .fund-benefit-tag.roundup{background:#eeebff;color:#4f46e5}
 html[data-theme="light"] .fund-benefits{border-top-color:#eef1f6}
 html[data-theme="light"] .fund-benefits>small{color:#4f46e5}
+
+/* Fondos: resultados del universo de Morningstar España (incluye MyInvestor) */
+html:root:root body .fund-remote{margin:18px 0 8px;padding:14px;border:1px solid var(--line,rgba(127,127,127,.25));border-radius:14px;background:var(--panel,transparent)}
+html:root:root body .fund-remote h3{margin:0 0 4px;font-size:1rem}
+html:root:root body .fund-remote .fund-note{margin:0 0 10px;font-size:.82rem;opacity:.8}
+html:root:root body .fund-remote-list{display:grid;gap:8px}
+html:root:root body .fund-remote-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--panel-2,rgba(127,127,127,.07))}
+html:root:root body .fund-remote-row strong{display:block;overflow-wrap:anywhere}
+html:root:root body .fund-remote-row small{display:block;opacity:.75;font-size:.78rem;overflow-wrap:anywhere}
+html:root:root body .fund-remote-row>span{font-size:.8rem;white-space:nowrap}
+html:root:root body .fund-remote-row b.positive{color:var(--up,#16a34a)}
+html:root:root body .fund-remote-row b.negative{color:var(--down,#dc2626)}
+html:root:root body .fund-remote-actions{display:flex;gap:6px}
+@media (max-width:640px){
+ html:root:root body .fund-remote-row{grid-template-columns:1fr 1fr}
+ html:root:root body .fund-remote-row>div:first-child,html:root:root body .fund-remote-actions{grid-column:1/-1}
+}

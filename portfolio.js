@@ -422,13 +422,11 @@ function scheduleGoalPortfolioReview(portfolioId,positionId=null){
   },120);
 }
 
-function portfolioSummaryHtml(portfolio, positions) {
-  if (!portfolio) return "";
+// Totales de una cartera en su divisa base: lo que enseña su resumen y lo que suma «Mi día».
+function portfolioTotals(portfolio, positions) {
   const baseCurrency = String(portfolio.base_currency || "EUR").toUpperCase();
   const cashBalance = Math.max(0,num(portfolio.cash_balance)||0);
-  const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
-  if (!positions.length && !txSummary && cashBalance<=0) return "";
-  let positionsValue = 0, invested = 0, currentComplete = true, costComplete = true, analyzed = 0, pricingSessions = new Set();
+  let positionsValue = 0, invested = 0, day = 0, currentComplete = true, costComplete = true, analyzed = 0, pricingSessions = new Set();
   const fxUsdEur=portfolioUsdToEurRate();
   for (const p of positions) {
     const stock = stockByKey(p.stock_key);
@@ -439,7 +437,12 @@ function portfolioSummaryHtml(portfolio, positions) {
       const F = window.ViewInvAIFunds, q = F && typeof F.getLiveQuote === "function" ? F.getLiveQuote(positionIsin(p)) : null;
       const entryCurrency = String(p.currency || "EUR").toUpperCase(), unit = q && entryCurrency === "EUR" ? num(q.price) : null;
       const unitBase = unit === null ? null : portfolioConvertAmount(unit, "EUR", baseCurrency, fxUsdEur);
-      if (unitBase === null) currentComplete = false; else positionsValue += qty * unitBase;
+      if (unitBase === null) currentComplete = false;
+      else {
+        positionsValue += qty * unitBase;
+        const prev = num(q.prev), prevBase = prev === null || prev <= 0 ? null : portfolioConvertAmount(prev, "EUR", baseCurrency, fxUsdEur);
+        if (prevBase !== null) day += qty * (unitBase - prevBase);
+      }
       const avg = num(p.avg_price), rawCost = num(p.cost_basis) ?? (avg !== null ? qty * avg : null);
       const costBase = portfolioConvertAmount(rawCost, entryCurrency, baseCurrency, fxUsdEur);
       if (costBase === null) costComplete = false; else invested += costBase;
@@ -451,7 +454,11 @@ function portfolioSummaryHtml(portfolio, positions) {
     const currentUnit = marketValueInCurrency(market, baseCurrency);
     if (market && market.session) pricingSessions.add(String(market.session));
     if (currentUnit === null) currentComplete = false;
-    else positionsValue += qty * currentUnit;
+    else {
+      const v = qty * currentUnit;
+      positionsValue += v;
+      if (market.change !== null && market.change > -100) day += v - v / (1 + market.change / 100);
+    }
 
     const entryCurrency = String(p.currency || (preferTr ? "EUR" : "USD")).toUpperCase();
     const avg = num(p.avg_price);
@@ -460,9 +467,20 @@ function portfolioSummaryHtml(portfolio, positions) {
     if (costBase === null) costComplete = false;
     else invested += costBase;
   }
+  return {
+    baseCurrency, cashBalance, positionsValue, invested, day, analyzed, pricingSessions, fxUsdEur,
+    complete: currentComplete,
+    totalValue: currentComplete ? positionsValue + cashBalance : null,
+    openPnl: currentComplete && costComplete ? positionsValue - invested : null
+  };
+}
 
-  const totalValue = currentComplete ? positionsValue + cashBalance : null;
-  const openPnl = currentComplete && costComplete ? positionsValue - invested : null;
+function portfolioSummaryHtml(portfolio, positions) {
+  if (!portfolio) return "";
+  const txSummary = state.portfolioTransactionSummaries[String(portfolio.id)] || null;
+  const T = portfolioTotals(portfolio, positions);
+  const { baseCurrency, cashBalance, invested, pricingSessions, fxUsdEur, totalValue, openPnl } = T;
+  if (!positions.length && !txSummary && cashBalance<=0) return "";
   const openPnlPct = openPnl !== null && invested > 0 ? openPnl / invested * 100 : null;
   let realizedPnl=null;
   if(txSummary&&txSummary.currencies){
@@ -3504,20 +3522,16 @@ function openPositionEditorForStock(stockKey,portfolioId=null){
 function portfolioDaySummary(){
   if(!state.user)return{signedIn:false};
   const open=state.positions.filter(p=>Number(p.active)!==0);
+  // Cada cartera aporta exactamente lo que muestra su resumen (valor total con efectivo, P&L abierto).
   const rows=state.portfolios.map(pf=>{
-    let value=0,day=0,pnl=0,complete=true,count=0;
-    open.filter(p=>String(p.portfolio_id)===String(pf.id)).forEach(p=>{
-      count++;
-      const stock=stockByKey(p.stock_key);if(!stock){complete=false;return}
-      const market=currentMarket(stock,Number(p.prefer_tr)===1),qty=num(p.quantity),eur=marketValueInCurrency(market,'EUR');
-      if(qty===null||eur===null){complete=false;return}
-      const v=qty*eur;value+=v;
-      if(market.change!==null&&market.change>-100)day+=v-v/(1+market.change/100);
-      const m=positionSortMetrics(p);if(m.pnlAbs!==null)pnl+=m.pnlAbs;
-    });
-    const cash=String(pf.base_currency||'EUR').toUpperCase()==='EUR'?Math.max(0,num(pf.cash_balance)||0):0;
-    return{id:pf.id,name:pf.name,value:value+cash,day,pnl,count,complete};
+    const positions=portfolioPositions(pf.id),T=portfolioTotals(pf,positions),cur=T.baseCurrency;
+    const eur=v=>portfolioConvertAmount(v,cur,'EUR',T.fxUsdEur);
+    const value=T.complete?eur(T.totalValue):eur(T.positionsValue+T.cashBalance);
+    return{id:pf.id,name:pf.name,value:value??0,day:eur(T.day)??0,pnl:eur(T.openPnl)??0,count:positions.length,complete:T.complete&&value!==null,kind:'stocks'};
   });
+  // Carteras de fondos (Fondos): mismo valor que sus tarjetas.
+  const F=window.ViewInvAIFunds;
+  if(F&&typeof F.getPortfolioTotals==='function')rows.push(...F.getPortfolioTotals().map(r=>({...r,kind:'funds'})));
   const total=rows.reduce((t,r)=>({value:t.value+r.value,day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,day:0,pnl:0});
   const keys=[...new Set([...open.map(p=>p.stock_key),...state.watchlist.map(w=>w.stock_key)].filter(Boolean))];
   return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};
