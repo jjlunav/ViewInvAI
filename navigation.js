@@ -153,6 +153,7 @@ function showExitBackBanner(){
  exitBackTimer=setTimeout(()=>{el.classList.remove('visible');el.setAttribute('aria-hidden','true')},1050);
 }
 function closeTransientUiForBack(){
+ if(window.ViewInvAISearch&&window.ViewInvAISearch.isOpen()){window.ViewInvAISearch.close();return true}
  let quick=$('#marketQuickSheet');if(quick&&quick.classList.contains('open')){toggleMarketQuick(false);return true}
  let more=$('#mobileMoreSheet');if(more&&more.classList.contains('open')){closeMobileMore();return true}
  let notification=$('#notificationCenter');if(notification&&notification.classList.contains('open')){$('#notificationClose')?.click();return true}

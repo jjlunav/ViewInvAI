@@ -3412,8 +3412,13 @@ async function ensureNotificationPreferenceSchema(env){
     "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"
   ).run();
   const prefColumns=await env.DB.prepare("PRAGMA table_info(notification_preferences)").all();
-  if(!(prefColumns.results||[]).some(row=>String(row.name||"")==="last_ai_scan_at")){
+  const prefNames=new Set((prefColumns.results||[]).map(row=>String(row.name||"")));
+  if(!prefNames.has("last_ai_scan_at")){
     await env.DB.prepare("ALTER TABLE notification_preferences ADD COLUMN last_ai_scan_at TEXT").run();
+  }
+  // Exact price levels (one-shot): cleared once they fire.
+  for(const col of ["price_above","price_below"]){
+    if(!prefNames.has(col))await env.DB.prepare("ALTER TABLE notification_preferences ADD COLUMN "+col+" REAL").run();
   }
   await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_user_stock ON notification_preferences(user_id,stock_key,prefer_tr)").run();
   notificationSchemaReady=true;
@@ -3435,13 +3440,17 @@ async function handleNotificationPreferences(request,env,user,json,url){
     const pt=booleanInt(body.preferTr),now=nowIso();
     const existing=await env.DB.prepare("SELECT id,anchor_price FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=?").bind(user.id,key,pt).first();
     const id=existing&&existing.id?existing.id:uid("np_");
-    const anchorPrice=finiteNumber(body.anchorPrice)??finiteNumber(existing&&existing.anchor_price);
+    const positive=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0?n:null};
+    const anchorPrice=positive(body.anchorPrice)??positive(existing&&existing.anchor_price);
     const up=Math.max(.5,Math.min(50,finiteNumber(body.priceUpStep)??3));
     const down=Math.max(.5,Math.min(50,finiteNumber(body.priceDownStep)??3));
+    const level=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0&&n<1e7?n:null};
+    const above=level(body.priceAbove),below=level(body.priceBelow);
+    if(above!==null&&below!==null&&below>=above)return json({error:"El nivel inferior debe ser menor que el superior."},400);
     await env.DB.prepare(
-      "INSERT INTO notification_preferences (id,user_id,stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,anchor_price,created_at,updated_at) "+
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,stock_key,prefer_tr) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,news_enabled=excluded.news_enabled,pulse_enabled=excluded.pulse_enabled,radar_enabled=excluded.radar_enabled,price_up_enabled=excluded.price_up_enabled,price_down_enabled=excluded.price_down_enabled,price_up_step=excluded.price_up_step,price_down_step=excluded.price_down_step,anchor_price=COALESCE(notification_preferences.anchor_price,excluded.anchor_price),updated_at=excluded.updated_at"
-    ).bind(id,user.id,key,trimText(body.ticker,24).toUpperCase(),trimText(body.name,160),pt,booleanInt(body.newsEnabled),booleanInt(body.pulseEnabled),booleanInt(body.radarEnabled),booleanInt(body.priceUpEnabled),booleanInt(body.priceDownEnabled),up,down,anchorPrice,now,now).run();
+      "INSERT INTO notification_preferences (id,user_id,stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,anchor_price,price_above,price_below,created_at,updated_at) "+
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,stock_key,prefer_tr) DO UPDATE SET ticker=excluded.ticker,name=excluded.name,news_enabled=excluded.news_enabled,pulse_enabled=excluded.pulse_enabled,radar_enabled=excluded.radar_enabled,price_up_enabled=excluded.price_up_enabled,price_down_enabled=excluded.price_down_enabled,price_up_step=excluded.price_up_step,price_down_step=excluded.price_down_step,anchor_price=COALESCE(NULLIF(notification_preferences.anchor_price,0),excluded.anchor_price),price_above=excluded.price_above,price_below=excluded.price_below,updated_at=excluded.updated_at"
+    ).bind(id,user.id,key,trimText(body.ticker,24).toUpperCase(),trimText(body.name,160),pt,booleanInt(body.newsEnabled),booleanInt(body.pulseEnabled),booleanInt(body.radarEnabled),booleanInt(body.priceUpEnabled),booleanInt(body.priceDownEnabled),up,down,anchorPrice,above,below,now,now).run();
     const pref=await env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id=? AND stock_key=? AND prefer_tr=?").bind(user.id,key,pt).first();
     return json({preference:pref},existing?200:201);
   }
@@ -3494,7 +3503,10 @@ async function scanNotificationPreferences(env,services){
       const signalConfigured=pulseConfigured||radarConfigured;
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
-      const trPriceConfigured=global.price&&Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      // NULL means "no level" (finiteNumber(null) would read it as 0).
+      const priceLevel=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0?n:null};
+      const priceLevelsSet=priceLevel(pref.price_above)!==null||priceLevel(pref.price_below)!==null;
+      const trPriceConfigured=global.price&&Number(pref.prefer_tr)===1&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1||priceLevelsSet);
       let chart={available:false},chartRaw=null;
       if(trPriceConfigured||aiDue){
         try{chartRaw=await services.loadChart(stock,pref);chart=chartFeatures(chartRaw)}
@@ -3503,7 +3515,7 @@ async function scanNotificationPreferences(env,services){
       // A TR/LSX alert must never be evaluated from the US quote. Use the exact
       // LSX chart/ticker when available; otherwise wait instead of mixing markets.
       let liveQuote=null;
-      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1);
+      const priceAlertConfigured=global.price&&(Number(pref.price_up_enabled)===1||Number(pref.price_down_enabled)===1||priceLevelsSet);
       if(Number(pref.prefer_tr)!==1&&priceAlertConfigured&&services.loadQuote){
         try{liveQuote=await services.loadQuote(stock,pref)}
         catch(error){console.warn("Notification live quote unavailable",pref.id,String(error&&error.message||error))}
@@ -3513,8 +3525,8 @@ async function scanNotificationPreferences(env,services){
         // Only a live quote may move a price alert; snapshot pre/post/close prices can belong to a
         // previous session and would fire false threshold crossings when the live quote fails.
         :finiteNumber((liveQuote&&liveQuote.price)??stock.usLivePrice);
-      let anchorPrice=finiteNumber(pref.anchor_price);
-      if(anchorPrice===null&&price!==null){
+      let anchorPrice=priceLevel(pref.anchor_price);
+      if(anchorPrice===null&&price!==null&&price>0){
         anchorPrice=price;
         await env.DB.prepare("UPDATE notification_preferences SET anchor_price=?,updated_at=? WHERE id=?").bind(anchorPrice,nowIso(),pref.id).run();
       }
@@ -3529,6 +3541,18 @@ async function scanNotificationPreferences(env,services){
         if(Number(pref.price_down_enabled)===1&&nextDown>downBucket){
           await sendPreferenceAlert(env,pref,"price-down","warning","Bajada · "+pref.ticker,"Ha superado -"+(nextDown*downStep).toFixed(1)+"% desde que activaste el aviso.");
           downBucket=nextDown;
+        }
+      }
+      if(global.price&&price!==null&&priceLevelsSet){
+        const cur=Number(pref.prefer_tr)===1?"€":"$",fmt=v=>Number(v).toLocaleString("es-ES",{maximumFractionDigits:v<10?4:2})+" "+cur;
+        const above=priceLevel(pref.price_above),below=priceLevel(pref.price_below);
+        if(above!==null&&price>=above){
+          await sendPreferenceAlert(env,pref,"price-level-up","high","Nivel alcanzado · "+pref.ticker,"Cotiza a "+fmt(price)+": ha superado tu nivel de "+fmt(above)+".");
+          await env.DB.prepare("UPDATE notification_preferences SET price_above=NULL WHERE id=?").bind(pref.id).run();
+        }
+        if(below!==null&&price<=below){
+          await sendPreferenceAlert(env,pref,"price-level-down","warning","Nivel alcanzado · "+pref.ticker,"Cotiza a "+fmt(price)+": ha caído por debajo de tu nivel de "+fmt(below)+".");
+          await env.DB.prepare("UPDATE notification_preferences SET price_below=NULL WHERE id=?").bind(pref.id).run();
         }
       }
       let directNews=[],officialEvents=[];

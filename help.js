@@ -88,7 +88,7 @@ function initHelpSystem(){
   calendar:{title:'Calendario y noticias',text:'Ordena cronológicamente noticias y eventos corporativos, clínicos, regulatorios y de resultados asociados al universo de acciones cargado.'},
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
   catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
-  settings:{title:'Configuración General',text:'Preferencias de la aplicación, notificaciones de la cuenta y opciones del dispositivo. Aquí puedes activar los avisos generales, elegir qué tipos de eventos quieres recibir y gestionar funciones locales como mantener la pantalla activa.'}
+  settings:{title:'Configuración General',text:'Preferencias de la aplicación, notificaciones de la cuenta y opciones del dispositivo. Aquí puedes activar los avisos generales, elegir qué tipos de eventos quieres recibir y gestionar funciones locales como mantener la pantalla activa. En la campana 🔔 de cada valor puedes fijar niveles de precio exactos («avisar si sube a» / «si baja a»): avisan una sola vez y se borran. La lupa de arriba (o la tecla /) busca cualquier acción, fondo o ETF por ticker, nombre o ISIN.'}
  };
  $$('.section-help').forEach(el=>{let x=sectionHelp[el.dataset.helpSection];if(x){el.dataset.help=x.text;el.dataset.helpTitle=x.title}});
  $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});

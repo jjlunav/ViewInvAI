@@ -12,6 +12,7 @@ const files = [
   'ui-shell.js',
   'broker-import.js',
   'tax.js',
+  'search.js',
   'today.js',
   'styles.css',
   'web-mobile.css',
