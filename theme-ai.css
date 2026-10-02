@@ -674,3 +674,14 @@ html[data-theme="light"] .profile-why small{color:#4f46e5}
 .profile-why li em{font-style:normal;font-weight:800;font-size:11.5px;opacity:.8}
 .profile-why p{margin:0;padding:0 12px 12px;font-size:12.5px;color:var(--muted,#8ea0bf)}
 html body .unified-stock-header .profile-why{grid-column:1 / -1!important;width:100%;box-sizing:border-box}
+
+/* Hoja Mercados en la web móvil: el tablero trasladado conservaba la columna de Inicio
+   y quedaba con 0 px de ancho. Aquí siempre ocupa todo el ancho de la hoja. */
+html:root:root body #marketSheetBoard{grid-template-columns:minmax(0,1fr)!important}
+html:root:root body #marketSheetBoard>*,html:root:root body #marketSheetBoard #homeGroups{grid-column:1/-1!important;width:100%!important;min-width:0!important;max-width:none!important;margin-left:0!important;margin-right:0!important}
+html:root:root body #marketSheetBoard #homeGroups,html:root:root body #marketSheetBoard .market-board-list{grid-template-columns:minmax(0,1fr)!important}
+html:root:root body #marketSheetBoard .market-board-list>*{min-width:0!important;width:100%!important}
+/* Sub-pestañas del tablero (Más activos · Subidas · Bajadas · Fondos/ETFs · Índices) en una línea. */
+html:root:root body .market-board-tabs{display:flex!important;flex-wrap:nowrap!important;gap:0!important;overflow-x:auto!important;scrollbar-width:none}
+html:root:root body .market-board-tabs::-webkit-scrollbar{display:none}
+html:root:root body .market-board-tabs .tab{flex:1 1 auto!important;min-width:0!important;padding:0 5px!important;font-size:11.5px!important;letter-spacing:-.1px;white-space:nowrap!important;text-align:center!important;justify-content:center!important}
