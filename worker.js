@@ -1757,12 +1757,21 @@ function isBackendApiPath(pathname) {
 }
 
 const MARKET_WORKFLOW_URL="https://api.github.com/repos/jjlunav/ViewInvAI/actions/workflows/update-market-data.yml/dispatches";
-function shouldDispatchMarketUpdate(ms,everyMinutes=10){
-  const parts=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Madrid",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(ms)).map(p=>[p.type,p.value]));
-  const hour=Number(parts.hour)%24,minute=Number(parts.minute),weekday=!["Sat","Sun"].includes(parts.weekday);
-  const step=[5,10,15,20,30,60].includes(everyMinutes)?everyMinutes:10;
-  if(weekday&&hour>=7&&hour<23)return minute%step===2;
-  return minute===2;
+// Session-aware schedule (New York time, so daylight saving is handled):
+//   regular session 09:30-16:00 ET  -> every `base` minutes (MARKET_DISPATCH_MINUTES)
+//   pre/post-market 04:00-09:30 and 16:00-20:00 ET -> every max(30, 3×base)
+//   nights and weekends -> every 3 h
+// With base=10 that is ~55 runs per weekday; with base=30 (private repo, 2000 Actions
+// minutes/month) ~22, which leaves room for CI and APK builds.
+function shouldDispatchMarketUpdate(ms,base=10){
+  const step=[5,10,15,20,30,60].includes(base)?base:10;
+  const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
+  const minuteOfDay=(Number(p.hour)%24)*60+Number(p.minute),weekday=!["Sat","Sun"].includes(p.weekday);
+  const sinceMidnight=Math.floor(ms/60000);
+  const every=n=>sinceMidnight%n===2;
+  if(weekday&&minuteOfDay>=570&&minuteOfDay<960)return every(step);
+  if(weekday&&minuteOfDay>=240&&minuteOfDay<1200)return every(Math.max(30,step*3));
+  return every(180);
 }
 async function dispatchMarketUpdate(env){
   const res=await fetch(MARKET_WORKFLOW_URL,{method:"POST",headers:{
@@ -1867,9 +1876,8 @@ export default {
   async scheduled(controller, env, ctx) {
     // GitHub throttles its own «*/5» schedule to every 3-5 h. When a token is configured
     // (secret GITHUB_DISPATCH_TOKEN, fine-grained, Actions: read & write on this repo),
-    // the Worker triggers the market-data workflow itself: every MARKET_DISPATCH_MINUTES
-    // (default 10; use 30 if the repo turns private, to stay within Actions minutes) on
-    // weekdays 07:00-23:00 Madrid, hourly otherwise.
+    // the Worker triggers the market-data workflow itself, following the US session
+    // (see shouldDispatchMarketUpdate; MARKET_DISPATCH_MINUTES in wrangler.jsonc).
     const dispatchAt=Number(controller&&controller.scheduledTime)||Date.now();
     if(env.GITHUB_DISPATCH_TOKEN&&shouldDispatchMarketUpdate(dispatchAt,Number(env.MARKET_DISPATCH_MINUTES)||10))ctx.waitUntil(dispatchMarketUpdate(env).catch(error=>console.warn("Market update dispatch failed",String(error&&error.message||error))));
     const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
