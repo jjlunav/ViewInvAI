@@ -10,6 +10,11 @@
    '<div class="notification-pref-intro"><strong id="stockNotificationName">Notificaciones</strong><span>Elige qué avisos push quieres recibir para este activo.</span><small id="stockNotificationGlobalStatus"></small></div>'+
    '<label class="notification-pref-row"><span><b>Noticias y eventos</b></span><span class="settings-switch"><input type="checkbox" name="news"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
    '<label class="notification-pref-row"><span><b>Radar AI</b><small>Cambios de nivel de este valor en Radar AI. Los niveles que avisan (alta convicción, oportunidades, vigilancia) se eligen en Configuración.</small></span><span class="settings-switch"><input type="checkbox" name="radarAi"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label>'+
+   '<div class="notification-level-card"><div class="notification-level-head"><b>Niveles de precio</b><small id="stockNotificationNow"></small></div>'+
+    '<div class="notification-level-grid">'+
+     '<label><span>Avisar si sube a</span><span class="notification-level-input"><input name="priceAbove" type="number" inputmode="decimal" min="0" step="any" placeholder="—"><em data-level-cur>$</em></span></label>'+
+     '<label><span>Avisar si baja a</span><span class="notification-level-input"><input name="priceBelow" type="number" inputmode="decimal" min="0" step="any" placeholder="—"><em data-level-cur>$</em></span></label>'+
+    '</div><small class="notification-level-note">Un solo aviso por nivel; después se borra. Déjalo vacío para no usarlo.</small></div>'+
    '<div class="notification-price-grid">'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Subida por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceUp"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceUpStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Bajada por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceDown"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
@@ -42,7 +47,24 @@
   get('priceDown').checked=pref?Number(pref.price_down_enabled)===1:false;
   get('priceUpStep').value=pref&&pref.price_up_step||3;
   get('priceDownStep').value=pref&&pref.price_down_step||3;
+  const lv=v=>{const n=Number(v);return v!==null&&v!==undefined&&v!==''&&Number.isFinite(n)&&n>0?String(n):''};
+  get('priceAbove').value=lv(pref&&pref.price_above);
+  get('priceBelow').value=lv(pref&&pref.price_below);
  }
+ function quoteFor(){
+  if(!current)return{};
+  return (current.preferTr
+   ?root.ViewInvAI?.getCanonicalQuote?.(current.stock,true)
+   :root.ViewInvAI?.getDisplayQuote?.(current.stock,false))||{};
+ }
+ function fmtLevel(v){const n=Number(v);return Number.isFinite(n)?n.toLocaleString('es-ES',{maximumFractionDigits:n<10?4:2}):'—'}
+ function paintLevelContext(){
+  const f=ensureSource(),cur=current&&current.preferTr?'€':'$',price=Number(quoteFor().price);
+  f.querySelectorAll('[data-level-cur]').forEach(el=>{el.textContent=cur});
+  const now=f.querySelector('#stockNotificationNow');
+  if(now)now.textContent=Number.isFinite(price)&&price>0?'Ahora '+fmtLevel(price)+' '+cur+(current.preferTr?' · LSX':''):'';
+ }
+ function levelValue(input){const n=Number(String(input.value||'').replace(',','.'));return input.value!==''&&Number.isFinite(n)&&n>0?n:null}
  async function load(){
   if(!current||!api()?.getUser?.()){fill(null);return}
   // No saved row for this user + asset means all switches OFF.
@@ -62,13 +84,16 @@
   ensureSource();
   q('#stockNotificationName').textContent='🔔 '+(stock.name||stock.ticker||'Activo');
   await load();
+  paintLevelContext();
   root.ViewInvAIFilterSheet?.open?.('#stockNotificationPanel','Notificaciones · '+(preferTr?(stock.trTicker||stock.ticker):(stock.ticker||stock.trTicker)||''));
  }
  async function save(e){
   e.preventDefault();if(!current)return;
-  const f=ensureSource(),stock=current.stock,quote=(current.preferTr
-   ?root.ViewInvAI?.getCanonicalQuote?.(stock,true)
-   :root.ViewInvAI?.getDisplayQuote?.(stock,false))||{};
+  const f=ensureSource(),stock=current.stock,quote=quoteFor();
+  const above=levelValue(f.elements.priceAbove),below=levelValue(f.elements.priceBelow),now=Number(quote.price);
+  if(above!==null&&below!==null&&below>=above){setStatus('El nivel de bajada debe ser menor que el de subida.',true);return}
+  if(above!==null&&Number.isFinite(now)&&now>0&&above<=now){setStatus('El nivel de subida ya está por debajo del precio actual ('+fmtLevel(now)+').',true);return}
+  if(below!==null&&Number.isFinite(now)&&now>0&&below>=now){setStatus('El nivel de bajada ya está por encima del precio actual ('+fmtLevel(now)+').',true);return}
   const payload={
    stockKey:current.key,
    ticker:current.preferTr?(stock.trTicker||stock.ticker):(stock.ticker||stock.trTicker),
@@ -81,7 +106,9 @@
    priceDownEnabled:f.elements.priceDown.checked,
    priceUpStep:Number(f.elements.priceUpStep.value)||3,
    priceDownStep:Number(f.elements.priceDownStep.value)||3,
-   anchorPrice:Number(quote.price)||null
+   anchorPrice:Number(quote.price)||null,
+   priceAbove:above,
+   priceBelow:below
   };
   try{
    await api().ensurePushRegistration?.(true);
@@ -107,7 +134,9 @@
    priceDownEnabled:false,
    priceUpStep:Number(f.elements.priceUpStep.value)||3,
    priceDownStep:Number(f.elements.priceDownStep.value)||3,
-   anchorPrice:null
+   anchorPrice:null,
+   priceAbove:null,
+   priceBelow:null
   };
   try{
    const r=await api().apiFetch('/api/notification-preferences',{method:'POST',body:JSON.stringify(payload)});

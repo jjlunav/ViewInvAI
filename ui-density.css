@@ -142,12 +142,12 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
  * and tab bars must use this contract instead of per-view or per-platform
  * overrides in styles.css, web-mobile.css or mobile-app.css.
  *
- *   --ph-reserve   space kept free for the floating account button
+ *   --ph-reserve   space kept free for the floating search + account buttons
  *   --ph-title-size / --ph-gap   heading scale and spacing
  *   --tab-*        tab bar typography
  */
 :root{
-  --ph-reserve:84px;
+  --ph-reserve:216px;
   --ph-title-size:30px;
   --ph-gap:12px;
   --tab-size:13px;
@@ -155,7 +155,7 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
 }
 @media(max-width:820px){
   :root{
-    --ph-reserve:42px;
+    --ph-reserve:86px;
     --ph-title-size:22px;
     --ph-gap:8px;
     --tab-size:12px;
@@ -163,7 +163,7 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
   }
 }
 html[data-native-app="1"]{
-  --ph-reserve:42px;
+  --ph-reserve:88px;
   --ph-title-size:22px;
   --ph-gap:8px;
   --tab-size:12px;
