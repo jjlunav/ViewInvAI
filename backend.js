@@ -2692,6 +2692,72 @@ export function detectSavingsPlans(rows,nowMs=Date.now()){
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Catálogo aprendido: fondos que aparecen en importaciones y no figuran en el catálogo
+// público (p. ej. fondos de inversión de Trade Republic). Solo ISIN, nombre, tipo y la
+// plataforma donde se ha visto: no guarda nada del usuario que lo importó.
+// ---------------------------------------------------------------------------
+let fundCatalogExtraReady=false;
+async function ensureFundCatalogExtra(env){
+  if(fundCatalogExtraReady)return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS fund_catalog_extra (isin TEXT PRIMARY KEY,name TEXT NOT NULL DEFAULT '',type TEXT NOT NULL DEFAULT 'fund',provider TEXT NOT NULL DEFAULT '',index_name TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'EUR',tr_seen INTEGER NOT NULL DEFAULT 0,mi_seen INTEGER NOT NULL DEFAULT 0,last_price REAL,last_price_at TEXT,ter REAL,nav REAL,nav_date TEXT,ret_1y REAL,ms_name TEXT,enriched_at TEXT,updated_at TEXT NOT NULL)").run();
+  fundCatalogExtraReady=true;
+}
+function platformFlags(platform){
+  const p=String(platform||"").toLowerCase();
+  return {tr:/trade\s*republic|^tr$/.test(p)?1:0,mi:/myinvestor/.test(p)?1:0};
+}
+async function learnFundProduct(env,row,platform){
+  const isin=trimText(row&&row.isin,12).toUpperCase();
+  if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return;
+  await ensureFundCatalogExtra(env);
+  const f=platformFlags(platform),type=["fund","etf","etp"].includes(String(row.productType))?String(row.productType):"fund";
+  const price=finiteNumber(row.price),when=String(row.executedAt||"");
+  await env.DB.prepare(
+    "INSERT INTO fund_catalog_extra (isin,name,type,provider,index_name,currency,tr_seen,mi_seen,last_price,last_price_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) "+
+    "ON CONFLICT(isin) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE fund_catalog_extra.name END,"+
+    "tr_seen=MAX(fund_catalog_extra.tr_seen,excluded.tr_seen),mi_seen=MAX(fund_catalog_extra.mi_seen,excluded.mi_seen),"+
+    "last_price=CASE WHEN excluded.last_price_at>COALESCE(fund_catalog_extra.last_price_at,'') THEN excluded.last_price ELSE fund_catalog_extra.last_price END,"+
+    "last_price_at=MAX(COALESCE(fund_catalog_extra.last_price_at,''),COALESCE(excluded.last_price_at,'')),updated_at=excluded.updated_at"
+  ).bind(isin,trimText(row.name,160),type,trimText(row.provider,80),trimText(row.indexName,120),String(row.currency||"EUR").toUpperCase().slice(0,3),f.tr,f.mi,price!==null&&price>0?price:null,price!==null&&price>0&&when?when:null,nowIso()).run();
+}
+// Valor liquidativo, comisión (TER) y rentabilidad a 1 año del screener público de Morningstar
+// (universo de fondos registrados en España). Como mucho una vez cada 20 h por fondo.
+const MS_SCREENER="https://lt.morningstar.com/api/rest.svc/klr5zyak8x/security/screener";
+async function enrichFundCatalogExtra(env){
+  const stale=new Date(Date.now()-20*3600e3).toISOString();
+  const due=await env.DB.prepare("SELECT isin FROM fund_catalog_extra WHERE enriched_at IS NULL OR enriched_at<? LIMIT 60").bind(stale).all();
+  const isins=(due.results||[]).map(r=>r.isin).filter(x=>/^[A-Z]{2}[A-Z0-9]{10}$/.test(x));
+  if(!isins.length)return 0;
+  const params=new URLSearchParams({outputType:"json",version:"1",languageId:"es-ES",currencyId:"EUR",universeIds:"FOESP$$ALL",
+    securityDataPoints:"SecId|Name|isin|OngoingCharge|ClosePrice|ClosePriceDate|ReturnM12",filters:"ISIN:IN:"+isins.join(":"),page:"1",pageSize:String(isins.length)});
+  const res=await fetch(MS_SCREENER+"?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"Mozilla/5.0 ViewInvAI"},signal:AbortSignal.timeout(9000)});
+  if(!res.ok)throw new Error("Morningstar "+res.status);
+  const data=await res.json();
+  const now=nowIso(),found=new Set();
+  for(const r of data&&data.rows||[]){
+    const isin=String(r.isin||"").toUpperCase();if(!isins.includes(isin))continue;found.add(isin);
+    await env.DB.prepare("UPDATE fund_catalog_extra SET ter=?,nav=?,nav_date=?,ret_1y=?,ms_name=?,enriched_at=? WHERE isin=?")
+      .bind(finiteNumber(r.OngoingCharge),finiteNumber(r.ClosePrice),trimText(r.ClosePriceDate,20)||null,finiteNumber(r.ReturnM12),trimText(r.Name,160),now,isin).run();
+  }
+  // Sin datos: no se vuelve a preguntar hasta el próximo ciclo.
+  for(const isin of isins)if(!found.has(isin))await env.DB.prepare("UPDATE fund_catalog_extra SET enriched_at=? WHERE isin=?").bind(now,isin).run();
+  return found.size;
+}
+async function handleFundCatalogExtra(request,env,user,json){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  await ensureFundCatalogExtra(env);
+  // Lo que ya tienes en tus carteras de fondos (importaciones anteriores) también enseña al catálogo.
+  try{
+    await ensureFundSchema(env);
+    const mine=await env.DB.prepare("SELECT isin,name,product_type,provider,index_name,currency,platform FROM fund_positions WHERE user_id=? AND active=1").bind(user.id).all();
+    for(const p of mine.results||[])await learnFundProduct(env,{isin:p.isin,name:p.name,productType:p.product_type,provider:p.provider,indexName:p.index_name,currency:p.currency},p.platform);
+  }catch(_){}
+  try{await enrichFundCatalogExtra(env)}catch(error){console.warn("Fund enrichment failed",String(error&&error.message||error))}
+  const rows=await env.DB.prepare("SELECT * FROM fund_catalog_extra ORDER BY name LIMIT 5000").all();
+  return json({products:rows.results||[]});
+}
 async function handleFundTransactionImport(request,env,user,json){
   const body=await readJson(request);
   const rows=Array.isArray(body.rows)?body.rows.slice(0,IMPORT_MAX_ROWS):[];
@@ -2722,7 +2788,7 @@ async function handleFundTransactionImport(request,env,user,json){
     if(!externalId||!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin)||!["BUY","SELL"].includes(side)||!(units>0)||price===null||price<0||!Number.isFinite(when.getTime())){
       errors.push({ticker:isin||externalId,error:"Operación de fondo incompleta"});continue;
     }
-    if(await env.DB.prepare("SELECT id FROM fund_transactions WHERE user_id=? AND external_id=?").bind(user.id,externalId).first()){skipped++;continue}
+    if(await env.DB.prepare("SELECT id FROM fund_transactions WHERE user_id=? AND external_id=?").bind(user.id,externalId).first()){skipped++;try{await learnFundProduct(env,r,platform)}catch(_){}continue}
     try{
       const pos=await positionFor(r);
       if(body.replaceManual===true&&!retiredFor.has(pos.id)){
@@ -2733,6 +2799,7 @@ async function handleFundTransactionImport(request,env,user,json){
       await env.DB.prepare("INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,external_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(uid("ftx_"),portfolio.id,pos.id,user.id,isin,side,units,price,fees,String(r.currency||"EUR").toUpperCase(),when.toISOString(),r.benefit==="saveback"?"Saveback":r.benefit==="roundup"?"Redondeo":r.plan?"Plan de ahorro":"Importado",externalId,now,now).run();
       touched.add(pos.id);imported++;
+      try{await learnFundProduct(env,r,platform)}catch(_){}
     }catch(error){
       if(/UNIQUE/i.test(String(error&&error.message)))skipped++;
       else errors.push({ticker:isin,error:"No se pudo guardar: "+String(error&&error.message||"").slice(0,90)});
@@ -4507,6 +4574,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);
     if (root === "fund-plans") return handleFundPlans(request, env, user, json, parts, url);
+    if (root === "fund-catalog-extra") return handleFundCatalogExtra(request, env, user, json);
     if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
