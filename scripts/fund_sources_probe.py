@@ -184,5 +184,67 @@ def myinvestor_api():
             except Exception as e:
                 print(method, url, type(e).__name__, str(e)[:150])
 
-for title, fn in [("TR websocket 2", tr_ws2), ("MyInvestor API", myinvestor_api)]:
+
+def tr_ws3():
+    import asyncio, websockets
+    async def run():
+        async with websockets.connect("wss://api.traderepublic.com", origin="https://app.traderepublic.com", user_agent_header=UA["User-Agent"], open_timeout=15) as ws:
+            await ws.send('connect 31 {"locale":"es","platformId":"webtrading","platformVersion":"chrome - 126.0.0","clientId":"app.traderepublic.com","clientVersion":"3.151.3"}')
+            await asyncio.wait_for(ws.recv(), 10)
+            variants = []
+            for q in ["", "ishares", "index", "fidelity", "a"]:
+                variants.append((f"mf+ES q={q!r}", {"type": "neonSearch", "data": {"q": q, "page": 1, "pageSize": 50, "filter": [{"key": "type", "value": "mutualFund"}, {"key": "jurisdiction", "value": "ES"}]}}))
+            variants.append(("mf q=ishares no juris", {"type": "neonSearch", "data": {"q": "ishares", "page": 1, "pageSize": 5, "filter": [{"key": "type", "value": "mutualFund"}]}}))
+            variants.append(("all+ES q=ishares emerging index", {"type": "neonSearch", "data": {"q": "iShares Emerging Markets Index", "page": 1, "pageSize": 10, "filter": [{"key": "jurisdiction", "value": "ES"}]}}))
+            variants.append(("mf+ES page2", {"type": "neonSearch", "data": {"q": "", "page": 2, "pageSize": 50, "filter": [{"key": "type", "value": "mutualFund"}, {"key": "jurisdiction", "value": "ES"}]}}))
+            variants.append(("instrument fidelity", {"type": "instrument", "id": "IE00BYX5MX67"}))
+            for n, (label, payload) in enumerate(variants, start=1):
+                await ws.send(f"sub {n} " + json.dumps(payload))
+                try:
+                    end = time.time() + 8
+                    while time.time() < end:
+                        msg = await asyncio.wait_for(ws.recv(), 8)
+                        if msg.startswith(f"{n} "):
+                            body = msg[len(str(n)) + 3:]
+                            d = json.loads(body)
+                            if "results" in d:
+                                print(label, "count", d.get("resultCount"), "got", len(d["results"]), [(r.get("isin"), r.get("instrumentType"), r.get("name")) for r in d["results"][:6]])
+                            elif label.startswith("instrument"):
+                                print(label, d.get("typeId"), d.get("exchangeIds"), d.get("name"), d.get("issuerDisplayName"))
+                            else:
+                                print(label, body[:300])
+                            break
+                except Exception as e:
+                    print(label, "->", type(e).__name__)
+                await ws.send(f"unsub {n}")
+    asyncio.run(run())
+
+def myinvestor_api2():
+    base = "https://api.myinvestor.es/myinvestor-server/rest/public/fondos/find-fondos"
+    from urllib.parse import urlencode
+    for q in [{"isin": "IE00BYWYCC39", "ltvMode": "ORIGIN"}, {"isin": "IE00BYWYCC39"}, {"name": "ishares", "ltvMode": "ORIGIN"}, {"type": "TODOS", "ltvMode": "ORIGIN"},
+              {"name": "a", "type": "TODOS", "ltvMode": "ORIGIN"}, {"name": "", "type": "TODOS", "ltvMode": "ORIGIN"}, {"type": "PENSIONES", "ltvMode": "ORIGIN"}]:
+        url = base + "?" + urlencode(q)
+        try:
+            st, ct, body = get(url, headers={"Accept": "application/json", "Origin": "https://myinvestor.es", "Referer": "https://myinvestor.es/"}, timeout=30)
+            txt = body.decode("utf-8", "replace")
+            try:
+                d = json.loads(txt)
+                rows = d if isinstance(d, list) else (d.get("payload") or d.get("data") or d.get("content") or d)
+                n = len(rows) if isinstance(rows, list) else "?"
+                print(q, st, "len", len(txt), "rows", n, txt[:400])
+                if isinstance(rows, list) and rows:
+                    print("   keys", list(rows[0].keys())[:40] if isinstance(rows[0], dict) else rows[0])
+            except Exception:
+                print(q, st, ct, txt[:300])
+        except Exception as e:
+            print(q, type(e).__name__, str(e)[:200])
+    for t in ["FONDOS_INDEXADOS", "indexed"]:
+        try:
+            st, ct, body = get("https://api.myinvestor.es/myinvestor-server/rest/public/funds/top/" + t, headers={"Accept": "application/json", "Origin": "https://myinvestor.es"}, timeout=20)
+            print("top", t, st, body[:300])
+        except Exception as e:
+            print("top", t, type(e).__name__, str(e)[:120])
+
+for title, fn in [("TR websocket 3", tr_ws3), ("MyInvestor API 2", myinvestor_api2)]:
     try_(title, fn)
