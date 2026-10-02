@@ -1552,6 +1552,137 @@ async function handleTaxReport(request,env,user,json,url){
   return json(report);
 }
 
+/* ---------------- Radar AI · marcador de aciertos ----------------
+ * Cada día de mercado, a las 15:45 de Nueva York (12:45 en cierre anticipado), se
+ * guarda la foto del Radar AI calculada con el mismo motor que la pantalla y con los
+ * precios en vivo. 1, 5 y 20 sesiones después se anota la rentabilidad de cada señal
+ * y la del S&P 500 (SPY) en el mismo intervalo. Nada se reescribe: es un registro.
+ */
+const RADAR_HORIZONS=[1,5,20];
+let radarScoreboardSchemaReady=false;
+async function ensureRadarScoreboardSchema(env){
+  if(radarScoreboardSchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL,score REAL NOT NULL,quality REAL NOT NULL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,speculative INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_radar_signals_day ON radar_signals(day)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)")
+  ]);
+  radarScoreboardSchemaReady=true;
+}
+function radarMarkWindow(nowMs){
+  const api=globalThis.ViewInvAIMarketSession;
+  if(!api)return null;
+  const parts=api.zoneClock("America/New_York",new Date(nowMs));
+  const cal=api.usMarketCalendar(parts);
+  if(!cal.open)return null;
+  const minutes=(+parts.hour%24)*60+(+parts.minute);
+  const mark=(cal.earlyClose?780:960)-15;
+  if(minutes<mark||minutes>=mark+10)return null;
+  return{day:api.dateKey(+parts.year,+parts.month,+parts.day)};
+}
+async function fetchBenchmarkPrice(){
+  const r=await fetch("https://scanner.tradingview.com/america/scan",{method:"POST",headers:{"Content-Type":"application/json","User-Agent":"Mozilla/5.0","Origin":"https://www.tradingview.com"},body:JSON.stringify({symbols:{tickers:["AMEX:SPY"],query:{types:[]}},columns:["close"]})});
+  if(!r.ok)throw new Error("SPY "+r.status);
+  const data=await r.json();
+  const price=Number(data&&data.data&&data.data[0]&&data.data[0].d&&data.data[0].d[0]);
+  if(!(price>0))throw new Error("SPY sin precio");
+  return price;
+}
+export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
+  const engine=globalThis.ViewInvAIScore;
+  if(!engine||!snapshot||!Array.isArray(snapshot.stocks))return[];
+  const byTicker=new Map();
+  for(const e of Array.isArray(snapshot.events)?snapshot.events:[]){
+    const t=String(e&&e.ticker||"").toUpperCase();if(!t)continue;
+    if(!byTicker.has(t))byTicker.set(t,[]);byTicker.get(t).push(e);
+  }
+  const snapshotAt=Date.parse(snapshot.meta&&(snapshot.meta.liveUpdatedAt||snapshot.meta.updatedAt))||null;
+  const rows=[];
+  for(const s of snapshot.stocks){
+    const price=finiteNumber(s.price);if(!(price>0))continue;
+    const events=byTicker.get(String(s.ticker||"").toUpperCase())||[];
+    const input={price,change:finiteNumber(s.changePct),volume:finiteNumber(s.volume),avgVolume:finiteNumber(s.avgVolume),relVolume:finiteNumber(s.relVolume),
+      rsi:finiteNumber(s.rsi),adx:finiteNumber(s.adx),ema20:finiteNumber(s.ema20),ema50:finiteNumber(s.ema50),perfWeek:finiteNumber(s.perfWeek),perfMonth:finiteNumber(s.perfMonth),
+      spread:null,bid:null,ask:null,quoteAgeMs:null,snapshotAgeMs:snapshotAt?Math.max(0,nowMs-snapshotAt):null,chartAvailable:false};
+    const a=engine.analyze(input,events,nowMs);
+    const score=finiteNumber(a.score)??0,quality=finiteNumber(a.quality&&a.quality.score)??0;
+    // Same thresholds as the Radar AI screen (alta convicción needs AI validation, not logged here).
+    const tier=score>=60&&quality>=48?"opportunity":score>=50&&quality>=40?"watch":"";
+    if(!tier)continue;
+    const spec=typeof engine.speculative==="function"?engine.speculative({price,marketCap:finiteNumber(s.marketCap),avgVolume:finiteNumber(s.avgVolume),events,nowMs}):{speculative:false};
+    rows.push({stock_key:String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),ticker:String(s.ticker||""),name:String(s.name||""),tier,score,quality,price,
+      tr_tradable:s.tradeRepublicTradable===true?1:0,speculative:spec.speculative?1:0});
+  }
+  rows.sort((a,b)=>b.score-a.score||b.quality-a.quality);
+  const opp=rows.filter(r=>r.tier==="opportunity").slice(0,60),watch=rows.filter(r=>r.tier==="watch").slice(0,40);
+  return[...opp,...watch];
+}
+export async function runRadarScoreboard(env,services={},nowMs=Date.now()){
+  if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
+  const win=radarMarkWindow(nowMs);
+  if(!win)return{skipped:"outside-window"};
+  await ensureRadarScoreboardSchema(env);
+  const done=await env.DB.prepare("SELECT day FROM radar_bench WHERE day=?").bind(win.day).first();
+  if(done)return{skipped:"already-marked"};
+  const snapshot=await services.loadMarketSnapshot(env);
+  const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
+  const now=nowIso();
+  // 1) Evaluate earlier signals with today's live prices.
+  const priceByKey=new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),finiteNumber(s.price)]));
+  const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
+  const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
+  const updates=[];
+  for(const sig of pending){
+    const sessions=benchDays.filter(d=>d>sig.day).length+1; // today is one more session after the signal
+    const now_px=priceByKey.get(String(sig.stock_key).toUpperCase());
+    if(!(now_px>0)||!(sig.price>0))continue;
+    const ret=(now_px/sig.price-1)*100,bench=sig.bench_price>0?(benchPrice/sig.bench_price-1)*100:null;
+    for(const h of RADAR_HORIZONS){
+      if(sessions>=h&&sig["ret_"+h+"d"]===null){
+        updates.push(env.DB.prepare("UPDATE radar_signals SET ret_"+h+"d=?,bench_"+h+"d=? WHERE id=? AND ret_"+h+"d IS NULL").bind(Math.round(ret*1000)/1000,bench===null?null:Math.round(bench*1000)/1000,sig.id));
+      }
+    }
+  }
+  for(let i=0;i<updates.length;i+=80)await env.DB.batch(updates.slice(i,i+80));
+  // 2) Record today's signals and the benchmark mark.
+  const signals=radarSignalsForSnapshot(snapshot,nowMs);
+  const inserts=signals.map(r=>env.DB.prepare(
+    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,now));
+  for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
+  await env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(win.day,benchPrice,now).run();
+  return{day:win.day,signals:signals.length,evaluated:updates.length};
+}
+function radarStats(rows,h){
+  const done=rows.filter(r=>r["ret_"+h+"d"]!==null&&r["ret_"+h+"d"]!==undefined);
+  if(!done.length)return{n:0};
+  const rets=done.map(r=>Number(r["ret_"+h+"d"])).sort((a,b)=>a-b);
+  const excess=done.filter(r=>r["bench_"+h+"d"]!==null).map(r=>Number(r["ret_"+h+"d"])-Number(r["bench_"+h+"d"]));
+  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const beat=excess.filter(x=>x>0).length;
+  return{n:done.length,hitRate:Math.round(rets.filter(x=>x>0).length/rets.length*1000)/10,avgReturn:Math.round(avg(rets)*100)/100,
+    median:Math.round(rets[Math.floor(rets.length/2)]*100)/100,avgExcess:excess.length?Math.round(avg(excess)*100)/100:null,
+    beatRate:excess.length?Math.round(beat/excess.length*1000)/10:null,best:Math.round(rets[rets.length-1]*10)/10,worst:Math.round(rets[0]*10)/10};
+}
+export async function radarScoreboardSummary(env){
+  await ensureRadarScoreboardSchema(env);
+  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+  const firstDay=rows.length?rows[rows.length-1].day:null;
+  const groups={
+    opportunity:rows.filter(r=>r.tier==="opportunity"),
+    opportunitySolid:rows.filter(r=>r.tier==="opportunity"&&Number(r.speculative)===0),
+    watch:rows.filter(r=>r.tier==="watch"),
+    trTradable:rows.filter(r=>Number(r.tr_tradable)===1&&r.tier==="opportunity")
+  };
+  const stats={};
+  for(const [k,list] of Object.entries(groups))stats[k]=Object.fromEntries(RADAR_HORIZONS.map(h=>[h+"d",radarStats(list,h)]));
+  const days=[...new Set(rows.map(r=>r.day))];
+  return{since:firstDay,days:days.length,signals:rows.length,stats,
+    recent:rows.filter(r=>r.tier==="opportunity").slice(0,25).map(r=>({day:r.day,ticker:r.ticker,name:r.name,stockKey:r.stock_key,score:r.score,speculative:Number(r.speculative)===1,trTradable:Number(r.tr_tradable)===1,ret1d:r.ret_1d,ret5d:r.ret_5d,ret20d:r.ret_20d,bench5d:r.bench_5d})),
+    method:"Foto diaria a las 15:45 de Nueva York con el motor del Radar AI y precios en vivo; rentabilidad desde ese precio 1, 5 y 20 sesiones después, frente al SPY en el mismo intervalo. Sin comisiones ni deslizamiento.",
+    updatedAt:nowIso()};
+}
+
 function txResult(body,status=200){return{status,body}}
 
 // Shared by the manual form and broker imports. options.origin tags the row

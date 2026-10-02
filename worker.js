@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary } from "./backend.js";
 
 
 function parseMarketNumber(value) {
@@ -1671,6 +1671,18 @@ function overlayMarketLive(snapshot,live){
   snapshot.meta=Object.assign({},snapshot.meta||{},{liveUpdatedAt:live.updatedAt});
   return snapshot;
 }
+let radarScoreboardMemo={at:0,value:null};
+async function radarScoreboardResponse(env){
+  try{
+    if(!radarScoreboardMemo.value||Date.now()-radarScoreboardMemo.at>10*60000){
+      radarScoreboardMemo={at:Date.now(),value:await radarScoreboardSummary(env)};
+    }
+    return jsonResponse(radarScoreboardMemo.value,200,{"Cache-Control":"public, max-age=300"});
+  }catch(error){
+    console.warn("Radar scoreboard unavailable",String(error&&error.message||error));
+    return jsonResponse({error:"Marcador no disponible"},503,{"Cache-Control":"no-store"});
+  }
+}
 async function marketLiveResponse(){
   try{
     const value=await marketLivePayload();
@@ -1880,6 +1892,7 @@ export default {
     let limited=null;
     if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
@@ -1906,6 +1919,10 @@ export default {
     if (url.pathname === "/api/social-trending") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await socialTrendingResponse());
+    }
+    if (url.pathname === "/api/radar-scoreboard") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await radarScoreboardResponse(env));
     }
     if (url.pathname === "/api/market-live") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -1981,6 +1998,7 @@ export default {
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
+    tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt));
     if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));
     ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
