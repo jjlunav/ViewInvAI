@@ -471,6 +471,22 @@ jobs:
           PY
       - name: Validar sintaxis Worker
         run: node --check worker.js
+      - name: Rutas del backend expuestas por el Worker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          backend = set(re.findall(r'if \(root === "([a-z-]+)"\)', Path("backend.js").read_text(encoding="utf-8")))
+          worker = Path("worker.js").read_text(encoding="utf-8")
+          block = re.search(r'const BACKEND_API_ROOTS = new Set\(\[(.*?)\]\)', worker, re.S)
+          if not block:
+              raise SystemExit("worker.js no define BACKEND_API_ROOTS")
+          exposed = set(re.findall(r'"([a-z-]+)"', block.group(1)))
+          missing = sorted(backend - exposed)
+          if missing:
+              raise SystemExit("Rutas del backend sin exponer en worker.js: " + ", ".join(missing))
+          print("Rutas del backend: OK (%d)" % len(backend))
+          PY
       - name: Comprobar estructura y seguridad basica
         run: |
           python - <<'PY'
