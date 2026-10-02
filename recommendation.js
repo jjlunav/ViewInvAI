@@ -521,6 +521,44 @@ function radarAiCard(row){
   detailsHtml:''
  });
 }
+// ----- Marcador de aciertos (registro diario del servidor) -----
+let radarScoreboard={at:0,data:null,loading:false},radarScoreboardOpen=false;
+document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-radar-scoreboard]'))radarScoreboardOpen=e.target.open},true);
+async function loadRadarScoreboard(){
+ if(radarScoreboard.loading||(radarScoreboard.data&&Date.now()-radarScoreboard.at<10*60000))return;
+ radarScoreboard.loading=true;
+ try{
+  const r=await fetch('/api/radar-scoreboard',{cache:'no-store'});
+  if(r.ok){radarScoreboard={at:Date.now(),data:await r.json(),loading:false};const box=document.querySelector('[data-radar-scoreboard]');if(box)box.outerHTML=radarScoreboardHtml()}
+ }catch(_){}
+ finally{radarScoreboard.loading=false}
+}
+function radarPct(v,d=1){return v===null||v===undefined||!Number.isFinite(+v)?'—':(v>0?'+':'')+F(v,d)+'%'}
+function radarScoreboardHtml(){
+ const d=radarScoreboard.data;
+ if(!d)return '<details class="radar-scoreboard" data-radar-scoreboard><summary><span><small>HISTORIAL DEL RADAR AI</small><b>Cargando aciertos…</b></span></summary></details>';
+ const main=d.stats&&d.stats.opportunitySolid&&d.stats.opportunitySolid['5d'];
+ let head;
+ if(main&&main.n>0){
+  head='<b>Oportunidades a 5 sesiones: '+F(main.hitRate,0)+'% suben</b><em class="'+(main.avgExcess>0?'positive':main.avgExcess<0?'negative':'')+'">'+radarPct(main.avgReturn)+' de media · '+radarPct(main.avgExcess)+' vs S&P 500</em>';
+ }else{
+  const since=d.since?new Date(d.since+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short'}):'hoy';
+  head='<b>Acumulando historial desde '+E(since)+'</b><em>Primeras cifras: a 1 sesión al día siguiente, a 5 en una semana, a 20 en un mes.</em>';
+ }
+ const col=(st,h)=>{const x=st&&st[h];return x&&x.n?'<td><b>'+F(x.hitRate,0)+'%</b><span>'+radarPct(x.avgReturn)+'</span><i class="'+(x.avgExcess>0?'positive':x.avgExcess<0?'negative':'')+'">'+radarPct(x.avgExcess)+'</i><small>n='+x.n+'</small></td>':'<td class="empty">—</td>'};
+ const row=(label,key)=>'<tr><th>'+label+'</th>'+['1d','5d','20d'].map(h=>col(d.stats&&d.stats[key],h)).join('')+'</tr>';
+ const recent=(d.recent||[]).slice(0,10).map(r=>'<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+(r.speculative?' <em>esp.</em>':'')+'</b><i class="'+((r.ret5d??r.ret1d)>0?'positive':(r.ret5d??r.ret1d)<0?'negative':'')+'">'+(r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'pendiente')+'</i></li>').join('');
+ return '<details class="radar-scoreboard" data-radar-scoreboard'+(radarScoreboardOpen?' open':'')+'><summary><span><small>HISTORIAL DEL RADAR AI · '+(d.days||0)+' SESIONES</small>'+head+'</span></summary>'+
+  '<div class="radar-scoreboard-body">'+
+   '<table><thead><tr><th></th><th>1 sesión</th><th>5 sesiones</th><th>20 sesiones</th></tr></thead><tbody>'+
+    row('Oportunidades sólidas','opportunitySolid')+row('Todas las oportunidades','opportunity')+row('Negociables en TR','trTradable')+row('En vigilancia','watch')+
+   '</tbody></table>'+
+   '<p class="radar-scoreboard-legend"><b>%</b> que suben · rentabilidad media · <i>diferencia con el S&P 500</i> · n señales. «Sólidas» excluye las especulativas.</p>'+
+   (recent?'<ul class="radar-scoreboard-recent">'+recent+'</ul>':'')+
+   '<p class="radar-scoreboard-method">'+E(d.method||'')+' Rentabilidades pasadas no garantizan resultados futuros.</p>'+
+  '</div></details>';
+}
+
 // Radar AI as one list per market, like Radar de entrada: tabs TR / EEUU, a tier filter
 // with counts and every card tinted by tier (alta convicción · oportunidad · vigilancia).
 const RADAR_TIER_LABEL={high:'Alta convicción',opportunity:'Oportunidades',watch:'En vigilancia'};
@@ -541,7 +579,8 @@ function radarAiShell(advanced=radarAiLastAdvanced){
  const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
  const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';
  const list=visible.length?visible.map(radarAiCard).join(''):'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
- return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+'">'+
+ if(!radarScoreboard.data)setTimeout(loadRadarScoreboard,50);
+ return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+'">'+radarScoreboardHtml()+
   '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EEUU / NASDAQ')+'</nav>'+
   '<div class="radar-list-meta">'+(isTr?'Trade Republic / LSX · EUR':'NASDAQ / NYSE / AMEX · USD')+' · '+(rows.analyzed||rows.length)+' analizadas</div>'+
   '<div class="radar-tier-filter" role="group" aria-label="Filtrar por nivel">'+

@@ -196,6 +196,25 @@
     };
   }
 
+  // «Especulativo»: valores donde una señal de momentum es poco fiable o muy arriesgada.
+  // Same rule on screen and on the server (Radar AI scoreboard).
+  function speculative(input={}){
+    const reasons=[];
+    const price=n(input.price),cap=n(input.marketCap),avgVol=n(input.avgVolume);
+    if(price!==null&&price<1)reasons.push('precio < 1 $');
+    if(cap!==null&&cap<300e6)reasons.push('capitalización < 300 M$');
+    if(price!==null&&avgVol!==null&&price*avgVol<2e6)reasons.push('liquidez < 2 M$/día');
+    const nowMs=n(input.nowMs)??Date.now();
+    for(const e of Array.isArray(input.events)?input.events:[]){
+      const t=Date.parse(e&&e.date);
+      if(!Number.isFinite(t)||nowMs-t>30*864e5||t-nowMs>864e5)continue;
+      const text=String((e&&(e.title||e.fact))||'').toLowerCase();
+      if(/reverse split|contrasplit/.test(text)){reasons.push('contrasplit reciente');break}
+      if(e.type==='financing'||/offering|registered direct|private placement|ampliación/.test(text)){reasons.push('ampliación / dilución reciente');break}
+    }
+    return{speculative:reasons.length>0,reasons};
+  }
+
   function watchSignal(score,qualityScore){
     const s=n(score)??0,q=n(qualityScore)??0;
     if(q<55)return 'WAIT';
@@ -214,6 +233,6 @@
   }
 
   root.ViewInvAIScore=Object.freeze({
-    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal
+    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative
   });
 })(globalThis);
