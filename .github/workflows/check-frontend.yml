@@ -25,6 +25,7 @@ on:
       - "tasks.js"
       - "decisions.js"
       - "security.js"
+      - "sync-screen.js"
       - "onboarding.js"
       - "inbox.js"
       - "favlists.js"

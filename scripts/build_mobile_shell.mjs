@@ -6,6 +6,7 @@ const out = path.join(root, 'mobile-shell');
 
 const files = [
   'favicon.svg',
+  'favicon-light.svg',
   'asset-card.js',
   'asset-card.css',
   'theme-ai.css',
@@ -14,6 +15,7 @@ const files = [
   'tasks.js',
   'decisions.js',
   'security.js',
+  'sync-screen.js',
   'broker-import.js',
   'tax.js',
   'search.js',

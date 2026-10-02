@@ -503,6 +503,20 @@ function render(){
  status();
  requestAnimationFrame(()=>observeActiveTrLivePrices());
 }
+// Lee la respuesta por trozos para la barra de la primera sincronización.
+async function readJsonWithProgress(response,total,onProgress){
+ if(!response.body||typeof response.body.getReader!=='function')return response.json();
+ const reader=response.body.getReader(),chunks=[];let received=0;
+ for(;;){
+  const {done,value}=await reader.read();
+  if(done)break;
+  chunks.push(value);received+=value.length;
+  try{onProgress(received,total)}catch(_){}
+ }
+ const all=new Uint8Array(received);let at=0;
+ for(const c of chunks){all.set(c,at);at+=c.length}
+ return JSON.parse(new TextDecoder().decode(all));
+}
 async function load(force=false){
  if(loading)return;
  loading=true;
@@ -516,6 +530,7 @@ async function load(force=false){
     if(lj&&Array.isArray(lj.stocks)&&lj.stocks.length){
      db={stocks:lj.stocks,events:Array.isArray(lj.events)?lj.events:[],meta:lj.meta||{}};
      lastDataStamp=String((lj.meta&&lj.meta.updatedAt)||'');
+     const SY=window.ViewInvAISync;if(SY&&SY.active){SY.set('connect',1);SY.set('market',1);SY.set('prepare',1)}
      rebuildMarketIndexes();
      if(typeof reapplyMarketLive==='function')reapplyMarketLive();
      render();
@@ -534,19 +549,31 @@ async function load(force=false){
   let url=force?DATA+'?v='+Date.now():DATA;
   let r,j,copy=null;
   const RT=window.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative);
+  const SYNC=window.ViewInvAISync&&window.ViewInvAISync.active?window.ViewInvAISync:null;
   try{
+   let total=0;
+   if(SYNC){
+    SYNC.set('connect',0.3);
+    try{const vr=await fetch(DATA_VERSION,{cache:'no-cache'});if(vr.ok){const v=await vr.json();total=Number(v&&v.bytes)||0}}catch(_){}
+    SYNC.set('connect',1);
+   }
    r=await fetch(url,{cache:force?'reload':'no-cache'});
    if(!r.ok)throw Error(String(r.status));
    if(native)copy=r.clone();
-   j=await r.json();
+   if(SYNC){
+    const est=total||20e6,mb=n=>(n/1048576).toLocaleString('es-ES',{maximumFractionDigits:1});
+    j=await readJsonWithProgress(r,est,(got)=>SYNC.set('market',Math.min(0.99,got/est),{bytes:'('+mb(got)+(total?' de '+mb(total):'')+' MB)'}));
+    SYNC.set('market',1);
+   }else j=await r.json();
    if(!Array.isArray(j.stocks))throw Error('formato');
   }catch(remoteError){
+   if(SYNC&&!native){SYNC.fail('No se han podido descargar los datos de mercado.');throw remoteError}
    if(!native)throw remoteError;
    // APK sin conexión: última copia descargada en este móvil.
    console.warn('Remote market snapshot unavailable; using last downloaded copy',remoteError);
    copy=null;
    r=await RT.loadOffline('market');
-   if(!r)throw Error('Sin conexión y sin datos guardados todavía');
+   if(!r){if(SYNC)SYNC.fail('No hay conexión y todavía no hay datos guardados.');throw Error('Sin conexión y sin datos guardados todavía')}
    j=await r.json();
    if(!Array.isArray(j.stocks))throw Error('copia local con formato no válido');
   }
@@ -559,10 +586,12 @@ async function load(force=false){
    let old=previous.get(stockKey(s));if(!old)continue;
    ['trLivePrice','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveDayHigh','usLiveDayLow','usLiveOpen','usLivePreviousClose','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
   }
+  if(SYNC){SYNC.set('connect',1);SYNC.set('market',1);SYNC.set('prepare',0.4)}
   db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   rebuildMarketIndexes();
   if(typeof reapplyMarketLive==='function')reapplyMarketLive();
   render();
+  if(SYNC)SYNC.set('prepare',1);
   if(window.AppAlerts)window.AppAlerts.evaluate('snapshot');
   if(!uiRestoredScroll){
    uiRestoredScroll=true;

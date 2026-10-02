@@ -719,6 +719,8 @@
   if(state.loading)return;
   if(state.loaded&&!force){render();return true}
   let ok=true;
+  const SYNC=root.ViewInvAISync&&root.ViewInvAISync.active?root.ViewInvAISync:null;
+  if(SYNC)SYNC.set('funds',0.2);
   state.loading=true;render();
   try{
    let data;
@@ -741,7 +743,7 @@
    ok=false;
    console.warn('Funds catalogue loading failed',e);
    state.products=[];state.meta={};
-  }finally{state.loading=false;render()}
+  }finally{state.loading=false;render();if(SYNC)SYNC.set('funds',1)}
   return ok;
  }
 

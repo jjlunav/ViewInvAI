@@ -37,6 +37,8 @@
  }
  document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-onboarding-open]')){e.preventDefault();open()}});
  // First run only, once the app has painted its first view (never in automated tests).
- if(!seen()&&!navigator.webdriver)window.addEventListener('load',()=>setTimeout(()=>{if(!seen()&&!document.body.classList.contains('stock-detail-open'))open()},1200));
+ const maybeOpen=()=>setTimeout(()=>{if(!seen()&&!document.body.classList.contains('stock-detail-open'))open()},1200);
+ // Tras la primera sincronización (pantalla de carga), no encima de ella.
+ if(!seen()&&!navigator.webdriver)window.addEventListener('load',()=>{const S=window.ViewInvAISync;if(S&&S.active)window.addEventListener('viewinvai:first-sync-done',maybeOpen,{once:true});else maybeOpen()});
  window.ViewInvAIOnboarding={open};
 })();

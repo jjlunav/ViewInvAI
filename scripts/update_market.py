@@ -2003,9 +2003,12 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     compact_snapshot(obj)
-    OUT.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+    payload = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    OUT.write_text(payload)
     VERSION_OUT.write_text(json.dumps({
         "updatedAt": obj["meta"]["updatedAt"],
+        # Tamaño sin comprimir: la app lo usa para la barra de la primera descarga.
+        "bytes": len(payload.encode("utf-8")),
         "stocks": len(stocks),
         "events": len(events),
         "catalogSyncGeneration": CATALOG_SYNC_GENERATION,

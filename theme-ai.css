@@ -1214,3 +1214,40 @@ html:root:root body .fund-remote-actions{display:flex;gap:6px}
  html:root:root body .fund-remote-row{grid-template-columns:1fr 1fr}
  html:root:root body .fund-remote-row>div:first-child,html:root:root body .fund-remote-actions{grid-column:1/-1}
 }
+
+/* Logo: versión oscura o clara según el tema elegido */
+.brand-mark .brand-logo-light{display:none!important}
+html[data-theme="light"] .brand-mark .brand-logo-dark{display:none!important}
+html[data-theme="light"] .brand-mark .brand-logo-light{display:block!important}
+
+/* Primera sincronización: pantalla de carga con barra de progreso */
+html.first-sync,html.first-sync body{overflow:hidden!important}
+html.first-sync body>*:not(#firstSync){visibility:hidden!important}
+#firstSync{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:24px;
+ background:radial-gradient(120% 70% at 85% -5%,#16314a 0%,#0a1a2a 42%,#050d15 80%);color:#eaf4f8;transition:opacity .42s ease,transform .42s ease}
+#firstSync.closing{opacity:0;transform:scale(1.02);pointer-events:none}
+#firstSync .first-sync-card{width:min(360px,100%);display:grid;justify-items:center;gap:10px;text-align:center}
+#firstSync .first-sync-logo{width:84px;height:84px;border-radius:20px;box-shadow:0 0 0 1px rgba(67,228,178,.08),0 18px 48px rgba(157,140,255,.22);animation:first-sync-pulse 2.4s ease-in-out infinite}
+#firstSync .brand-logo-light{display:none}
+#firstSync strong{font-size:24px;font-weight:800;letter-spacing:.2px;margin-top:6px}
+#firstSync .first-sync-title{font-size:15px;color:#86a0ad;margin-bottom:10px}
+#firstSync .first-sync-bar{width:100%;height:8px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(49,80,98,.6)}
+#firstSync .first-sync-bar i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#9d8cff,#43e4b2);box-shadow:0 0 16px rgba(67,228,178,.45);position:relative;overflow:hidden}
+#firstSync .first-sync-bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:translateX(-100%);animation:first-sync-shine 1.6s linear infinite}
+#firstSync .first-sync-meta{width:100%;display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#b9cdd6;min-height:36px;align-items:flex-start;text-align:left}
+#firstSync .first-sync-meta b{color:#43e4b2;font-variant-numeric:tabular-nums}
+#firstSync small{font-size:12px;color:#6f8a97;line-height:1.4}
+#firstSync [data-sync-retry]{margin-top:8px}
+#firstSync.failed .first-sync-bar i{background:#ff636e;box-shadow:none}
+#firstSync.failed [data-sync-label]{color:#ff8d95}
+html[data-theme="light"] #firstSync{background:radial-gradient(120% 70% at 85% -5%,#eef0ff 0%,#f6f8fc 50%,#ffffff 85%);color:#0f1e3a}
+html[data-theme="light"] #firstSync .brand-logo-dark{display:none}
+html[data-theme="light"] #firstSync .brand-logo-light{display:block}
+html[data-theme="light"] #firstSync .first-sync-title,html[data-theme="light"] #firstSync small{color:#64708a}
+html[data-theme="light"] #firstSync .first-sync-meta{color:#3a4a66}
+html[data-theme="light"] #firstSync .first-sync-meta b{color:#0f8a5f}
+html[data-theme="light"] #firstSync .first-sync-bar{background:#e8ecf4;box-shadow:inset 0 0 0 1px #dde3ee}
+html[data-theme="light"] #firstSync .first-sync-bar i{background:linear-gradient(90deg,#4f46e5,#14b8a6)}
+@keyframes first-sync-pulse{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes first-sync-shine{to{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){#firstSync .first-sync-logo,#firstSync .first-sync-bar i::after{animation:none}}
