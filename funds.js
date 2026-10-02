@@ -124,7 +124,9 @@
   return out;
  }
  function liveQuote(isin){return fundLive.quotes.get(String(isin||'').toUpperCase())||null}
- function fundCurrentValue(p){const q=liveQuote(p.isin);return p.type==='etf'&&q&&num(q.price)!==null?num(q.price):num(p.nav)}
+ // ETF y ETC cotizan en LSX; los fondos de inversión de Trade Republic publican su valor liquidativo en «VST».
+ function fundCurrentValue(p){const q=liveQuote(p.isin);return (p.type==='etf'||p.type==='fund')&&q&&num(q.price)!==null?num(q.price):num(p.nav)}
+ function liveVenue(isin){const p=state.products.find(x=>x.isin===isin);return p&&p.type==='fund'?'VST':'LSX'}
  function fundFreshness(p){
   const q=liveQuote(p.isin);
   if(p.type==='etf'&&q&&num(q.price)!==null){
@@ -166,7 +168,7 @@
    if(fundLive.subByIsin.has(isin))continue;
    const sub=String(fundLive.seq++);
    fundLive.subByIsin.set(isin,sub);fundLive.isinBySub.set(sub,isin);
-   try{fundLive.ws.send('sub '+sub+' '+JSON.stringify({type:'ticker',id:isin+'.LSX'}))}catch(_){}
+   try{fundLive.ws.send('sub '+sub+' '+JSON.stringify({type:'ticker',id:isin+'.'+liveVenue(isin)}))}catch(_){}
   }
  }
  function connectFundsLive(){
@@ -212,6 +214,35 @@
   });
   renderPortfolio();
  }
+ // Fondos que el catálogo público no lista (p. ej. fondos de inversión de Trade Republic) pero que
+ // han aparecido en importaciones: se añaden con la plataforma donde se vieron.
+ let learned=[];
+ async function mergeLearned(force=false){
+  try{
+   const A=root.ViewInvAIAuth;if(!A||typeof A.getUser!=='function'||!A.getUser())return;
+   if(force||!learned.length){const r=await A.apiFetch('/api/fund-catalog-extra');const d=await r.json().catch(()=>({}));if(!r.ok)return;learned=d.products||[]}
+   let added=0;
+   for(const x of learned){
+    const isin=String(x.isin||'').toUpperCase();if(!isin)continue;
+    const plat={tradeRepublic:Number(x.tr_seen)?'verified':'unknown',myInvestor:Number(x.mi_seen)?'verified':'unknown'};
+    const have=state.products.find(p=>p.isin===isin);
+    if(have){
+     if(plat.tradeRepublic==='verified'&&!verified(have.platforms.tradeRepublic))have.platforms.tradeRepublic='verified';
+     if(plat.myInvestor==='verified'&&!verified(have.platforms.myInvestor))have.platforms.myInvestor='verified';
+     if(have.ter==null&&num(x.ter)!==null)have.ter=num(x.ter);
+     if(have.nav==null&&num(x.nav)!==null){have.nav=num(x.nav);have.valueDate=x.nav_date||have.valueDate}
+     if(have.perf1Y==null&&num(x.ret_1y)!==null)have.perf1Y=num(x.ret_1y);
+     continue;
+    }
+    state.products.push(norm({isin,name:x.name||x.ms_name||isin,type:x.type||'fund',provider:x.provider||'',index:x.index_name||'',currency:x.currency||'EUR',
+     ter:num(x.ter),perf1Y:num(x.ret_1y),nav:num(x.nav)??num(x.last_price),valueDate:x.nav_date||x.last_price_at||null,platforms:plat,learned:true,
+     sources:[{label:'Visto en importaciones de '+[plat.tradeRepublic==='verified'?'Trade Republic':'',plat.myInvestor==='verified'?'MyInvestor':''].filter(Boolean).join(' y '),url:''}]}));
+    added++;
+   }
+   if(added||force)render();
+  }catch(_){}
+ }
+ root.addEventListener&&root.addEventListener('viewinvai:auth-changed',()=>{learned=[];if(state.loaded)mergeLearned(true)});
  function norm(p){
   const platforms=p&&p.platforms&&typeof p.platforms==='object'?p.platforms:{};
   return Object.assign({
@@ -424,7 +455,7 @@
   return '<td>—</td>';
  }
  function fundTableRow(p,columns){
-  const liveAttr=p.type==='etf'&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
+  const liveAttr=(p.type==='etf'||p.type==='fund')&&verified(p.platforms.tradeRepublic)?' data-fund-live-isin="'+esc(p.isin)+'"':'';
   return '<tr class="fund-table-row" data-fund-isin="'+esc(p.isin)+'"'+liveAttr+'>'+columns.map(([key])=>fundColumnCell(p,key)).join('')+'</tr>';
  }
  function fundFilterValues(key){
@@ -662,6 +693,7 @@
    fill('#fundProvider',[...new Set(state.products.map(p=>p.provider))],'Todas las gestoras');
    fill('#fundRegion',[...new Set(state.products.map(p=>p.region))],'Todas las regiones');
    state.loaded=true;
+   mergeLearned();
   }catch(e){
    ok=false;
    console.warn('Funds catalogue loading failed',e);
@@ -709,10 +741,12 @@
   const valueHtml=v.value===null
    ?'<span class="fund-value-missing">Sin precio</span>'
    :(v.source==='last'?'':fundFreshnessDotHtml(p))+'<span>'+amount(v.value,cur)+'</span>'+(v.source==='last'?'<small class="fund-value-source">precio del '+esc(shortDate(v.at)||'última compra')+'</small>':'');
+  const live=(p.type==='etf'||p.type==='fund')&&(verified(p.platforms.tradeRepublic)||/trade\s*republic/i.test(position.platform||''));
+  const valueCell=live?'<span data-fund-live-isin="'+esc(p.isin)+'">'+valueHtml+'</span>':valueHtml;
   return root.ViewInvAICards.render({context:'fund-portfolio',className:'portfolio-position-card fund-position-card',title:p.name||position.name||p.isin,isin:p.isin,
    subtitle:kind+' · '+(position.platform||'—'),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
-   cells:[{label:'Valor actual',value:'',html:valueHtml},{label:'P&L',value:v.pnl===null?'—':amount(v.pnl,cur)+(v.pnlPct===null?'':' · '+pct(v.pnlPct)),tone:v.pnl===null?'muted':v.pnl>=0?'positive':'negative'}],
+   cells:[{label:'Valor actual',value:'',html:valueCell},{label:'P&L',value:v.pnl===null?'—':amount(v.pnl,cur)+(v.pnlPct===null?'':' · '+pct(v.pnlPct)),tone:v.pnl===null?'muted':v.pnl>=0?'positive':'negative'}],
    detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(v.units===null?'—':v.units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Precio medio <b>'+money(v.avg,cur)+'</b></span>'+(v.price!==null?'<span>'+(v.source==='last'?'Último precio ('+esc(shortDate(v.at))+')':'Precio actual')+' <b>'+money(v.price,cur)+'</b></span>':'')+'</div>'+benefitBreakdown(position)+(v.source==='last'?'<p class="fund-note">Este fondo no tiene valor liquidativo en el catálogo: se valora con el precio de tu última operación importada.</p>':'')+compactFacts(p)+perfStrip(p),
    actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
   });
@@ -773,14 +807,16 @@
  const OVERLAP={'spx|usa':.9,'ndx|spx':.45,'ndx|usa':.45,'spx|world':.65,'acwi|spx':.6,'usa|world':.7,'acwi|usa':.62,'ndx|world':.3,'acwi|ndx':.28,'acwi|world':.88,'acwi|em':.1,'europe|world':.15,'acwi|europe':.13,'emu|europe':.5,'emu|es50':.6,'es50|europe':.35,'emu|world':.08,'japan|world':.06,'acwi|japan':.05};
  function overlapOf(a,b){if(!a||!b)return 0;if(a===b)return 1;return OVERLAP[[a,b].sort().join('|')]||0}
  const normIndex=v=>String(v||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/\b(index|net|total return|tr|usd|eur|ntr)\b/g,' ').replace(/[^a-z0-9&]+/g,' ').trim();
+ // Clave del índice: el que declara el producto o, en fondos de inversión sin ese dato, su familia por nombre.
+ const twinKey=x=>{const k=normIndex(x.index);if(k&&k!=='no underlying')return k;const f=x.type==='fund'?indexFamily(x):null;return f?'family:'+f:''};
  function cheaperTwin(p,platform){
-  const key=normIndex(p.index),ter=num(p.ter);
-  if(!key||key==='no underlying'||ter===null)return null;
+  const key=twinKey(p),ter=num(p.ter);
+  if(!key||ter===null)return null;
   const hedged=/hedged/i.test(p.name||'');
   const wantTr=/trade republic/i.test(platform||''),wantMi=/myinvestor/i.test(platform||'');
   let best=null;
   for(const c of state.products){
-   if(c.isin===p.isin||normIndex(c.index)!==key)continue;
+   if(c.isin===p.isin||twinKey(c)!==key)continue;
    // Un fondo de inversión solo se compara con fondos: entre ellos el traspaso no tributa; pasar a un ETF exige vender.
    if(p.type==='fund'&&c.type!=='fund')continue;
    const t=num(c.ter);if(t===null||t>ter-0.04)continue;
@@ -921,6 +957,7 @@
    '</div>'+planSummaryHtml(selected.id)+fundInsightsHtml(selected.id,rows)+
    (rows.length?'<div class="fund-position-grid">'+rows.map(fundPositionCard).join('')+'</div>':'<div class="portfolio-empty-state compact">Todavía no hay fondos en esta cartera. Añádelos desde el menú Fondos y ETFs.</div>');
   box.querySelectorAll('.fund-overlap-bar em[data-w]').forEach(el=>el.style.setProperty('width',el.dataset.w+'%'));
+  requestAnimationFrame(()=>observeFundLive(box));
  }
  async function loadPortfolio(force=false){
   account.user=root.ViewInvAIAuth?.getUser?.()||null;

@@ -1871,7 +1871,7 @@ async function attentionRankingResponse(env,request){
 // missing here falls through to the static assets and answers 404.
 const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
-  "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "watchlist",
+  "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "fund-catalog-extra", "watchlist",
   "analysis", "ai", "alerts", "position-decisions", "notification-preferences", "portfolio-goal",
   "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
 ]);
