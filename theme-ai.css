@@ -28,24 +28,21 @@ html:not([data-theme="light"]):root:root body{
 html:not([data-theme="light"]):root:root body .main,
 html:not([data-theme="light"]):root:root body .view{background:transparent!important}
 html:not([data-theme="light"]):root:root body .sidebar{background:rgba(6,15,24,.82)!important;border-right-color:var(--qg-line)!important;backdrop-filter:blur(10px)}
-html:not([data-theme="light"]):root:root body .topbar{background:rgba(6,15,24,.78)!important;border-bottom-color:var(--qg-line)!important}
+
 html:not([data-theme="light"]):root:root body .nav-item.active{background:rgba(67,228,178,.12)!important;box-shadow:inset 2px 0 var(--qg-teal)!important}
 
 /* Cards and panels: translucent glass over the gradient. */
 html:not([data-theme="light"]):root:root body .asset-card,
-html:not([data-theme="light"]):root:root body .stock-card,
 html:not([data-theme="light"]):root:root body .event-item,
 html:not([data-theme="light"]):root:root body .portfolio-auth-gate{
  background:var(--qg-card)!important;border-color:var(--qg-line)!important;
 }
 html:not([data-theme="light"]):root:root body .asset-card{border-radius:var(--qg-radius)!important}
 html:not([data-theme="light"]):root:root body .profile-section,
-html:not([data-theme="light"]):root:root body .radar-ai-market,
 html:not([data-theme="light"]):root:root body .favorites-market-group,
 html:not([data-theme="light"]):root:root body .filter-panel,
 html:not([data-theme="light"]):root:root body .future-filter-bar,
 html:not([data-theme="light"]):root:root body .settings-card,
-html:not([data-theme="light"]):root:root body .settings-section,
 html:not([data-theme="light"]):root:root body .portfolio-block,
 html:not([data-theme="light"]):root:root body .portfolio-goal-hero,
 html:not([data-theme="light"]):root:root body .portfolio-goal-summary,
@@ -97,7 +94,7 @@ html[data-theme="light"]:root:root body{
 html[data-theme="light"]:root:root body .main,
 html[data-theme="light"]:root:root body .view{background:transparent!important}
 html[data-theme="light"]:root:root body .sidebar{background:rgba(255,255,255,.88)!important;border-right-color:var(--pq-line)!important}
-html[data-theme="light"]:root:root body .topbar{background:rgba(246,248,252,.92)!important;border-bottom-color:var(--pq-line)!important}
+
 html[data-theme="light"]:root:root body .nav-item{color:#3b4a66!important}
 html[data-theme="light"]:root:root body .nav-item.active{background:var(--ai-soft)!important;color:var(--pq-navy)!important;box-shadow:inset 2px 0 var(--ai-1)!important}
 
@@ -111,19 +108,16 @@ html[data-theme="light"]:root:root body .portfolio-goal-intro h2{
 }
 
 html[data-theme="light"]:root:root body .asset-card,
-html[data-theme="light"]:root:root body .stock-card,
 html[data-theme="light"]:root:root body .event-item,
 html[data-theme="light"]:root:root body .portfolio-auth-gate{
  background:var(--pq-card)!important;border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important;color:var(--pq-text)!important;
 }
 html[data-theme="light"]:root:root body .asset-card{border-radius:var(--pq-radius)!important}
 html[data-theme="light"]:root:root body .profile-section,
-html[data-theme="light"]:root:root body .radar-ai-market,
 html[data-theme="light"]:root:root body .favorites-market-group,
 html[data-theme="light"]:root:root body .filter-panel,
 html[data-theme="light"]:root:root body .future-filter-bar,
 html[data-theme="light"]:root:root body .settings-card,
-html[data-theme="light"]:root:root body .settings-section,
 html[data-theme="light"]:root:root body .portfolio-block,
 html[data-theme="light"]:root:root body .portfolio-goal-hero,
 html[data-theme="light"]:root:root body .portfolio-goal-summary,
@@ -132,7 +126,7 @@ html[data-theme="light"]:root:root body .portfolio-goal-controls{
  background:var(--pq-panel)!important;border-color:var(--pq-line)!important;box-shadow:var(--pq-shadow)!important;
 }
 html[data-theme="light"]:root:root body .market-board-list{border-color:var(--pq-line)!important;border-radius:var(--pq-radius)!important;background:transparent!important}
-html[data-theme="light"]:root:root body .radar-ai-market-head{border-color:var(--pq-line)!important;background:transparent!important}
+
 html[data-theme="light"]:root:root body .profile-section-head{background:#f4f6fb!important;border-color:var(--pq-line)!important}
 html[data-theme="light"]:root:root body .profile-identity,
 html[data-theme="light"]:root:root body .event-verification,
@@ -192,17 +186,9 @@ html:root:root body .profile-ai-head small{color:var(--ai-1)!important;letter-sp
 html:root:root body .profile-ai-score{border-color:var(--ai-1)!important;box-shadow:0 0 0 3px var(--ai-soft)!important}
 
 /* Radar IA: the "Alta convicción" tier is the AI's highlighted pick. */
-html:root:root body .radar-ai-tier-high{border-radius:var(--qg-radius)!important;border:1px solid var(--ai-line)!important;box-shadow:var(--ai-glow)!important;padding:6px!important}
-html:not([data-theme="light"]):root:root body .radar-ai-tier-high{background:linear-gradient(135deg,rgba(157,140,255,.14),rgba(67,228,178,.05))!important}
-html[data-theme="light"]:root:root body .radar-ai-tier-high{background:linear-gradient(135deg,#ffffff,#f3f2ff 60%,#ecfaf7)!important}
-html:root:root body .radar-ai-tier-high>header strong{color:var(--ai-1)!important}
-html:root:root body .radar-ai-tier-high>header strong::before{content:"✦ ";color:var(--ai-1)}
-html:root:root body .radar-ai-tier>header span{background:var(--ai-soft)!important;color:var(--ai-1)!important;border-color:var(--ai-line)!important}
+
 /* Score chip in the Radar cards. */
-html:root:root body .radar-ai-tier .asset-card-context-cell:first-child .asset-card-cell-value{
- color:var(--ai-1)!important;background:var(--ai-soft)!important;border-radius:6px!important;padding:0 5px!important;display:inline-block!important;font-weight:800!important;
-}
-html:root:root body .radar-ai-tier .radar-ai-empty{border-color:var(--ai-line)!important;color:var(--ai-1)!important;background:transparent!important}
+
 /* Radar intro: the AI explains the engine, so it wears the AI gradient. */
 html:root:root body #view-recommendation .recommendation-intro{border:1px solid var(--ai-line)!important;color:inherit!important}
 html:not([data-theme="light"]):root:root body #view-recommendation .recommendation-intro{background:linear-gradient(120deg,rgba(157,140,255,.18),rgba(12,28,42,.8) 55%,rgba(67,228,178,.08))!important}
@@ -268,7 +254,6 @@ html:root:root body .market-board-list,
 html:root:root body .future-list,
 html:root:root body .catalog-mobile-rows,
 html:root:root body .fund-mobile-rows,
-html:root:root body .radar-ai-tier-list,
 html:root:root body .stock-mobile-rows{
  display:grid!important;gap:8px!important;border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0!important;overflow:visible!important;
 }
@@ -466,12 +451,7 @@ html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-
 html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-spark{width:72px!important;height:26px!important}
 html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-identity.has-spark .asset-card-copy{grid-template-columns:minmax(0,1fr) 72px!important}
 html:root:root body :is(#view-recommendation,#view-today) .radar-ai-card .asset-card-row{padding:12px 12px!important;row-gap:8px!important}
-html:root:root body #view-recommendation .radar-ai-tier-list{gap:10px!important}
-html:root:root body #view-recommendation .radar-ai-tier>header strong{font-size:14px!important;font-weight:800!important}
-html:root:root body #view-recommendation .radar-ai-tier>header span{font-size:12px!important;min-width:24px!important;height:22px!important}
-html:root:root body #view-recommendation .radar-ai-market-head strong{font-size:17px!important}
-html:root:root body #view-recommendation .radar-ai-market-head span,
-html:root:root body #view-recommendation .radar-ai-market-head b{font-size:12px!important}
+
 html:root:root body #view-recommendation .radar-ai-empty{font-size:13px!important;padding:14px!important}
 html:root:root body #view-recommendation #recommendationUpdated{font-size:12px!important}
 

@@ -6,7 +6,6 @@
  * native <details> controls. Shared by web and the Capacitor Android shell.
  */
 
-
 .profile-disclosure,
 .reco-disclosure,
 .portfolio-position-more{
@@ -17,12 +16,10 @@
 }
 
 .profile-disclosure{margin:8px 0}
-.reco-disclosures{display:grid;gap:7px;padding:0 12px 10px}
+
 .reco-disclosure{margin:0}
 
 .portfolio-position-more{margin:6px 0 0;background:rgba(255,255,255,.018)}
-
-
 
 .profile-disclosure>summary,
 .reco-disclosure>summary,
@@ -42,11 +39,9 @@
   user-select:none;
 }
 
-
 .profile-disclosure>summary::-webkit-details-marker,
 .reco-disclosure>summary::-webkit-details-marker,
 .portfolio-position-more>summary::-webkit-details-marker{display:none}
-
 
 .profile-disclosure>summary>span,
 .reco-disclosure>summary>span,
@@ -54,7 +49,6 @@
 .profile-disclosure>summary span{display:grid;gap:2px}
 .profile-disclosure>summary b{font-size:10px;color:#c8d6dc}
 .profile-disclosure>summary small{font-size:7.5px;font-weight:560;color:#637a84}
-
 
 .profile-disclosure>summary i,
 .reco-disclosure>summary i,
@@ -67,19 +61,12 @@
   transition:transform .16s ease;
 }
 
-
 .profile-disclosure[open]>summary i,
 .reco-disclosure[open]>summary i,
 .portfolio-position-more[open]>summary i{transform:rotate(45deg)}
 .profile-disclosure[open]>summary,
 .reco-disclosure[open]>summary,
 .portfolio-position-more[open]>summary{border-bottom:1px solid rgba(76,100,111,.16)}
-.profile-disclosure-body{padding:4px 0}
-.profile-disclosure-body .profile-session-strip{margin:0;border:0;border-radius:0}
-.profile-disclosure-body .profile-stat-list{padding-top:4px}
-
-
-
 
 .reco-disclosure>summary{font-size:9px;color:#9db0b9}
 .reco-disclosure .reco-factors{padding-top:3px}
@@ -91,17 +78,8 @@
   color:#8fa4ad;
   font-size:8.5px;
 }
-.portfolio-position-more .portfolio-position-actions{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-  padding:7px 8px 8px;
-}
 
 .profile-primary-stats{margin-top:8px!important}
-
-
 
 html[data-theme="light"] .profile-disclosure,
 html[data-theme="light"] .reco-disclosure,
@@ -109,7 +87,6 @@ html[data-theme="light"] .portfolio-position-more{
   background:#fbfdfe;
   border-color:#d8e3e7;
 }
-
 
 html[data-theme="light"] .profile-disclosure>summary,
 html[data-theme="light"] .reco-disclosure>summary,
@@ -141,13 +118,8 @@ html[data-native-app="1"] .profile-primary-stats .profile-stat-row{
   padding:6px 0!important;
 }
 
-
-
-html[data-native-app="1"] .reco-disclosures{gap:6px!important;padding:0 10px 8px!important}
 html[data-native-app="1"] .portfolio-position-more{margin-top:5px!important}
-html[data-native-app="1"] .portfolio-position-more .portfolio-position-actions{
-  padding:6px!important;
-}
+
 html[data-native-app="1"] .portfolio-position-more .portfolio-analyze,
 html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
   min-height:32px!important;
@@ -160,7 +132,6 @@ html[data-native-app="1"] .portfolio-position-more .portfolio-transactions-open{
     grid-template-columns:minmax(0,1fr)!important;
   }
 }
-
 
 /*
  * Layout contract
