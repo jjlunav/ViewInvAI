@@ -3331,8 +3331,11 @@ async function scanNotificationPreferences(env,services){
           const tierOn={HIGH:global.radarHigh,OPPORTUNITY:global.radarOpportunity,WATCH:global.radarWatch};
           const tierLabel={HIGH:"Alta convicción",OPPORTUNITY:"Oportunidad",WATCH:"En vigilancia"};
           if(nextRadar&&nextRadar!==previousRadar&&tierOn[nextRadar]){
+            const engineSpec=globalThis.ViewInvAIScore&&typeof globalThis.ViewInvAIScore.speculative==="function"
+              ?globalThis.ViewInvAIScore.speculative({price:finiteNumber(stock.price),marketCap:finiteNumber(stock.marketCap),avgVolume:finiteNumber(stock.avgVolume),events})
+              :{speculative:false};
             await sendPreferenceAlert(
-              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+tierLabel[nextRadar]+" · "+pref.ticker,
+              env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+tierLabel[nextRadar]+(engineSpec.speculative?" (especulativo)":"")+" · "+pref.ticker,
               current.thesis||("La acción ha entrado en «"+tierLabel[nextRadar]+"» de Radar AI.")
             );
           }else if(previousRadar&&!nextRadar&&tierOn[previousRadar]){

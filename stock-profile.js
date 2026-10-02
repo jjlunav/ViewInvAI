@@ -422,6 +422,64 @@ function profileWhyMovingHtml(s,isTr=false){
   (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Pregunta a la IA en la pestaña ✦ IA para un análisis más amplio.</p>')+
  '</details>';
 }
+
+// «Plan de operación»: entrada, stop por volatilidad (1,5 × ATR de 14 días), objetivo con la
+// relación beneficio/riesgo del nivel elegido y tamaño según tu cartera. Mismos límites que
+// Objetivo IA (riesgo por operación, peso máximo por valor y stop máximo).
+const PLAN_BANDS={
+ conservative:{label:'Bajo',risk:.5,maxPos:8,maxStop:5,rr:2.2},
+ balanced:{label:'Medio',risk:1,maxPos:15,maxStop:6,rr:2},
+ aggressive:{label:'Alto',risk:2,maxPos:25,maxStop:7,rr:1.8}
+};
+function planRiskKey(){try{const v=localStorage.getItem('viewinvai:plan-risk');return PLAN_BANDS[v]?v:'balanced'}catch(_){return'balanced'}}
+function profileTradePlanHtml(s,isTr=false){
+ const usPrice=N(s.price),atr=N(s.atr);
+ let atrPct=atr!==null&&usPrice>0?atr/usPrice*100:null,atrSource='ATR 14 días';
+ // Without a real 14-day ATR there is no plan: the day range on a +60% day gives absurd stops.
+ const entry=isTr?(N(s.trLiveAsk)??N(s.trLivePrice)):(N(s.usLiveAsk)??N(s.usLivePrice)??N(s.price));
+ if(entry===null||!(entry>0)||atrPct===null||!(atrPct>0))return'';
+ window.__planCtx={key:stockKey(s),isTr};
+ const cur=isTr?'EUR':'USD',sym=isTr?'€':'$',key=planRiskKey(),band=PLAN_BANDS[key];
+ const fx=typeof eurUsd==='function'?eurUsd():null;
+ const stopPct=Math.max(1.5,1.5*atrPct),tooWide=stopPct>band.maxStop;
+ const stop=entry*(1-stopPct/100),target=entry*(1+band.rr*stopPct/100);
+ const sum=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getDaySummary==='function'?window.ViewInvAIPortfolios.getDaySummary():null;
+ const capitalEur=sum&&sum.signedIn&&sum.total&&sum.total.value>0?sum.total.value:null;
+ const capital=capitalEur===null?null:(cur==='EUR'?capitalEur:(fx?capitalEur*fx:null));
+ let spec={speculative:false,reasons:[]};
+ try{if(window.ViewInvAIScore&&window.ViewInvAIScore.speculative)spec=window.ViewInvAIScore.speculative({price:usPrice,marketCap:N(s.marketCap),avgVolume:N(s.avgVolume),events:stockEvents(s)})}catch(_){}
+ let sizing='';
+ if(capital!==null){
+  let riskMoney=capital*band.risk/100;if(spec.speculative)riskMoney/=2;
+  const perShare=entry-stop;
+  let shares=perShare>0?riskMoney/perShare:0;
+  const maxShares=capital*band.maxPos/100/entry;shares=Math.min(shares,maxShares);
+  const whole=Math.floor(shares),amount=(whole>=1?whole:shares)*entry;
+  sizing='<div class="plan-size"><small>TAMAÑO</small><b>'+(whole>=1?whole+' acciones':'≈ '+F(shares,2)+' acciones (fraccionadas)')+'</b><span>≈ '+F(amount,0)+' '+sym+' · arriesgas '+F(Math.min(riskMoney,shares*perShare),0)+' '+sym+' ('+F(band.risk*(spec.speculative?.5:1),2)+'% de tu cartera)</span></div>';
+ }else sizing='<div class="plan-size"><small>TAMAÑO</small><b>Inicia sesión y añade tu cartera</b><span>El tamaño se calcula con el '+F(band.risk,1)+'% de tu cartera como riesgo máximo.</span></div>';
+ const chips=Object.entries(PLAN_BANDS).map(([k,b])=>'<button type="button" class="plan-risk'+(k===key?' active':'')+'" data-plan-risk="'+k+'" aria-pressed="'+(k===key)+'">'+b.label+'</button>').join('');
+ const px=v=>F(v,v<10?3:2)+' '+sym;
+ return '<details class="profile-plan"'+(window.__planOpen?' open':'')+' data-profile-plan><summary><span><small>PLAN DE OPERACIÓN · ORIENTATIVO</small><b>Stop '+px(stop)+' (−'+F(stopPct,1)+'%) · Objetivo '+px(target)+' (+'+F(band.rr*stopPct,1)+'%)</b></span></summary>'+
+  '<div class="plan-body">'+
+   '<div class="plan-risk-row" role="group" aria-label="Nivel de riesgo">'+chips+'</div>'+
+   (spec.speculative?'<p class="plan-warn">⚠ Especulativo ('+E(spec.reasons.join(', '))+'): el tamaño se reduce a la mitad.</p>':'')+
+   (tooWide?'<p class="plan-warn">La volatilidad pide un stop del '+F(stopPct,1)+'%, por encima del '+band.maxStop+'% de tu nivel «'+band.label+'». Si entras, que sea con menos tamaño o espera un punto de entrada más estrecho.</p>':'')+
+   '<div class="plan-grid">'+
+    '<div><small>ENTRADA</small><b>'+px(entry)+'</b><span>'+(isTr?'ask LSX':'precio actual')+'</span></div>'+
+    '<div><small>STOP</small><b class="negative">'+px(stop)+'</b><span>1,5 × '+E(atrSource)+'</span></div>'+
+    '<div><small>OBJETIVO</small><b class="positive">'+px(target)+'</b><span>'+F(band.rr,1)+' × el riesgo</span></div>'+
+   '</div>'+sizing+
+   '<p class="plan-note">Cálculo orientativo con los límites de tu nivel de riesgo (máx. '+band.maxPos+'% de la cartera por valor). No es una recomendación personalizada; ajusta el stop a soportes y a tu horizonte.</p>'+
+  '</div></details>';
+}
+document.addEventListener('click',e=>{
+ const b=e.target.closest&&e.target.closest('[data-plan-risk]');if(!b)return;
+ try{localStorage.setItem('viewinvai:plan-risk',b.dataset.planRisk)}catch(_){}
+ const d=b.closest('[data-profile-plan]');window.__planOpen=true;
+ const ctx=window.__planCtx,s=ctx&&stockByKey(ctx.key);
+ if(d&&s){const isTr=ctx.isTr;const wrap=document.createElement('div');wrap.innerHTML=profileTradePlanHtml(s,isTr);const next=wrap.firstElementChild;if(next)d.replaceWith(next)}
+});
+document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-profile-plan]'))window.__planOpen=e.target.open},true);
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -437,7 +495,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
-    profileAiStripHtml(s,isTr)+profileWhyMovingHtml(s,isTr)+
+    profileAiStripHtml(s,isTr)+profileWhyMovingHtml(s,isTr)+profileTradePlanHtml(s,isTr)+
    '</div>'+
   '</header>';
 }
