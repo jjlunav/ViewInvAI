@@ -2397,15 +2397,16 @@ async function handleFundPlans(request, env, user, json, parts, url) {
       ? env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? AND fund_portfolio_id=? ORDER BY enabled DESC,day_of_month ASC,created_at ASC").bind(user.id,portfolioId)
       : env.DB.prepare("SELECT * FROM fund_contribution_plans WHERE user_id=? ORDER BY enabled DESC,created_at ASC").bind(user.id);
     const rows=await stmt.all();
-    // Saveback y Redondeo (Trade Republic): no son planes que el usuario configure, pero
-    // aportan cada mes; se resumen con lo invertido en los últimos 90 días.
-    const since=new Date(Date.now()-90*864e5).toISOString();
+    // Saveback y Redondeo (Trade Republic): no son planes de importe fijo (dependen de lo que
+    // pagas con la tarjeta), así que se resumen como suma: total aportado a cada fondo,
+    // lo de este año, número de compras y participaciones que suman.
+    const yearStart=new Date().getUTCFullYear()+"-01-01";
     const benefits=await env.DB.prepare(
-      "SELECT t.fund_portfolio_id,t.isin,p.name,t.notes AS kind,COUNT(*) AS n,SUM(t.units*t.price) AS total,MAX(t.executed_at) AS last_at," +
-      " (SELECT x.units*x.price FROM fund_transactions x WHERE x.user_id=t.user_id AND x.isin=t.isin AND x.notes=t.notes ORDER BY x.executed_at DESC LIMIT 1) AS last_amount" +
-      " FROM fund_transactions t LEFT JOIN fund_positions p ON p.id=t.fund_position_id WHERE t.user_id=? AND t.notes IN ('Saveback','Redondeo') AND t.executed_at>=?" +
+      "SELECT t.fund_portfolio_id,t.isin,p.name,t.notes AS kind,COUNT(*) AS n,SUM(t.units*t.price) AS total,SUM(t.units) AS units," +
+      " SUM(CASE WHEN t.executed_at>=? THEN t.units*t.price ELSE 0 END) AS year_total,MIN(t.executed_at) AS first_at,MAX(t.executed_at) AS last_at" +
+      " FROM fund_transactions t LEFT JOIN fund_positions p ON p.id=t.fund_position_id WHERE t.user_id=? AND t.side='BUY' AND t.notes IN ('Saveback','Redondeo')" +
       (portfolioId?" AND t.fund_portfolio_id=?":"") + " GROUP BY t.fund_portfolio_id,t.isin,t.notes"
-    ).bind(...(portfolioId?[user.id,since,portfolioId]:[user.id,since])).all();
+    ).bind(...(portfolioId?[yearStart,user.id,portfolioId]:[yearStart,user.id])).all();
     return json({plans:rows.results||[],benefits:benefits.results||[]});
   }
   if(request.method==="POST"&&!id){
