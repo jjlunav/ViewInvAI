@@ -692,6 +692,8 @@ async function ensureTransactionsSchema(env) {
   if(!txNames.has("cash_currency"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN cash_currency TEXT NOT NULL DEFAULT ''").run();
   if(!txNames.has("broker"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
   if(!txNames.has("position_id"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN position_id TEXT NOT NULL DEFAULT ''").run();
+  if(!txNames.has("external_id"))await env.DB.prepare("ALTER TABLE transactions ADD COLUMN external_id TEXT NOT NULL DEFAULT ''").run();
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_external ON transactions(user_id,external_id) WHERE external_id<>''").run();
   await env.DB.prepare(
     "UPDATE transactions SET position_id=COALESCE((SELECT p.id FROM positions p WHERE p.user_id=transactions.user_id AND p.portfolio_id=transactions.portfolio_id AND p.stock_key=transactions.stock_key ORDER BY p.updated_at DESC LIMIT 1),'') WHERE position_id=''"
   ).run();
@@ -1239,6 +1241,217 @@ async function handlePositions(request, env, user, json, parts, url) {
   return json({ error: "Method not allowed" }, 405);
 }
 
+const IMPORT_MAX_ROWS = 80;
+
+// Batch import from a broker export or sync. Rows arrive already matched to the
+// catalogue by the app (stockKey/ticker/ISIN) and sorted; each one carries the
+// broker's execution id, so re-importing is idempotent.
+async function handleTransactionImport(request, env, user, json) {
+  const body = await readJson(request);
+  const portfolioId = trimText(body.portfolioId, 80);
+  const source = ["tr","ibkr","csv"].includes(String(body.source||"")) ? String(body.source) : "csv";
+  const broker = trimText(body.broker, 80);
+  const rows = Array.isArray(body.rows) ? body.rows.slice(0, IMPORT_MAX_ROWS) : [];
+  if (!portfolioId || !rows.length) return json({ error: "portfolioId and rows are required" }, 400);
+  if (!(await onePortfolio(env, user.id, portfolioId))) return json({ error: "Portfolio not found" }, 404);
+  const ordered = rows.map((row, index) => ({ row, index })).sort((a, b) => {
+    const ta = Date.parse(a.row && a.row.executedAt) || 0, tb = Date.parse(b.row && b.row.executedAt) || 0;
+    if (ta !== tb) return ta - tb;
+    const sa = String(a.row && a.row.side).toUpperCase() === "BUY" ? 0 : 1, sb = String(b.row && b.row.side).toUpperCase() === "BUY" ? 0 : 1;
+    return sa - sb || a.index - b.index;
+  });
+  let imported = 0, skipped = 0;
+  const errors = [];
+  for (const { row } of ordered) {
+    const externalId = trimText(row && row.externalId, 120);
+    if (!externalId) { errors.push({ externalId: "", error: "Falta el identificador de la operación" }); continue; }
+    const existing = await env.DB.prepare("SELECT id FROM transactions WHERE user_id=? AND external_id=? LIMIT 1").bind(user.id, externalId).first();
+    if (existing) { skipped++; continue; }
+    const data = transactionPayload({ ...row, portfolioId, broker: broker || row.broker, positionId: "" });
+    try {
+      const result = await createTransactionRecord(env, user, data, {
+        origin: "import:" + source, externalId, adjustCash: body.adjustCash === true, defaultFees: 0
+      });
+      if (result.status >= 400) errors.push({ externalId, ticker: data.ticker, error: String(result.body && result.body.error || "Error") });
+      else imported++;
+    } catch (error) {
+      if (/UNIQUE/i.test(String(error && error.message))) skipped++;
+      else errors.push({ externalId, ticker: data.ticker, error: "No se pudo guardar" });
+    }
+  }
+  return json({ imported, skipped, errors });
+}
+
+// Interactive Brokers Flex Web Service (official, read-only). The token and query id
+// come from the app on each call and are never stored or logged here.
+const IBKR_FLEX_BASE = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
+
+function flexAttr(tag, name) {
+  const m = tag.match(new RegExp("\\s" + name + "=\"([^\"]*)\""));
+  return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">") : "";
+}
+function flexTag(xml, name) {
+  const m = xml.match(new RegExp("<" + name + ">([^<]*)</" + name + ">"));
+  return m ? m[1].trim() : "";
+}
+function flexDateIso(value) {
+  const m = String(value || "").match(/^(\d{4})-?(\d{2})-?(\d{2})(?:[;,\s T]+(\d{2}):?(\d{2}):?(\d{2})?)?/);
+  if (!m) return "";
+  // Flex reports exchange-local time without a zone; New York covers US listings.
+  const local = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 16), +(m[5] || 0), +(m[6] || 0));
+  const probe = new Date(local);
+  const offset = (() => {
+    try {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(probe).map(p => [p.type, p.value]));
+      const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+      return asUtc - probe.getTime();
+    } catch (_) { return -4 * 3600e3; }
+  })();
+  return new Date(local - offset).toISOString();
+}
+function parseFlexTrades(xml) {
+  const out = [];
+  for (const tag of xml.match(/<Trade\s[^>]*?\/?>/g) || []) {
+    const category = flexAttr(tag, "assetCategory");
+    if (category && category !== "STK" && category !== "FUND" && category !== "ETF") continue;
+    const side = flexAttr(tag, "buySell").toUpperCase().replace(/\s.*$/, "");
+    if (side !== "BUY" && side !== "SELL") continue;
+    const quantity = Math.abs(Number(flexAttr(tag, "quantity")));
+    const price = Number(flexAttr(tag, "tradePrice"));
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price)) continue;
+    const id = flexAttr(tag, "tradeID") || flexAttr(tag, "transactionID") || flexAttr(tag, "ibExecID");
+    if (!id) continue;
+    out.push({
+      externalId: "ibkr:" + id,
+      side, quantity, price,
+      fees: Math.abs(Number(flexAttr(tag, "ibCommission")) || 0),
+      feeCurrency: flexAttr(tag, "ibCommissionCurrency").toUpperCase(),
+      currency: flexAttr(tag, "currency").toUpperCase() || "USD",
+      symbol: flexAttr(tag, "symbol").toUpperCase(),
+      isin: flexAttr(tag, "isin").toUpperCase(),
+      name: flexAttr(tag, "description"),
+      exchange: flexAttr(tag, "listingExchange").toUpperCase() || flexAttr(tag, "exchange").toUpperCase(),
+      executedAt: flexDateIso(flexAttr(tag, "dateTime") || flexAttr(tag, "tradeDate")),
+      account: flexAttr(tag, "accountId")
+    });
+  }
+  return out;
+}
+function parseFlexPositions(xml) {
+  const out = [];
+  for (const tag of xml.match(/<OpenPosition\s[^>]*?\/?>/g) || []) {
+    const quantity = Number(flexAttr(tag, "position"));
+    if (!Number.isFinite(quantity) || quantity === 0) continue;
+    out.push({
+      symbol: flexAttr(tag, "symbol").toUpperCase(), isin: flexAttr(tag, "isin").toUpperCase(),
+      quantity, currency: flexAttr(tag, "currency").toUpperCase(),
+      costPrice: Number(flexAttr(tag, "costBasisPrice")) || null, name: flexAttr(tag, "description")
+    });
+  }
+  return out;
+}
+
+async function handleBrokerSync(request, env, user, json, parts) {
+  if (request.method !== "POST" || parts[1] !== "ibkr") return json({ error: "Unknown broker sync" }, 404);
+  const body = await readJson(request);
+  const token = String(body.token || "").trim(), queryId = String(body.queryId || "").trim();
+  if (!/^[A-Za-z0-9]{10,64}$/.test(token)) return json({ error: "El token Flex no tiene un formato válido." }, 400);
+  if (!/^\d{3,12}$/.test(queryId)) return json({ error: "El Query ID debe ser numérico." }, 400);
+  const headers = { "User-Agent": "ViewInvAI/1.0 (Flex Web Service client)" };
+  const send = await fetch(IBKR_FLEX_BASE + "/SendRequest?t=" + encodeURIComponent(token) + "&q=" + encodeURIComponent(queryId) + "&v=3", { headers });
+  const sendXml = await send.text();
+  if (flexTag(sendXml, "Status") !== "Success") {
+    return json({ error: "IBKR rechazó la petición: " + (flexTag(sendXml, "ErrorMessage") || "respuesta inesperada") + ".", code: flexTag(sendXml, "ErrorCode") }, 502);
+  }
+  const reference = flexTag(sendXml, "ReferenceCode");
+  const statementUrl = flexTag(sendXml, "Url") || (IBKR_FLEX_BASE + "/GetStatement");
+  if (!/^https:\/\/[a-z0-9.-]*interactivebrokers\.com\//i.test(statementUrl)) return json({ error: "IBKR devolvió una URL no esperada." }, 502);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    if (attempt) await new Promise(resolve => setTimeout(resolve, 2500));
+    const res = await fetch(statementUrl + "?t=" + encodeURIComponent(token) + "&q=" + encodeURIComponent(reference) + "&v=3", { headers });
+    const xml = await res.text();
+    if (/<FlexQueryResponse/.test(xml)) {
+      return json({ trades: parseFlexTrades(xml), positions: parseFlexPositions(xml), fetchedAt: nowIso() });
+    }
+    const code = flexTag(xml, "ErrorCode");
+    if (code === "1019" || code === "1021") continue; // statement still being generated
+    return json({ error: "IBKR: " + (flexTag(xml, "ErrorMessage") || "no se pudo obtener el informe") + ".", code }, 502);
+  }
+  return json({ error: "IBKR sigue generando el informe. Vuelve a intentarlo en un minuto." }, 504);
+}
+
+function txResult(body,status=200){return{status,body}}
+
+// Shared by the manual form and broker imports. options.origin tags the row
+// ('manual', 'import:tr', 'import:ibkr', 'import:csv'); options.externalId is the
+// broker's execution id, unique per user, so a repeated import is a no-op.
+async function createTransactionRecord(env, user, data, options = {}) {
+  const origin = trimText(options.origin || "manual", 40) || "manual";
+  const externalId = trimText(options.externalId, 120);
+  const adjustCash = options.adjustCash !== false;
+    if (!data.portfolioId || !data.stockKey || !data.ticker) return txResult({ error: "portfolioId, stockKey and ticker are required" }, 400);
+    if (!["BUY","SELL"].includes(data.side)) return txResult({ error: "side must be BUY or SELL" }, 400);
+    if (data.quantity === null || data.quantity <= 0) return txResult({ error: "quantity must be greater than zero" }, 400);
+    if (data.price === null || data.price < 0) return txResult({ error: "price must be zero or greater" }, 400);
+    if(data.fees===null){
+      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side,data.exchange);
+      if(autoFee.fee===null&&options.defaultFees!==undefined){autoFee.fee=options.defaultFees}
+      if(autoFee.fee===null)return txResult({error:autoFee.reason==="currency-mismatch"?"La comisión de este broker se cobra en otra divisa: indícala manualmente en la divisa de la operación.":"No se ha podido verificar todavía la comisión de este broker."},409);
+      data.fees=autoFee.fee;
+    }
+    if (data.fees < 0) return txResult({ error: "fees cannot be negative" }, 400);
+    if (!data.executedAt) return txResult({ error: "executedAt is invalid" }, 400);
+    if (!(await onePortfolio(env, user.id, data.portfolioId))) return txResult({ error: "Portfolio not found" }, 404);
+
+    let position=data.positionId
+      ?await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(data.positionId,user.id).first()
+      :null;
+    if(!position){
+      const broker=trimText(data.broker,80);
+      position=await env.DB.prepare(
+        "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
+      ).bind(user.id,data.portfolioId,data.stockKey,broker,data.currency,data.preferTr,data.exchange).first();
+    }
+    if(position){
+      await ensureOpeningTransaction(env,user.id,position);
+      const positionCurrency=String(position.currency||data.currency).toUpperCase();
+      if(positionCurrency!==data.currency)return txResult({error:"Transaction currency must match the position currency"},400);
+    }else if(data.side==="SELL"){
+      return txResult({error:"Position not found for sell"},404);
+    }
+
+    const resolvedPositionId=position&&position.id?position.id:uid("pos_");
+    const beforeRows=position
+      ?await transactionRows(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId)
+      :[];
+    const before=calculateTransactionLedger(beforeRows);
+    if(data.side==="SELL"&&data.quantity>before.quantity+1e-8){
+      return txResult({error:"Sell quantity exceeds current position"},400);
+    }
+
+    const txId = uid("tx_");
+    const now = nowIso();
+    const txBroker=trimText(data.broker||(position&&position.broker),80);
+    await env.DB.prepare(
+      "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id,created_at,updated_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(
+      txId,data.portfolioId,user.id,resolvedPositionId,txBroker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
+      data.side,data.quantity,data.price,data.fees,data.currency,data.executedAt,data.notes,origin,externalId,now,now
+    ).run();
+
+    const cashAdjustment = adjustCash
+      ? await adjustPortfolioCashForTransaction(
+        env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1,null,data.cashFxRate
+      )
+      : { adjusted:false };
+    await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
+    const recalculated = await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId);
+    const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
+    return txResult({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
+}
+
 async function handleTransactions(request, env, user, json, parts, url) {
   await ensurePositionBrokerSchema(env);
   await ensureTransactionsSchema(env);
@@ -1288,67 +1501,12 @@ async function handleTransactions(request, env, user, json, parts, url) {
     return json({ transactions: rows.results || [], summary, portfolioSummary });
   }
 
+  if (request.method === "POST" && id === "import") return handleTransactionImport(request, env, user, json);
+
   if (request.method === "POST" && !id) {
     const body = await readJson(request);
-    const data = transactionPayload(body);
-    if (!data.portfolioId || !data.stockKey || !data.ticker) return json({ error: "portfolioId, stockKey and ticker are required" }, 400);
-    if (!["BUY","SELL"].includes(data.side)) return json({ error: "side must be BUY or SELL" }, 400);
-    if (data.quantity === null || data.quantity <= 0) return json({ error: "quantity must be greater than zero" }, 400);
-    if (data.price === null || data.price < 0) return json({ error: "price must be zero or greater" }, 400);
-    if(data.fees===null){
-      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side,data.exchange);
-      if(autoFee.fee===null)return json({error:autoFee.reason==="currency-mismatch"?"La comisión de este broker se cobra en otra divisa: indícala manualmente en la divisa de la operación.":"No se ha podido verificar todavía la comisión de este broker."},409);
-      data.fees=autoFee.fee;
-    }
-    if (data.fees < 0) return json({ error: "fees cannot be negative" }, 400);
-    if (!data.executedAt) return json({ error: "executedAt is invalid" }, 400);
-    if (!(await onePortfolio(env, user.id, data.portfolioId))) return json({ error: "Portfolio not found" }, 404);
-
-    let position=data.positionId
-      ?await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(data.positionId,user.id).first()
-      :null;
-    if(!position){
-      const broker=trimText(data.broker,80);
-      position=await env.DB.prepare(
-        "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
-      ).bind(user.id,data.portfolioId,data.stockKey,broker,data.currency,data.preferTr,data.exchange).first();
-    }
-    if(position){
-      await ensureOpeningTransaction(env,user.id,position);
-      const positionCurrency=String(position.currency||data.currency).toUpperCase();
-      if(positionCurrency!==data.currency)return json({error:"Transaction currency must match the position currency"},400);
-    }else if(data.side==="SELL"){
-      return json({error:"Position not found for sell"},404);
-    }
-
-    const resolvedPositionId=position&&position.id?position.id:uid("pos_");
-    const beforeRows=position
-      ?await transactionRows(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId)
-      :[];
-    const before=calculateTransactionLedger(beforeRows);
-    if(data.side==="SELL"&&data.quantity>before.quantity+1e-8){
-      return json({error:"Sell quantity exceeds current position"},400);
-    }
-
-    const txId = uid("tx_");
-    const now = nowIso();
-    const txBroker=trimText(data.broker||(position&&position.broker),80);
-    await env.DB.prepare(
-      "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)"
-    ).bind(
-      txId,data.portfolioId,user.id,resolvedPositionId,txBroker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
-      data.side,data.quantity,data.price,data.fees,data.currency,data.executedAt,data.notes,now,now
-    ).run();
-
-    const cashAdjustment = await adjustPortfolioCashForTransaction(
-      env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1,null,data.cashFxRate
-    );
-    await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
-      .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
-    const recalculated = await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId);
-    const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
-    return json({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
+    const result = await createTransactionRecord(env, user, transactionPayload(body));
+    return json(result.body, result.status);
   }
 
   if (!id) return json({ error: "Transaction id required" }, 400);
@@ -3164,6 +3322,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "brokers") return handleBrokers(request, env, user, json, parts);
     if (root === "positions") return handlePositions(request, env, user, json, parts, url);
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
+    if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);

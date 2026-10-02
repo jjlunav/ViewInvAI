@@ -1204,6 +1204,7 @@ function portfolioWorkbarHtml(selected){
     '<div class="portfolio-workbar-actions">'+
       '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">⊞</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import aria-label="Importar del bróker" title="Importar del bróker (Trade Republic, IBKR, CSV)">⇩</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-market-current"'+(selected?' data-portfolio-market-config="'+esc(selected.id)+'"':' disabled')+' aria-label="Mercado de la cartera" title="Mercado de la cartera">◉</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">+</button>'+
@@ -2784,6 +2785,11 @@ function bind() {
       return;
     }
 
+    if (event.target.closest?.("[data-broker-import]")) {
+      if (window.ViewInvAIBrokerImport) window.ViewInvAIBrokerImport.open();
+      return;
+    }
+
     if (event.target.closest?.("[data-portfolio-order-edit]")) {
       openPortfolioOrderModal();
       return;
@@ -3238,6 +3244,11 @@ function portfolioDaySummary(){
 
 window.ViewInvAIPortfolios = {
   render: renderApp,
+  getPortfolios: () => state.portfolios.map(p => ({ id: p.id, name: p.name, broker: p.broker || "", base_currency: p.base_currency })),
+  getSelectedPortfolioId: () => state.selectedPortfolioId,
+  openModal,
+  closeModal,
+  toast,
   getDaySummary: portfolioDaySummary,
   renderGoal: renderGoalApp,
   reload: () => loadAll(),
