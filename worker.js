@@ -1157,6 +1157,9 @@ async function loadMarketSnapshotForBackend(env) {
   if (!response.ok) throw new Error("Market snapshot unavailable");
   const data = await response.json();
   if (!data || !Array.isArray(data.stocks)) throw new Error("Invalid market snapshot");
+  // Alerts and Radar on the server use live price/volume, not the 30-min photo.
+  try { overlayMarketLive(data, await marketLivePayload()); }
+  catch (error) { console.warn("Market live overlay unavailable", String(error && error.message || error)); }
   return data;
 }
 
@@ -1597,6 +1600,86 @@ async function indicesLiveResponse(){
 }
 
 
+// ----- Mercado en vivo para todo el universo -----
+// One TradingView scan per minute (shared by every user through the Cache API) with
+// the fast-moving fields of all ~6.100 US stocks. The app overlays it on the 30-min
+// snapshot, so lists, rankings, Radar and catalogues use live price/volume; the
+// scheduled backend uses the same overlay for alerts.
+const MARKET_LIVE_FIELDS=["price","changePct","dayHigh","dayLow","volume","relVolume","avgVolume","premarketPrice","premarketChangePct","premarketVolume","premarketTime","postmarketPrice","postmarketChangePct","postmarketVolume","postmarketTime"];
+const MARKET_LIVE_COLUMNS=["close","change","high","low","volume","relative_volume_10d_calc","average_volume_10d_calc","premarket_close","premarket_change","premarket_volume","premarket_time","postmarket_close","postmarket_change","postmarket_volume","postmarket_time"];
+const MARKET_LIVE_TTL=55000;
+let marketLiveMemo={at:0,value:null,pending:null};
+function marketLiveRound(field,value){
+  const n=Number(value);
+  if(value===null||value===undefined||!Number.isFinite(n))return null;
+  if(/Volume$|Time$/.test(field))return Math.round(n);
+  if(/ChangePct$|changePct|relVolume/.test(field))return Math.round(n*1000)/1000;
+  return Number(n.toPrecision(7));
+}
+async function fetchMarketLiveFromSource(){
+  const body={
+    filter:[
+      {left:"type",operation:"in_range",right:["stock","dr"]},
+      {left:"exchange",operation:"in_range",right:["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"]}
+    ],
+    options:{lang:"en"},markets:["america"],symbols:{query:{types:[]},tickers:[]},
+    columns:MARKET_LIVE_COLUMNS,sort:{sortBy:"name",sortOrder:"asc"},range:[0,10000]
+  };
+  const r=await fetch("https://scanner.tradingview.com/america/scan",{method:"POST",headers:{"Content-Type":"application/json","User-Agent":"Mozilla/5.0","Origin":"https://www.tradingview.com"},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error("TradingView "+r.status);
+  const data=await r.json();
+  const rows=[];
+  for(const row of Array.isArray(data&&data.data)?data.data:[]){
+    const sym=String(row&&row.s||"");if(!sym)continue;
+    const d=Array.isArray(row.d)?row.d:[];
+    rows.push([sym,...MARKET_LIVE_FIELDS.map((f,i)=>marketLiveRound(f,d[i]))]);
+  }
+  if(rows.length<1000)throw new Error("TradingView devolvió "+rows.length+" filas");
+  return{fields:MARKET_LIVE_FIELDS,rows,updatedAt:new Date().toISOString(),source:"TradingView"};
+}
+async function marketLivePayload(){
+  if(marketLiveMemo.value&&Date.now()-marketLiveMemo.at<MARKET_LIVE_TTL)return marketLiveMemo.value;
+  if(marketLiveMemo.pending)return marketLiveMemo.pending;
+  marketLiveMemo.pending=(async()=>{
+    const cacheKey=new Request("https://viewinvai.internal/market-live/v1");
+    try{
+      const cache=caches.default,hit=await cache.match(cacheKey);
+      if(hit){
+        const value=await hit.json();
+        if(value&&Date.now()-Date.parse(value.updatedAt)<MARKET_LIVE_TTL){marketLiveMemo={at:Date.parse(value.updatedAt),value,pending:null};return value}
+      }
+      const value=await fetchMarketLiveFromSource();
+      await cache.put(cacheKey,new Response(JSON.stringify(value),{headers:{"Content-Type":"application/json","Cache-Control":"max-age=60"}}));
+      marketLiveMemo={at:Date.now(),value,pending:null};
+      return value;
+    }catch(error){
+      marketLiveMemo.pending=null;
+      if(marketLiveMemo.value)return marketLiveMemo.value;
+      throw error;
+    }
+  })();
+  return marketLiveMemo.pending;
+}
+function overlayMarketLive(snapshot,live){
+  if(!snapshot||!Array.isArray(snapshot.stocks)||!live||!Array.isArray(live.rows))return snapshot;
+  const by=new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))),s]));
+  const fields=live.fields||MARKET_LIVE_FIELDS;
+  for(const row of live.rows){
+    const s=by.get(row[0]);if(!s)continue;
+    fields.forEach((f,i)=>{const v=row[i+1];if(v!==null&&v!==undefined)s[f]=v});
+  }
+  snapshot.meta=Object.assign({},snapshot.meta||{},{liveUpdatedAt:live.updatedAt});
+  return snapshot;
+}
+async function marketLiveResponse(){
+  try{
+    const value=await marketLivePayload();
+    return jsonResponse(value,200,{"Cache-Control":"public, max-age=20"});
+  }catch(error){
+    return jsonResponse({error:"Mercado en vivo no disponible",fields:MARKET_LIVE_FIELDS,rows:[],updatedAt:null},503,{"Cache-Control":"no-store"});
+  }
+}
+
 let attentionSchemaReady=false;
 async function ensureAttentionSchema(env){
   if(attentionSchemaReady)return;
@@ -1797,6 +1880,7 @@ export default {
     let limited=null;
     if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fx-live")limited=await enforcedRateLimit(request,env,"fx",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/tr-health")limited=await enforcedRateLimit(request,env,"tr-health",20,60000,"MARKET_RATE_LIMITER");
@@ -1822,6 +1906,10 @@ export default {
     if (url.pathname === "/api/social-trending") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await socialTrendingResponse());
+    }
+    if (url.pathname === "/api/market-live") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await marketLiveResponse());
     }
     if (url.pathname === "/api/indices-live") {
       const guard = requestGuard(request); if (guard) return guard;

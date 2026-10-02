@@ -987,12 +987,58 @@ function scheduleEntryAutoSort(delay=650){
   if(next!==entryDomOrder())renderEntry();
  },Math.max(250,delay));
 }
+// Live overlay for the whole US universe (/api/market-live, one shared scan per minute).
+// The 30-min snapshot keeps the slow data (ISIN, events, fundamentals); price, change,
+// volume, relative volume, range and pre/post-market come from here, so lists,
+// rankings, Radar and catalogues are computed with live data.
+const marketLive={busy:false,lastAt:0,payload:null,timer:null};
+function applyMarketLive(payload){
+ if(!payload||!Array.isArray(payload.rows)||!Array.isArray(payload.fields))return 0;
+ const updated=Date.parse(payload.updatedAt||'')||Date.now();
+ const snapshotAt=Date.parse((db.meta&&db.meta.updatedAt)||'')||0;
+ if(updated<snapshotAt)return 0;
+ let n=0;
+ for(const row of payload.rows){
+  const s=stockByKey(row[0]);if(!s)continue;
+  payload.fields.forEach((f,i)=>{const v=row[i+1];if(v!==null&&v!==undefined)s[f]=v});
+  n++;
+ }
+ if(db.meta)db.meta.liveUpdatedAt=payload.updatedAt;
+ return n;
+}
+function reapplyMarketLive(){if(marketLive.payload)applyMarketLive(marketLive.payload)}
+function marketLiveInterval(){
+ const se=currentMarketSession();
+ return se==='regular'?60000:se==='premarket'||se==='postmarket'?90000:600000;
+}
+async function pollMarketLive(force=false){
+ if(marketLive.busy||document.hidden)return;
+ if(!force&&Date.now()-marketLive.lastAt<marketLiveInterval()-1000)return;
+ marketLive.busy=true;
+ try{
+  const r=await fetch('/api/market-live',{cache:'no-store'});
+  if(!r.ok)throw Error(r.status);
+  const payload=await r.json();
+  marketLive.lastAt=Date.now();
+  if(applyMarketLive(payload)){
+   marketLive.payload=payload;
+   window.dispatchEvent(new CustomEvent('viewinvai:market-live',{detail:{updatedAt:payload.updatedAt}}));
+   scheduleEntryAutoSort(0);
+   refreshUsLiveDom();
+   scheduleLiveViewRefresh(300);
+  }
+ }catch(e){console.warn('Market live warning',e)}
+ finally{marketLive.busy=false}
+}
+
 function initUsLive(){
  setInterval(refreshUsLiveDom,1800);
  setInterval(()=>refreshQuoteFreshnessDom(document),3000);
  setInterval(pollUsLive,1200);
  setTimeout(pollUsLive,700);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();scheduleEntryAutoSort(0)}});
+ setInterval(()=>pollMarketLive(false),15000);
+ setTimeout(()=>pollMarketLive(true),1500);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollUsLive();pollMarketLive(false);scheduleEntryAutoSort(0)}});
 }
 
 function currentMarketSession(){
