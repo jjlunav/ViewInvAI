@@ -1073,3 +1073,45 @@ html[data-theme="light"] .onb-card p{color:#4a5670}
 .onb-dots i.on{width:22px;background:#7c6cff}
 .onb-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:6px}
 .onboarding-settings-card .settings-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* F8 Fondos: costes, gemelo más barato, solapamiento y simulador de aportaciones */
+.fund-insights .insights-body{display:grid;gap:12px;padding:0 14px 14px}
+.fund-twin{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer}
+.fund-twin:focus-visible{outline:2px solid #9d8cff;outline-offset:2px}
+.fund-twin div{display:grid;gap:2px;min-width:0}
+.fund-twin b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fund-twin span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.fund-twin b{font-size:13px}
+.fund-twin span{font-size:12px;color:var(--muted,#8ea0bf)}
+.fund-twin em{font-style:normal;color:var(--text,#e8eefc)}
+.fund-twin>strong{color:var(--positive,#2fd39a);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fund-overlap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:12px}
+.fund-overlap>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.fund-overlap>span i{font-style:normal;color:var(--muted,#8ea0bf)}
+.fund-overlap>b{color:#e3b84d;font-variant-numeric:tabular-nums}
+.fund-overlap-bar{grid-column:1/-1;height:4px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+.fund-overlap-bar em{display:block;height:100%;width:0;background:linear-gradient(90deg,#e3b84d,#ff8a5b);border-radius:4px}
+.fund-note{font-size:12px;color:var(--muted,#8ea0bf);line-height:1.4}
+.fund-dca-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:560px}
+.fund-dca-inputs label{display:grid;gap:3px;min-width:0}
+.fund-dca-inputs label span{font-size:12px;color:var(--muted,#8ea0bf)}
+.fund-dca-inputs input{width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:10px;border:1px solid rgba(140,190,210,.22);background:rgba(0,0,0,.18);color:inherit;font:inherit;font-size:14px;font-variant-numeric:tabular-nums}
+.fund-dca-chart{width:100%;height:110px;display:block;margin-top:4px}
+.fund-dca-chart .dca-area{fill:rgba(157,140,255,.14)}
+.fund-dca-chart .dca-v{fill:none;stroke:#9d8cff;stroke-width:2;vector-effect:non-scaling-stroke}
+.fund-dca-chart .dca-c{fill:none;stroke:var(--muted,#8ea0bf);stroke-width:1.5;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.fund-dca-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
+.fund-dca-stats div{display:grid;gap:2px;min-width:0}
+.fund-dca-stats small{font-size:12px;color:var(--muted,#8ea0bf)}
+.fund-dca-stats b.pnl-up{color:var(--positive,#2fd39a)}
+.fund-dca-stats b{font-size:15px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html[data-theme="light"] :is(.fund-twin){background:#f7f9fd}
+html[data-theme="light"] .fund-twin em{color:#111827}
+html[data-theme="light"] .fund-twin>strong{color:#0f7a54}
+html[data-theme="light"] .fund-dca-stats b.pnl-up{color:#0f7a54}
+html[data-theme="light"] .fund-overlap>b{color:#8a5a12}
+html[data-theme="light"] .fund-overlap-bar{background:#e8ecf4}
+html[data-theme="light"] .fund-dca-inputs input{background:#fff;border-color:#dde3ee}
+html[data-theme="light"] .fund-dca-chart .dca-area{fill:rgba(79,70,229,.1)}
+html[data-theme="light"] .fund-dca-chart .dca-v{stroke:#4f46e5}
+@media (max-width:420px){.fund-dca-stats b{font-size:13px}}

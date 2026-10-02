@@ -327,6 +327,56 @@ def enrich_trade_republic_history(products):
     return products, enriched
 
 
+TV_SCAN = "https://scanner.tradingview.com/global/scan"
+TV_FUND_COLUMNS = ["isin", "expense_ratio", "index_tracked", "aum", "issuer", "dividend_treatment"]
+
+
+def enrich_tradingview_fund_meta(products, chunk=150):
+    """TER, tracked index, issuer and assets from the TradingView scanner, by ISIN.
+    The Trade Republic universe lists names only; without the TER the app cannot
+    compare costs or find cheaper twins of the same index."""
+    by_isin = {p["isin"]: p for p in products if p.get("isin")}
+    isins = list(by_isin)
+    found = {}
+    for i in range(0, len(isins), chunk):
+        part = isins[i:i + chunk]
+        body = {"filter": [{"left": "isin", "operation": "in_range", "right": part}],
+                "columns": TV_FUND_COLUMNS, "range": [0, len(part) * 30]}
+        try:
+            r = requests.post(TV_SCAN, json=body, timeout=40, headers={"User-Agent": "ViewInvAI/0.6.7"})
+            r.raise_for_status()
+            rows = (r.json() or {}).get("data") or []
+        except Exception as exc:
+            print("TradingView fund meta chunk failed:", exc)
+            continue
+        for row in rows:
+            d = dict(zip(TV_FUND_COLUMNS, row.get("d") or []))
+            isin = str(d.get("isin") or "").upper()
+            if isin not in by_isin:
+                continue
+            cur = found.setdefault(isin, {})
+            for key, value in d.items():
+                if value not in (None, "") and cur.get(key) in (None, ""):
+                    cur[key] = value
+    enriched = 0
+    for isin, meta in found.items():
+        p = by_isin[isin]
+        ter = meta.get("expense_ratio")
+        if isinstance(ter, (int, float)) and 0 <= ter < 5:
+            p["ter"] = round(float(ter), 3)
+        if meta.get("index_tracked") and not p.get("index"):
+            p["index"] = str(meta["index_tracked"])[:120]
+        if meta.get("issuer") and not p.get("provider"):
+            p["provider"] = str(meta["issuer"]).replace(", Inc.", "").replace(" Inc.", "")[:80]
+        aum = meta.get("aum")
+        if isinstance(aum, (int, float)) and aum > 0:
+            p["assetsUnderManagement"] = round(float(aum))
+        if not p.get("distribution") and meta.get("dividend_treatment"):
+            p["distribution"] = "Acumulación" if str(meta["dividend_treatment"]).lower().startswith("capital") else "Distribución"
+        enriched += 1
+    return enriched
+
+
 def main():
     previous = read_json(OUT, {"meta": {}, "products": []})
     myinvestor = read_json(MYINVESTOR, {"meta": {}, "products": []})
@@ -335,6 +385,8 @@ def main():
     tr_products = parse_trade_republic_etfs(response.content)
     products = merge_existing(tr_products, previous, myinvestor)
     products, history_count = enrich_trade_republic_history(products)
+    meta_count = enrich_tradingview_fund_meta(products)
+    print("TradingView fund meta:", meta_count)
 
     payload = {
         "meta": {
@@ -346,6 +398,7 @@ def main():
             "tradeRepublicEtfCount": sum(1 for p in products if p.get("platforms", {}).get("tradeRepublic") == "verified"),
             "myInvestorVerifiedCount": sum(1 for p in products if p.get("platforms", {}).get("myInvestor") == "verified"),
             "tradeRepublicHistoryCount": history_count,
+            "tradingViewMetaCount": meta_count,
             "notes": "ETFs de Trade Republic extraídos de su universo oficial. MyInvestor solo se marca disponible mediante overlay de ISIN verificado."
         },
         "products": products
