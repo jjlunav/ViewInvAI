@@ -509,7 +509,7 @@ async function fetchNasdaqHistorical(symbol, fromDay) {
     const rows = json && json.data && json.data.tradesTable && Array.isArray(json.data.tradesTable.rows) ? json.data.tradesTable.rows : [];
     const out = [];
     for (const row of rows) {
-      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(row && row.date || "").trim());
+      const m = String(row && row.date || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
       const close = parseMarketNumber(row && row.close);
       if (m && close != null && close > 0) out.push({ date: m[3] + "-" + m[1] + "-" + m[2], close });
     }
