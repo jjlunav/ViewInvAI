@@ -126,5 +126,63 @@ def ft():
     oc = re.search(r"Ongoing charge</th><td[^>]*>([^<]+)", html)
     print(st, len(html), "price", m and m.group(1), "ongoing", oc and oc.group(1))
 
-for title, fn in [("TR PDF", tr_pdf), ("TR websocket (sin login)", tr_ws), ("MyInvestor buscador", myinvestor), ("MyInvestor JS", myinvestor_js), ("Morningstar screener", morningstar), ("FT tearsheet", ft)]:
+
+def tr_ws2():
+    import asyncio, websockets
+    async def run():
+        async with websockets.connect("wss://api.traderepublic.com", origin="https://app.traderepublic.com", user_agent_header=UA["User-Agent"], open_timeout=15) as ws:
+            await ws.send('connect 31 {"locale":"es","platformId":"webtrading","platformVersion":"chrome - 126.0.0","clientId":"app.traderepublic.com","clientVersion":"3.151.3"}')
+            await asyncio.wait_for(ws.recv(), 10)
+            subs = [("instrument full", {"type": "instrument", "id": "IE00BYWYCC39"})]
+            for t in ["mutualFund", "mutual_fund", "MUTUAL_FUND", "fonds", "investmentFund", "mutualfund", "fund_mutual"]:
+                subs.append(("q index t=" + t, {"type": "neonSearch", "data": {"q": "index", "page": 1, "pageSize": 3, "filter": [{"key": "type", "value": t}]}}))
+            subs += [("q ishares emerging nofilter", {"type": "neonSearch", "data": {"q": "iShares Emerging Markets Index", "page": 1, "pageSize": 8}}),
+                     ("q fidelity s&p nofilter", {"type": "neonSearch", "data": {"q": "Fidelity S&P 500", "page": 1, "pageSize": 8}}),
+                     ("tags", {"type": "neonSearchTags", "data": {"q": ""}}),
+                     ("suggested", {"type": "neonSearchSuggestedTags", "data": {"q": ""}}),
+                     ("history VST", {"type": "aggregateHistoryLight", "id": "IE00BYWYCC39.VST", "range": "1m", "resolution": 86400000}),
+                     ("ticker VST", {"type": "ticker", "id": "IE00BYWYCC39.VST"})]
+            for n, (label, payload) in enumerate(subs, start=1):
+                await ws.send(f"sub {n} " + json.dumps(payload))
+                try:
+                    end = time.time() + 8
+                    while time.time() < end:
+                        msg = await asyncio.wait_for(ws.recv(), 8)
+                        if msg.startswith(f"{n} "):
+                            body = msg[len(str(n)) + 3:]
+                            if label.startswith("q ") or label.startswith("instrument"):
+                                try:
+                                    d = json.loads(body)
+                                    if "results" in d:
+                                        print(label, "count", d.get("resultCount"), [(r.get("isin"), r.get("instrumentType"), r.get("name")) for r in d["results"]])
+                                    else:
+                                        print(label, {k: (v if not isinstance(v, (dict, list)) else str(v)[:200]) for k, v in d.items() if k not in ("exchanges",)})
+                                except Exception:
+                                    print(label, "->", body[:400])
+                            else:
+                                print(label, "->", body[:700])
+                            break
+                except Exception as e:
+                    print(label, "->", type(e).__name__)
+                await ws.send(f"unsub {n}")
+    asyncio.run(run())
+
+def myinvestor_api():
+    _, _, b = get("https://myinvestor.es/_next/static/chunks/pages/_app-cb2d24ba2fac8be1.js")
+    t = b.decode("utf-8", "replace")
+    for key in ["find-fondos", "funds/top"]:
+        i = t.find(key)
+        print("CTX", key, t[max(0, i - 700):i + 400].replace("\n", " "))
+    hosts = sorted(set(re.findall(r"https://[a-z0-9.\-]*myinvestor[a-z0-9.\-]*", t)))
+    print("hosts", hosts)
+    for host in hosts + ["https://app.myinvestor.es", "https://myinvestor.es", "https://newapp.myinvestor.es"]:
+        for method, data in [("GET", None), ("POST", json.dumps({"page": 0, "size": 5}).encode())]:
+            url = host + "/myinvestor-server/rest/public/fondos/find-fondos"
+            try:
+                st, ct, body = get(url, data=data, headers={"Content-Type": "application/json", "Accept": "application/json"}, timeout=20)
+                print(method, url, st, ct, body[:500])
+            except Exception as e:
+                print(method, url, type(e).__name__, str(e)[:150])
+
+for title, fn in [("TR websocket 2", tr_ws2), ("MyInvestor API", myinvestor_api)]:
     try_(title, fn)
