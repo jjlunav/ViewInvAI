@@ -598,12 +598,13 @@ function renderMarketBoardStatus(updatedAt=null){
  const liveAt=source==='us'&&['active','gainers','losers'].includes(marketBoardMode)
   ?(marketBoardLiveScan.lastAt||usLive.lastFetchAt||0)
   :0;
- const at=updatedAt||liveAt||(
-  marketBoardMode==='funds'&&window.ViewInvAIFunds?.getState?.().meta?.updatedAt
-   ?window.ViewInvAIFunds.getState().meta.updatedAt
-   :db.meta.updatedAt
- );
- if($('#homeUpdated'))$('#homeUpdated').textContent=at?'Datos '+new Date(at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Actualizando…';
+ const el=$('#homeUpdated');if(!el)return;
+ // Funds and indices have their own timestamps; US/TR stock boards use the live overlay.
+ if(marketBoardMode==='funds'){const f=window.ViewInvAIFunds?.getState?.().meta?.updatedAt;paintFreshness(el,f||updatedAt||null);return}
+ if(updatedAt&&marketBoardMode==='indices'){paintFreshness(el,updatedAt);return}
+ const recent=liveAt&&Date.now()-liveAt<180000&&homeSession()!=='previous';
+ if(recent){el.textContent='● En vivo';el.classList.add('is-live');return}
+ paintFreshness(el);
 }
 async function renderIndicesTop10(box){
  box.innerHTML='<div class="empty-state compact">Actualizando índices…</div>';

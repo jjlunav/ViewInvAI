@@ -56,7 +56,7 @@ function profileCompanySummary(s){
  const explicit=String(s.businessSummary||s.companySummary||s.longBusinessSummary||"").trim();
  if(explicit)return explicit;
  const name=String(s.secName||s.name||s.ticker||"La compañía").trim(),exchange=String(s.exchange||"").trim();
- const sector=String(s.sector||"").trim(),industry=String(s.industry||"").trim();
+ const sector=String((s.sector&&typeof window.ViewInvAISectorEs==="function"?window.ViewInvAISectorEs(s.sector):s.sector)||"").trim(),industry=String(s.industry||"").trim();
  const classification=industry&&sector?industry+" · "+sector:industry||sector;
  if(classification)return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". Según la clasificación sectorial disponible, su actividad se encuadra en "+classification+".";
  return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". No hay una descripción corporativa ampliada verificada en la fuente actual.";
@@ -72,7 +72,7 @@ function profileCompanyIdentityHtml(s,isTr){
   profileIdentity("WKN",s.trWkn||"—"),
   profileIdentity("Tipo",s.instrumentType||"Acción"),
   profileIdentity("Divisa",isTr?"EUR":(s.currency||"USD")),
-  profileIdentity("Sector",s.sector||"—"),
+  profileIdentity("Sector",s.sector?(typeof window.ViewInvAISectorEs==="function"?window.ViewInvAISectorEs(s.sector):s.sector):"—"),
   profileIdentity("Industria",s.industry||"—"),
   profileIdentity("CIK SEC",s.secCik||"—")
  ].join("");

@@ -301,7 +301,7 @@ function renderMarketSheet(){
  const usOpen=se==='regular',usExt=se==='premarket'||se==='postmarket';
  status.innerHTML='<span class="'+(usOpen?'is-open':usExt?'is-ext':'is-closed')+'"><i></i>EEUU · '+E(SN(se))+'</span>'+
   (lsx===null?'':'<span class="'+(lsx?'is-open':'is-closed')+'"><i></i>LSX · '+(lsx?'Abierto':'Cerrado')+'</span>')+
-  (db.meta&&db.meta.updatedAt?'<span class="is-muted">Datos '+new Date(db.meta.updatedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>':'');
+  (()=>{const f=typeof dataFreshness==='function'?dataFreshness():null;return f?'<span class="'+(f.live?'is-live':'is-muted')+'">'+(f.live?'<i></i>':'')+E(f.text)+'</span>':''})();
  $$('#marketQuickSheet [role="tab"][data-market-sheet-tab]').forEach(b=>{const on=b.dataset.marketSheetTab===marketSheetTab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
  const board=$('#marketSheetBoard');
  if(marketSheetTab==='market'){

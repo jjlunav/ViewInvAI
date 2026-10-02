@@ -251,7 +251,8 @@ function catalogFilterOptions(mode,key){
 }
 function renderCatalogFilterPanel(mode,cols){
  let st=catalogState[mode],host=$(mode==='tr'?'#catalogFilterPanelTr':'#catalogFilterPanelUs');if(!host)return;
- let sectorOpts='<option value="all">Todos</option>'+catalogFilterOptions(mode,'sector').map(v=>'<option '+(st.sector===v?'selected':'')+'>'+E(v)+'</option>').join('');
+ const sectorEs=v=>typeof window.ViewInvAISectorEs==='function'?window.ViewInvAISectorEs(v):v;
+ let sectorOpts='<option value="all">Todos</option>'+catalogFilterOptions(mode,'sector').map(v=>({v,l:sectorEs(v)})).sort((a,b)=>a.l.localeCompare(b.l,'es')).map(o=>'<option value="'+E(o.v)+'" '+(st.sector===o.v?'selected':'')+'>'+E(o.l)+'</option>').join('');
  let industryOpts='<option value="all">Todas</option>'+catalogFilterOptions(mode,'industry').map(v=>'<option '+(st.industry===v?'selected':'')+'>'+E(v)+'</option>').join('');
  let sortOpts=cols.filter(c=>c.id!=='fav').map(c=>'<option value="'+E(c.id)+'" '+(st.sort===c.id?'selected':'')+'>'+E(c.label)+'</option>').join('');
  host.innerHTML=
@@ -338,7 +339,7 @@ function renderCatalogTable(mode){
  let isTr=mode==='tr',search=$(isTr?'#catalogSearch':'#catalogUSSearch');if(!search)return;
  let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
  let st=catalogState[mode];
- let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
+ let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(typeof window.ViewInvAISectorEs==='function'&&s.sector?window.ViewInvAISectorEs(s.sector):'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
  let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogColumns(mode));
  let count=$(isTr?'#catalogCount':'#catalogUSCount');if(count)count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});

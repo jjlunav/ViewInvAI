@@ -1006,6 +1006,24 @@ function applyMarketLive(payload){
  if(db.meta)db.meta.liveUpdatedAt=payload.updatedAt;
  return n;
 }
+// «● En vivo» while the live overlay is under 3 minutes old during a session;
+// otherwise the time of the last update (with the date when it is not today).
+function dataFreshness(at=null){
+ const live=Date.parse((db.meta&&db.meta.liveUpdatedAt)||'')||0;
+ const snap=Date.parse((db.meta&&db.meta.updatedAt)||'')||0;
+ const se=currentMarketSession();
+ if(!at&&live&&Date.now()-live<180000&&se!=='previous')return{live:true,text:'En vivo'};
+ const t=at?(typeof at==='number'?at:Date.parse(at)):Math.max(live,snap);
+ if(!t)return{live:false,text:'Actualizando…'};
+ const d=new Date(t),today=new Date().toDateString()===d.toDateString();
+ return{live:false,text:'Actualizado '+(today?'':d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})+' ')+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})};
+}
+function paintFreshness(el,at=null){
+ if(!el)return;
+ const f=dataFreshness(at);
+ el.textContent=(f.live?'● ':'')+f.text;
+ el.classList.toggle('is-live',f.live);
+}
 function reapplyMarketLive(){if(marketLive.payload)applyMarketLive(marketLive.payload)}
 function marketLiveInterval(){
  const se=currentMarketSession();
