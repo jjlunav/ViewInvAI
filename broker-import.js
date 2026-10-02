@@ -176,7 +176,10 @@
   const day=r=>new Date(r.executedAt).getUTCDate();
   const nearSlot=(d,slots)=>slots.some(x=>d>=x&&d<=x+3);
   const varies=list=>{const a=list.map(r=>r.cash),m=a.reduce((x,y)=>x+y,0)/a.length;return m>0&&Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length)/m>0.15};
-  for(const list of byIsin.values()){
+  for(const all of byIsin.values()){
+   // Un importe que se repite (±2 %) es el plan en ese mismo fondo: se aparta antes de buscar el patrón.
+   const rep=all.filter(r=>all.filter(x=>x!==r&&Math.abs(x.cash-r.cash)<=Math.max(x.cash,r.cash)*.02).length>=1&&r.cash>=5);
+   const list=all.filter(r=>!rep.includes(r));
    if(list.length<3||!varies(list))continue;
    list.sort((a,b)=>Date.parse(a.executedAt)-Date.parse(b.executedAt));
    const gaps=[];for(let i=1;i<list.length;i++)gaps.push((Date.parse(list[i].executedAt)-Date.parse(list[i-1].executedAt))/864e5);

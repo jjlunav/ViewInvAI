@@ -762,6 +762,8 @@
   let best=null;
   for(const c of state.products){
    if(c.isin===p.isin||normIndex(c.index)!==key)continue;
+   // Un fondo de inversión solo se compara con fondos: entre ellos el traspaso no tributa; pasar a un ETF exige vender.
+   if(p.type==='fund'&&c.type!=='fund')continue;
    const t=num(c.ter);if(t===null||t>ter-0.04)continue;
    if(/hedged/i.test(c.name||'')!==hedged)continue;
    if(p.distribution&&c.distribution&&p.distribution!==c.distribution)continue;
@@ -799,7 +801,7 @@
    '<div class="insights-body">'+
     '<div class="insights-scenario"><small>COSTES</small><strong>'+(ter===null?'Sin TER conocido':'Pagas ≈ '+eur(yearly,yearly<100?2:0)+' al año')+'</strong><b>'+(ter===null?'—':ter.toLocaleString('es-ES',{maximumFractionDigits:2})+' %')+'</b>'+
      '<span>TER medio ponderado por valor'+(known.length<items.length?' ('+(items.length-known.length)+' sin dato)':'')+'. En 20 años, cada 0,1 % de comisión cuesta ≈ 2 % del capital final.</span></div>'+
-    (twins.length?'<div class="insights-group"><small>MISMO ÍNDICE, MÁS BARATO</small>'+twins.map(t=>'<div class="fund-twin" data-fund-detail="'+esc(t.c.isin)+'" role="button" tabindex="0"><div><b>'+esc(t.x.p.name)+'</b><span>'+terText(t.x.p.ter)+' → <em>'+esc(t.c.name)+(t.c.provider?' · '+esc(t.c.provider):'')+'</em> '+terText(t.c.ter)+'</span></div><strong>−'+eur(t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,2)+'/año</strong></div>').join('')+'<span class="fund-note">Misma réplica del índice, misma política de dividendos y disponible en tu plataforma. Cambiar de fondo puede tener coste fiscal (traspaso solo entre fondos, no entre ETF).</span></div>':'')+
+    (twins.length?'<div class="insights-group"><small>MISMO ÍNDICE, MÁS BARATO</small>'+twins.map(t=>'<div class="fund-twin" data-fund-detail="'+esc(t.c.isin)+'" role="button" tabindex="0"><div><b>'+esc(t.x.p.name)+'</b><span>'+terText(t.x.p.ter)+' → <em>'+esc(t.c.name)+(t.c.provider?' · '+esc(t.c.provider):'')+'</em> '+terText(t.c.ter)+'</span></div><strong>−'+eur(t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,2)+'/año</strong></div>').join('')+'<span class="fund-note">Misma réplica del índice, misma política de dividendos y disponible en tu plataforma. En fondos de inversión se propone solo otro fondo: el traspaso entre fondos no tributa. Pasar de un ETF a otro exige vender.</span></div>':'')+
     (pairs.length?'<div class="insights-group"><small>SOLAPAMIENTO</small>'+pairs.slice(0,4).map(x=>'<div class="fund-overlap"><span>'+esc(x.a.p.name)+' <i>+</i> '+esc(x.b.p.name)+'</span><b>≈ '+Math.round(x.o*100)+' %</b><i class="fund-overlap-bar"><em data-w="'+Math.round(x.o*100)+'"></em></i></div>').join('')+'<span class="fund-note">Cada pareja comparte buena parte de las mismas empresas: diversificas menos de lo que parece. Cifra aproximada según el índice que replican.</span></div>':'')+
     '<div class="insights-group fund-dca" data-fund-dca data-initial="'+total.toFixed(2)+'" data-ter="'+(ter||0)+'"><small>SIMULADOR DE APORTACIONES</small>'+
      '<div class="fund-dca-inputs"><label><span>Al mes</span><input type="number" min="0" step="10" inputmode="decimal" data-dca="monthly" value="'+monthly+'"></label>'+
