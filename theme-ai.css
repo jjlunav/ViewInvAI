@@ -1124,3 +1124,38 @@ html[data-theme="light"] #appLock{background:linear-gradient(180deg,#eef0ff,#f7f
 .app-lock-card strong{font-size:20px;font-weight:800}
 .app-lock-card span{font-size:14px;color:var(--muted,#8ea0bf);line-height:1.45}
 html:root:root body #appLock .app-lock-card .btn{min-width:200px;min-height:48px;font-size:16px!important;font-weight:750;border-radius:14px!important;background:linear-gradient(135deg,#6d5dfc,#4f46e5)!important;color:#fff!important;border:0!important}
+
+/* Fondos en Carteras: tarjeta compacta como las de acciones, planes legibles en ambos temas */
+[data-card-context="fund-portfolio"] .asset-card-marker{display:none!important}
+html body .portfolio-position-card[data-card-context="fund-portfolio"] .asset-card-row[data-card-template="compact-slots"]{grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"identity identity" "quote context"!important;column-gap:12px!important;padding:11px 12px 6px!important}
+[data-card-context="fund-portfolio"] .asset-card-quote-slot,[data-card-context="fund-portfolio"] .asset-card-context-slot{min-width:0}
+[data-card-context="fund-portfolio"] .asset-card-context-slot{justify-self:end;text-align:right}
+html:root:root body:not(#a11y-floor) #view-portfolios .portfolio-position-card[data-card-context="fund-portfolio"] .asset-card-row>.asset-card-end-actions,html:root:root body:not(#a11y-floor) .portfolio-position-card[data-card-context="fund-portfolio"] .asset-card-row>.asset-card-marker{display:none!important}
+[data-card-context="fund-portfolio"] .asset-card-actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;padding:2px 12px 12px!important}
+html:root:root body [data-card-context="fund-portfolio"] .asset-card-actions>.btn{width:100%!important;min-width:0!important;min-height:36px!important;height:auto!important;padding:6px 8px!important;font-size:13px!important;border-radius:10px!important;margin:0!important}
+[data-card-context="fund-portfolio"] .asset-card-details>summary{padding-left:12px!important;padding-right:12px!important}
+.fund-value-source{display:block;font-size:11px;color:var(--muted,#8ea0bf);font-weight:500;margin-top:1px}
+.fund-value-missing{color:var(--muted,#8ea0bf);font-weight:600}
+.fund-summary-note{display:block;font-style:normal;font-size:11px;color:#e3b84d;margin-top:1px}
+html[data-theme="light"] .fund-summary-note{color:#8a5a12}
+.fund-position-card .fund-note{margin:6px 0 0}
+.fund-plan-list{margin:8px 0;padding:10px 12px;border-radius:16px;border:1px solid rgba(140,190,210,.16);background:rgba(12,28,42,.6);display:grid;gap:6px}
+.fund-plan-list header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.fund-plan-list header small{font-size:11px;letter-spacing:.12em;font-weight:800;color:#9d8cff}
+.fund-plan-list header b{font-size:13px;font-variant-numeric:tabular-nums}
+.fund-plan-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline;font-size:13px;padding-top:6px;border-top:1px solid rgba(140,190,210,.1)}
+.fund-plan-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fund-plan-row b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fund-plan-row small{font-size:12px;color:var(--muted,#8ea0bf);white-space:nowrap;min-width:72px;text-align:right}
+.fund-plan-row.paused{opacity:.6}
+html[data-theme="light"] .fund-plan-list{background:#fff;border-color:#dde3ee}
+html[data-theme="light"] .fund-plan-list header small{color:#4f46e5}
+html[data-theme="light"] .fund-plan-row{border-top-color:#eef1f6;color:#111827}
+html:root:root body .fund-insights>summary .insights-title{font-size:16px}
+html body [data-card-context="fund-portfolio"] .asset-card-cell .asset-card-label,html body .portfolio-position-card[data-card-context="fund-portfolio"] .asset-card-context-cell>.asset-card-label{display:block!important;font-size:11px!important;color:var(--muted,#8ea0bf)!important;margin-bottom:2px}
+html body [data-card-context="fund-portfolio"] .asset-card-cell-value,html body [data-card-context="fund-portfolio"] .asset-card-quote-cell .asset-card-cell-content>span:not([class*="dot"]){font-size:16px!important;font-weight:800!important;font-variant-numeric:tabular-nums}
+html body [data-card-context="fund-portfolio"] .asset-card-context-cell .asset-card-cell-value{font-size:14px!important}
+html body [data-card-context="fund-portfolio"] .asset-card-cell-content .fund-value-source{font-size:11px!important;font-weight:500!important}
+html body [data-card-context="fund-portfolio"] .asset-card-details{margin-top:2px}
+html:root:root body .fund-insights>summary .insights-title{font-size:15px}
+html body #view-portfolios .fund-position-grid{gap:10px!important}
