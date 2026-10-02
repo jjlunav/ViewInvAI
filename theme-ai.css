@@ -512,3 +512,26 @@ html:root:root body .asset-investing-quote .asset-investing-extended>strong{font
 html:root:root body .asset-investing-quote .asset-investing-extended>span:not(.asset-session-name){font-size:12.5px!important;font-weight:700!important}
 html:root:root body .asset-investing-quote .asset-investing-extended>span>b{font-size:inherit!important}
 html:root:root body .asset-investing-quote .asset-investing-extended>time{font-size:11px!important;opacity:.7}
+
+/* Hoja de selección propia (sustituye al menú nativo de los <select> en móvil). */
+.select-sheet{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:flex-end;justify-content:center}
+.select-sheet-backdrop{position:absolute;inset:0;background:rgba(2,6,14,.55);opacity:0;transition:opacity .18s ease}
+.select-sheet-panel{position:relative;width:100%;max-width:560px;max-height:min(72vh,560px);display:flex;flex-direction:column;padding:6px 12px calc(12px + env(safe-area-inset-bottom,0px));border-radius:20px 20px 0 0;background:#0b1726;border:1px solid var(--qg-line,rgba(140,170,255,.18));border-bottom:0;box-shadow:0 -18px 48px rgba(0,0,0,.45);transform:translateY(100%);transition:transform .2s cubic-bezier(.2,.8,.2,1);color:var(--text,#e8f0ff)}
+.select-sheet.open .select-sheet-backdrop{opacity:1}
+.select-sheet.open .select-sheet-panel{transform:none}
+.select-sheet-handle{width:38px;height:4px;margin:4px auto 6px;border-radius:4px;background:rgba(150,170,210,.35)}
+.select-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px 8px}
+.select-sheet-head strong{font-size:14px;font-weight:800;letter-spacing:.2px}
+.select-sheet-close{width:34px;height:34px;border-radius:50%;border:1px solid var(--qg-line,rgba(140,170,255,.2));background:transparent;color:inherit;font-size:20px;line-height:1;cursor:pointer}
+.select-sheet-list{overflow:auto;display:grid;gap:4px;padding-bottom:4px;overscroll-behavior:contain}
+.select-sheet-group{padding:10px 6px 4px;font-size:10px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+.select-sheet-option{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;padding:0 14px;border-radius:12px;border:1px solid transparent;background:rgba(255,255,255,.03);color:inherit;font:inherit;font-size:15px;font-weight:650;text-align:left;cursor:pointer}
+.select-sheet-option span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.select-sheet-option.selected{border-color:var(--ai-1,#8b7bff);background:linear-gradient(90deg,rgba(139,123,255,.18),rgba(45,212,191,.10))}
+.select-sheet-option.selected::after{content:"✓";font-weight:900;color:var(--ai-1,#8b7bff)}
+.select-sheet-option:disabled{opacity:.4}
+body.select-sheet-open{overflow:hidden}
+html[data-theme="light"] .select-sheet-backdrop{background:rgba(20,30,50,.32)}
+html[data-theme="light"] .select-sheet-panel{background:#fbfcff;border-color:var(--pq-line,#dfe5f1);color:var(--pq-text,#15203a);box-shadow:0 -14px 40px rgba(30,40,80,.18)}
+html[data-theme="light"] .select-sheet-option{background:rgba(20,40,90,.035)}
+html[data-theme="light"] .select-sheet-option.selected{background:linear-gradient(90deg,rgba(79,70,229,.10),rgba(13,148,136,.08))}
