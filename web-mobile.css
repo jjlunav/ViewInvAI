@@ -10,29 +10,6 @@
 /* <= 820px · móvil y tablet compacta */
 @media(max-width:820px){
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
  .view>.page-heading{
   position:relative!important;
   padding-right:96px!important;
@@ -107,14 +84,14 @@
 
 /* <= 720px */
 @media(max-width:720px){
-.stock-main{display:grid!important;grid-template-columns:1fr!important}
- .stock-id{width:100%}
- .stock-quick{grid-template-columns:minmax(105px,1fr) 68px 34px 14px!important;column-gap:6px!important}
- .stock-quick .quote-spread{display:none!important}
- .stock-quick .price-pair{grid-column:1}
- .stock-quick .quote-change{grid-column:2;width:68px!important;min-width:68px!important;max-width:68px!important}
- .stock-quick .pill{grid-column:3;width:34px!important;min-width:34px!important}
- .stock-quick .open-arrow{grid-column:4;width:14px!important;min-width:14px!important}
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
 :root{--mobile-nav-h:66px}
  html{-webkit-text-size-adjust:100%;scroll-padding-bottom:calc(var(--mobile-nav-h) + 14px)}
@@ -122,17 +99,12 @@
  .app-shell{display:block}
  .sidebar{display:none!important}
  .main{margin-left:0!important;width:100%!important;min-width:0;padding-bottom:calc(var(--mobile-nav-h) + 20px)}
- .mobile-menu{display:none!important}
+ 
 
- .topbar{
-  position:sticky!important;top:0;z-index:2100;
-  height:52px!important;min-height:52px!important;
-  padding:5px 8px!important;background:rgba(7,16,24,.96)!important;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)
- }
- .topbar-left{display:none!important}
- .topbar-right{width:100%;min-width:0}
- .market-clocks{width:100%;justify-content:flex-start!important;gap:6px!important;overflow-x:auto!important;padding:1px 0 3px;scroll-snap-type:x proximity}
+ 
+ 
+ 
+ 
  .market-clock{flex:0 0 auto;min-width:104px;min-height:38px;justify-content:center;gap:5px!important;padding:6px 8px!important;border-radius:9px!important;scroll-snap-align:start}
  .market-clock b{font-size:8px!important}.market-clock time{font-size:12px!important;font-weight:800}
 
@@ -160,84 +132,84 @@
  .filter-toggle{min-height:46px!important;font-size:12px!important}
 
  .stock-list{display:grid;gap:9px}
- .stock-card{border-radius:11px!important}
- .stock-main{padding:11px!important;gap:9px!important}
- .stock-id strong{font-size:17px!important}
- .stock-id .stock-name,.stock-id span:not(.rank){font-size:12px!important;line-height:1.35!important}
+ 
+ 
+ 
+ 
  .rank{min-width:23px;font-size:11px!important}
  .fav-star{width:32px!important;height:32px!important;font-size:19px!important}
- .stock-quick{grid-template-columns:minmax(0,1fr) 72px 38px 18px!important;gap:7px!important}
- .stock-quick .quote-spread{display:none!important}
- .stock-quick .price-pair{justify-items:start!important}
- .stock-quick .price-pair>strong{font-size:17px!important}
- .stock-quick .price-pair>small{font-size:9px!important}
- .stock-quick .quote-change{font-size:13px!important}
+ 
+ 
+ 
+ 
+ 
+ 
 
  .recommendation-grid{grid-template-columns:1fr!important;gap:10px!important}
- .recommendation-card{border-radius:11px!important}
- .reco-card-head{padding:12px!important}
- .reco-title strong{font-size:25px!important}.reco-title span{font-size:11px!important}
- .reco-live{padding:10px 12px!important;gap:8px!important}
- .reco-live .quote-side strong{font-size:12px!important}.reco-live .price-pair>strong{font-size:20px!important}
- .reco-thesis{padding:11px 12px!important}.reco-thesis strong{font-size:11px!important}.reco-thesis p{font-size:10px!important}
+ 
+ 
+ 
+ 
+ 
+ 
  .reco-factor{padding:9px 10px!important}.reco-factor span{font-size:10px!important}.reco-factor small{font-size:9px!important}.reco-factor b{font-size:11px!important}
 
  /* Catalog mobile: cards replace the desktop spreadsheet */
  .catalog-toolbar{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin-bottom:9px!important}
  .catalog-toolbar .grow{grid-column:1/-1!important;min-width:0!important}
  .catalog-toolbar .btn{width:100%!important;min-height:44px!important;font-size:12px!important}
- .catalog-toolbar .count-pill{grid-column:1/-1!important;min-height:38px;display:flex;align-items:center;padding:0 12px;font-size:12px!important}
- .catalog-help{display:none!important}
+ 
+ 
  .catalog-table-wrap{display:none!important}
- .catalog-mobile-tools,.catalog-mobile-list{display:block}
- .catalog-mobile-tools{margin:0 0 5px}
- .catalog-mobile-sort{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:4px;align-items:end;margin-bottom:4px}
- .catalog-mobile-sort label{display:grid;gap:4px;color:#7f98a4;font-size:10px}
+ 
+ 
+ 
+ 
  .catalog-mobile-sort-dir{width:34px!important;min-width:34px!important;height:34px!important;padding:0!important;font-size:14px!important}
  .catalog-mobile-filters{border:1px solid #27414d;border-radius:10px;background:#091720;overflow:hidden}
  .catalog-mobile-filters>summary{min-height:34px;padding:0 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;color:#c7d7dd;font-size:9.5px;font-weight:700}
  .catalog-mobile-filters>summary b{font-size:9px;color:#76d9bb;border:1px solid #315849;border-radius:999px;padding:3px 7px}
- .catalog-mobile-filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;border-top:1px solid #203741}
- .catalog-mobile-filter-grid label{display:grid;gap:4px;min-width:0;color:#8299a4;font-size:9px}
- .catalog-mobile-filter-grid input{width:100%;min-width:0}
- .catalog-mobile-list{display:grid;gap:9px;margin-top:10px}
- .catalog-mobile-card{border:1px solid #263f4b;border-radius:12px;background:#0a171f;padding:11px;cursor:pointer;box-shadow:0 5px 18px rgba(0,0,0,.14)}
- .catalog-mobile-card:active{transform:scale(.995);background:#0e2029}
- .catalog-mobile-card-head{display:grid;grid-template-columns:34px minmax(0,1fr) 18px;gap:9px;align-items:start}
- .catalog-mobile-id{display:grid;gap:2px;min-width:0}
- .catalog-mobile-id>strong{font-size:19px;line-height:1;color:#74e8c0}
- .catalog-mobile-id>span{font-size:12px;line-height:1.3;color:#d3e0e4;white-space:normal;overflow-wrap:anywhere}
- .catalog-mobile-id>small{font-size:9px;color:#6f8792}
- .catalog-mobile-arrow{font-size:26px;line-height:1;color:#607d89}
- .catalog-mobile-quote{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-top:10px;padding-top:9px;border-top:1px solid #1c313b}
- .catalog-mobile-quote .price-pair{display:grid;justify-items:start!important}.catalog-mobile-quote .price-pair>strong{font-size:22px!important}.catalog-mobile-quote .price-pair>small{font-size:10px!important}
- .catalog-mobile-quote .quote-change{font-size:16px!important;font-weight:800}
- .catalog-mobile-spread{margin-top:7px}
- .catalog-mobile-spread .quote-spread{display:grid!important;grid-template-columns:1fr 1fr!important;gap:6px!important;width:100%!important}
- .catalog-mobile-spread .quote-side{min-width:0!important;width:100%!important;padding:6px 8px!important}
- .catalog-mobile-spread .quote-side small{font-size:8px!important}.catalog-mobile-spread .quote-side strong{font-size:12px!important}
- .catalog-mobile-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
- .catalog-mobile-metrics>div{min-width:0;padding:7px 5px;border-radius:7px;background:#0d2029;text-align:center}
- .catalog-mobile-metrics small{display:block;font-size:8px;color:#6f8792;margin-bottom:2px}.catalog-mobile-metrics strong{font-size:11px;color:#c8d7dc}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
  .catalog-more{margin-top:8px;border:1px solid #213843!important;border-radius:10px!important;background:#091720!important;flex-direction:column!important;font-size:10px!important}
  .catalog-more .btn{min-height:44px!important;width:100%!important}
 
  .stock-profile-page{padding-bottom:10px}
- .profile-toolbar{position:sticky;top:56px;z-index:1500;padding:7px!important;background:#08151d!important}
- .profile-toolbar .btn{min-height:40px!important;font-size:12px!important}
+ 
+ 
  .profile-hero{padding:12px!important}.profile-title h2{font-size:25px!important}.profile-title p{font-size:12px!important}
- .profile-kpi-grid,.profile-identity-grid{grid-template-columns:1fr 1fr!important;gap:7px!important}
- .profile-kpi,.profile-identity{padding:9px!important}
- .profile-kpi small,.profile-identity small{font-size:8px!important}.profile-kpi strong,.profile-identity strong{font-size:12px!important}
+ 
+ .profile-identity{padding:9px!important}
+ .profile-identity small{font-size:8px!important}.profile-identity strong{font-size:12px!important}
  .profile-section{padding:11px!important}.profile-section h3{font-size:13px!important}
 
  .alerts-settings-grid{grid-template-columns:1fr!important}
  .alert-settings-card{padding:12px!important}
  .alert-switch strong{font-size:12px!important}.alert-switch small{font-size:10px!important}
- .manual-alert-form{grid-template-columns:1fr!important}.alert-wide{grid-column:auto!important}
- .alert-form-actions{grid-template-columns:1fr 1fr!important}
+ 
+ 
 
- .theme-toggle{right:10px!important;bottom:calc(var(--mobile-nav-h) + 10px + env(safe-area-inset-bottom))!important;width:40px!important;height:40px!important}
+ 
  .notification-bell{right:58px!important;bottom:calc(var(--mobile-nav-h) + 10px + env(safe-area-inset-bottom))!important;width:40px!important;height:40px!important}
  .notification-center{right:10px!important;bottom:calc(var(--mobile-nav-h) + 60px + env(safe-area-inset-bottom))!important;width:calc(100vw - 20px)!important;max-height:58vh!important}
  footer{padding:22px 12px calc(var(--mobile-nav-h) + 18px)!important;font-size:9px!important}
@@ -286,8 +258,7 @@
  .mobile-more-item>small{display:none!important}
  .exit-back-banner{bottom:calc(var(--mobile-nav-h) + 12px + env(safe-area-inset-bottom));font-size:10px;padding:8px 12px;max-width:calc(100vw - 28px)}
 
-.topbar-right{display:flex!important;align-items:center;gap:6px}
- .market-clocks{flex:1 1 auto;min-width:0}
+ 
  .account-copy{display:none}
  .account-button{width:38px;height:38px;min-width:38px;padding:4px;border-radius:50%}
  .account-avatar{width:28px;height:28px}
@@ -295,25 +266,25 @@
  .auth-toast{bottom:calc(var(--mobile-nav-h) + 14px + env(safe-area-inset-bottom))}
 
 .portfolio-app{gap:10px}
- .portfolio-account-strip{padding:10px 11px;border-radius:10px}
- .portfolio-account-strip strong{font-size:12px}
- .portfolio-selector{margin:0 -3px;padding-left:3px}
- .portfolio-card{min-width:148px;padding:9px;border-radius:10px}
- .portfolio-card.add{min-width:125px}
+ 
+ 
+ 
+ 
+ 
  .portfolio-block{border-left:0;border-right:0;border-radius:0;margin-left:-14px;margin-right:-14px}
- .portfolio-block-head{padding:11px 14px}
- .portfolio-position{padding:12px 14px;gap:7px}
- .portfolio-position-main{gap:8px}
- .portfolio-position-id strong,.portfolio-position-quote strong{font-size:15px}
- .portfolio-position-meta{gap:4px 8px}
- .portfolio-position-ai{align-items:flex-end}
+ 
+ 
+ 
+ 
+ 
+ 
  .portfolio-ai-state{grid-template-columns:auto auto;gap:4px 7px}
  .portfolio-ai-state small{grid-column:1/-1}
- .portfolio-watch-row{grid-template-columns:minmax(0,1fr) auto;gap:7px;padding:11px 14px}
- .portfolio-watch-row .portfolio-ai-state{grid-column:1/2}
- .portfolio-watch-row .portfolio-analyze{grid-column:2/3;grid-row:2}
- .portfolio-watch-id strong{font-size:13px}
- .portfolio-watch-quote strong{font-size:13px}
+ 
+ 
+ 
+ 
+ 
  .app-modal{top:auto;bottom:0;left:0;width:100%;max-height:86vh;border-radius:18px 18px 0 0;transform:translateY(100%);border-left:0;border-right:0;border-bottom:0}
  .app-modal.open{transform:translateY(0)}
  .app-modal-head{padding:12px 14px}
@@ -322,7 +293,6 @@
  .portfolio-toast{bottom:calc(var(--mobile-nav-h) + 15px + env(safe-area-inset-bottom))}
  .profile-primary-actions .btn{min-height:32px;font-size:8px;padding:5px 8px}
 
-.topbar-right{justify-content:flex-end!important}
  .account-area{margin-left:auto}
  .quote-updated{font-size:7px!important}
  .profile-live .quote-updated{font-size:7.5px!important}
@@ -370,19 +340,20 @@
   top:52px!important;bottom:auto!important;right:9px!important
  }
 
- .control-strip,.catalog-toolbar,.heatmap-toolbar{
+ .control-strip,
+.catalog-toolbar{
   padding:8px!important;border-radius:13px!important;background:#091820!important
  }
  .select,.input,.btn{min-height:42px!important;border-radius:10px!important}
  .stock-list{gap:8px!important}
- .stock-card{border-radius:13px!important}
- .stock-main{padding:10px!important}
- .stock-id{gap:7px!important}
+ 
+ 
+ 
  .rank{width:24px!important;height:24px!important}
- .stock-id strong{font-size:14px!important}
- .stock-quick{gap:5px!important}
- .stock-quick .quote-spread{display:none!important}
- .stock-quick .price-pair>strong{font-size:14px!important}
+ 
+ 
+ 
+ 
  .quote-updated{font-size:6.5px!important}
 
  .recommendation-grid{gap:10px!important}
@@ -394,10 +365,8 @@
  .stock-profile-page{
   width:calc(100% - 16px)!important;margin:8px 8px 22px!important;gap:8px!important
  }
- .stock-profile-page .profile-toolbar{
-  min-height:36px!important;padding-right:44px!important
- }
- .quick-profile-back{min-height:36px!important;padding:7px 10px!important}
+ 
+ 
  .profile-hero{
   grid-template-columns:1fr!important;padding:14px!important;border-radius:15px!important
  }
@@ -415,8 +384,8 @@
  .profile-section{border-radius:14px!important}
  .profile-section-head{min-height:42px!important;padding:9px 10px!important}
  .stock-profile-page .profile-chart-section .mini-chart{height:285px!important}
- .mini-chart-title{padding:8px 9px!important}
- .chart-market-caption{padding:6px 9px!important}
+ 
+ 
 
  .app-modal{
   border-radius:22px 22px 0 0!important;
@@ -465,38 +434,24 @@
   box-shadow:none!important
  }
 
+ 
 
-
-
- .stock-ai-chip{font-size:8px;padding:4px 8px}
-
- .stock-list-price .price-pair>strong{font-size:19px!important}
- .stock-list-price .price-pair>small:not(.quote-updated){display:none}
-
+ 
+ 
 
  .stock-session-quote{gap:4px}
  .stock-session-quote strong{font-size:10px}
- .stock-market-line{
-  padding:6px 14px!important;
-  min-height:29px;
-  gap:6px
- }
- .stock-market-line .quote-spread{transform:scale(.92);transform-origin:left center}
- .stock-list-metrics{gap:8px;font-size:7px}
- .stock-list-metrics span:nth-child(n+3){display:none}
+ 
+ 
+ 
+ 
 
  .stock-profile-page{
   width:100%!important;
   margin:0!important;
   padding:0 12px 22px!important
  }
- .stock-profile-page .profile-toolbar{
-  margin:0 -12px!important;
-  padding:8px 12px!important;
-  min-height:44px!important;
-  border-bottom:1px solid #20323b;
-  background:#071119
- }
+ 
  .investing-profile-header{
   grid-template-columns:minmax(0,1fr) auto!important;
   gap:10px!important;
@@ -553,22 +508,12 @@
  .profile-session-cell>b{display:block;margin-top:2px;font-size:9px!important}
  .profile-session-cell>small{display:none!important}
 
- .profile-data-note,.profile-feed-warning,.profile-context,.profile-relation{
-  margin:7px 0!important;border-radius:9px!important;font-size:8px!important
- }
+ 
 
- .profile-main-grid{
-  display:flex!important;
-  flex-direction:column!important;
-  gap:9px!important;
-  margin:9px 0!important
- }
- .profile-main-grid .profile-chart-section{order:1;width:100%}
- .profile-main-grid .profile-ai-panel{order:2;width:100%;position:static!important}
- .profile-main-grid .mini-chart{
-  height:390px!important;
-  min-height:390px!important
- }
+ 
+ 
+ 
+ 
  .profile-ai-head{padding:11px 12px 9px}
  .profile-ai-score{width:50px;height:50px}
  .profile-ai-columns{padding:10px 12px}
@@ -596,7 +541,7 @@
  .profile-news-grid{grid-template-columns:1fr!important;padding:0 4px 8px!important}
  .profile-news-grid>div{padding:9px 8px!important}
  .profile-news-grid>div+div{border-left:0!important;border-top:1px solid #1d3039}
- .profile-identity-section,.profile-source-section{border-radius:10px!important}
+ 
 
  .event-item{border-radius:9px!important}
 
@@ -608,86 +553,33 @@
 
 /* The old flex-basis:220px became vertical when the title switched to
      flex-direction:column, creating the huge empty block above the chart. */
-  .stock-profile-page .tv-chart-block .mini-chart-title{
-    min-height:0!important;
-    height:auto!important;
-    align-items:flex-start!important;
-    gap:7px!important;
-  }
-  .stock-profile-page .tv-chart-block .mini-chart-title>div:first-child{
-    flex:0 0 auto!important;
-    width:100%!important;
-    min-height:0!important;
-  }
-  .stock-profile-page .tv-chart-block .chart-market-switch,
-  .stock-profile-page .tv-chart-block .chart-market-single{
+  
+  
+  .stock-profile-page .tv-chart-block .chart-market-switch{
     flex:0 0 auto!important;
     align-self:flex-start!important;
   }
 
   /* The wide sticky back strip was covering content. Keep only a small,
      accessible back button and let Android's system Back work as usual. */
-  .stock-profile-page .profile-toolbar{
-    position:relative!important;
-    top:auto!important;
-    z-index:auto!important;
-    display:flex!important;
-    flex-direction:row!important;
-    align-items:center!important;
-    justify-content:flex-start!important;
-    min-height:34px!important;
-    margin:4px 0 2px!important;
-    padding:0!important;
-    border:0!important;
-    background:transparent!important;
-  }
-  .stock-profile-page .profile-toolbar>span{
-    display:none!important;
-  }
-  .stock-profile-page .quick-profile-back{
-    width:34px!important;
-    height:34px!important;
-    min-width:34px!important;
-    min-height:34px!important;
-    padding:0!important;
-    border-radius:50%!important;
-    font-size:0!important;
-    text-align:center!important;
-    display:grid!important;
-    place-items:center!important;
-  }
-  .stock-profile-page .quick-profile-back::before{
-    content:"←";
-    font-size:17px;
-    line-height:1;
-  }
+  
+  
+  
+  
 
-html[data-theme="light"] .stock-profile-page .profile-toolbar{
-    background:transparent!important;
-    border:0!important;
-  }
-  html[data-theme="light"] .stock-profile-page .quick-profile-back{
-    background:#ffffff!important;
-    color:#17313c!important;
-    border-color:#9fb7c2!important;
-    box-shadow:0 3px 10px rgba(38,61,71,.12)!important;
-  }
+  
   html[data-theme="light"] .stock-profile-page .profile-section{
     background:#ffffff!important;
   }
 
-.portfolio-tabs{margin:0 -2px;padding-bottom:6px}
  .portfolio-tab{min-height:36px;padding:6px 9px}
  .portfolio-tab strong{font-size:10px}
  .portfolio-tab-add{width:36px;min-width:36px}
- .portfolio-inline-stock .profile-hero{border-radius:13px!important}
- .future-stock-row{grid-template-columns:1fr!important;gap:8px!important}
- .future-event-meta{
-  width:100%;grid-template-columns:minmax(115px,auto) minmax(0,1fr) auto 16px;
-  gap:6px;padding-left:31px
- }
- .future-event-meta>b{font-size:9px}
- .future-event-meta .event-type{max-width:none;font-size:9px!important}
+ 
+ 
+ 
+ 
+ 
  .ai-chat-panel{left:7px;right:7px;top:7px;bottom:7px;width:auto;border-radius:17px}
  .ai-chat-messages{padding:10px}
  .ai-chat-form{grid-template-columns:1fr}
@@ -707,13 +599,9 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
   min-height:calc(100vh - var(--mobile-nav-h))!important;
   overflow:auto!important
  }
- #view-heatmap .heatmap-board{
-  height:calc(100vh - 155px)!important;
-  grid-template-columns:repeat(8,minmax(0,1fr))!important;
-  grid-template-rows:repeat(8,minmax(0,1fr))!important
- }
- #view-heatmap .heat-sector{grid-column:span 4!important;grid-row:span 2!important}
- #view-heatmap .heat-sector.active{grid-column:1/-1!important;grid-row:span 4!important}
+ 
+ 
+ 
 
 .portfolio-workbar{
   grid-template-columns:minmax(0,1fr) auto;
@@ -740,44 +628,18 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
   min-height:34px
  }
 
-#view-heatmap .heatmap-toolbar{
-  grid-template-columns:1fr 1fr!important;
-  align-items:start!important
- }
- .heatmap-market-stack{grid-column:1/-1}
- .heatmap-sector-tabs{max-width:100vw}
- #view-heatmap .heatmap-board{
-  height:auto!important;
-  min-height:520px!important;
-  display:block!important
- }
- #view-heatmap .heat-sector-single{
-  display:grid!important;
-  grid-template-rows:34px auto!important;
-  height:auto!important
- }
- #view-heatmap .heat-sector-single .heat-sector-grid{
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  grid-auto-rows:92px!important;
-  gap:2px!important
- }
- #view-heatmap .heat-sector-single .heat-stock{
-  grid-column:span 1!important;
-  grid-row:span 1!important
- }
- #view-heatmap .heat-sector-single .heat-stock strong{font-size:12px!important}
- #view-heatmap .heat-sector-single .heat-stock span{font-size:10px!important}
- #view-heatmap .heat-sector-single .heat-stock small{display:block!important;font-size:8px!important}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
- .portfolio-position-context{
-  align-items:flex-start;
-  flex-direction:column
- }
- .portfolio-position-actions{
-  width:100%;
-  margin-left:0;
-  justify-content:space-between
- }
+ 
+ 
  .portfolio-workbar{
   grid-template-columns:minmax(0,1fr) auto!important
  }
@@ -785,22 +647,8 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
   max-width:calc(100% - 116px)!important
  }
 
-.stock-profile-page .profile-toolbar{
-  min-height:36px!important;
-  padding:4px 0!important
- }
- .stock-profile-page .profile-back,
- .stock-profile-page .quick-profile-back,
- .portfolio-inline-detail-head button{
-  width:auto!important;
-  height:auto!important;
-  min-width:0!important;
-  min-height:34px!important;
-  padding:6px 10px!important;
-  border-radius:9px!important;
-  font-size:10px!important
- }
- .stock-profile-page .quick-profile-back::before{content:none!important}
+ 
+ 
  .stock-profile-page .investing-profile-header{
   grid-template-columns:minmax(0,1fr) auto!important;
   min-height:64px!important;
@@ -849,8 +697,7 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
  }
 
 .stock-profile .unified-stock-header,
- .stock-profile-page .unified-stock-header,
- .portfolio-inline-stock .unified-stock-header{
+.stock-profile-page .unified-stock-header{
    grid-template-columns:minmax(0,1fr) minmax(118px,auto)!important;
    min-height:66px!important;
    padding:7px 8px!important;
@@ -858,13 +705,11 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
    border-radius:10px!important
  }
  .stock-profile .unified-stock-header .profile-title h2,
- .stock-profile-page .unified-stock-header .profile-title h2,
- .portfolio-inline-stock .unified-stock-header .profile-title h2{
+.stock-profile-page .unified-stock-header .profile-title h2{
    font-size:20px!important
  }
  .stock-profile .unified-stock-header .profile-title p,
- .stock-profile-page .unified-stock-header .profile-title p,
- .portfolio-inline-stock .unified-stock-header .profile-title p{
+.stock-profile-page .unified-stock-header .profile-title p{
    display:block!important;
    max-width:160px!important;
    font-size:9px!important;
@@ -873,34 +718,28 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
    text-overflow:ellipsis!important
  }
  .stock-profile .unified-stock-header .profile-live>small:first-child,
- .stock-profile-page .unified-stock-header .profile-live>small:first-child,
- .portfolio-inline-stock .unified-stock-header .profile-live>small:first-child,
- .stock-profile .unified-stock-header .quote-spread,
- .stock-profile-page .unified-stock-header .quote-spread,
- .portfolio-inline-stock .unified-stock-header .quote-spread{
+.stock-profile-page .unified-stock-header .profile-live>small:first-child,
+.stock-profile .unified-stock-header .quote-spread,
+.stock-profile-page .unified-stock-header .quote-spread{
    display:none!important
  }
  .stock-profile .unified-stock-header .profile-live>.price-pair>strong,
- .stock-profile-page .unified-stock-header .profile-live>.price-pair>strong,
- .portfolio-inline-stock .unified-stock-header .profile-live>.price-pair>strong{
+.stock-profile-page .unified-stock-header .profile-live>.price-pair>strong{
    font-size:20px!important
  }
  .stock-profile .unified-stock-header .profile-primary-actions,
- .stock-profile-page .unified-stock-header .profile-primary-actions,
- .portfolio-inline-stock .unified-stock-header .profile-primary-actions{
+.stock-profile-page .unified-stock-header .profile-primary-actions{
    grid-column:1/-1!important;
    display:flex!important;
    justify-content:flex-end!important
  }
  .stock-profile .profile-tabs,
- .stock-profile-page .profile-tabs,
- .portfolio-inline-stock .profile-tabs{
+.stock-profile-page .profile-tabs{
    top:98px!important
  }
  #view-portfolios .portfolio-position-list.stock-list{
    grid-template-columns:1fr!important
  }
-
 
 .stock-profile-page .unified-stock-header{
   width:100%!important;
@@ -949,11 +788,7 @@ html[data-theme="light"] .stock-profile-page .profile-toolbar{
  .stock-profile-page .unified-profile-body>.profile-tabs{
   top:86px!important
  }
- #view-portfolios .portfolio-card-grid{
-  display:grid!important;
-  grid-template-columns:1fr!important
- }
-
+ 
 
 html,
   body,
@@ -1038,10 +873,11 @@ html,
     display:none!important
   }
   .stock-profile-page .profile-quote-stack{display:flex!important;align-items:baseline!important;gap:8px!important;min-width:0!important;max-width:100%!important}
- .stock-profile-page .profile-quote-regular,.stock-profile-page .profile-quote-extended,.stock-profile-page .profile-quote-lsx{display:flex!important;align-items:baseline!important;gap:4px!important;min-width:0!important}
+ .stock-profile-page .profile-quote-extended,
+.stock-profile-page .profile-quote-lsx{display:flex!important;align-items:baseline!important;gap:4px!important;min-width:0!important}
  .stock-profile-page .profile-quote-stack-us .profile-quote-extended{padding-right:7px!important}
- .stock-profile-page .profile-quote-regular>strong,.stock-profile-page .profile-quote-lsx>strong{font-size:18px!important}
- .stock-profile-page .profile-quote-regular>b,.stock-profile-page .profile-quote-lsx>b{font-size:10px!important}
+ .stock-profile-page .profile-quote-lsx>strong{font-size:18px!important}
+ .stock-profile-page .profile-quote-lsx>b{font-size:10px!important}
  .stock-profile-page .profile-quote-extended>strong{font-size:9px!important}
  .stock-profile-page .profile-quote-extended>b{font-size:8px!important}
  .stock-profile-page .unified-stock-header .profile-live-main{
@@ -1086,22 +922,14 @@ html,
     display:none
   }
 
-  .stock-profile-page .profile-main-grid{
-    display:flex!important;
-    flex-direction:column!important;
-    width:100%!important;
-    max-width:100%!important;
-    min-width:0!important;
-    gap:9px!important
-  }
-  .stock-profile-page .profile-main-grid>*,
+  
   .stock-profile-page .profile-chart-section,
-  .stock-profile-page .tv-chart-block,
-  .stock-profile-page .mini-chart,
-  .stock-profile-page .profile-performance-strip,
-  .stock-profile-page .profile-ai-panel,
-  .stock-profile-page .profile-session-strip,
-  .stock-profile-page .profile-section{
+.stock-profile-page .tv-chart-block,
+.stock-profile-page .mini-chart,
+.stock-profile-page .profile-performance-strip,
+.stock-profile-page .profile-ai-panel,
+.stock-profile-page .profile-session-strip,
+.stock-profile-page .profile-section{
     width:100%!important;
     max-width:100%!important;
     min-width:0!important
@@ -1179,12 +1007,7 @@ html,
     max-width:100%!important;
     overflow:visible!important
   }
-  #view-portfolios .portfolio-inline-stock.stock-profile-page{
-    display:grid!important;
-    width:100%!important;
-    max-width:100%!important;
-    overflow:visible!important
-  }
+  
 
 .portfolio-summary-bar{
   display:grid!important;
@@ -1204,13 +1027,7 @@ html,
   overflow-wrap:anywhere!important
  }
 
-.analysis-settings-grid{
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:7px!important
- }
- .analysis-settings-grid label:last-child{
-  grid-column:1/-1
- }
+ 
  .settings-save-row{
   align-items:flex-start!important;
   flex-direction:column!important
@@ -1237,10 +1054,6 @@ html,
   font-size:8px!important
  }
 
-.portfolio-position-actions{
-  flex-wrap:wrap!important;
-  justify-content:flex-start!important
- }
  .portfolio-transactions-open{
   padding:4px 6px!important;
   font-size:8px!important
@@ -1273,36 +1086,14 @@ html,
   padding:6px 8px!important
  }
 
-.star-portfolio-manager{
-  grid-template-columns:1fr!important
- }
- .star-portfolio-manager-actions{
-  justify-content:flex-end!important
- }
+ 
  .portfolio-remove-confirm-actions{
   flex-direction:column-reverse!important
  }
 
-.profile-visual-toggle-row{
-  margin:6px 0 7px!important
- }
- .profile-visual-toggle{
-  width:100%!important;
-  min-height:34px!important;
-  padding:7px 9px!important;
-  text-align:center!important;
-  font-size:9px!important
- }
+ 
 
-.profile-visual-toggle-row{
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr)!important;
-  gap:6px!important
- }
- .profile-visual-toggle,
- .profile-chatgpt-visible{
-  width:100%!important
- }
+ 
  .profile-ai-actions{
   grid-template-columns:1fr!important;
   padding:0 10px 10px!important
@@ -1341,9 +1132,7 @@ html,
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
   padding:6px!important
  }
- .push-settings-card .push-settings-actions{
-  align-items:flex-start!important
- }
+ 
 
 .portfolio-history-overview .transaction-history-summary{
   grid-template-columns:repeat(2,minmax(0,1fr))!important
@@ -1375,22 +1164,12 @@ html,
 }
 
 /* <= 700px */
-@media(max-width:700px){
-.reco-live{grid-template-columns:minmax(0,1fr) auto!important;justify-content:stretch!important}
- .reco-live .quote-spread{grid-column:1/-1;width:100%!important;min-width:0!important}
- .reco-live .quote-side{width:100%!important;min-width:0!important}
- .reco-live .price-pair{grid-column:1;justify-items:start!important;min-width:0!important}
- .reco-live .price-pair>strong,.reco-live .price-pair>small{text-align:left}
- .reco-live .quote-change{grid-column:2}
-}
 
 /* <= 680px */
 @media(max-width:680px){
-.app-shell{display:block}.sidebar{position:fixed;left:-240px;top:0;height:100vh;width:230px;z-index:50;transition:left .18s;box-shadow:12px 0 30px rgba(0,0,0,.35)}.sidebar.open{left:0}.topbar{height:44px;top:0;padding:0 8px}.mobile-menu{display:block;border:0;background:transparent;color:#fff;font-size:18px;padding:4px}.topbar-right{font-size:9px;gap:5px}.provider-state{padding:4px 5px}.view{padding:10px 8px 26px}.page-heading h1{font-size:20px}.lead{font-size:10px}.compact-heading{align-items:center}.control-strip{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:7px 0}.control-strip .grow{grid-column:1/-1;min-width:0}.control-strip .check-inline{grid-column:1/-1}.select,.input,.btn{min-width:0;width:100%;padding:7px;font-size:11px}.icon-btn{width:36px;min-width:36px}.compact-tabs{margin:5px 0}.tab{padding:6px 8px;font-size:10px}.filter-panel{margin:4px 0!important}.filter-panel>summary{min-height:32px!important;padding:4px 7px!important;font-size:9.5px!important}.filters-grid{gap:4px!important}.filters-grid label{min-width:70px;font-size:8.5px!important}.filters-grid input{width:72px;padding:4px 5px!important}.filters-grid label:nth-child(3) input,.filters-grid label:nth-child(4) input{width:96px}.checks-grid{display:grid;grid-template-columns:1fr;gap:5px}.filter-toggle{width:100%;padding:5px 7px}.toggle-desc,.filter-toggle:hover .toggle-desc,.filter-toggle:focus-within .toggle-desc{display:block;position:static;width:auto;margin-top:2px;padding:0;border:0;background:transparent;box-shadow:none;color:#718894;font-size:9px}.toggle-title{white-space:normal}.filter-actions{display:grid;grid-template-columns:1fr 1fr}.status-line{font-size:9px;margin:6px 0}.stock-list{gap:4px}.stock-main{padding:7px 8px}.rank{width:19px;height:19px;font-size:9px}.stock-id{gap:6px}.stock-id>div{display:grid;gap:0}.stock-id strong{font-size:13px}.stock-id span:not(.rank){font-size:9px;max-width:145px}.stock-quick{gap:6px}.stock-quick b{font-size:12px}.stock-quick>span{font-size:10px}.stock-details>summary{padding:5px 8px;font-size:9px}.summary-hint{max-width:70%}.detail-grid{grid-template-columns:repeat(3,1fr)}.detail-grid>div{padding:5px 6px}.detail-grid small{font-size:8px}.detail-grid b{font-size:10px}.detail-grid span{font-size:9px}.why-line,.meta-line{padding:6px 8px;font-size:9px}.external-links{padding:6px 8px;gap:4px}.external-links a{font-size:9px;padding:4px 5px}.tag{display:inline-block;margin-left:3px}footer{padding:12px 8px;font-size:8px}
+.app-shell{display:block}.sidebar{position:fixed;left:-240px;top:0;height:100vh;width:230px;z-index:50;transition:left .18s;box-shadow:12px 0 30px rgba(0,0,0,.35)}.sidebar.open{left:0}.view{padding:10px 8px 26px}.page-heading h1{font-size:20px}.lead{font-size:10px}.compact-heading{align-items:center}.control-strip{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:7px 0}.control-strip .grow{grid-column:1/-1;min-width:0}.control-strip .check-inline{grid-column:1/-1}.select,.input,.btn{min-width:0;width:100%;padding:7px;font-size:11px}.icon-btn{width:36px;min-width:36px}.compact-tabs{margin:5px 0}.tab{padding:6px 8px;font-size:10px}.filter-panel{margin:4px 0!important}.filter-panel>summary{min-height:32px!important;padding:4px 7px!important;font-size:9.5px!important}.filters-grid{gap:4px!important}.filters-grid label{min-width:70px;font-size:8.5px!important}.filters-grid input{width:72px;padding:4px 5px!important}.filters-grid label:nth-child(3) input,.filters-grid label:nth-child(4) input{width:96px}.checks-grid{display:grid;grid-template-columns:1fr;gap:5px}.filter-toggle{width:100%;padding:5px 7px}.toggle-title{white-space:normal}.filter-actions{display:grid;grid-template-columns:1fr 1fr}.status-line{font-size:9px;margin:6px 0}.stock-list{gap:4px}.rank{width:19px;height:19px;font-size:9px}.external-links{padding:6px 8px;gap:4px}.external-links a{font-size:9px;padding:4px 5px}.tag{display:inline-block;margin-left:3px}footer{padding:12px 8px;font-size:8px}
 
 .event-link{margin:0 8px 6px;font-size:9px}
-
-.event-type{max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.event-quick{gap:4px}.stock-quick .chevron{font-size:10px}
 
 .preset-picker{min-width:0;width:100%}
  .preset-menu{position:fixed;left:8px;right:8px;top:88px;min-width:0;max-height:70vh;overflow:auto}
@@ -1403,7 +1182,7 @@ html,
 
 .mini-chart-block{padding:6px 8px 4px}
  .mini-chart{height:205px}
- .mini-chart-title{font-size:8px;line-height:1.25}
+ 
 
 .event-item{padding:6px 8px}
  .event-item-head{gap:6px}
@@ -1414,8 +1193,6 @@ html,
  .event-context,.event-impact{font-size:8px}
  .event-sources .verification,.event-sources a,.event-sources>span:not(.verification){font-size:8px}
 
-.ranking-line{padding:6px 8px;font-size:8px}
-
 .market-leaders-dock{left:0}
  .leaders-hotzone{left:0;height:18px}
  .market-leaders{padding:20px 4px 4px}
@@ -1423,50 +1200,46 @@ html,
  .leader-market-head{display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:3px 5px}
  .leader-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:2px}
  .leader-item{padding:3px 4px}
- .leader-top strong{font-size:9px}
- .leader-top span{font-size:8px}
- .leader-price{font-size:10px}
- .leader-volume{font-size:7px}
+ 
+ 
+ 
+ 
  body.leaders-open,body.leaders-pinned{--leaders-dock-space:206px}
- .topbar-right{overflow:hidden}
- .market-clocks{justify-content:flex-start}
+ 
+ 
  .market-clock{padding:3px 5px}
  .market-clock:nth-child(n+5){display:none}
- .favorites-list{max-height:38vh}
- .stock-id .fav-star{width:19px;height:19px;font-size:14px}
+ 
+ 
 
-.profile-toolbar{align-items:flex-start;flex-direction:column}
  .profile-hero{padding:10px;align-items:flex-start}
  .profile-title h2{font-size:22px}
  .profile-title p{font-size:10px;white-space:normal}
  .profile-live strong{font-size:18px}
- .profile-identity-grid,.profile-kpi-grid{grid-template-columns:1fr 1fr}
+ 
  .profile-chart-section .mini-chart{height:280px}
- .catalog-pending{display:none}
- .catalog-price-source{display:none}
-
-.profile-tv-widget,.profile-tv-widget[data-widget-kind="fundamentals"],.profile-tv-widget[data-widget-kind="news"]{height:360px}
+ 
+ 
 
 .ticker-us-ref{font-size:6px!important;max-width:120px}
- .leader-symbol .ticker-us-ref{max-width:62px}
+ 
 
-.stock-quick .price-pair{display:grid;gap:0;justify-items:end}
- .stock-quick .price-pair>strong{font-size:11px}
- .stock-quick .price-pair>small{font-size:7px!important}
+ 
+ 
  .profile-live .price-pair>strong{font-size:18px}
  .profile-live .price-pair>small{font-size:8px!important}
 
 html,body{font-size:14px}
- .topbar{height:50px}
+ 
  .market-clock b{font-size:8px}
  .market-clock time{font-size:10px}
  .page-heading h1{font-size:23px}
- .stock-main{display:flex;justify-content:space-between;gap:8px;padding:8px}
- .stock-id strong{font-size:14px}
- .stock-id span:not(.rank){font-size:10px}
- .stock-quick{gap:5px}
- .stock-quick .price-pair>strong{font-size:14px!important}
- .stock-quick .price-pair>small{font-size:8px!important}
+ 
+ 
+ 
+ 
+ 
+ 
  .quote-spread{display:none}
  .ticker-us-ref{font-size:7px!important}
  .profile-title h2{font-size:25px}
@@ -1477,96 +1250,33 @@ html,body{font-size:14px}
  .brand-subtitle span{padding:3px 4px}
  .brand-subtitle i{width:3px;height:3px;flex-basis:3px}
  .catalog-toolbar{display:grid;grid-template-columns:1fr 1fr}
- .catalog-toolbar .grow,.catalog-toolbar .count-pill{grid-column:1/-1}
- .catalog-help{font-size:9px}
- .catalog-sheet-scroll{max-height:calc(100vh - 190px)}
- .catalog-sheet{font-size:10px}
+ .catalog-toolbar .grow{grid-column:1/-1}
+ 
+ 
+ 
 
 .catalog-toolbar{grid-template-columns:1fr}
  .catalog-table{font-size:10px}
  .catalog-table th,.catalog-table td{padding:6px}
  .catalog-table th[data-catalog-col="name"]{min-width:170px}
 
-.stock-card,.stock-list{width:100%;min-width:0}
- .stock-main{
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr)!important;
-  align-items:stretch!important;
-  gap:7px!important;
-  padding:8px!important
- }
- .stock-id{
-  width:100%;
-  min-width:0;
-  align-items:flex-start
- }
- .stock-id>div{
-  display:grid!important;
-  grid-template-columns:minmax(0,1fr);
-  gap:2px!important;
-  width:100%;
-  min-width:0
- }
- .stock-id .stock-name{
-  display:block;
-  width:100%;
-  max-width:none!important;
-  white-space:normal!important;
-  overflow:visible!important;
-  text-overflow:clip!important;
-  overflow-wrap:anywhere;
-  line-height:1.25;
-  font-size:10px!important;
-  color:#a8b7be
- }
- .ticker-stack{
-  width:100%;
-  max-width:100%;
-  min-width:0
- }
- .ticker-stack>strong{
-  max-width:100%
- }
- .stock-quick{
-  width:100%;
-  min-width:0;
-  display:grid!important;
-  grid-template-columns:minmax(84px,1.05fr) minmax(72px,.9fr) auto auto auto;
-  align-items:center;
-  justify-content:stretch!important;
-  gap:4px!important;
-  white-space:nowrap
- }
- .stock-quick .quote-spread{
-  display:grid!important;
-  width:100%;
-  min-width:0!important;
-  gap:2px!important;
-  padding:0!important
- }
- .stock-quick .quote-side{
-  width:100%;
-  min-width:0!important;
-  padding:3px 5px!important
- }
- .stock-quick .quote-side small{font-size:7px}
- .stock-quick .quote-side strong{font-size:10px}
- .stock-quick .price-pair{
-  width:100%;
-  min-width:0!important;
-  padding:2px 3px;
-  justify-items:end
- }
- .stock-quick .price-pair>strong{font-size:14px!important}
- .stock-quick .price-pair>small{font-size:7px!important}
- .stock-quick>span.positive,
- .stock-quick>span.negative{
-  justify-self:end;
-  font-size:11px!important;
-  font-weight:750
- }
- .stock-quick .pill,
- .stock-quick .open-arrow{justify-self:end}
+.stock-list{width:100%;min-width:0}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
  .status-line{overflow-wrap:anywhere}
 
 .stock-profile-page{
@@ -1574,23 +1284,9 @@ html,body{font-size:14px}
   margin:10px 8px 24px;
   gap:8px
  }
- .stock-profile-page .profile-toolbar{
-  display:flex;
-  flex-direction:row;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px
- }
- .stock-profile-page .profile-toolbar>span{
-  text-align:right;
-  font-size:9px
- }
- .stock-profile-page .quick-profile-back{
-  width:auto!important;
-  flex:0 1 auto;
-  white-space:normal;
-  text-align:left
- }
+ 
+ 
+ 
  .stock-profile-page .profile-hero{
   display:grid;
   grid-template-columns:minmax(0,1fr);
@@ -1607,48 +1303,30 @@ html,body{font-size:14px}
   gap:5px
  }
  .stock-profile-page .profile-live .price-pair{justify-items:start}
- .quick-kpi-grid{grid-template-columns:1fr 1fr}
+ 
  .stock-profile-page .profile-chart-section .mini-chart{height:245px}
  .quick-events .event-list{max-height:none}
 
-.live-chart-block .mini-chart-title{
-  align-items:flex-start;
-  flex-direction:column;
-  gap:2px
- }
- .live-chart-source{font-size:8px}
- .live-chart-status{
-  min-height:34px;
-  align-items:flex-start;
-  flex-direction:column;
-  gap:2px;
-  padding:5px 7px;
-  font-size:8px
- }
- .profile-chart-section .live-market-chart{height:270px!important}
- .stock-profile-page .profile-chart-section .live-market-chart{height:250px!important}
- .chart-axis-label,.chart-range-label{font-size:9px}
+ 
+ 
+ 
+ 
+ 
 
-.stock-quick{
-  grid-template-columns:92px 98px 64px 34px 14px!important;
-  column-gap:4px!important;
- }
- .stock-quick .quote-spread,
- .stock-quick .quote-side{width:92px!important;min-width:92px!important;max-width:92px!important}
- .stock-quick .price-pair{width:98px!important;min-width:98px!important;max-width:98px!important}
- .stock-quick .quote-change{width:64px;min-width:64px;max-width:64px}
- .stock-quick .pill{width:34px;min-width:34px}
- .stock-quick .open-arrow{width:14px;min-width:14px}
+ 
+ 
+ 
+ 
+ 
 
-.tv-chart-block .mini-chart-title{align-items:flex-start;flex-direction:column}
  .chart-market-switch{justify-content:flex-start;width:100%}
 
 .recommendation-intro{flex-direction:column}
- .reco-card-head{align-items:flex-start}
+ 
  .reco-factors{grid-template-columns:1fr}
- .reco-live{justify-content:flex-start}
- .reco-actions{align-items:stretch;flex-direction:column}
- .reco-exit-wait{text-align:left}
+ 
+ 
+ 
  .reco-event{grid-template-columns:1fr}.reco-event span{white-space:normal}
 
 .hover-help-banner{font-size:10px;max-width:calc(100vw - 24px);padding:10px 11px}.section-help{width:28px;height:28px;min-width:28px}
@@ -1684,38 +1362,28 @@ html,body{font-size:14px}
   font-size:10px;
  }
  .recommendation-grid{grid-template-columns:1fr;gap:8px}
- .reco-card-head{padding:10px}
- .reco-title strong{font-size:24px}
- .reco-title span{font-size:9px}
- .reco-live{padding:8px 10px;gap:6px;justify-content:flex-start}
- .reco-live .quote-side{min-width:68px!important}
- .reco-live .price-pair{min-width:92px!important}
- .reco-live .price-pair>strong{font-size:18px!important}
- .reco-live .quote-change{min-width:52px!important;font-size:11.5px!important}
- .reco-thesis{padding:8px 10px}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
  .reco-factors{grid-template-columns:1fr}
  .reco-factor{padding:7px 8px}
  .reco-events{padding:8px 10px}
  .reco-event{grid-template-columns:1fr;gap:2px}
  .reco-event span{white-space:normal}
- .reco-actions{padding:8px 10px;align-items:stretch;flex-direction:column}
- .reco-exit-wait{max-width:none;text-align:left}
- .reco-foot{padding:6px 10px}
+ 
+ 
+ 
 
-.theme-toggle{
-  right:10px;
-  bottom:10px;
-  width:38px;
-  height:38px;
-  min-height:38px;
-  padding:0;
-  justify-content:center;
- }
- .theme-toggle-label{display:none}
+ 
 
-.manual-alert-form{grid-template-columns:1fr}.alert-wide{grid-column:auto}.alert-form-actions{grid-column:auto;display:grid;grid-template-columns:1fr 1fr}
  .alert-card-head{flex-direction:column}.alert-card-head .btn{width:auto}
- .manual-alert-rule{grid-template-columns:1fr}.manual-alert-actions{justify-content:flex-end}
+ 
  .notification-bell{right:58px;bottom:10px;width:38px;height:38px}.notification-center{right:10px;bottom:58px;width:calc(100vw - 20px);max-height:64vh}
 
 .settings-grid{grid-template-columns:1fr}
@@ -1769,15 +1437,12 @@ html,body{font-size:14px}
  .home-market-panel>header{padding:10px 11px 9px}
  .home-market-panel>header h2{font-size:14px}
  .home-market-panel>header p{font-size:8px}
- .home-stock-row{
-  grid-template-columns:23px minmax(0,1fr) minmax(82px,auto) 58px 8px;
-  gap:6px;padding:9px 10px
- }
- .home-rank{width:22px;height:22px}
- .home-stock-id strong{font-size:11px}
- .home-stock-id span{font-size:8.5px}
- .home-stock-price .price-pair>strong{font-size:10.5px}
- .home-stock-change{font-size:10.5px}
+ 
+ 
+ 
+ 
+ 
+ 
 
 .theme-setting-options{grid-template-columns:1fr 1fr}
   .theme-setting-option{
@@ -1793,9 +1458,6 @@ html,body{font-size:14px}
     gap:7px!important
   }
 
-
-
-
  #view-entry .page-heading{margin-bottom:2px!important}
  #view-entry .page-heading .lead{display:none}
  .entry-market-tabs{margin-bottom:3px!important}
@@ -1803,7 +1465,7 @@ html,body{font-size:14px}
  .entry-inline-status{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden;color:var(--muted);font-size:8px;white-space:nowrap;text-overflow:ellipsis}
  .entry-filter-launch .filter-icon-button{flex:0 0 auto!important;margin:0!important}
  #entryResults{margin-top:0!important}
- .market-quick-toggle{border-radius:11px 11px 0 0!important;min-width:52px!important;height:26px!important}
+ 
  .market-quick-sheet header button{font-size:20px!important}
 
 }
@@ -1811,7 +1473,7 @@ html,body{font-size:14px}
 /* <= 620px */
 @media(max-width:620px){
 .catalog-toolbar{grid-template-columns:1fr}
- .catalog-toolbar .grow,.catalog-toolbar .count-pill{grid-column:1}
+ .catalog-toolbar .grow{grid-column:1}
 }
 
 /* <= 480px */
@@ -1819,11 +1481,11 @@ html,body{font-size:14px}
 .filters-grid{grid-template-columns:1fr 1fr}
  .criterion-control{grid-template-columns:minmax(0,1fr) 28px}
  .checks-grid{grid-template-columns:1fr}
- .heatmap-toolbar{grid-template-columns:1fr}
- .heatmap-market-tabs,.heatmap-legend{grid-column:1}
- .heat-sector-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
- .heat-sm{grid-column:span 2}.heat-md{grid-column:span 3}.heat-lg{grid-column:span 4}.heat-xl{grid-column:span 6}
- #view-portfolios .portfolio-goal-strategy{grid-template-columns:1fr!important}
+ 
+ 
+ 
+ 
+ 
 }
 
 /* <= 420px */
@@ -1832,11 +1494,11 @@ html,body{font-size:14px}
  .view>.page-heading h1{font-size:24px!important}
  .view>.page-heading .lead{font-size:12px!important}
  .filters-grid{grid-template-columns:1fr!important}
- .catalog-mobile-filter-grid{grid-template-columns:1fr!important}
- .catalog-mobile-metrics{grid-template-columns:1fr 1fr}
+ 
+ 
  .mobile-nav-item>small{font-size:8px}
  .market-clock{min-width:98px}
- #view-portfolios .portfolio-goal-metrics{grid-template-columns:1fr!important}
+ 
 
 .stock-profile-page .unified-stock-header-inner{
     padding-right:46px!important
@@ -1849,45 +1511,20 @@ html,body{font-size:14px}
     padding:9px 10px!important
   }
 
-
-
-
-
 }
 
 /* <= 380px */
-@media(max-width:380px){
-.stock-id span:not(.rank){max-width:105px}.detail-grid{grid-template-columns:repeat(2,1fr)}
-
-.stock-id .stock-name{
-  max-width:none!important;
-  font-size:9px!important
- }
- .stock-quick{
-  grid-template-columns:minmax(76px,1fr) minmax(64px,.9fr) auto auto auto;
-  gap:3px!important
- }
- .stock-quick .quote-side{padding:3px 4px!important}
- .stock-quick .quote-side strong{font-size:9px}
- .stock-quick .price-pair>strong{font-size:13px!important}
- .stock-quick>span.positive,
- .stock-quick>span.negative{font-size:10px!important}
-
-.quick-kpi-grid{grid-template-columns:1fr}
-}
-
 
 /* Funds / ETFs mobile web */
 #view-funds .fund-toolbar{grid-template-columns:1fr 1fr}
 #view-funds .fund-search{grid-column:1/-1}
-#view-funds .fund-grid{grid-template-columns:1fr}
+
 #view-funds .fund-facts,
 #view-funds .fund-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 #view-portfolios .portfolio-asset-switch{display:flex;width:100%}
 #view-portfolios .portfolio-asset-switch button{flex:1}
 #view-portfolios .fund-portfolio-toolbar{align-items:flex-start}
 #view-portfolios .fund-position-grid{grid-template-columns:1fr}
-#view-portfolios .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
 
 /* Funds / ETFs mobile web: same grouped comparison as Android. */
 #view-funds .fund-mobile-filters-toggle{display:inline-flex}
@@ -1905,9 +1542,8 @@ html,body{font-size:14px}
  border:1px solid var(--line);
  border-radius:11px;
 }
-#view-funds .fund-toolbar.mobile-filters-open .fund-toolbar-advanced{display:grid}
-#view-funds .fund-table-scroll,
-#view-funds .fund-table-swipe-hint{display:none}
+
+#view-funds .fund-table-scroll{display:none}
 #view-funds .fund-mobile-compare{display:block;width:100%;min-width:0}
 #view-funds .fund-mobile-groups{
  display:flex;
@@ -1935,8 +1571,6 @@ html,body{font-size:14px}
  border-bottom-color:var(--teal);
 }
 
-
-
 #view-funds .fund-mobile-sort{
  min-width:0;
  border:0;
@@ -1947,13 +1581,6 @@ html,body{font-size:14px}
  font-weight:800;
 }
 #view-funds .fund-mobile-sort.active{color:var(--teal)}
-
-
-
-
-
-
-
 
 /* Compact tabbed lists for mobile web */
 .stock-mobile-groups,
@@ -1985,25 +1612,6 @@ html,body{font-size:14px}
  color:var(--text);
  border-bottom-color:var(--teal);
 }
-.stock-mobile-compare,
-.catalog-mobile-compare{
- width:100%;
- min-width:0;
- border-top:1px solid var(--line);
- border-bottom:1px solid var(--line);
-}
-
-
-
-
-
-
-
-
-
-
-
-.catalog-mobile-card{display:none!important}
 
 /* Compact event/calendar rows on mobile web */
 .event-mobile-groups{
@@ -2027,15 +1635,6 @@ html,body{font-size:14px}
  font-weight:720;
 }
 .event-mobile-groups button.active{color:var(--text);border-bottom-color:var(--teal)}
-.event-mobile-compare{width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-
-
-
-
-
-
-
-
 
 /* 0.6.9 compact Ideas IA on mobile web */
 .reco-mobile-groups{display:flex;gap:4px;width:100%;margin:6px 0 4px;overflow-x:auto;scrollbar-width:none}
@@ -2045,14 +1644,9 @@ html,body{font-size:14px}
  color:var(--muted);font-size:8.5px;font-weight:720;white-space:nowrap;
 }
 .reco-mobile-groups button.active{color:var(--text);border-bottom-color:var(--teal)}
-.reco-mobile-compare{width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-
-
-
 
 /* 2026-09-29 · compact-card/session/filter/refresh corrections */
 .filter-sheet-source:not(.in-filter-sheet),
-#view-calendar .calendar-filter-panel.filter-sheet-source:not(.in-filter-sheet),
 #view-funds .fund-toolbar-advanced.filter-sheet-source:not(.in-filter-sheet),
 #view-entry .entry-filter-source.filter-sheet-source:not(.in-filter-sheet),
 .catalog-filter-panel.filter-sheet-source:not(.in-filter-sheet){display:none!important}
@@ -2067,23 +1661,14 @@ html,body{font-size:14px}
 .refresh-feedback-banner[data-tone="error"]{border-color:rgba(239,98,98,.6);color:var(--negative)}
 .refresh-feedback-banner[data-tone="loading"]{border-color:rgba(89,180,232,.48)}
 .refresh-feedback-banner[data-tone="same"]{color:var(--muted)}
-.asset-session-price{display:block;font-weight:820;white-space:nowrap}
-.asset-session-change{display:block;margin-top:1px;font-size:.82em;font-weight:800;white-space:nowrap}
-.asset-session-change.positive{color:var(--positive)!important}
-.asset-session-change.negative{color:var(--negative)!important}
-.market-quick-sheet>header{justify-content:center!important;text-align:center!important}
-.market-quick-toggle.inside-sheet{
- position:sticky!important;top:0!important;left:50%!important;bottom:auto!important;
- display:grid!important;margin:-5px auto 3px!important;transform:translateX(-50%)!important;
- z-index:2!important;border-radius:0 0 12px 12px!important;border-top:0!important;border-bottom:1px solid #2e4b57!important
-}
-.weekly-viewed-section>h3{display:none!important}
 
+.market-quick-sheet>header{justify-content:center!important;text-align:center!important}
+
+.weekly-viewed-section>h3{display:none!important}
 
 .asset-card-row[data-asset-columns="3"]{grid-template-columns:minmax(0,1.35fr) minmax(54px,.72fr) minmax(48px,.6fr) minmax(68px,.86fr) 8px!important;gap:4px!important}
 .asset-card-row[data-asset-columns="3"] .asset-card-cell{min-width:0!important;font-size:8.2px!important}
 .asset-card-row[data-asset-columns="3"] .asset-card-label{font-size:6.5px!important}
-
 
 /* 2026-09-29 · tighter mobile compact stock row */
  .asset-card-row[data-asset-columns="3"]{
@@ -2106,11 +1691,9 @@ html,body{font-size:14px}
   text-align:left!important;white-space:nowrap!important
  }
  .asset-card-row[data-asset-columns="3"] .asset-card-label{margin-bottom:1px!important;font-size:6.2px!important;line-height:1!important;white-space:nowrap!important}
- .asset-card-row[data-asset-columns="3"] .asset-session-price,
- .asset-card-row[data-asset-columns="3"] .asset-session-change{line-height:1.05!important;white-space:nowrap!important}
+ 
  .asset-card-row[data-asset-columns="3"] .asset-card-open{font-size:14px!important}
  .asset-card-row[data-asset-columns="3"] .fav-star{width:18px!important;min-width:18px!important;height:24px!important;font-size:14px!important}
-
 
 /* Radar AI keeps its blue identity without leaving the bottom bar. */
  .mobile-bottom-nav{overflow:hidden!important}
@@ -2144,14 +1727,12 @@ html,body{font-size:14px}
 #view-portfolios .portfolio-workbar-actions{grid-column:1!important;grid-row:2!important;width:100%!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:6px!important}
 #view-portfolios .portfolio-workbar-actions>*{position:static!important;width:100%!important;min-width:0!important;max-width:none!important;height:36px!important;min-height:36px!important;margin:0!important;padding:0!important}
 
-
 /* 2026-09-30 · selected-portfolio controls */
 #view-portfolios .portfolio-workbar-actions{grid-template-columns:repeat(7,minmax(0,1fr))!important}
 #view-portfolios .portfolio-workbar-actions>*{height:36px!important;min-height:36px!important}
 #view-portfolios .portfolio-cash-row{margin:5px 0!important}
 #view-portfolios .portfolio-goal-form.compact-goal-form{grid-template-columns:1fr 1fr!important}
 #view-portfolios .portfolio-goal-form.compact-goal-form>button{grid-column:1/-1!important}
-
 
 /* 2026-09-30 · mobile readability for strict portfolio decisions */
 #view-portfolios .portfolio-goal-trade{grid-template-columns:68px minmax(0,1fr)!important;padding:8px!important}
@@ -2164,7 +1745,6 @@ html,body{font-size:14px}
 #view-portfolios .portfolio-goal-summary strong{font-size:13px!important}
 #view-portfolios .portfolio-goal-summary b{font-size:9px!important}
 
-
 /* 2026-09-30 · mobile company identity and operation registration */
 .profile-company-grid{grid-template-columns:1fr 1fr!important;gap:6px!important}
 .profile-company-summary{font-size:11px!important;line-height:1.45!important}
@@ -2174,14 +1754,12 @@ html,body{font-size:14px}
 .profile-company-grid .profile-identity span{font-size:7.5px!important}
 #view-portfolios .portfolio-goal-register{width:max-content!important;max-width:100%!important;font-size:8px!important;min-height:26px!important}
 
-
 /* 2026-09-30 · eight controls while Objective IA is open */
 #view-portfolios .portfolio-workbar.goal-mode .portfolio-workbar-actions{grid-template-columns:repeat(8,minmax(0,1fr))!important}
 .goal-history-entry{padding:8px!important}
 .goal-history-op{grid-template-columns:58px minmax(0,1fr)!important;padding:6px!important}
 .goal-history-op>span{font-size:10px!important}
 .goal-history-op>small{font-size:8px!important}
-
 
 /* 2026-09-30 final mobile alignment pass: keep controls centered, readable and non-overlapping. */
 #view-portfolios .portfolio-workbar{
@@ -2327,7 +1905,6 @@ main{
  padding-bottom:calc(var(--mobile-nav-h,70px) + 16px)!important;
 }
 
-
 /* 2026-09-30 extended stock header: full company name first, ticker secondary. */
 .stock-profile-page .unified-stock-header .profile-company-name{
   display:block!important;
@@ -2358,10 +1935,6 @@ main{
 .stock-profile-page .unified-stock-header .profile-live{
   justify-content:space-between!important;
 }
-.stock-profile-page .profile-quote-freshness{
-  margin-left:auto!important;
-}
-
 
 /* Radar IA keeps its AI accent while remaining level with the other bottom-nav items. */
 .mobile-nav-item[data-mobile-view="recommendation"]{
@@ -2424,9 +1997,8 @@ main{
   align-items:start!important;
   gap:6px!important;
  }
- .profile-quote-regular,
  .profile-quote-extended,
- .profile-quote-lsx{
+.profile-quote-lsx{
   min-width:0!important;
   max-width:100%!important;
   flex-wrap:wrap!important;

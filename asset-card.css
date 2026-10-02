@@ -48,9 +48,7 @@
 .asset-card-actions{padding:6px}
 .asset-card .quote-spread{max-width:100%;flex-wrap:wrap}
 .asset-card .reco-factors,.asset-card .reco-events{min-width:0;max-width:100%}
-.asset-card .portfolio-position-context{display:block;min-width:0}
-.asset-card .portfolio-position-numbers,.asset-card .portfolio-position-actions{flex-wrap:wrap}
-.asset-card .fund-position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+
 /* Container sizing belongs to the shared system too. */
 #homeGroups .home-stock-list{display:block!important;padding:0 6px!important;gap:0!important}
 .stock-list.stock-card-grid{display:grid!important;align-items:start!important;align-content:start!important;justify-content:start!important;border:0!important;background:transparent!important;overflow:visible!important;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),420px))!important;gap:10px!important}
@@ -59,12 +57,11 @@
 .stock-list.stock-card-grid>nav,.stock-list.stock-card-grid>[class$="-compare"]{grid-column:1/-1}
 #view-portfolios .portfolio-position-list.stock-list,#view-portfolios .fund-position-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;overflow:visible!important}
 #recommendationResults{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),420px));gap:10px}
-#recommendationResults>nav,#recommendationResults>.reco-mobile-compare{grid-column:1/-1}
+#recommendationResults>nav{grid-column:1/-1}
 @media(max-width:820px){
  .stock-list.stock-card-grid,#view-portfolios .portfolio-position-list.stock-list,#recommendationResults{grid-template-columns:minmax(0,1fr)!important}
  .asset-card-row,.asset-list-head{gap:6px}
 }
-
 
 /* Mobile density pass: one list language, context-specific data only. */
 .asset-card-meta{
@@ -76,11 +73,7 @@
 }
 .portfolio-position-strip span{white-space:nowrap}
 .portfolio-position-strip b{color:var(--asset-text)}
-.portfolio-position-strip .portfolio-meta-action{
- min-height:22px!important;width:auto!important;min-width:0!important;margin:0!important;
- padding:2px 6px!important;border-radius:6px!important;font-size:7.5px!important;line-height:1!important
-}
-.portfolio-position-strip .portfolio-meta-action:first-of-type{margin-left:auto!important}
+
 [data-card-context="home"] .asset-card-row,
 [data-card-context="portfolio"] .asset-card-row{min-height:52px}
 [data-card-context="home"] .asset-card-copy>small{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
@@ -105,12 +98,8 @@
 .asset-price-value{display:block;white-space:nowrap}
 .asset-quote-source{display:block;margin-top:1px;color:var(--asset-muted);font-size:6.5px;line-height:1.05;font-weight:550;white-space:nowrap}
 
-
 /* 2026-09-28 compact unified rows and per-asset notification controls */
-.asset-session-meta{display:flex;align-items:center;gap:5px;padding:0 5px 4px;font-size:8px;font-variant-numeric:tabular-nums}
-.asset-session-meta b{font-size:10px}.asset-session-meta span{color:var(--asset-muted);font-weight:750}.asset-session-meta strong,.asset-session-meta em{font-style:normal;font-weight:750}
-.asset-session-meta.positive strong,.asset-session-meta.positive em{color:var(--positive)}
-.asset-session-meta.negative strong,.asset-session-meta.negative em{color:var(--negative)}
+
 .profile-notification-bell{width:34px;height:34px;min-width:34px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font-size:16px;display:grid;place-items:center;padding:0}
 .profile-notification-bell:hover{border-color:var(--teal);background:color-mix(in srgb,var(--teal) 8%,transparent)}
 .notification-pref-intro{display:grid;gap:4px;margin-bottom:8px}.notification-pref-intro span,.notification-pref-note{color:var(--muted);font-size:11px}
@@ -120,8 +109,7 @@
 .portfolio-inline-tools{display:grid!important;grid-template-columns:minmax(0,1fr) repeat(4,34px)!important;gap:5px!important;align-items:center!important;max-width:100%!important}
 .portfolio-inline-tools .portfolio-tabs-track{min-width:0!important;overflow:auto!important}.portfolio-inline-tools .portfolio-icon-action{width:32px!important;min-width:32px!important;height:32px!important;padding:0!important}
 .nav-symbol-svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.pulse-ai-explanation{grid-column:1/-1;display:grid;gap:4px;padding:10px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:10px}
-.pulse-ai-explanation strong{color:var(--text)}
+
 @media(max-width:820px){
  .asset-card-row{min-height:48px;padding:3px 2px}
  .asset-card-copy>strong{font-size:9.5px;-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis}
@@ -129,7 +117,6 @@
  .asset-card-cell{font-size:8.8px}
  .notification-price-grid{grid-template-columns:1fr}
 }
-
 
 /* 2026-09-29 · tighter mobile compact stock row */
 @media(max-width:820px){
@@ -153,12 +140,10 @@
   text-align:left!important;white-space:nowrap!important
  }
  .asset-card-row[data-asset-columns="3"] .asset-card-label{margin-bottom:1px!important;font-size:6.2px!important;line-height:1!important;white-space:nowrap!important}
- .asset-card-row[data-asset-columns="3"] .asset-session-price,
- .asset-card-row[data-asset-columns="3"] .asset-session-change{line-height:1.05!important;white-space:nowrap!important}
+ 
  .asset-card-row[data-asset-columns="3"] .asset-card-open{font-size:14px!important}
  .asset-card-row[data-asset-columns="3"] .fav-star{width:18px!important;min-width:18px!important;height:24px!important;font-size:14px!important}
 }
-
 
 /* 2026-09-29 · universal REG + persistent extended-session compact row */
 .asset-card-row[data-asset-columns="2"]{
@@ -167,20 +152,14 @@
 }
 .asset-card-row[data-asset-columns="2"] .asset-card-cell{align-self:center!important;min-width:0!important}
 .asset-regular-price,.asset-regular-change{display:block;white-space:nowrap;font-weight:820;line-height:1.05}
-.asset-extended-price,.asset-extended-change{margin-top:2px;min-height:10px;font-size:7.5px;line-height:1.05;font-weight:780;white-space:nowrap}
-.asset-extended-price{display:flex;align-items:center;gap:3px}
-.asset-extended-change{display:block}
-.asset-session-icon,.stock-session-quote .session-icon{font-size:9px;line-height:1;font-family:Arial,Helvetica,sans-serif;font-variant-emoji:text}
-.asset-session-icon.session-icon-sun,.session-icon.session-icon-sun{color:#f2c94c!important;-webkit-text-stroke:0 transparent;text-shadow:none!important}
-.asset-session-icon.session-icon-moon,.session-icon.session-icon-moon{color:#fff!important;-webkit-text-stroke:.55px #000;paint-order:stroke fill;text-shadow:-.35px 0 #000,.35px 0 #000,0 -.35px #000,0 .35px #000!important}
-.asset-extended-price.positive,.asset-extended-change.positive{color:var(--positive)!important}
-.asset-extended-price.negative,.asset-extended-change.negative{color:var(--negative)!important}
-.asset-extended-price.muted,.asset-extended-change.muted{color:var(--asset-muted)!important}
+
+.stock-session-quote .session-icon{font-size:9px;line-height:1;font-family:Arial,Helvetica,sans-serif;font-variant-emoji:text}
+.session-icon.session-icon-sun{color:#f2c94c!important;-webkit-text-stroke:0 transparent;text-shadow:none!important}
+.session-icon.session-icon-moon{color:#fff!important;-webkit-text-stroke:.55px #000;paint-order:stroke fill;text-shadow:-.35px 0 #000,.35px 0 #000,0 -.35px #000,0 .35px #000!important}
+
 .asset-event-meta{display:flex;align-items:center;gap:6px;min-width:0;padding:1px 4px 4px;color:var(--asset-muted);font-size:7px}
 .asset-event-meta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--asset-text)}
 .asset-event-meta span,.asset-event-meta em{white-space:nowrap;font-style:normal}
-
-
 
 /* Portfolio/card explicit full-profile affordance */
 .asset-card-open-button{
@@ -220,7 +199,6 @@
  }
 }
 
-
 /* 2026-09-30 · Investing-style quote block shared by every compact stock card */
 .asset-card-cell:has(.asset-investing-quote)>.asset-card-label{display:none!important}
 .asset-card-cell:has(.asset-investing-quote){overflow:visible!important}
@@ -253,23 +231,7 @@
 .asset-investing-main>span.positive{color:var(--positive)}
 .asset-investing-main>span.negative{color:var(--negative)}
 .asset-investing-main b{font:inherit}
-.asset-investing-status{
- display:flex;
- align-items:center;
- gap:4px;
- min-width:0;
- color:var(--asset-muted);
- font-size:7.5px;
- line-height:1.2;
- white-space:nowrap;
- overflow:hidden;
- text-overflow:ellipsis;
-}
-.asset-market-clock{
- color:var(--negative);
- font-size:10px;
- line-height:1;
-}
+
 .asset-investing-extended{
  display:flex;
  align-items:baseline;
@@ -327,7 +289,7 @@
 @media(max-width:820px){
  .asset-investing-main>strong{font-size:13px}
  .asset-investing-main>span{font-size:9px}
- .asset-investing-status{font-size:7px}
+ 
  .asset-investing-extended{font-size:8px}
  .asset-investing-extended>strong{font-size:9.5px}
  .asset-card-row[data-asset-columns="1"]{
@@ -341,7 +303,6 @@
   gap:4px!important;
  }
 }
-
 
 /* 2026-09-30 · desktop comfort sizing */
 @media(min-width:821px){
@@ -387,13 +348,8 @@
  html:not([data-native-app="1"]) .asset-investing-main>span{
   font-size:11.5px;
  }
- html:not([data-native-app="1"]) .asset-investing-status{
-  gap:5px;
-  font-size:9px;
- }
- html:not([data-native-app="1"]) .asset-market-clock{
-  font-size:11px;
- }
+ 
+ 
  html:not([data-native-app="1"]) .asset-investing-extended{
   gap:5px 8px;
   padding-top:3px;
@@ -416,7 +372,6 @@
   column-gap:12px!important;
  }
 }
-
 
 /* Portfolio position exposure: compact metrics in the free right-hand cell. */
 .portfolio-position-exposure{
@@ -459,7 +414,6 @@
  .portfolio-position-exposure b{font-size:7px}
 }
 
-
 /* 2026-09-30 mobile compact rows: names yield space before market data does. */
 @media(max-width:820px){
  .asset-card-copy>strong{
@@ -475,7 +429,6 @@
  }
 }
 
-
 /* Portfolio position actions stay compact and directly expose buy/sell/history. */
 [data-card-context="portfolio"] .asset-card-actions{
  display:grid;
@@ -490,14 +443,6 @@
  padding:4px 6px;
  font-size:8px;
  line-height:1.1;
-}
-[data-card-context="portfolio"] .portfolio-position-trade.buy{
- border-color:rgba(55,211,153,.35);
- color:#7be5bd;
-}
-[data-card-context="portfolio"] .portfolio-position-trade.sell{
- border-color:rgba(255,102,122,.35);
- color:#ff9aaa;
 }
 
 /* 2026-10-01 · shared final action column without overriding context widths */
@@ -530,14 +475,8 @@
  }
 }
 
-
 /* 2026-10-01 · compact quote freshness dot only */
-.asset-investing-status{
- display:flex;
- align-items:center;
- min-height:10px;
- overflow:visible;
-}
+
 .asset-quote-state{
  position:relative;
  display:inline-grid;
@@ -602,7 +541,6 @@
 .asset-card-end-actions,
 .asset-investing-quote,
 .asset-investing-main,
-.asset-investing-status,
 .asset-investing-extended,
 .portfolio-position-exposure{
  min-width:0;
@@ -631,9 +569,7 @@
 .asset-investing-extended>span,
 .asset-investing-extended>time,
 .asset-regular-price,
-.asset-regular-change,
-.asset-extended-price,
-.asset-extended-change{
+.asset-regular-change{
  max-width:100%;
  overflow:hidden;
  text-overflow:ellipsis;
@@ -956,10 +892,7 @@
  font-size:10px!important;
  line-height:1.05!important;
 }
-.asset-card-quote-slot .asset-investing-status{
- min-height:8px!important;
- margin-top:0!important;
-}
+
 .asset-card-quote-slot .asset-investing-extended{
  display:flex!important;
  align-items:baseline!important;
@@ -974,7 +907,6 @@
 }
 
 /* Context-specific information uses the same reserved fourth slot. */
-.radar-card-context,
 .future-card-context,
 .alert-card-context{
  display:grid;
@@ -983,14 +915,12 @@
  width:100%;
  min-width:0;
 }
-.radar-card-context>span,
 .future-card-context>span,
 .alert-card-context>span{
  display:grid;
  gap:2px;
  min-width:0;
 }
-.radar-card-context small,
 .future-card-context small,
 .alert-card-context small{
  color:var(--asset-muted);
@@ -998,7 +928,6 @@
  line-height:1.05;
  white-space:nowrap;
 }
-.radar-card-context b,
 .future-card-context b,
 .alert-card-context b{
  min-width:0;
@@ -1009,20 +938,9 @@
  font-size:9.5px;
  line-height:1.1;
 }
-.future-card-context .future-card-catalyst{
- grid-column:1/-1;
-}
-.future-card-context .future-card-catalyst b{
- white-space:normal;
- display:-webkit-box;
- -webkit-box-orient:vertical;
- -webkit-line-clamp:2;
-}
-.radar-card-context .positive b,
+
 .alert-card-context .positive b{color:var(--positive)}
-.radar-card-context .negative b,
 .alert-card-context .negative b{color:var(--negative)}
-.radar-card-context .watch b{color:var(--amber,#d9c96a)}
 
 /* Container-responsive, so narrow cards (including desktop two-column Radar) adapt
    without relying on screen coordinates or a particular viewport width. */
@@ -1147,8 +1065,6 @@
  flex:0 0 12px;
  margin-right:1px;
 }
-.asset-investing-status{display:none!important}
-
 
 /* 2026-10-01 · phone layout fixes.
    The list head lives in its own compact-card container so it changes layout at the
@@ -1243,8 +1159,7 @@ html[data-theme="light"] .btn.icon-btn,
 html[data-theme="light"] .section-help,
 html[data-theme="light"] .catalog-toolbar-mini,
 html[data-theme="light"] .filter-icon-button,
-html[data-theme="light"] .portfolio-icon-action,
-html[data-theme="light"] .market-quick-toggle{
+html[data-theme="light"] .portfolio-icon-action{
  background:#ffffff!important;
  border-color:#c9d8de!important;
  color:#20343e!important;
@@ -1291,7 +1206,6 @@ html[data-theme="light"] body .mobile-nav-item.active>small{color:#0b6b57!import
 html[data-theme="light"] body .mobile-nav-item.active:not([data-mobile-view="recommendation"]){background:#e3f4ee!important;border-color:#b9e2d4!important}
 html[data-theme="light"] body .tab{background:#ffffff!important;color:#50656f!important;border-color:#d3e0e5!important}
 html[data-theme="light"] body .tab.active{background:#e3f4ee!important;color:#0b6b57!important;border-color:#0b8f6f!important}
-html[data-theme="light"] body .radar-ai-market,
 html[data-theme="light"] body .asset-card,
 html[data-theme="light"] body .event-item,
 html[data-theme="light"] body .tradingview-heatmap-shell,
@@ -1302,7 +1216,6 @@ html[data-theme="light"] body .profile-tabs button{color:#50656f!important}
 html[data-theme="light"] body .profile-tabs button.active{color:#0b6b57!important}
 html[data-theme="light"] body .profile-identity strong{color:#14242c!important}
 html[data-theme="light"] body .portfolio-auth-icon{color:#b07d12!important}
-html[data-theme="light"] body .radar-ai-market strong,
 html[data-theme="light"] body .event-item strong,
 html[data-theme="light"] body .event-item .event-title,
 html[data-theme="light"] body .profile-sticky-shell strong{color:#14242c!important}
@@ -1509,8 +1422,7 @@ html[data-theme="light"] body .notification-price-card{background:#f8fbfc!import
  html body #fundToolbarAdvanced.in-filter-sheet>*{width:100%!important;min-width:0!important;max-width:none!important;margin:0!important}
  html body #fundToolbarAdvanced.in-filter-sheet>select{height:40px!important;min-height:40px!important}
  /* Catálogo filter sheet note reads as a hint, not body copy. */
- html body .shared-filter-body .catalog-filter-hint,
- html body .shared-filter-body .filter-sheet-note{font-size:12px!important;line-height:1.4!important}
+ html body .shared-filter-body .catalog-filter-hint{font-size:12px!important;line-height:1.4!important}
 }
 @media(max-width:380px){
  html[data-native-app="1"]{--ph-title-size:20px}
@@ -1552,9 +1464,9 @@ html[data-theme="light"] .filter-count-badge{background:#4f46e5}
 /* ===== Barras que se esconden (ui-shell.js) ===== */
 @media(max-width:820px){
  html body .mobile-bottom-nav{transition:transform .22s ease,opacity .22s ease!important;will-change:transform}
- html body .market-quick-toggle{transition:transform .22s ease,opacity .22s ease!important}
+ 
  html body.chrome-hide .mobile-bottom-nav{transform:translateY(115%)!important}
- html body.chrome-hide .market-quick-toggle:not(.inside-sheet){transform:translateY(160px)!important;opacity:0!important;pointer-events:none!important}
+ 
  /* Section heading sticks to the top and compacts once the list scrolls. */
  html body :is(#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings,#view-today).active>.page-heading{
   position:sticky!important;top:0!important;z-index:40!important;transition:padding .18s ease;width:auto!important;
@@ -1720,7 +1632,7 @@ html:root:root body .portfolio-position-card .portfolio-register-operation-icon{
  html:root:root body .mobile-nav-bump.active>small{color:#43e4b2!important}
  html[data-theme="light"]:root:root body .mobile-nav-bump.active>small{color:#0f1e3a!important;font-weight:800!important}
  /* El antiguo botón ⌃ suelto ya no existe; la hoja sale desde la barra. */
- html body .market-quick-toggle{display:none!important}
+ 
  html body.market-quick-open .mobile-bottom-nav{z-index:6200!important;transform:none!important}
  html:root:root body .market-quick-sheet.market-sheet{
   left:0!important;right:0!important;bottom:calc(var(--native-nav-h,64px) - 2px)!important;max-height:74vh!important;padding:6px 14px 16px!important;
@@ -1729,11 +1641,7 @@ html:root:root body .portfolio-position-card .portfolio-register-operation-icon{
  html:root:root body .market-quick-backdrop.open{z-index:6050!important}
 }
 .market-sheet-handle{width:38px;height:4px;border-radius:2px;margin:2px auto 8px;background:rgba(140,190,210,.35)}
-.market-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.market-sheet-head>div{display:grid;gap:1px}
-.market-sheet-head small{font-size:10px;letter-spacing:.14em;font-weight:800;color:#43e4b2}
-html[data-theme="light"] .market-sheet-head small{color:#0f8a5f}
-.market-sheet-head strong{font-size:17px}
+
 .market-sheet-close{width:34px;height:34px;border-radius:50%;border:1px solid rgba(140,190,210,.22);background:transparent;color:inherit;font-size:18px;cursor:pointer}
 .market-sheet-status{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
 .market-sheet-status>span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid rgba(140,190,210,.2);background:rgba(255,255,255,.04)}
@@ -1764,8 +1672,7 @@ html[data-theme="light"] .market-sheet-row{border-top-color:#eef1f6}
 .market-sheet-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.8}
 .market-sheet-row>em{font-style:normal;font-weight:800;font-variant-numeric:tabular-nums;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.04)}
 .market-sheet-more{width:100%;height:44px}
-html:root:root body .market-quick-sheet .market-sheet-head{display:flex!important;justify-content:space-between!important;align-items:center!important;text-align:left!important;width:100%!important;padding:0!important;margin:0!important;border:0!important;background:none!important;position:static!important}
-html:root:root body .market-quick-sheet .market-sheet-head>div{text-align:left!important}
+
 @media(max-width:820px){
  html:root:root body .mobile-nav-bump{grid-template-rows:22px auto!important;align-items:center!important}
  html:root:root body .mobile-nav-bump>small{grid-row:2!important;margin-top:0!important}

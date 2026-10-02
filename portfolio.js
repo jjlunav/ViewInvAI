@@ -630,6 +630,52 @@ document.addEventListener('click',event=>{
   try{localStorage.setItem('viewinvai:position-sort',b.dataset.positionSort)}catch(_){}
   if(state.primaryTab!=='goal')renderApp();
 });
+// ----- Riesgo y dividendos de la cartera (con los datos ya cargados, sin peticiones) -----
+const SECTOR_ES={"Electronic Technology":"Tecnología electrónica","Technology Services":"Servicios tecnológicos","Health Technology":"Tecnología sanitaria","Health Services":"Servicios sanitarios","Finance":"Finanzas","Retail Trade":"Comercio minorista","Consumer Non-Durables":"Consumo básico","Consumer Durables":"Consumo duradero","Consumer Services":"Servicios al consumo","Producer Manufacturing":"Industria","Process Industries":"Industria de procesos","Industrial Services":"Servicios industriales","Energy Minerals":"Energía","Non-Energy Minerals":"Materias primas","Utilities":"Servicios públicos","Transportation":"Transporte","Communications":"Comunicaciones","Commercial Services":"Servicios comerciales","Distribution Services":"Distribución","Miscellaneous":"Otros","Government":"Sector público"};
+const COUNTRY_ES={US:"EEUU",DE:"Alemania",NL:"Países Bajos",IE:"Irlanda",FR:"Francia",ES:"España",GB:"Reino Unido",CA:"Canadá",CH:"Suiza",JP:"Japón",CN:"China",KY:"Islas Caimán",LU:"Luxemburgo",IL:"Israel",TW:"Taiwán",DK:"Dinamarca",SE:"Suecia",IT:"Italia",BE:"Bélgica",AU:"Australia",BR:"Brasil",KR:"Corea del Sur",FI:"Finlandia",NO:"Noruega",BM:"Bermudas",JE:"Jersey",HK:"Hong Kong",IN:"India",SG:"Singapur",AT:"Austria",PT:"Portugal"};
+window.ViewInvAISectorEs=v=>SECTOR_ES[v]||v||"Sin sector";
+function portfolioInsightsData(portfolioId){
+  const rows=portfolioPositionsDetail(portfolioId).filter(r=>r.valueEur!==null&&r.valueEur>0);
+  const total=rows.reduce((a,r)=>a+r.valueEur,0);
+  if(!(total>0))return null;
+  const group=key=>{const m=new Map();rows.forEach(r=>{const k=key(r);m.set(k,(m.get(k)||0)+r.valueEur)});return[...m.entries()].map(([k,v])=>({k,v,pct:v/total*100})).sort((a,b)=>b.v-a.v)};
+  const positions=group(r=>r.ticker||r.stockKey);
+  const sectors=group(r=>window.ViewInvAISectorEs(r.sector));
+  const countries=group(r=>COUNTRY_ES[r.country]||r.country||"—");
+  let betaKnown=0,betaWeighted=0;
+  rows.forEach(r=>{const b=r.beta!==null&&Number.isFinite(r.beta)?r.beta:1;if(r.beta!==null)betaKnown+=r.valueEur;betaWeighted+=b*r.valueEur});
+  const beta=betaWeighted/total;
+  const dividends=rows.reduce((a,r)=>a+(r.dividendYield>0?r.valueEur*r.dividendYield/100:0),0);
+  return{total,positions,sectors,countries,beta,betaCoverage:betaKnown/total,dividends,count:rows.length};
+}
+function insightBars(list,limit=4){
+  const top=list.slice(0,limit),rest=list.slice(limit).reduce((a,x)=>a+x.pct,0);
+  return top.map(x=>'<div class="insight-bar"><span>'+esc(x.k)+'</span><i><b data-insight-w="'+Math.max(2,x.pct).toFixed(1)+'"></b></i><em>'+formatNumber(x.pct,0)+'%</em></div>').join('')+
+    (rest>0.5?'<div class="insight-bar muted"><span>Resto</span><i><b data-insight-w="'+rest.toFixed(1)+'"></b></i><em>'+formatNumber(rest,0)+'%</em></div>':'');
+}
+function portfolioInsightsHtml(portfolio){
+  const d=portfolio&&portfolioInsightsData(portfolio.id);
+  if(!d||d.count<1)return'';
+  const top=d.positions[0],topSector=d.sectors[0];
+  const alerts=[];
+  if(d.count>1&&top.pct>=25)alerts.push(esc(top.k)+' pesa el '+formatNumber(top.pct,0)+'% de la cartera');
+  if(d.count>2&&topSector.pct>=45)alerts.push(esc(topSector.k)+' concentra el '+formatNumber(topSector.pct,0)+'%');
+  const shock=-0.10*d.beta*d.total;
+  let open=false;try{open=localStorage.getItem('viewinvai:pf-insights-open')==='1'}catch(_){}
+  return '<details class="portfolio-insights"'+(open?' open':'')+' data-pf-insights>'+
+    '<summary><span class="insights-title">Riesgo y dividendos</span>'+
+      '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b>β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
+    '<div class="insights-body">'+
+      (alerts.length?'<p class="insights-alert">'+alerts.join(' · ')+'.</p>':'')+
+      '<div class="insights-scenario"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
+      '<div class="insights-scenario"><small>DIVIDENDOS ESTIMADOS</small><strong>≈ '+formatMoney(d.dividends,'EUR')+' al año</strong><b>'+formatNumber(d.dividends/d.total*100,2)+'%</b><span>Con la rentabilidad por dividendo actual; antes de retenciones.</span></div>'+
+      '<div class="insights-group"><small>POR POSICIÓN</small>'+insightBars(d.positions)+'</div>'+
+      '<div class="insights-group"><small>POR SECTOR</small>'+insightBars(d.sectors)+'</div>'+
+      '<div class="insights-group"><small>POR PAÍS (ISIN)</small>'+insightBars(d.countries,3)+'</div>'+
+    '</div></details>';
+}
+document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-pf-insights]')){try{localStorage.setItem('viewinvai:pf-insights-open',e.target.open?'1':'0')}catch(_){}}},true);
+
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
     return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
@@ -639,7 +685,7 @@ function portfolioContextHtml(selected, positions) {
     const rows = positions.length
       ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
-    return summary + portfolioCashRowHtml(selected) +
+    return summary + portfolioCashRowHtml(selected) + portfolioInsightsHtml(selected) +
       positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
@@ -1231,6 +1277,7 @@ function renderApp() {
   box.innerHTML=portfolioWorkbarHtml(selected)+
     '<div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>';
 
+  box.querySelectorAll("[data-insight-w]").forEach(el=>el.style.setProperty("width",el.dataset.insightW+"%"));
   requestAnimationFrame(()=>{
     updatePortfolioTabOverflow();
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
@@ -3242,8 +3289,26 @@ function portfolioDaySummary(){
   return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};
 }
 
+// Open positions valued in EUR, for the tax view and the risk/dividend card.
+function portfolioPositionsDetail(portfolioId=null){
+  if(!state.user)return[];
+  return state.positions.filter(p=>Number(p.active)!==0&&(portfolioId===null||String(p.portfolio_id)===String(portfolioId))).map(p=>{
+    const stock=stockByKey(p.stock_key)||{};
+    const m=positionSortMetrics(p);
+    const isin=String(Number(p.prefer_tr)===1?(stock.trIsin||p.isin||stock.isin||""):(stock.isin||stock.usIsin||p.isin||"")).toUpperCase();
+    return{
+      id:p.id,portfolioId:p.portfolio_id,stockKey:p.stock_key,ticker:p.ticker||stock.ticker||"",name:stock.name||p.name||"",isin,
+      broker:p.broker||"",preferTr:Number(p.prefer_tr)===1,quantity:num(p.quantity),valueEur:m.value,pnlEur:m.pnlAbs,pnlPct:m.pnlPct,
+      lastBuyAt:p.last_buy_at||p.opened_at||null,sector:stock.sector||"",industry:stock.industry||"",
+      beta:num(stock.beta1Y),dividendYield:num(stock.dividendYield),country:isin.slice(0,2)||""
+    };
+  });
+}
+
 window.ViewInvAIPortfolios = {
   render: renderApp,
+  getPositionsDetail: portfolioPositionsDetail,
+  isSignedIn: () => !!state.user,
   getPortfolios: () => state.portfolios.map(p => ({ id: p.id, name: p.name, broker: p.broker || "", base_currency: p.base_currency })),
   getSelectedPortfolioId: () => state.selectedPortfolioId,
   openModal,

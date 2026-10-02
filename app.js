@@ -68,7 +68,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={today:'00 Mi día',home:'01 Mercados',recommendation:'02 Radar AI',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Catálogo Fondos y ETFs',heatmap:'10 Mapa de calor',settings:'11 Configuración General'};
+const V={today:'00 Mi día',home:'01 Mercados',recommendation:'02 Radar AI',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Catálogo Trade Republic',catalogUS:'08 Catálogo EEUU',funds:'09 Catálogo Fondos y ETFs',heatmap:'10 Mapa de calor',tax:'11 Fiscal (IRPF)',settings:'12 Configuración General'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},
@@ -487,6 +487,7 @@ function renderCurrentView(){
  else if(state.currentView==='alerts'){if(window.AppAlerts)window.AppAlerts.renderSettings()}
  else if(state.currentView==='catalog')renderCatalog();
  else if(state.currentView==='catalogUS')renderCatalogUS();
+ else if(state.currentView==='tax'){if(window.ViewInvAITax)window.ViewInvAITax.render()}
  else if(state.currentView==='settings')syncDeviceSettingsUi();
 }
 function render(){

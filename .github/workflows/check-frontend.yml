@@ -20,6 +20,7 @@ on:
       - "theme-ai.css"
       - "ui-shell.js"
       - "broker-import.js"
+      - "tax.js"
       - "today.js"
       - "scripts/smoke_asset_cards.js"
       - "scripts/test-session-quotes.mjs"
@@ -558,7 +559,7 @@ jobs:
           fi
           rm -rf /tmp/viewinvai-smoke /tmp/viewinvai-smoke-profile
           mkdir -p /tmp/viewinvai-smoke/data /tmp/viewinvai-smoke-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js broker-import.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js broker-import.js tax.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
           cat > /tmp/viewinvai-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"premarketPrice":9.8,"premarketChangePct":3,"premarketVolume":20000,"premarketTime":1790427600,"postmarketPrice":10.2,"postmarketChangePct":4,"postmarketVolume":30000,"postmarketTime":1790451000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin","usLivePrice":10.1,"usLiveChangePct":6,"usLiveReceivedAt":1790445600000,"usLiveTimestamp":1790445600000,"usLiveIsRealTime":true,"usLiveSource":"smoke"}],"events":[]}
           JSON
@@ -665,7 +666,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js broker-import.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js broker-import.js tax.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON

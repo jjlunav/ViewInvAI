@@ -5,7 +5,7 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','catalog','catalogUS','funds','heatmap','settings'];
+const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','tax','catalog','catalogUS','funds','heatmap','settings'];
 const NAV_META={
  today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
@@ -18,18 +18,20 @@ const NAV_META={
  future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
  calendar:{icon:'▣',short:'Calendario',desc:'Noticias y eventos'},
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
+ tax:{icon:'§',short:'Fiscal',desc:'IRPF: plusvalías FIFO, regla de 2 meses y 720'},
  settings:{icon:'⚙',short:'Configuración General',desc:'Preferencias, avisos y dispositivo'}
 };
 // Bottom bar: Inicio · Radar AI · [⌃ Mercados, the centre arrow] · Carteras · Más.
 // Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
 const PRIMARY_MOBILE_VIEWS=['today','recommendation','portfolios'];
-const MORE_VIEWS=['catalog','catalogUS','funds','heatmap','settings'];
+const MORE_VIEWS=['catalog','catalogUS','funds','heatmap','tax','settings'];
 const NAV_GROUPS={
  today:['today'],
  home:['home'],
  recommendation:['recommendation','entry','future'],
  portfolios:['portfolios'],
  catalogs:['catalog','catalogUS','funds','heatmap'],
+ tax:['tax'],
  settings:['settings']
 };
 const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};

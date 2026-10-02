@@ -998,6 +998,7 @@ async function handleMe(request, env, user, json) {
   }, analysis || {}, {
     notifications_enabled: notifications.enabled ? 1 : 0,
     notify_news_events: notifications.newsEvents ? 1 : 0,
+    notify_catalyst_eve: notifications.catalystEve ? 1 : 0,
     notify_radar: notifications.radar ? 1 : 0,
     notify_radar_high: notifications.radarHigh ? 1 : 0,
     notify_radar_opportunity: notifications.radarOpportunity ? 1 : 0,
@@ -1378,6 +1379,177 @@ async function handleBrokerSync(request, env, user, json, parts) {
     return json({ error: "IBKR: " + (flexTag(xml, "ErrorMessage") || "no se pudo obtener el informe") + ".", code }, 502);
   }
   return json({ error: "IBKR sigue generando el informe. Vuelve a intentarlo en un minuto." }, 504);
+}
+
+/* ---------------- Fiscalidad España (IRPF) ----------------
+ * FIFO por valor homogéneo (mismo ISIN en todas las cuentas del usuario), importes en
+ * EUR con el tipo de referencia del BCE del día de cada operación, comisiones dentro
+ * del coste y de la transmisión, y la regla de los dos meses (art. 33.5.f LIRPF) para
+ * pérdidas con recompra de valores homogéneos. Es un cálculo orientativo.
+ */
+let fxSchemaReady=false;
+async function ensureFxSchema(env){
+  if(fxSchemaReady)return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS fx_rates (currency TEXT NOT NULL,date TEXT NOT NULL,rate REAL NOT NULL CHECK(rate>0),PRIMARY KEY(currency,date))").run();
+  fxSchemaReady=true;
+}
+const isoDay=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):""};
+async function loadEcbRates(env,currency,fromDay,toDay){
+  await ensureFxSchema(env);
+  const cached=await env.DB.prepare("SELECT date,rate FROM fx_rates WHERE currency=? AND date>=? AND date<=? ORDER BY date").bind(currency,fromDay,toDay).all();
+  const rows=cached.results||[];
+  const today=isoDay(Date.now());
+  const lastCached=rows.length?rows[rows.length-1].date:"";
+  const span=(Date.parse(toDay)-Date.parse(fromDay))/864e5;
+  // ECB publishes ~250 rates a year; refetch when coverage is clearly incomplete.
+  const complete=rows.length>=Math.max(1,Math.floor(span*0.62))&&(lastCached>=toDay||Date.parse(toDay)-Date.parse(lastCached)<5*864e5||toDay>=today&&Date.parse(today)-Date.parse(lastCached)<4*864e5);
+  if(complete)return rows;
+  const url="https://data-api.ecb.europa.eu/service/data/EXR/D."+encodeURIComponent(currency)+".EUR.SP00.A?startPeriod="+fromDay+"&endPeriod="+toDay+"&format=csvdata";
+  const res=await fetch(url,{headers:{"Accept":"text/csv","User-Agent":"ViewInvAI/1.0 tax-report"}});
+  if(!res.ok)return rows;
+  const lines=(await res.text()).split(/\r?\n/).filter(Boolean);
+  if(lines.length<2)return rows;
+  const head=lines[0].split(","),iDate=head.indexOf("TIME_PERIOD"),iVal=head.indexOf("OBS_VALUE");
+  const fresh=[];
+  for(const line of lines.slice(1)){
+    const cols=line.split(",");const date=cols[iDate],rate=Number(cols[iVal]);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&rate>0)fresh.push({date,rate});
+  }
+  for(let i=0;i<fresh.length;i+=80){
+    await env.DB.batch(fresh.slice(i,i+80).map(r=>env.DB.prepare("INSERT OR REPLACE INTO fx_rates (currency,date,rate) VALUES (?,?,?)").bind(currency,r.date,r.rate)));
+  }
+  return fresh.length?fresh:rows;
+}
+function fxLookup(rows){
+  const sorted=rows.slice().sort((a,b)=>a.date<b.date?-1:1);
+  return day=>{
+    let lo=0,hi=sorted.length-1,hit=null;
+    while(lo<=hi){const mid=(lo+hi)>>1;if(sorted[mid].date<=day){hit=sorted[mid];lo=mid+1}else hi=mid-1}
+    if(hit&&(Date.parse(day)-Date.parse(hit.date))/864e5<=10)return hit;
+    return null;
+  };
+}
+function addMonths(day,months){const d=new Date(day+"T12:00:00Z");d.setUTCMonth(d.getUTCMonth()+months);return d.toISOString().slice(0,10)}
+
+export function computeSpanishTax(rows,fxFor,year){
+  const securities=new Map();
+  const warnings=new Set();
+  const keyOf=row=>String(row.isin||"").trim().toUpperCase()||String(row.stock_key||"").toUpperCase();
+  const ordered=(rows||[]).slice().sort((a,b)=>String(a.executed_at).localeCompare(String(b.executed_at))||(String(a.side)==="BUY"?-1:1));
+  const toEur=(amount,currency,day)=>{
+    currency=String(currency||"EUR").toUpperCase();
+    if(currency==="EUR")return{eur:amount,rate:1};
+    const hit=fxFor(currency,day);
+    if(!hit){warnings.add("Sin tipo BCE para "+currency+" el "+day);return{eur:null,rate:null}}
+    return{eur:amount/hit.rate,rate:hit.rate,rateDate:hit.date};
+  };
+  const sales=[];
+  for(const row of ordered){
+    const qty=Number(row.quantity),price=Number(row.price),fees=Math.max(0,Number(row.fees)||0);
+    if(!(qty>0)||!(price>=0))continue;
+    const key=keyOf(row);if(!key)continue;
+    const day=isoDay(row.executed_at);if(!day)continue;
+    if(!securities.has(key))securities.set(key,{key,ticker:row.ticker,name:row.name,isin:String(row.isin||"").toUpperCase(),lots:[],buys:[]});
+    const sec=securities.get(key);
+    const origin=String(row.origin||"");
+    const side=String(row.side||"").toUpperCase();
+    if(origin==="position-adjustment"){
+      const total=toEur(qty*price,row.currency,day);
+      sec.lots=[{day,qty,costEur:total.eur,broker:row.broker||"",adjusted:true}];
+      warnings.add(sec.ticker+": posición ajustada a mano; el coste fiscal parte de ese ajuste.");
+      continue;
+    }
+    if(side==="BUY"){
+      const gross=toEur(qty*price+fees,row.currency,day);
+      sec.lots.push({day,qty,costEur:gross.eur,broker:row.broker||""});
+      sec.buys.push({day,qty});
+      continue;
+    }
+    if(side!=="SELL")continue;
+    const net=toEur(qty*price-fees,row.currency,day);
+    let remaining=qty,costEur=0,costKnown=net.eur!==null;
+    const used=[];
+    while(remaining>1e-9&&sec.lots.length){
+      const lot=sec.lots[0],take=Math.min(lot.qty,remaining);
+      const part=lot.costEur===null?null:lot.costEur*take/lot.qty;
+      if(part===null)costKnown=false;else costEur+=part;
+      used.push({day:lot.day,qty:take,costEur:part,broker:lot.broker});
+      lot.costEur=lot.costEur===null?null:lot.costEur-(part||0);lot.qty-=take;remaining-=take;
+      if(lot.qty<=1e-9)sec.lots.shift();
+    }
+    if(remaining>1e-9){warnings.add(sec.ticker+": se venden más títulos de los registrados; falta historial de compras.");costKnown=false}
+    sales.push({sec,row,day,qty,proceedsEur:net.eur,costEur:costKnown?costEur:null,used,currency:String(row.currency||"EUR").toUpperCase(),fxRate:net.rate,price,fees});
+  }
+  // Two-month rule: loss with homogeneous securities bought within ±2 months that are
+  // not the ones being sold.
+  const out=[];
+  for(const sale of sales){
+    if(!sale.day.startsWith(String(year)))continue;
+    const gain=sale.proceedsEur!==null&&sale.costEur!==null?sale.proceedsEur-sale.costEur:null;
+    let blockedQty=0;
+    if(gain!==null&&gain<0){
+      const from=addMonths(sale.day,-2),to=addMonths(sale.day,2);
+      const inWindow=d=>d>=from&&d<=to;
+      const bought=sale.sec.buys.filter(b=>inWindow(b.day)).reduce((a,b)=>a+b.qty,0);
+      const soldFromWindow=sale.used.filter(u=>inWindow(u.day)).reduce((a,u)=>a+u.qty,0);
+      blockedQty=Math.max(0,Math.min(sale.qty,bought-soldFromWindow));
+    }
+    const blockedLoss=gain!==null&&gain<0?gain*blockedQty/sale.qty:0;
+    out.push({
+      ticker:sale.sec.ticker,name:sale.sec.name,isin:sale.sec.isin,date:sale.day,quantity:sale.qty,
+      currency:sale.currency,price:sale.price,fees:sale.fees,fxRate:sale.fxRate,
+      proceedsEur:sale.proceedsEur,costEur:sale.costEur,gainEur:gain,
+      blockedLossEur:blockedLoss,blockedQty,computableEur:gain===null?null:gain-blockedLoss,
+      lots:sale.used.map(u=>({date:u.day,quantity:u.qty,costEur:u.costEur,broker:u.broker})),
+      broker:sale.row.broker||""
+    });
+  }
+  out.sort((a,b)=>a.date.localeCompare(b.date));
+  const sum=f=>out.reduce((a,x)=>a+(Number(f(x))||0),0);
+  const totals={
+    proceedsEur:sum(x=>x.proceedsEur),costEur:sum(x=>x.costEur),
+    gainsEur:sum(x=>x.computableEur>0?x.computableEur:0),
+    lossesEur:sum(x=>x.computableEur<0?x.computableEur:0),
+    blockedLossEur:sum(x=>x.blockedLossEur),
+    netEur:sum(x=>x.computableEur),
+    sales:out.length,incomplete:out.filter(x=>x.gainEur===null).length
+  };
+  // Holdings on 31 December (or today for the current year), at cost, by broker.
+  const holdings=[];
+  for(const sec of securities.values()){
+    const qty=sec.lots.reduce((a,l)=>a+l.qty,0);
+    if(qty<=1e-9)continue;
+    const byBroker={};
+    for(const l of sec.lots){const b=l.broker||"Sin bróker";byBroker[b]=byBroker[b]||{qty:0,costEur:0};byBroker[b].qty+=l.qty;byBroker[b].costEur+=l.costEur||0}
+    holdings.push({ticker:sec.ticker,name:sec.name,isin:sec.isin,key:sec.key,quantity:qty,costEur:sec.lots.reduce((a,l)=>a+(l.costEur||0),0),byBroker});
+  }
+  return{year:Number(year),sales:out,totals,holdings,warnings:[...warnings]};
+}
+
+async function handleTaxReport(request,env,user,json,url){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  await ensureTransactionsSchema(env);
+  const nowYear=new Date().getUTCFullYear();
+  const year=Math.max(2000,Math.min(nowYear,Math.round(finiteNumber(url.searchParams.get("year"))||nowYear)));
+  const cutoff=year<nowYear?(year+1)+"-01-01T00:00:00.000Z":new Date(Date.now()+864e5).toISOString();
+  const res=await env.DB.prepare("SELECT ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
+  const rows=res.results||[];
+  const needed=new Map();
+  for(const r of rows){
+    const c=String(r.currency||"EUR").toUpperCase();if(c==="EUR")continue;
+    const d=isoDay(r.executed_at);if(!d)continue;
+    const cur=needed.get(c)||{from:d,to:d};if(d<cur.from)cur.from=d;if(d>cur.to)cur.to=d;needed.set(c,cur);
+  }
+  const lookups={};
+  for(const [currency,range] of needed){
+    if(!/^[A-Z]{3}$/.test(currency))continue;
+    const from=new Date(Date.parse(range.from)-12*864e5).toISOString().slice(0,10);
+    try{lookups[currency]=fxLookup(await loadEcbRates(env,currency,from,range.to))}catch(_){lookups[currency]=()=>null}
+  }
+  const report=computeSpanishTax(rows,(c,d)=>lookups[c]?lookups[c](d):null,year);
+  report.asOf=year<nowYear?year+"-12-31":isoDay(Date.now());
+  report.transactions=rows.length;
+  return json(report);
 }
 
 function txResult(body,status=200){return{status,body}}
@@ -1949,7 +2121,7 @@ function recentEvents(snapshot, stock, limit = 12) {
       type: e.type || e.eventKind || "event",
       title: trimText(e.title || e.fact || "", 240),
       fact: trimText(e.fact || e.title || "", 300),
-      impact: trimText(e.hypothesis || e.impact || e.context || "", 260),
+      impact: trimText(e.hypothesis || e.impact || e.context || (e.type === "earnings" ? "Resultados y guidance pueden cambiar rápidamente las expectativas de valoración y volatilidad." : ""), 260),
       impactScore: finiteNumber(e.impactScore),
       verification: trimText(e.verification || "", 180),
       sourceCount: finiteNumber(e.sourceCount),
@@ -2265,6 +2437,15 @@ async function ensureGlobalNotificationSettingsSchema(env){
       if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
     }
   }
+  // «Catalizadores mañana» (2026-10): on first migration inherits «Noticias y eventos».
+  if(!names.has("catalyst_eve_enabled")){
+    try{
+      await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN catalyst_eve_enabled INTEGER NOT NULL DEFAULT 0").run();
+      await env.DB.prepare("UPDATE user_notification_settings SET catalyst_eve_enabled=news_events_enabled").run();
+    }catch(error){
+      if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
+    }
+  }
   if(addedTierColumns){
     await env.DB.prepare("UPDATE user_notification_settings SET radar_high_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END,radar_opportunity_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END").run();
   }
@@ -2274,7 +2455,7 @@ async function ensureGlobalNotificationSettingsSchema(env){
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
   const radarHigh=optedIn&&Number(row.radar_high_enabled)===1;
@@ -2284,6 +2465,7 @@ async function globalNotificationSettingsForUser(env,userId){
   return {
     enabled: optedIn&&Number(row.notifications_enabled)===1,
     newsEvents: optedIn&&Number(row.news_events_enabled)===1,
+    catalystEve: optedIn&&Number(row.catalyst_eve_enabled)===1,
     radarAi: radar,
     pulseAi: false,
     radar,radarHigh,radarOpportunity,radarWatch,
@@ -2749,6 +2931,7 @@ async function handleSettings(request, env, user, json) {
   },existing||{},{
     notifications_enabled:notifications.enabled?1:0,
     notify_news_events:notifications.newsEvents?1:0,
+    notify_catalyst_eve:notifications.catalystEve?1:0,
     notify_radar:notifications.radar?1:0,
     notify_radar_high:notifications.radarHigh?1:0,
     notify_radar_opportunity:notifications.radarOpportunity?1:0,
@@ -2770,6 +2953,7 @@ async function handleSettings(request, env, user, json) {
     change: Math.max(5, Math.min(60, Math.round(finiteNumber(body.notifyScoreChange) ?? finiteNumber(current.notify_score_change) ?? 20))),
     enabled: body.notificationsEnabled === undefined ? Number(current.notifications_enabled)!==0 : booleanInt(body.notificationsEnabled)===1,
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
+    catalystEve: body.notifyCatalystEve === undefined ? Number(current.notify_catalyst_eve)!==0 : booleanInt(body.notifyCatalystEve)===1,
     radarHigh: body.notifyRadarHigh === undefined ? Number(current.notify_radar_high)!==0 : booleanInt(body.notifyRadarHigh)===1,
     radarOpportunity: body.notifyRadarOpportunity === undefined ? Number(current.notify_radar_opportunity)!==0 : booleanInt(body.notifyRadarOpportunity)===1,
     radarWatch: body.notifyRadarWatch === undefined ? Number(current.notify_radar_watch)!==0 : booleanInt(body.notifyRadarWatch)===1,
@@ -2785,9 +2969,9 @@ async function handleSettings(request, env, user, json) {
       "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET analysis_positions_minutes=excluded.analysis_positions_minutes,analysis_watchlist_minutes=excluded.analysis_watchlist_minutes,min_buy_confidence=excluded.min_buy_confidence,min_sell_confidence=excluded.min_sell_confidence,notify_score_change=excluded.notify_score_change,updated_at=excluded.updated_at"
     ).bind(user.id,next.positions,next.watchlist,next.buy,next.sell,next.change,now,now),
     env.DB.prepare(
-      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,pulse_ai_enabled,radar_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
-      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,pulse_ai_enabled=0,radar_enabled=excluded.radar_enabled,radar_high_enabled=excluded.radar_high_enabled,radar_opportunity_enabled=excluded.radar_opportunity_enabled,radar_watch_enabled=excluded.radar_watch_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
+      "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,pulse_ai_enabled,radar_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,catalyst_eve_enabled=excluded.catalyst_eve_enabled,pulse_ai_enabled=0,radar_enabled=excluded.radar_enabled,radar_high_enabled=excluded.radar_high_enabled,radar_opportunity_enabled=excluded.radar_opportunity_enabled,radar_watch_enabled=excluded.radar_watch_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
+    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.catalystEve?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -2795,6 +2979,7 @@ async function handleSettings(request, env, user, json) {
   return json({settings:Object.assign({},saved||{},{
     notifications_enabled:next.enabled?1:0,
     notify_news_events:next.newsEvents?1:0,
+    notify_catalyst_eve:next.catalystEve?1:0,
     notify_radar:next.radar?1:0,
     notify_radar_high:next.radarHigh?1:0,
     notify_radar_opportunity:next.radarOpportunity?1:0,
@@ -3323,6 +3508,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "positions") return handlePositions(request, env, user, json, parts, url);
     if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
     if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
+    if (root === "tax-report") return handleTaxReport(request, env, user, json, url);
     if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
     if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
     if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);
@@ -3358,6 +3544,61 @@ async function cleanupOldBackendData(env) {
     env.DB.prepare("DELETE FROM alert_events WHERE read_at IS NOT NULL AND created_at<?").bind(alertsCutoff),
     env.DB.prepare("DELETE FROM devices WHERE enabled=0 AND updated_at<?").bind(devicesCutoff)
   ]);
+}
+
+// Recordatorio la víspera: a partir de las 17:00 (Madrid), un aviso por cada
+// catalizador programado para mañana (resultados, FDA, ensayos) de tus posiciones y
+// favoritos. Se respeta el ajuste global «Catalizadores mañana» y el interruptor de
+// noticias de cada valor si lo has apagado expresamente.
+const CATALYST_EVE_TYPES=new Set(["earnings","medical","regulatory","corporate","event"]);
+function madridDay(ms){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Madrid",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(ms));
+}
+function madridHour(ms){
+  return Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Madrid",hour:"2-digit",hour12:false}).format(new Date(ms)))%24;
+}
+async function scanCatalystEve(env,services,positionRows=[],watchRows=[]){
+  const nowMs=Date.now();
+  if(madridHour(nowMs)<17||!services.loadMarketSnapshot)return{processed:0,alerts:0};
+  const tomorrow=madridDay(nowMs+864e5);
+  const snapshot=await services.loadMarketSnapshot(env);
+  const events=(snapshot&&Array.isArray(snapshot.events)?snapshot.events:[]).filter(e=>
+    e&&e.eventKind!=="news"&&CATALYST_EVE_TYPES.has(String(e.type||""))&&e.date&&madridDay(new Date(e.date).getTime())===tomorrow
+  );
+  if(!events.length)return{processed:0,alerts:0};
+  const byTicker=new Map();
+  for(const e of events){const t=String(e.ticker||"").toUpperCase();if(!byTicker.has(t))byTicker.set(t,[]);byTicker.get(t).push(e)}
+  const seen=new Set(),globalByUser=new Map();
+  let processed=0,alerts=0;
+  for(const target of [...(positionRows||[]),...(watchRows||[])]){
+    if(!target||!target.user_id||!target.stock_key)continue;
+    const key=target.user_id+"|"+String(target.stock_key).toUpperCase();
+    if(seen.has(key))continue;seen.add(key);
+    const stock=findStock(snapshot,target);
+    const list=stock&&byTicker.get(String(stock.ticker||"").toUpperCase());
+    if(!list||!list.length)continue;
+    try{
+      let global=globalByUser.get(target.user_id);
+      if(!global){global=await globalNotificationSettingsForUser(env,target.user_id);globalByUser.set(target.user_id,global)}
+      if(!global.enabled||!global.catalystEve)continue;
+      const pref=await notificationPreferenceForTarget(env,target);
+      if(pref&&Number(pref.news_enabled)===0)continue;
+      processed++;
+      const labels=[...new Set(list.map(e=>e.type==="earnings"?"resultados":e.type==="medical"?(String(e.sourceFamily||"")==="clinicaltrials"?"fecha de un ensayo clínico":"evento clínico / FDA"):e.type==="regulatory"?"decisión regulatoria":"evento corporativo"))];
+      const message=tomorrow+" · Mañana: "+labels.join(" y ")+" de "+String(stock.name||target.ticker||"").replace(/\.+$/,"")+". "+trimText(list[0].title||list[0].fact||"",200);
+      const duplicate=await env.DB.prepare("SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='catalyst-eve' AND message=? LIMIT 1").bind(target.user_id,target.stock_key,message).first();
+      if(duplicate)continue;
+      const id=uid("al_"),title="Mañana · "+(target.ticker||stock.ticker),now=nowIso();
+      const severity=list.some(e=>e.type==="earnings"||(finiteNumber(e.impactScore)||0)>=65)?"warning":"info";
+      await env.DB.prepare(
+        "INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,snapshot_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+      ).bind(id,target.user_id,target.stock_key,target.ticker||stock.ticker||"",stock.name||target.name||"","catalyst-eve",severity,title,message,null,now).run();
+      try{await dispatchPushAlert(env,{id,alert_type:"catalyst-eve",severity,title,message},target)}
+      catch(error){console.warn("Catalyst push dispatch failed",String(error&&error.message||error))}
+      alerts++;
+    }catch(error){console.warn("Catalyst eve scan failed",target&&target.subject_id,String(error&&error.message||error))}
+  }
+  return{processed,alerts};
 }
 
 async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[]){
@@ -3783,7 +4024,10 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   let trackedNews={processed:0,alerts:0},preferences={processed:0},portfolioGoals={processed:0,alerts:0};
   try{trackedNews=await scanTrackedNewsAndEvents(env,services,positionRows.results||[],watchRows.results||[])}
   catch(error){console.warn("Tracked news/event sweep failed",String(error&&error.message||error))}
+  let catalystEve={processed:0,alerts:0};
+  try{catalystEve=await scanCatalystEve(env,services,positionRows.results||[],watchRows.results||[])}
+  catch(error){console.warn("Catalyst eve sweep failed",String(error&&error.message||error))}
   try{preferences=await scanNotificationPreferences(env,services)}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
   try{portfolioGoals=await scanPortfolioGoalNotifications(env,services)}catch(error){console.warn("Portfolio goal notification sweep failed",String(error&&error.message||error))}
-  return { processed: results.length, results, trackedNews, preferences, portfolioGoals };
+  return { processed: results.length, results, trackedNews, catalystEve, preferences, portfolioGoals };
 }

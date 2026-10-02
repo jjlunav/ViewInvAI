@@ -1756,6 +1756,22 @@ function isBackendApiPath(pathname) {
     pathname === "/api/devices" || pathname.startsWith("/api/devices/");
 }
 
+const MARKET_WORKFLOW_URL="https://api.github.com/repos/jjlunav/ViewInvAI/actions/workflows/update-market-data.yml/dispatches";
+function shouldDispatchMarketUpdate(ms,everyMinutes=10){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Madrid",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(ms)).map(p=>[p.type,p.value]));
+  const hour=Number(parts.hour)%24,minute=Number(parts.minute),weekday=!["Sat","Sun"].includes(parts.weekday);
+  const step=[5,10,15,20,30,60].includes(everyMinutes)?everyMinutes:10;
+  if(weekday&&hour>=7&&hour<23)return minute%step===2;
+  return minute===2;
+}
+async function dispatchMarketUpdate(env){
+  const res=await fetch(MARKET_WORKFLOW_URL,{method:"POST",headers:{
+    "Authorization":"Bearer "+env.GITHUB_DISPATCH_TOKEN,"Accept":"application/vnd.github+json",
+    "X-GitHub-Api-Version":"2022-11-28","User-Agent":"ViewInvAI-worker","Content-Type":"application/json"
+  },body:JSON.stringify({ref:"main"})});
+  if(!res.ok&&res.status!==204)throw new Error("GitHub dispatch "+res.status);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1849,6 +1865,13 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    // GitHub throttles its own «*/5» schedule to every 3-5 h. When a token is configured
+    // (secret GITHUB_DISPATCH_TOKEN, fine-grained, Actions: read & write on this repo),
+    // the Worker triggers the market-data workflow itself: every MARKET_DISPATCH_MINUTES
+    // (default 10; use 30 if the repo turns private, to stay within Actions minutes) on
+    // weekdays 07:00-23:00 Madrid, hourly otherwise.
+    const dispatchAt=Number(controller&&controller.scheduledTime)||Date.now();
+    if(env.GITHUB_DISPATCH_TOKEN&&shouldDispatchMarketUpdate(dispatchAt,Number(env.MARKET_DISPATCH_MINUTES)||10))ctx.waitUntil(dispatchMarketUpdate(env).catch(error=>console.warn("Market update dispatch failed",String(error&&error.message||error))));
     const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
     const minute=new Date(scheduledAt).getUTCMinutes();
     const tasks=[
