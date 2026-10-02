@@ -1590,6 +1590,13 @@ def main():
 
     attach_previous_snapshot(stocks, previous, now)
 
+    if idx:
+        for probe in ("nvidia", "microsoft", "alphabet", "meta platforms", "broadcom", "advanced micro", "jpmorgan", "jp morgan", "taiwan semiconductor"):
+            hits = [(k, v[:3]) for k, v in idx.items() if k.startswith(probe)][:6]
+            print("TR DIAG", probe, hits)
+        big = sorted(stocks, key=lambda x: -(x.get("marketCap") or 0))[:40]
+        print("TR DIAG unmatched big:", [(x.get("ticker"), norm(x.get("name"))) for x in big if not tr_match(x.get("name"), idx)][:25])
+
     matched = 0
     for s in stocks:
         isin = tr_match(s["name"], idx) if idx else None
