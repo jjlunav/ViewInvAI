@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- ViewInvAI: «V» de gráfico que cae y rebota + punto de la IA. Generado con scripts/apply_android_branding.py (opción svg) -->
+  <defs><linearGradient id="ai" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#14b8a6"/></linearGradient></defs>
+  <rect width="64" height="64" rx="14" fill="#ffffff"/><rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#dde3ee" stroke-width="2"/>
+  <path d="M8.67,21.73 L24.74,52.62 L36.32,33.67 L39,37.25 L45,32.75 L35.68,20.33 L25.26,37.38 L15.33,18.27 Z" fill="#0f1e3a"/>
+  <circle cx="49" cy="21" r="6.2" fill="url(#ai)"/>
+</svg>
