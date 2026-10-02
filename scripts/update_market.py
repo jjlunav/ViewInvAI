@@ -229,6 +229,48 @@ def resolve_ambiguous_tr(stocks, idx, compact, previous, limit=400):
     return resolved, len(pending)
 
 
+def match_tr_by_own_isin(stocks, idx, previous, limit=1500):
+    """Name matching misses listings whose Trade Republic name carries share
+    descriptors («… Registered Shares DL-,01») or abbreviations (AMD, Costco,
+    IBM…). For the largest unmatched stocks, look up the stock's own ISIN
+    (cached across runs) and accept it only when that exact ISIN is in the
+    Trade Republic universe."""
+    universe = {isin for vals in idx.values() for isin, _ in vals}
+    prev_by_symbol = {
+        row.get("tvSymbol"): row for row in previous.get("stocks") or [] if row.get("tvSymbol")
+    }
+    pending = []
+    matched = 0
+    for stock in stocks:
+        if stock.get("trIsin"):
+            continue
+        cached = (prev_by_symbol.get(stock.get("tvSymbol")) or {}).get("usIsin")
+        if cached:
+            stock["usIsin"] = cached
+            if cached in universe:
+                stock["trIsin"] = cached
+                matched += 1
+            continue
+        pending.append(stock)
+    pending.sort(key=lambda s: -(s.get("marketCap") or 0))
+    looked = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_map = {pool.submit(fetch_us_isin, stock): stock for stock in pending[:limit]}
+        for future in as_completed(future_map):
+            stock = future_map[future]
+            looked += 1
+            try:
+                own = future.result()
+            except Exception:
+                own = None
+            if own:
+                stock["usIsin"] = own
+                if own in universe:
+                    stock["trIsin"] = own
+                    matched += 1
+    return matched, looked
+
+
 def tv():
     # Do not restrict to is_primary. US pre-market leaderboards also contain
     # ADRs / secondary US listings, and excluding them drops real movers.
@@ -1709,6 +1751,8 @@ def main():
     if idx:
         ambiguous_resolved, ambiguous_total = resolve_ambiguous_tr(stocks, idx, tr_compact, previous)
         print("TR ambiguous names:", ambiguous_total, "resolved by ISIN:", ambiguous_resolved)
+        own_matched, own_looked = match_tr_by_own_isin(stocks, idx, previous)
+        print("TR matched by own ISIN:", own_matched, "(looked up", own_looked, ")")
     for s in stocks:
         isin = s.get("trIsin")
         s["tradeRepublicCandidate"] = bool(isin)

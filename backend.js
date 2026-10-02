@@ -662,6 +662,12 @@ async function ensureFundSchema(env) {
   ]){
     if(!planColumnNames.has(name))await env.DB.prepare(sql).run();
   }
+  // Broker id of each imported fund operation: re-importing never duplicates.
+  const fundTxColumns=await env.DB.prepare("PRAGMA table_info(fund_transactions)").all();
+  if(!(fundTxColumns.results||[]).some(row=>String(row.name||"")==="external_id")){
+    await env.DB.prepare("ALTER TABLE fund_transactions ADD COLUMN external_id TEXT NOT NULL DEFAULT ''").run();
+  }
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_fund_transactions_external ON fund_transactions(user_id,external_id) WHERE external_id<>''").run();
   fundSchemaReady = true;
 }
 
@@ -1043,6 +1049,10 @@ async function handlePortfolios(request, env, user, json, parts) {
   if (!id) return json({ error: "Portfolio id required" }, 400);
   const existing = await onePortfolio(env, user.id, id);
   if (!existing) return json({ error: "Portfolio not found" }, 404);
+  if (request.method === "POST" && parts[2] === "dedupe") {
+    await ensureTransactionsSchema(env);
+    return json(await retireManualEntries(env, user.id, id));
+  }
 
   if (request.method === "PATCH") {
     const body = await readJson(request);
@@ -1242,6 +1252,58 @@ async function handlePositions(request, env, user, json, parts, url) {
   return json({ error: "Method not allowed" }, 405);
 }
 
+// When a broker history arrives for a value, what the user had typed by hand for that
+// same value in the same portfolio (manual buys, the initial «position seed», manual
+// adjustments) describes the same shares twice. Retire it: delete those transactions,
+// deactivate positions left empty and recalculate the rest.
+async function retireManualEntries(env, userId, portfolioId, refs = null) {
+  const rows = (await env.DB.prepare(
+    "SELECT id,stock_key,isin,position_id,origin FROM transactions WHERE user_id=? AND portfolio_id=?"
+  ).bind(userId, portfolioId).all()).results || [];
+  const imported = new Set();
+  for (const r of rows) if (String(r.origin || "").startsWith("import:")) {
+    imported.add("K:" + String(r.stock_key || "").toUpperCase());
+    if (r.isin) imported.add("I:" + String(r.isin).toUpperCase());
+  }
+  const wanted = refs ? new Set([...refs].map(x => String(x).toUpperCase())) : null;
+  const hit = r => {
+    const k = "K:" + String(r.stock_key || "").toUpperCase(), i = r.isin ? "I:" + String(r.isin).toUpperCase() : "";
+    if (wanted) return wanted.has(k) || (i && wanted.has(i));
+    return imported.has(k) || (i && imported.has(i));
+  };
+  const victims = rows.filter(r => !String(r.origin || "").startsWith("import:") && hit(r));
+  if (!victims.length) return { removed: 0, positions: 0 };
+  for (let i = 0; i < victims.length; i += 50) {
+    await env.DB.batch(victims.slice(i, i + 50).map(v => env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(v.id, userId)));
+  }
+  const touched = new Map();
+  for (const v of victims) touched.set(String(v.position_id || "") + "|" + v.stock_key, v);
+  let positions = 0;
+  const now = nowIso();
+  for (const v of touched.values()) {
+    const left = v.position_id
+      ? await env.DB.prepare("SELECT COUNT(*) AS n FROM transactions WHERE user_id=? AND position_id=?").bind(userId, v.position_id).first()
+      : { n: 1 };
+    if (v.position_id && !(Number(left && left.n) > 0)) {
+      await env.DB.prepare("UPDATE positions SET active=0,quantity=0,updated_at=? WHERE id=? AND user_id=?").bind(now, v.position_id, userId).run();
+      positions++;
+    } else {
+      try { await recalculatePositionFromTransactions(env, userId, portfolioId, v.stock_key, v.position_id || ""); } catch (_) {}
+    }
+  }
+  // Positions created by hand without any transaction row (very old data).
+  const orphan = (await env.DB.prepare(
+    "SELECT p.id,p.stock_key,p.isin FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.user_id=p.user_id AND t.position_id=p.id)"
+  ).bind(userId, portfolioId).all()).results || [];
+  for (const o of orphan) {
+    const covered = imported.has("K:" + String(o.stock_key || "").toUpperCase()) || (o.isin && imported.has("I:" + String(o.isin).toUpperCase()));
+    if (!covered) continue;
+    const has = await env.DB.prepare("SELECT COUNT(*) AS n FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND active=1 AND id<>?").bind(userId, portfolioId, o.stock_key, o.id).first();
+    if (Number(has && has.n) > 0) { await env.DB.prepare("UPDATE positions SET active=0,updated_at=? WHERE id=? AND user_id=?").bind(now, o.id, userId).run(); positions++; }
+  }
+  return { removed: victims.length, positions };
+}
+
 const IMPORT_MAX_ROWS = 80;
 
 // Batch import from a broker export or sync. Rows arrive already matched to the
@@ -1261,8 +1323,16 @@ async function handleTransactionImport(request, env, user, json) {
     const sa = String(a.row && a.row.side).toUpperCase() === "BUY" ? 0 : 1, sb = String(b.row && b.row.side).toUpperCase() === "BUY" ? 0 : 1;
     return sa - sb || a.index - b.index;
   });
-  let imported = 0, skipped = 0;
+  let imported = 0, skipped = 0, retired = { removed: 0, positions: 0 };
   const errors = [];
+  if (body.replaceManual === true && source !== "backup") {
+    const refs = new Set();
+    for (const r of rows) {
+      if (r && r.stockKey) refs.add("K:" + String(r.stockKey).toUpperCase());
+      if (r && r.isin) refs.add("I:" + String(r.isin).toUpperCase());
+    }
+    retired = await retireManualEntries(env, user.id, portfolioId, refs);
+  }
   for (const { row } of ordered) {
     const externalId = trimText(row && row.externalId, 120);
     if (!externalId) { errors.push({ externalId: "", error: "Falta el identificador de la operación" }); continue; }
@@ -1280,10 +1350,10 @@ async function handleTransactionImport(request, env, user, json) {
       else imported++;
     } catch (error) {
       if (/UNIQUE/i.test(String(error && error.message))) skipped++;
-      else errors.push({ externalId, ticker: data.ticker, error: "No se pudo guardar" });
+      else errors.push({ externalId, ticker: data.ticker, error: "No se pudo guardar (" + String(error && error.message || "error").replace(/^D1_ERROR:\s*/i, "").slice(0, 90) + ")" });
     }
   }
-  return json({ imported, skipped, errors });
+  return json({ imported, skipped, errors, retired });
 }
 
 // Interactive Brokers Flex Web Service (official, read-only). The token and query id
@@ -2539,9 +2609,131 @@ async function recalculateFundPosition(env,userId,positionId){
   return {position:await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,userId).first(),ledger};
 }
 
+/* Import fund / ETF / ETC operations from a broker file (Trade Republic CSV): the
+ * fund portfolio of that platform is created if needed, one position per ISIN, and
+ * savings plans are detected from the plan executions (amount, day and frequency). */
+async function fundPortfolioForPlatform(env,userId,platform){
+  const rows=(await env.DB.prepare("SELECT * FROM fund_portfolios WHERE user_id=? ORDER BY sort_order,created_at").bind(userId).all()).results||[];
+  const want=String(platform||"").toLowerCase();
+  const hit=want&&rows.find(r=>String(r.platform||"").toLowerCase()===want||String(r.name||"").toLowerCase().includes(want));
+  if(hit)return hit;
+  if(!want&&rows.length)return rows[0];
+  const id=uid("fpf_"),now=nowIso();
+  await env.DB.prepare("INSERT INTO fund_portfolios (id,user_id,name,platform,base_currency,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)")
+    .bind(id,userId,(platform?platform+" · ":"")+"Fondos y ETFs",trimText(platform,80),"EUR",rows.length,now,now).run();
+  return await env.DB.prepare("SELECT * FROM fund_portfolios WHERE id=?").bind(id).first();
+}
+export function detectSavingsPlans(rows,nowMs=Date.now()){
+  const byIsin=new Map();
+  for(const r of rows||[]){
+    const isin=String(r.isin||"").toUpperCase(),t=Date.parse(r.executedAt);
+    const amount=(Number(r.units)||0)*(Number(r.price)||0)+(Number(r.fees)||0);
+    if(!isin||!Number.isFinite(t)||!(amount>0))continue;
+    if(String(r.side||"BUY").toUpperCase()!=="BUY")continue;
+    if(!byIsin.has(isin))byIsin.set(isin,[]);
+    byIsin.get(isin).push({t,amount,currency:String(r.currency||"EUR").toUpperCase(),plan:r.plan===true});
+  }
+  const out=[];
+  const median=a=>{const b=a.slice().sort((x,y)=>x-y);const m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2};
+  for(const [isin,all] of byIsin){
+    all.sort((a,b)=>a.t-b.t);
+    // Rows the broker marks as plan executions; otherwise infer the plan from regular
+    // buys: at least 3, evenly spaced (6-100 days) and of an almost fixed amount.
+    const flagged=all.filter(x=>x.plan);
+    let list=flagged.length>=2?flagged:null;
+    if(!list){
+      const recent=all.slice(-6);
+      if(recent.length<3)continue;
+      const g=[];for(let i=1;i<recent.length;i++)g.push((recent[i].t-recent[i-1].t)/864e5);
+      const mg=median(g),ma=median(recent.map(x=>x.amount));
+      if(!(mg>=6&&mg<=100))continue;
+      if(g.some(x=>Math.abs(x-mg)>mg*.45))continue;
+      if(recent.some(x=>Math.abs(x.amount-ma)>ma*.15))continue;
+      list=recent;
+    }
+    const last=list[list.length-1];
+    if(nowMs-last.t>62*864e5)continue; // stopped plans are not recreated
+    const recent=list.slice(-4);
+    const gaps=[];for(let i=1;i<recent.length;i++)gaps.push((recent[i].t-recent[i-1].t)/864e5);
+    const gap=median(gaps);
+    const frequency=gap<10?"weekly":gap>70&&gap<120?"quarterly":"monthly";
+    const days=recent.map(x=>new Date(x.t).getUTCDate());
+    const day=days.sort((a,b)=>days.filter(v=>v===b).length-days.filter(v=>v===a).length)[0];
+    out.push({isin,amount:Math.round(median(recent.map(x=>x.amount))*100)/100,currency:last.currency,frequency,dayOfMonth:day,count:list.length,lastAt:new Date(last.t).toISOString()});
+  }
+  return out;
+}
+async function handleFundTransactionImport(request,env,user,json){
+  const body=await readJson(request);
+  const rows=Array.isArray(body.rows)?body.rows.slice(0,IMPORT_MAX_ROWS):[];
+  const source=["tr","ibkr","csv","backup"].includes(String(body.source||""))?String(body.source):"csv";
+  const platform=trimText(body.platform,80);
+  const portfolio=body.fundPortfolioId
+    ? await oneFundPortfolio(env,user.id,trimText(body.fundPortfolioId,80))
+    : await fundPortfolioForPlatform(env,user.id,platform);
+  if(!portfolio)return json({error:"Fund portfolio not found"},404);
+  let imported=0,skipped=0,plans=0;const errors=[],touched=new Set(),retiredFor=new Set();
+  const ordered=rows.slice().sort((a,b)=>(Date.parse(a&&a.executedAt)||0)-(Date.parse(b&&b.executedAt)||0)||(String(a&&a.side).toUpperCase()==="BUY"?-1:1));
+  const positionFor=async r=>{
+    const isin=trimText(r.isin,12).toUpperCase();
+    let pos=await env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND fund_portfolio_id=? AND isin=?").bind(user.id,portfolio.id,isin).first();
+    if(!pos){
+      const id=uid("fpos_"),now=nowIso(),type=["fund","etf","etp"].includes(String(r.productType))?String(r.productType):"fund";
+      await env.DB.prepare("INSERT INTO fund_positions (id,fund_portfolio_id,user_id,isin,name,product_type,provider,index_name,platform,units,avg_price,currency,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,0,NULL,?,?,?,1,?,?)")
+        .bind(id,portfolio.id,user.id,isin,trimText(r.name,160),type,trimText(r.provider,80),trimText(r.indexName,120),platform,String(r.currency||"EUR").toUpperCase(),null,"Importado de "+(platform||"tu bróker"),now,now).run();
+      pos=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=?").bind(id).first();
+    }
+    return pos;
+  };
+  for(const r of ordered){
+    const externalId=trimText(r&&r.externalId,120);
+    const isin=trimText(r&&r.isin,12).toUpperCase();
+    const side=String(r&&r.side||"").toUpperCase(),units=finiteNumber(r&&r.units),price=finiteNumber(r&&r.price),fees=Math.max(0,finiteNumber(r&&r.fees)||0);
+    const when=new Date(String(r&&r.executedAt||""));
+    if(!externalId||!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin)||!["BUY","SELL"].includes(side)||!(units>0)||price===null||price<0||!Number.isFinite(when.getTime())){
+      errors.push({ticker:isin||externalId,error:"Operación de fondo incompleta"});continue;
+    }
+    if(await env.DB.prepare("SELECT id FROM fund_transactions WHERE user_id=? AND external_id=?").bind(user.id,externalId).first()){skipped++;continue}
+    try{
+      const pos=await positionFor(r);
+      if(body.replaceManual===true&&!retiredFor.has(pos.id)){
+        retiredFor.add(pos.id);
+        await env.DB.prepare("DELETE FROM fund_transactions WHERE user_id=? AND fund_position_id=? AND external_id=''").bind(user.id,pos.id).run();
+      }
+      const now=nowIso();
+      await env.DB.prepare("INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,external_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(uid("ftx_"),portfolio.id,pos.id,user.id,isin,side,units,price,fees,String(r.currency||"EUR").toUpperCase(),when.toISOString(),r.plan?"Plan de ahorro":"Importado",externalId,now,now).run();
+      touched.add(pos.id);imported++;
+    }catch(error){
+      if(/UNIQUE/i.test(String(error&&error.message)))skipped++;
+      else errors.push({ticker:isin,error:"No se pudo guardar: "+String(error&&error.message||"").slice(0,90)});
+    }
+  }
+  for(const id of touched){try{await recalculateFundPosition(env,user.id,id)}catch(_){}}
+  if(body.detectPlans===true&&Array.isArray(body.allRows)){
+    for(const plan of detectSavingsPlans(body.allRows)){
+      const pos=await env.DB.prepare("SELECT * FROM fund_positions WHERE user_id=? AND fund_portfolio_id=? AND isin=?").bind(user.id,portfolio.id,plan.isin).first();
+      if(!pos)continue;
+      const existing=await env.DB.prepare("SELECT id,notes FROM fund_contribution_plans WHERE user_id=? AND fund_position_id=?").bind(user.id,pos.id).first();
+      const next=contributionNextDate(null,plan.dayOfMonth,plan.frequency);
+      const now=nowIso();
+      if(existing){
+        if(String(existing.notes||"").startsWith("Detectado"))await env.DB.prepare("UPDATE fund_contribution_plans SET amount=?,currency=?,day_of_month=?,frequency=?,next_contribution_at=?,status='active',enabled=1,updated_at=? WHERE id=?")
+          .bind(plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,next,now,existing.id).run();
+        continue;
+      }
+      await env.DB.prepare("INSERT INTO fund_contribution_plans (id,fund_portfolio_id,fund_position_id,user_id,isin,label,kind,amount,currency,day_of_month,frequency,start_date,status,next_contribution_at,enabled,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(uid("fplan_"),portfolio.id,pos.id,user.id,plan.isin,"Plan "+(platform||"")+" · "+String(pos.name||plan.isin).slice(0,80),"monthly",plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,plan.lastAt.slice(0,10),"active",next,1,"Detectado en la importación ("+plan.count+" ejecuciones)",now,now).run();
+      plans++;
+    }
+  }
+  return json({imported,skipped,plans,errors:errors.slice(0,20),fundPortfolioId:portfolio.id});
+}
+
 async function handleFundTransactions(request,env,user,json,parts,url){
   await ensureFundSchema(env);
   const id=parts[1]||"";
+  if(request.method==="POST"&&id==="import")return handleFundTransactionImport(request,env,user,json);
   if(request.method==="GET"&&!id){
     const positionId=trimText(url.searchParams.get("positionId"),80);
     const portfolioId=trimText(url.searchParams.get("portfolioId"),80);

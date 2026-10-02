@@ -972,3 +972,12 @@ html[data-theme="light"] .fav-list-item{background:#f7f9fd}
 .backup-actions>*{flex:1 1 140px}
 .backup-status{margin:6px 0 0;font-size:12.5px;line-height:1.45;color:var(--muted,#8ea0bf)}
 .backup-status.error{color:var(--negative,#ff6b6b)}
+
+/* ----- Carteras · aviso de valores duplicados ----- */
+.portfolio-dup-banner{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin:8px 0;padding:11px 13px;border-radius:14px;border:1px solid rgba(227,184,77,.4);background:rgba(227,184,77,.09)}
+html[data-theme="light"] .portfolio-dup-banner{background:#fff8e8;border-color:#f0d9a3}
+.portfolio-dup-banner>div{display:grid;gap:3px;min-width:0}
+.portfolio-dup-banner strong{font-size:14px;color:#e3b84d}
+html[data-theme="light"] .portfolio-dup-banner strong{color:#8a5a12}
+.portfolio-dup-banner span{font-size:12.5px;line-height:1.4;color:var(--muted,#8ea0bf)}
+@media(max-width:520px){.portfolio-dup-banner{grid-template-columns:1fr}}
