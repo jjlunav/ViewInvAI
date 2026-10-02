@@ -495,6 +495,42 @@ async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", r
   }
 }
 
+// Daily closes for the portfolio performance curve. Trade Republic (LSX, EUR) when the
+// instrument has an ISIN; Nasdaq historical (USD) as the fallback for US tickers.
+async function fetchNasdaqHistorical(symbol, fromDay) {
+  const safe = safeStockSymbol(symbol);
+  if (!safe) return null;
+  for (const assetClass of ["stocks", "etf"]) {
+    const url = "https://api.nasdaq.com/api/quote/" + encodeURIComponent(safe) + "/historical?assetclass=" + assetClass +
+      "&fromdate=" + encodeURIComponent(fromDay) + "&todate=" + new Date().toISOString().slice(0, 10) + "&limit=9999";
+    const response = await fetch(url, { headers: NASDAQ_HEADERS, cf: { cacheTtl: 0, cacheEverything: false } });
+    if (!response.ok) continue;
+    const json = await response.json().catch(() => null);
+    const rows = json && json.data && json.data.tradesTable && Array.isArray(json.data.tradesTable.rows) ? json.data.tradesTable.rows : [];
+    const out = [];
+    for (const row of rows) {
+      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(row && row.date || "").trim());
+      const close = parseMarketNumber(row && row.close);
+      if (m && close != null && close > 0) out.push({ date: m[3] + "-" + m[1] + "-" + m[2], close });
+    }
+    if (out.length) return { currency: "USD", source: "nasdaq", rows: out.sort((a, b) => a.date < b.date ? -1 : 1) };
+  }
+  return null;
+}
+async function loadDailyHistoryForBackend(inst, range, fromDay) {
+  if (inst && inst.isin) {
+    try {
+      const tr = await fetchTradeRepublicHistory(inst.isin, "LSX", range, 86400000);
+      const rows = (tr && tr.points || []).map(p => ({ date: new Date(p.time).toISOString().slice(0, 10), close: p.close })).filter(r => r.close > 0);
+      if (rows.length) return { currency: "EUR", source: "tr", rows };
+    } catch (error) {
+      console.warn("TR daily history unavailable", inst.isin, String(error && error.message || error));
+    }
+  }
+  if (inst && inst.ticker && !inst.benchmark) return fetchNasdaqHistorical(inst.ticker, fromDay);
+  return null;
+}
+
 async function nasdaqChart(request) {
   const url = new URL(request.url);
   const symbol = safeStockSymbol(url.searchParams.get("symbol"));
@@ -1837,7 +1873,7 @@ const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "watchlist",
   "analysis", "ai", "alerts", "notification-preferences", "portfolio-goal",
-  "portfolio-goal-history", "settings", "ui-preferences", "devices"
+  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
 ]);
 function isBackendApiPath(pathname) {
   if (pathname === "/api/backend/status") return true;
@@ -1903,7 +1939,8 @@ export default {
         loadChart: loadChartForBackend,
         loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
-        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
+        loadDailyHistory: loadDailyHistoryForBackend
       }));
     }
     if (url.pathname === "/api/attention-ranking") {

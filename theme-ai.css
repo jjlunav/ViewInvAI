@@ -760,3 +760,48 @@ html:root:root body #view-recommendation .radar-tier-filter{display:grid!importa
 html:root:root body #view-recommendation .radar-tier-chip{height:auto!important;min-height:46px;padding:6px 4px!important;display:grid!important;grid-template-columns:auto auto;justify-content:center;align-content:center;gap:2px 5px!important;border-radius:12px;font-size:11.5px!important;text-align:center}
 html:root:root body #view-recommendation .radar-tier-chip i{grid-row:1;align-self:center}
 html:root:root body #view-recommendation .radar-tier-chip b{grid-column:1 / -1;font-size:15px!important;opacity:1;line-height:1}
+
+/* ----- Carteras · Rentabilidad (curva TWR frente a índices) ----- */
+.portfolio-perf .insights-chips b.positive{color:var(--positive,#2fd39a);border-color:rgba(47,211,154,.35)}
+.portfolio-perf .insights-chips b.negative{color:var(--negative,#ff6b6b);border-color:rgba(255,107,107,.35)}
+html[data-theme="light"] .portfolio-perf .insights-chips b.positive{color:#0f7a55}
+html[data-theme="light"] .portfolio-perf .insights-chips b.negative{color:#c0392b}
+html:root:root body .portfolio-perf .perf-ranges{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:0}
+html:root:root body .portfolio-perf .perf-ranges .tab{min-width:0;padding:6px 0;font-size:12px;text-align:center}
+.perf-chart{display:block;width:100%;height:132px;overflow:visible}
+.perf-chart path{fill:none;stroke-width:1.6;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.perf-chart .perf-line-pf{stroke:#7c6cff;stroke-width:2.4}
+.perf-chart .perf-line-msci{stroke:#2fb4d8}
+.perf-chart .perf-line-sp{stroke:#e3b84d;stroke-dasharray:4 3}
+.perf-chart .perf-zero{stroke:rgba(140,170,210,.35);stroke-width:1;stroke-dasharray:2 3;vector-effect:non-scaling-stroke}
+html[data-theme="light"] .perf-chart .perf-line-pf{stroke:#4f46e5}
+html[data-theme="light"] .perf-chart .perf-line-msci{stroke:#0e8fb3}
+html[data-theme="light"] .perf-chart .perf-line-sp{stroke:#b7791f}
+html[data-theme="light"] .perf-chart .perf-zero{stroke:#c7d0de}
+.perf-axis{display:flex;justify-content:space-between;gap:8px;margin-top:-6px;font-size:11px;color:var(--muted,#8ea0bf);font-variant-numeric:tabular-nums}
+.perf-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;font-weight:700}
+.perf-legend span{display:inline-flex;align-items:center;gap:6px}
+.perf-legend span::before{content:"";width:14px;height:3px;border-radius:2px;background:currentColor}
+.perf-legend .pf{color:#9d8cff}.perf-legend .msci{color:#2fb4d8}.perf-legend .sp{color:#e3b84d}
+html[data-theme="light"] .perf-legend .pf{color:#4f46e5}
+html[data-theme="light"] .perf-legend .msci{color:#0e8fb3}
+html[data-theme="light"] .perf-legend .sp{color:#b7791f}
+.perf-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.perf-stat{display:grid;gap:2px;align-content:start;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.03);min-width:0}
+html[data-theme="light"] .perf-stat{background:#f7f9fd}
+.perf-stat small{font-size:10px;letter-spacing:.08em;font-weight:800;color:#9d8cff;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-theme="light"] .perf-stat small{color:#4f46e5}
+.perf-stat b{font-size:15px;font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.perf-stat b.positive{color:var(--positive,#2fd39a)}
+.perf-stat b.negative{color:var(--negative,#ff6b6b)}
+html[data-theme="light"] .perf-stat b.positive{color:#0f7a55}
+html[data-theme="light"] .perf-stat b.negative{color:#c0392b}
+.perf-stat span{font-size:11px;line-height:1.3;color:var(--muted,#8ea0bf)}
+.perf-note{margin:0;font-size:12px;line-height:1.45;color:var(--muted,#8ea0bf)}
+.perf-retry{border:0;background:none;padding:0;color:#9d8cff;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer}
+html[data-theme="light"] .perf-retry{color:#4f46e5}
+@media (max-width:380px){.perf-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.perf-chart-wrap{position:relative}
+.perf-y{position:absolute;left:0;z-index:1;padding:1px 5px;border-radius:6px;font-size:11px;font-weight:700;color:var(--muted,#8ea0bf);background:rgba(12,28,42,.7);font-variant-numeric:tabular-nums;pointer-events:none}
+.perf-y.top{top:0}.perf-y.bottom{bottom:4px}
+html[data-theme="light"] .perf-y{background:rgba(255,255,255,.85)}

@@ -294,7 +294,7 @@ jobs:
 
           # Regresiones críticas de móvil/tablet y veracidad de cotizaciones.
           worker = Path("worker.js").read_text(encoding="utf-8")
-          if 'pathname === "/api/portfolio-goal"' not in worker:
+          if '"portfolio-goal"' not in worker.split("const BACKEND_API_ROOTS", 1)[-1].split("]);", 1)[0]:
               raise SystemExit("Worker no enruta /api/portfolio-goal al backend")
 
           if "function verifiedDisplayQuote" not in market:
