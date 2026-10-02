@@ -29,7 +29,8 @@
   <link rel="stylesheet" href="mobile-app.css?v=20261002c1">
   <link rel="stylesheet" href="ui-density.css?v=20261002u1">
   <link rel="stylesheet" href="asset-card.css?v=20261002c1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261002f8">
+  <link rel="stylesheet" href="theme-ai.css?v=20261002f9">
+  <script src="security.js?v=20261002f9"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -508,6 +509,25 @@
           <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
         </article>
 
+        <article class="settings-card" id="appLockSettingsCard" hidden>
+          <div class="settings-card-head">
+            <div>
+              <span class="settings-kicker">SEGURIDAD</span>
+              <h2>Bloqueo con huella o cara</h2>
+              <p>Pide tu huella, tu cara o el PIN del móvil al abrir ViewInvAI y al volver a ella tras más de 30 segundos fuera. Mientras está en segundo plano, el contenido queda oculto.</p>
+            </div>
+            <label class="settings-switch" aria-label="Bloqueo con huella o cara">
+              <input id="appLockEnabled" type="checkbox">
+              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
+          <div class="settings-status-row">
+            <span>Estado</span>
+            <strong id="appLockStatus" class="settings-status">Desactivado</strong>
+          </div>
+          <p class="settings-note">El token de Interactive Brokers que decidas recordar se guarda cifrado en el almacén seguro de Android, nunca en texto plano.</p>
+        </article>
+
         <article class="settings-card notification-master-card compact-settings-card">
           <div class="settings-card-head">
             <div>
@@ -687,7 +707,7 @@
 <script src="stock-list.js?v=20261002y1"></script>
 <script src="recommendation.js?v=20261002y1"></script>
 <script src="today.js?v=20261002u1"></script>
-<script src="help.js?v=20261002f8"></script>
+<script src="help.js?v=20261002f9"></script>
 <script src="stock-profile.js?v=20261002y1"></script>
 <script src="catalog.js?v=20261002y1"></script>
 <script src="heatmap.js?v=20260930r5"></script>
@@ -698,7 +718,7 @@
 <script src="ui-shell.js?v=20261002r1"></script>
 <script src="onboarding.js?v=20261002y1"></script>
 <script src="tasks.js?v=20261002x1"></script>
-<script src="broker-import.js?v=20261002x1"></script>
+<script src="broker-import.js?v=20261002f9"></script>
 <script src="tax.js?v=20261002t1"></script>
 <script src="inbox.js?v=20261002u1"></script>
 <script src="favlists.js?v=20261002v1"></script>

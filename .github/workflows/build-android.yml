@@ -88,6 +88,7 @@ jobs:
           test -s mobile-shell/tax.js
           test -s mobile-shell/search.js
           test -s mobile-shell/tasks.js
+          test -s mobile-shell/security.js
           test -s mobile-shell/onboarding.js
           test -s mobile-shell/inbox.js
           test -s mobile-shell/favlists.js

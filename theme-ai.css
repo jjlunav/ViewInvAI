@@ -1115,3 +1115,12 @@ html[data-theme="light"] .fund-dca-inputs input{background:#fff;border-color:#dd
 html[data-theme="light"] .fund-dca-chart .dca-area{fill:rgba(79,70,229,.1)}
 html[data-theme="light"] .fund-dca-chart .dca-v{stroke:#4f46e5}
 @media (max-width:420px){.fund-dca-stats b{font-size:13px}}
+
+/* F9 Bloqueo de la app (APK): tapa el contenido hasta verificar huella/cara */
+html.app-locked body>*:not(#appLock){visibility:hidden!important}
+#appLock{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:24px;background:radial-gradient(120% 80% at 50% 0%,#1a1440 0%,#0b1220 60%,#070b14 100%)}
+html[data-theme="light"] #appLock{background:linear-gradient(180deg,#eef0ff,#f7f9fd)}
+.app-lock-card{display:grid;justify-items:center;gap:12px;max-width:320px;text-align:center}
+.app-lock-card strong{font-size:20px;font-weight:800}
+.app-lock-card span{font-size:14px;color:var(--muted,#8ea0bf);line-height:1.45}
+html:root:root body #appLock .app-lock-card .btn{min-width:200px;min-height:48px;font-size:16px!important;font-weight:750;border-radius:14px!important;background:linear-gradient(135deg,#6d5dfc,#4f46e5)!important;color:#fff!important;border:0!important}
