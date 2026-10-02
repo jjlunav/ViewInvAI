@@ -698,6 +698,11 @@
   return{units,avg,price,source,at,value,invested,pnl,pnlPct:pnl!==null&&invested>0?pnl/invested*100:null};
  }
  function shortDate(v){const d=new Date(v);return Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES',{day:'numeric',month:'short'}):''}
+ function benefitBreakdown(position){
+  const rows=(account.benefits||[]).filter(b=>b.isin===position.isin&&String(b.fund_portfolio_id)===String(position.fund_portfolio_id));
+  if(!rows.length)return'';
+  return '<div class="asset-card-metrics">'+rows.map(b=>'<span>'+(b.kind==='Saveback'?'Saveback':'Redondeo')+' <b>'+amount(b.total)+'</b> ('+esc(String(num(b.units)!==null?num(b.units).toLocaleString('es-ES',{maximumFractionDigits:4}):'—'))+' part.)</span>').join('')+'</div>';
+ }
  function fundPositionCard(position){
   const p=productForPosition(position),v=positionValuation(position,p),cur=position.currency||p.currency;
   const kind=p.type==='etf'?'ETF':p.type==='etp'?'ETP / ETC':'Fondo';
@@ -708,22 +713,41 @@
    subtitle:kind+' · '+(position.platform||'—'),
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
    cells:[{label:'Valor actual',value:'',html:valueHtml},{label:'P&L',value:v.pnl===null?'—':amount(v.pnl,cur)+(v.pnlPct===null?'':' · '+pct(v.pnlPct)),tone:v.pnl===null?'muted':v.pnl>=0?'positive':'negative'}],
-   detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(v.units===null?'—':v.units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Precio medio <b>'+money(v.avg,cur)+'</b></span>'+(v.price!==null?'<span>'+(v.source==='last'?'Último precio ('+esc(shortDate(v.at))+')':'Precio actual')+' <b>'+money(v.price,cur)+'</b></span>':'')+'</div>'+(v.source==='last'?'<p class="fund-note">Este fondo no tiene valor liquidativo en el catálogo: se valora con el precio de tu última operación importada.</p>':'')+compactFacts(p)+perfStrip(p),
+   detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(v.units===null?'—':v.units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Precio medio <b>'+money(v.avg,cur)+'</b></span>'+(v.price!==null?'<span>'+(v.source==='last'?'Último precio ('+esc(shortDate(v.at))+')':'Precio actual')+' <b>'+money(v.price,cur)+'</b></span>':'')+'</div>'+benefitBreakdown(position)+(v.source==='last'?'<p class="fund-note">Este fondo no tiene valor liquidativo en el catálogo: se valora con el precio de tu última operación importada.</p>':'')+compactFacts(p)+perfStrip(p),
    actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
   });
  }
 
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
+ // Saveback / Redondeo de los últimos 90 días en esta cartera, como aportación mensual media.
+ // Saveback y Redondeo: suma de lo aportado a cada fondo (no son importes fijos). «monthly» solo
+ // alimenta el simulador: lo aportado este año entre los meses transcurridos.
+ function fundBenefits(portfolioId){
+  const months=Math.max(1,new Date().getMonth()+new Date().getDate()/31);
+  return (account.benefits||[]).filter(b=>String(b.fund_portfolio_id)===String(portfolioId)).map(b=>({...b,monthly:(num(b.year_total)||0)/months}));
+ }
+ function benefitValueNow(b){
+  const prod=b.isin?state.products.find(x=>x.isin===b.isin):null;
+  const pos=account.positions.find(p=>p.isin===b.isin&&String(p.fund_portfolio_id)===String(b.fund_portfolio_id));
+  const price=prod?fundCurrentValue(prod):null,fallback=pos?num(pos.last_price):null,u=num(b.units);
+  const px=price??fallback;return u!==null&&px!==null?u*px:null;
+ }
  function planSummaryHtml(portfolioId){
-  const plans=fundPlans(portfolioId);if(!plans.length)return'';
+  const plans=fundPlans(portfolioId),benefits=fundBenefits(portfolioId);if(!plans.length&&!benefits.length)return'';
   const freqLabel={weekly:'/sem',monthly:'/mes',quarterly:'/trim',annual:'/año',manual:''};
   const total=plans.filter(p=>String(p.status||'active')!=='paused'&&p.frequency==='monthly').reduce((a,p)=>a+(num(p.amount)||0),0);
-  return '<section class="fund-plan-list" aria-label="Planes de aportación"><header><small>PLANES DE APORTACIÓN</small>'+(total?'<b>'+amount(total)+'/mes</b>':'')+'</header>'+plans.slice(0,6).map(p=>{
+  return '<section class="fund-plan-list" aria-label="Planes de aportación"><header><small>'+(plans.length?'PLANES DE APORTACIÓN':'APORTACIONES')+'</small>'+(total?'<b>'+amount(total)+'/mes</b>':'')+'</header>'+plans.slice(0,6).map(p=>{
    const prod=p.isin?state.products.find(x=>x.isin===p.isin):null;
    const name=prod&&prod.name||String(p.label||p.isin||'Aportación').replace(/^Plan [^·]+·\s*/,'');
    const paused=String(p.status||'active')==='paused';
    return '<div class="fund-plan-row'+(paused?' paused':'')+'"><span>'+esc(name)+'</span><b>'+(num(p.amount)===null?'variable':amount(p.amount,p.currency||'EUR')+esc(freqLabel[p.frequency]??''))+'</b><small>'+(paused?'En pausa':p.next_contribution_at?'Próx. '+esc(shortDate(p.next_contribution_at)):'')+'</small></div>';
-  }).join('')+'</section>';
+  }).join('')+(benefits.length?'<div class="fund-benefits"><small>SAVEBACK Y REDONDEO</small>'+benefits.map(b=>{
+   const prod=b.isin?state.products.find(x=>x.isin===b.isin):null,save=b.kind==='Saveback';
+   const now=benefitValueNow(b),n=num(b.n)||0;
+   return '<div class="fund-benefit-row"><div><span><em class="fund-benefit-tag'+(save?'':' roundup')+'">'+(save?'Saveback':'Redondeo')+'</em> '+esc(prod&&prod.name||b.name||b.isin)+'</span>'+
+    '<small>'+n+(n===1?' compra':' compras')+(num(b.year_total)?' · este año '+amount(b.year_total):'')+(b.first_at?' · desde '+esc(new Date(b.first_at).toLocaleDateString('es-ES',{month:'short',year:'numeric'})):'')+'</small></div>'+
+    '<div class="fund-benefit-sum"><b>'+amount(b.total)+'</b>'+(now!==null?'<small>hoy '+amount(now)+'</small>':'')+'</div></div>';
+  }).join('')+'<p class="fund-note">Saveback es un premio de Trade Republic (1 % de tus pagos con tarjeta) y el Redondeo sale de tu saldo. Se suman tal cual se invirtieron; el total depende del periodo que cubra el CSV importado.</p></div>':'')+'</section>';
  }
  // ----- Costes, solapamiento y simulador de aportaciones (cartera de fondos) -----
  // Index family from the tracked index (TradingView) or the name.
@@ -757,6 +781,8 @@
   let best=null;
   for(const c of state.products){
    if(c.isin===p.isin||normIndex(c.index)!==key)continue;
+   // Un fondo de inversión solo se compara con fondos: entre ellos el traspaso no tributa; pasar a un ETF exige vender.
+   if(p.type==='fund'&&c.type!=='fund')continue;
    const t=num(c.ter);if(t===null||t>ter-0.04)continue;
    if(/hedged/i.test(c.name||'')!==hedged)continue;
    if(p.distribution&&c.distribution&&p.distribution!==c.distribution)continue;
@@ -781,7 +807,7 @@
   pairs.sort((x,y)=>y.o-x.o);
   // Simulator defaults: active plans per month, weighted 3-year return net of fees.
   const plans=fundPlans(portfolioId).filter(p=>String(p.status||'active')!=='paused'&&p.frequency!=='manual'&&num(p.amount)>0);
-  const perMonth=plans.reduce((a,p)=>a+num(p.amount)*(p.frequency==='weekly'?52/12:p.frequency==='quarterly'?1/3:p.frequency==='annual'?1/12:1),0);
+  const perMonth=plans.reduce((a,p)=>a+num(p.amount)*(p.frequency==='weekly'?52/12:p.frequency==='quarterly'?1/3:p.frequency==='annual'?1/12:1),0)+fundBenefits(portfolioId).reduce((a,b)=>a+b.monthly,0);
   let ret=null;{let w=0,acc=0;items.forEach(x=>{const p3=num(x.p.perf3Y);if(p3!==null&&p3>-90){acc+=x.value*(Math.pow(1+p3/100,1/3)-1);w+=x.value}});if(w>0)ret=acc/w*100}
   const prefs=dcaPrefs();
   const monthly=num(prefs.monthly)??Math.round(perMonth||100),years=num(prefs.years)??20,expected=num(prefs.ret)??Math.max(2,Math.min(8,ret===null?7:Math.round(ret*10)/10));
@@ -794,7 +820,7 @@
    '<div class="insights-body">'+
     '<div class="insights-scenario"><small>COSTES</small><strong>'+(ter===null?'Sin TER conocido':'Pagas ≈ '+eur(yearly,yearly<100?2:0)+' al año')+'</strong><b>'+(ter===null?'—':ter.toLocaleString('es-ES',{maximumFractionDigits:2})+' %')+'</b>'+
      '<span>TER medio ponderado por valor'+(known.length<items.length?' ('+(items.length-known.length)+' sin dato)':'')+'. En 20 años, cada 0,1 % de comisión cuesta ≈ 2 % del capital final.</span></div>'+
-    (twins.length?'<div class="insights-group"><small>MISMO ÍNDICE, MÁS BARATO</small>'+twins.map(t=>'<div class="fund-twin" data-fund-detail="'+esc(t.c.isin)+'" role="button" tabindex="0"><div><b>'+esc(t.x.p.name)+'</b><span>'+terText(t.x.p.ter)+' → <em>'+esc(t.c.name)+(t.c.provider?' · '+esc(t.c.provider):'')+'</em> '+terText(t.c.ter)+'</span></div><strong>−'+eur(t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,2)+'/año</strong></div>').join('')+'<span class="fund-note">Misma réplica del índice, misma política de dividendos y disponible en tu plataforma. Cambiar de fondo puede tener coste fiscal (traspaso solo entre fondos, no entre ETF).</span></div>':'')+
+    (twins.length?'<div class="insights-group"><small>MISMO ÍNDICE, MÁS BARATO</small>'+twins.map(t=>'<div class="fund-twin" data-fund-detail="'+esc(t.c.isin)+'" role="button" tabindex="0"><div><b>'+esc(t.x.p.name)+'</b><span>'+terText(t.x.p.ter)+' → <em>'+esc(t.c.name)+(t.c.provider?' · '+esc(t.c.provider):'')+'</em> '+terText(t.c.ter)+'</span></div><strong>−'+eur(t.x.value*(num(t.x.p.ter)-num(t.c.ter))/100,2)+'/año</strong></div>').join('')+'<span class="fund-note">Misma réplica del índice, misma política de dividendos y disponible en tu plataforma. En fondos de inversión se propone solo otro fondo: el traspaso entre fondos no tributa. Pasar de un ETF a otro exige vender.</span></div>':'')+
     (pairs.length?'<div class="insights-group"><small>SOLAPAMIENTO</small>'+pairs.slice(0,4).map(x=>'<div class="fund-overlap"><span>'+esc(x.a.p.name)+' <i>+</i> '+esc(x.b.p.name)+'</span><b>≈ '+Math.round(x.o*100)+' %</b><i class="fund-overlap-bar"><em data-w="'+Math.round(x.o*100)+'"></em></i></div>').join('')+'<span class="fund-note">Cada pareja comparte buena parte de las mismas empresas: diversificas menos de lo que parece. Cifra aproximada según el índice que replican.</span></div>':'')+
     '<div class="insights-group fund-dca" data-fund-dca data-initial="'+total.toFixed(2)+'" data-ter="'+(ter||0)+'"><small>SIMULADOR DE APORTACIONES</small>'+
      '<div class="fund-dca-inputs"><label><span>Al mes</span><input type="number" min="0" step="10" inputmode="decimal" data-dca="monthly" value="'+monthly+'"></label>'+
@@ -907,7 +933,7 @@
    if(!pr.ok)throw Error(pd.error||'No se pudieron cargar las carteras de fondos.');
    if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
    if(!pl.ok)throw Error(ld.error||'No se pudieron cargar los planes de aportación.');
-   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];
+   account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];account.benefits=ld.benefits||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
   }catch(e){console.warn('Fund portfolio loading failed',e)}
   finally{account.loading=false;renderPortfolio()}

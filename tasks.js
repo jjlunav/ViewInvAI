@@ -12,6 +12,8 @@
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const tasks=[];let pill=null,panel=null,panelOpen=false,hideTimer=null,seq=0;
+ // Decisiones pendientes (p. ej. «¿vendes en pérdidas o mantienes?»): persisten hasta que se contestan.
+ let decisions=[];const busy=new Set();
  function ensureUi(){
   if(pill)return;
   pill=document.createElement('button');pill.type='button';pill.id='taskPill';pill.className='task-pill';pill.hidden=true;
@@ -23,7 +25,7 @@
  }
  function active(){return tasks.filter(t=>t.state==='running'||t.state==='asking')}
  function setPanel(open){
-  panelOpen=!!open&&tasks.length>0;ensureUi();
+  panelOpen=!!open&&(tasks.length>0||decisions.length>0);ensureUi();
   panel.hidden=!panelOpen;pill.setAttribute('aria-expanded',String(panelOpen));
   if(panelOpen)paintPanel();
  }
@@ -41,15 +43,24 @@
    return;
   }
   const last=tasks[tasks.length-1];
-  if(!last){pill.hidden=true;return}
+  if(!last){paintDecisionPill();return}
   pill.hidden=false;pill.className='task-pill '+(last.state==='failed'?'failed':'done');
   pill.innerHTML='<i aria-hidden="true">'+(last.state==='failed'?'!':'✓')+'</i><span>'+esc(last.summary||last.title)+'</span>';
   // Finished: stays a few seconds (longer with errors) unless the panel is open.
-  hideTimer=setTimeout(()=>{if(panelOpen)return;pill.hidden=true;tasks.splice(0,tasks.length,...active())},last.errors?12000:6000);
+  hideTimer=setTimeout(()=>{if(panelOpen)return;tasks.splice(0,tasks.length,...active());paintDecisionPill()},last.errors?12000:6000);
+ }
+ function paintDecisionPill(){
+  if(!decisions.length){pill.hidden=true;if(panelOpen&&!tasks.length)setPanel(false);return}
+  pill.hidden=false;pill.className='task-pill asking decision';
+  pill.innerHTML='<i class="task-q" aria-hidden="true">?</i><span>'+(decisions.length===1?esc(decisions[0].pill||'Tienes una decisión pendiente'):decisions.length+' decisiones pendientes')+'</span>';
  }
  function paintPanel(){
   if(!panelOpen||!panel)return;
-  panel.innerHTML='<header><strong>Tareas</strong><button type="button" data-task-close aria-label="Cerrar">×</button></header>'+
+  panel.innerHTML='<header><strong>'+(tasks.length?'Tareas':'Decisiones')+'</strong><button type="button" data-task-close aria-label="Cerrar">×</button></header>'+
+   decisions.map(d=>'<article class="task-item decision-item is-asking'+(busy.has(d.id)?' is-busy':'')+'" data-decision="'+esc(d.id)+'"><div class="task-head"><b>'+esc(d.title)+'</b><span>'+esc(d.when||'Esperando tu decisión')+'</span></div>'+
+    '<div class="task-question"><p>'+esc(d.text)+'</p>'+(d.detailHtml||'')+
+    '<div class="task-options">'+d.options.map((o,i)=>'<button type="button" class="btn'+(i?' ghost':'')+'" data-decision-answer="'+esc(d.id)+'" data-choice="'+esc(o.id)+'"'+(busy.has(d.id)?' disabled':'')+'>'+esc(o.label)+'</button>').join('')+'</div>'+
+    (d.error?'<p class="task-error">'+esc(d.error)+'</p>':'')+'</div></article>').join('')+
    tasks.slice().reverse().map(t=>{
     const pct=t.total?Math.round(t.current/t.total*100):null;
     const q=t.question;
@@ -66,6 +77,16 @@
  }
  function onPanelClick(e){
   if(e.target.closest('[data-task-close]')){setPanel(false);paintPill();return}
+  const da=e.target.closest('[data-decision-answer]');
+  if(da){
+   const d=decisions.find(x=>x.id===da.dataset.decisionAnswer);if(!d||busy.has(d.id))return;
+   busy.add(d.id);d.error='';paint();
+   Promise.resolve().then(()=>d.onAnswer(da.dataset.choice)).then(()=>{busy.delete(d.id);decisions=decisions.filter(x=>x!==d);if(!decisions.length&&!tasks.length)setPanel(false);paint()})
+    .catch(err=>{busy.delete(d.id);d.error=err&&err.message||'No se pudo guardar';paint()});
+   return;
+  }
+  const link=e.target.closest('[data-decision-open]');
+  if(link){const d=decisions.find(x=>x.id===link.dataset.decisionOpen);if(d&&d.onOpen){setPanel(false);paintPill();d.onOpen()}return}
   const a=e.target.closest('[data-task-answer]');
   if(a){
    const t=tasks.find(x=>String(x.id)===a.dataset.taskAnswer);if(!t||!t.question)return;
@@ -98,5 +119,6 @@
   tasks.push(t);paint();return t;
  }
  window.addEventListener('beforeunload',e=>{if(active().length){e.preventDefault();e.returnValue=''}});
- window.ViewInvAITasks={start,running:()=>active().length,open:()=>setPanel(true)};
+ function setDecisions(list){decisions=Array.isArray(list)?list.slice():[];ensureUi();paint()}
+ window.ViewInvAITasks={start,running:()=>active().length,open:()=>setPanel(true),setDecisions,decisions:()=>decisions.slice()};
 })();

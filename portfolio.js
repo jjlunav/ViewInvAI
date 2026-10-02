@@ -565,7 +565,7 @@ function renderPositionRow(p, index = 0) {
     '<span>Coste <b>'+esc(formatMoney(investedValue,entryCurrency))+'</b></span>'+
     '<span>Comisiones <b>'+esc(formatMoney(feesTotal,entryCurrency))+'</b></span>'+
     '<span class="'+exposureTone+'">Desde compra <b>'+(pnlPct===null?'—':esc((pnlPct>0?'+':'')+formatNumber(pnlPct,2)+'%'))+'</b></span>'+
-  '</div>';
+  '</div>'+positionDecisionChip(p,avg,entryCurrency);
   return window.ViewInvAI.renderStandardStockCard(stock, {
     index, preferTr, context: "portfolio", hint: "Cartera · posición activa", rankLabel: "",
     className: "portfolio-position-card",
@@ -579,6 +579,17 @@ function renderPositionRow(p, index = 0) {
     detailsHtml: ""
   });
 
+}
+
+// Decisión tomada ante un aviso de venta («mantener», «decidir más tarde», «venderé»).
+function positionDecisionChip(p, avg, currency) {
+  const d = window.ViewInvAIDecisions && typeof window.ViewInvAIDecisions.forPosition === "function" ? window.ViewInvAIDecisions.forPosition(p.id) : null;
+  if (!d) return "";
+  const label = d.decision === "hold"
+    ? "Mantienes · objetivo " + formatMoney(avg, currency)
+    : d.decision === "later" ? "Decidir el " + new Date(d.review_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "Vas a vender";
+  return '<div class="position-decision-chip is-' + esc(d.decision) + '"><span>' + esc(label) + '</span>' +
+    '<button type="button" data-decision-clear="' + esc(p.id) + '" aria-label="Quitar decisión" title="Quitar decisión">×</button></div>';
 }
 
 function renderPositionRowSafe(p, index = 0) {
@@ -3358,6 +3369,7 @@ function bind() {
     if (event.key === "Escape") { closePortfolioTabOverflow(); closeModal(); return; }
   });
 
+  window.addEventListener("viewinvai:decisions-changed", () => { if (state.user) renderActivePortfolioPanel(); });
   window.addEventListener("viewinvai:auth-changed", event => {
     state.user = event.detail && event.detail.user || null;
     if (!state.user) {

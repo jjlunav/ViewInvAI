@@ -65,7 +65,8 @@
   fee:['fee','fees','gebuhr','gebuehr','gebuhren','comision','commission','kosten','costs','fremdkostenzuschlag'],
   currency:['currency','wahrung','waehrung','moneda','ccy'],
   tax:['tax','taxes','steuer','steuern','impuesto','impuestos','retencion','withholding tax','quellensteuer','tax amount'],
-  id:['id','transaction id','reference','referenz','order id','execution id','referencia','uuid']
+  id:['id','transaction id','reference','referenz','order id','execution id','referencia','uuid'],
+  desc:['description','beschreibung','descripcion','details']
  };
  function mapHeader(header){
   const h=header.map(norm),out={};
@@ -109,9 +110,17 @@
   // Some exports put a title line first: use the first line that maps the key columns.
   let hi=table.findIndex(r=>{const m=mapHeader(r);return m.qty!==undefined&&(m.isin!==undefined||m.symbol!==undefined)});
   if(hi<0)throw new Error('No encuentro las columnas de cantidad e ISIN/símbolo. Columnas leídas: '+table[0].join(', '));
-  const map=mapHeader(table[hi]),out=[],skipped={},dividends=[];
+  const map=mapHeader(table[hi]),out=[],skipped={},dividends=[],benefits=[];
   for(const r of table.slice(hi+1)){
    const get=k=>map[k]===undefined?'':r[map[k]];
+   // Trade Republic: Saveback y Redondeo llegan como abono en efectivo (BENEFITS_SAVEBACK…) seguido
+   // de la compra del mismo importe. El abono no es una operación: sirve para etiquetar esa compra.
+   const rawKind=String(get('side')||'')+' '+String(map.desc!==undefined&&map.desc!==map.name?get('desc'):'');
+   if(/benefit|saveback|spare|round ?up|redondeo/i.test(rawKind)&&!(Math.abs(num(get('qty'))||0)>0)){
+    const amt=Math.abs(num(get('amount'))||0),d=dateIso(get('date'));
+    if(amt>0&&d)benefits.push({date:d,amount:amt,kind:/spare|round ?up|redondeo/i.test(rawKind)?'roundup':'saveback'});
+    continue;
+   }
    const side=sideOf(get('side'))||(num(get('qty'))<0?'SELL':num(get('qty'))>0&&map.side===undefined?'BUY':'');
    if(side==='DIV'){
     // «amount» is the cash booked (after tax), as for buys and sells; «tax» is the withholding.
@@ -131,15 +140,53 @@
    const executedAt=dateIso(get('date'));if(!executedAt)continue;
    const {isin,symbol}=idOf(get('isin'),get('symbol'));
    const ext=String(get('id')||'').trim();
-   const rawType=String(get('side')||'');
+   const rawType=String(get('side')||'')+' '+String(map.desc!==undefined&&map.desc!==map.name?get('desc'):'');
+   const benefit=/saveback/i.test(rawType)?'saveback':/spare|round ?up|redondeo/i.test(rawType)?'roundup':'';
    out.push({
-    plan:/plan|sparplan|savings|saveback|round ?up|redondeo/i.test(rawType),
+    benefit,cash:amount!==null?Math.abs(amount):qty*Math.abs(price)+(side==='BUY'?fee:0),
+    plan:!benefit&&/plan|sparplan|savings/i.test(rawType),
     externalId:source+':'+(ext||hash([executedAt,isin||symbol,side,qty,price,amount].join('|'))),
     side,quantity:qty,price:Math.abs(price),fees:fee,currency:String(get('currency')||'').trim().toUpperCase()||(source==='tr'?'EUR':''),
     isin,symbol,name:String(get('name')||'').trim(),executedAt
    });
   }
-  return{rows:out,skipped,dividends};
+  tagBenefits(out,benefits);
+  return{rows:out,skipped,dividends,benefits};
+ }
+ // Empareja cada abono de Saveback/Redondeo con la compra del mismo importe (ese día o hasta 7 después).
+ function tagBenefits(rows,benefits){
+  for(const b of benefits){
+   const t0=Date.parse(b.date);let best=null,bestGap=Infinity;
+   for(const r of rows){
+    if(r.side!=='BUY'||r.benefit||Math.abs((r.cash||0)-b.amount)>0.011)continue;
+    const gap=(Date.parse(r.executedAt)-t0)/864e5;
+    if(gap<-1||gap>7)continue;
+    if(Math.abs(gap)<bestGap){best=r;bestGap=Math.abs(gap)}
+   }
+   if(best){best.benefit=b.kind;best.plan=false}
+  }
+  guessBenefits(rows);
+ }
+ // Si el CSV no trae el abono (el Redondeo se cobra de tu saldo), se reconocen por su patrón:
+ // Redondeo = compras pequeñas los días 2, 9, 16 y 23 (o el siguiente hábil) de importe variable;
+ // Saveback = una compra pequeña de importe variable cada día 2 (o siguiente hábil), sin ser plan.
+ function guessBenefits(rows){
+  const byIsin=new Map();
+  for(const r of rows){if(r.side!=='BUY'||r.benefit||r.plan||!r.isin||!(r.cash>0)||r.cash>35)continue;(byIsin.get(r.isin)||byIsin.set(r.isin,[]).get(r.isin)).push(r)}
+  const day=r=>new Date(r.executedAt).getUTCDate();
+  const nearSlot=(d,slots)=>slots.some(x=>d>=x&&d<=x+3);
+  const varies=list=>{const a=list.map(r=>r.cash),m=a.reduce((x,y)=>x+y,0)/a.length;return m>0&&Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length)/m>0.15};
+  for(const all of byIsin.values()){
+   // Un importe que se repite (±2 %) es el plan en ese mismo fondo: se aparta antes de buscar el patrón.
+   const rep=all.filter(r=>all.filter(x=>x!==r&&Math.abs(x.cash-r.cash)<=Math.max(x.cash,r.cash)*.02).length>=1&&r.cash>=5);
+   const list=all.filter(r=>!rep.includes(r));
+   if(list.length<3||!varies(list))continue;
+   list.sort((a,b)=>Date.parse(a.executedAt)-Date.parse(b.executedAt));
+   const gaps=[];for(let i=1;i<list.length;i++)gaps.push((Date.parse(list[i].executedAt)-Date.parse(list[i-1].executedAt))/864e5);
+   const med=gaps.slice().sort((a,b)=>a-b)[gaps.length>>1];
+   if(med>=5&&med<=10&&list.filter(r=>nearSlot(day(r),[2,9,16,23])).length>=list.length*.8)list.forEach(r=>{r.benefit='roundup'});
+   else if(med>=26&&med<=35&&list.filter(r=>nearSlot(day(r),[2])).length>=list.length*.8)list.forEach(r=>{r.benefit='saveback'});
+  }
  }
  // Fill ticker/name from the catalogue so the preview and Fiscal read well.
  function enrichDividends(list){
@@ -194,7 +241,7 @@
    const s=(r.isin&&byIsin.get(r.isin))||(r.symbol&&bySymbol.get(r.symbol))||(r.name&&byCompanyName(byName,r.name))||null;
    if(!s){
     const f=fundProduct(r);
-    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan});continue}
+    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan,benefit:r.benefit||''});continue}
     if(r.isin&&/^[A-Z]{2}[A-Z0-9]{10}$/.test(r.isin)){
      // Not in the ViewInvAI catalogue yet (European, Asian… shares): keep it under its
      // ISIN so it counts in the portfolio, Fiscal and the curve, and picks up live data
@@ -203,7 +250,7 @@
      uncatalogued.push(r);
      matched.push({externalId:r.externalId,side:r.side,quantity:r.quantity,price:r.price,fees:r.fees,currency:preferTr?'EUR':(r.currency||'EUR'),executedAt:r.executedAt,
       stockKey:key,preferTr,ticker:(r.symbol||r.isin).slice(0,20),name:r.name||r.isin,exchange:preferTr?'LSX':(r.exchange||''),isin:r.isin,
-      notes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+' · fuera del catálogo'});
+      notes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+' · fuera del catálogo'+(r.benefit==='saveback'?' · Saveback':r.benefit==='roundup'?' · Redondeo':'')});
      continue;
     }
     unmatched.push(r);continue;
@@ -219,7 +266,7 @@
     name:s.name||r.name||'',
     exchange:preferTr?(s.trExchange||'LSX'):(s.exchange||r.exchange||''),
     isin:preferTr?(s.trIsin||r.isin||s.isin||''):(s.isin||s.usIsin||r.isin||''),
-    notes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')
+    notes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+(r.benefit==='saveback'?' · Saveback':r.benefit==='roundup'?' · Redondeo':'')
    });
   }
   matched.sort((a,b)=>Date.parse(a.executedAt)-Date.parse(b.executedAt)||(a.side==='BUY'?-1:1));
@@ -256,7 +303,7 @@
   }
   const tr=flow.source==='tr';
   return '<p class="broker-import-help">'+(tr
-    ?'Trade Republic no ofrece API pública. Exporta tus <b>transacciones en CSV</b> desde Trade Republic (app o web) y súbelo aquí: se importan compras, ventas, planes de inversión y <b>dividendos con su retención</b> (para Fiscal); intereses e ingresos se ignoran.'
+    ?'Trade Republic no ofrece API pública. Exporta tus <b>transacciones en CSV</b> desde Trade Republic (app o web) y súbelo aquí: se importan compras, ventas, planes de inversión, Saveback, Redondeo y <b>dividendos con su retención</b> (para Fiscal); intereses e ingresos se ignoran.'
     :'Sube el CSV de tu bróker. Se reconocen columnas de fecha, tipo (compra/venta), ISIN o símbolo, cantidad, precio o importe, comisión y divisa, en español, inglés o alemán.')+'</p>'+
    portfolioSelect()+
    '<label class="broker-import-file"><input type="file" accept=".csv,text/csv,text/plain" data-import-file><span>Elegir archivo CSV</span></label>';
@@ -304,7 +351,10 @@
  function showPreview(rows,source,extra=''){
   const {matched,unmatched,funds,uncatalogued}=matchRows(rows,source);
   flow.matched=matched;flow.unmatched=unmatched;flow.funds=funds;flow.uncatalogued=uncatalogued;flow.dividends=enrichDividends(flow.dividends);
-  status(extra+previewHtml());
+  const sb=rows.filter(r=>r.benefit==='saveback'),ru=rows.filter(r=>r.benefit==='roundup');
+  const sum=a=>a.reduce((t,r)=>t+(r.cash||0),0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
+  const benefitHtml=sb.length||ru.length?'<p class="broker-import-help">'+[sb.length?'<b>Saveback</b>: '+sb.length+(sb.length===1?' compra':' compras')+' ('+sum(sb)+')':'',ru.length?'<b>Redondeo</b>: '+ru.length+(ru.length===1?' compra':' compras')+' ('+sum(ru)+')':''].filter(Boolean).join(' · ')+'. Se importan como compras normales, marcadas, y no cuentan como plan de ahorro.</p>':'';
+  status(extra+benefitHtml+previewHtml());
  }
  // Values of the import the portfolio already holds as manual entries (counted twice
  // if both were kept): manual buys, the initial position, manual adjustments.
@@ -360,7 +410,7 @@
    for(let i=0;i<job.funds.length;i+=CHUNK){
     const chunk=job.funds.slice(i,i+CHUNK),last=i+CHUNK>=job.funds.length;
     const data=await post('/api/fund-transactions/import',{source:job.source,platform:broker,replaceManual,detectPlans:last,rows:chunk,
-     allRows:last?job.funds.filter(f=>f.side==='BUY').map(f=>({isin:f.isin,side:'BUY',plan:!!f.plan,units:f.units,price:f.price,fees:f.fees,executedAt:f.executedAt,currency:f.currency})):[]});
+     allRows:last?job.funds.filter(f=>f.side==='BUY').map(f=>({isin:f.isin,side:'BUY',plan:!!f.plan,benefit:f.benefit||'',units:f.units,price:f.price,fees:f.fees,executedAt:f.executedAt,currency:f.currency})):[]});
     fundImported+=data.imported||0;fundSkipped+=data.skipped||0;plans+=data.plans||0;logErrors(data.errors);
     step(chunk.length,'Fondos y ETF');
    }

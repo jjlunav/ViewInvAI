@@ -12,6 +12,7 @@ const files = [
   'ui-shell.js',
   'onboarding.js',
   'tasks.js',
+  'decisions.js',
   'security.js',
   'broker-import.js',
   'tax.js',
