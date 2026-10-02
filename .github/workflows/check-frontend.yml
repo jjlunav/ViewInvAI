@@ -321,8 +321,8 @@ jobs:
           if "function renderAlertPage" not in alerts or 'id="alertPageStatus"' not in html or 'id="alertPageList"' not in html:
               raise SystemExit("Avisos puede volver a quedar como pantalla negra")
           native_runtime = Path("native-runtime.js").read_text(encoding="utf-8")
-          if "funds|market|market-version" not in native_runtime or "?local=1" not in app:
-              raise SystemExit("La APK no prioriza snapshot remoto con fallback local")
+          if "funds|market|market-version" not in native_runtime or "loadOffline('market')" not in app or "saveOffline('market'" not in app:
+              raise SystemExit("La APK no prioriza snapshot remoto con la última copia descargada como respaldo")
           if "max-width:820px" not in stock_list or "max-width:820px" not in recommendation:
               raise SystemExit("Las listas compactas no cubren tablet")
           if ".asset-quote-source" not in cards_css:

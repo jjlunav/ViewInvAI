@@ -704,11 +704,15 @@
   requestAnimationFrame(()=>observeFundLive(box));
  }
  async function fetchFundCatalogue(url,cache){
-  const r=await fetch(url,{cache});
-  if(!r.ok)throw Error(String(r.status));
+  const RT=root.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative);
+  let r;
+  if(url===null){r=native?await RT.loadOffline('funds'):null;if(!r)throw Error('Sin conexión y sin catálogo guardado todavía')}
+  else{r=await fetch(url,{cache});if(!r.ok)throw Error(String(r.status))}
+  const copy=url!==null&&native?r.clone():null;
   const data=await r.json();
   const products=Array.isArray(data&&data.products)?data.products:[];
   if(!products.length)throw Error('Catálogo de fondos vacío');
+  if(copy)RT.saveOffline('funds',copy);
   return data;
  }
  async function load(force=false){
@@ -723,8 +727,8 @@
    }catch(remoteError){
     const native=!!(root.ViewInvAIRuntime&&root.ViewInvAIRuntime.isPackagedNative);
     if(!native)throw remoteError;
-    console.warn('Remote funds catalogue invalid; using packaged snapshot',remoteError);
-    data=await fetchFundCatalogue(DATA+'?local=1&v='+Date.now(),'no-store');
+    console.warn('Remote funds catalogue unavailable; using last downloaded copy',remoteError);
+    data=await fetchFundCatalogue(null,'no-store');
    }
    state.products=data.products.map(norm).filter(p=>p.isin);
    state.meta=data.meta||{};

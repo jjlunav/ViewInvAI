@@ -108,9 +108,11 @@ jobs:
           grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
           grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
-          test -s mobile-shell/data/market.json
-          test -s mobile-shell/data/market-version.json
-          test -s mobile-shell/data/funds.json
+          # Los catálogos se descargan del servidor: no deben ir dentro de la APK.
+          if [ -e mobile-shell/data/market.json ] || [ -e mobile-shell/data/funds.json ]; then
+            echo "::error::La APK no debe empaquetar los catálogos de datos."
+            exit 1
+          fi
           grep -q 'const native = true' mobile-shell/index.html
           if grep -q '"url"[[:space:]]*:[[:space:]]*"https://viewinvai' capacitor.config.json; then
             echo "::error::Android config still points at the remote web shell."
@@ -129,6 +131,9 @@ jobs:
           QA_SHELL="/tmp/viewinvai-native-smoke-shell"
           rm -rf "$QA_SHELL" /tmp/viewinvai-native-profile
           cp -a mobile-shell "$QA_SHELL"
+          # Solo para esta prueba (servida en 127.0.0.1, no como APK): datos locales.
+          mkdir -p "$QA_SHELL/data"
+          cp data/market.json data/market-version.json data/funds.json "$QA_SHELL/data/"
           mkdir -p /tmp/viewinvai-native-profile
           export QA_SHELL
           python - <<'PY'

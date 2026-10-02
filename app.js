@@ -507,6 +507,21 @@ async function load(force=false){
  if(loading)return;
  loading=true;
  try{
+  const RT0=window.ViewInvAIRuntime;
+  if(!force&&!db.stocks.length&&RT0&&RT0.isPackagedNative){
+   // APK: arranca al instante con la copia guardada en el móvil; a continuación solo se
+   // descarga del servidor si hay una versión más nueva.
+   try{
+    const lr=await RT0.loadOffline('market'),lj=lr?await lr.json():null;
+    if(lj&&Array.isArray(lj.stocks)&&lj.stocks.length){
+     db={stocks:lj.stocks,events:Array.isArray(lj.events)?lj.events:[],meta:lj.meta||{}};
+     lastDataStamp=String((lj.meta&&lj.meta.updatedAt)||'');
+     rebuildMarketIndexes();
+     if(typeof reapplyMarketLive==='function')reapplyMarketLive();
+     render();
+    }
+   }catch(_){}
+  }
   if(!force&&db.stocks.length&&lastDataStamp){
    try{
     let vr=await fetch(DATA_VERSION,{cache:'no-cache'});
@@ -517,24 +532,28 @@ async function load(force=false){
    }catch(_){}
   }
   let url=force?DATA+'?v='+Date.now():DATA;
-  let r,j;
+  let r,j,copy=null;
+  const RT=window.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative);
   try{
    r=await fetch(url,{cache:force?'reload':'no-cache'});
    if(!r.ok)throw Error(String(r.status));
+   if(native)copy=r.clone();
    j=await r.json();
    if(!Array.isArray(j.stocks))throw Error('formato');
   }catch(remoteError){
-   const native=!!(window.ViewInvAIRuntime&&window.ViewInvAIRuntime.isPackagedNative);
    if(!native)throw remoteError;
-   console.warn('Remote market snapshot unavailable; using packaged fallback',remoteError);
-   r=await fetch(DATA+'?local=1&v='+Date.now(),{cache:'no-store'});
-   if(!r.ok)throw Error('fallback '+r.status);
+   // APK sin conexión: última copia descargada en este móvil.
+   console.warn('Remote market snapshot unavailable; using last downloaded copy',remoteError);
+   copy=null;
+   r=await RT.loadOffline('market');
+   if(!r)throw Error('Sin conexión y sin datos guardados todavía');
    j=await r.json();
-   if(!Array.isArray(j.stocks))throw Error('fallback formato');
+   if(!Array.isArray(j.stocks))throw Error('copia local con formato no válido');
   }
   let stamp=String((j.meta&&j.meta.updatedAt)||'');
   if(!force&&stamp&&stamp===lastDataStamp)return;
   lastDataStamp=stamp;
+  if(copy)RT.saveOffline('market',copy);
   let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
   for(let s of j.stocks){
    let old=previous.get(stockKey(s));if(!old)continue;
