@@ -29,7 +29,7 @@
  function aiPicksHtml(){
   let rows=[];
   try{
-   rows=[...radarAiCandidateRows('tr'),...radarAiCandidateRows('us')];
+   rows=[...radarAiCandidateRows('tr'),...radarAiCandidateRows('us')].filter(r=>!r.speculative);
   }catch(e){rows=[]}
   const high=rows.filter(r=>r.tier==='high');
   const picks=(high.length?high:rows.filter(r=>r.tier==='opportunity')).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,3);

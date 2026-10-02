@@ -499,7 +499,10 @@ function radarAiCandidateRows(mode,advanced=null){
   // Same floor as the server's «En vigilancia» alerts (score ≥ 50 y calidad ≥ 40).
   else if(score<50||quality<40)continue;
   if(advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
-  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
+  const spec=window.ViewInvAIScore&&typeof window.ViewInvAIScore.speculative==='function'
+   ?window.ViewInvAIScore.speculative({price:N(s.price),marketCap:N(s.marketCap),avgVolume:N(s.avgVolume),events:stockEvents(s)})
+   :{speculative:false,reasons:[]};
+  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,speculative:spec.speculative,specReasons:spec.reasons||[],advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }
  rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
  rows.analyzed=analyzed;
@@ -514,9 +517,9 @@ function radarAiCard(row){
  // quality joins the subtitle, so the Score/Datos row is no longer needed.
  return standardStockCard(s,0,{
   se:a.se||currentMarketSession(),preferTr,rankLabel:F(row.score,0),context:'recommendation',
-  hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100',cells:[],
-  className:'radar-ai-card radar-ai-card-'+row.tier,
-  subtitle:[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Datos '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
+  hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100'+(row.speculative?' · Especulativo: '+row.specReasons.join(', '):''),cells:[],
+  className:'radar-ai-card radar-ai-card-'+(row.speculative?'spec':row.tier),
+  subtitle:(row.speculative?'⚠ Especulativo · ':'')+[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Datos '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
   openAttrs:stockOpenAttrs(s,'Radar AI',preferTr),
   detailsHtml:''
  });
@@ -526,17 +529,22 @@ let radarScoreboard={at:0,data:null,loading:false},radarScoreboardOpen=false;
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-radar-scoreboard]'))radarScoreboardOpen=e.target.open},true);
 async function loadRadarScoreboard(){
  if(radarScoreboard.loading||(radarScoreboard.data&&Date.now()-radarScoreboard.at<10*60000))return;
+ radarScoreboard.failed=false;
  radarScoreboard.loading=true;
  try{
   const r=await fetch('/api/radar-scoreboard',{cache:'no-store'});
-  if(r.ok){radarScoreboard={at:Date.now(),data:await r.json(),loading:false};const box=document.querySelector('[data-radar-scoreboard]');if(box)box.outerHTML=radarScoreboardHtml()}
- }catch(_){}
- finally{radarScoreboard.loading=false}
+  if(!r.ok)throw Error(r.status);
+  radarScoreboard={at:Date.now(),data:await r.json(),loading:false,failed:false};
+ }catch(_){radarScoreboard.failed=true;radarScoreboard.at=Date.now()}
+ finally{
+  radarScoreboard.loading=false;
+  const box=document.querySelector('[data-radar-scoreboard]');if(box)box.outerHTML=radarScoreboardHtml();
+ }
 }
 function radarPct(v,d=1){return v===null||v===undefined||!Number.isFinite(+v)?'—':(v>0?'+':'')+F(v,d)+'%'}
 function radarScoreboardHtml(){
  const d=radarScoreboard.data;
- if(!d)return '<details class="radar-scoreboard" data-radar-scoreboard><summary><span><small>HISTORIAL DEL RADAR AI</small><b>Cargando aciertos…</b></span></summary></details>';
+ if(!d)return '<details class="radar-scoreboard" data-radar-scoreboard><summary><span><small>HISTORIAL DEL RADAR AI</small><b>'+(radarScoreboard.failed?'Historial no disponible ahora mismo':'Cargando aciertos…')+'</b></span></summary></details>';
  const main=d.stats&&d.stats.opportunitySolid&&d.stats.opportunitySolid['5d'];
  let head;
  if(main&&main.n>0){
@@ -561,12 +569,13 @@ function radarScoreboardHtml(){
 
 // Radar AI as one list per market, like Radar de entrada: tabs TR / EEUU, a tier filter
 // with counts and every card tinted by tier (alta convicción · oportunidad · vigilancia).
-const RADAR_TIER_LABEL={high:'Alta convicción',opportunity:'Oportunidades',watch:'En vigilancia'};
+const RADAR_TIER_LABEL={high:'Alta convicción',opportunity:'Oportunidades',watch:'En vigilancia',spec:'Especulativo'};
 const RADAR_TIER_LIMIT={high:5,opportunity:12,watch:15};
 let radarAiMarket=(()=>{try{return localStorage.getItem('viewinvai:radar-market')==='us'?'us':'tr'}catch(_){return'tr'}})();
 let radarAiTierFilter='all',radarAiLastAdvanced={};
 function radarAiVisibleRows(rows){
- const byTier=t=>rows.filter(x=>x.tier===t);
+ if(radarAiTierFilter==='spec')return rows.filter(x=>x.speculative).slice(0,30);
+ const byTier=t=>rows.filter(x=>x.tier===t&&!x.speculative);
  if(radarAiTierFilter!=='all')return byTier(radarAiTierFilter).slice(0,30);
  return ['high','opportunity','watch'].flatMap(t=>byTier(t).slice(0,RADAR_TIER_LIMIT[t]));
 }
@@ -574,17 +583,17 @@ function radarAiShell(advanced=radarAiLastAdvanced){
  radarAiLastAdvanced=advanced||{};
  const mode=radarAiMarket,isTr=mode==='tr';
  const rows=radarAiCandidateRows(mode,radarAiLastAdvanced[mode]||null);
- const counts={high:0,opportunity:0,watch:0};rows.forEach(r=>counts[r.tier]++);
+ const counts={high:0,opportunity:0,watch:0,spec:0};rows.forEach(r=>{if(r.speculative)counts.spec++;else counts[r.tier]++});
  const visible=radarAiVisibleRows(rows);
  const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
  const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';
  const list=visible.length?visible.map(radarAiCard).join(''):'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
- if(!radarScoreboard.data)setTimeout(loadRadarScoreboard,50);
+ if(!radarScoreboard.data&&!radarScoreboard.loading&&(!radarScoreboard.failed||Date.now()-radarScoreboard.at>60000))setTimeout(loadRadarScoreboard,50);
  return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+'">'+radarScoreboardHtml()+
   '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EEUU / NASDAQ')+'</nav>'+
   '<div class="radar-list-meta">'+(isTr?'Trade Republic / LSX · EUR':'NASDAQ / NYSE / AMEX · USD')+' · '+(rows.analyzed||rows.length)+' analizadas</div>'+
   '<div class="radar-tier-filter" role="group" aria-label="Filtrar por nivel">'+
-   chip('high','Alta',counts.high)+chip('opportunity','Oportunidad',counts.opportunity)+chip('watch','Vigilancia',counts.watch)+
+   chip('high','Alta',counts.high)+chip('opportunity','Oportunidad',counts.opportunity)+chip('watch','Vigilancia',counts.watch)+chip('spec','Especulativo',counts.spec)+
   '</div>'+
   '<div class="radar-list unified-asset-list">'+list+'</div>'+
  '</div>';
