@@ -17,7 +17,10 @@ function eventTime(e){
  if(code!==null&&code>60&&code<86400){let h=Math.floor(code/3600),m=Math.floor((code%3600)/60);if(h>=0&&h<24)return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' NY'}
  return '';
 }
-function eventWhen(e){let t=eventTime(e);return DF(e.date)+(t?' · '+t:'')}
+function eventWhen(e){
+ if(e&&e.datePrecision==='month'){let d=new Date(e.date);if(!isNaN(d))return '≈ '+d.toLocaleDateString('es-ES',{month:'short',year:'numeric',timeZone:'UTC'})+' (estimada)'}
+ let t=eventTime(e);return DF(e.date)+(t?' · '+t:'');
+}
 function eventSources(e){
  let src=Array.isArray(e.sources)&&e.sources.length?e.sources:(e.source?[{name:e.source,url:e.url}]:[]);
  if(!src.length)return '';

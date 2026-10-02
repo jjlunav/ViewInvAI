@@ -176,7 +176,7 @@ jobs:
         run: |
           python - <<'PY'
           from scripts.update_market import (
-              clinical_exact_date, clinical_sponsor_matches,
+              clinical_exact_date, clinical_study_date, clinical_sponsor_matches,
               fda_status_info, fda_submission_date,
           )
           assert clinical_sponsor_matches("Merck & Co., Inc.", "Merck Sharp & Dohme LLC")
@@ -186,6 +186,9 @@ jobs:
           assert clinical_exact_date("2026-10-15") is not None
           assert clinical_exact_date("2026-10") is None
           assert clinical_exact_date("2026") is None
+          assert clinical_study_date("2026-11")[1] == "month"
+          assert clinical_study_date("2026-11-03")[1] == "day"
+          assert clinical_study_date("2026")[0] is None
           assert fda_submission_date("20260925") is not None
           assert fda_submission_date("2026-09-25") is not None
           assert fda_submission_date("202609") is None

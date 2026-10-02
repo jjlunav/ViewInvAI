@@ -1266,6 +1266,24 @@ function renderGoalApp() {
   });
 }
 
+// Live quotes repaint the panel; never do it under the user's fingers (an open list,
+// a half-typed amount or a modal), or the control vanishes mid-edit. Retry shortly.
+function portfolioUserBusy(){
+  const view=document.querySelector("#view-portfolios");
+  const active=document.activeElement;
+  if(view&&active&&view.contains(active)&&/^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName))return true;
+  return document.body.classList.contains("select-sheet-open");
+}
+
+function schedulePortfolioQuoteRender(){
+  clearTimeout(renderApp.quoteTimer);
+  renderApp.quoteTimer = setTimeout(()=>{
+    if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
+    if(portfolioUserBusy())return schedulePortfolioQuoteRender();
+    renderActivePortfolioPanel();
+  }, 900);
+}
+
 function renderActivePortfolioPanel(){
   if(state.primaryTab==="goal")return renderGoalApp();
   return renderApp();
@@ -3166,14 +3184,12 @@ function bind() {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
-    clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
+    schedulePortfolioQuoteRender();
   });
   window.addEventListener("viewinvai:fx-updated", () => {
     state.goalCandidateCache={at:0,key:"",rows:[]};
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
-    clearTimeout(renderApp.quoteTimer);
-    renderApp.quoteTimer = setTimeout(renderActivePortfolioPanel, 900);
+    schedulePortfolioQuoteRender();
   });
 }
 

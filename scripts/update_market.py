@@ -47,9 +47,10 @@ SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "").strip()
 SEC_REFRESH_MINUTES = 30
 SEC_SYMBOL_LIMIT = 30
 CLINICALTRIALS_URL = "https://clinicaltrials.gov/api/v2/studies"
-CLINICAL_REFRESH_HOURS = 6
-CLINICAL_SYMBOL_LIMIT = 18
-CLINICAL_STUDY_LIMIT = 60
+CLINICAL_REFRESH_HOURS = 1
+CLINICAL_SYMBOL_LIMIT = 40
+CLINICAL_STUDY_LIMIT = 100
+CLINICAL_RUN_META = {}
 CLINICAL_LOOKAHEAD_DAYS = 120
 OPENFDA_DRUGS_URL = "https://api.fda.gov/drug/drugsfda.json"
 OPENFDA_API_KEY = os.environ.get("OPENFDA_API_KEY", "").strip()
@@ -633,6 +634,24 @@ def clinical_exact_date(value):
         return None
 
 
+def clinical_study_date(value):
+    """ClinicalTrials.gov gives exact days or, very often for estimates, only YYYY-MM.
+
+    Month-only dates are placed mid-month and flagged so the app can say «≈ nov.»
+    instead of inventing a day.
+    """
+    exact = clinical_exact_date(value)
+    if exact:
+        return exact, "day"
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}", text):
+        try:
+            return dt.datetime.fromisoformat(text + "-15").replace(tzinfo=dt.timezone.utc), "month"
+        except Exception:
+            return None, None
+    return None, None
+
+
 def clinical_candidate(stock):
     text = " ".join(str(stock.get(key) or "") for key in ("sector", "industry", "name")).lower()
     return any(term in text for term in (
@@ -655,29 +674,42 @@ def carry_previous_clinical_events(previous, now):
 
 
 def fetch_clinical_events(stocks, previous, now):
+    """Rotate through every biotech/pharma candidate, a batch per run.
+
+    Events from tickers not refreshed in this run are kept while still inside the
+    window, so coverage accumulates instead of depending on 18 names per run.
+    """
     previous_events = carry_previous_clinical_events(previous, now)
-    prev_updated = event_date((previous.get("meta") or {}).get("clinicalUpdatedAt"))
+    prev_meta = previous.get("meta") or {}
+    prev_updated = event_date(prev_meta.get("clinicalUpdatedAt"))
+    CLINICAL_RUN_META.clear()
+    CLINICAL_RUN_META["clinicalCursor"] = int(prev_meta.get("clinicalCursor") or 0)
     if prev_updated and (now - prev_updated).total_seconds() < CLINICAL_REFRESH_HOURS * 3600:
         return previous_events, prev_updated.isoformat(), False
 
     candidates = [stock for stock in stocks if clinical_candidate(stock)]
-    candidates.sort(
-        key=lambda stock: (
-            1 if stock.get("tradeRepublicTradable") else 0,
-            mover_score(stock),
-        ),
-        reverse=True,
-    )
-    chosen = candidates[:CLINICAL_SYMBOL_LIMIT]
-    if not chosen:
+    # Stable order: Trade Republic names first, then the rest, alphabetically, so the
+    # cursor walks the whole list across runs.
+    candidates.sort(key=lambda stock: (
+        0 if stock.get("tradeRepublicTradable") else 1,
+        str(stock.get("ticker") or ""),
+    ))
+    if not candidates:
         return previous_events, now.isoformat(), True
+    total = len(candidates)
+    cursor = CLINICAL_RUN_META["clinicalCursor"] % total
+    chosen = [candidates[(cursor + i) % total] for i in range(min(CLINICAL_SYMBOL_LIMIT, total))]
+    CLINICAL_RUN_META["clinicalCursor"] = (cursor + len(chosen)) % total
+    CLINICAL_RUN_META["clinicalCandidates"] = total
 
     start = now - dt.timedelta(days=1)
     end = now + dt.timedelta(days=CLINICAL_LOOKAHEAD_DAYS)
+    date_range = f"AREA[PrimaryCompletionDate]RANGE[{start.date().isoformat()},{end.date().isoformat()}]"
     headers = {
-        "User-Agent": "ViewInvAI/0.4 market-research",
+        "User-Agent": "ViewInvAI/0.5 market-research",
         "Accept": "application/json",
     }
+    stats = {"studies": 0, "sponsor": 0, "date": 0, "window": 0, "kept": 0}
 
     def phase_label(phases):
         phases = [str(value or "").upper() for value in (phases or [])]
@@ -691,25 +723,36 @@ def fetch_clinical_events(stocks, previous, now):
             return "Fase 4", 50
         return "Ensayo clínico", 42
 
+    def query(params):
+        for attempt in range(3):
+            response = requests.get(CLINICALTRIALS_URL, params=params, headers=headers, timeout=25)
+            if response.status_code == 429 and attempt < 2:
+                time.sleep(3 * (attempt + 1))
+                continue
+            return response
+        return response
+
     def fetch_one(stock):
-        query = clinical_company_query(stock.get("name"))
-        if not query:
+        name = clinical_company_query(stock.get("name"))
+        if not name:
             return []
-        response = requests.get(
-            CLINICALTRIALS_URL,
-            params={
-                "query.lead": query,
-                "filter.overallStatus": "RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING|ENROLLING_BY_INVITATION",
-                "pageSize": CLINICAL_STUDY_LIMIT,
-                "format": "json",
-            },
-            headers=headers,
-            timeout=25,
-        )
+        params = {
+            "query.lead": name,
+            "filter.overallStatus": "RECRUITING|NOT_YET_RECRUITING|ACTIVE_NOT_RECRUITING|ENROLLING_BY_INVITATION",
+            "filter.advanced": date_range,
+            "pageSize": CLINICAL_STUDY_LIMIT,
+            "format": "json",
+        }
+        response = query(params)
+        if response.status_code == 400:
+            # Older API deployments reject the date expression; fall back to the plain query.
+            params.pop("filter.advanced", None)
+            response = query(params)
         response.raise_for_status()
         payload = response.json() or {}
         rows = []
         for study in payload.get("studies") or []:
+            stats["studies"] += 1
             protocol = (study or {}).get("protocolSection") or {}
             identification = protocol.get("identificationModule") or {}
             sponsor_module = protocol.get("sponsorCollaboratorsModule") or {}
@@ -717,16 +760,22 @@ def fetch_clinical_events(stocks, previous, now):
             lead_name = str(lead.get("name") or "").strip()
             lead_class = str(lead.get("class") or "").strip().upper()
             if lead_class and lead_class != "INDUSTRY":
+                stats["sponsor"] += 1
                 continue
             if not clinical_sponsor_matches(stock.get("name"), lead_name):
+                stats["sponsor"] += 1
                 continue
 
             status_module = protocol.get("statusModule") or {}
             primary = status_module.get("primaryCompletionDateStruct") or {}
             completion = status_module.get("completionDateStruct") or {}
             date_struct = primary if primary.get("date") else completion
-            when = clinical_exact_date(date_struct.get("date"))
-            if not when or when < start or when > end:
+            when, precision = clinical_study_date(date_struct.get("date"))
+            if not when:
+                stats["date"] += 1
+                continue
+            if when < start or when > end:
+                stats["window"] += 1
                 continue
 
             nct = str(identification.get("nctId") or "").strip()
@@ -741,12 +790,14 @@ def fetch_clinical_events(stocks, previous, now):
             brief_title = str(identification.get("briefTitle") or "").strip()
             url = f"https://clinicaltrials.gov/study/{nct}"
             date_word = "estimada" if estimated else "registrada"
+            shown_date = when.strftime("%Y-%m") if precision == "month" else when.date().isoformat()
             title = f"ClinicalTrials.gov · {date_kind} · {phase}"
             fact = (
-                f"{lead_name} figura como lead sponsor. ClinicalTrials.gov marca el "
-                f"{when.date().isoformat()} como fecha {date_word} de {date_kind}"
+                f"{lead_name} figura como lead sponsor. ClinicalTrials.gov marca "
+                f"{shown_date} como fecha {date_word} de {date_kind}"
                 + (f" para {brief_title}." if brief_title else ".")
             )
+            stats["kept"] += 1
             rows.append({
                 "id": f"clinicaltrials:{nct}:{date_kind.replace(' ', '-')}",
                 "eventKind": "scheduled",
@@ -754,7 +805,7 @@ def fetch_clinical_events(stocks, previous, now):
                 "name": stock.get("name"),
                 "exchange": stock.get("exchange"),
                 "date": when.isoformat(),
-                "datePrecision": "day",
+                "datePrecision": precision,
                 "type": "medical",
                 "title": title[:240],
                 "source": "ClinicalTrials.gov",
@@ -788,31 +839,34 @@ def fetch_clinical_events(stocks, previous, now):
 
     out = []
     seen = set()
-    failed_tickers = set()
-    success_count = 0
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    refreshed_tickers = set()
+    with ThreadPoolExecutor(max_workers=4) as pool:
         future_map = {pool.submit(fetch_one, stock): stock for stock in chosen}
         for future in as_completed(future_map):
             stock = future_map[future]
             try:
                 rows = future.result()
-                success_count += 1
             except Exception as exc:
-                ticker = stock.get("ticker")
-                failed_tickers.add(ticker)
-                print("clinicaltrials warning", ticker, str(exc))
+                print("clinicaltrials warning", stock.get("ticker"), str(exc))
                 continue
+            refreshed_tickers.add(stock.get("ticker"))
             for event in rows:
                 key = event.get("id")
                 if key and key not in seen:
                     seen.add(key)
                     out.append(event)
 
-    if success_count == 0:
+    print("CLINICAL DIAGNOSTICS:", {
+        "candidates": total, "queried": len(chosen), "ok": len(refreshed_tickers),
+        "cursor": CLINICAL_RUN_META["clinicalCursor"], **stats,
+    })
+    if not refreshed_tickers:
+        CLINICAL_RUN_META["clinicalCursor"] = cursor
         return previous_events, (prev_updated.isoformat() if prev_updated else None), False
 
+    # Keep what earlier runs found for tickers that were not refreshed this time.
     for event in previous_events:
-        if event.get("ticker") in failed_tickers and event.get("id") not in seen:
+        if event.get("ticker") not in refreshed_tickers and event.get("id") not in seen:
             seen.add(event.get("id"))
             out.append(event)
     return out, now.isoformat(), True
@@ -1646,6 +1700,8 @@ def main():
             "clinicalEventCount": len(clinical_events),
             "clinicalUpdatedAt": clinical_updated_at,
             "clinicalRefreshed": clinical_refreshed,
+            "clinicalCursor": CLINICAL_RUN_META.get("clinicalCursor", 0),
+            "clinicalCandidates": CLINICAL_RUN_META.get("clinicalCandidates"),
             "fdaEventCount": len(fda_events),
             "fdaUpdatedAt": fda_updated_at,
             "fdaRefreshed": fda_refreshed,
