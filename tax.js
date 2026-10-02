@@ -1,7 +1,8 @@
 /* ViewInvAI · Fiscal (IRPF España).
  * Lee /api/tax-report: FIFO por ISIN entre todas tus cuentas, importes en EUR con el
  * tipo BCE del día, regla de los dos meses y posiciones a 31/12 para el modelo 720.
- * Añade, con los precios en vivo, qué posiciones en pérdidas no conviene vender aún.
+ * Añade, con los precios en vivo, qué posiciones en pérdidas no conviene vender aún, los
+ * dividendos con la deducción por doble imposición y una estimación de la cuota del ahorro.
  * Cálculo orientativo: no sustituye a los informes fiscales del bróker ni a un asesor.
  */
 (function(){
@@ -84,6 +85,50 @@
   return '<section class="tax-card"><header><small>VENTAS '+r.year+'</small><h2>Detalle FIFO</h2><button type="button" class="today-link" data-tax-export>CSV ⇩</button></header>'+sales.map(row).join('')+'</section>';
  }
 
+ const COUNTRY={US:'EEUU',DE:'Alemania',FR:'Francia',NL:'Países Bajos',CH:'Suiza',CA:'Canadá',IT:'Italia',BE:'Bélgica',GB:'Reino Unido',IE:'Irlanda',ES:'España',DK:'Dinamarca',SE:'Suecia',NO:'Noruega',FI:'Finlandia',JP:'Japón',AU:'Australia',PT:'Portugal',LU:'Luxemburgo',AT:'Austria'};
+ function dividendsHtml(r){
+  const d=r.dividends||{totals:{}},t=d.totals||{};
+  const form='<details class="tax-div-add"><summary>＋ Añadir dividendo a mano</summary>'+
+   '<form data-tax-div-form class="tax-div-form">'+
+    '<label><span>Fecha de cobro</span><input type="date" name="paidAt" required max="'+new Date().toISOString().slice(0,10)+'"></label>'+
+    '<label><span>Valor (ticker o nombre)</span><input name="ticker" required maxlength="60" placeholder="AAPL"></label>'+
+    '<label><span>ISIN</span><input name="isin" maxlength="12" placeholder="US0378331005" autocapitalize="characters"></label>'+
+    '<label><span>Divisa</span><select name="currency">'+['EUR','USD','GBP','CHF','CAD','DKK','SEK','NOK','JPY'].map(c=>'<option>'+c+'</option>').join('')+'</select></label>'+
+    '<label><span>Importe bruto</span><input type="number" name="gross" step="any" min="0.0001" required inputmode="decimal"></label>'+
+    '<label><span>Retención en origen</span><input type="number" name="withholding" step="any" min="0" value="0" inputmode="decimal"></label>'+
+    '<button type="submit" class="btn">Guardar dividendo</button><p class="tax-hint" data-tax-div-status></p>'+
+   '</form></details>';
+  if(!t.count)return '<section class="tax-card tax-dividends"><header><small>DIVIDENDOS '+r.year+'</small><h2>Sin dividendos registrados</h2></header><p class="tax-hint">Impórtalos con ⇩ en Carteras (CSV de Trade Republic o IBKR con «Cash Transactions») o añádelos aquí. Calculamos la retención deducible por doble imposición.</p>'+form+'</section>';
+  const countries=(d.byCountry||[]).map(c=>{
+   const name=COUNTRY[c.country]||c.country;
+   const note=c.excessEur>0.005?'<small class="tax-warn-inline">'+eur(c.excessEur)+' retenidos por encima del '+Math.round(c.cap*100)+' % del convenio: no se deducen en España'+(c.country==='US'?' (firma el W-8BEN en tu bróker)':'; se reclaman en '+esc(name))+'.</small>':'';
+   return '<div class="tax-row"><div><b>'+esc(name)+'</b><small>bruto '+eur(c.grossEur)+(c.withholdingEur?' · retenido '+eur(c.withholdingEur):'')+'</small>'+note+'</div><div class="tax-row-num"><span>'+eur(c.deductibleEur)+'</span><small>deducible</small></div></div>';
+  }).join('');
+  const items=(d.items||[]).map(x=>'<li><span>'+day(x.date)+'</span><b>'+esc(x.ticker||x.name||x.isin)+'</b><em>'+eur(x.grossEur)+'</em><small>'+(x.withholdingEur?'−'+eur(x.withholdingEur)+' origen':'')+(x.withholdingEsEur?' −'+eur(x.withholdingEsEur)+' España':'')+(x.currency!=='EUR'?' · '+esc(x.currency):'')+'</small><button type="button" class="tax-div-del" data-tax-div-del="'+esc(x.id)+'" aria-label="Borrar dividendo">✕</button></li>').join('');
+  return '<section class="tax-card tax-dividends"><header><small>DIVIDENDOS '+r.year+'</small><h2>'+eur(t.grossEur)+' brutos</h2></header>'+
+   '<div class="tax-chips"><span>'+t.count+' cobros</span>'+(t.withholdingEur?'<span class="warn">Retenido fuera '+eur(t.withholdingEur)+'</span>':'')+(t.deductibleEur?'<span class="positive">Deducible '+eur(t.deductibleEur)+'</span>':'')+(t.withholdingEsEur?'<span>Retención España '+eur(t.withholdingEsEur)+'</span>':'')+'</div>'+
+   '<div class="tax-boxes"><div><small>Casilla 0029</small><b>'+eur(t.grossEur)+'</b><span>Dividendos: ingresos íntegros</span></div><div><small>Casilla 0588</small><b>'+eur(t.deductibleEur)+'</b><span>Deducción doble imposición internacional</span></div>'+(t.withholdingEsEur?'<div><small>Retenciones</small><b>'+eur(t.withholdingEsEur)+'</b><span>Practicadas en España</span></div>':'')+'</div>'+
+   countries+
+   '<details class="tax-div-list"><summary>Ver los '+t.count+' cobros</summary><ul>'+items+'</ul></details>'+form+'</section>';
+ }
+
+ // Rough savings-base tax for the year with the 2025+ brackets (19-30 %).
+ function savingsHtml(r){
+  const sv=r.savings;if(!sv)return'';
+  const t=r.totals||{},dv=(r.dividends&&r.dividends.totals)||{};
+  if(!t.sales&&!dv.count)return'';
+  const due=sv.dueEur;
+  return '<section class="tax-card tax-savings"><header><small>CUOTA ESTIMADA DEL AHORRO · '+r.year+'</small><h2 class="'+(due>0?'negative':due<0?'positive':'')+'">'+(due<0?'A devolver '+eur(-due):'A pagar '+eur(Math.max(0,due)))+'</h2></header>'+
+   '<div class="tax-calc">'+
+    '<div><span>Base del ahorro</span><b>'+eur(sv.baseEur)+'</b></div>'+
+    '<div><span>Cuota (19 % – 30 %)</span><b>'+eur(sv.taxEur)+'</b></div>'+
+    (sv.deductionEur?'<div><span>− Doble imposición internacional</span><b>'+eur(sv.deductionEur)+'</b></div>':'')+
+    (sv.withheldEsEur?'<div><span>− Retenciones en España</span><b>'+eur(sv.withheldEsEur)+'</b></div>':'')+
+   '</div>'+
+   (sv.lossCarryEur<0?'<p class="tax-hint">Quedan '+eur(-sv.lossCarryEur)+' de pérdidas para compensar en los cuatro años siguientes.</p>':'')+
+   '<p class="tax-hint">Solo con las ventas y dividendos registrados aquí. Las pérdidas compensan hasta el 25 % de los dividendos y al revés. No incluye intereses, fondos ni saldos de años anteriores.</p></section>';
+ }
+
  function model720Html(r){
   const byBroker={};
   for(const h of r.holdings||[])for(const [b,v] of Object.entries(h.byBroker||{})){byBroker[b]=byBroker[b]||{cost:0,count:0};byBroker[b].cost+=v.costEur||0;byBroker[b].count++}
@@ -108,13 +153,19 @@
   const w=(r.warnings||[]).slice(0,6);
   return '<section class="tax-card tax-notes">'+
    (w.length?'<ul>'+w.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+
-   '<p class="tax-hint">Cálculo orientativo con tus operaciones registradas en ViewInvAI (FIFO por ISIN, comisiones incluidas, cambio oficial del BCE de cada fecha). Dividendos, intereses y retenciones no se incluyen. Contrástalo con el informe fiscal de tu bróker.</p></section>';
+   '<p class="tax-hint">Cálculo orientativo con tus operaciones y dividendos registrados en ViewInvAI (FIFO por ISIN, comisiones incluidas, cambio oficial del BCE de cada fecha; deducción por doble imposición limitada al tipo del convenio, en general el 15 %). Los intereses no se incluyen. Las casillas son las de Renta Web de los últimos ejercicios: compruébalas al presentar. Contrástalo con el informe fiscal de tu bróker.</p></section>';
  }
 
  function exportCsv(r){
   const head=['Fecha','Valor','ISIN','Cantidad','Divisa','Precio','Comisión','Tipo BCE','Transmisión EUR','Adquisición EUR','Resultado EUR','Pérdida diferida EUR','Computable EUR','Bróker'];
   const n=v=>v===null||v===undefined?'':String(Math.round(Number(v)*100)/100).replace('.',',');
-  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.computableEur),s.broker].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')));
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.computableEur),s.broker].map(q).join(';')));
+  const divs=(r.dividends&&r.dividends.items)||[];
+  if(divs.length){
+   lines.push('','Dividendos','Fecha;Valor;ISIN;País;Divisa;Tipo BCE;Bruto EUR;Retención origen EUR;Deducible EUR;Retención España EUR;Neto EUR');
+   divs.forEach(x=>lines.push([x.date,x.ticker||x.name,x.isin,x.country,x.currency,x.fxRate?String(x.fxRate).replace('.',','):'1',n(x.grossEur),n(x.withholdingEur),n(x.deductibleEur),n(x.withholdingEsEur),n(x.netEur)].map(q).join(';')));
+  }
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='viewinvai-fiscal-'+r.year+'.csv';
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
@@ -133,7 +184,7 @@
   try{
    loading=load(wanted,force);const r=await loading;
    if(wanted!==year)return;
-   box.innerHTML=yearTabs()+summaryHtml(r)+beforeSellHtml()+salesHtml(r)+model720Html(r)+notesHtml(r);
+   box.innerHTML=yearTabs()+summaryHtml(r)+dividendsHtml(r)+savingsHtml(r)+beforeSellHtml()+salesHtml(r)+model720Html(r)+notesHtml(r);
    paintMeters(box);
    box._report=r;
   }catch(e){
@@ -145,7 +196,28 @@
   const y=e.target.closest&&e.target.closest('[data-tax-year]');
   if(y){year=Number(y.dataset.taxYear)||thisYear;render();return}
   if(e.target.closest&&e.target.closest('[data-tax-retry]')){render(true);return}
-  if(e.target.closest&&e.target.closest('[data-tax-export]')){const box=document.getElementById('taxResults');if(box&&box._report)exportCsv(box._report)}
+  if(e.target.closest&&e.target.closest('[data-tax-export]')){const box=document.getElementById('taxResults');if(box&&box._report)exportCsv(box._report);return}
+  const del=e.target.closest&&e.target.closest('[data-tax-div-del]');
+  if(del){
+   if(!confirm('¿Borrar este dividendo?'))return;
+   del.disabled=true;
+   window.ViewInvAIAuth.apiFetch('/api/dividends/'+encodeURIComponent(del.dataset.taxDivDel),{method:'DELETE'}).then(()=>{cache={};render(true)}).catch(()=>{del.disabled=false});
+  }
+ });
+ document.addEventListener('submit',async e=>{
+  const f=e.target.closest&&e.target.closest('[data-tax-div-form]');if(!f)return;
+  e.preventDefault();
+  const st=f.querySelector('[data-tax-div-status]'),fd=new FormData(f),btn=f.querySelector('button[type=submit]');
+  const v=String(fd.get('ticker')||'').trim();
+  const body={paidAt:fd.get('paidAt')+'T12:00:00Z',ticker:/^[A-Za-z.\-]{1,8}$/.test(v)?v.toUpperCase():'',name:/^[A-Za-z.\-]{1,8}$/.test(v)?'':v,isin:String(fd.get('isin')||'').trim().toUpperCase(),currency:fd.get('currency'),gross:Number(String(fd.get('gross')).replace(',','.')),withholding:Number(String(fd.get('withholding')||0).replace(',','.'))||0};
+  btn.disabled=true;if(st)st.textContent='Guardando…';
+  try{
+   const res=await window.ViewInvAIAuth.apiFetch('/api/dividends',{method:'POST',body:JSON.stringify(body)});
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(data.error||'No se pudo guardar.');
+   const y=Number(String(fd.get('paidAt')).slice(0,4));if(y)year=y;
+   cache={};render(true);
+  }catch(err){if(st)st.textContent=err.message;btn.disabled=false}
  });
  const refresh=()=>{cache={};if(typeof state!=='undefined'&&state.currentView==='tax')render()};
  ['viewinvai:portfolio-membership-changed','viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,80)));

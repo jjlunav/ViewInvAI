@@ -46,6 +46,7 @@
   amount:['amount','betrag','importe','total','value','net amount','gross amount','valor'],
   fee:['fee','fees','gebuhr','gebuehr','gebuhren','comision','commission','kosten','costs','fremdkostenzuschlag'],
   currency:['currency','wahrung','waehrung','moneda','ccy'],
+  tax:['tax','taxes','steuer','steuern','impuesto','impuestos','retencion','withholding tax','quellensteuer','tax amount'],
   id:['id','transaction id','reference','referenz','order id','execution id','referencia','uuid']
  };
  function mapHeader(header){
@@ -72,9 +73,16 @@
  }
  function sideOf(v){
   const t=norm(v);
+  if(/\b(dividend|dividends|dividende|dividenden|dividendo|dividendos|ausschuttung|distribution|distribucion)\b/.test(t))return'DIV';
   if(/\b(sell|verkauf|venta|vender|sale|sold)\b/.test(t))return'SELL';
   if(/\b(buy|kauf|compra|comprar|purchase|bought|sparplan|savings plan|plan de inversion|saveback|round up|redondeo)\b/.test(t))return'BUY';
   return'';
+ }
+ // Trade Republic's current export puts the ISIN in the «symbol» column.
+ function idOf(isinCell,symbolCell){
+  let isin=String(isinCell||'').trim().toUpperCase(),symbol=String(symbolCell||'').trim().toUpperCase();
+  if(!isin&&/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(symbol)){isin=symbol;symbol=''}
+  return{isin,symbol};
  }
  function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)}
  function rowsFromCsv(text,source){
@@ -83,17 +91,27 @@
   // Some exports put a title line first: use the first line that maps the key columns.
   let hi=table.findIndex(r=>{const m=mapHeader(r);return m.qty!==undefined&&(m.isin!==undefined||m.symbol!==undefined)});
   if(hi<0)throw new Error('No encuentro las columnas de cantidad e ISIN/símbolo. Columnas leídas: '+table[0].join(', '));
-  const map=mapHeader(table[hi]),out=[],skipped={};
+  const map=mapHeader(table[hi]),out=[],skipped={},dividends=[];
   for(const r of table.slice(hi+1)){
    const get=k=>map[k]===undefined?'':r[map[k]];
    const side=sideOf(get('side'))||(num(get('qty'))<0?'SELL':num(get('qty'))>0&&map.side===undefined?'BUY':'');
+   if(side==='DIV'){
+    // «amount» is the cash booked (after tax), as for buys and sells; «tax» is the withholding.
+    const paidAt=dateIso(get('date')),cash=Math.abs(num(get('amount'))||0),tax=Math.abs(num(get('tax'))||0);
+    const {isin,symbol}=idOf(get('isin'),get('symbol'));
+    if(!paidAt||!(cash+tax>0)||!(isin||symbol)){skipped['dividendo incompleto']=(skipped['dividendo incompleto']||0)+1;continue}
+    const ext=String(get('id')||'').trim();
+    dividends.push({externalId:source+'-div:'+(ext||hash([paidAt,isin||symbol,cash,tax].join('|'))),paidAt,isin,ticker:symbol,name:String(get('name')||'').trim(),
+     currency:String(get('currency')||'').trim().toUpperCase()||(source==='tr'?'EUR':'USD'),gross:Math.round((cash+tax)*1e4)/1e4,withholding:tax,noTaxColumn:map.tax===undefined});
+    continue;
+   }
    if(!side){const t=String(get('side')||'otro').trim()||'otro';skipped[t]=(skipped[t]||0)+1;continue}
    const qty=Math.abs(num(get('qty'))||0);if(!qty)continue;
    let price=num(get('price'));const amount=num(get('amount')),fee=Math.abs(num(get('fee'))||0);
    if((price===null||price<=0)&&amount!==null)price=Math.max(0,(Math.abs(amount)-(side==='BUY'?fee:-fee)))/qty;
    if(price===null)continue;
    const executedAt=dateIso(get('date'));if(!executedAt)continue;
-   const isin=String(get('isin')||'').trim().toUpperCase(),symbol=String(get('symbol')||'').trim().toUpperCase();
+   const {isin,symbol}=idOf(get('isin'),get('symbol'));
    const ext=String(get('id')||'').trim();
    out.push({
     externalId:source+':'+(ext||hash([executedAt,isin||symbol,side,qty,price,amount].join('|'))),
@@ -101,7 +119,12 @@
     isin,symbol,name:String(get('name')||'').trim(),executedAt
    });
   }
-  return{rows:out,skipped};
+  return{rows:out,skipped,dividends};
+ }
+ // Fill ticker/name from the catalogue so the preview and Fiscal read well.
+ function enrichDividends(list){
+  const {byIsin,bySymbol}=catalog();
+  return (list||[]).map(d=>{const s=(d.isin&&byIsin.get(d.isin))||(d.ticker&&bySymbol.get(d.ticker))||null;return s?{...d,ticker:d.ticker||s.ticker||'',name:s.name||d.name||''}:d});
  }
 
  /* ---------- catálogo ---------- */
@@ -168,7 +191,7 @@
  function sourceBody(){
   if(flow.source==='ibkr'){
    const saved=readIbkr()||{};
-   return '<p class="broker-import-help">Conexión oficial de solo lectura (<b>Flex Web Service</b>). En el portal de IBKR: <i>Rendimiento e informes → Flex Queries</i>, crea una <b>Activity Flex Query</b> en XML con las secciones <b>Trades</b> y <b>Open Positions</b> (periodo: últimos 365 días) y apunta su <b>Query ID</b>. Después activa <i>Flex Web Service</i> y genera el <b>token</b>.</p>'+
+   return '<p class="broker-import-help">Conexión oficial de solo lectura (<b>Flex Web Service</b>). En el portal de IBKR: <i>Rendimiento e informes → Flex Queries</i>, crea una <b>Activity Flex Query</b> en XML con las secciones <b>Trades</b>, <b>Open Positions</b> y <b>Cash Transactions</b> (dividendos y retenciones) (periodo: últimos 365 días) y apunta su <b>Query ID</b>. Después activa <i>Flex Web Service</i> y genera el <b>token</b>.</p>'+
     '<div class="broker-import-grid"><label class="broker-import-field"><span>Token Flex</span><input data-ibkr-token type="password" autocomplete="off" inputmode="numeric" value="'+esc(saved.token||'')+'" placeholder="Token de Flex Web Service"></label>'+
     '<label class="broker-import-field"><span>Query ID</span><input data-ibkr-query inputmode="numeric" value="'+esc(saved.queryId||'')+'" placeholder="123456"></label></div>'+
     portfolioSelect()+
@@ -177,7 +200,7 @@
   }
   const tr=flow.source==='tr';
   return '<p class="broker-import-help">'+(tr
-    ?'Trade Republic no ofrece API pública. Exporta tus <b>transacciones en CSV</b> desde Trade Republic (app o web) y súbelo aquí: se importan compras, ventas y planes de inversión; dividendos, intereses e ingresos se ignoran.'
+    ?'Trade Republic no ofrece API pública. Exporta tus <b>transacciones en CSV</b> desde Trade Republic (app o web) y súbelo aquí: se importan compras, ventas, planes de inversión y <b>dividendos con su retención</b> (para Fiscal); intereses e ingresos se ignoran.'
     :'Sube el CSV de tu bróker. Se reconocen columnas de fecha, tipo (compra/venta), ISIN o símbolo, cantidad, precio o importe, comisión y divisa, en español, inglés o alemán.')+'</p>'+
    portfolioSelect()+
    '<label class="broker-import-file"><input type="file" accept=".csv,text/csv,text/plain" data-import-file><span>Elegir archivo CSV</span></label>';
@@ -198,19 +221,27 @@
    const gaps=flow.positions.filter(p=>Math.abs((net.get(p.isin)||net.get(p.symbol)||0)-p.quantity)>1e-6);
    if(gaps.length)warn='<p class="broker-import-warn">IBKR indica posiciones que el periodo del informe no explica del todo ('+gaps.slice(0,4).map(g=>esc(g.symbol)+' '+fmt(g.quantity,4)).join(', ')+'). Amplía el periodo de la Flex Query para traer las compras anteriores.</p>';
   }
-  return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+
+  const divs=flow.dividends||[];
+  let divHtml='';
+  if(divs.length){
+   const byCur={};divs.forEach(d=>{const c=byCur[d.currency]=byCur[d.currency]||{g:0,w:0};c.g+=d.gross;c.w+=d.withholding});
+   divHtml='<p class="broker-import-help">Dividendos: <b>'+divs.length+'</b> cobros · '+Object.entries(byCur).map(([c,v])=>'bruto '+fmt(v.g)+' '+esc(c)+', retenido '+fmt(v.w)+' '+esc(c)).join(' · ')+'. Van a Fiscal (no cambian tus posiciones).'+
+    (divs.some(d=>d.noTaxColumn)?' El archivo no trae columna de impuestos: revisa las retenciones en Fiscal.':'')+'</p>';
+  }
+  const total=matched.length+divs.length;
+  return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(divs.length?'<span>'+divs.length+' dividendos</span>':'')+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+divHtml+
    warn+(unmatched.length?'<p class="broker-import-warn">No están en el catálogo de ViewInvAI: '+esc([...new Set(unmatched.map(u=>u.symbol||u.isin||u.name))].slice(0,8).join(', '))+(unmatched.length>8?'…':'')+'.</p>':'')+
    '<ul class="broker-import-list">'+list+'</ul>'+
    '<label class="broker-import-check"><input type="checkbox" data-import-cash> Ajustar también el efectivo de la cartera</label>'+
-   '<button type="button" class="btn secondary broker-import-go" data-import-commit'+(matched.length?'':' disabled')+'>Importar '+matched.length+(matched.length===1?' operación':' operaciones')+'</button></div>';
+   '<button type="button" class="btn secondary broker-import-go" data-import-commit'+(total?'':' disabled')+'>Importar '+(matched.length?matched.length+(matched.length===1?' operación':' operaciones'):'')+(matched.length&&divs.length?' y ':'')+(divs.length?divs.length+(divs.length===1?' dividendo':' dividendos'):'')+(total?'':'0 operaciones')+'</button></div>';
  }
  function showPreview(rows,source,extra=''){
   const {matched,unmatched}=matchRows(rows,source);
-  flow.matched=matched;flow.unmatched=unmatched;
+  flow.matched=matched;flow.unmatched=unmatched;flow.dividends=enrichDividends(flow.dividends);
   status(extra+previewHtml());
  }
  async function commit(button){
-  const portfolioId=flow.portfolioId,rows=flow.matched||[];if(!portfolioId||!rows.length)return;
+  const portfolioId=flow.portfolioId,rows=flow.matched||[],divs=flow.dividends||[];if(!portfolioId||!(rows.length||divs.length))return;
   const adjustCash=!!document.querySelector('[data-import-cash]')?.checked;
   const broker=flow.source==='ibkr'?'Interactive Brokers':flow.source==='tr'?'Trade Republic':'';
   let imported=0,skipped=0,errors=[];
@@ -223,7 +254,15 @@
     if(!res.ok)throw new Error(data.error||'No se pudo importar.');
     imported+=data.imported||0;skipped+=data.skipped||0;errors=errors.concat(data.errors||[]);
    }
-   status('<div class="broker-import-done"><strong>'+imported+(imported===1?' operación importada':' operaciones importadas')+'</strong>'+(skipped?'<span>'+skipped+' ya estaban importadas</span>':'')+
+   let divImported=0,divSkipped=0;
+   for(let i=0;i<divs.length;i+=200){
+    if(button)button.textContent='Importando dividendos…';
+    const res=await window.ViewInvAIAuth.apiFetch('/api/dividends/import',{method:'POST',body:JSON.stringify({portfolioId,source:flow.source,broker,rows:divs.slice(i,i+200)})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(data.error||'No se pudieron importar los dividendos.');
+    divImported+=data.imported||0;divSkipped+=data.skipped||0;errors=errors.concat(data.errors||[]);
+   }
+   status('<div class="broker-import-done"><strong>'+imported+(imported===1?' operación importada':' operaciones importadas')+(divs.length?' · '+divImported+' dividendos':'')+'</strong>'+(skipped||divSkipped?'<span>'+(skipped+divSkipped)+' ya estaban importados</span>':'')+
     (errors.length?'<p class="broker-import-warn">'+errors.length+' no se pudieron registrar: '+esc(errors.slice(0,5).map(e=>(e.ticker||'')+' · '+e.error).join(' | '))+'</p>':'')+'</div>',errors.length&&!imported);
    if(typeof P().reload==='function')await P().reload();
    if(window.ViewInvAITax)window.ViewInvAITax._invalidate();
@@ -248,7 +287,7 @@
    if(!token||!queryId){status('Indica el token y el Query ID.',true);return}
    if(document.querySelector('[data-ibkr-remember]')?.checked)writeIbkr({...(readIbkr()||{}),token,queryId,portfolioId:flow.portfolioId});else writeIbkr(null);
    go.disabled=true;go.textContent='Consultando IBKR…';status('');
-   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];showPreview(data.trades||[],'ibkr')}
+   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.dividends=data.dividends||[];showPreview(data.trades||[],'ibkr')}
    catch(err){status(esc(err.message),true)}
    finally{if(go.isConnected){go.disabled=false;go.textContent='Leer operaciones de IBKR'}}
   }
@@ -260,9 +299,10 @@
    const file=t.files[0];
    if(file.size>5e6){status('El archivo es demasiado grande (máx. 5 MB).',true);return}
    file.text().then(text=>{
-    const {rows,skipped}=rowsFromCsv(text,flow.source==='tr'?'tr':'csv');
+    const {rows,skipped,dividends}=rowsFromCsv(text,flow.source==='tr'?'tr':'csv');
+    flow.dividends=dividends||[];
     const ign=Object.entries(skipped);
-    showPreview(rows,flow.source,ign.length?'<p class="broker-import-help">Ignoradas (no son compras/ventas): '+esc(ign.slice(0,6).map(([k,v])=>k+' ×'+v).join(', '))+'</p>':'');
+    showPreview(rows,flow.source,ign.length?'<p class="broker-import-help">Ignoradas (no son compras, ventas ni dividendos): '+esc(ign.slice(0,6).map(([k,v])=>k+' ×'+v).join(', '))+'</p>':'');
    }).catch(err=>status(esc(err.message||'No se pudo leer el archivo.'),true));
   }
  });
@@ -276,8 +316,14 @@
   saved.lastSyncAt=Date.now();writeIbkr(saved);
   try{
    const data=await fetchIbkr(saved);
-   const {matched}=matchRows(data.trades||[],'ibkr');if(!matched.length)return;
+   const {matched}=matchRows(data.trades||[],'ibkr');
    let imported=0;
+   const divs=enrichDividends(data.dividends||[]);
+   if(divs.length){
+    const res=await window.ViewInvAIAuth.apiFetch('/api/dividends/import',{method:'POST',body:JSON.stringify({portfolioId:saved.portfolioId,source:'ibkr',broker:'Interactive Brokers',rows:divs.slice(0,300)})});
+    const out=await res.json().catch(()=>({}));if(res.ok&&out.imported&&window.ViewInvAITax)window.ViewInvAITax._invalidate();
+   }
+   if(!matched.length)return;
    for(let i=0;i<matched.length;i+=CHUNK){
     const res=await window.ViewInvAIAuth.apiFetch('/api/transactions/import',{method:'POST',body:JSON.stringify({portfolioId:saved.portfolioId,source:'ibkr',broker:'Interactive Brokers',rows:matched.slice(i,i+CHUNK)})});
     const out=await res.json().catch(()=>({}));if(!res.ok)return;imported+=out.imported||0;
