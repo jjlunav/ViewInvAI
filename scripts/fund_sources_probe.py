@@ -246,5 +246,24 @@ def myinvestor_api2():
         except Exception as e:
             print("top", t, type(e).__name__, str(e)[:120])
 
-for title, fn in [("TR websocket 3", tr_ws3), ("MyInvestor API 2", myinvestor_api2)]:
+
+def myinvestor_api3():
+    import urllib.error
+    _, _, b = get("https://myinvestor.es/_next/static/chunks/pages/_app-cb2d24ba2fac8be1.js")
+    t = b.decode("utf-8", "replace")
+    for key in ["api.myinvestor.es", "sk=", "x-api", "apikey", "Authorization"]:
+        for m in list(re.finditer(re.escape(key), t))[:3]:
+            print("CTX", key, t[max(0, m.start() - 300):m.start() + 300].replace("\n", " "))
+    _, _, b2 = get("https://myinvestor.es/_next/static/chunks/pages/inversion/fondos-inversion/buscador-82a8b9222a11d829.js")
+    t2 = b2.decode("utf-8", "replace")
+    for key in ["find-fondos", "ltvMode", "TODOS", "query:"]:
+        for m in list(re.finditer(re.escape(key), t2))[:3]:
+            print("BUSCADOR", key, t2[max(0, m.start() - 400):m.start() + 300].replace("\n", " "))
+    base = "https://api.myinvestor.es/myinvestor-server/rest/public/fondos/find-fondos?type=TODOS&ltvMode=ORIGIN"
+    try:
+        get(base, headers={"Accept": "application/json", "Origin": "https://myinvestor.es"})
+    except urllib.error.HTTPError as e:
+        print("400 body:", e.read()[:600])
+
+for title, fn in [("MyInvestor API 3", myinvestor_api3)]:
     try_(title, fn)
