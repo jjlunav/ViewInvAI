@@ -27,9 +27,9 @@
     })();
   </script>
   <link rel="stylesheet" href="mobile-app.css?v=20261002c1">
-  <link rel="stylesheet" href="ui-density.css?v=20261002s1">
+  <link rel="stylesheet" href="ui-density.css?v=20261002u1">
   <link rel="stylesheet" href="asset-card.css?v=20261002c1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261002t1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261002u1">
 </head>
 <body>
 <div class="app-shell">
@@ -50,6 +50,7 @@
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Catálogo Fondos y ETFs</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
+      <button class="nav-item" data-view="inbox"><span>◔</span>Avisos</button>
       <button class="nav-item" data-view="tax"><span>§</span>Fiscal (IRPF)</button>
       <button class="nav-item" data-view="settings"><span>⚙</span>Configuración General</button>
     </nav>
@@ -447,6 +448,17 @@
       <div id="taxResults" class="tax-results"></div>
     </section>
 
+    <section class="view" id="view-inbox">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Avisos</h1>
+          <p class="lead">Todo lo que te ha llegado al móvil: precio, niveles, Radar AI, noticias y carteras.</p>
+        </div>
+        <div class="heading-actions"><button type="button" class="btn icon-btn" data-inbox-read-all title="Marcar todo como leído" aria-label="Marcar todo como leído">✓</button><button type="button" class="section-help" data-help-section="inbox" aria-label="Ayuda sobre Avisos">?</button></div>
+      </div>
+      <div id="inboxResults" class="inbox-results"></div>
+    </section>
+
     <section class="view" id="view-settings">
       <div class="page-heading compact-heading">
         <div>
@@ -652,7 +664,7 @@
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261002s1"></script>
-<script src="app.js?v=20261002L1"></script>
+<script src="app.js?v=20261002u1"></script>
 <script src="settings.js?v=20261002f1"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261002L1"></script>
@@ -661,18 +673,19 @@
 <script src="asset-card.js?v=20261001r23"></script>
 <script src="stock-list.js?v=20261001r25"></script>
 <script src="recommendation.js?v=20261002p1"></script>
-<script src="today.js?v=20261002p1"></script>
-<script src="help.js?v=20261002s1"></script>
+<script src="today.js?v=20261002u1"></script>
+<script src="help.js?v=20261002u1"></script>
 <script src="stock-profile.js?v=20261002p1"></script>
 <script src="catalog.js?v=20261001r32"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r3"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261002s1"></script>
-<script src="mobile-app.js?v=20261002L1"></script>
+<script src="navigation.js?v=20261002u1"></script>
+<script src="mobile-app.js?v=20261002u1"></script>
 <script src="ui-shell.js?v=20261002r1"></script>
 <script src="broker-import.js?v=20261002t1"></script>
 <script src="tax.js?v=20261002t1"></script>
+<script src="inbox.js?v=20261002u1"></script>
 <script src="search.js?v=20261002s1"></script>
 <script src="funds.js?v=20261001r8"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
