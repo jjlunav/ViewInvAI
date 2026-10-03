@@ -618,6 +618,8 @@ html.import-wizard-open,html.import-wizard-open body{overflow:hidden!important}
 #importWizard .import-wizard-summary .broker-import-help{overflow-wrap:anywhere}
 #importWizard .import-wizard-sum h4{margin:0 0 6px;font-size:14px}
 #importWizard .import-wizard-sum ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+#importWizard .import-wizard-loose{margin-top:8px}
+#importWizard .import-wizard-loose ul{margin-top:8px}
 #importWizard .import-wizard-sum li{list-style:none;padding:0!important;background:none!important}
 #importWizard .import-wizard-edit{width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid rgba(140,170,255,.14);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 10px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.035);font-size:13px}
 #importWizard .import-wizard-edit i{grid-column:1/-1;font-style:normal;font-size:11.5px;font-weight:800;color:#43e4b2;justify-self:end}
@@ -1264,20 +1266,6 @@ html[data-theme="light"] .decision-plan em.neg{color:#c0262d}html[data-theme="li
 .position-decision-chip button{width:22px;height:22px;border-radius:50%;border:0;background:rgba(255,255,255,.08);color:inherit;font-size:14px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
 html[data-theme="light"] .position-decision-chip{color:#8a5a12;background:#fff7e6}
 html[data-theme="light"] .position-decision-chip button{background:rgba(0,0,0,.06)}
-.fund-benefit-tag{font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.04em;padding:1px 6px;border-radius:6px;margin-right:4px;background:rgba(47,211,154,.14);color:var(--positive,#2fd39a);text-transform:uppercase}
-html[data-theme="light"] .fund-benefit-tag{background:#e7f7f0;color:#0f7a54}
-.fund-benefits{display:grid;gap:6px;margin-top:4px;padding-top:8px;border-top:1px solid rgba(140,190,210,.14)}
-.fund-benefits>small{font-size:11px;letter-spacing:.12em;font-weight:800;color:#9d8cff}
-.fund-benefit-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px}
-.fund-benefit-row>div:first-child{display:grid;gap:1px;min-width:0}
-.fund-benefit-row>div:first-child>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fund-benefit-row small{font-size:12px;color:var(--muted,#8ea0bf)}
-.fund-benefit-sum{display:grid;justify-items:end;gap:1px}
-.fund-benefit-sum b{font-size:15px;font-variant-numeric:tabular-nums}
-.fund-benefit-tag.roundup{background:rgba(157,140,255,.16);color:#b7a9ff}
-html[data-theme="light"] .fund-benefit-tag.roundup{background:#eeebff;color:#4f46e5}
-html[data-theme="light"] .fund-benefits{border-top-color:#eef1f6}
-html[data-theme="light"] .fund-benefits>small{color:#4f46e5}
 
 /* Fondos: resultados del universo de Morningstar España (incluye MyInvestor) */
 html:root:root body .fund-remote{margin:18px 0 8px;padding:14px;border:1px solid var(--line,rgba(127,127,127,.25));border-radius:14px;background:var(--panel,transparent)}

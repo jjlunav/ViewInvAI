@@ -442,7 +442,7 @@
   }).join('');
   paint({kicker:'Pregunta '+(wiz.i+1)+' de '+n,title:'Tus aportaciones',pct:wiz.i/n*100,
    body:'<div class="import-wizard-q"><h3>'+esc(g.name)+'</h3>'+
-    '<p class="import-wizard-meta">'+g.rows.length+(g.rows.length===1?' compra':' compras')+' · '+esc(shortDate(first))+(g.rows.length>1?' → '+esc(shortDate(last)):'')+' · total '+eur(total,g.currency)+'</p>'+
+    '<p class="import-wizard-meta">'+g.rows.length+(g.rows.length===1?' compra':' compras')+' · '+esc(shortDate(first))+(g.rows.length>1?' → '+esc(shortDate(last)):'')+(g.kind==='saveback'||g.kind==='roundup'||g.suggested==='saveback'||g.suggested==='roundup'?'':' · total '+eur(total,g.currency))+'</p>'+
     '<p class="import-wizard-why">'+esc(g.why)+'</p>'+
     '<ul class="import-wizard-recent" aria-label="Últimas compras">'+recent+'</ul>'+
     '<p class="import-wizard-ask">¿Qué son estas compras?</p><div class="import-wizard-opts" role="radiogroup" aria-label="Tipo de aportación">'+opts+'</div>'+plan+'</div>',
@@ -450,9 +450,15 @@
     '<button type="button" class="btn secondary" data-wiz-next'+(g.answered?'':' disabled')+'>'+(wiz.i===n-1?'Ver resumen':'Siguiente')+'</button>'});
  }
  function paintSummary(){
-  const groups=((flow.review&&flow.review.groups)||[]).filter(g=>!(g.kind==='buy'&&g.suggested==='buy'&&g.confidence==='sure'));
-  const label=g=>KIND_LABEL[g.kind]+(g.kind==='plan'?(g.active?' · '+eur(g.amount,g.currency)+' '+(FREQ_LABEL[g.frequency]||'').toLowerCase():' · terminado'):'')+(g.kind==='saveback'||g.kind==='roundup'?' · '+eur(g.rows.reduce((t,r)=>t+cashOf(r),0),g.currency)+' en total':'');
-  const contrib=groups.length?'<section class="import-wizard-sum"><h4>Tus aportaciones</h4><p class="broker-import-help">Toca cualquiera para cambiar lo que he detectado.</p><ul>'+groups.map(g=>'<li><button type="button" class="import-wizard-edit" data-wiz-edit="'+g.id+'" aria-label="Cambiar '+esc(g.name)+'"><span>'+esc(g.name)+'</span><b class="k-'+g.kind+'">'+esc(label(g))+'</b><i aria-hidden="true">Cambiar</i></button></li>').join('')+'</ul></section>':'';
+  // Todo lo detectado se puede cambiar; las compras sueltas seguras van plegadas para no llenar la pantalla.
+  const all=(flow.review&&flow.review.groups)||[];
+  const isLoose=g=>g.kind==='buy'&&g.suggested==='buy'&&g.confidence==='sure';
+  const groups=all.filter(g=>!isLoose(g)),loose=all.filter(isLoose);
+  const label=g=>KIND_LABEL[g.kind]+(g.kind==='plan'?(g.active?' · '+eur(g.amount,g.currency)+' '+(FREQ_LABEL[g.frequency]||'').toLowerCase():' · terminado'):'');
+  const item=g=>'<li><button type="button" class="import-wizard-edit" data-wiz-edit="'+g.id+'" aria-label="Cambiar '+esc(g.name)+'"><span>'+esc(g.name)+'</span><b class="k-'+g.kind+'">'+esc(label(g))+'</b><i aria-hidden="true">Cambiar</i></button></li>';
+  const contrib=all.length?'<section class="import-wizard-sum"><h4>Cómo he clasificado tus compras</h4><p class="broker-import-help">Toca cualquiera para cambiarlo si me he equivocado.</p>'+
+   (groups.length?'<ul>'+groups.map(item).join('')+'</ul>':'')+
+   (loose.length?'<details class="import-wizard-loose"><summary>Compras sueltas · '+loose.length+(loose.length===1?' valor':' valores')+'</summary><ul>'+loose.map(item).join('')+'</ul></details>':'')+'</section>':'';
   const total=(flow.matched||[]).length+(flow.funds||[]).length+(flow.dividends||[]).length;
   const n=wiz.questions;
   paint({kicker:n?'Resumen':'Importar '+brokerName(),title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
