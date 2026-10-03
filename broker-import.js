@@ -140,11 +140,17 @@
    const executedAt=dateIso(get('date'));if(!executedAt)continue;
    const {isin,symbol}=idOf(get('isin'),get('symbol'));
    const ext=String(get('id')||'').trim();
-   const rawType=String(get('side')||'')+' '+String(map.desc!==undefined&&map.desc!==map.name?get('desc'):'');
-   const benefit=/saveback/i.test(rawType)?'saveback':/spare|round ?up|redondeo/i.test(rawType)?'roundup':'';
+   // Tipo + descripción, sin el nombre del valor (si no, «Planet Labs» parece un «plan»).
+   const instName=String(get('name')||'').trim();
+   let descTxt=String(map.desc!==undefined&&map.desc!==map.name?get('desc'):'');
+   if(instName)descTxt=descTxt.split(instName).join(' ');
+   const rawType=String(get('side')||'')+' '+descTxt;
+   const cashAbs=amount!==null?Math.abs(amount):qty*Math.abs(price);
+   // Saveback y Redondeo de Trade Republic no pasan de unos 15 € por compra.
+   const benefit=cashAbs>16?'':/\bsaveback\b/i.test(rawType)?'saveback':/\bspare|\bround ?up\b|\bredondeo\b/i.test(rawType)?'roundup':'';
    out.push({
     benefit,cash:amount!==null?Math.abs(amount):qty*Math.abs(price)+(side==='BUY'?fee:0),
-    plan:!benefit&&/plan|sparplan|savings/i.test(rawType),
+    plan:!benefit&&/\b(?:savings ?plan|sparplan|plan de inversi[oó]n|plan de ahorro|plan execution|plan)\b/i.test(rawType),
     externalId:source+':'+(ext||hash([executedAt,isin||symbol,side,qty,price,amount].join('|'))),
     side,quantity:qty,price:Math.abs(price),fees:fee,currency:String(get('currency')||'').trim().toUpperCase()||(source==='tr'?'EUR':''),
     isin,symbol,name:String(get('name')||'').trim(),executedAt
@@ -158,7 +164,7 @@
   for(const b of benefits){
    const t0=Date.parse(b.date);let best=null,bestGap=Infinity;
    for(const r of rows){
-    if(r.side!=='BUY'||r.benefit||Math.abs((r.cash||0)-b.amount)>0.011)continue;
+    if(r.side!=='BUY'||r.benefit||b.amount>16||Math.abs((r.cash||0)-b.amount)>0.011)continue;
     const gap=(Date.parse(r.executedAt)-t0)/864e5;
     if(gap<-1||gap>7)continue;
     if(Math.abs(gap)<bestGap){best=r;bestGap=Math.abs(gap)}
@@ -446,7 +452,7 @@
  function paintSummary(){
   const groups=((flow.review&&flow.review.groups)||[]).filter(g=>!(g.kind==='buy'&&g.suggested==='buy'&&g.confidence==='sure'));
   const label=g=>KIND_LABEL[g.kind]+(g.kind==='plan'?(g.active?' · '+eur(g.amount,g.currency)+' '+(FREQ_LABEL[g.frequency]||'').toLowerCase():' · terminado'):'')+(g.kind==='saveback'||g.kind==='roundup'?' · '+eur(g.rows.reduce((t,r)=>t+cashOf(r),0),g.currency)+' en total':'');
-  const contrib=groups.length?'<section class="import-wizard-sum"><h4>Tus aportaciones</h4><ul>'+groups.map(g=>'<li><span>'+esc(g.name)+'</span><b class="k-'+g.kind+'">'+esc(label(g))+'</b></li>').join('')+'</ul></section>':'';
+  const contrib=groups.length?'<section class="import-wizard-sum"><h4>Tus aportaciones</h4><p class="broker-import-help">Toca cualquiera para cambiar lo que he detectado.</p><ul>'+groups.map(g=>'<li><button type="button" class="import-wizard-edit" data-wiz-edit="'+g.id+'" aria-label="Cambiar '+esc(g.name)+'"><span>'+esc(g.name)+'</span><b class="k-'+g.kind+'">'+esc(label(g))+'</b><i aria-hidden="true">Cambiar</i></button></li>').join('')+'</ul></section>':'';
   const total=(flow.matched||[]).length+(flow.funds||[]).length+(flow.dividends||[]).length;
   const n=wiz.questions;
   paint({kicker:n?'Resumen':'Importar '+brokerName(),title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
@@ -465,6 +471,12 @@
   if(o){const g=currentGroup();if(g){g.kind=o.dataset.wizOpt;g.answered=true;if(g.confidence==='unsure')g.confidence='likely';const top=wizEl.querySelector('[data-wiz-body]').scrollTop;paintStep();wizEl.querySelector('[data-wiz-body]').scrollTop=top}return}
   if(t.closest('[data-wiz-back]')&&wiz&&wiz.i>0){wiz.i--;paintStep();focusTitle();return}
   if(t.closest('[data-wiz-next]')&&wiz){const g=currentGroup();if(g&&!g.answered)return;wiz.i=Math.min(wiz.steps.length-1,wiz.i+1);paintStep();focusTitle();return}
+  const ed=t.closest('[data-wiz-edit]');
+  if(ed&&wiz){
+   const id=ed.dataset.wizEdit;let at=wiz.steps.indexOf(id);
+   if(at<0){at=wiz.steps.length-1;wiz.steps.splice(at,0,id);wiz.questions++}
+   wiz.i=at;paintStep();focusTitle();return;
+  }
   if(t.closest('[data-wiz-finish]')){wizardClose();commit();return}
  }
  function focusTitle(){const t=wizEl&&wizEl.querySelector('[data-wiz-title]');if(t)try{t.focus({preventScroll:true})}catch(_){}}
@@ -493,7 +505,7 @@
   * Lo que el bróker marca (plan, abono de Saveback o Redondeo) es seguro; lo que se deduce
   * por el patrón se enseña para revisar, y lo dudoso se pregunta. Las respuestas se recuerdan
   * para la próxima importación. */
- const CHOICES_KEY='viewinvai:import-review-v1';
+ const CHOICES_KEY='viewinvai:import-review-v2';
  const KIND_LABEL={plan:'Plan automático',saveback:'Saveback',roundup:'Redondeo',buy:'Compras sueltas'};
  const KIND_SHORT={plan:'Plan',saveback:'Saveback',roundup:'Redondeo',buy:'Sueltas'};
  const FREQ_LABEL={weekly:'Semanal',biweekly:'Cada 2 semanas',twice:'2 veces al mes',monthly:'Mensual',quarterly:'Trimestral'};
@@ -594,30 +606,44 @@
    let rest=rows.filter(r=>!r.plan&&!(r.benefit&&!r.benefitGuess));
    if(!flagged.length&&rest.length>=2){
     let s=findSeries(rest);
-    // Importe pequeño que cambia en cada compra: no es un plan, lo resuelve el paso 3.
-    if(s){const a=s.list.map(cashOf);if(median(a)<=35&&cv(a)>.35&&!stepwise(a))s=null}
     if(s){
-     const amounts=s.list.map(cashOf),small=median(amounts)<=35,variable=cv(amounts)>.35&&!stepwise(amounts);
-     let kind='plan',confidence=s.list.length>=3?'likely':'unsure',why='Una compra '+(FREQ_LABEL[s.frequency]||'').toLowerCase()+(s.frequency==='monthly'?' en torno al día '+s.day:s.frequency==='twice'?' (días '+s.days.join(' y ')+')':'')+'.';
-     if(variable&&small){
-      // Importe pequeño que cambia cada vez: más propio de Saveback (mensual, día 1-6) o Redondeo (semanal).
-      kind=s.frequency==='weekly'||s.frequency==='biweekly'?'roundup':s.frequency==='monthly'&&s.day<=6?'saveback':'plan';
-      confidence='unsure';why+=' El importe cambia cada vez ('+eur(Math.min(...amounts))+' a '+eur(Math.max(...amounts))+'), como el '+(kind==='plan'?'Saveback o el Redondeo':KIND_LABEL[kind])+'.';
-     }else if(variable){confidence='unsure';why+=' El importe cambia bastante entre compras.'}
-     else if(!stepwise(amounts)||cv(amounts)>.02)why+=' Has cambiado la cuota alguna vez: cuenta la última.';
-     groups.push(makeGroup(inst,s.list,kind,confidence,why,{frequency:s.frequency,day:s.day,days:s.days}));
+     const amounts=s.list.map(cashOf),fixed=cv(amounts)<=.35&&(stepwise(amounts)||median(amounts)>16);
+     // Un plan tiene cuota fija (solo cambia cuando la cambias tú). Importes pequeños que varían
+     // cada vez son Saveback (mensual) o Redondeo (semanal): los resuelve el paso 3.
+     // En acciones solo se propone plan con 4+ compras de cuota fija, y siempre preguntando.
+     const tiny=median(amounts)<3&&s.list.length<4;
+     if(!fixed||tiny||(!inst.isFund&&s.list.length<4))s=null;
+    }
+    if(s){
+     const amounts=s.list.map(cashOf);
+     let confidence=inst.isFund&&s.list.length>=3?'likely':'unsure',why='Una compra '+(FREQ_LABEL[s.frequency]||'').toLowerCase()+(s.frequency==='monthly'?' en torno al día '+s.day:s.frequency==='twice'?' (días '+s.days.join(' y ')+')':'')+(stepwise(amounts)?' de importe fijo.':' (el importe cambia a veces).');
+     if(cv(amounts)>.02)why+=' Has cambiado la cuota alguna vez: cuenta la última.';
+     if(!inst.isFund)why+=' Es una acción: confírmalo, los planes en acciones son menos habituales.';
+     groups.push(makeGroup(inst,s.list,'plan',confidence,why,{frequency:s.frequency,day:s.day,days:s.days}));
      rest=rest.filter(r=>!s.list.includes(r));
     }
    }
    // 3. Compras pequeñas que quedan sin explicar (al menos 2): Saveback, Redondeo o sueltas.
    const small=rest.filter(r=>cashOf(r)<=35);
-   const guess=['roundup','saveback'].find(k=>small.filter(r=>r.benefit===k).length>=small.length/2)||'buy';
+   // Saveback y Redondeo de Trade Republic: importes pequeños (hasta unos 15 €) que cambian cada vez;
+   // el Redondeo es semanal y el Saveback mensual (en torno al día 2).
+   let guess=['roundup','saveback'].find(k=>small.filter(r=>r.benefit===k).length>=small.length/2)||'buy';
+   if(guess==='buy'&&small.length>=2){
+    const sm=small.slice().sort((x,y)=>tOf(x)-tOf(y)),gaps=[];for(let i=1;i<sm.length;i++)gaps.push((tOf(sm[i])-tOf(sm[i-1]))/864e5);
+    const g=median(gaps),amts=sm.map(cashOf);
+    if(median(amts)<=16){if(g>=5&&g<=10)guess='roundup';else if(g>=25&&g<=36&&sm.filter(r=>dom(r)<=6).length>=sm.length*.7)guess='saveback'}
+   }
    if(small.length>=3||(small.length>=2&&guess!=='buy')){
     const amounts=small.map(cashOf);
     groups.push(makeGroup(inst,small,guess,'unsure',small.length+' compras pequeñas de importe variable ('+eur(Math.min(...amounts))+' a '+eur(Math.max(...amounts))+').'+(guess!=='buy'?' Por las fechas parecen '+KIND_LABEL[guess]+'.':'')));
     rest=rest.filter(r=>!small.includes(r));
    }
    if(rest.length)groups.push(makeGroup(inst,rest,'buy','sure','Compras puntuales.'));
+  }
+  // Un mismo valor y tipo en un solo grupo (p. ej. Redondeo detectado en dos tandas).
+  for(let i=groups.length-1;i>=0;i--){
+   const g=groups[i],j=groups.findIndex((h,k)=>k<i&&h.key===g.key&&h.kind===g.kind&&g.kind!=='plan'&&h.confidence===g.confidence);
+   if(j>=0){const h=groups[j];h.rows=h.rows.concat(g.rows).sort((x,y)=>tOf(x)-tOf(y));h.amount=Math.round(planAmount(h)*100)/100;groups.splice(i,1)}
   }
   groups.forEach((g,i)=>{
    g.id='g'+i;
