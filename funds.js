@@ -304,10 +304,14 @@
  function matchesPlatform(p){
   if(state.platform==='all')return true;
   if(state.platform==='tr')return verified(p.platforms.tradeRepublic);
-  if(state.platform==='mi')return verified(p.platforms.myInvestor);
-  if(state.platform==='both')return verified(p.platforms.tradeRepublic)&&verified(p.platforms.myInvestor);
+  if(state.platform==='mi')return verified(p.platforms.myInvestor)||possibleMi(p);
+  if(state.platform==='both')return verified(p.platforms.tradeRepublic)&&(verified(p.platforms.myInvestor)||possibleMi(p));
   return true;
  }
+ // MyInvestor no publica su catálogo (unos 2.000 fondos). Comprobados (✓): su lista oficial, tus
+ // importaciones y tus carteras de MyInvestor. El resto de fondos de inversión registrados en España
+ // salen como posibles (?), para que los compruebes en MyInvestor antes de invertir.
+ function possibleMi(p){return p.type==='fund'&&!rejected(p.platforms&&p.platforms.myInvestor)}
  function platformSortValue(p){
   const tr=verified(p.platforms.tradeRepublic),mi=verified(p.platforms.myInvestor);
   return tr&&mi?3:tr?2:mi?1:0;
@@ -410,6 +414,8 @@
    return [p.name,p.isin,p.provider,p.index,p.category,p.region].some(v=>String(v||'').toLowerCase().includes(needle));
   });
   rows.sort(compareFundRows);
+  // Con el filtro de MyInvestor, primero los comprobados.
+  if(state.platform==='mi'||state.platform==='both'){const ok=rows.filter(p=>verified(p.platforms.myInvestor));return ok.concat(rows.filter(p=>!verified(p.platforms.myInvestor)))}
   return rows;
  }
  function perfStrip(p){
@@ -647,7 +653,7 @@
   const eligible=state.products.filter(p=>{
    if(p.type==='etp'||/\b(?:2x|3x|leveraged|short)\b/i.test(String(p.name||'')))return false;
    if(platform==='tr')return verified(p.platforms&&p.platforms.tradeRepublic);
-   if(platform==='mi')return verified(p.platforms&&p.platforms.myInvestor);
+   if(platform==='mi')return verified(p.platforms&&p.platforms.myInvestor)||possibleMi(p);
    return true;
   });
   const fallback=eligible.slice().sort((a,b)=>{
@@ -698,6 +704,7 @@
   const results=rows.length?(compactFundsView()?fundMobileList(rows):fundTable(rows)):
     '<div class="empty-state">No hay productos que coincidan con los filtros. Si el catálogo todavía está vacío, ejecuta la sincronización de fuentes verificadas.</div>';
   box.innerHTML=
+   (state.platform==='mi'||state.platform==='both'?'<p class="fund-note fund-mi-note"><b>✓ '+rows.filter(p=>verified(p.platforms.myInvestor)).length+'</b> comprobados en MyInvestor · <b>? '+rows.filter(p=>!verified(p.platforms.myInvestor)).length+'</b> posibles (fondos registrados en España: compruébalo en MyInvestor). MyInvestor no publica su lista completa; busca por nombre o ISIN entre los 49.800 fondos registrados en España.</p>':'')+
    '<div class="funds-status"><strong>'+rows.length+' productos</strong><span>·</span><span>'+esc(stamp)+'</span><span>·</span><span>Orden: '+esc(fundSortLabel(state.sort))+' '+(state.sortDir==='asc'?'↑':'↓')+'</span></div>'+
    results+remoteFundsHtml();
   updateMobileFiltersState();
