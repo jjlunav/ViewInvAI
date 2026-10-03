@@ -184,8 +184,8 @@
    list.sort((a,b)=>Date.parse(a.executedAt)-Date.parse(b.executedAt));
    const gaps=[];for(let i=1;i<list.length;i++)gaps.push((Date.parse(list[i].executedAt)-Date.parse(list[i-1].executedAt))/864e5);
    const med=gaps.slice().sort((a,b)=>a-b)[gaps.length>>1];
-   if(med>=5&&med<=10&&list.filter(r=>nearSlot(day(r),[2,9,16,23])).length>=list.length*.8)list.forEach(r=>{r.benefit='roundup'});
-   else if(med>=26&&med<=35&&list.filter(r=>nearSlot(day(r),[2])).length>=list.length*.8)list.forEach(r=>{r.benefit='saveback'});
+   if(med>=5&&med<=10&&list.filter(r=>nearSlot(day(r),[2,9,16,23])).length>=list.length*.8)list.forEach(r=>{r.benefit='roundup';r.benefitGuess=true});
+   else if(med>=26&&med<=35&&list.filter(r=>nearSlot(day(r),[2])).length>=list.length*.8)list.forEach(r=>{r.benefit='saveback';r.benefitGuess=true});
   }
  }
  // Fill ticker/name from the catalogue so the preview and Fiscal read well.
@@ -241,7 +241,7 @@
    const s=(r.isin&&byIsin.get(r.isin))||(r.symbol&&bySymbol.get(r.symbol))||(r.name&&byCompanyName(byName,r.name))||null;
    if(!s){
     const f=fundProduct(r);
-    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan,benefit:r.benefit||''});continue}
+    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,cash:r.cash});continue}
     if(r.isin&&/^[A-Z]{2}[A-Z0-9]{10}$/.test(r.isin)){
      // Not in the ViewInvAI catalogue yet (European, Asian… shares): keep it under its
      // ISIN so it counts in the portfolio, Fiscal and the curve, and picks up live data
@@ -339,7 +339,7 @@
   const overlap=manualOverlap(matched,flow.portfolioId).names;
   const total=matched.length+divs.length+funds.length;
   return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(funds.length?'<span>'+funds.length+' de fondos/ETF</span>':'')+(divs.length?'<span>'+divs.length+' dividendos</span>':'')+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+divHtml+
-   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> se creará':'<b>'+planIsins.size+' planes de ahorro</b> se crearán')+' con su importe y día':'')+'.</p>':'')+
+   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> marcado por el bróker':'<b>'+planIsins.size+' planes de ahorro</b> marcados por el bróker'):'')+'. Los planes, el Saveback y el Redondeo que el archivo no marque te los preguntaré durante la importación (y recordaré tu respuesta); el importe del plan es el de su última ejecución.</p>':'')+
    (outside?'<p class="broker-import-help">'+outside+(outside===1?' operación':' operaciones')+' de valores que ViewInvAI aún no cotiza (acciones europeas, asiáticas…): se guardan con su ISIN y tendrán precio en cuanto el catálogo los incluya.</p>':'')+
    (overlap.length?'<p class="broker-import-warn">'+overlap.length+(overlap.length===1?' valor ya está apuntado a mano':' valores ya están apuntados a mano')+' ('+esc(overlap.slice(0,5).join(', '))+(overlap.length>5?'…':'')+'): al importar te preguntaré qué mantener; lo recomendado es el historial del bróker.</p>':'')+
    warn+(unmatched.length?'<p class="broker-import-warn">No están en el catálogo de ViewInvAI: '+esc([...new Set(unmatched.map(u=>u.symbol||u.isin||u.name))].slice(0,8).join(', '))+(unmatched.length>8?'…':'')+'.</p>':'')+
@@ -370,6 +370,92 @@
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||'El servidor no respondió ('+res.status+').');
   return data;
+ }
+ /* ---------- planes, Saveback y Redondeo: lo que no está claro se pregunta ----------
+  * Un plan es una compra cada mes en torno al mismo día (o el siguiente hábil); su importe
+  * puede cambiar cuando lo subes o bajas, así que el importe vigente es el de la última
+  * ejecución. Saveback y Redondeo son compras pequeñas de importe variable. Si el CSV no lo
+  * dice expresamente, se pregunta durante la importación y la respuesta se recuerda. */
+ const CHOICES_KEY='viewinvai:import-fund-choices';
+ function readChoices(){try{return JSON.parse(localStorage.getItem(CHOICES_KEY)||'{}')||{}}catch(_){return{}}}
+ function saveChoice(k,v){const c=readChoices();c[k]=v;try{localStorage.setItem(CHOICES_KEY,JSON.stringify(c))}catch(_){}}
+ const cashOf=f=>Number(f.cash)>0?Number(f.cash):(Number(f.units)||0)*(Number(f.price)||0)+(Number(f.fees)||0);
+ const dom=f=>new Date(f.executedAt).getUTCDate();
+ const monthIdx=f=>{const d=new Date(f.executedAt);return d.getUTCFullYear()*12+d.getUTCMonth()};
+ const eur=v=>v.toLocaleString('es-ES',{style:'currency',currency:'EUR'});
+ const shortDate=f=>new Date(f.executedAt).toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'UTC'});
+ // La serie mensual más larga que llega hasta el final: una compra por mes, en una ventana de 5 días.
+ function monthlySeries(buys){
+  let best=null;
+  for(const d0 of new Set(buys.map(dom))){
+   const byMonth=new Map();
+   for(const b of buys){const d=dom(b);if(d<d0||d>d0+4)continue;const m=monthIdx(b),cur=byMonth.get(m);if(!cur||cashOf(b)>cashOf(cur))byMonth.set(m,b)}
+   const months=[...byMonth.keys()].sort((a,b)=>a-b);if(!months.length)continue;
+   let run=[byMonth.get(months[months.length-1])];
+   for(let i=months.length-2;i>=0&&months[i]===months[i+1]-1;i--)run.unshift(byMonth.get(months[i]));
+   if(!best||run.length>best.list.length||(run.length===best.list.length&&cashOf(run[run.length-1])>cashOf(best.list[best.list.length-1])))best={list:run,day:d0};
+  }
+  return best;
+ }
+ function planFrom(isin,list,day,currency){
+  const last=list[list.length-1];
+  const gaps=[];for(let i=1;i<list.length;i++)gaps.push((Date.parse(list[i].executedAt)-Date.parse(list[i-1].executedAt))/864e5);
+  const g=gaps.length?gaps.slice().sort((a,b)=>a-b)[gaps.length>>1]:30;
+  return{isin,amount:Math.round(cashOf(last)*100)/100,currency:currency||last.currency||'EUR',dayOfMonth:day||dom(last),frequency:g<10?'weekly':g>70&&g<120?'quarterly':'monthly',count:list.length,lastAt:last.executedAt};
+ }
+ async function reviewFunds(funds,task){
+  const plans=[],noPlans=[],choices=readChoices(),now=Date.now();
+  const byIsin=new Map();
+  for(const f of funds){if(f.side!=='BUY'||!f.isin)continue;(byIsin.get(f.isin)||byIsin.set(f.isin,[]).get(f.isin)).push(f)}
+  // Compras pequeñas: Saveback, Redondeo o compras normales (se recuerda la respuesta).
+  async function askSmall(isin,name,list,guess){
+   const key='small:'+isin+':'+(guess||'none');let ans=choices[key];
+   if(!ans){
+    const total=list.reduce((t,f)=>t+cashOf(f),0),amounts=list.map(cashOf);
+    const opts=[{id:'saveback',label:'Saveback'},{id:'roundup',label:'Redondeo'},{id:'buy',label:'Compras normales'}];
+    if(guess)opts.sort((x,y)=>(y.id===guess)-(x.id===guess));
+    ans=await task.ask('¿Qué son estas '+list.length+' compras pequeñas de '+name+'?',opts,
+     {detail:'De '+eur(Math.min(...amounts))+' a '+eur(Math.max(...amounts))+' (total '+eur(total)+'), del '+shortDate(list[0])+' al '+shortDate(list[list.length-1])+'.'+(guess?' Por el patrón parecen '+(guess==='saveback'?'Saveback':'Redondeo')+'.':'')+' Saveback y Redondeo se suman aparte y no cuentan como plan.'});
+    saveChoice(key,ans);
+   }
+   list.forEach(f=>{f.benefit=ans==='saveback'||ans==='roundup'?ans:'';f.benefitGuess=false});
+  }
+  for(const [isin,all] of byIsin){
+   all.sort((a,b)=>Date.parse(a.executedAt)-Date.parse(b.executedAt));
+   const name=all[all.length-1].name||isin;
+   // 1. Lo que parece Saveback o Redondeo por su patrón (sin abono en el CSV) se confirma primero.
+   for(const g of ['saveback','roundup']){
+    const list=all.filter(f=>f.benefitGuess&&f.benefit===g&&!f.plan);
+    if(list.length)await askSmall(isin,name,list,g);
+   }
+   // 2. Plan: el bróker lo marca, o se ve una compra cada mes el mismo día (importe libre).
+   const flagged=all.filter(f=>f.plan&&!f.benefit);
+   let planList=null,planDay=0;
+   if(flagged.length){planList=flagged;planDay=(monthlySeries(flagged)||{}).day||dom(flagged[flagged.length-1])}
+   else{
+    const s=monthlySeries(all.filter(f=>!f.benefit));
+    if(s&&s.list.length>=2&&now-Date.parse(s.list[s.list.length-1].executedAt)<62*864e5){
+     const key='plan:'+isin+':'+s.day;let ans=choices[key];
+     if(!ans){
+      const hist=s.list.slice(-4).reverse().map(f=>eur(cashOf(f))+' ('+shortDate(f)+')').join(', ');
+      ans=await task.ask('¿'+name+' tiene un plan de inversión de '+eur(cashOf(s.list[s.list.length-1]))+' al mes, en torno al día '+s.day+'?',
+       [{id:'yes',label:'Sí, es un plan'},{id:'no',label:'No, son compras sueltas'}],
+       {detail:'He visto una compra cada mes: '+hist+'. Si es un plan, cuenta el último importe y se actualiza solo cuando lo cambies.'});
+      saveChoice(key,ans);
+     }
+     if(ans==='yes'){planList=s.list;planDay=s.day}else noPlans.push(isin);
+    }
+   }
+   if(planList){
+    planList.forEach(f=>{f.plan=true;f.benefit='';f.benefitGuess=false});
+    if(now-Date.parse(planList[planList.length-1].executedAt)<62*864e5)plans.push(planFrom(isin,planList,planDay,all[0].currency));
+   }
+   // 3. Otras compras pequeñas sin explicar (al menos 2): se pregunta qué son.
+   const rest=all.filter(f=>!f.plan&&!f.benefit&&cashOf(f)<=35);
+   if(rest.length>=2)await askSmall(isin,name,rest,'');
+  }
+  if(plans.length)task.log(plans.map(p=>'Plan '+(byIsin.get(p.isin).slice(-1)[0].name||p.isin)+': '+eur(p.amount)+'/mes, día '+p.dayOfMonth).join(' · '));
+  return{plans,noPlans};
  }
  // The import runs in the background (ViewInvAITasks): the window closes at once and
  // the floating task pill shows progress, errors and the duplicate question.
@@ -407,10 +493,10 @@
     imported+=data.imported||0;skipped+=data.skipped||0;retired+=(data.retired&&data.retired.removed)||0;logErrors(data.errors);
     step(chunk.length,'Operaciones');
    }
+   const review=job.funds.length?await reviewFunds(job.funds,task):{plans:[],noPlans:[]};
    for(let i=0;i<job.funds.length;i+=CHUNK){
     const chunk=job.funds.slice(i,i+CHUNK),last=i+CHUNK>=job.funds.length;
-    const data=await post('/api/fund-transactions/import',{source:job.source,platform:broker,replaceManual,detectPlans:last,rows:chunk,
-     allRows:last?job.funds.filter(f=>f.side==='BUY').map(f=>({isin:f.isin,side:'BUY',plan:!!f.plan,benefit:f.benefit||'',units:f.units,price:f.price,fees:f.fees,executedAt:f.executedAt,currency:f.currency})):[]});
+    const data=await post('/api/fund-transactions/import',{source:job.source,platform:broker,replaceManual,rows:chunk,plans:last?review.plans:undefined,noPlans:last?review.noPlans:undefined});
     fundImported+=data.imported||0;fundSkipped+=data.skipped||0;plans+=data.plans||0;logErrors(data.errors);
     step(chunk.length,'Fondos y ETF');
    }
@@ -502,6 +588,6 @@
 
  window.ViewInvAIBrokerImport={
   open(source){flow={source:source||'tr',rows:[],positions:[],portfolioId:guessPortfolio(source||'tr')};render()},
-  _parseCsv:rowsFromCsv,_match:matchRows
+  _parseCsv:rowsFromCsv,_match:matchRows,_reviewFunds:reviewFunds
  };
 })();
