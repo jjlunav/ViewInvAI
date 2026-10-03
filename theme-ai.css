@@ -1264,3 +1264,18 @@ html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .h
 html[data-native-app="1"]:root:root body:not(#a11y-floor) #view-recommendation .page-heading .heading-actions{margin-top:-12px!important}
 html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .section-help,
 html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .icon-btn{width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important}
+
+/* Carteras · barra de acciones: iconos SVG iguales y «Importar» con texto */
+html:root:root body #view-portfolios .portfolio-workbar-actions .pf-icon{width:20px;height:20px;display:block;flex:0 0 auto}
+html:root:root body #view-portfolios .portfolio-workbar-actions .portfolio-import{width:auto!important;min-width:0!important;padding:0 14px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;font-weight:700!important;font-size:14px!important;white-space:nowrap}
+html:root:root body #view-portfolios .portfolio-workbar-actions .portfolio-import span{line-height:1}
+html:not([data-theme="light"]):root:root body #view-portfolios .portfolio-workbar-actions .portfolio-import{color:#43e4b2!important;border-color:rgba(67,228,178,.45)!important;background:rgba(67,228,178,.08)!important}
+html[data-theme="light"]:root:root body #view-portfolios .portfolio-workbar-actions .portfolio-import{color:#0f8a5f!important;border-color:#a7dcc6!important;background:#eefaf4!important}
+@media (max-width:820px){
+ html:root:root body:not(#a11y-floor) #view-portfolios .portfolio-workbar-actions{display:grid!important;grid-template-columns:minmax(0,2.4fr) repeat(6,minmax(0,1fr))!important;gap:6px!important;width:100%!important}
+ html:root:root body:not(#a11y-floor) #view-portfolios .portfolio-workbar-actions>button{width:100%!important;min-width:0!important;height:42px!important;min-height:42px!important;padding:0!important;display:grid!important;place-items:center!important;border-radius:12px!important}
+ html:root:root body:not(#a11y-floor) #view-portfolios .portfolio-workbar-actions>.portfolio-import{display:inline-flex!important;padding:0 6px!important;gap:5px!important;font-size:13px!important}
+ html:root:root body:not(#a11y-floor) #view-portfolios .portfolio-workbar-actions>.portfolio-import .pf-icon{width:18px;height:18px}
+}
+html:root:root body .fund-portfolio-toolbar .portfolio-icon-action .pf-icon{width:20px;height:20px;display:block}
+html:root:root body .fund-portfolio-toolbar .portfolio-icon-action{display:inline-grid!important;place-items:center!important}

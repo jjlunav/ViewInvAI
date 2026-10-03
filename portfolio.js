@@ -824,7 +824,7 @@ function portfolioPerformanceHtml(portfolio){
     '<summary><span class="insights-title">Rentabilidad</span><span class="insights-chips">'+chips+'</span></summary>'+
     '<div class="insights-body">'+body+'</div></details>';
   if(!entry||(!entry.data&&entry.loading))return shell('<b>Calculando…</b>','<p class="perf-note">Reconstruyendo la curva con tus operaciones y los cierres diarios…</p>');
-  if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">No se pudo calcular ahora mismo. <button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">Reintentar</button></p>');
+  if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">'+(entry.error&&!/^Error de backend$/.test(entry.error)?esc(entry.error)+' ':'No se pudo calcular ahora mismo. ')+'<button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">Reintentar</button></p>');
   const p=entry.data;
   if(p.empty||!p.days||p.days.length<2)return'';
   const m=perfMetrics(p,range);
@@ -868,8 +868,8 @@ async function loadPortfolioPerformance(id,force=false){
   if(entry.loading)return;
   if(!force&&entry.at&&Date.now()-entry.at<(entry.data?5*60000:60000))return;
   entry.loading=true;perfCache.set(id,entry);
-  try{entry.data=await fetchJson('/api/portfolio-performance?portfolioId='+encodeURIComponent(id))}
-  catch(error){console.warn('Portfolio performance unavailable',error)}
+  try{entry.data=await fetchJson('/api/portfolio-performance?portfolioId='+encodeURIComponent(id));entry.error=''}
+  catch(error){console.warn('Portfolio performance unavailable',error);entry.error=String(error&&error.message||'')}
   entry.loading=false;entry.at=Date.now();
   refreshPerfCard(id);
 }
@@ -1469,6 +1469,19 @@ async function refreshGoalAnalysis(force=false){
   return done;
 }
 
+// Iconos de la barra de Carteras: trazos SVG del mismo tamaño y grosor (los símbolos de
+// texto ⊞ ✎ ⇩ ◷ ◉ se dibujaban cada uno con un tamaño y una altura distintos).
+const PF_ICONS={
+  import:'<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M4 12h11"/><path d="m11 8 4 4-4 4"/>',
+  plus:'<path d="M12 5v14"/><path d="M5 12h14"/>',
+  history:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  globe:'<circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4c2.5 2.6 2.5 13.4 0 16"/><path d="M12 4c-2.5 2.6-2.5 13.4 0 16"/>',
+  folderPlus:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>'
+};
+function pfIcon(name){return '<svg class="pf-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(PF_ICONS[name]||'')+'</svg>'}
+
 function portfolioWorkbarHtml(selected){
   return '<div class="portfolio-workbar'+(state.primaryTab==="goal"?' goal-mode':'')+'">'+
     '<div class="portfolio-tabs-wrap">'+
@@ -1477,13 +1490,13 @@ function portfolioWorkbarHtml(selected){
       '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>'+
     '</div>'+
     '<div class="portfolio-workbar-actions">'+
-      '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">⊞</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">✎</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import aria-label="Importar del bróker" title="Importar del bróker (Trade Republic, IBKR, CSV)">⇩</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial" title="Historial">◷</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-market-current"'+(selected?' data-portfolio-market-config="'+esc(selected.id)+'"':' disabled')+' aria-label="Mercado de la cartera" title="Mercado de la cartera">◉</button>'+
-      '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">+</button>'+
-      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">↻</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import aria-label="Importar operaciones del bróker" title="Importar operaciones (Trade Republic, IBKR o CSV)">'+pfIcon('import')+'<span>Importar</span></button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">'+pfIcon('plus')+'</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de operaciones" title="Historial de operaciones">'+pfIcon('history')+'</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-market-current"'+(selected?' data-portfolio-market-config="'+esc(selected.id)+'"':' disabled')+' aria-label="Mercado de la cartera" title="Mercado de la cartera">'+pfIcon('globe')+'</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-tab-add" data-new-portfolio="1" aria-label="Nueva cartera" title="Nueva cartera">'+pfIcon('folderPlus')+'</button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-tabs-edit" data-portfolio-order-edit aria-label="Editar carteras" title="Editar carteras">'+pfIcon('edit')+'</button>'+
+      '<button type="button" class="portfolio-refresh compact" aria-label="Actualizar carteras" title="Actualizar">'+pfIcon('refresh')+'</button>'+
     '</div>'+
   '</div>';
 }
