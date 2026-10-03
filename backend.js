@@ -2672,6 +2672,11 @@ async function fundPortfolioForPlatform(env,userId,platform){
     .bind(id,userId,(platform?platform+" · ":"")+"Fondos y ETFs",trimText(platform,80),"EUR",rows.length,now,now).run();
   return await env.DB.prepare("SELECT * FROM fund_portfolios WHERE id=?").bind(id).first();
 }
+// Notas del plan importado: «Detectado…» permite que la siguiente importación lo actualice.
+function planNotes(plan,previous){
+  const base="Detectado en la importación ("+plan.count+(plan.count===1?" ejecución)":" ejecuciones)")+(plan.note?" · "+plan.note:"");
+  return previous&&!String(previous).startsWith("Detectado")?String(previous):base;
+}
 export function detectSavingsPlans(rows,nowMs=Date.now()){
   const byIsin=new Map();
   for(const r of rows||[]){
@@ -2849,7 +2854,7 @@ async function handleFundTransactionImport(request,env,user,json){
   // los detectados aquí. El importe vigente es el de la última ejecución.
   const explicitPlans=Array.isArray(body.plans);
   const planList=explicitPlans?body.plans.slice(0,50).map(p=>({isin:trimText(p&&p.isin,12).toUpperCase(),amount:finiteNumber(p&&p.amount),currency:String(p&&p.currency||"EUR").toUpperCase().slice(0,3),
-      dayOfMonth:Math.min(28,Math.max(1,Math.round(Number(p&&p.dayOfMonth)||1))),frequency:["weekly","monthly","quarterly"].includes(p&&p.frequency)?p.frequency:"monthly",count:Math.max(1,Math.round(Number(p&&p.count)||1)),lastAt:String(p&&p.lastAt||nowIso())}))
+      dayOfMonth:Math.min(28,Math.max(1,Math.round(Number(p&&p.dayOfMonth)||1))),frequency:["weekly","monthly","quarterly"].includes(p&&p.frequency)?p.frequency:"monthly",count:Math.max(1,Math.round(Number(p&&p.count)||1)),lastAt:String(p&&p.lastAt||nowIso()),note:trimText(p&&p.note,80)}))
       .filter(p=>/^[A-Z]{2}[A-Z0-9]{10}$/.test(p.isin)&&p.amount>0&&Number.isFinite(Date.parse(p.lastAt)))
     :body.detectPlans===true&&Array.isArray(body.allRows)?detectSavingsPlans(body.allRows):[];
   // Lo que confirmaste que no es un plan: se quita el plan detectado automáticamente antes.
@@ -2865,12 +2870,12 @@ async function handleFundTransactionImport(request,env,user,json){
       const next=contributionNextDate(null,plan.dayOfMonth,plan.frequency);
       const now=nowIso();
       if(existing){
-        if(explicitPlans||String(existing.notes||"").startsWith("Detectado"))await env.DB.prepare("UPDATE fund_contribution_plans SET amount=?,currency=?,day_of_month=?,frequency=?,next_contribution_at=?,status='active',enabled=1,updated_at=? WHERE id=?")
-          .bind(plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,next,now,existing.id).run();
+        if(explicitPlans||String(existing.notes||"").startsWith("Detectado"))await env.DB.prepare("UPDATE fund_contribution_plans SET amount=?,currency=?,day_of_month=?,frequency=?,next_contribution_at=?,status='active',enabled=1,notes=?,updated_at=? WHERE id=?")
+          .bind(plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,next,planNotes(plan,existing.notes),now,existing.id).run();
         continue;
       }
       await env.DB.prepare("INSERT INTO fund_contribution_plans (id,fund_portfolio_id,fund_position_id,user_id,isin,label,kind,amount,currency,day_of_month,frequency,start_date,status,next_contribution_at,enabled,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(uid("fplan_"),portfolio.id,pos.id,user.id,plan.isin,"Plan "+(platform||"")+" · "+String(pos.name||plan.isin).slice(0,80),"monthly",plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,plan.lastAt.slice(0,10),"active",next,1,"Detectado en la importación ("+plan.count+(plan.count===1?" ejecución)":" ejecuciones)"),now,now).run();
+        .bind(uid("fplan_"),portfolio.id,pos.id,user.id,plan.isin,"Plan "+(platform||"")+" · "+String(pos.name||plan.isin).slice(0,80),"monthly",plan.amount,plan.currency,plan.dayOfMonth,plan.frequency,plan.lastAt.slice(0,10),"active",next,1,planNotes(plan,""),now,now).run();
       plans++;
     }
   }
