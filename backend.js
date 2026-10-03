@@ -1880,6 +1880,38 @@ async function loadPriceDaily(env,services,inst,fromDay){
   const res=await env.DB.prepare("SELECT date,close FROM price_daily WHERE key=? AND date>=? ORDER BY date").bind(key,isoDay(Date.parse(fromDay)-10*864e5)).all();
   return{currency:String(m&&m.currency||"EUR").toUpperCase(),source:String(m&&m.source||""),rows:res.results||[]};
 }
+// Varios valores a la vez: lee de D1 en bloque y solo descarga de la red, como mucho, `budget`
+// históricos caducados o que faltan (los que nunca se han descargado van primero). Devuelve
+// cuántos siguen sin histórico para que la app vuelva a pedir la curva hasta completarla.
+const PERF_FETCH_BUDGET=20;
+async function loadPriceDailyBatch(env,services,list,fromDay,budget=PERF_FETCH_BUDGET){
+  const keys=list.map(i=>i.key),metas=new Map();
+  for(let i=0;i<keys.length;i+=80){
+    const part=keys.slice(i,i+80);
+    const res=await env.DB.prepare("SELECT key,currency,source,first_day,fetched_at FROM price_daily_meta WHERE key IN ("+part.map(()=>"?").join(",")+")").bind(...part).all();
+    for(const r of res.results||[])metas.set(r.key,r);
+  }
+  const isFresh=m=>m&&Date.now()-Number(m.fetched_at||0)<PRICE_DAILY_TTL_MS&&(!m.first_day||m.first_day<=fromDay||m.source==="none");
+  const stale=list.filter(i=>!isFresh(metas.get(i.key)));
+  stale.sort((a,b)=>(metas.has(a.key)?1:0)-(metas.has(b.key)?1:0)||(b.benchmark?1:0)-(a.benchmark?1:0));
+  const toFetch=services.loadDailyHistory?stale.slice(0,Math.max(0,budget)):[];
+  for(let i=0;i<toFetch.length;i+=4){
+    await Promise.all(toFetch.slice(i,i+4).map(inst=>loadPriceDaily(env,services,inst,fromDay).catch(()=>null)));
+  }
+  const fetched=new Set(toFetch.map(i=>i.key));
+  // Sin histórico todavía: nunca descargados y no descargados en esta ronda.
+  const pending=list.filter(i=>!metas.has(i.key)&&!fetched.has(i.key)).length;
+  const prices=new Map(),since=isoDay(Date.parse(fromDay)-10*864e5);
+  for(let i=0;i<keys.length;i+=40){
+    const part=keys.slice(i,i+40);
+    const meta=await env.DB.prepare("SELECT key,currency,source FROM price_daily_meta WHERE key IN ("+part.map(()=>"?").join(",")+")").bind(...part).all();
+    const rows=await env.DB.prepare("SELECT key,date,close FROM price_daily WHERE key IN ("+part.map(()=>"?").join(",")+") AND date>=? ORDER BY key,date").bind(...part,since).all();
+    const cur=new Map((meta.results||[]).map(r=>[r.key,r]));
+    for(const k of part)prices.set(k,{currency:String(cur.get(k)&&cur.get(k).currency||"EUR").toUpperCase(),source:String(cur.get(k)&&cur.get(k).source||""),rows:[]});
+    for(const r of rows.results||[]){const p=prices.get(r.key);if(p)p.rows.push({date:r.date,close:r.close})}
+  }
+  return{prices,pending,total:list.length};
+}
 function perfInstrumentKey(row){
   const isin=String(row.isin||"").trim().toUpperCase();
   if(/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return"ISIN:"+isin;
@@ -2018,14 +2050,13 @@ async function handlePortfolioPerformance(request,env,user,json,url,services){
   // Instruments (unique by ISIN / ticker) plus the two benchmark ETFs.
   const insts=new Map();
   for(const t of txs){const key=perfInstrumentKey(t);if(key&&!insts.has(key))insts.set(key,{key,isin:key.startsWith("ISIN:")?key.slice(5):"",ticker:String(t.ticker||"").toUpperCase(),stockKey:String(t.stock_key||"")})}
-  if(insts.size>60)return json({error:"Demasiados valores para calcular la curva (máximo 60)."},422);
+  if(insts.size>400)return json({error:"Demasiados valores para calcular la curva (máximo 400)."},422);
   for(const b of PERF_BENCHMARKS)insts.set("ISIN:"+b.isin,{key:"ISIN:"+b.isin,isin:b.isin,ticker:b.label,benchmark:b.key});
-  const prices=new Map(),list=[...insts.values()];
-  for(let i=0;i<list.length;i+=4){
-    const chunk=list.slice(i,i+4);
-    const got=await Promise.all(chunk.map(inst=>loadPriceDaily(env,services,inst,fromDay).catch(()=>({currency:"EUR",rows:[]}))));
-    chunk.forEach((inst,j)=>prices.set(inst.key,got[j]));
-  }
+  const list=[...insts.values()];
+  const loaded=await loadPriceDailyBatch(env,services,list,fromDay);
+  const prices=loaded.prices;
+  // Faltan históricos: se devuelve el avance y la app vuelve a pedir la curva en unos segundos.
+  if(loaded.pending>0)return json({portfolioId:pid,computing:true,done:loaded.total-loaded.pending,total:loaded.total,generatedAt:nowIso()});
   // ECB EUR/USD (and any other trade currency).
   const currencies=new Set(["USD"]);
   for(const t of txs){const c=String(t.currency||"EUR").toUpperCase();if(c!=="EUR"&&/^[A-Z]{3}$/.test(c))currencies.add(c)}

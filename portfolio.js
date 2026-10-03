@@ -824,6 +824,10 @@ function portfolioPerformanceHtml(portfolio){
     '<summary><span class="insights-title">Rentabilidad</span><span class="insights-chips">'+chips+'</span></summary>'+
     '<div class="insights-body">'+body+'</div></details>';
   if(!entry||(!entry.data&&entry.loading))return shell('<b>Calculando…</b>','<p class="perf-note">Reconstruyendo la curva con tus operaciones y los cierres diarios…</p>');
+  if(entry.data&&entry.data.computing){
+    const d=entry.data,pct=d.total?Math.round(d.done/d.total*100):0;
+    return shell('<b>Calculando… '+pct+'%</b>','<p class="perf-note">Descargando los cierres diarios de tus valores: '+esc(String(d.done))+' de '+esc(String(d.total))+'. La primera vez tarda un poco; después queda guardado.</p>');
+  }
   if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">'+(entry.error&&!/^Error de backend$/.test(entry.error)?esc(entry.error)+' ':'No se pudo calcular ahora mismo. ')+'<button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">Reintentar</button></p>');
   const p=entry.data;
   if(p.empty||!p.days||p.days.length<2)return'';
@@ -871,6 +875,11 @@ async function loadPortfolioPerformance(id,force=false){
   try{entry.data=await fetchJson('/api/portfolio-performance?portfolioId='+encodeURIComponent(id));entry.error=''}
   catch(error){console.warn('Portfolio performance unavailable',error);entry.error=String(error&&error.message||'')}
   entry.loading=false;entry.at=Date.now();
+  // El servidor completa los históricos por tandas: se vuelve a pedir hasta tener la curva.
+  if(entry.data&&entry.data.computing){
+    entry.rounds=(entry.rounds||0)+1;
+    if(entry.rounds<40)setTimeout(()=>loadPortfolioPerformance(id,true),2500);
+  }else entry.rounds=0;
   refreshPerfCard(id);
 }
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-pf-perf]')){try{localStorage.setItem('viewinvai:pf-perf-open',e.target.open?'1':'0')}catch(_){}}},true);
@@ -1472,7 +1481,7 @@ async function refreshGoalAnalysis(force=false){
 // Iconos de la barra de Carteras: trazos SVG del mismo tamaño y grosor (los símbolos de
 // texto ⊞ ✎ ⇩ ◷ ◉ se dibujaban cada uno con un tamaño y una altura distintos).
 const PF_ICONS={
-  import:'<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M4 12h11"/><path d="m11 8 4 4-4 4"/>',
+  import:'<path d="M8 20V5"/><path d="m4 9 4-4 4 4"/><path d="M16 4v15"/><path d="m12 15 4 4 4-4"/>',
   plus:'<path d="M12 5v14"/><path d="M5 12h14"/>',
   history:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
   globe:'<circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4c2.5 2.6 2.5 13.4 0 16"/><path d="M12 4c-2.5 2.6-2.5 13.4 0 16"/>',
@@ -1490,7 +1499,7 @@ function portfolioWorkbarHtml(selected){
       '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div>'+
     '</div>'+
     '<div class="portfolio-workbar-actions">'+
-      '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import aria-label="Importar operaciones del bróker" title="Importar operaciones (Trade Republic, IBKR o CSV)">'+pfIcon('import')+'<span>Importar</span></button>'+
+      '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import aria-label="Importar operaciones del bróker" title="Importar operaciones (Trade Republic, IBKR o CSV)">'+pfIcon('import')+'</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-add-current"'+(selected?'':' disabled')+' aria-label="Añadir posición" title="Añadir posición">'+pfIcon('plus')+'</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-history"'+(selected?' data-portfolio-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de operaciones" title="Historial de operaciones">'+pfIcon('history')+'</button>'+
       '<button type="button" class="portfolio-icon-action portfolio-market-current"'+(selected?' data-portfolio-market-config="'+esc(selected.id)+'"':' disabled')+' aria-label="Mercado de la cartera" title="Mercado de la cartera">'+pfIcon('globe')+'</button>'+
