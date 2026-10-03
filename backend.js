@@ -2050,7 +2050,6 @@ async function handlePortfolioPerformance(request,env,user,json,url,services){
   // Instruments (unique by ISIN / ticker) plus the two benchmark ETFs.
   const insts=new Map();
   for(const t of txs){const key=perfInstrumentKey(t);if(key&&!insts.has(key))insts.set(key,{key,isin:key.startsWith("ISIN:")?key.slice(5):"",ticker:String(t.ticker||"").toUpperCase(),stockKey:String(t.stock_key||"")})}
-  if(insts.size>400)return json({error:"Demasiados valores para calcular la curva (máximo 400)."},422);
   for(const b of PERF_BENCHMARKS)insts.set("ISIN:"+b.isin,{key:"ISIN:"+b.isin,isin:b.isin,ticker:b.label,benchmark:b.key});
   const list=[...insts.values()];
   const loaded=await loadPriceDailyBatch(env,services,list,fromDay);
