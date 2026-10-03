@@ -9,7 +9,17 @@
  const signed=v=>N(v)===null?'—':(v>0?'+':'')+eur(v);
  const tone=v=>N(v)===null||Math.abs(v)<0.005?'':v>0?'positive':'negative';
 
+ // Hay sesión pero Carteras aún no la ha recogido (la APK recupera la sesión a su ritmo):
+ // «Cargando…» y otro intento en breve, nunca «Inicia sesión» con la sesión ya iniciada.
+ let authRetry=null,authRetries=0;
+ function sessionPending(){
+  const A=window.ViewInvAIAuth;let user=null;try{user=A&&typeof A.getUser==='function'?A.getUser():null}catch(_){}
+  if(!user)return false;
+  if(!authRetry&&authRetries<20){authRetries++;authRetry=setTimeout(()=>{authRetry=null;refresh()},1500)}
+  return true;
+ }
  function portfoliosHtml(sum){
+  if((!sum||!sum.signedIn)&&sessionPending())return '<section class="today-card today-portfolios"><small>TUS CARTERAS</small><div class="today-loading">Cargando carteras…</div></section>';
   if(!sum||!sum.signedIn){
    return '<section class="today-card today-portfolios today-signin"><div><small>TUS CARTERAS</small><strong>Inicia sesión para ver tus carteras aquí</strong><span>Valor, cambio del día y P&L neto de Trade Republic e IBKR de un vistazo.</span></div><button type="button" class="btn portfolio-google-login">Entrar con Google</button></section>';
   }
@@ -82,8 +92,8 @@
   const go=e.target.closest&&e.target.closest('[data-today-go]');
   if(go){e.preventDefault();if(typeof show==='function')show(go.dataset.todayGo);const F=window.ViewInvAIFunds;if(go.dataset.todayFunds&&F&&typeof F.setPortfolioAssetMode==='function')F.setPortfolioAssetMode('funds')}
  });
- const refresh=()=>{if(typeof state!=='undefined'&&state.currentView==='today')render()};
- ['viewinvai:portfolio-membership-changed','viewinvai:account-ready','viewinvai:auth-changed','viewinvai:inbox-updated'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
+ function refresh(){if(typeof state!=='undefined'&&state.currentView==='today')render()}
+ ['viewinvai:portfolio-membership-changed','viewinvai:portfolios-loaded','viewinvai:account-ready','viewinvai:auth-changed','viewinvai:inbox-updated'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
  window.addEventListener('viewinvai:fund-portfolios-changed',()=>setTimeout(refresh,50));
  // Cotizaciones por ISIN (fondos y acciones fuera del catálogo): repintar como mucho cada 2 s.
  let quoteTimer=null;

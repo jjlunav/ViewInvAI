@@ -1846,6 +1846,7 @@ async function loadAll({ syncFavorites = false } = {}) {
   } finally {
     state.loading = false;
     renderActivePortfolioPanel();
+    window.dispatchEvent(new CustomEvent('viewinvai:portfolios-loaded', { detail: { ok } }));
     const summaryPortfolioId = state.selectedPortfolioId;
     if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});
   }

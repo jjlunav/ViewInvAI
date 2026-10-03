@@ -1251,3 +1251,16 @@ html[data-theme="light"] #firstSync .first-sync-bar i{background:linear-gradient
 @keyframes first-sync-pulse{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes first-sync-shine{to{transform:translateX(100%)}}
 @media (prefers-reduced-motion:reduce){#firstSync .first-sync-logo,#firstSync .first-sync-bar i::after{animation:none}}
+
+/* Móvil (APK y web): «?» y botones de la cabecera alineados con la lupa y el avatar flotantes
+   (mismo tamaño, redondos y centrados en la misma línea). */
+@media (max-width:820px){
+ html:root:root body:not(#a11y-floor) .view .page-heading .heading-actions{align-self:flex-start!important;margin-top:-9px!important;gap:8px!important}
+ html:root:root body:not(#a11y-floor) #view-recommendation .page-heading .heading-actions{margin-top:-11px!important}
+ html:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .section-help,
+ html:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .icon-btn{width:36px!important;height:36px!important;min-width:36px!important;min-height:36px!important;padding:0!important;border-radius:999px!important;display:inline-grid!important;place-items:center!important;line-height:1!important}
+}
+html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .heading-actions{margin-top:-10px!important}
+html[data-native-app="1"]:root:root body:not(#a11y-floor) #view-recommendation .page-heading .heading-actions{margin-top:-12px!important}
+html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .section-help,
+html[data-native-app="1"]:root:root body:not(#a11y-floor) .view .page-heading .heading-actions .icon-btn{width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important}
