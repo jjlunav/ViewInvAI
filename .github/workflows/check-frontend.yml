@@ -402,8 +402,8 @@ jobs:
           for required in ('data-portfolio-goal-toggle', 'class="portfolio-cash-row"', 'portfolioCashBalanceForm'):
               if required not in portfolio:
                   raise SystemExit("Falta control por cartera: " + required)
-          if 'title="Añadir posición">+</button>' not in portfolio:
-              raise SystemExit("Añadir posición debe usar el símbolo +")
+          if 'title="Añadir posición">\'+pfIcon(\'plus\')+\'</button>' not in portfolio:
+              raise SystemExit("Añadir posición debe usar el icono +")
           if 'name="targetDate"' in portfolio or "portfolioGoalRequiredContribution" in portfolio:
               raise SystemExit("Objetivo IA conserva opciones de planificación que no pertenecen al motor de rotación")
           if "sin avance en las últimas semanas" not in portfolio or "revisión IA continua" not in portfolio:

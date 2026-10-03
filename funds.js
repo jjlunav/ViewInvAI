@@ -757,6 +757,14 @@
    currency:position.currency,platforms:{tradeRepublic:'unknown',myInvestor:'unknown'}
   });
  }
+ // Iconos de la barra (mismo trazo que la de Acciones en portfolio.js).
+ const TB_ICONS={
+  folderPlus:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  history:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  calendar:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M12 13v4"/><path d="M10 15h4"/>'
+ };
+ function tbIcon(name){return '<svg class="pf-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(TB_ICONS[name]||'')+'</svg>'}
  function selectedFundPortfolio(){
   return account.portfolios.find(p=>String(p.id)===String(account.selectedPortfolioId))||account.portfolios[0]||null;
  }
@@ -1003,10 +1011,10 @@
   const pnl=pnlCount?pnlTotal:null,pnlPct=pnl!==null&&pnlBase>0?pnl/pnlBase*100:null,base=selected.base_currency||'EUR';
   box.innerHTML=
    '<div class="fund-portfolio-toolbar portfolio-inline-tools"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div>'+
-   '<button type="button" class="portfolio-icon-action" data-fund-new-portfolio title="Nueva cartera" aria-label="Nueva cartera">＋</button>'+
-   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-edit="'+esc(selected.id)+'" title="Editar cartera" aria-label="Editar cartera">✎</button>'+
-   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-history="'+esc(selected.id)+'" title="Historial" aria-label="Historial">◷</button>'+
-   '<button type="button" class="portfolio-icon-action" data-fund-plan title="Programar aportación" aria-label="Programar aportación">▦</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-new-portfolio title="Nueva cartera" aria-label="Nueva cartera">'+tbIcon('folderPlus')+'</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-edit="'+esc(selected.id)+'" title="Editar cartera" aria-label="Editar cartera">'+tbIcon('edit')+'</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-portfolio-history="'+esc(selected.id)+'" title="Historial de operaciones" aria-label="Historial de operaciones">'+tbIcon('history')+'</button>'+
+   '<button type="button" class="portfolio-icon-action" data-fund-plan title="Programar aportación" aria-label="Programar aportación">'+tbIcon('calendar')+'</button>'+
    '</div>'+
    '<div class="portfolio-summary-bar">'+
     '<div><small>CARTERA</small><strong>'+esc(selected.name)+'</strong></div>'+
