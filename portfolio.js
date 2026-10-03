@@ -877,9 +877,11 @@ async function loadPortfolioPerformance(id,force=false){
   entry.loading=false;entry.at=Date.now();
   // El servidor completa los históricos por tandas: se vuelve a pedir hasta tener la curva.
   if(entry.data&&entry.data.computing){
-    entry.rounds=(entry.rounds||0)+1;
-    if(entry.rounds<40)setTimeout(()=>loadPortfolioPerformance(id,true),2500);
-  }else entry.rounds=0;
+    // Sin límite de valores: se sigue mientras avance; solo se para si se atasca varias rondas.
+    const done=Number(entry.data.done)||0;
+    entry.stuck=done>(entry.lastDone??-1)?0:(entry.stuck||0)+1;entry.lastDone=done;
+    if(entry.stuck<4)setTimeout(()=>loadPortfolioPerformance(id,true),2500);
+  }else{entry.stuck=0;entry.lastDone=-1}
   refreshPerfCard(id);
 }
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-pf-perf]')){try{localStorage.setItem('viewinvai:pf-perf-open',e.target.open?'1':'0')}catch(_){}}},true);
