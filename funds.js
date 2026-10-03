@@ -759,6 +759,7 @@
  }
  // Iconos de la barra (mismo trazo que la de Acciones en portfolio.js).
  const TB_ICONS={
+  import:'<path d="M8 20V5"/><path d="m4 9 4-4 4 4"/><path d="M16 4v15"/><path d="m12 15 4 4 4-4"/>',
   folderPlus:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
   edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   history:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
@@ -1011,6 +1012,7 @@
   const pnl=pnlCount?pnlTotal:null,pnlPct=pnl!==null&&pnlBase>0?pnl/pnlBase*100:null,base=selected.base_currency||'EUR';
   box.innerHTML=
    '<div class="fund-portfolio-toolbar portfolio-inline-tools"><div class="portfolio-tabs-track">'+account.portfolios.map(p=>'<button type="button" class="portfolio-tab'+(String(p.id)===String(selected.id)?' active':'')+'" data-fund-portfolio-select="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>'+fundPositions(p.id).length+'</span></button>').join('')+'</div>'+
+   '<button type="button" class="portfolio-icon-action portfolio-import" data-broker-import title="Importar operaciones (Trade Republic, IBKR o CSV)" aria-label="Importar operaciones del bróker">'+tbIcon('import')+'</button>'+
    '<button type="button" class="portfolio-icon-action" data-fund-new-portfolio title="Nueva cartera" aria-label="Nueva cartera">'+tbIcon('folderPlus')+'</button>'+
    '<button type="button" class="portfolio-icon-action" data-fund-portfolio-edit="'+esc(selected.id)+'" title="Editar cartera" aria-label="Editar cartera">'+tbIcon('edit')+'</button>'+
    '<button type="button" class="portfolio-icon-action" data-fund-portfolio-history="'+esc(selected.id)+'" title="Historial de operaciones" aria-label="Historial de operaciones">'+tbIcon('history')+'</button>'+

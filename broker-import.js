@@ -341,22 +341,133 @@
   const overlap=manualOverlap(matched,flow.portfolioId).names;
   const total=matched.length+divs.length+funds.length;
   return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(funds.length?'<span>'+funds.length+' de fondos/ETF</span>':'')+(divs.length?'<span>'+divs.length+' dividendos</span>':'')+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+divHtml+
-   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> marcado por el bróker':'<b>'+planIsins.size+' planes de ahorro</b> marcados por el bróker'):'')+'. Los planes, el Saveback y el Redondeo que el archivo no marque te los preguntaré durante la importación (y recordaré tu respuesta); el importe del plan es el de su última ejecución.</p>':'')+
+   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> marcado por el bróker':'<b>'+planIsins.size+' planes de ahorro</b> marcados por el bróker'):'')+'. El importe de cada plan es el de su última ejecución.</p>':'')+
    (outside?'<p class="broker-import-help">'+outside+(outside===1?' operación':' operaciones')+' de valores que ViewInvAI aún no cotiza (acciones europeas, asiáticas…): se guardan con su ISIN y tendrán precio en cuanto el catálogo los incluya.</p>':'')+
    (overlap.length?'<p class="broker-import-warn">'+overlap.length+(overlap.length===1?' valor ya está apuntado a mano':' valores ya están apuntados a mano')+' ('+esc(overlap.slice(0,5).join(', '))+(overlap.length>5?'…':'')+'): al importar te preguntaré qué mantener; lo recomendado es el historial del bróker.</p>':'')+
    warn+(unmatched.length?'<p class="broker-import-warn">No están en el catálogo de ViewInvAI: '+esc([...new Set(unmatched.map(u=>u.symbol||u.isin||u.name))].slice(0,8).join(', '))+(unmatched.length>8?'…':'')+'.</p>':'')+
-   '<ul class="broker-import-list">'+list+'</ul>'+
-   '<label class="broker-import-check"><input type="checkbox" data-import-cash> Ajustar también el efectivo de la cartera</label>'+
-   '<p class="broker-import-help">La importación sigue en segundo plano: puedes cerrar esta ventana y seguir usando la app; el progreso aparece arriba.</p>'+
-   (pendingQuestions()?'<button type="button" class="btn secondary broker-import-go" data-import-commit disabled>Responde '+pendingQuestions()+(pendingQuestions()===1?' pregunta':' preguntas')+' de arriba para importar</button></div>':'<button type="button" class="btn secondary broker-import-go" data-import-commit'+(total?'':' disabled')+'>Importar '+(total?[matched.length?matched.length+(matched.length===1?' operación':' operaciones'):'',funds.length?funds.length+' de fondos':'',divs.length?divs.length+(divs.length===1?' dividendo':' dividendos'):''].filter(Boolean).join(' · '):'0 operaciones')+'</button></div>');
+   (list?'<details class="import-wizard-ops"><summary>Ver las últimas operaciones ('+Math.min(40,matched.length)+')</summary><ul class="broker-import-list">'+list+'</ul></details>':'')+'</div>';
  }
- function showPreview(rows,source,extra=''){
-  const {matched,unmatched,funds,uncatalogued}=matchRows(rows,source);
-  flow.matched=matched;flow.unmatched=unmatched;flow.funds=funds;flow.uncatalogued=uncatalogued;flow.dividends=enrichDividends(flow.dividends);
-  flow.extra=extra;flow.review=buildReview(matched,funds);
-  renderPreview();
+ /* ---------- asistente a pantalla completa: analizar → preguntas una a una → resumen ----------
+  * Al elegir el archivo se cierra la ventana de importar y aparece «Analizando tu archivo» con su
+  * barra. Después, si hay dudas, una pregunta por pantalla (Atrás / Siguiente) y al final un
+  * resumen con «Finalizar e importar». La importación sigue en segundo plano como antes. */
+ const KIND_DESC={
+  plan:'Una compra automática cada cierto tiempo (DCA). Se crea el plan en tu cartera de fondos con su importe actual.',
+  saveback:'El 1 % de tus pagos con tarjeta que Trade Republic invierte por ti. Se suma aparte y no cuenta como plan.',
+  roundup:'El redondeo de tus pagos con tarjeta que se invierte. Se suma aparte y no cuenta como plan.',
+  buy:'Compras que hiciste tú cuando quisiste. No se crea ningún plan.'
+ };
+ const pause=ms=>new Promise(r=>setTimeout(r,ms));
+ let wiz=null,wizEl=null;
+ function brokerName(){return flow.source==='ibkr'?'Interactive Brokers':flow.source==='tr'?'Trade Republic':'CSV'}
+ function wizardEl(){
+  if(wizEl&&wizEl.isConnected)return wizEl;
+  wizEl=document.createElement('div');
+  wizEl.id='importWizard';wizEl.className='import-wizard';wizEl.hidden=true;
+  wizEl.setAttribute('role','dialog');wizEl.setAttribute('aria-modal','true');wizEl.setAttribute('aria-labelledby','importWizardTitle');
+  wizEl.innerHTML='<div class="import-wizard-card"><header class="import-wizard-head"><div><small data-wiz-kicker></small><b id="importWizardTitle" tabindex="-1" data-wiz-title></b></div>'+
+   '<button type="button" class="import-wizard-x" data-wiz-close aria-label="Cerrar">×</button></header>'+
+   '<div class="import-wizard-bar" aria-hidden="true"><i></i></div><div class="import-wizard-body" data-wiz-body></div><div class="import-wizard-foot" data-wiz-foot></div></div>';
+  wizEl.addEventListener('click',onWizardClick);
+  wizEl.addEventListener('input',e=>{const t=e.target;if(t.matches('[data-wiz-amount]')){const g=currentGroup(),v=Number(String(t.value).replace(',','.'));if(g&&v>0)g.amount=Math.round(v*100)/100}});
+  wizEl.addEventListener('change',e=>{const t=e.target;
+   if(t.matches('[data-wiz-freq]')){const g=currentGroup();if(g){g.frequency=t.value;g.active=isActive(g);paintStep()}}
+   if(t.matches('[data-wiz-cash]'))flow.adjustCash=t.checked;
+  });
+  document.body.appendChild(wizEl);
+  return wizEl;
  }
- function renderPreview(){status((flow.extra||'')+reviewHtml()+previewHtml())}
+ function wizardShow(){wizardEl().hidden=false;document.documentElement.classList.add('import-wizard-open')}
+ function wizardClose(){if(wizEl)wizEl.hidden=true;document.documentElement.classList.remove('import-wizard-open');wiz=null}
+ function paint({kicker,title,pct,body,foot}){
+  const el=wizardEl();
+  el.querySelector('[data-wiz-kicker]').textContent=kicker||'';
+  const t=el.querySelector('[data-wiz-title]');t.textContent=title||'';
+  el.querySelector('.import-wizard-bar i').style.setProperty('width',Math.max(0,Math.min(100,pct||0))+'%');
+  const b=el.querySelector('[data-wiz-body]');b.innerHTML=body||'';b.scrollTop=0;
+  el.querySelector('[data-wiz-foot]').innerHTML=foot||'';
+ }
+ function paintAnalyze(pct,label){
+  paint({kicker:'Importar '+brokerName(),title:'Analizando tu archivo',pct,
+   body:'<div class="import-wizard-analyze"><img class="brand-logo-dark" src="favicon.svg" alt="" width="72" height="72"><img class="brand-logo-light" src="favicon-light.svg" alt="" width="72" height="72">'+
+    '<p>'+esc(label)+'</p><b>'+Math.round(pct)+' %</b><small>Leo tus operaciones, reconozco cada valor y busco tus planes automáticos, el Saveback y el Redondeo.</small></div>'});
+ }
+ // Lee y analiza (load devuelve las filas ya extraídas del archivo o de IBKR).
+ async function runAnalysis(load){
+  if(typeof P().closeModal==='function')P().closeModal();
+  wiz={mode:'analyze'};wizardShow();
+  try{
+   paintAnalyze(6,'Leyendo el archivo…');await pause(250);
+   const data=await load();
+   paintAnalyze(30,'Reconociendo '+data.rows.length+(data.rows.length===1?' operación…':' operaciones…'));await pause(350);
+   const m=matchRows(data.rows,flow.source);
+   flow.matched=m.matched;flow.unmatched=m.unmatched;flow.funds=m.funds;flow.uncatalogued=m.uncatalogued;
+   flow.dividends=enrichDividends(flow.dividends);flow.extra=data.extra||'';flow.adjustCash=false;
+   paintAnalyze(65,'Buscando planes, Saveback y Redondeo…');await pause(350);
+   flow.review=buildReview(m.matched,m.funds);
+   paintAnalyze(100,'Análisis terminado');await pause(300);
+   const steps=flow.review.groups.filter(g=>g.confidence==='unsure'||g.confidence==='likely').map(g=>g.id);
+   wiz={mode:'steps',steps:[...steps,'summary'],i:0,questions:steps.length};
+   paintStep();
+  }catch(err){
+   paint({kicker:'Importar '+brokerName(),title:'No se pudo analizar',pct:0,
+    body:'<div class="import-wizard-analyze failed"><p>'+esc(err&&err.message||'No se pudo leer el archivo.')+'</p><small>Comprueba que es la exportación de transacciones en CSV y vuelve a intentarlo.</small></div>',
+    foot:'<button type="button" class="btn ghost" data-wiz-close>Cerrar</button><button type="button" class="btn secondary" data-wiz-retry>Elegir otro archivo</button>'});
+  }
+ }
+ function currentGroup(){
+  if(!wiz||wiz.mode!=='steps')return null;
+  const id=wiz.steps[wiz.i];return((flow.review&&flow.review.groups)||[]).find(g=>g.id===id)||null;
+ }
+ function paintStep(){
+  if(!wiz||wiz.mode!=='steps')return;
+  if(wiz.steps[wiz.i]==='summary'){paintSummary();return}
+  const g=currentGroup();if(!g)return;
+  const n=wiz.questions,first=g.rows[0],last=g.rows[g.rows.length-1],amounts=g.rows.map(cashOf),total=amounts.reduce((t,v)=>t+v,0);
+  const recent=g.rows.slice(-6).reverse().map(r=>'<li><span>'+esc(shortDate(r))+'</span><b>'+eur(cashOf(r),g.currency)+'</b></li>').join('');
+  const plan=g.answered&&g.kind==='plan'?'<div class="import-wizard-plan">'+
+   '<label><span>Importe actual</span><input type="number" inputmode="decimal" min="0" step="0.01" data-wiz-amount value="'+g.amount+'"></label>'+
+   '<label><span>Periodicidad</span><select data-wiz-freq>'+Object.entries(FREQ_LABEL).map(([k,l])=>'<option value="'+k+'"'+(g.frequency===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+   '<p>'+(g.active?'<em class="ok">Plan activo</em> · última compra el '+esc(shortDate(last)):'<em class="off">Plan terminado</em> · última compra el '+esc(shortDate(last))+'. No se crea el plan; solo se etiquetan sus compras.')+
+   (g.isFund?'':' Es una acción: sus compras se etiquetan como plan (los planes de ViewInvAI viven en Fondos).')+'</p></div>':'';
+  const opts=['plan','saveback','roundup','buy'].map(k=>{
+   const on=g.answered&&g.kind===k;
+   return '<button type="button" class="import-wizard-opt'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-wiz-opt="'+k+'"><span><b>'+KIND_LABEL[k]+'</b>'+(g.suggested===k?'<em>Sugerido</em>':'')+'</span><small>'+KIND_DESC[k]+'</small></button>'+(k==='plan'?plan:'');
+  }).join('');
+  paint({kicker:'Pregunta '+(wiz.i+1)+' de '+n,title:'Tus aportaciones',pct:wiz.i/n*100,
+   body:'<div class="import-wizard-q"><h3>'+esc(g.name)+'</h3>'+
+    '<p class="import-wizard-meta">'+g.rows.length+(g.rows.length===1?' compra':' compras')+' · '+esc(shortDate(first))+(g.rows.length>1?' → '+esc(shortDate(last)):'')+' · total '+eur(total,g.currency)+'</p>'+
+    '<p class="import-wizard-why">'+esc(g.why)+'</p>'+
+    '<ul class="import-wizard-recent" aria-label="Últimas compras">'+recent+'</ul>'+
+    '<p class="import-wizard-ask">¿Qué son estas compras?</p><div class="import-wizard-opts" role="radiogroup" aria-label="Tipo de aportación">'+opts+'</div>'+plan+'</div>',
+   foot:'<button type="button" class="btn ghost" data-wiz-back'+(wiz.i?'':' disabled')+'>Atrás</button>'+
+    '<button type="button" class="btn secondary" data-wiz-next'+(g.answered?'':' disabled')+'>'+(wiz.i===n-1?'Ver resumen':'Siguiente')+'</button>'});
+ }
+ function paintSummary(){
+  const groups=((flow.review&&flow.review.groups)||[]).filter(g=>!(g.kind==='buy'&&g.suggested==='buy'&&g.confidence==='sure'));
+  const label=g=>KIND_LABEL[g.kind]+(g.kind==='plan'?(g.active?' · '+eur(g.amount,g.currency)+' '+(FREQ_LABEL[g.frequency]||'').toLowerCase():' · terminado'):'')+(g.kind==='saveback'||g.kind==='roundup'?' · '+eur(g.rows.reduce((t,r)=>t+cashOf(r),0),g.currency)+' en total':'');
+  const contrib=groups.length?'<section class="import-wizard-sum"><h4>Tus aportaciones</h4><ul>'+groups.map(g=>'<li><span>'+esc(g.name)+'</span><b class="k-'+g.kind+'">'+esc(label(g))+'</b></li>').join('')+'</ul></section>':'';
+  const total=(flow.matched||[]).length+(flow.funds||[]).length+(flow.dividends||[]).length;
+  const n=wiz.questions;
+  paint({kicker:n?'Resumen':'Importar '+brokerName(),title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
+   body:'<div class="import-wizard-summary">'+previewHtml()+contrib+
+    (flow.extra?'<details class="import-wizard-ignored"><summary>Movimientos que no se importan</summary>'+flow.extra+'</details>':'')+
+    '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+(flow.adjustCash?' checked':'')+'> Ajustar también el efectivo de la cartera</label>'+
+    '<p class="broker-import-help">La importación sigue en segundo plano: puedes seguir usando la app y el progreso aparece arriba. Reimportar el mismo archivo no duplica nada.</p></div>',
+   foot:(n?'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>':'<button type="button" class="btn ghost" data-wiz-close>Cancelar</button>')+
+    '<button type="button" class="btn secondary" data-wiz-finish'+(total?'':' disabled')+'>Finalizar e importar</button>'});
+ }
+ function onWizardClick(e){
+  const t=e.target;
+  if(t.closest('[data-wiz-close]')){wizardClose();return}
+  if(t.closest('[data-wiz-retry]')){const src=flow.source;wizardClose();flow={source:src,rows:[],positions:[],portfolioId:flow.portfolioId||guessPortfolio(src)};render();return}
+  const o=t.closest('[data-wiz-opt]');
+  if(o){const g=currentGroup();if(g){g.kind=o.dataset.wizOpt;g.answered=true;if(g.confidence==='unsure')g.confidence='likely';const top=wizEl.querySelector('[data-wiz-body]').scrollTop;paintStep();wizEl.querySelector('[data-wiz-body]').scrollTop=top}return}
+  if(t.closest('[data-wiz-back]')&&wiz&&wiz.i>0){wiz.i--;paintStep();focusTitle();return}
+  if(t.closest('[data-wiz-next]')&&wiz){const g=currentGroup();if(g&&!g.answered)return;wiz.i=Math.min(wiz.steps.length-1,wiz.i+1);paintStep();focusTitle();return}
+  if(t.closest('[data-wiz-finish]')){wizardClose();commit();return}
+ }
+ function focusTitle(){const t=wizEl&&wizEl.querySelector('[data-wiz-title]');if(t)try{t.focus({preventScroll:true})}catch(_){}}
  // Values of the import the portfolio already holds as manual entries (counted twice
  // if both were kept): manual buys, the initial position, manual adjustments.
  function manualOverlap(rows,portfolioId){
@@ -516,29 +627,6 @@
   return{groups};
  }
  function pendingQuestions(){return((flow.review&&flow.review.groups)||[]).filter(g=>!g.answered).length}
- function reviewHtml(){
-  const groups=((flow.review&&flow.review.groups)||[]).filter(g=>!(g.kind==='buy'&&g.suggested==='buy'&&g.confidence==='sure'));
-  if(!groups.length)return'';
-  const order={unsure:0,likely:1,remembered:2,sure:3};
-  const badge={unsure:'Necesita tu respuesta',likely:'Deducido · revísalo',remembered:'Según tu respuesta anterior',sure:'Marcado por el bróker'};
-  const n=pendingQuestions();
-  return '<section class="import-review" aria-label="Revisión de aportaciones"><header><b>Tus aportaciones</b><span>'+(n?n+(n===1?' pregunta':' preguntas'):'Todo claro')+'</span></header>'+
-   '<p class="broker-import-help">Así he entendido tus compras periódicas. Cambia lo que no sea correcto: los planes se crean en tu cartera de fondos con su importe actual y el Saveback y el Redondeo se suman aparte.</p>'+
-   groups.slice().sort((a,b)=>order[a.confidence]-order[b.confidence]).map(g=>{
-    const first=g.rows[0],last=g.rows[g.rows.length-1],amounts=g.rows.map(cashOf),total=amounts.reduce((t,v)=>t+v,0);
-    const range=Math.min(...amounts)===Math.max(...amounts)?eur(amounts[0],g.currency):eur(Math.min(...amounts),g.currency)+' a '+eur(Math.max(...amounts),g.currency);
-    const kinds=['plan','saveback','roundup','buy'].map(k=>'<button type="button" data-review-kind="'+k+'" data-review-group="'+g.id+'" aria-pressed="'+(g.answered&&g.kind===k)+'"'+(!g.answered&&g.suggested===k?' class="suggested"':'')+' title="'+KIND_LABEL[k]+'">'+KIND_SHORT[k]+'</button>').join('');
-    const plan=g.answered&&g.kind==='plan'?'<div class="import-review-plan">'+
-     '<label><span>Importe actual</span><input type="number" inputmode="decimal" min="0" step="0.01" data-review-amount="'+g.id+'" value="'+g.amount+'"></label>'+
-     '<label><span>Periodicidad</span><select data-review-freq="'+g.id+'">'+Object.entries(FREQ_LABEL).map(([k,l])=>'<option value="'+k+'"'+(g.frequency===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
-     '<p>'+(g.active?'<em class="ok">Activo</em> · última el '+esc(shortDate(last)):'<em class="off">Terminado</em> · última el '+esc(shortDate(last))+': no se crea el plan, solo se etiquetan sus compras')+(g.isFund?'':' · en acciones se etiqueta (los planes viven en Fondos)')+'</p></div>':'';
-    return '<article class="import-review-card is-'+g.confidence+(g.answered?'':' is-open')+'" data-review-card="'+g.id+'">'+
-     '<div class="import-review-head"><b>'+esc(g.name)+'</b><span>'+badge[g.confidence]+'</span></div>'+
-     '<p class="import-review-meta">'+g.rows.length+(g.rows.length===1?' compra':' compras')+' · '+esc(shortDate(first))+(g.rows.length>1?' → '+esc(shortDate(last)):'')+' · '+range+' · total '+eur(total,g.currency)+'</p>'+
-     '<p class="import-review-why">'+esc(g.why)+(g.answered?'':' ¿Qué son?')+'</p>'+
-     '<div class="import-review-kinds" role="group" aria-label="Tipo de aportación">'+kinds+'</div>'+plan+'</article>';
-   }).join('')+'</section>';
- }
  // Aplica la revisión a las filas antes de enviarlas y devuelve los planes a crear o actualizar.
  function applyReview(){
   const plans=[],noPlans=[],remember={};
@@ -560,27 +648,13 @@
   saveChoices(remember);
   return{plans,noPlans:[...new Set(noPlans)].filter(k=>!plans.some(p=>p.isin===k))};
  }
- function onReviewClick(e){
-  const b=e.target.closest&&e.target.closest('[data-review-kind]');if(!b)return false;
-  const g=((flow.review&&flow.review.groups)||[]).find(x=>x.id===b.dataset.reviewGroup);if(!g)return true;
-  g.kind=b.dataset.reviewKind;g.answered=true;if(g.confidence==='unsure')g.confidence='likely';
-  renderPreview();
-  return true;
- }
- function onReviewInput(t){
-  const id=t.dataset.reviewAmount||t.dataset.reviewFreq;if(!id)return false;
-  const g=((flow.review&&flow.review.groups)||[]).find(x=>x.id===id);if(!g)return true;
-  if(t.dataset.reviewAmount){const v=Number(String(t.value).replace(',','.'));if(v>0)g.amount=Math.round(v*100)/100}
-  else{g.frequency=t.value;g.active=isActive(g)}
-  return true;
- }
  // The import runs in the background (ViewInvAITasks): the window closes at once and
  // the floating task pill shows progress, errors and the duplicate question.
  async function commit(){
   if(pendingQuestions())return;
   const review=applyReview();
   const job={portfolioId:flow.portfolioId,source:flow.source,rows:(flow.matched||[]).slice(),divs:(flow.dividends||[]).slice(),funds:(flow.funds||[]).slice(),
-   adjustCash:!!document.querySelector('[data-import-cash]')?.checked};
+   adjustCash:!!flow.adjustCash};
   if(!job.portfolioId||!(job.rows.length||job.divs.length||job.funds.length))return;
   if(typeof P().closeModal==='function')P().closeModal();
   const broker=job.source==='ibkr'?'Interactive Brokers':job.source==='tr'?'Trade Republic':'';
@@ -649,7 +723,6 @@
   const t=e.target;
   const src=t.closest&&t.closest('[data-import-source]');
   if(src){flow={source:src.dataset.importSource,rows:[],positions:[],portfolioId:guessPortfolio(src.dataset.importSource)};render();return}
-  if(onReviewClick(e))return;
   if(t.closest&&t.closest('[data-import-commit]')){commit();return}
   const go=t.closest&&t.closest('[data-ibkr-fetch]');
   if(go){
@@ -658,25 +731,24 @@
    if(!token||!queryId){status('Indica el token y el Query ID.',true);return}
    if(document.querySelector('[data-ibkr-remember]')?.checked){try{await rememberIbkr(typed,{queryId,portfolioId:flow.portfolioId})}catch(err){status(esc(err.message),true)}}else await forgetIbkr();
    go.disabled=true;go.textContent='Consultando IBKR…';status('');
-   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.dividends=data.dividends||[];showPreview(data.trades||[],'ibkr')}
+   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.dividends=data.dividends||[];runAnalysis(async()=>({rows:data.trades||[]}))}
    catch(err){status(esc(err.message),true)}
    finally{if(go.isConnected){go.disabled=false;go.textContent='Leer operaciones de IBKR'}}
   }
  });
- document.addEventListener('input',e=>{const t=e.target;if(t&&t.matches&&t.matches('[data-review-amount]'))onReviewInput(t)});
  document.addEventListener('change',e=>{
   const t=e.target;
   if(t.matches&&t.matches('[data-import-portfolio]')){flow.portfolioId=t.value;return}
-  if(t.matches&&t.matches('[data-review-freq]')){onReviewInput(t);renderPreview();return}
   if(t.matches&&t.matches('[data-import-file]')&&t.files&&t.files[0]){
    const file=t.files[0];
    if(file.size>5e6){status('El archivo es demasiado grande (máx. 5 MB).',true);return}
-   file.text().then(text=>{
+   runAnalysis(async()=>{
+    const text=await file.text();
     const {rows,skipped,dividends}=rowsFromCsv(text,flow.source==='tr'?'tr':'csv');
     flow.dividends=dividends||[];
     const ign=Object.entries(skipped);
-    showPreview(rows,flow.source,ign.length?'<p class="broker-import-help">Ignoradas (no son compras, ventas ni dividendos): '+esc(ign.slice(0,6).map(([k,v])=>k+' ×'+v).join(', '))+'</p>':'');
-   }).catch(err=>status(esc(err.message||'No se pudo leer el archivo.'),true));
+    return{rows,extra:ign.length?'<p class="broker-import-help">No son compras, ventas ni dividendos: '+esc(ign.slice(0,8).map(([k,v])=>k+' ×'+v).join(', '))+'</p>':''};
+   });
   }
  });
 
