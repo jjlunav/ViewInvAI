@@ -1440,10 +1440,28 @@ function portfolioGoalViewHtml(){
     (target===null?'<div class="portfolio-goal-no-action">Indica el valor al que quieres llevar esta cartera. El motor trabajará únicamente con el capital que ya existe en ella.</div>':
       '<div class="portfolio-goal-summary"><strong>'+formatMoney(metrics.currentValue,"EUR")+'</strong><span>→ '+formatMoney(target,"EUR")+'</span><b>Faltan '+formatMoney(Math.max(0,num(metrics.remaining)||0),"EUR")+' · '+formatNumber(metrics.progress,1)+'%</b></div>'+
       '<section class="portfolio-goal-decision"><div class="portfolio-goal-decision-head"><h3>Plan recomendado ahora · riesgo '+esc((metrics.riskBand&&metrics.riskBand.label)||"Alto")+'</h3></div>'+goalRiskSummaryHtml(metrics.riskBand)+'<div class="portfolio-goal-trades">'+decisionHtml+'</div></section>'+
+      goalAiContrastPanel(metrics,portfolio,positionRows,candidate?candidates.slice(0,3):[],candidate?rotationRows:[])+
       '<p class="portfolio-goal-note compact-note">Se revisa una vez al día, tras el cierre de EEUU: las compras deben confirmarse en dos revisiones seguidas y solo los stop-loss avisan al momento. No se vende antes de 3 días salvo stop, ni se compra si la comisión de ida y vuelta pesa demasiado. El remanente puede quedarse líquido si no hay una entrada suficientemente buena.</p>')+
     '</section>';
 }
 
+// Contraste opcional con las IA del usuario: no cambia el plan, añade su opinión.
+// Solo se envían datos públicos y porcentajes; nunca importes de la cartera.
+function goalAiContrastPanel(metrics,portfolio,positionRows,buys,sells){
+  const C=window.ViewInvAIContrast;if(!C)return"";
+  const tickerOf=(stock,p)=>String(stock&&(stock.ticker||stock.trTicker)||p&&p.ticker||"").toUpperCase();
+  const pct=v=>num(v)===null?"—":(v>0?"+":"")+formatNumber(v,1)+"%";
+  const held=positionRows.map(r=>"- "+tickerOf(r.stock,r.p)+" ("+(r.stock&&r.stock.name||"")+") · peso "+formatNumber(r.currentWeight,1)+"% · resultado "+pct(r.positionReturnPct)+" · score "+formatNumber(r.score,0)+"/100 · acción propuesta: "+r.action+(r.reasons&&r.reasons.length?" ("+r.reasons.join(", ")+")":""));
+  const sellLines=sells.map(r=>"- VENDER "+formatNumber(r.reducePct,0)+"% de "+tickerOf(r.stock,r.p));
+  const buyLines=buys.map(r=>{const lv=r.levels||{},s=r.stock||{};return "- COMPRAR "+tickerOf(s)+" ("+(s.name||"")+") · convicción "+formatNumber(r.score,0)+"/100 · calidad "+formatNumber(r.quality,0)+"/100 · R:R "+formatNumber(r.entry&&r.entry.rr,2)+(num(lv.stopPct)!==null?" · stop -"+formatNumber(lv.stopPct,1)+"%":"")+(num(lv.takePct)!==null?" · objetivo +"+formatNumber(lv.takePct,1)+"%":"")+(r.catalyst&&r.catalyst.label?" · "+r.catalyst.label:"")});
+  const prompt="Objetivo de cartera en ViewInvAI. Mercado: "+portfolioMarketLabel(metrics.marketScope)+". Perfil de riesgo: "+((metrics.riskBand&&metrics.riskBand.label)||"alto")+". Progreso hacia el objetivo: "+formatNumber(metrics.progress,1)+"%.\n"+
+    "El motor rota la cartera hacia las acciones con mejor convicción y momento, con stop-loss y sin perseguir subidas.\n"+
+    "Contrasta con noticias y datos actuales si el plan tiene sentido ahora y qué riesgos ve que el motor podría no ver.\n\n"+
+    "Posiciones actuales:\n"+(held.length?held.join("\n"):"(sin posiciones)")+"\n\n"+
+    "Plan propuesto:\n"+([...sellLines,...buyLines].join("\n")||"No hacer cambios ahora.");
+  const day=new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Madrid"});
+  return C.panelHtml({type:"goal",key:portfolio.id+":"+day,title:"Plan de "+(portfolio.name||"la cartera"),prompt});
+}
 function goalRiskSummaryHtml(band){
   if(!band)return"";
   return '<p class="portfolio-goal-risk-summary">Máx. '+formatNumber(band.maxPosition,0)+'% por acción · riesgo '+formatNumber(band.riskPerTradePct,1)+'% de la cartera por operación · spread ≤ '+formatNumber(band.maxSpreadPct,0)+'% · stop hasta '+formatNumber(band.maxStopPct,0)+'%</p>';

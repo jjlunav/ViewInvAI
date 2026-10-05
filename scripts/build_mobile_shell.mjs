@@ -38,6 +38,7 @@ const files = [
   'stock-list.js',
   'recommendation.js',
   'help.js',
+  'ai-integrations.js',
   'stock-profile.js',
   'catalog.js',
   'heatmap.js',

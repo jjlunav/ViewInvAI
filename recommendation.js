@@ -523,9 +523,43 @@ function radarAiCard(row){
   className:'radar-ai-card radar-ai-card-'+(row.speculative?'spec':row.tier),
   subtitle:(row.speculative?'⚠ Especulativo · ':'')+[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Calidad '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
   openAttrs:stockOpenAttrs(s,'Radar AI',preferTr),
+  metaHtml:radarAiContrastBadge(s.ticker||s.trTicker),
   detailsHtml:''
  });
 }
+// ----- Contraste opcional con las IA del usuario (Configuración › Integrar la IA) -----
+// No cambia el cálculo: solo añade la opinión de las IA activas sobre la selección del día.
+function radarAiContrastKey(mode){return mode+':'+new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'})}
+function radarAiContrastBadge(ticker){
+ const C=window.ViewInvAIContrast;if(!C)return'';
+ const v=C.verdictFor('radar',radarAiContrastKey(radarAiMarket),ticker);
+ return v?C.badgeHtml(v):'';
+}
+function radarAiContrastPrompt(rows,mode){
+ const isTr=mode==='tr',pick=[...radarAiTierRows(rows,'high'),...radarAiTierRows(rows,'opportunity'),...radarAiTierRows(rows,'spec'),...radarAiTierRows(rows,'watch')];
+ const lines=pick.map(r=>{
+  const s=r.s,ticker=s.ticker||s.trTicker,isin=s.trIsin||s.isin;
+  const level=r.speculative?'especulativo':RADAR_TIER_LABEL[r.tier]||r.tier;
+  const bits=[ticker+' ('+(s.name||'')+(s.exchange?', '+s.exchange:'')+(isin?', ISIN '+isin:'')+')','nivel '+level,'score '+F(r.score,0)+'/100','calidad de datos '+F(r.quality,0)+'/100'];
+  if(N(s.price)!==null)bits.push('precio '+F(s.price,2)+' '+(s.currency||'USD'));
+  if(N(s.perfWeek)!==null)bits.push('semana '+(s.perfWeek>0?'+':'')+F(s.perfWeek,1)+'%');
+  if(N(s.perfMonth)!==null)bits.push('mes '+(s.perfMonth>0?'+':'')+F(s.perfMonth,1)+'%');
+  if(s.sector)bits.push('sector '+s.sector);
+  if(r.speculative&&r.specReasons.length)bits.push('avisos: '+r.specReasons.join(', '));
+  return '- '+bits.join(' · ');
+ });
+ return 'Selección de hoy del Radar AI de ViewInvAI para '+(isTr?'Trade Republic (acciones negociables en LSX, en euros)':'EEUU (NASDAQ/NYSE/AMEX)')+'.\n'+
+  'El motor puntúa momentum, tendencia, volumen, RSI/ADX, liquidez, catalizadores y calidad de datos. Niveles: alta convicción > oportunidad > vigilancia; «especulativo» = señal fuerte pero sin pasar el filtro de entrada.\n'+
+  'Para cada valor, contrasta con noticias y datos actuales si la propuesta tiene sentido ahora mismo (próximos días/semanas) y señala riesgos que el motor podría no ver.\n\n'+
+  (lines.length?lines.join('\n'):'(sin valores seleccionados hoy)');
+}
+function radarAiContrastPanel(rows,mode){
+ const C=window.ViewInvAIContrast;if(!C||!rows.length)return'';
+ return C.panelHtml({type:'radar',key:radarAiContrastKey(mode),title:'Radar '+(mode==='tr'?'Trade Republic':'EEUU')+' de hoy',prompt:radarAiContrastPrompt(rows,mode)});
+}
+window.addEventListener('viewinvai:ai-contrast',e=>{
+ if(e.detail&&e.detail.type==='radar'&&document.querySelector('#recommendationResults .radar-ai-shell'))rerenderRadarAiList();
+});
 // ----- Marcador de aciertos (registro diario del servidor) -----
 let radarScoreboard={at:0,data:null,loading:false},radarScoreboardOpen=false;
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-radar-scoreboard]'))radarScoreboardOpen=e.target.open},true);
@@ -597,6 +631,7 @@ function radarAiShell(advanced=radarAiLastAdvanced){
   '<div class="radar-tier-filter" role="group" aria-label="Filtrar por nivel">'+
    chip('high','Alta',counts.high)+chip('opportunity','Oportunidad',counts.opportunity)+chip('watch','Vigilancia',counts.watch)+chip('spec','Especulativo',counts.spec)+
   '</div>'+
+  radarAiContrastPanel(rows,mode)+
   '<div class="radar-list unified-asset-list">'+list+'</div>'+
  '</div>';
 }
