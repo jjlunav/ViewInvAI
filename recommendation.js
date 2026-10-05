@@ -494,14 +494,16 @@ function radarAiCandidateRows(mode,advanced=null){
   const shared=window.ViewInvAIScore&&typeof window.ViewInvAIScore.watchSignal==='function'
    ?window.ViewInvAIScore.watchSignal(score,quality)
    :(score>=72&&quality>=60?'BUY':score>=60?'WATCH':'WAIT');
-  let tier='watch';
-  if(score>=60&&quality>=48)tier='opportunity';
-  // Same floor as the server's «En vigilancia» alerts (score ≥ 50 y calidad ≥ 40).
-  else if(score<50||quality<40)continue;
-  if(advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
-  const spec=window.ViewInvAIScore&&typeof window.ViewInvAIScore.speculative==='function'
-   ?window.ViewInvAIScore.speculative({price:N(s.price),marketCap:N(s.marketCap),avgVolume:N(s.avgVolume),events:stockEvents(s)})
-   :{speculative:false,reasons:[]};
+  // Misma regla que el marcador y los avisos: filtro de entrada (precio, capitalización, liquidez en
+  // dinero y sin dilución reciente) y niveles exigentes; lo que no pasa el filtro solo entra como
+  // especulativo si la señal es muy fuerte.
+  const rt=window.ViewInvAIScore&&typeof window.ViewInvAIScore.radarTier==='function'
+   ?window.ViewInvAIScore.radarTier({score,quality,price:N(s.price),marketCap:N(s.marketCap),avgVolume:N(s.avgVolume),events:stockEvents(s),market:preferTr?'tr':'us'})
+   :{tier:score>=72&&quality>=60?'opportunity':score>=62&&quality>=55?'watch':'',eligible:true,reasons:[]};
+  if(!rt.tier)continue;
+  let tier=rt.tier==='spec'?'opportunity':rt.tier;
+  if(rt.eligible&&advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
+  const spec={speculative:rt.tier==='spec',reasons:rt.reasons};
   rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,speculative:spec.speculative,specReasons:spec.reasons||[],advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }
  rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
@@ -570,20 +572,20 @@ function radarScoreboardHtml(){
 // Radar AI as one list per market, like Radar de entrada: tabs TR / EEUU, a tier filter
 // with counts and every card tinted by tier (alta convicción · oportunidad · vigilancia).
 const RADAR_TIER_LABEL={high:'Alta convicción',opportunity:'Oportunidades',watch:'En vigilancia',spec:'Especulativo'};
-const RADAR_TIER_LIMIT={high:5,opportunity:12,watch:15};
+const RADAR_TIER_LIMIT={high:5,opportunity:12,watch:15,spec:10};
 let radarAiMarket=(()=>{try{return localStorage.getItem('viewinvai:radar-market')==='us'?'us':'tr'}catch(_){return'tr'}})();
 let radarAiTierFilter='all',radarAiLastAdvanced={};
+// Cada nivel muestra solo sus mejores señales: el Radar es una selección, no un listado del mercado.
+function radarAiTierRows(rows,t){return(t==='spec'?rows.filter(x=>x.speculative):rows.filter(x=>x.tier===t&&!x.speculative)).slice(0,RADAR_TIER_LIMIT[t])}
 function radarAiVisibleRows(rows){
- if(radarAiTierFilter==='spec')return rows.filter(x=>x.speculative).slice(0,30);
- const byTier=t=>rows.filter(x=>x.tier===t&&!x.speculative);
- if(radarAiTierFilter!=='all')return byTier(radarAiTierFilter).slice(0,30);
- return ['high','opportunity','watch'].flatMap(t=>byTier(t).slice(0,RADAR_TIER_LIMIT[t]));
+ if(radarAiTierFilter!=='all')return radarAiTierRows(rows,radarAiTierFilter);
+ return ['high','opportunity','watch'].flatMap(t=>radarAiTierRows(rows,t));
 }
 function radarAiShell(advanced=radarAiLastAdvanced){
  radarAiLastAdvanced=advanced||{};
  const mode=radarAiMarket,isTr=mode==='tr';
  const rows=radarAiCandidateRows(mode,radarAiLastAdvanced[mode]||null);
- const counts={high:0,opportunity:0,watch:0,spec:0};rows.forEach(r=>{if(r.speculative)counts.spec++;else counts[r.tier]++});
+ const counts={};['high','opportunity','watch','spec'].forEach(t=>{counts[t]=radarAiTierRows(rows,t).length});
  const visible=radarAiVisibleRows(rows);
  const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
  const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';

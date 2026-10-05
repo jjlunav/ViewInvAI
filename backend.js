@@ -2151,16 +2151,19 @@ export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
       spread:null,bid:null,ask:null,quoteAgeMs:null,snapshotAgeMs:snapshotAt?Math.max(0,nowMs-snapshotAt):null,chartAvailable:false};
     const a=engine.analyze(input,events,nowMs);
     const score=finiteNumber(a.score)??0,quality=finiteNumber(a.quality&&a.quality.score)??0;
-    // Same thresholds as the Radar AI screen (alta convicción needs AI validation, not logged here).
-    const tier=score>=60&&quality>=48?"opportunity":score>=50&&quality>=40?"watch":"";
-    if(!tier)continue;
-    const spec=typeof engine.speculative==="function"?engine.speculative({price,marketCap:finiteNumber(s.marketCap),avgVolume:finiteNumber(s.avgVolume),events,nowMs}):{speculative:false};
-    rows.push({stock_key:String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),ticker:String(s.ticker||""),name:String(s.name||""),tier,score,quality,price,
-      tr_tradable:s.tradeRepublicTradable===true?1:0,speculative:spec.speculative?1:0});
+    // Same rule as the Radar AI screen (alta convicción needs AI validation, not logged here).
+    const intl=String(s.region||"")==="intl";
+    const rt=typeof engine.radarTier==="function"
+      ?engine.radarTier({score,quality,price,marketCap:finiteNumber(s.marketCap),avgVolume:finiteNumber(s.avgVolume),events,nowMs,market:intl?"tr":"us"})
+      :{tier:"",eligible:false};
+    if(!rt.tier)continue;
+    rows.push({stock_key:String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),ticker:String(s.ticker||""),name:String(s.name||""),
+      tier:rt.tier==="spec"?"opportunity":rt.tier,score,quality,price,tr_tradable:s.tradeRepublicTradable===true?1:0,speculative:rt.tier==="spec"?1:0});
   }
   rows.sort((a,b)=>b.score-a.score||b.quality-a.quality);
-  const opp=rows.filter(r=>r.tier==="opportunity").slice(0,60),watch=rows.filter(r=>r.tier==="watch").slice(0,40);
-  return[...opp,...watch];
+  // The screen shows at most 12 opportunities, 15 on watch and 10 speculative per market.
+  const opp=rows.filter(r=>r.tier==="opportunity"&&!r.speculative).slice(0,24),watch=rows.filter(r=>r.tier==="watch").slice(0,30),spec=rows.filter(r=>r.speculative).slice(0,20);
+  return[...opp,...watch,...spec];
 }
 export async function runRadarScoreboard(env,services={},nowMs=Date.now()){
   if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
@@ -4294,16 +4297,17 @@ async function scanNotificationPreferences(env,services){
         const fallback=deterministicAssessment(target,stock,chart,events);
         let current=fallback;
         if(fallback.score>=50)current=await aiAssessment(env,target,stock,chart,events,fallback);
-        // Match the Radar AI screen: high conviction needs score>=68, data quality>=65, a chart and
-        // an AI buy with confidence>=70; opportunities need score>=60 and quality>=48.
+        // Match the Radar AI screen (ViewInvAIScore.radarTier): high conviction needs the entry filter,
+        // score>=68, data quality>=65, a chart and an AI buy with confidence>=70.
         // Opportunity uses the deterministic score like the screen; high conviction also needs a real
         // model answer (aiValidated), never the deterministic fallback.
         const radarQuality=finiteNumber(fallback.quality)??0,radarScore=finiteNumber(fallback.score)??0;
-        // «En vigilancia» is the screen's third tier: a candidate worth following (score>=50,
-        // quality>=40) that does not yet reach the opportunity threshold.
-        const nextRadar=current.aiValidated===true&&current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
+        const rt=globalThis.ViewInvAIScore&&typeof globalThis.ViewInvAIScore.radarTier==="function"
+          ?globalThis.ViewInvAIScore.radarTier({score:radarScore,quality:radarQuality,price:finiteNumber(stock.price),marketCap:finiteNumber(stock.marketCap),avgVolume:finiteNumber(stock.avgVolume),events,market:Number(pref.prefer_tr)===1?"tr":"us"})
+          :{tier:"",eligible:false};
+        const nextRadar=rt.eligible&&current.aiValidated===true&&current.signal==="BUY"&&current.confidence>=70&&current.score>=68&&radarQuality>=65&&chart&&chart.available
           ?"HIGH"
-          :(radarScore>=60&&radarQuality>=48?"OPPORTUNITY":(radarScore>=50&&radarQuality>=40?"WATCH":""));
+          :(rt.tier==="opportunity"||rt.tier==="spec"?"OPPORTUNITY":rt.tier==="watch"?"WATCH":"");
         const nextPulse=String(current.signal||"WAIT").toUpperCase();
         const previousRadar=radarState;
         const previousPulse=pulseState;
@@ -4311,9 +4315,7 @@ async function scanNotificationPreferences(env,services){
           const tierOn={HIGH:global.radarHigh,OPPORTUNITY:global.radarOpportunity,WATCH:global.radarWatch};
           const tierLabel={HIGH:"Alta convicción",OPPORTUNITY:"Oportunidad",WATCH:"En vigilancia"};
           if(nextRadar&&nextRadar!==previousRadar&&tierOn[nextRadar]){
-            const engineSpec=globalThis.ViewInvAIScore&&typeof globalThis.ViewInvAIScore.speculative==="function"
-              ?globalThis.ViewInvAIScore.speculative({price:finiteNumber(stock.price),marketCap:finiteNumber(stock.marketCap),avgVolume:finiteNumber(stock.avgVolume),events})
-              :{speculative:false};
+            const engineSpec={speculative:rt.tier==="spec"};
             await sendPreferenceAlert(
               env,pref,"radar-ai-change",nextRadar==="HIGH"?"high":"info","Radar AI · "+tierLabel[nextRadar]+(engineSpec.speculative?" (especulativo)":"")+" · "+pref.ticker,
               current.thesis||("La acción ha entrado en «"+tierLabel[nextRadar]+"» de Radar AI.")

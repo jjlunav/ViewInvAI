@@ -1,7 +1,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.09.25-v1';
+  const VERSION='2026.10.05-v2';
 
   function n(value){
     if(value===null||value===undefined||value==='')return null;
@@ -67,11 +67,23 @@
     if(month!==null){perf+=clamp(month*.08,-5,5);perfNote.push('1m '+month.toFixed(2)+'%')}
     add('Rendimiento',perf,perfNote.join(' · ')||'Sin histórico de rendimiento');
 
-    if(vol!==null&&vol<10000)add('Liquidez',-14,'Volumen muy bajo');
+    // Liquidez en dinero negociado al día (acciones × precio), no en número de acciones:
+    // un millón de acciones de 0,04 € son 40.000 € y no dan para entrar y salir con soltura.
+    const avgVol=n(input.avgVolume),baseVol=avgVol!==null?avgVol:vol;
+    const traded=p!==null&&baseVol!==null?p*baseVol:null,fmtM=v=>v>=1e6?(v/1e6).toFixed(1)+' M/día':Math.round(v/1e3)+' mil/día';
+    if(traded!==null){
+      if(traded<200000)add('Liquidez',-14,'Liquidez muy baja · '+fmtM(traded));
+      else if(traded<1e6)add('Liquidez',-7,'Liquidez baja · '+fmtM(traded));
+      else if(traded>=20e6)add('Liquidez',4,'Liquidez alta · '+fmtM(traded));
+      else if(traded>=5e6)add('Liquidez',2,'Liquidez suficiente · '+fmtM(traded));
+      else add('Liquidez',0,'Liquidez justa · '+fmtM(traded));
+    }else if(vol!==null&&vol<10000)add('Liquidez',-14,'Volumen muy bajo');
     else if(vol!==null&&vol<50000)add('Liquidez',-7,'Volumen bajo');
-    else if(vol!==null&&vol>=500000)add('Liquidez',4,'Volumen alto');
-    else if(vol!==null&&vol>=100000)add('Liquidez',2,'Volumen suficiente');
     else add('Liquidez',0,vol===null?'Volumen no disponible':'Volumen disponible');
+
+    // Subidas que ya se han producido: perseguirlas tiene peor relación riesgo/beneficio.
+    if(month!==null&&month>40)add('Sobreextensión',-Math.min(14,4+(month-40)*.2),'Ya sube '+month.toFixed(0)+'% en un mes');
+    else if(week!==null&&week>25)add('Sobreextensión',-Math.min(10,3+(week-25)*.25),'Ya sube '+week.toFixed(0)+'% en una semana');
 
     if(sp!==null){
       if(sp>8)add('Spread',-16,'Spread '+sp.toFixed(2)+'%');
@@ -215,6 +227,31 @@
     return{speculative:reasons.length>0,reasons};
   }
 
+  // Niveles del Radar AI (pantalla, marcador y avisos usan esta misma regla).
+  // Filtro de entrada: precio ≥ 1, capitalización ≥ 300 M, ≥ 2 M/día negociados (1 M/día en Trade
+  // Republic) y sin contrasplit ni ampliación reciente. Quien no lo pasa solo puede salir como
+  // «especulativo» si su señal es muy fuerte.
+  const RADAR_LEVELS={opportunity:{score:72,quality:60},watch:{score:62,quality:55},spec:{score:74,quality:55}};
+  function radarTier(input={}){
+    const score=n(input.score)??0,q=n(input.quality)??0;
+    const price=n(input.price),cap=n(input.marketCap),avgVol=n(input.avgVolume);
+    const minTraded=input.market==='tr'?1e6:2e6,traded=price!==null&&avgVol!==null?price*avgVol:null;
+    const reasons=[];
+    if(price!==null&&price<1)reasons.push('precio < 1');
+    if(cap!==null&&cap<300e6)reasons.push('capitalización < 300 M');
+    if(traded!==null&&traded<minTraded)reasons.push('liquidez < '+(minTraded/1e6)+' M/día');
+    if(traded===null)reasons.push('sin datos de liquidez');
+    const ev=speculative({events:input.events,nowMs:input.nowMs}).reasons;
+    reasons.push(...ev);
+    const eligible=reasons.length===0;
+    let tier='';
+    if(eligible){
+      if(score>=RADAR_LEVELS.opportunity.score&&q>=RADAR_LEVELS.opportunity.quality)tier='opportunity';
+      else if(score>=RADAR_LEVELS.watch.score&&q>=RADAR_LEVELS.watch.quality)tier='watch';
+    }else if(score>=RADAR_LEVELS.spec.score&&q>=RADAR_LEVELS.spec.quality)tier='spec';
+    return{tier,eligible,reasons};
+  }
+
   function watchSignal(score,qualityScore){
     const s=n(score)??0,q=n(qualityScore)??0;
     if(q<55)return 'WAIT';
@@ -233,6 +270,6 @@
   }
 
   root.ViewInvAIScore=Object.freeze({
-    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative
+    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative,radarTier,RADAR_LEVELS
   });
 })(globalThis);
