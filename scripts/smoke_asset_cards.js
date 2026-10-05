@@ -164,8 +164,14 @@ window.checkAssetCards = async function () {
   assert(!goalView.hidden&&!goalView.classList.contains('is-hidden'),'portfolio goal panel did not open');
   assert(goalView.querySelector('.portfolio-goal-view'),'portfolio goal view did not render');
   assert(goalView.querySelector('[data-goal-history="ci"]'),'goal recommendation history control is missing');
-  const goalInput=goalView.querySelector('#portfolioGoalForm input[name="targetProfitEur"]');
-  assert(goalInput&&goalInput.value==='1000'&&goalInput.step==='0.01'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input');
+  // Objetivo «rápido»: se configura con un asistente (una pregunta por paso) que conserva el importe guardado.
+  const wizardButton=goalView.querySelector('[data-goal-wizard]');
+  assert(wizardButton,'goal wizard button is missing');
+  wizardButton.click();
+  const goalInput=document.querySelector('#goalWizard:not([hidden]) [data-gw-input="target"]');
+  assert(goalInput&&goalInput.value==='1000'&&goalInput.checkValidity(),'goal amount 1000 is not a valid input in the wizard');
+  document.querySelector('#goalWizard [data-gw-close]').click();
+  assert(document.querySelector('#goalWizard').hidden,'goal wizard did not close');
   fundsApi.setPortfolioAssetMode('stocks',false);
   const liveRow=view.querySelector('.portfolio-position-list [data-open-stock]');
   liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));

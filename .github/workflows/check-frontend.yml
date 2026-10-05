@@ -39,6 +39,7 @@ on:
       - "bootstrap.js"
       - "market-session.js"
       - "score-engine.js"
+      - "goal-engine.js"
       - "alerts.js"
       - "stock-notifications.js"
       - "auth.js"
@@ -79,6 +80,7 @@ jobs:
         run: |
           node --check market-session.js
           node --check score-engine.js
+          node --check goal-engine.js
           node --check app.js
           node --check settings.js
           node --check market.js
@@ -384,8 +386,12 @@ jobs:
               raise SystemExit("Seguimiento de cartera no debe aparecer en Settings")
           if "Aportación mensual" in portfolio or 'name="monthlyContributionEur"' in portfolio:
               raise SystemExit("Objetivo IA no debe pedir aportaciones mensuales")
-          if "Plan recomendado ahora" not in portfolio:
-              raise SystemExit("Objetivo IA debe mostrar un plan único y accionable")
+          if "Hoy toca" not in portfolio or "goalEngineInput" not in portfolio:
+              raise SystemExit("Objetivo IA debe mostrar un plan único y accionable («Hoy toca» con el motor común)")
+          goal_engine = Path("goal-engine.js").read_text(encoding="utf-8")
+          for required in ("ROTATION_MARGIN", "positionStop", "DEFENSIVE_IN", "SPEC_MAX_WEIGHT", "maxRoundTripFeePct", "riskPerTradePct"):
+              if required not in goal_engine:
+                  raise SystemExit("El motor del Objetivo pierde una protección: " + required)
           if "#view-heatmap:not(.active){display:none!important" not in styles:
               raise SystemExit("El mapa de calor puede invadir otras vistas")
           if "--positive:var(--green)" not in styles or "--negative:var(--red)" not in styles:
@@ -413,9 +419,9 @@ jobs:
           for required in ("minHoldActive", "maxSpreadPct", "maxRoundTripFeePct", 'label:"Bajo"', 'label:"Moderado"', 'label:"Alto"'):
               if required not in portfolio:
                   raise SystemExit("Objetivo IA pierde una protección por nivel de riesgo: " + required)
-          for required in ("goalServerReviewClock", "risk_signature", "previousCandidates", "maxRoundTripFeePct"):
+          for required in ("goalServerReviewClock", "risk_signature", "goalAiReviewBuys", "portfolio_goal_position_state", "ViewInvAIGoal"):
               if required not in backend:
-                  raise SystemExit("Objetivo IA pierde la revisión diaria o la confirmación de entradas: " + required)
+                  raise SystemExit("Objetivo IA pierde la revisión diaria, el contraste o los stops: " + required)
           if 'id="globalNotifyPortfolioGoal"' not in index or "notify_portfolio_goal" not in backend or "portfolio_goal_enabled" not in backend:
               raise SystemExit("Falta la categoría de notificación para Objetivo IA")
           if "scanPortfolioGoalNotifications" not in backend or 'route:"portfolio-goal"' not in backend:
@@ -586,7 +592,7 @@ jobs:
           fi
           rm -rf /tmp/viewinvai-smoke /tmp/viewinvai-smoke-profile
           mkdir -p /tmp/viewinvai-smoke/data /tmp/viewinvai-smoke-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
           cat > /tmp/viewinvai-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"premarketPrice":9.8,"premarketChangePct":3,"premarketVolume":20000,"premarketTime":1790427600,"postmarketPrice":10.2,"postmarketChangePct":4,"postmarketVolume":30000,"postmarketTime":1790451000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin","usLivePrice":10.1,"usLiveChangePct":6,"usLiveReceivedAt":1790445600000,"usLiveTimestamp":1790445600000,"usLiveIsRealTime":true,"usLiveSource":"smoke"}],"events":[]}
           JSON
@@ -631,7 +637,7 @@ jobs:
                     aiTab?.click();
                     setTimeout(()=>{
                       if(ai.hidden || !chart.hidden)return fail('AI tab did not switch panels');
-                      if(!ai.querySelector('[data-chatgpt-stock]') || !ai.querySelector('[data-ai-chat-stock]'))return fail('AI actions missing from AI tab');
+                      if(!(ai.querySelector('[data-ai-ask="chatgpt"]') || ai.querySelector('[data-chatgpt-stock]')) || !ai.querySelector('[data-ai-chat-stock]'))return fail('AI actions missing from AI tab');
                       history.back();
                       setTimeout(()=>{
                         const fundsNav=document.querySelector('[data-view="funds"]');
@@ -693,7 +699,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON

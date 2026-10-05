@@ -30,6 +30,7 @@ const files = [
   'native-runtime.js',
   'market-session.js',
   'score-engine.js',
+  'goal-engine.js',
   'app.js',
   'settings.js',
   'market.js',

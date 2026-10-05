@@ -103,6 +103,7 @@ jobs:
           test -s mobile-shell/funds.js
           test -s mobile-shell/recommendation.js
           test -s mobile-shell/ai-integrations.js
+          test -s mobile-shell/goal-engine.js
           test -s mobile-shell/stock-notifications.js
           test -s mobile-shell/native-runtime.js
           grep -q 'function recommendationCompactView' mobile-shell/recommendation.js
