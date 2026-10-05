@@ -979,6 +979,10 @@
   }
   if(account.loading){box.innerHTML='<div class="portfolio-loading"><span></span><p>Cargando fondos…</p></div>';return}
   const selected=selectedFundPortfolio();
+  if(!selected&&account.error){
+   box.innerHTML='<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus fondos</h2><p>'+esc(account.error)+'</p><button type="button" class="btn" data-fund-retry>Reintentar</button></div>';
+   return;
+  }
   if(!selected){
    box.innerHTML='<div class="portfolio-empty-state"><h2>Tu cartera de fondos está vacía</h2><p>Al añadir el primer fondo se creará automáticamente una cartera “Fondos y ETFs”.</p><button type="button" class="btn" data-fund-new-portfolio>＋ Crear cartera</button></div>';
    return;
@@ -1023,9 +1027,10 @@
    if(!pr.ok)throw Error(pd.error||'No se pudieron cargar las carteras de fondos.');
    if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
    if(!pl.ok)throw Error(ld.error||'No se pudieron cargar los planes de aportación.');
+   account.error='';
    account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];account.benefits=ld.benefits||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
-  }catch(e){console.warn('Fund portfolio loading failed',e)}
+  }catch(e){console.warn('Fund portfolio loading failed',e);account.error=/expired|invalid|authentication/i.test(String(e&&e.message))?'Tu sesión ha caducado o no se pudo verificar. Pulsa «Reintentar»; si sigue fallando, cierra sesión y vuelve a entrar.':'El servidor no responde ahora mismo. Pulsa «Reintentar» en unos segundos.'}
   finally{account.loading=false;renderPortfolio();try{root.dispatchEvent(new CustomEvent('viewinvai:fund-portfolios-changed'))}catch(_){}}
  }
  async function ensureDefaultFundPortfolio(){
@@ -1064,6 +1069,8 @@
  async function openPositionForm(product,existing=null){
   account.user=root.ViewInvAIAuth?.getUser?.()||null;
   if(!account.user){root.ViewInvAIAuth?.signIn?.();return}
+  // Sin datos fiables no se crea una cartera nueva (podría duplicar la que ya existe).
+  if(account.error){await loadPortfolio(true);if(account.error){if(typeof toast==='function')toast(account.error,true);return}}
   if(!account.portfolios.length)await ensureDefaultFundPortfolio();
   const portfolio=selectedFundPortfolio()||account.portfolios[0];
   const currentPlatform=existing?.platform||(verified(product.platforms.myInvestor)&&!verified(product.platforms.tradeRepublic)?'MyInvestor':verified(product.platforms.tradeRepublic)?'Trade Republic':'Otra');
@@ -1203,6 +1210,7 @@
    if(e.target.closest?.('[data-fund-login]')){root.ViewInvAIAuth?.signIn?.();return}
    const select=e.target.closest&&e.target.closest('[data-fund-portfolio-select]');
    if(select){account.selectedPortfolioId=select.dataset.fundPortfolioSelect;renderPortfolio();return}
+   if(e.target.closest?.('[data-fund-retry]')){loadPortfolio(true);return}
    if(e.target.closest?.('[data-fund-new-portfolio]')){createFundPortfolio();return}
    const hist=e.target.closest&&e.target.closest('[data-fund-portfolio-history]');if(hist){await openFundPortfolioHistory(hist.dataset.fundPortfolioHistory);return}
    const plan=e.target.closest&&e.target.closest('[data-fund-plan]');if(plan){await openFundPlanForm();return}

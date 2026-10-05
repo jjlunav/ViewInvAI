@@ -355,11 +355,17 @@ async function apiFetch(path, options = {}, retry = true) {
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   let response = await fetch(path, Object.assign({}, options, { headers }));
   if (response.status === 401 && retry) {
-    const fresh = await getIdToken(true);
+    // Sesión caducada (p. ej. tras suspender el equipo): se renueva el token y se repite.
+    const fresh = await getIdToken(true).catch(() => "");
     if (fresh) {
       headers.set("Authorization", "Bearer " + fresh);
       response = await fetch(path, Object.assign({}, options, { headers }));
     }
+  }
+  if (response.status === 503 && retry) {
+    // Fallo temporal del servidor (claves de Google o base de datos): un reintento tras una pausa.
+    await new Promise(resolve => setTimeout(resolve, 900));
+    response = await fetch(path, Object.assign({}, options, { headers }));
   }
   return response;
 }

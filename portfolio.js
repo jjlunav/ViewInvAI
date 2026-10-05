@@ -918,6 +918,8 @@ function portfolioDuplicatesHtml(selected, positions) {
 
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
+    // Si la carga falló, no se invita a crear una cartera: puede que el usuario ya tenga varias.
+    if (state.loadError) return '<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus carteras</h2><p>' + esc(state.loadError) + '</p><button type="button" class="btn" data-portfolio-retry>Reintentar</button></div>';
     return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
   }
   try {
@@ -2078,6 +2080,7 @@ async function loadAll({ syncFavorites = false } = {}) {
       fetchJson("/api/brokers").catch(()=>({brokers:[]})),
       fetchJson("/api/portfolio-goal").then(data=>({goals:data.goals||[],error:"",ok:true})).catch(error=>({goals:null,error:error.message||"No se pudieron cargar los objetivos.",ok:false}))
     ]);
+    state.loadError="";
     state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];state.brokers=brokerData.brokers||[];
     if(Array.isArray(goalData.goals))state.goals=Object.fromEntries(goalData.goals.map(goal=>[String(goal.portfolio_id),goal]));
     const goalErrorText=String(goalData.error||"");
@@ -2087,7 +2090,10 @@ async function loadAll({ syncFavorites = false } = {}) {
   } catch (error) {
     ok = false;
     console.warn("Portfolio loading failed", error);
-    toast(error.message || "No se pudieron cargar las carteras.", true);
+    const raw=String(error&&error.message||"");
+    state.loadError=/expired|invalid|authentication/i.test(raw)?"Tu sesión ha caducado o no se pudo verificar. Pulsa «Reintentar»; si sigue fallando, cierra sesión y vuelve a entrar.":
+      /temporarily|unavailable|Failed to fetch|NetworkError/i.test(raw)?"El servidor no responde ahora mismo. Pulsa «Reintentar» en unos segundos.":(raw||"No se pudieron cargar las carteras.");
+    if(state.portfolios.length)toast(state.loadError,true);
   } finally {
     state.loading = false;
     renderActivePortfolioPanel();
@@ -3253,6 +3259,7 @@ async function savePositionForm(form) {
 
 function bind() {
   document.addEventListener("click", async event => {
+    if(event.target.closest?.("[data-portfolio-retry]")){event.preventDefault();loadAll();return}
     const goalHistory=event.target.closest?.("[data-goal-history]");
     if(goalHistory){
       event.preventDefault();event.stopPropagation();openGoalHistory(goalHistory.dataset.goalHistory);return;

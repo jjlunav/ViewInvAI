@@ -234,6 +234,9 @@ async function readJson(request) {
   return parsed;
 }
 
+// Registro del usuario como mucho cada 10 minutos por instancia (antes: dos escrituras en
+// cada petición). Los datos de perfil cambian muy poco.
+const SEEN_USERS=new Map();
 async function verifyFirebaseUser(request, env) {
   if (!env.DB) return { error: "D1 backend not configured", status: 503 };
   const projectId = String(env.FIREBASE_PROJECT_ID || "").trim();
@@ -243,45 +246,51 @@ async function verifyFirebaseUser(request, env) {
   const match = auth.match(/^Bearer\s+(.+)$/i);
   if (!match) return { error: "Authentication required", status: 401 };
 
+  let payload;
   try {
-    const { payload } = await jwtVerify(match[1], FIREBASE_JWKS, {
+    ({ payload } = await jwtVerify(match[1], FIREBASE_JWKS, {
       algorithms: ["RS256"],
       issuer: "https://securetoken.google.com/" + projectId,
       audience: projectId,
-      clockTolerance: 10
-    });
-
-    const userId = trimText(payload.sub, 128);
-    const email = trimText(payload.email, 320).toLowerCase();
-    if (!userId || !email || payload.email_verified !== true) {
-      return { error: "Verified Google/Firebase account required", status: 401 };
-    }
-
-    const displayName = trimText(payload.name || payload.display_name || email.split("@")[0], 120);
-    const avatarUrl = trimText(payload.picture, 600);
-    const now = nowIso();
-
-    await env.DB.prepare(
-      "INSERT INTO users (id,email,display_name,avatar_url,auth_provider,created_at,updated_at) VALUES (?,?,?,?,?,?,?) " +
-      "ON CONFLICT(id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name,avatar_url=excluded.avatar_url,updated_at=excluded.updated_at"
-    ).bind(userId, email, displayName, avatarUrl, "firebase-google", now, now).run();
-
-    await env.DB.prepare(
-      "INSERT INTO user_settings (user_id,created_at,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO NOTHING"
-    ).bind(userId, now, now).run();
-
-    return {
-      user: {
-        id: userId,
-        email,
-        displayName,
-        avatarUrl
-      }
-    };
+      clockTolerance: 60
+    }));
   } catch (error) {
-    console.warn("Firebase token verification failed", String(error && error.message || error));
+    const code = String(error && error.code || "");
+    console.warn("Firebase token verification failed", code, String(error && error.message || error));
+    // Sin poder descargar las claves de Google no se sabe si el token es válido: es un fallo
+    // temporal (503) y la app reintenta; solo un token realmente inválido devuelve 401.
+    if (/JWKS_TIMEOUT|JWKS_INVALID|ERR_JWKS|ERR_JOSE_GENERIC/.test(code) || /fetch|network|timeout/i.test(String(error && error.message || "")))
+      return { error: "Authentication service temporarily unavailable", status: 503 };
     return { error: "Invalid or expired authentication token", status: 401 };
   }
+
+  const userId = trimText(payload.sub, 128);
+  const email = trimText(payload.email, 320).toLowerCase();
+  if (!userId || !email || payload.email_verified !== true) {
+    return { error: "Verified Google/Firebase account required", status: 401 };
+  }
+  const displayName = trimText(payload.name || payload.display_name || email.split("@")[0], 120);
+  const avatarUrl = trimText(payload.picture, 600);
+  const signature = email + "|" + displayName + "|" + avatarUrl, seen = SEEN_USERS.get(userId);
+  if (!seen || seen.signature !== signature || Date.now() - seen.at > 10 * 60000) {
+    try {
+      const now = nowIso();
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO users (id,email,display_name,avatar_url,auth_provider,created_at,updated_at) VALUES (?,?,?,?,?,?,?) " +
+          "ON CONFLICT(id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name,avatar_url=excluded.avatar_url,updated_at=excluded.updated_at"
+        ).bind(userId, email, displayName, avatarUrl, "firebase-google", now, now),
+        env.DB.prepare("INSERT INTO user_settings (user_id,created_at,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO NOTHING").bind(userId, now, now)
+      ]);
+      SEEN_USERS.set(userId, { at: Date.now(), signature });
+      if (SEEN_USERS.size > 5000) SEEN_USERS.clear();
+    } catch (error) {
+      console.warn("User upsert failed", String(error && error.message || error));
+      // Si el usuario ya existía, se puede seguir; si es nuevo, la petición se reintentará.
+      if (!seen) return { error: "Database temporarily unavailable", status: 503 };
+    }
+  }
+  return { user: { id: userId, email, displayName, avatarUrl } };
 }
 
 let positionBrokerSchemaReady=false;

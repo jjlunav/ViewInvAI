@@ -1609,3 +1609,15 @@ html[data-theme="light"] .goal-wizard-input{background:#fff;border-color:#d7dcec
 .goal-wizard-msg{min-height:1.2em;color:#ff8a8a;font-size:13px}
 .goal-wizard-foot{display:flex;justify-content:space-between;gap:10px;padding-top:12px}
 .goal-wizard-foot .btn{min-width:120px}
+/* Buscar y cuenta compactos también en escritorio (como en el móvil): solo la lupa y la foto
+   de la cuenta (o la G si no hay sesión). El atajo «/» sigue abriendo el buscador. */
+@media (min-width:821px){
+ html:root:root body .global-search-button{width:38px;height:38px;min-width:38px;padding:0}
+ html:root:root body .global-search-button :is(.gs-label,kbd){display:none}
+ html:root:root body .floating-account .account-copy{display:none!important}
+ html:root:root body .floating-account .account-button{width:38px;height:38px;min-width:38px;min-height:38px;padding:2px!important;border-radius:50%;justify-content:center;gap:0}
+}
+@media (min-width:1001px){
+ /* Los botones de la cabecera de cada vista no quedan debajo de la lupa y la cuenta. */
+ html:root:root body:not(#a11y-floor) .main .view>.page-heading{padding-right:96px}
+}
