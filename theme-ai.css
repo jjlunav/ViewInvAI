@@ -1510,3 +1510,31 @@ html[data-theme="light"] .ai-int-logo{background:#f2f4fa;color:#0d0d0d}
  .ai-int-actions .btn.small{width:100%;padding:6px 8px}
 }
 html:root:root body .ai-int-row>.btn{width:auto!important;flex:0 0 auto;min-height:30px!important;height:30px;padding:0 12px!important;font-size:12px!important}
+/* ===== Versión web (escritorio ≥1001px): más compacta. El móvil y la APK no cambian. ===== */
+@media (min-width:1001px){
+ /* Fondos de la cartera: una fila (nombre · valor · P&L · acciones pequeñas) */
+ html:root:root body:not(#a11y-floor) .fund-position-card{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;column-gap:10px!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row{grid-column:1!important;grid-row:1!important;display:grid!important;grid-template-areas:none!important;grid-template-columns:minmax(0,1fr) minmax(140px,auto) minmax(170px,auto)!important;align-items:center!important;column-gap:18px!important;min-height:0!important;padding:10px 0 8px 14px!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row>.asset-card-marker,
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row>.asset-card-end-actions{display:none!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row>.asset-card-identity{grid-column:1!important;grid-row:1!important;min-width:0!important;width:auto!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row>.asset-card-quote-slot{grid-column:2!important;grid-row:1!important;width:auto!important;justify-self:end!important;text-align:right!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-row>.asset-card-context-slot{grid-column:3!important;grid-row:1!important;width:auto!important;justify-self:end!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card .asset-card-quote-cell .asset-card-cell-content{font-size:16px!important;justify-content:flex-end!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-actions{grid-column:2!important;grid-row:1!important;display:flex!important;gap:6px!important;padding:0 12px 0 0!important;align-self:center!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-actions>.btn{width:auto!important;min-height:30px!important;height:30px!important;padding:0 12px!important;font-size:12px!important;border-radius:9px!important}
+ html:root:root body:not(#a11y-floor) .fund-position-card>.asset-card-details{grid-column:1/-1!important;grid-row:2!important;margin:0 12px 8px 14px!important}
+ html:root:root body:not(#a11y-floor) #view-portfolios .fund-position-grid{grid-template-columns:minmax(0,1fr)!important;gap:8px!important}
+ /* Barra de herramientas de fondos en una sola línea */
+ html:root:root body:not(#a11y-floor) #view-portfolios .fund-portfolio-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) repeat(5,auto)!important;gap:4px!important}
+}
+/* Escritorio ancho (≥1280px): listados a dos columnas y menos espacio vacío */
+@media (min-width:1280px){
+ html:root:root body:not(#a11y-floor) #view-home :is(.home-dashboard,.market-board-tabs,.home-summary-line,.market-board-source-tabs){width:100%!important;max-width:none!important}
+ html:root:root body:not(#a11y-floor) #view-home .market-board-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+ html:root:root body:not(#a11y-floor) #view-recommendation .radar-list-shell{max-width:none!important}
+ html:root:root body:not(#a11y-floor) #view-recommendation .radar-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+ html:root:root body:not(#a11y-floor) #view-recommendation .radar-list>.radar-ai-empty{grid-column:1/-1}
+ html:root:root body:not(#a11y-floor) #view-settings .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;max-width:none!important;align-items:start!important}
+ html:root:root body:not(#a11y-floor) #view-settings .settings-grid>.settings-card{max-width:none!important;width:auto!important}
+}
