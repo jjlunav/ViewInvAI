@@ -614,6 +614,22 @@ html.import-wizard-open,html.import-wizard-open body{overflow:hidden!important}
 #importWizard .import-wizard-plan em.ok{color:#43e4b2}
 #importWizard .import-wizard-plan em.off{color:#e3b84d}
 #importWizard .import-wizard-summary,#importWizard .import-wizard-q{grid-template-columns:minmax(0,1fr)}
+#importWizard .import-plan-card{display:grid;gap:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(140,170,255,.22);background:rgba(255,255,255,.03)}
+#importWizard .import-plan-card.on{border-color:#43e4b2;background:linear-gradient(135deg,rgba(157,140,255,.12),rgba(67,228,178,.08))}
+#importWizard .import-plan-toggle{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;cursor:pointer}
+#importWizard .import-plan-toggle input{width:22px;height:22px;margin:2px 0 0;accent-color:#43e4b2}
+#importWizard .import-plan-toggle b{display:block;font-size:15px}
+#importWizard .import-plan-toggle small{display:block;font-size:12.5px;line-height:1.45;color:#86a0ad}
+#importWizard .import-plan-card .import-wizard-plan{border:0;padding:0}
+#importWizard .import-plan-remove{justify-self:end;border:0;background:none;color:#ff8d95;font:inherit;font-size:13px;font-weight:750;cursor:pointer;padding:4px 0}
+#importWizard .import-plan-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:4px}
+#importWizard .import-plan-add label{display:grid;gap:4px;min-width:0}
+#importWizard .import-plan-add label span{font-size:10px;font-weight:850;letter-spacing:.6px;text-transform:uppercase;color:#86a0ad}
+#importWizard .import-plan-add select{height:44px;width:100%;box-sizing:border-box;border-radius:11px;padding:0 11px;font:inherit;font-size:14px}
+#importWizard .import-plan-add .btn{min-height:44px}
+html[data-theme="light"] #importWizard .import-plan-card{background:#fff;border-color:#dfe5f1}
+html[data-theme="light"] #importWizard .import-plan-card.on{border-color:#0f8a5f;background:linear-gradient(135deg,rgba(124,107,255,.08),rgba(15,138,95,.06))}
+html[data-theme="light"] #importWizard .import-plan-toggle small,html[data-theme="light"] #importWizard .import-plan-add label span{color:#5b6b86}
 #importWizard .import-wizard-summary{display:grid;gap:12px}
 #importWizard .import-wizard-summary .broker-import-help{overflow-wrap:anywhere}
 #importWizard .import-wizard-sum h4{margin:0 0 6px;font-size:14px}

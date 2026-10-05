@@ -347,7 +347,7 @@
   const overlap=manualOverlap(matched,flow.portfolioId).names;
   const total=matched.length+divs.length+funds.length;
   return '<div class="broker-import-preview"><div class="broker-import-counts"><span><b>'+matched.length+'</b> operaciones</span><span class="buy">'+buys+' compras</span><span class="sell">'+sells+' ventas</span>'+(funds.length?'<span>'+funds.length+' de fondos/ETF</span>':'')+(divs.length?'<span>'+divs.length+' dividendos</span>':'')+(unmatched.length?'<span class="warn">'+unmatched.length+' sin emparejar</span>':'')+'</div>'+divHtml+
-   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+(planIsins.size?'; '+(planIsins.size===1?'<b>1 plan de ahorro</b> marcado por el bróker':'<b>'+planIsins.size+' planes de ahorro</b> marcados por el bróker'):'')+'. El importe de cada plan es el de su última ejecución.</p>':'')+
+   (funds.length?'<p class="broker-import-help">Fondos, ETF y ETC: <b>'+fundIsins.size+'</b> '+(fundIsins.size===1?'producto':'productos')+' ('+esc([...new Set(funds.map(f=>f.name))].slice(0,4).join(', '))+(fundIsins.size>4?'…':'')+') a tu cartera de fondos'+'.</p>':'')+
    (outside?'<p class="broker-import-help">'+outside+(outside===1?' operación':' operaciones')+' de valores que ViewInvAI aún no cotiza (acciones europeas, asiáticas…): se guardan con su ISIN y tendrán precio en cuanto el catálogo los incluya.</p>':'')+
    (overlap.length?'<p class="broker-import-warn">'+overlap.length+(overlap.length===1?' valor ya está apuntado a mano':' valores ya están apuntados a mano')+' ('+esc(overlap.slice(0,5).join(', '))+(overlap.length>5?'…':'')+'): al importar te preguntaré qué mantener; lo recomendado es el historial del bróker.</p>':'')+
    warn+(unmatched.length?'<p class="broker-import-warn">No están en el catálogo de ViewInvAI: '+esc([...new Set(unmatched.map(u=>u.symbol||u.isin||u.name))].slice(0,8).join(', '))+(unmatched.length>8?'…':'')+'.</p>':'')+
@@ -375,8 +375,9 @@
    '<button type="button" class="import-wizard-x" data-wiz-close aria-label="Cerrar">×</button></header>'+
    '<div class="import-wizard-bar" aria-hidden="true"><i></i></div><div class="import-wizard-body" data-wiz-body></div><div class="import-wizard-foot" data-wiz-foot></div></div>';
   wizEl.addEventListener('click',onWizardClick);
-  wizEl.addEventListener('input',e=>{const t=e.target;if(t.matches('[data-wiz-amount]')){const g=currentGroup(),v=Number(String(t.value).replace(',','.'));if(g&&v>0)g.amount=Math.round(v*100)/100}});
+  wizEl.addEventListener('input',e=>{const t=e.target;if(t.matches('[data-plan-amount]')){onPlanInput(t);return}if(t.matches('[data-wiz-amount]')){const g=currentGroup(),v=Number(String(t.value).replace(',','.'));if(g&&v>0)g.amount=Math.round(v*100)/100}});
   wizEl.addEventListener('change',e=>{const t=e.target;
+   if(t.matches('[data-plan-freq],[data-plan-on]')){onPlanInput(t);return}
    if(t.matches('[data-wiz-freq]')){const g=currentGroup();if(g){g.frequency=t.value;g.active=isActive(g);paintStep()}}
    if(t.matches('[data-wiz-cash]'))flow.adjustCash=t.checked;
   });
@@ -410,10 +411,10 @@
    flow.matched=m.matched;flow.unmatched=m.unmatched;flow.funds=m.funds;flow.uncatalogued=m.uncatalogued;
    flow.dividends=enrichDividends(flow.dividends);flow.extra=data.extra||'';flow.adjustCash=false;
    paintAnalyze(65,'Buscando planes, Saveback y Redondeo…');await pause(350);
-   flow.review=buildReview(m.matched,m.funds);
+   flow.planCands=buildPlanCandidates(m.matched,m.funds);
    paintAnalyze(100,'Análisis terminado');await pause(300);
-   const steps=flow.review.groups.filter(g=>g.confidence==='unsure'||g.confidence==='likely').map(g=>g.id);
-   wiz={mode:'steps',steps:[...steps,'summary'],i:0,questions:steps.length};
+   // Primero los planes (los defines tú, con lo detectado ya rellenado); después las dudas y el resumen.
+   wiz={mode:'steps',steps:['plans','summary'],i:0,questions:0};
    paintStep();
   }catch(err){
    paint({kicker:'Importar '+brokerName(),title:'No se pudo analizar',pct:0,
@@ -427,6 +428,7 @@
  }
  function paintStep(){
   if(!wiz||wiz.mode!=='steps')return;
+  if(wiz.steps[wiz.i]==='plans'){paintPlans();return}
   if(wiz.steps[wiz.i]==='summary'){paintSummary();return}
   const g=currentGroup();if(!g)return;
   const n=wiz.questions,first=g.rows[0],last=g.rows[g.rows.length-1],amounts=g.rows.map(cashOf),total=amounts.reduce((t,v)=>t+v,0);
@@ -440,14 +442,14 @@
    const on=g.answered&&g.kind===k;
    return '<button type="button" class="import-wizard-opt'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-wiz-opt="'+k+'"><span><b>'+KIND_LABEL[k]+'</b>'+(g.suggested===k?'<em>Sugerido</em>':'')+'</span><small>'+KIND_DESC[k]+'</small></button>'+(k==='plan'?plan:'');
   }).join('');
-  paint({kicker:'Pregunta '+(wiz.i+1)+' de '+n,title:'Tus aportaciones',pct:wiz.i/n*100,
+  paint({kicker:'Pregunta '+wiz.i+' de '+n,title:'Tus aportaciones',pct:wiz.i/(n+1)*100,
    body:'<div class="import-wizard-q"><h3>'+esc(g.name)+'</h3>'+
     '<p class="import-wizard-meta">'+g.rows.length+(g.rows.length===1?' compra':' compras')+' · '+esc(shortDate(first))+(g.rows.length>1?' → '+esc(shortDate(last)):'')+(g.kind==='saveback'||g.kind==='roundup'||g.suggested==='saveback'||g.suggested==='roundup'?'':' · total '+eur(total,g.currency))+'</p>'+
     '<p class="import-wizard-why">'+esc(g.why)+'</p>'+
     '<ul class="import-wizard-recent" aria-label="Últimas compras">'+recent+'</ul>'+
     '<p class="import-wizard-ask">¿Qué son estas compras?</p><div class="import-wizard-opts" role="radiogroup" aria-label="Tipo de aportación">'+opts+'</div>'+plan+'</div>',
-   foot:'<button type="button" class="btn ghost" data-wiz-back'+(wiz.i?'':' disabled')+'>Atrás</button>'+
-    '<button type="button" class="btn secondary" data-wiz-next'+(g.answered?'':' disabled')+'>'+(wiz.i===n-1?'Ver resumen':'Siguiente')+'</button>'});
+   foot:'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>'+
+    '<button type="button" class="btn secondary" data-wiz-next'+(g.answered?'':' disabled')+'>'+(wiz.i===n?'Ver resumen':'Siguiente')+'</button>'});
  }
  function paintSummary(){
   // Todo lo detectado se puede cambiar; las compras sueltas seguras van plegadas para no llenar la pantalla.
@@ -461,25 +463,67 @@
    (loose.length?'<details class="import-wizard-loose"><summary>Compras sueltas · '+loose.length+(loose.length===1?' valor':' valores')+'</summary><ul>'+loose.map(item).join('')+'</ul></details>':'')+'</section>':'';
   const total=(flow.matched||[]).length+(flow.funds||[]).length+(flow.dividends||[]).length;
   const n=wiz.questions;
-  paint({kicker:n?'Resumen':'Importar '+brokerName(),title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
+  paint({kicker:'Resumen',title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
    body:'<div class="import-wizard-summary">'+previewHtml()+contrib+
     (flow.extra?'<details class="import-wizard-ignored"><summary>Movimientos que no se importan</summary>'+flow.extra+'</details>':'')+
     '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+(flow.adjustCash?' checked':'')+'> Ajustar también el efectivo de la cartera</label>'+
     '<p class="broker-import-help">La importación sigue en segundo plano: puedes seguir usando la app y el progreso aparece arriba. Reimportar el mismo archivo no duplica nada.</p></div>',
-   foot:(n?'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>':'<button type="button" class="btn ghost" data-wiz-close>Cancelar</button>')+
+   foot:'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>'+
     '<button type="button" class="btn secondary" data-wiz-finish'+(total?'':' disabled')+'>Finalizar e importar</button>'});
+ }
+ function paintPlans(){
+  const c=flow.planCands||[];
+  const insts=[...instrumentsOf(flow.matched||[],flow.funds||[]).values()].filter(i=>!c.some(x=>x.key===i.key)).sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'));
+  const card=(p,i)=>'<article class="import-plan-card'+(p.on?' on':'')+'"><label class="import-plan-toggle"><input type="checkbox" data-plan-on="'+i+'"'+(p.on?' checked':'')+'><span><b>'+esc(p.name)+'</b><small>'+esc(p.seen||'')+(p.isFund?'':' · acción')+'</small></span></label>'+
+   (p.on?'<div class="import-wizard-plan"><label><span>Cantidad actual</span><input type="number" inputmode="decimal" min="0" step="0.01" data-plan-amount="'+i+'" value="'+p.amount+'"></label>'+
+    '<label><span>Periodicidad</span><select data-plan-freq="'+i+'">'+Object.entries(FREQ_LABEL).map(([k,l])=>'<option value="'+k+'"'+(p.frequency===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label></div>':'')+
+   (p.manual?'<button type="button" class="import-plan-remove" data-plan-remove="'+i+'">Quitar</button>':'')+'</article>';
+  paint({kicker:'Paso 1 · Planes automáticos',title:'¿Tienes planes automáticos?',pct:6,
+   body:'<div class="import-wizard-q"><p class="import-wizard-why">Si compras de forma programada (DCA) un fondo, ETF o acción, márcalo con su cantidad actual. Así separo el plan del Saveback y del Redondeo aunque vayan al mismo destino.</p>'+
+    (c.length?'<p class="import-wizard-ask">Esto parece un plan</p>'+c.map(card).join(''):'<p class="import-wizard-meta">No he visto compras periódicas de cantidad redonda. Si tienes un plan, añádelo abajo.</p>')+
+    (insts.length?'<div class="import-plan-add"><label><span>Añadir otro plan</span><select data-plan-add-key><option value="">Elige el fondo, ETF o acción…</option>'+insts.map(i=>'<option value="'+esc(i.key)+'">'+esc(i.name)+'</option>').join('')+'</select></label><button type="button" class="btn ghost" data-plan-add>Añadir</button></div>':'')+
+    '</div>',
+   foot:'<button type="button" class="btn ghost" data-wiz-close>Cancelar</button><button type="button" class="btn secondary" data-plans-next>Siguiente</button>'});
+ }
+ // Con los planes decididos se clasifica el resto y se preparan las preguntas.
+ function plansNext(){
+  const plans=(flow.planCands||[]).filter(p=>p.on&&p.amount>0);
+  flow.definedPlans=plans;
+  flow.review=buildReview(flow.matched||[],flow.funds||[],plans);
+  const q=flow.review.groups.filter(g=>g.confidence==='unsure'||g.confidence==='likely').map(g=>g.id);
+  wiz={mode:'steps',steps:['plans',...q,'summary'],i:1,questions:q.length};
+  paintStep();focusTitle();
+ }
+ function onPlanInput(t){
+  const c=flow.planCands||[];
+  if(t.dataset.planAmount!==undefined){const p=c[+t.dataset.planAmount],v=Number(String(t.value).replace(',','.'));if(p&&v>0)p.amount=Math.round(v*100)/100;return true}
+  if(t.dataset.planFreq!==undefined){const p=c[+t.dataset.planFreq];if(p)p.frequency=t.value;return true}
+  if(t.dataset.planOn!==undefined){const p=c[+t.dataset.planOn];if(p){p.on=t.checked;paintPlans()}return true}
+  return false;
  }
  function onWizardClick(e){
   const t=e.target;
   if(t.closest('[data-wiz-close]')){wizardClose();return}
   if(t.closest('[data-wiz-retry]')){const src=flow.source;wizardClose();flow={source:src,rows:[],positions:[],portfolioId:flow.portfolioId||guessPortfolio(src)};render();return}
+  if(t.closest('[data-plans-next]')){plansNext();return}
+  const rm=t.closest('[data-plan-remove]');
+  if(rm){(flow.planCands||[]).splice(+rm.dataset.planRemove,1);paintPlans();return}
+  if(t.closest('[data-plan-add]')){
+   const key=wizEl.querySelector('[data-plan-add-key]')?.value;if(!key)return;
+   const inst=instrumentsOf(flow.matched||[],flow.funds||[]).get(key);if(!inst)return;
+   const last=inst.rows[inst.rows.length-1];
+   (flow.planCands=flow.planCands||[]).push({key,name:inst.name,isFund:inst.isFund,currency:inst.currency,frequency:'monthly',day:dom(last),amount:Math.round(cashOf(last)*100)/100,count:0,on:true,manual:true,seen:'Añadido por ti'});
+   paintPlans();return;
+  }
   const o=t.closest('[data-wiz-opt]');
   if(o){const g=currentGroup();if(g){g.kind=o.dataset.wizOpt;g.answered=true;if(g.confidence==='unsure')g.confidence='likely';const top=wizEl.querySelector('[data-wiz-body]').scrollTop;paintStep();wizEl.querySelector('[data-wiz-body]').scrollTop=top}return}
   if(t.closest('[data-wiz-back]')&&wiz&&wiz.i>0){wiz.i--;paintStep();focusTitle();return}
   if(t.closest('[data-wiz-next]')&&wiz){const g=currentGroup();if(g&&!g.answered)return;wiz.i=Math.min(wiz.steps.length-1,wiz.i+1);paintStep();focusTitle();return}
   const ed=t.closest('[data-wiz-edit]');
   if(ed&&wiz){
-   const id=ed.dataset.wizEdit;let at=wiz.steps.indexOf(id);
+   const id=ed.dataset.wizEdit,eg=((flow.review&&flow.review.groups)||[]).find(g=>g.id===id);
+   if(eg&&eg.fromPlan){wiz.i=0;paintStep();focusTitle();return}
+   let at=wiz.steps.indexOf(id);
    if(at<0){at=wiz.steps.length-1;wiz.steps.splice(at,0,id);wiz.questions++}
    wiz.i=at;paintStep();focusTitle();return;
   }
@@ -585,8 +629,8 @@
   g.active=isActive(g);
   return g;
  }
- // Clasifica todas las compras del archivo (acciones y fondos) por valor.
- function buildReview(matched,funds){
+ // Compras de cada valor del archivo (acciones y fondos).
+ function instrumentsOf(matched,funds){
   const insts=new Map();
   const add=(r,isFund)=>{
    if(r.side!=='BUY')return;
@@ -595,49 +639,88 @@
    insts.get(key).rows.push(r);
   };
   matched.forEach(r=>add(r,false));funds.forEach(r=>add(r,true));
+  for(const i of insts.values())i.rows.sort((a,b)=>tOf(a)-tOf(b));
+  return insts;
+ }
+ const sureBenefit=r=>(r.benefit==='saveback'||r.benefit==='roundup')&&!r.benefitGuess;
+ const roundCash=r=>{const c=cashOf(r);return c>=5&&Math.abs(c-Math.round(c))<0.005};
+ const PLANS_KEY='viewinvai:import-plans-v1';
+ function readPlanPrefs(){try{return JSON.parse(localStorage.getItem(PLANS_KEY)||'{}')||{}}catch(_){return{}}}
+ function savePlanPrefs(list){const o={};list.forEach(p=>{o[p.key]={on:!!p.on,amount:p.amount,frequency:p.frequency}});try{localStorage.setItem(PLANS_KEY,JSON.stringify(Object.assign(readPlanPrefs(),o)))}catch(_){}}
+ // Paso 1: posibles planes automáticos (DCA). Un plan compra una cantidad redonda (5 €, 50 €…) cada
+ // cierto tiempo; el Saveback y el Redondeo son importes con céntimos que cambian cada vez, aunque el
+ // bróker los ejecute igual que un plan y vayan al mismo fondo.
+ function buildPlanCandidates(matched,funds){
+  const out=[],prefs=readPlanPrefs();
+  for(const inst of instrumentsOf(matched,funds).values()){
+   const round=inst.rows.filter(r=>!sureBenefit(r)&&roundCash(r));
+   if(round.length<2)continue;
+   const s=findSeries(round);
+   if(!s||s.list.length<2)continue;
+   const flagged=s.list.filter(r=>r.plan).length;
+   if(!inst.isFund&&s.list.length<4&&!flagged)continue;
+   const last=s.list[s.list.length-1],pref=prefs[inst.key];
+   const active=Date.now()-tOf(last)<=(PERIOD_DAYS[s.frequency]||30.4)*1.6*864e5+6*864e5;
+   out.push({key:inst.key,name:inst.name,isFund:inst.isFund,currency:inst.currency,frequency:pref&&pref.frequency||s.frequency,day:s.day,
+    amount:pref&&pref.amount||Math.round(cashOf(last)*100)/100,count:s.list.length,lastAt:last.executedAt,active,
+    on:pref?!!pref.on:(active&&(flagged>0||(inst.isFund&&s.list.length>=3))),
+    seen:eur(cashOf(last),inst.currency)+' '+(FREQ_LABEL[s.frequency]||'').toLowerCase()+(s.frequency==='monthly'?' hacia el día '+s.day:'')+' · '+s.list.length+' veces, la última el '+shortDate(last)});
+  }
+  // Planes guardados de otras importaciones que esta vez no se ven en el archivo.
+  for(const [key,p] of Object.entries(prefs)){
+   if(!p||!p.on||out.some(c=>c.key===key))continue;
+   const inst=instrumentsOf(matched,funds).get(key);if(!inst)continue;
+   out.push({key,name:inst.name,isFund:inst.isFund,currency:inst.currency,frequency:p.frequency||'monthly',day:dom(inst.rows[inst.rows.length-1]),amount:p.amount,count:0,on:true,manual:true,seen:'Definido por ti en otra importación'});
+  }
+  return out;
+ }
+ // Una ejecución del plan por periodo: la compra más parecida a la cuota (admite que la cambies).
+ function periodKey(r,freq){
+  const d=new Date(r.executedAt),y=d.getUTCFullYear(),m=d.getUTCMonth();
+  if(freq==='weekly')return Math.floor((tOf(r)/864e5+3)/7);
+  if(freq==='biweekly')return Math.floor((tOf(r)/864e5+3)/14);
+  if(freq==='twice')return y*24+m*2+(d.getUTCDate()>15?1:0);
+  if(freq==='quarterly')return y*4+Math.floor(m/3);
+  return y*12+m;
+ }
+ function planRowsFor(rows,plan){
+  const byPeriod=new Map();
+  for(const r of rows){
+   if(sureBenefit(r))continue;
+   const c=cashOf(r);
+   if(!(roundCash(r)||r.plan))continue;
+   if(c<plan.amount*0.4||c>plan.amount*2.5)continue;
+   const k=periodKey(r,plan.frequency),cur=byPeriod.get(k);
+   if(!cur||Math.abs(c-plan.amount)<Math.abs(cashOf(cur)-plan.amount))byPeriod.set(k,r);
+  }
+  return [...byPeriod.values()];
+ }
+ // Paso 2: con los planes ya definidos, el resto se clasifica: abono de Saveback/Redondeo en el CSV
+ // (seguro), compras pequeñas por su ritmo (preguntando) y lo demás, compras sueltas.
+ function buildReview(matched,funds,plans=[]){
   const groups=[],choices=readChoices();
-  for(const inst of insts.values()){
-   const rows=inst.rows.slice().sort((a,b)=>tOf(a)-tOf(b));
-   // 1. Seguro: abono de Saveback/Redondeo en el CSV y ejecuciones que el bróker marca como plan.
+  for(const inst of instrumentsOf(matched,funds).values()){
+   const rows=inst.rows;let rest=rows.slice();
+   const plan=plans.find(p=>p.on&&p.key===inst.key&&p.amount>0);
+   if(plan){
+    const list=planRowsFor(rows,plan);
+    if(list.length){
+     const g=makeGroup(inst,list,'plan','sure','Tu plan de '+eur(plan.amount,inst.currency)+' '+(FREQ_LABEL[plan.frequency]||'').toLowerCase()+'.',{frequency:plan.frequency,day:plan.day||dom(list[list.length-1])});
+     g.amount=plan.amount;g.fromPlan=true;groups.push(g);
+     rest=rest.filter(r=>!list.includes(r));
+    }
+   }
    for(const k of ['saveback','roundup']){
-    const list=rows.filter(r=>r.benefit===k&&!r.benefitGuess);
-    if(list.length)groups.push(makeGroup(inst,list,k,'sure','El archivo trae el abono de '+KIND_LABEL[k]+' de cada compra.'));
+    const list=rest.filter(r=>r.benefit===k&&!r.benefitGuess);
+    if(list.length){groups.push(makeGroup(inst,list,k,'sure','El archivo trae el abono de '+KIND_LABEL[k]+' de cada compra.'));rest=rest.filter(r=>!list.includes(r))}
    }
-   const flagged=rows.filter(r=>r.plan&&!(r.benefit&&!r.benefitGuess));
-   if(flagged.length){
-    const s=findSeries(flagged)||{frequency:'monthly',day:dom(flagged[flagged.length-1])};
-    groups.push(makeGroup(inst,flagged,'plan','sure','El bróker marca estas compras como ejecuciones del plan.',{frequency:s.frequency,day:s.day,days:s.days}));
-   }
-   // 2. Patrón: entre lo que queda, la serie periódica más importante.
-   let rest=rows.filter(r=>!r.plan&&!(r.benefit&&!r.benefitGuess));
-   if(!flagged.length&&rest.length>=2){
-    let s=findSeries(rest);
-    if(s){
-     const amounts=s.list.map(cashOf),fixed=cv(amounts)<=.35&&(stepwise(amounts)||median(amounts)>16);
-     // Un plan tiene cuota fija (solo cambia cuando la cambias tú). Importes pequeños que varían
-     // cada vez son Saveback (mensual) o Redondeo (semanal): los resuelve el paso 3.
-     // En acciones solo se propone plan con 4+ compras de cuota fija, y siempre preguntando.
-     const tiny=median(amounts)<3&&s.list.length<4;
-     if(!fixed||tiny||(!inst.isFund&&s.list.length<4))s=null;
-    }
-    if(s){
-     const amounts=s.list.map(cashOf);
-     let confidence=inst.isFund&&s.list.length>=3?'likely':'unsure',why='Una compra '+(FREQ_LABEL[s.frequency]||'').toLowerCase()+(s.frequency==='monthly'?' en torno al día '+s.day:s.frequency==='twice'?' (días '+s.days.join(' y ')+')':'')+(stepwise(amounts)?' de importe fijo.':' (el importe cambia a veces).');
-     if(cv(amounts)>.02)why+=' Has cambiado la cuota alguna vez: cuenta la última.';
-     if(!inst.isFund)why+=' Es una acción: confírmalo, los planes en acciones son menos habituales.';
-     groups.push(makeGroup(inst,s.list,'plan',confidence,why,{frequency:s.frequency,day:s.day,days:s.days}));
-     rest=rest.filter(r=>!s.list.includes(r));
-    }
-   }
-   // 3. Compras pequeñas que quedan sin explicar (al menos 2): Saveback, Redondeo o sueltas.
+   // Compras pequeñas sin explicar: Saveback (mensual, hacia el día 2) o Redondeo (semanal).
    const small=rest.filter(r=>cashOf(r)<=35);
-   // Saveback y Redondeo de Trade Republic: importes pequeños (hasta unos 15 €) que cambian cada vez;
-   // el Redondeo es semanal y el Saveback mensual (en torno al día 2).
    let guess=['roundup','saveback'].find(k=>small.filter(r=>r.benefit===k).length>=small.length/2)||'buy';
    if(guess==='buy'&&small.length>=2){
-    const sm=small.slice().sort((x,y)=>tOf(x)-tOf(y)),gaps=[];for(let i=1;i<sm.length;i++)gaps.push((tOf(sm[i])-tOf(sm[i-1]))/864e5);
-    const g=median(gaps),amts=sm.map(cashOf);
-    if(median(amts)<=16){if(g>=5&&g<=10)guess='roundup';else if(g>=25&&g<=36&&sm.filter(r=>dom(r)<=6).length>=sm.length*.7)guess='saveback'}
+    const gaps=[];for(let i=1;i<small.length;i++)gaps.push((tOf(small[i])-tOf(small[i-1]))/864e5);
+    const g=median(gaps),amts=small.map(cashOf);
+    if(median(amts)<=16){if(g>=5&&g<=10)guess='roundup';else if(g>=25&&g<=36&&small.filter(r=>dom(r)<=6).length>=small.length*.7)guess='saveback'}
    }
    if(small.length>=3||(small.length>=2&&guess!=='buy')){
     const amounts=small.map(cashOf);
@@ -646,15 +729,10 @@
    }
    if(rest.length)groups.push(makeGroup(inst,rest,'buy','sure','Compras puntuales.'));
   }
-  // Un mismo valor y tipo en un solo grupo (p. ej. Redondeo detectado en dos tandas).
-  for(let i=groups.length-1;i>=0;i--){
-   const g=groups[i],j=groups.findIndex((h,k)=>k<i&&h.key===g.key&&h.kind===g.kind&&g.kind!=='plan'&&h.confidence===g.confidence);
-   if(j>=0){const h=groups[j];h.rows=h.rows.concat(g.rows).sort((x,y)=>tOf(x)-tOf(y));h.amount=Math.round(planAmount(h)*100)/100;groups.splice(i,1)}
-  }
   groups.forEach((g,i)=>{
    g.id='g'+i;
    const saved=choices[g.sig];
-   if(saved&&g.confidence!=='sure'){g.kind=saved.kind;g.answered=true;g.confidence='remembered';if(saved.kind==='plan'&&saved.frequency)g.frequency=saved.frequency}
+   if(saved&&g.confidence!=='sure'&&saved.kind!=='plan'){g.kind=saved.kind;g.answered=true;g.confidence='remembered'}
   });
   return{groups};
  }
@@ -677,6 +755,15 @@
      note:g.frequency==='twice'?'2 veces al mes ('+eur(g.amount)+' cada vez)':g.frequency==='biweekly'?'Cada 2 semanas ('+eur(g.amount)+' cada vez)':''});
    }else if(g.suggested==='plan'&&g.kind!=='plan')noPlans.push(g.key);
   }
+  // Planes que definiste sin compras en este archivo (p. ej. uno recién creado) y los que desmarcaste.
+  for(const p of flow.planCands||[]){
+   if(!p.isFund)continue;
+   if(p.on&&p.amount>0&&!plans.some(x=>x.isin===p.key)){
+    const freq=p.frequency==='twice'||p.frequency==='biweekly'?'monthly':p.frequency;
+    plans.push({isin:p.key,amount:Math.round((p.frequency==='twice'?p.amount*2:p.frequency==='biweekly'?p.amount*26/12:p.amount)*100)/100,currency:p.currency||'EUR',dayOfMonth:p.day||new Date().getDate(),frequency:freq,count:p.count||1,lastAt:p.lastAt||new Date().toISOString(),note:''});
+   }else if(!p.on)noPlans.push(p.key);
+  }
+  savePlanPrefs(flow.planCands||[]);
   saveChoices(remember);
   return{plans,noPlans:[...new Set(noPlans)].filter(k=>!plans.some(p=>p.isin===k))};
  }
