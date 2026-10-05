@@ -110,7 +110,7 @@
   // Some exports put a title line first: use the first line that maps the key columns.
   let hi=table.findIndex(r=>{const m=mapHeader(r);return m.qty!==undefined&&(m.isin!==undefined||m.symbol!==undefined)});
   if(hi<0)throw new Error('No encuentro las columnas de cantidad e ISIN/símbolo. Columnas leídas: '+table[0].join(', '));
-  const map=mapHeader(table[hi]),out=[],skipped={},dividends=[],benefits=[];
+  const map=mapHeader(table[hi]),out=[],skipped={},dividends=[],benefits=[],cards=[];
   for(const r of table.slice(hi+1)){
    const get=k=>map[k]===undefined?'':r[map[k]];
    // Trade Republic: Saveback y Redondeo llegan como abono en efectivo (BENEFITS_SAVEBACK…) seguido
@@ -132,7 +132,12 @@
      currency:String(get('currency')||'').trim().toUpperCase()||(source==='tr'?'EUR':'USD'),gross:Math.round((cash+tax)*1e4)/1e4,withholding:tax,noTaxColumn:map.tax===undefined});
     continue;
    }
-   if(!side){const t=String(get('side')||'otro').trim()||'otro';skipped[t]=(skipped[t]||0)+1;continue}
+   if(!side){
+    const t=String(get('side')||'otro').trim()||'otro';skipped[t]=(skipped[t]||0)+1;
+    // Pagos con tarjeta: de ellos salen el Redondeo (céntimos hasta el euro) y el Saveback (1 %).
+    if(/card[_ ]?transaction|card payment|kartenzahlung|pago con tarjeta/i.test(rawKind)){const a=num(get('amount')),d=dateIso(get('date'));if(a!==null&&a<0&&d)cards.push({date:d,spend:Math.abs(a)})}
+    continue;
+   }
    const qty=Math.abs(num(get('qty'))||0);if(!qty)continue;
    let price=num(get('price'));const amount=num(get('amount')),fee=Math.abs(num(get('fee'))||0);
    if((price===null||price<=0)&&amount!==null)price=Math.max(0,(Math.abs(amount)-(side==='BUY'?fee:-fee)))/qty;
@@ -157,7 +162,52 @@
    });
   }
   tagBenefits(out,benefits);
-  return{rows:out,skipped,dividends,benefits};
+  cardBenefits(out,cards);
+  return{rows:out,skipped,dividends,benefits,cards};
+ }
+ /* Saveback y Redondeo calculados con los pagos con tarjeta del propio CSV (Trade Republic):
+  * · Saveback: el 1 % de lo gastado con tarjeta en un mes (tope 15 €), invertido hacia el día 2
+  *   del mes siguiente. Se busca la compra de esos días que cuadra con ese importe.
+  * · Redondeo: cada pago se redondea al euro siguiente (con multiplicador ×1…×10). Las compras
+  *   semanales pequeñas de un mismo fondo cuyo total cuadra con esos redondeos son el Redondeo.
+  * Lo que cuadra queda marcado como seguro y no se pregunta. */
+ function cardBenefits(rows,cards){
+  if(!cards||cards.length<5)return;
+  const buys=rows.filter(r=>r.side==='BUY'&&!(r.benefit&&!r.benefitGuess)&&(r.cash||0)>0&&(r.cash||0)<=31);
+  const t=d=>Date.parse(d),dayOf=d=>new Date(d).getUTCDate();
+  // Saveback por meses.
+  const spendByMonth=new Map();
+  for(const c of cards){const d=new Date(c.date),k=d.getUTCFullYear()*12+d.getUTCMonth();spendByMonth.set(k,(spendByMonth.get(k)||0)+c.spend)}
+  for(const [k,spend] of spendByMonth){
+   const expected=Math.min(15,Math.round(spend)/100);if(!(expected>=0.1))continue;
+   const y=Math.floor((k+1)/12),m=(k+1)%12;
+   let best=null,bestErr=Infinity;
+   for(const r of buys){
+    if(r.benefit&&!r.benefitGuess)continue;
+    const d=new Date(r.executedAt);if(d.getUTCFullYear()!==y||d.getUTCMonth()!==m||d.getUTCDate()>8)continue;
+    const err=Math.abs(r.cash-expected);
+    // A igualdad, mejor una cantidad con céntimos: una redonda del mismo día suele ser un plan.
+    const score=err+(Math.abs(r.cash-Math.round(r.cash))<0.005?0.03:0);
+    if(err<=Math.max(0.06,expected*0.04)&&score<bestErr){best=r;bestErr=score}
+   }
+   if(best){best.benefit='saveback';best.benefitGuess=false;best.plan=false;best.benefitSrc='card'}
+  }
+  // Redondeo por fondo: total de compras pequeñas semanales frente al total de redondeos del periodo.
+  const ru=c=>{const f=Math.ceil(c.spend-1e-9)-c.spend;return f>1e-9?f:0};
+  const byIsin=new Map();
+  for(const r of buys){if(r.benefit&&!r.benefitGuess)continue;(byIsin.get(r.isin||r.symbol)||byIsin.set(r.isin||r.symbol,[]).get(r.isin||r.symbol)).push(r)}
+  for(const list of byIsin.values()){
+   if(list.length<3)continue;
+   list.sort((a,b)=>t(a.executedAt)-t(b.executedAt));
+   const gaps=[];for(let i=1;i<list.length;i++)gaps.push((t(list[i].executedAt)-t(list[i-1].executedAt))/864e5);
+   const g=gaps.slice().sort((a,b)=>a-b)[gaps.length>>1];
+   if(!(g>=5&&g<=10))continue;
+   const from=t(list[0].executedAt)-8*864e5,to=t(list[list.length-1].executedAt);
+   const total=list.reduce((s,r)=>s+r.cash,0),rounds=cards.filter(c=>t(c.date)>from&&t(c.date)<=to).reduce((s,c)=>s+ru(c),0);
+   if(!(rounds>0))continue;
+   const k=Math.round(total/rounds);
+   if(k>=1&&k<=10&&Math.abs(total-k*rounds)<=Math.max(1,total*0.12))list.forEach(r=>{r.benefit='roundup';r.benefitGuess=false;r.plan=false;r.benefitSrc='card'});
+  }
  }
  // Empareja cada abono de Saveback/Redondeo con la compra del mismo importe (ese día o hasta 7 después).
  function tagBenefits(rows,benefits){
@@ -247,7 +297,7 @@
    const s=(r.isin&&byIsin.get(r.isin))||(r.symbol&&bySymbol.get(r.symbol))||(r.name&&byCompanyName(byName,r.name))||null;
    if(!s){
     const f=fundProduct(r);
-    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,cash:r.cash});continue}
+    if(f){funds.push({externalId:r.externalId,isin:f.isin,name:f.name,productType:f.type,provider:f.provider,indexName:f.index,side:r.side,units:r.quantity,price:r.price,fees:r.fees,currency:r.currency||'EUR',executedAt:r.executedAt,plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,benefitSrc:r.benefitSrc||'',cash:r.cash});continue}
     if(r.isin&&/^[A-Z]{2}[A-Z0-9]{10}$/.test(r.isin)){
      // Not in the ViewInvAI catalogue yet (European, Asian… shares): keep it under its
      // ISIN so it counts in the portfolio, Fiscal and the curve, and picks up live data
@@ -255,7 +305,7 @@
      const key=keep.get(r.isin)||r.isin;
      uncatalogued.push(r);
      matched.push({externalId:r.externalId,side:r.side,quantity:r.quantity,price:r.price,fees:r.fees,currency:preferTr?'EUR':(r.currency||'EUR'),executedAt:r.executedAt,
-      plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,cash:r.cash,baseNotes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+' · fuera del catálogo',
+      plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,benefitSrc:r.benefitSrc||'',cash:r.cash,baseNotes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+' · fuera del catálogo',
       stockKey:key,preferTr,ticker:(r.symbol||r.isin).slice(0,20),name:r.name||r.isin,exchange:preferTr?'LSX':(r.exchange||''),isin:r.isin,
       notes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV')+' · fuera del catálogo'+(r.benefit==='saveback'?' · Saveback':r.benefit==='roundup'?' · Redondeo':'')});
      continue;
@@ -268,7 +318,7 @@
    const fees=r.feeCurrency&&r.feeCurrency!==currency?0:r.fees;
    matched.push({
     externalId:r.externalId,side:r.side,quantity:r.quantity,price:r.price,fees,currency,executedAt:r.executedAt,
-    plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,cash:r.cash,baseNotes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV'),
+    plan:!!r.plan,benefit:r.benefit||'',benefitGuess:!!r.benefitGuess,benefitSrc:r.benefitSrc||'',cash:r.cash,baseNotes:'Importado de '+(source==='tr'?'Trade Republic':source==='ibkr'?'Interactive Brokers':'CSV'),
     stockKey:key,preferTr,
     ticker:preferTr?(s.trTicker||s.ticker):(s.ticker||r.symbol),
     name:s.name||r.name||'',
@@ -712,7 +762,7 @@
    }
    for(const k of ['saveback','roundup']){
     const list=rest.filter(r=>r.benefit===k&&!r.benefitGuess);
-    if(list.length){groups.push(makeGroup(inst,list,k,'sure','El archivo trae el abono de '+KIND_LABEL[k]+' de cada compra.'));rest=rest.filter(r=>!list.includes(r))}
+    if(list.length){groups.push(makeGroup(inst,list,k,'sure',list.every(r=>r.benefitSrc==='card')?'Cuadra con tus pagos con tarjeta del archivo ('+(k==='saveback'?'1 % de lo gastado cada mes':'redondeo de cada pago')+').':'El archivo trae el abono de '+KIND_LABEL[k]+' de cada compra.'));rest=rest.filter(r=>!list.includes(r))}
    }
    // Compras pequeñas sin explicar: Saveback (mensual, hacia el día 2) o Redondeo (semanal).
    const small=rest.filter(r=>cashOf(r)<=35);
