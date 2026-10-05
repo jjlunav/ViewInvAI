@@ -83,23 +83,26 @@
  }
 
  // ---------- Configuración › Integrar la IA ----------
+ // Una fila compacta por IA (logo, nombre, estado); al tocarla se despliegan clave y opciones.
+ const LOGO_OF={gemini:'gemini',anthropic:'claude',openai:'chatgpt'},openRows=new Set();
  function providerHtml(p){
   const c=config.providers[p.id];
-  const status=c?(c.active?'<b class="ai-int-status on">Activa · ····'+esc(c.last4)+'</b>':'<b class="ai-int-status off">En pausa · ····'+esc(c.last4)+'</b>'):'<b class="ai-int-status">Sin configurar</b>';
+  const status=c?(c.active?'<b class="ai-int-status on">Activa ····'+esc(c.last4)+'</b>':'<b class="ai-int-status off">En pausa ····'+esc(c.last4)+'</b>'):'<b class="ai-int-status">Sin configurar</b>';
   const model=c&&c.model||config.defaults[p.id]||'';
-  return '<div class="ai-int-provider" data-ai-provider="'+p.id+'">'+
-   '<div class="ai-int-provider-head"><div><strong>'+esc(p.name)+'</strong><small>'+esc(p.company)+' · <span class="ai-int-badge'+(p.free?' free':'')+'">'+esc(p.badge)+'</span></small></div>'+
-   (c?'<label class="settings-switch" aria-label="Usar '+esc(p.name)+'"><input type="checkbox" data-ai-toggle="'+p.id+'"'+(c.active?' checked':'')+'><span class="settings-switch-track" aria-hidden="true"><span></span></span></label>':'')+'</div>'+
-   '<p class="ai-int-blurb">'+esc(p.blurb)+'</p>'+
-   '<div class="settings-status-row"><span>Estado</span>'+status+'</div>'+
-   '<form class="ai-int-form" data-ai-key-form="'+p.id+'" autocomplete="off">'+
-    '<input type="password" name="key" inputmode="text" autocomplete="off" spellcheck="false" placeholder="'+(c?'Pega una clave nueva para cambiarla':'Pega aquí tu clave ('+esc(p.prefix)+'…)')+'" aria-label="Clave de '+esc(p.name)+'">'+
-    '<details class="ai-int-advanced"><summary>Opciones avanzadas</summary><label><span>Modelo</span><input name="model" type="text" spellcheck="false" value="'+esc(model)+'" placeholder="'+esc(config.defaults[p.id]||'')+'"></label></details>'+
-    '<div class="ai-int-actions"><button type="submit" class="btn small">Guardar y probar</button>'+
-    '<button type="button" class="btn small ghost" data-ai-manual="'+p.id+'">Cómo conseguir la clave</button>'+
-    (c?'<button type="button" class="btn small ghost danger" data-ai-remove="'+p.id+'">Quitar</button>':'')+'</div>'+
-    '<div class="ai-int-msg" data-ai-msg aria-live="polite"></div>'+
-   '</form></div>';
+  return '<details class="ai-int-provider" data-ai-provider="'+p.id+'"'+(openRows.has(p.id)?' open':'')+'>'+
+   '<summary class="ai-int-row"><span class="ai-int-logo" aria-hidden="true">'+(ASK[LOGO_OF[p.id]]?ASK[LOGO_OF[p.id]].svg:'')+'</span>'+
+    '<span class="ai-int-name"><strong>'+esc(p.name)+'</strong><span class="ai-int-badge'+(p.free?' free':'')+'">'+esc(p.badge)+'</span></span>'+status+'</summary>'+
+   '<div class="ai-int-detail">'+
+    '<p class="ai-int-blurb">'+esc(p.blurb)+'</p>'+
+    (c?'<div class="settings-status-row ai-int-toggle-row"><span>Usar en el análisis automático</span><label class="settings-switch" aria-label="Usar '+esc(p.name)+'"><input type="checkbox" data-ai-toggle="'+p.id+'"'+(c.active?' checked':'')+'><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>':'')+
+    '<form class="ai-int-form" data-ai-key-form="'+p.id+'" autocomplete="off">'+
+     '<input type="password" name="key" inputmode="text" autocomplete="off" spellcheck="false" placeholder="'+(c?'Pega una clave nueva para cambiarla':'Pega aquí tu clave ('+esc(p.prefix)+'…)')+'" aria-label="Clave de '+esc(p.name)+'">'+
+     '<details class="ai-int-advanced"><summary>Opciones avanzadas</summary><label><span>Modelo</span><input name="model" type="text" spellcheck="false" value="'+esc(model)+'" placeholder="'+esc(config.defaults[p.id]||'')+'"></label></details>'+
+     '<div class="ai-int-actions"><button type="submit" class="btn small">Guardar y probar</button>'+
+     '<button type="button" class="btn small ghost" data-ai-manual="'+p.id+'">Cómo conseguirla</button>'+
+     (c?'<button type="button" class="btn small ghost danger" data-ai-remove="'+p.id+'">Quitar</button>':'')+'</div>'+
+     '<div class="ai-int-msg" data-ai-msg aria-live="polite"></div>'+
+    '</form></div></details>';
  }
  function renderSettings(){
   const box=document.getElementById('aiIntegrationBody');if(!box)return;
@@ -107,13 +110,13 @@
   if(!config.loaded){box.innerHTML='<p class="settings-note">Cargando tus integraciones…</p>';return}
   const act=activeProviders();
   box.innerHTML=
-   (config.serverReady?'':'<p class="ai-int-warning">El servidor aún no tiene activado el cifrado de claves. Hasta que el administrador lo active no se pueden guardar claves; el modo «suscripción» sí funciona.</p>')+
+   (config.serverReady?'':'<p class="ai-int-warning">El servidor aún no tiene activado el cifrado de claves. Hasta que el administrador lo active no se pueden guardar claves; «Preguntar a AI» con tu cuenta sí funciona.</p>')+
    '<div class="settings-status-row ai-int-summary"><span>IA activas</span><strong class="settings-status">'+(act.length?esc(act.map(id=>LABEL[id]).join(' + ')):'Ninguna')+'</strong></div>'+
-   '<p class="settings-note">Pon una, varias o todas: cada IA activa analiza por su cuenta el Radar AI y el Objetivo (una vez al día por mercado o cartera) y verás su opinión junto al análisis de ViewInvAI. Las claves se guardan cifradas en tu cuenta y nunca se muestran; a la IA solo se envían datos públicos de las acciones, nunca tus importes.</p>'+
+   '<p class="settings-note ai-int-note">Con clave, cada IA activa contrasta sola el Radar AI y el Objetivo una vez al día. Las claves se guardan cifradas y a la IA solo van datos públicos, nunca tus importes.</p>'+
    '<div class="ai-int-list">'+PROVIDERS.map(providerHtml).join('')+
-   '<div class="ai-int-provider ai-int-subscription"><div class="ai-int-provider-head"><div><strong>Preguntar a AI con tu cuenta</strong><small>ChatGPT, Claude o Gemini · <span class="ai-int-badge free">Gratis · manual</span></small></div></div>'+
-    '<p class="ai-int-blurb">Sin clave: en la ficha de cada acción, en el Radar AI y en el Objetivo tienes el recuadro «Preguntar a AI». Pulsas el logo, la IA se abre con la pregunta preparada y pegas su respuesta para que ViewInvAI refuerce o rebaje la decisión. Se usa tu cuenta (también la gratuita); no es automático.</p>'+
-    '<div class="ai-int-actions"><button type="button" class="btn small ghost" data-ai-manual="subscription">Cómo hacerlo</button></div></div>'+
+   '<div class="ai-int-provider ai-int-subscription"><div class="ai-int-row"><span class="ai-int-logo ai-int-logo-multi" aria-hidden="true">'+ASK.chatgpt.svg+'</span>'+
+    '<span class="ai-int-name"><strong>Preguntar a AI</strong><span class="ai-int-badge free">Gratis · con tu cuenta</span></span>'+
+    '<button type="button" class="btn small ghost" data-ai-manual="subscription">Cómo</button></div></div>'+
    '</div>';
  }
  function setMsg(form,text,bad){const m=form&&form.querySelector('[data-ai-msg]');if(m){m.textContent=text||'';m.classList.toggle('bad',!!bad)}}
@@ -355,7 +358,9 @@
  });
  document.addEventListener('change',e=>{const t=e.target.closest&&e.target.closest('[data-ai-toggle]');if(t)toggleProvider(t.dataset.aiToggle,t.checked)});
  document.addEventListener('toggle',e=>{
-  const el=e.target;if(!el.matches||!el.matches('[data-ai-contrast-panel]'))return;
+  const el=e.target;
+  if(el.matches&&el.matches('[data-ai-provider]')){if(el.open)openRows.add(el.dataset.aiProvider);else openRows.delete(el.dataset.aiProvider);return}
+  if(!el.matches||!el.matches('[data-ai-contrast-panel]'))return;
   const st=results.get(el.dataset.aiContrastPanel);if(st)st.open=el.open;
  },true);
  document.addEventListener('click',e=>{
