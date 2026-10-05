@@ -1480,3 +1480,33 @@ html[data-theme="light"] .ai-ask-logo{background:#f7f8fc;border-color:#d7dcec;co
 html[data-theme="light"] .ai-pick-chip.on{background:#eef0ff;border-color:#4f46e5}
 .ai-card-verdict{font-size:11px;padding:1px 7px}
 .portfolio-goal-trade em .ai-card-verdict{font-style:normal;margin-left:4px;vertical-align:middle}
+/* Integrar la IA compacto: una fila por IA, se despliega al tocarla */
+.ai-integration-body{gap:8px}
+.ai-int-list{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px}
+.ai-int-provider{display:block;padding:0;border-radius:12px}
+.ai-int-row{display:flex;align-items:center;gap:10px;padding:9px 12px;min-height:44px;box-sizing:border-box;cursor:pointer;list-style:none}
+.ai-int-row::-webkit-details-marker{display:none}
+details.ai-int-provider>.ai-int-row::after{content:"⌄";opacity:.55;margin-left:2px;font-size:13px}
+details.ai-int-provider[open]>.ai-int-row::after{transform:rotate(180deg)}
+.ai-int-subscription .ai-int-row{cursor:default}
+.ai-int-logo{flex:0 0 auto;width:28px;height:28px;display:grid;place-items:center;border-radius:8px;background:rgba(255,255,255,.06);color:#f2f5fa}
+html[data-theme="light"] .ai-int-logo{background:#f2f4fa;color:#0d0d0d}
+.ai-int-logo svg{width:17px;height:17px}
+.ai-int-name{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ai-int-name strong{font-size:14px;line-height:1.2}
+.ai-int-badge{font-size:10px;padding:1px 6px}
+.ai-int-row .ai-int-status{flex:0 0 auto;font-size:11.5px;white-space:nowrap}
+.ai-int-detail{display:grid;gap:8px;padding:0 12px 12px}
+.ai-int-detail .ai-int-blurb{font-size:12px}
+.ai-int-toggle-row{font-size:12.5px}
+.ai-int-form input[type=password],.ai-int-form input[type=text]{padding:8px 10px;font-size:13.5px}
+.ai-int-actions .btn.small{min-height:34px;padding:6px 12px;font-size:12px}
+.ai-int-note{font-size:12px!important;margin:0}
+@media (max-width:640px){
+ .ai-int-list{grid-template-columns:minmax(0,1fr)}
+ .ai-int-row{padding:8px 10px;gap:8px}
+ .ai-int-name strong{font-size:13.5px}
+ .ai-int-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:6px}
+ .ai-int-actions .btn.small{width:100%;padding:6px 8px}
+}
+html:root:root body .ai-int-row>.btn{width:auto!important;flex:0 0 auto;min-height:30px!important;height:30px;padding:0 12px!important;font-size:12px!important}
