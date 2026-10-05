@@ -4637,6 +4637,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
+    if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
@@ -4652,6 +4653,305 @@ export async function handleBackendApi(request, env, services = {}) {
     if (error instanceof SyntaxError) return json({ error: "Invalid JSON" }, 400);
     return json({ error: "Backend request failed" }, 500);
   }
+}
+
+// ----- Integrar la IA (opcional): cada usuario conecta su propia IA para contrastar -----
+// Los resultados del Radar AI y del Objetivo no cambian: esto solo añade una segunda
+// opinión bajo petición. Las claves se guardan cifradas (AES-GCM con AI_KEYS_SECRET,
+// ligadas al usuario) y nunca se devuelven; a la IA solo se envían datos públicos.
+const AI_PROVIDERS={
+  gemini:{label:"Gemini",model:"gemini-flash-latest"},
+  anthropic:{label:"Claude",model:"claude-opus-5-5"},
+  openai:{label:"OpenAI",model:"gpt-5-mini"}
+};
+const AI_CONTRAST_DAILY_LIMIT=40;
+const AI_SUBJECT_TYPES=new Set(["radar","goal"]);
+const AI_VERDICTS=new Set(["respalda","dudas","contradice","nota"]);
+let aiIntegrationSchemaReady=false;
+async function ensureAiIntegrationSchema(env){
+  if(aiIntegrationSchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS user_ai_keys (user_id TEXT NOT NULL,provider TEXT NOT NULL,key_enc TEXT NOT NULL,iv TEXT NOT NULL,last4 TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,provider),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_contrasts (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,subject_type TEXT NOT NULL,subject_key TEXT NOT NULL,day TEXT NOT NULL,provider TEXT NOT NULL,verdict TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',items_json TEXT NOT NULL DEFAULT '[]',sources_json TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ai_contrasts_user_subject ON ai_contrasts(user_id,subject_type,subject_key,day)")
+  ]);
+  aiIntegrationSchemaReady=true;
+}
+function aiB64(bytes){let s="";const a=new Uint8Array(bytes);for(let i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)}
+function aiUnB64(text){const s=atob(String(text||""));const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a}
+async function aiCryptoKey(env){
+  const secret=String(env.AI_KEYS_SECRET||"");
+  if(secret.length<16)return null;
+  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("viewinvai-ai-keys:"+secret));
+  return crypto.subtle.importKey("raw",hash,"AES-GCM",false,["encrypt","decrypt"]);
+}
+async function aiEncrypt(env,userId,provider,plain){
+  const key=await aiCryptoKey(env);if(!key)return null;
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode(userId+"|"+provider)},key,new TextEncoder().encode(plain));
+  return{enc:aiB64(data),iv:aiB64(iv)};
+}
+async function aiDecrypt(env,userId,provider,row){
+  const key=await aiCryptoKey(env);if(!key||!row)return "";
+  try{
+    const data=await crypto.subtle.decrypt({name:"AES-GCM",iv:aiUnB64(row.iv),additionalData:new TextEncoder().encode(userId+"|"+provider)},key,aiUnB64(row.key_enc));
+    return new TextDecoder().decode(data);
+  }catch(_){return ""}
+}
+function aiProviderOf(value){const p=String(value||"").trim().toLowerCase();return Object.prototype.hasOwnProperty.call(AI_PROVIDERS,p)?p:""}
+function aiValidModel(value){const m=String(value||"").trim();return /^[a-z0-9][a-z0-9._:\/-]{1,79}$/i.test(m)?m:""}
+async function aiFetch(url,init,timeoutMs=60000){
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{return await fetch(url,{...init,signal:ctrl.signal})}finally{clearTimeout(timer)}
+}
+function aiProviderError(provider,status,data){
+  const raw=String(data&&data.error&&(data.error.message||data.error.type)||data&&data.message||"").slice(0,200);
+  if(status===401||status===403)return AI_PROVIDERS[provider].label+" rechaza la clave (no es válida o no tiene permisos).";
+  if(status===429)return AI_PROVIDERS[provider].label+" indica que has superado tu límite de uso o tu saldo. Inténtalo más tarde.";
+  if(status===400&&/model/i.test(raw))return AI_PROVIDERS[provider].label+" no reconoce el modelo indicado: "+raw;
+  return AI_PROVIDERS[provider].label+" respondió con un error ("+status+")"+(raw?": "+raw:".");
+}
+// Comprueba la clave con una llamada gratuita (listar modelos) antes de guardarla.
+async function aiTestKey(provider,apiKey){
+  let res;
+  try{
+    if(provider==="gemini")res=await aiFetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",{headers:{"x-goog-api-key":apiKey}},15000);
+    else if(provider==="anthropic")res=await aiFetch("https://api.anthropic.com/v1/models?limit=1",{headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01"}},15000);
+    else res=await aiFetch("https://api.openai.com/v1/models",{headers:{Authorization:"Bearer "+apiKey}},15000);
+  }catch(_){return{ok:false,error:"No se pudo contactar con "+AI_PROVIDERS[provider].label+". Inténtalo de nuevo."}}
+  if(res.ok)return{ok:true};
+  const data=await res.json().catch(()=>({}));
+  return{ok:false,error:aiProviderError(provider,res.status,data)};
+}
+const AI_CONTRAST_SYSTEM=
+  "Eres un analista financiero independiente. ViewInvAI, una app de análisis de bolsa, ha generado unas propuestas con su motor interno. "+
+  "Tu trabajo es CONTRASTARLAS con información actual y verificable (noticias, resultados, guías, rebajas de rating, dilución, litigios, sector), "+
+  "no repetirlas ni sustituir el análisis. Busca en la web lo necesario y sé concreto y prudente. No inventes datos: si no encuentras información, dilo. "+
+  "Responde en español. Al final de tu respuesta incluye SOLO un bloque JSON válido con esta forma exacta:\n"+
+  "{\"veredicto\":\"respalda|dudas|contradice\",\"resumen\":\"una o dos frases\",\"valores\":[{\"ticker\":\"XXX\",\"veredicto\":\"respalda|dudas|contradice\",\"motivo\":\"frase breve con el dato clave\"}]}\n"+
+  "«respalda» = la información actual apoya la propuesta; «dudas» = hay riesgos o datos que la debilitan; «contradice» = hay hechos que la invalidan.";
+function aiExtractJson(text){
+  const raw=String(text||"");
+  const fenced=raw.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+  const candidates=[];
+  if(fenced)candidates.push(fenced[1]);
+  const last=raw.lastIndexOf("{\"veredicto\""),alt=raw.lastIndexOf("{");
+  for(const start of [last,alt]){
+    if(start<0)continue;
+    const end=raw.lastIndexOf("}");
+    if(end>start)candidates.push(raw.slice(start,end+1));
+  }
+  for(const c of candidates){try{const o=JSON.parse(c);if(o&&typeof o==="object")return o}catch(_){}}
+  return null;
+}
+function aiNormalizeVerdict(value){
+  const v=String(value||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+  if(v.startsWith("respald")||v==="confirma"||v==="confirmar")return "respalda";
+  if(v.startsWith("contradi")||v==="descartar")return "contradice";
+  if(v.startsWith("duda")||v==="bajar")return "dudas";
+  return "";
+}
+function aiParseAnswer(text){
+  const obj=aiExtractJson(text)||{};
+  const items=(Array.isArray(obj.valores)?obj.valores:[]).slice(0,30).map(x=>({
+    ticker:trimText(x&&x.ticker,24).toUpperCase(),
+    verdict:aiNormalizeVerdict(x&&x.veredicto)||"dudas",
+    reason:trimText(x&&x.motivo,400)
+  })).filter(x=>x.ticker);
+  const verdict=aiNormalizeVerdict(obj.veredicto)||(items.length?(items.some(x=>x.verdict==="contradice")?"contradice":items.some(x=>x.verdict==="dudas")?"dudas":"respalda"):"nota");
+  let summary=trimText(obj.resumen,800);
+  if(!summary){
+    const cut=String(text||"").replace(/```[\s\S]*?```/g,"").replace(/\{[\s\S]*\}\s*$/,"").trim();
+    summary=trimText(cut,800);
+  }
+  return{verdict,summary,items};
+}
+function aiCleanSources(list){
+  const seen=new Set(),out=[];
+  for(const s of list||[]){
+    const url=String(s&&s.url||"").trim();
+    if(!/^https:\/\//i.test(url)||seen.has(url))continue;
+    seen.add(url);out.push({url:url.slice(0,500),title:trimText(s.title||"",160)});
+    if(out.length>=12)break;
+  }
+  return out;
+}
+async function aiAskGemini(apiKey,model,prompt){
+  const res=await aiFetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
+    method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},
+    body:JSON.stringify({systemInstruction:{parts:[{text:AI_CONTRAST_SYSTEM}]},contents:[{role:"user",parts:[{text:prompt}]}],tools:[{google_search:{}}]})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)return{error:aiProviderError("gemini",res.status,data)};
+  const cand=data.candidates&&data.candidates[0]||{};
+  const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
+  const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
+  return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean)};
+}
+async function aiAskClaude(apiKey,model,prompt){
+  const messages=[{role:"user",content:prompt}];
+  let text="",sources=[];
+  // Con búsqueda web en el servidor la respuesta puede pausarse (pause_turn): se continúa
+  // devolviendo el contenido tal cual, como máximo dos veces.
+  for(let round=0;round<3;round++){
+    const res=await aiFetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-beta":"server-side-fallback-2026-07-01","content-type":"application/json"},
+      body:JSON.stringify({model,max_tokens:8000,system:AI_CONTRAST_SYSTEM,output_config:{effort:"low"},fallbacks:"default",
+        tools:[{type:"web_search_20260209",name:"web_search",max_uses:4}],messages})
+    },120000);
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)return{error:aiProviderError("anthropic",res.status,data)};
+    if(data.stop_reason==="refusal")return{error:"Claude no ha querido responder a esta consulta."};
+    for(const block of data.content||[]){
+      if(block.type==="text"){
+        text+=block.text||"";
+        for(const c of block.citations||[])if(c&&c.url)sources.push({url:c.url,title:c.title});
+      }else if(block.type==="web_search_tool_result"&&Array.isArray(block.content)){
+        for(const r of block.content)if(r&&r.url)sources.push({url:r.url,title:r.title});
+      }
+    }
+    if(data.stop_reason!=="pause_turn")break;
+    messages.push({role:"assistant",content:data.content});
+  }
+  return{text,sources};
+}
+async function aiAskOpenAi(apiKey,model,prompt){
+  const res=await aiFetch("https://api.openai.com/v1/responses",{
+    method:"POST",headers:{Authorization:"Bearer "+apiKey,"Content-Type":"application/json"},
+    body:JSON.stringify({model,instructions:AI_CONTRAST_SYSTEM,input:prompt,tools:[{type:"web_search"}]})
+  },120000);
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)return{error:aiProviderError("openai",res.status,data)};
+  let text="";const sources=[];
+  for(const item of data.output||[]){
+    if(item.type!=="message")continue;
+    for(const part of item.content||[]){
+      if(part.type!=="output_text")continue;
+      text+=part.text||"";
+      for(const a of part.annotations||[])if(a&&a.type==="url_citation")sources.push({url:a.url,title:a.title});
+    }
+  }
+  return{text,sources};
+}
+function aiContrastRow(row){
+  let items=[],sources=[];
+  try{items=JSON.parse(row.items_json||"[]")}catch(_){}
+  try{sources=JSON.parse(row.sources_json||"[]")}catch(_){}
+  return{id:row.id,subjectType:row.subject_type,subjectKey:row.subject_key,day:row.day,provider:row.provider,verdict:row.verdict,summary:row.summary,items,sources,createdAt:row.created_at};
+}
+async function aiSaveContrast(env,user,subjectType,subjectKey,provider,parsed,sources){
+  const row={id:uid("aic_"),user_id:user.id,subject_type:subjectType,subject_key:subjectKey,day:nowIso().slice(0,10),provider,
+    verdict:AI_VERDICTS.has(parsed.verdict)?parsed.verdict:"nota",summary:trimText(parsed.summary,800),
+    items_json:JSON.stringify(parsed.items||[]),sources_json:JSON.stringify(aiCleanSources(sources)),created_at:nowIso()};
+  await env.DB.prepare("INSERT INTO ai_contrasts (id,user_id,subject_type,subject_key,day,provider,verdict,summary,items_json,sources_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(row.id,row.user_id,row.subject_type,row.subject_key,row.day,row.provider,row.verdict,row.summary,row.items_json,row.sources_json,row.created_at).run();
+  // Se guardan las 60 últimas por usuario: es una ayuda puntual, no un histórico.
+  await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
+  return aiContrastRow(row);
+}
+async function handleAiIntegration(request,env,user,json,parts,url){
+  await ensureAiIntegrationSchema(env);
+  const section=parts[1]||"",noStore={"Cache-Control":"no-store"};
+  if(section==="keys"){
+    if(request.method==="GET"){
+      const {results}=await env.DB.prepare("SELECT provider,last4,model,active,updated_at FROM user_ai_keys WHERE user_id=?").bind(user.id).all();
+      const providers={};
+      for(const r of results||[])providers[r.provider]={last4:r.last4,model:r.model||AI_PROVIDERS[r.provider]?.model||"",active:!!r.active,updatedAt:r.updated_at};
+      return json({serverReady:!!(await aiCryptoKey(env)),providers,defaults:Object.fromEntries(Object.entries(AI_PROVIDERS).map(([k,v])=>[k,v.model]))},200,noStore);
+    }
+    const provider=aiProviderOf(parts[2]);
+    if(request.method==="DELETE"){
+      if(!provider)return json({error:"Proveedor no válido"},400);
+      await env.DB.prepare("DELETE FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,provider).run();
+      return json({ok:true},200,noStore);
+    }
+    if(request.method==="PATCH"){
+      // Varias IA pueden estar activas a la vez: cada una contrasta por su cuenta.
+      const body=await readJson(request),target=aiProviderOf(provider||body.provider);
+      if(!target)return json({error:"Proveedor no válido"},400);
+      const exists=await env.DB.prepare("SELECT 1 FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,target).first();
+      if(!exists)return json({error:"Primero conecta esa IA"},404);
+      const enabled=body.enabled!==false,model=aiValidModel(body.model);
+      await env.DB.prepare("UPDATE user_ai_keys SET active=?,model=CASE WHEN ?<>'' THEN ? ELSE model END,updated_at=? WHERE user_id=? AND provider=?").bind(enabled?1:0,model,model,nowIso(),user.id,target).run();
+      return json({ok:true,provider:target,enabled},200,noStore);
+    }
+    if(request.method!=="POST")return json({error:"Method not allowed"},405);
+    if(!(await aiCryptoKey(env)))return json({error:"El servidor aún no tiene configurado el cifrado de claves (AI_KEYS_SECRET). Avisa al administrador."},503);
+    const body=await readJson(request),p=aiProviderOf(body.provider),apiKey=String(body.key||"").trim();
+    if(!p)return json({error:"Proveedor no válido"},400);
+    if(apiKey.length<20||apiKey.length>300||/\s/.test(apiKey))return json({error:"La clave no tiene un formato válido. Cópiala entera, sin espacios."},400);
+    const model=aiValidModel(body.model)||AI_PROVIDERS[p].model;
+    const test=await aiTestKey(p,apiKey);
+    if(!test.ok)return json({error:test.error},400);
+    const sealed=await aiEncrypt(env,user.id,p,apiKey),now=nowIso();
+    await env.DB.prepare(
+      "INSERT INTO user_ai_keys (user_id,provider,key_enc,iv,last4,model,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) "+
+      "ON CONFLICT(user_id,provider) DO UPDATE SET key_enc=excluded.key_enc,iv=excluded.iv,last4=excluded.last4,model=excluded.model,active=1,updated_at=excluded.updated_at"
+    ).bind(user.id,p,sealed.enc,sealed.iv,apiKey.slice(-4),model,1,now,now).run();
+    return json({ok:true,provider:p,last4:apiKey.slice(-4),model},200,noStore);
+  }
+  if(section==="contrast"){
+    if(request.method==="GET"){
+      const type=String(url.searchParams.get("type")||"");
+      if(!AI_SUBJECT_TYPES.has(type))return json({error:"Tipo no válido"},400);
+      const key=trimText(url.searchParams.get("key"),120);
+      const stmt=key
+        ?env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type=? AND subject_key=? ORDER BY created_at DESC LIMIT 5").bind(user.id,type,key)
+        :env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type=? ORDER BY created_at DESC LIMIT 10").bind(user.id,type);
+      const {results}=await stmt.all();
+      return json({contrasts:(results||[]).map(aiContrastRow)},200,noStore);
+    }
+    if(request.method!=="POST")return json({error:"Method not allowed"},405);
+    const body=await readJson(request),type=String(body.subjectType||""),key=trimText(body.subjectKey,120),prompt=trimText(body.prompt,12000);
+    if(!AI_SUBJECT_TYPES.has(type)||!key)return json({error:"Falta qué contrastar"},400);
+    if(parts[2]==="manual"){
+      // Respuesta pegada desde ChatGPT o Claude (suscripción): se guarda como opinión.
+      const answer=trimText(body.answer,16000),source=body.source==="claude"?"claude-web":"chatgpt-web";
+      if(answer.length<20)return json({error:"Pega la respuesta completa de la IA"},400);
+      const urls=(answer.match(/https:\/\/[^\s)\]>"']+/g)||[]).map(u=>({url:u.replace(/[.,;]+$/,""),title:""}));
+      const saved=await aiSaveContrast(env,user,type,key,source,aiParseAnswer(answer),urls);
+      return json({contrast:saved},200,noStore);
+    }
+    if(!prompt)return json({error:"Falta el contenido a contrastar"},400);
+    const today=nowIso().slice(0,10),wanted=aiProviderOf(body.provider);
+    const {results:keyRows}=wanted
+      ?await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,wanted).all()
+      :await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND active=1").bind(user.id).all();
+    if(!keyRows||!keyRows.length)return json({error:"Activa primero una IA en Configuración › Integrar la IA.",needsSetup:true},409);
+    const contrasts=[],errors=[];
+    // Contraste automático: si esa IA ya analizó hoy lo mismo, se reutiliza (no gasta cuota).
+    const pending=[];
+    for(const row of keyRows){
+      if(body.force!==true){
+        const cached=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type=? AND subject_key=? AND day=? AND provider=? ORDER BY created_at DESC LIMIT 1").bind(user.id,type,key,today,row.provider).first();
+        if(cached){contrasts.push(aiContrastRow(cached));continue}
+      }
+      pending.push(row);
+    }
+    if(pending.length){
+      const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(user.id,today).first();
+      if((Number(used&&used.n)||0)+pending.length>AI_CONTRAST_DAILY_LIMIT)return json({contrasts,errors:[{provider:"",error:"Has llegado al máximo de "+AI_CONTRAST_DAILY_LIMIT+" análisis con IA por hoy."}]},200,noStore);
+      const answers=await Promise.all(pending.map(async row=>{
+        const label=AI_PROVIDERS[row.provider].label,apiKey=await aiDecrypt(env,user.id,row.provider,row);
+        if(!apiKey)return{row,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla en Configuración › Integrar la IA."};
+        const model=row.model||AI_PROVIDERS[row.provider].model;
+        try{
+          const a=row.provider==="gemini"?await aiAskGemini(apiKey,model,prompt):row.provider==="anthropic"?await aiAskClaude(apiKey,model,prompt):await aiAskOpenAi(apiKey,model,prompt);
+          if(!a.error&&!String(a.text||"").trim())a.error=label+" no ha devuelto respuesta.";
+          return{row,...a};
+        }catch(error){
+          return{row,error:String(error&&error.name)==="AbortError"?label+" ha tardado demasiado. Inténtalo de nuevo.":"No se pudo contactar con "+label+"."};
+        }
+      }));
+      for(const a of answers){
+        if(a.error){errors.push({provider:a.row.provider,error:a.error});continue}
+        contrasts.push(await aiSaveContrast(env,user,type,key,a.row.provider,aiParseAnswer(a.text),a.sources));
+      }
+    }
+    return json({contrasts,errors},200,noStore);
+  }
+  return json({error:"Unknown backend endpoint"},404);
 }
 
 async function cleanupOldBackendData(env) {

@@ -35,6 +35,7 @@ on:
       - "scripts/test-session-quotes.mjs"
       - "recommendation.js"
       - "help.js"
+      - "ai-integrations.js"
       - "bootstrap.js"
       - "market-session.js"
       - "score-engine.js"
@@ -93,6 +94,7 @@ jobs:
           node --check asset-card.js
           node --check recommendation.js
           node --check help.js
+          node --check ai-integrations.js
           node --check bootstrap.js
           node --check mobile-app.js
           node --check stock-notifications.js
