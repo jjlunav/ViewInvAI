@@ -729,6 +729,11 @@
    }
    if(rest.length)groups.push(makeGroup(inst,rest,'buy','sure','Compras puntuales.'));
   }
+  // Un mismo valor y tipo en un solo grupo (p. ej. Redondeo detectado en dos tandas).
+  for(let i=groups.length-1;i>=0;i--){
+   const g=groups[i],j=groups.findIndex((h,k)=>k<i&&h.key===g.key&&h.kind===g.kind&&g.kind!=='plan'&&h.confidence===g.confidence);
+   if(j>=0){const h=groups[j];h.rows=h.rows.concat(g.rows).sort((x,y)=>tOf(x)-tOf(y));h.amount=Math.round(planAmount(h)*100)/100;groups.splice(i,1)}
+  }
   groups.forEach((g,i)=>{
    g.id='g'+i;
    const saved=choices[g.sig];
