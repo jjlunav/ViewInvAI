@@ -23,6 +23,7 @@ on:
       - "web-mobile.css"
       - "market-session.js"
       - "score-engine.js"
+      - "goal-engine.js"
       - "auth.js"
       - "portfolio.js"
       - "funds.js"
@@ -201,6 +202,7 @@ jobs:
         run: |
           node --check market-session.js
           node --check score-engine.js
+          node --check goal-engine.js
           node --check app.js
           node --check auth.js
           node --check portfolio.js
