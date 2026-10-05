@@ -90,7 +90,7 @@
   const status=c?(c.active?'<b class="ai-int-status on">Activa ····'+esc(c.last4)+'</b>':'<b class="ai-int-status off">En pausa ····'+esc(c.last4)+'</b>'):'<b class="ai-int-status">Sin configurar</b>';
   const model=c&&c.model||config.defaults[p.id]||'';
   return '<details class="ai-int-provider" data-ai-provider="'+p.id+'"'+(openRows.has(p.id)?' open':'')+'>'+
-   '<summary class="ai-int-row"><span class="ai-int-logo" aria-hidden="true">'+(ASK[LOGO_OF[p.id]]?ASK[LOGO_OF[p.id]].svg:'')+'</span>'+
+   '<summary class="ai-int-row"><span class="ai-int-logo" aria-hidden="true">'+logoSvg(LOGO_OF[p.id])+'</span>'+
     '<span class="ai-int-name"><strong>'+esc(p.name)+'</strong><span class="ai-int-badge'+(p.free?' free':'')+'">'+esc(p.badge)+'</span></span>'+status+'</summary>'+
    '<div class="ai-int-detail">'+
     '<p class="ai-int-blurb">'+esc(p.blurb)+'</p>'+
@@ -114,7 +114,7 @@
    '<div class="settings-status-row ai-int-summary"><span>IA activas</span><strong class="settings-status">'+(act.length?esc(act.map(id=>LABEL[id]).join(' + ')):'Ninguna')+'</strong></div>'+
    '<p class="settings-note ai-int-note">Con clave, cada IA activa contrasta sola el Radar AI y el Objetivo una vez al día. Las claves se guardan cifradas y a la IA solo van datos públicos, nunca tus importes.</p>'+
    '<div class="ai-int-list">'+PROVIDERS.map(providerHtml).join('')+
-   '<div class="ai-int-provider ai-int-subscription"><div class="ai-int-row"><span class="ai-int-logo ai-int-logo-multi" aria-hidden="true">'+ASK.chatgpt.svg+'</span>'+
+   '<div class="ai-int-provider ai-int-subscription"><div class="ai-int-row"><span class="ai-int-logo ai-int-logo-multi" aria-hidden="true">'+logoSvg('chatgpt')+'</span>'+
     '<span class="ai-int-name"><strong>Preguntar a AI</strong><span class="ai-int-badge free">Gratis · con tu cuenta</span></span>'+
     '<button type="button" class="btn small ghost" data-ai-manual="subscription">Cómo</button></div></div>'+
    '</div>';
@@ -178,6 +178,10 @@
   gemini:{name:'Gemini',url:'https://gemini.google.com/app',max:0,svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="aiGeminiGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".55" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs><path fill="url(#aiGeminiGrad)" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg>'}
  };
  const sid=(type,key)=>type+'|'+key;
+ // Cada logo lleva su propio id de degradado: con ids repetidos, el navegador usa el primero
+ // de la página y, si está en una vista oculta, el logo de Gemini sale vacío.
+ let gradN=0;
+ function logoSvg(id){return ASK[id]?ASK[id].svg.replace(/aiGeminiGrad/g,'aiGemGrad'+(++gradN)):''}
  const P=(f,sel)=>typeof f==='function'?f(sel):String(f||'');
  let recent={loaded:false,loading:false,list:[]};
  function verdictChip(v){const x=VERDICT[v]||VERDICT.nota;return '<span class="ai-verdict ai-verdict-'+x.cls+'">'+x.icon+' '+esc(x.text)+'</span>'}
@@ -214,7 +218,7 @@
  }
  function askBoxHtml(subject,st){
   const needsPick=(subject.choices||[]).length>0&&!st.selected.size;
-  const logos=Object.entries(ASK).map(([id,a])=>'<button type="button" class="ai-ask-logo ai-ask-'+id+'" data-ai-ask="'+id+'" title="Preguntar a '+a.name+'" aria-label="Preguntar a '+a.name+'"'+(needsPick?' disabled':'')+'>'+a.svg+'</button>').join('');
+  const logos=Object.entries(ASK).map(([id,a])=>'<button type="button" class="ai-ask-logo ai-ask-'+id+'" data-ai-ask="'+id+'" title="Preguntar a '+a.name+'" aria-label="Preguntar a '+a.name+'"'+(needsPick?' disabled':'')+'>'+logoSvg(id)+'</button>').join('');
   const paste=st.manualOpen
    ?'<form class="ai-contrast-paste" data-ai-paste-form><textarea name="answer" rows="5" placeholder="Pega aquí la respuesta completa de la IA"></textarea>'+
      '<div class="ai-int-actions"><select name="source" aria-label="De qué IA es la respuesta">'+Object.entries(ASK).map(([id,a])=>'<option value="'+id+'"'+(st.lastAsk===id?' selected':'')+'>'+a.name+'</option>').join('')+'</select><button type="submit" class="btn small">Analizar respuesta</button></div></form>':'';
