@@ -4665,7 +4665,7 @@ const AI_PROVIDERS={
   openai:{label:"OpenAI",model:"gpt-5-mini"}
 };
 const AI_CONTRAST_DAILY_LIMIT=40;
-const AI_SUBJECT_TYPES=new Set(["radar","goal"]);
+const AI_SUBJECT_TYPES=new Set(["radar","goal","stock"]);
 const AI_VERDICTS=new Set(["respalda","dudas","contradice","nota"]);
 let aiIntegrationSchemaReady=false;
 async function ensureAiIntegrationSchema(env){
@@ -4893,6 +4893,12 @@ async function handleAiIntegration(request,env,user,json,parts,url){
   }
   if(section==="contrast"){
     if(request.method==="GET"){
+      // Opiniones de los últimos 3 días (todas): la app las usa para reforzar o rebajar cada acción.
+      if(url.searchParams.get("recent")==="1"){
+        const since=new Date(Date.now()-3*86400000).toISOString();
+        const {results}=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 60").bind(user.id,since).all();
+        return json({contrasts:(results||[]).map(aiContrastRow)},200,noStore);
+      }
       const type=String(url.searchParams.get("type")||"");
       if(!AI_SUBJECT_TYPES.has(type))return json({error:"Tipo no válido"},400);
       const key=trimText(url.searchParams.get("key"),120);
@@ -4907,10 +4913,13 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     if(!AI_SUBJECT_TYPES.has(type)||!key)return json({error:"Falta qué contrastar"},400);
     if(parts[2]==="manual"){
       // Respuesta pegada desde ChatGPT o Claude (suscripción): se guarda como opinión.
-      const answer=trimText(body.answer,16000),source=body.source==="claude"?"claude-web":"chatgpt-web";
+      const answer=trimText(body.answer,16000),source=body.source==="claude"?"claude-web":body.source==="gemini"?"gemini-web":"chatgpt-web";
       if(answer.length<20)return json({error:"Pega la respuesta completa de la IA"},400);
       const urls=(answer.match(/https:\/\/[^\s)\]>"']+/g)||[]).map(u=>({url:u.replace(/[.,;]+$/,""),title:""}));
-      const saved=await aiSaveContrast(env,user,type,key,source,aiParseAnswer(answer),urls);
+      const parsed=aiParseAnswer(answer),ticker=trimText(body.ticker,24).toUpperCase();
+      // En la ficha de una acción, el veredicto general es el de esa acción.
+      if(type==="stock"&&ticker&&!parsed.items.length&&parsed.verdict!=="nota")parsed.items=[{ticker,verdict:parsed.verdict,reason:trimText(parsed.summary,400)}];
+      const saved=await aiSaveContrast(env,user,type,key,source,parsed,urls);
       return json({contrast:saved},200,noStore);
     }
     if(!prompt)return json({error:"Falta el contenido a contrastar"},400);

@@ -291,9 +291,24 @@ function profileVisualAnalysisHtml(s,isTr=false){
    '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+
   '</section>'+
   '<section class="profile-tab-panel" data-profile-panel="ai" hidden>'+
-   '<div class="profile-ai-tab-actions"><button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">Preguntar a ChatGPT ↗</button></div>'+
+   profileAskAiHtml(s,isTr)+
    profileAiPanel(s,isTr?'tr':'us')+
   '</section>';
+}
+// «Preguntar a AI»: un botón por IA (ChatGPT, Claude, Gemini) con la pregunta completa de la
+// acción, y «Pegar respuesta» para que su veredicto refuerce o rebaje la acción en la app.
+function profileAskAiHtml(s,isTr=false){
+ let key=stockKey(s),C=window.ViewInvAIContrast;
+ if(!C)return '<div class="profile-ai-tab-actions"><button type="button" class="btn profile-chatgpt-open" data-chatgpt-stock="'+E(key)+'" data-chatgpt-prefer-tr="'+(isTr?'1':'0')+'">Preguntar a ChatGPT ↗</button></div>';
+ let ticker=String(s.ticker||s.trTicker||'').toUpperCase(),mode=isTr?'tr':'us';
+ let a=null;try{a=recommendationAnalysis(s,mode)}catch(_){}
+ let own=a&&N(a.score)!==null?'- Lectura de ViewInvAI: score '+F(a.score,0)+'/100'+(a.signal&&a.signal.label?' · '+a.signal.label:''):'';
+ let manualPrompt=()=>buildExternalChatGptPrompt(s,isTr&&trTradable(s))+'\n\n'+
+  (own?own+'\n':'')+
+  'Al final, después de tu análisis, incluye SOLO un bloque JSON con tu veredicto sobre si comprar o mantener '+ticker+' tiene sentido ahora:\n'+
+  '{"veredicto":"respalda|dudas|contradice","resumen":"una o dos frases","valores":[{"ticker":"'+ticker+'","veredicto":"respalda|dudas|contradice","motivo":"dato clave"}]}';
+ let prompt='Acción: '+ticker+' ('+(s.name||'')+(s.exchange?', '+s.exchange:'')+'). '+(own?own.slice(2)+'. ':'')+'Contrasta con noticias y datos actuales si comprar o mantener tiene sentido ahora.';
+ return C.panelHtml({type:'stock',key:key+'|'+mode,title:ticker,ticker,inline:true,auto:false,prompt,manualPrompt});
 }
 function profileDetailRoot(el){
  return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;

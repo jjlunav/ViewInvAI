@@ -1308,7 +1308,9 @@ function goalCandidateConfirmed(stock){
   return variants.some(x=>keys.has(x));
 }
 function goalCandidateHtml(row){
-  const key=portfolioStockKey(row.stock),confirmed=goalCandidateConfirmed(row.stock),marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
+  // Una IA externa que contradice la compra (respuesta pegada o con clave) la deja en observación.
+  const C=window.ViewInvAIContrast,ai=C&&C.tickerVerdict?C.tickerVerdict(row.stock&&(row.stock.ticker||row.stock.trTicker)):null,aiBlocked=!!(ai&&ai.verdict==="contradice");
+  const key=portfolioStockKey(row.stock),confirmed=goalCandidateConfirmed(row.stock)&&!aiBlocked,marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{},execution=row.execution||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
   const take=levels.take!==null&&levels.take!==undefined?formatMoney(levels.take,levels.currency||"EUR"):"—";
@@ -1321,9 +1323,10 @@ function goalCandidateHtml(row){
   const costLine=spreadCost!==null||row.feeEur?'<small>Coste estimado de entrar: '+esc(formatMoney((num(row.feeEur)||0)+(spreadCost||0),"EUR"))+' (comisión + medio spread)</small>':"";
   const button=confirmed
     ?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:row.brokerName,stockKey:key,units:row.units,price:execution.price,fees:execution.feeNative??row.feeEur,currency:execution.currency||(row.preferTr?"EUR":"USD"),preferTr:row.preferTr,executable:execution.executable===true,executionReason:execution.executionReason})
+    :aiBlocked?'<span class="portfolio-goal-execution-blocked">En observación · la IA externa lo desaconseja'+(ai.reason?': '+esc(ai.reason):'')+'</span>'
     :'<span class="portfolio-goal-execution-blocked">En observación · se confirma si vuelve a superar el filtro en la próxima revisión diaria</span>';
   return '<div class="portfolio-goal-trade buy" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>#'+esc(row.rank||1)+' · '+(confirmed?'COMPRAR':'EN OBSERVACIÓN')+'</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+costLine+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
+    '<em>#'+esc(row.rank||1)+' · '+(confirmed?'COMPRAR':'EN OBSERVACIÓN')+(ai&&C?' '+C.badgeHtml(ai):'')+'</em><div><strong>'+esc(row.stock.name||row.stock.ticker||key)+'</strong><small>'+esc(units+" · "+marketLabel+" · acciones "+formatMoney(row.allocation,"EUR")+fee+" · total "+formatMoney(row.totalCost||row.allocation,"EUR"))+'</small><small>'+esc((execution.instruction||"Orden límite")+" · entrada "+entry+" · BID "+bid+" · ASK "+ask+" · spread "+spread)+'</small><small>Stop '+esc(stop)+' · Take profit '+esc(take)+' · revisión IA continua</small>'+costLine+button+'</div><b>'+formatNumber(row.composite,0)+'/100</b></div>'+
     '<p class="portfolio-goal-reason"><b>Rigor de entrada:</b> convicción '+formatNumber(row.score,0)+'/100 · timing '+formatNumber(row.entry&&row.entry.timing,0)+'/100 · R:R '+formatNumber(row.entry&&row.entry.rr,2)+' · velocidad '+formatNumber(row.velocityScore,0)+'/100 · calidad '+formatNumber(row.quality,0)+'/100'+(row.entry&&num(row.entry.extensionPct)!==null?' · extensión EMA20 '+formatNumber(row.entry.extensionPct,1)+'%':'')+(catalyst&&catalyst.label?' · '+esc(catalyst.label):'')+'.</p>';
 }
 
@@ -1460,7 +1463,20 @@ function goalAiContrastPanel(metrics,portfolio,positionRows,buys,sells){
     "Posiciones actuales:\n"+(held.length?held.join("\n"):"(sin posiciones)")+"\n\n"+
     "Plan propuesto:\n"+([...sellLines,...buyLines].join("\n")||"No hacer cambios ahora.");
   const day=new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Madrid"});
-  return C.panelHtml({type:"goal",key:portfolio.id+":"+day,title:"Plan de "+(portfolio.name||"la cartera"),prompt});
+  const tickers=[...new Set([...positionRows.map(r=>tickerOf(r.stock,r.p)),...buys.map(r=>tickerOf(r.stock))].filter(Boolean))];
+  // Pregunta manual más extensa (ChatGPT/Claude/Gemini con la cuenta del usuario), a demanda.
+  const manualPrompt=()=>"Eres un gestor de carteras independiente. Responde en español, investiga en la web con datos actuales y no inventes nada: si un dato no se puede verificar, dilo.\n\n"+
+    prompt+"\n\n"+
+    "QUIERO UN ANÁLISIS EXTENSO DE LA SITUACIÓN ACTUAL:\n"+
+    "1. Para cada posición: qué ha pasado en los últimos días (noticias, resultados, filings, dilución, rating, sector) y si conviene MANTENER, REDUCIR o SALIR ahora, con el motivo y el riesgo principal.\n"+
+    "2. Para cada compra propuesta: si la entrada tiene sentido ahora (catalizadores próximos con fecha, técnica, valoración, riesgos de dilución o de noticia), y si el stop y el objetivo son razonables.\n"+
+    "3. La cartera en conjunto: concentración por sector o factor, correlación entre posiciones, riesgo de eventos (resultados, macro) en las próximas 2 semanas y si el plan acerca al objetivo con un riesgo coherente con el perfil.\n"+
+    "4. Qué cambiarías del plan y en qué orden, y qué vigilar en los próximos días.\n"+
+    "5. Señala datos contradictorios entre fuentes y enlaza las fuentes principales con fecha.\n\n"+
+    "Al final incluye SOLO un bloque JSON con esta forma (un elemento por cada acción citada: "+tickers.join(", ")+"):\n"+
+    '{"veredicto":"respalda|dudas|contradice","resumen":"una o dos frases sobre el plan","valores":[{"ticker":"XXX","veredicto":"respalda|dudas|contradice","motivo":"dato clave"}]}\n'+
+    "«respalda» = mantener/comprar tiene sentido; «dudas» = hay riesgos que lo debilitan; «contradice» = hay hechos para no comprar o para salir.";
+  return C.panelHtml({type:"goal",key:portfolio.id+":"+day,title:"Plan de "+(portfolio.name||"la cartera"),prompt,manualPrompt});
 }
 function goalRiskSummaryHtml(band){
   if(!band)return"";
@@ -3491,6 +3507,12 @@ function bind() {
   });
 
   window.addEventListener("viewinvai:decisions-changed", () => { if (state.user) renderActivePortfolioPanel(); });
+  // Una opinión nueva de IA (pegada o con clave) puede dejar una compra del Objetivo en observación.
+  window.addEventListener("viewinvai:ai-contrast", () => {
+    if (!state.user || !document.querySelector(".portfolio-goal-view")) return;
+    if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    renderGoalApp();
+  });
   // Cotización por ISIN de una posición fuera del catálogo: repinta como mucho cada 2 s.
   let isinQuoteTimer = null;
   window.addEventListener("viewinvai:tr-isin-quote", () => {

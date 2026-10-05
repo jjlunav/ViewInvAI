@@ -504,9 +504,14 @@ function radarAiCandidateRows(mode,advanced=null){
   let tier=rt.tier==='spec'?'opportunity':rt.tier;
   if(rt.eligible&&advanced&&advanced.eligible&&advanced.s&&stockKey(advanced.s)===stockKey(s))tier='high';
   const spec={speculative:rt.tier==='spec',reasons:rt.reasons};
-  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,speculative:spec.speculative,specReasons:spec.reasons||[],advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
+  // Opinión de una IA externa (pegada o con clave, últimos 3 días): si contradice baja un nivel
+  // (sin salir del Radar); si respalda, la acción queda marcada como reforzada.
+  const ai=window.ViewInvAIContrast&&window.ViewInvAIContrast.tickerVerdict?window.ViewInvAIContrast.tickerVerdict(s.ticker||s.trTicker):null;
+  if(ai&&ai.verdict==='contradice'&&!spec.speculative)tier=tier==='high'?'opportunity':'watch';
+  rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,speculative:spec.speculative,specReasons:spec.reasons||[],ai,advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }
- rows.sort((a,b)=>b.score-a.score||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
+ const aiRank=r=>r.ai?(r.ai.verdict==='respalda'?4:r.ai.verdict==='contradice'?-4:0):0;
+ rows.sort((a,b)=>(b.score+aiRank(b))-(a.score+aiRank(a))||b.quality-a.quality||String(a.s.ticker||'').localeCompare(String(b.s.ticker||'')));
  rows.analyzed=analyzed;
  return rows;
 }
@@ -519,24 +524,21 @@ function radarAiCard(row){
  // quality joins the subtitle, so the Score/Datos row is no longer needed.
  return standardStockCard(s,0,{
   se:a.se||currentMarketSession(),preferTr,rankLabel:F(row.score,0),context:'recommendation',
-  hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100'+(row.speculative?' · Especulativo: '+row.specReasons.join(', '):''),cells:[],
+  hint:'Radar AI · '+tierLabel+' · score '+F(row.score,0)+'/100'+(row.speculative?' · Especulativo: '+row.specReasons.join(', '):'')+(row.ai?' · IA externa: '+row.ai.verdict+(row.ai.reason?' ('+row.ai.reason+')':''):''),cells:[],
   className:'radar-ai-card radar-ai-card-'+(row.speculative?'spec':row.tier),
   subtitle:(row.speculative?'⚠ Especulativo · ':'')+[ticker,preferTr?'LSX':(s.exchange||'EEUU'),'Calidad '+F(row.quality,0)].filter(Boolean).join(' · ')+venueNote,
   openAttrs:stockOpenAttrs(s,'Radar AI',preferTr),
-  metaHtml:radarAiContrastBadge(s.ticker||s.trTicker),
+  metaHtml:row.ai&&window.ViewInvAIContrast?window.ViewInvAIContrast.badgeHtml(row.ai):'',
   detailsHtml:''
  });
 }
 // ----- Contraste opcional con las IA del usuario (Configuración › Integrar la IA) -----
 // No cambia el cálculo: solo añade la opinión de las IA activas sobre la selección del día.
 function radarAiContrastKey(mode){return mode+':'+new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'})}
-function radarAiContrastBadge(ticker){
- const C=window.ViewInvAIContrast;if(!C)return'';
- const v=C.verdictFor('radar',radarAiContrastKey(radarAiMarket),ticker);
- return v?C.badgeHtml(v):'';
-}
-function radarAiContrastPrompt(rows,mode){
- const isTr=mode==='tr',pick=[...radarAiTierRows(rows,'high'),...radarAiTierRows(rows,'opportunity'),...radarAiTierRows(rows,'spec'),...radarAiTierRows(rows,'watch')];
+function radarAiContrastPool(rows){return[...radarAiTierRows(rows,'high'),...radarAiTierRows(rows,'opportunity'),...radarAiTierRows(rows,'watch'),...radarAiTierRows(rows,'spec')]}
+function radarAiContrastPrompt(rows,mode,selected=null){
+ const isTr=mode==='tr',want=selected?new Set(selected):null;
+ const pick=radarAiContrastPool(rows).filter(r=>!want||want.has(String(r.s.ticker||r.s.trTicker||'').toUpperCase()));
  const lines=pick.map(r=>{
   const s=r.s,ticker=s.ticker||s.trTicker,isin=s.trIsin||s.isin;
   const level=r.speculative?'especulativo':RADAR_TIER_LABEL[r.tier]||r.tier;
@@ -555,10 +557,16 @@ function radarAiContrastPrompt(rows,mode){
 }
 function radarAiContrastPanel(rows,mode){
  const C=window.ViewInvAIContrast;if(!C||!rows.length)return'';
- return C.panelHtml({type:'radar',key:radarAiContrastKey(mode),title:'Radar '+(mode==='tr'?'Trade Republic':'EEUU')+' de hoy',prompt:radarAiContrastPrompt(rows,mode)});
+ const seen=new Set(),choices=[];
+ for(const r of radarAiContrastPool(rows)){
+  const t=String(r.s.ticker||r.s.trTicker||'').toUpperCase();if(!t||seen.has(t))continue;seen.add(t);
+  const group=r.speculative?'spec':r.tier;
+  choices.push({ticker:t,group,label:r.speculative?'Especulativo':RADAR_TIER_LABEL[r.tier]||''});
+ }
+ return C.panelHtml({type:'radar',key:radarAiContrastKey(mode),title:'Radar '+(mode==='tr'?'Trade Republic':'EEUU')+' de hoy',choices,prompt:sel=>radarAiContrastPrompt(rows,mode,sel)});
 }
 window.addEventListener('viewinvai:ai-contrast',e=>{
- if(e.detail&&e.detail.type==='radar'&&document.querySelector('#recommendationResults .radar-ai-shell'))rerenderRadarAiList();
+ if(e.detail&&(e.detail.type==='radar'||e.detail.type==='stock'||e.detail.type==='all')&&document.querySelector('#recommendationResults .radar-ai-shell'))rerenderRadarAiList();
 });
 // ----- Marcador de aciertos (registro diario del servidor) -----
 let radarScoreboard={at:0,data:null,loading:false},radarScoreboardOpen=false;

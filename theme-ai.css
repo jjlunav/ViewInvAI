@@ -1445,3 +1445,38 @@ html[data-theme="light"] .ai-verdict-bad{color:#c62828}
 html[data-theme="light"] .ai-verdict-note{color:#4f46e5}
 .ai-contrast-tools{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .ai-contrast-tools .btn{width:100%;min-width:0;white-space:normal}
+/* «Preguntar a AI»: un botón por IA con su logo + pegar respuesta */
+.ai-ask-box{display:grid;gap:10px;padding:12px;border-radius:14px;border:1px solid rgba(140,170,255,.2);background:rgba(255,255,255,.03);min-width:0}
+html[data-theme="light"] .ai-ask-box{background:#fff;border-color:#dfe3f3}
+.ai-ask-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ai-ask-label{display:grid;gap:2px;min-width:0}
+.ai-ask-label b{font-size:15px}
+.ai-ask-label small{font-size:11.5px;color:var(--muted,#8ea0bf)}
+.ai-ask-logos{display:flex;gap:8px}
+.ai-ask-logo{width:48px;height:48px;display:grid;place-items:center;padding:0;border-radius:14px;border:1px solid rgba(140,170,255,.25);background:rgba(255,255,255,.05);color:#f2f5fa;cursor:pointer;transition:transform .12s ease,border-color .12s ease}
+.ai-ask-logo svg{width:26px;height:26px;display:block}
+.ai-ask-logo:hover:not(:disabled),.ai-ask-logo:focus-visible{transform:translateY(-1px);border-color:rgba(157,140,255,.7)}
+.ai-ask-logo:disabled{opacity:.35;cursor:not-allowed}
+html[data-theme="light"] .ai-ask-logo{background:#f7f8fc;border-color:#d7dcec;color:#0d0d0d}
+.ai-paste-btn{justify-self:stretch;width:100%}
+.ai-run-btn{width:100%}
+.ai-contrast-inline{margin:0 0 12px}
+.ai-contrast-inline>.ai-contrast-body{padding:12px}
+.ai-contrast-result-head small{font-weight:600;font-size:11px;color:var(--muted,#8ea0bf);margin-left:4px}
+.ai-pick{display:grid;gap:8px;min-width:0}
+.ai-pick-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ai-pick-head b{font-size:13.5px}
+.ai-pick-head small{font-size:12px;color:var(--muted,#8ea0bf)}
+.ai-pick-head .link-btn{margin-left:auto;font-size:12px}
+.ai-pick-list{display:flex;flex-wrap:wrap;gap:6px;max-height:184px;overflow:auto;padding:2px}
+.ai-pick-chip{display:grid;gap:0;text-align:left;padding:5px 10px;border-radius:10px;border:1px solid rgba(140,170,255,.22);background:transparent;color:inherit;font:inherit;cursor:pointer;border-left-width:3px}
+.ai-pick-chip b{font-size:13px}
+.ai-pick-chip small{font-size:10.5px;color:var(--muted,#8ea0bf)}
+.ai-pick-chip.ai-pick-high{border-left-color:var(--tier-high,#43e4b2)}
+.ai-pick-chip.ai-pick-opportunity{border-left-color:var(--tier-opp,#9d8cff)}
+.ai-pick-chip.ai-pick-watch{border-left-color:var(--tier-watch,#f4b740)}
+.ai-pick-chip.ai-pick-spec{border-left-color:#ff8a65}
+.ai-pick-chip.on{background:rgba(157,140,255,.2);border-color:rgba(157,140,255,.75)}
+html[data-theme="light"] .ai-pick-chip.on{background:#eef0ff;border-color:#4f46e5}
+.ai-card-verdict{font-size:11px;padding:1px 7px}
+.portfolio-goal-trade em .ai-card-verdict{font-style:normal;margin-left:4px;vertical-align:middle}
