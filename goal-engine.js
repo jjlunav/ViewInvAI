@@ -239,7 +239,8 @@
         pool-=ticket+feeB;slots--;
         actions.push({type:'BUY',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
-          text:'Comprar '+units+' × '+c.ticker+' (≈ '+money(ticket)+') con stop en '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiScoutReason||'',
+          text:'Comprar '+units+' × '+c.ticker+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     return{version:VERSION,actions,holds,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
