@@ -45,7 +45,7 @@
     const b=band(risk),parts=[];let score=50;
     const add=(name,v)=>{score+=v;if(Math.abs(v)>=4)parts.push(name+(v>0?' +':' ')+Math.round(v))};
     const rv=n(c.relVolume),ch=n(c.dayChangePct),rsi=n(c.rsi),adx=n(c.adx),p=n(c.technicalPrice),
-      e20=n(c.ema20),e50=n(c.ema50),week=n(c.perfWeek),spread=n(c.spreadPct),
+      e20=n(c.ema20),e50=n(c.ema50),week=n(c.perfWeek),spread=n(c.spreadPct),avgVolume=n(c.avgVolume),
       catalystImpact=n(c.catalystImpact),catalystDays=n(c.catalystDays),timing=n(c.entryTiming),
       extension=n(c.extensionPct),nearHigh=n(c.nearHighPct),scout=n(c.aiScoutScore);
     if(rv!==null){if(rv>=1.5&&rv<=4)add('volumen acelera',14);else if(rv>4)add('volumen extremo',ch!==null&&ch<=6?10:4);else if(rv>=1.05)add('volumen despierta',6);else if(rv<.65)add('volumen débil',-10)}
@@ -57,6 +57,8 @@
     if(nearHigh!==null&&ch!==null){if(nearHigh<=2&&ch<=5)add('presión de ruptura',6);else if(nearHigh<.5&&ch>6)add('persigue máximos',-8)}
     if(week!==null){if(week>=0&&week<=12)add('semana con margen',5);else if(week>20)add('semana sobreextendida',-10);else if(week<-6)add('semana débil',-7)}
     if(spread!==null){if(spread<=1)add('spread limpio',4);else if(spread>b.maxSpreadPct)add('spread caro',-18);else if(spread>3)add('spread amplio',-6)}
+    const traded=p!==null&&avgVolume!==null?p*avgVolume:null;
+    if(traded!==null){if(traded<200000)add('liquidez insuficiente',-20);else if(traded<1000000)add('liquidez baja',-9);else if(traded>=5000000)add('liquidez suficiente',3)}
     if(catalystImpact!==null&&catalystDays!==null&&catalystDays>=0&&catalystDays<=7){
       if(catalystImpact>=75)add('catalizador cercano fuerte',12);else if(catalystImpact>=55)add('catalizador cercano',7);
     }
