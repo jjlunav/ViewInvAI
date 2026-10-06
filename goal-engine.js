@@ -12,9 +12,9 @@
 
   const VERSION='2026.10.06-g3-entry-guard';
   const RISK={
-    conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6},
-    balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5},
-    aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4}
+    conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
+    balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
+    aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4,maxHoldDays:6}
   };
   const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5,SPEC_MAX_WEIGHT=10;
 
@@ -224,8 +224,9 @@
       const imminent=n(p.catalystDays)!==null&&n(p.catalystDays)>=0&&n(p.catalystDays)<=2&&(n(p.catalystImpact)||0)>=65;
       const stagnant=holdingDays!==null&&holdingDays>=b.stagnantDays&&ret!==null&&ret<1.5&&ret>-4&&score<65&&!imminent;
       const decaying=holdingDays!==null&&holdingDays>=2&&ret!==null&&ret<0&&score<=50&&!imminent;
+      const expired=holdingDays!==null&&holdingDays>=b.maxHoldDays&&ret!==null&&ret<3&&score<72&&!imminent;
       const minHold=holdingDays!==null&&holdingDays<b.minHoldDays;
-      const weak=score<=40||p.aiVerdict==='contradice'||stagnant||decaying;
+      const weak=score<=40||p.aiVerdict==='contradice'||stagnant||decaying||expired;
       if(!weak)continue;
       if(minHold&&p.aiVerdict!=='contradice'){
         holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': entrada demasiado reciente para rotar sin que haya saltado el stop.'});continue;
@@ -243,7 +244,15 @@
       }
       // En modo defensivo no se rota (vender para no poder comprar sería solo consolidar la pérdida).
       if(defensive){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': modo defensivo, solo se vende por stop.'});continue}
-      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(stagnant?'está estancada en horizonte corto':'señal débil')+', pero no hay una alternativa mejor que compense el cambio.'});continue}
+      // Si la tesis corta ya ha caducado o lleva días estancada, no hace falta inventar otra
+      // compra para justificar la salida. Con pérdida mínima (<=1 %) se libera liquidez.
+      if(!alt&&(expired||stagnant)&&ret!==null&&ret>=-1){
+        pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
+        actions.push({type:'SELL',reason:expired?'time-exit':'stagnation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
+          text:'Vender '+units+' × '+p.ticker+': '+(expired?'se agotó la ventana de la operación corta':'lleva demasiado tiempo sin avanzar')+'; se libera liquidez para la siguiente oportunidad.'});
+        continue;
+      }
+      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(expired?'ha agotado el tiempo objetivo de la operación':stagnant?'está estancada en horizonte corto':'señal débil')+', pero vender ahora consolidaría una pérdida sin una alternativa clara.'});continue}
       const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL');
       const expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
       const needed=(loss+fees)*ROTATION_MARGIN;
@@ -251,7 +260,7 @@
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
         actions.push({type:'SELL',reason:'rotation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,into:alt.ticker,
           expectedGainEur:r2(expectedGain),neededEur:r2(needed),
-          text:'Vender '+units+' × '+p.ticker+' para pasar a '+alt.ticker+': '+(stagnant?'no está respondiendo en el horizonte corto; ':'')+'la alternativa tiene score temprano '+Math.round(alt.burstScore||0)+'/100 y se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
+          text:'Vender '+units+' × '+p.ticker+' para pasar a '+alt.ticker+': '+(expired?'ha superado el tiempo máximo de una operación corta; ':stagnant?'no está respondiendo en el horizonte corto; ':'')+'la alternativa tiene score temprano '+Math.round(alt.burstScore||0)+'/100 y se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
       }else{
         holds.push({key:p.key,ticker:p.ticker,expectedGainEur:r2(expectedGain),neededEur:r2(needed),
           text:'Mantener '+p.ticker+': cambiarla consolidaría '+money(loss)+' de pérdida y '+money(fees)+' de comisiones que la mejor alternativa ('+alt.ticker+', '+pct(alt.targetPct)+' previsto) no compensa con margen.'});
