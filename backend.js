@@ -5341,12 +5341,20 @@ function goalDiscoveryRows(snapshot,scope){
       perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spread:null,bid:null,ask:null,quoteAgeMs:null,
       snapshotAgeMs:snapshotAt?Math.max(0,nowMs-snapshotAt):null,chartAvailable:false},events,nowMs);
     const score=finiteNumber(a&&a.score)??0,quality=finiteNumber(a&&a.quality&&a.quality.score)??0;
-    if(score<55||quality<45)continue;
+    if(score<50||quality<45)continue;
     const rt=typeof engine.radarTier==="function"?engine.radarTier({score,quality,price,marketCap:finiteNumber(stock.marketCap),avgVolume:finiteNumber(stock.avgVolume),events,nowMs,market:scope}):{};
+    const cat=goalServerCatalyst(snapshot,stock),ema20=finiteNumber(stock.ema20),dayHigh=finiteNumber(stock.usLiveDayHigh??stock.dayHigh);
+    const extensionPct=price!==null&&ema20>0?(price/ema20-1)*100:null;
+    const nearHighPct=price!==null&&dayHigh>0&&price<=dayHigh?(dayHigh-price)/dayHigh*100:null;
+    const prelim={score,quality,relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,
+      ema50:finiteNumber(stock.ema50),technicalPrice:price,dayChangePct:finiteNumber(scope==="tr"?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct)),
+      perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,scope==="tr"),
+      extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact};
+    const early=goalEngine.candidateBurst(prelim,"aggressive");
     rows.push({stock_key:goalServerKey(stock),ticker:String(stock.ticker||stock.trTicker||""),name:String(stock.name||""),tier:rt&&rt.tier?rt.tier:"watch",
-      score,quality,price,tr_tradable:stock.tradeRepublicTradable===true?1:0,speculative:rt&&rt.tier==="spec"?1:0,early_pool:rt&&rt.tier?0:1});
+      score,quality,price,early_score:early.score,tr_tradable:stock.tradeRepublicTradable===true?1:0,speculative:rt&&rt.tier==="spec"?1:0,early_pool:rt&&rt.tier?0:1});
   }
-  rows.sort((a,b)=>b.score-a.score||b.quality-a.quality);
+  rows.sort((a,b)=>(b.early_score||0)-(a.early_score||0)||b.score-a.score||b.quality-a.quality);
   goalDiscoveryCache={stamp,scope,at:Date.now(),rows:rows.slice(0,80)};
   return goalDiscoveryCache.rows;
 }
