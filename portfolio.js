@@ -1456,7 +1456,7 @@ function goalEngineInput(metrics,positionRows){
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     return priceEur>0?{key:goalStockKey(r.s),ticker,name:r.s.name||"",priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
-      relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),
+      relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
       catalystDays:num(cat.days),catalystImpact:num(cat.impact)}:null;
