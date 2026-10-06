@@ -1,7 +1,7 @@
 // Motor del Objetivo de la cartera: el mismo código en la app y en el servidor.
 // Objetivo «rápido»: crecer lo antes posible asumiendo riesgo, pero sin locuras:
 // · compra al momento si la acción supera el filtro (sin esperar al día siguiente);
-// · de 3 a 5 acciones; como mucho una especulativa y pequeña;
+// · recomienda 1 entrada principal y, como máximo, una segunda de calidad casi equivalente;
 // · stop según la volatilidad de cada acción y stop que sube cuando gana (trailing);
 // · no se vende en pérdidas para cambiar de acción salvo que la nueva prevea recuperar
 //   esa pérdida y todas las comisiones con margen;
