@@ -5081,7 +5081,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     if(request.method==="GET"){
       // Opiniones de los últimos 3 días (todas): la app las usa para reforzar o rebajar cada acción.
       if(url.searchParams.get("recent")==="1"){
-        const since=new Date(Date.now()-12*3600000).toISOString();
+        const since=new Date(Date.now()-3*86400000).toISOString();
         const {results}=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 60").bind(user.id,since).all();
         return json({contrasts:(results||[]).map(aiContrastRow)},200,noStore);
       }
@@ -5420,10 +5420,10 @@ async function goalWorkersScout(env,goal,candidates){
   return{reviewed:false,map:new Map()};
 }
 async function goalAiVerdicts(env,userId){
-  // Opinión más reciente (3 días) de cualquier IA por ticker: la misma regla que la app.
+  // Objetivo opera a 1-5 sesiones: una opinión de hace varios días ya puede estar obsoleta.
   try{
     await ensureAiIntegrationSchema(env);
-    const since=new Date(Date.now()-3*86400000).toISOString();
+    const since=new Date(Date.now()-12*3600000).toISOString();
     const {results}=await env.DB.prepare("SELECT items_json,created_at FROM ai_contrasts WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 60").bind(userId,since).all();
     const map=new Map();
     for(const r of results||[]){let items=[];try{items=JSON.parse(r.items_json||"[]")}catch(_){}
