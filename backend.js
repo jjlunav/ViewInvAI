@@ -4762,7 +4762,7 @@ export async function handleBackendApi(request, env, services = {}) {
 // opinión bajo petición. Las claves se guardan cifradas (AES-GCM con AI_KEYS_SECRET,
 // ligadas al usuario) y nunca se devuelven; a la IA solo se envían datos públicos.
 const AI_PROVIDERS={
-  gemini:{label:"Gemini",model:"gemini-flash-latest"},
+  gemini:{label:"Gemini",model:"gemini-3.6-flash"},
   anthropic:{label:"Claude",model:"claude-opus-5-5"},
   openai:{label:"OpenAI",model:"gpt-5-mini"}
 };
@@ -4882,31 +4882,38 @@ function aiCleanSources(list){
   return out;
 }
 async function aiAskGemini(apiKey,model,prompt){
-  const endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
-  const call=async withSearch=>{
-    const system=withSearch?AI_CONTRAST_SYSTEM:
-      AI_CONTRAST_SYSTEM+"\nIMPORTANTE: en este intento no tienes acceso a búsqueda web. No afirmes haber verificado noticias actuales; si el veredicto depende de información reciente que no aparece en el prompt, indícalo y usa «dudas».";
-    const body={systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}]};
-    if(withSearch)body.tools=[{google_search:{}}];
-    const res=await aiFetch(endpoint,{method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const data=await res.json().catch(()=>({}));
-    return{res,data};
-  };
-  let attempt=await call(true),freeFallback=false;
-  if(!attempt.res.ok){
-    const raw=String(attempt.data&&attempt.data.error&&(attempt.data.error.message||attempt.data.error.status)||"");
-    const searchUnavailable=attempt.res.status===429||
-      ((attempt.res.status===400||attempt.res.status===403)&&/google.?search|grounding|free.?tier|quota|billing|resource.?exhausted/i.test(raw));
-    if(searchUnavailable){
-      const retry=await call(false);
-      if(retry.res.ok){attempt=retry;freeFallback=true}
-      else return{error:aiProviderError("gemini",retry.res.status,retry.data)};
-    }else return{error:aiProviderError("gemini",attempt.res.status,attempt.data)};
+  // ViewInvAI ya adjunta cotización, técnica y noticias/eventos conocidos. Para el nivel
+  // gratuito no dependemos de Google Search grounding: así evitamos una llamada que el
+  // free tier puede rechazar y reducimos latencia/carga.
+  const preferred=String(model||"")==="gemini-flash-latest"?"gemini-3.6-flash":String(model||"gemini-3.6-flash");
+  const models=[preferred,"gemini-3.6-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((m,i,a)=>m&&a.indexOf(m)===i);
+  const system=AI_CONTRAST_SYSTEM+
+    "\nIMPORTANTE: no tienes búsqueda web en esta consulta. Usa los datos actuales aportados por ViewInvAI en el prompt. No afirmes haber verificado fuera de ellos; si falta un dato reciente, indícalo y usa «dudas».";
+  const body=JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}]});
+  let last=null,usedModel=preferred;
+  for(const candidate of models){
+    usedModel=candidate;
+    // Un 503 es saturación temporal de Google. Reintentamos una vez el mismo modelo
+    // y, si sigue ocupado, pasamos automáticamente a un Flash-Lite gratuito.
+    for(let attemptNo=0;attemptNo<2;attemptNo++){
+      const endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(candidate)+":generateContent";
+      const res=await aiFetch(endpoint,{method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},body});
+      const data=await res.json().catch(()=>({}));
+      if(res.ok){
+        const cand=data.candidates&&data.candidates[0]||{};
+        const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
+        const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
+        return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean),
+          freeFallback:true,modelFallback:candidate!==preferred?candidate:"",effectiveModel:candidate};
+      }
+      last={res,data};
+      const transient=[429,500,502,503,504].includes(res.status);
+      if(!transient)break;
+      if(attemptNo===0)await new Promise(resolve=>setTimeout(resolve,450));
+    }
+    if(last&&[401,403].includes(last.res.status))break;
   }
-  const data=attempt.data,cand=data.candidates&&data.candidates[0]||{};
-  const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
-  const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
-  return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean),freeFallback};
+  return{error:aiProviderError("gemini",last&&last.res?last.res.status:503,last&&last.data||{}),effectiveModel:usedModel};
 }
 async function aiAskClaude(apiKey,model,prompt){
   const messages=[{role:"user",content:prompt}];
@@ -5079,7 +5086,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       for(const a of answers){
         if(a.error){errors.push({provider:a.row.provider,error:a.error});continue}
         const parsed=aiParseAnswer(a.text);
-        if(a.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web en esta consulta. "+(parsed.summary||""),800);
+        if(a.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web"+(a.modelFallback?" · respaldo "+a.modelFallback:"")+" en esta consulta. "+(parsed.summary||""),800);
         contrasts.push(await aiSaveContrast(env,user,type,key,a.row.provider,parsed,a.sources));
       }
     }
@@ -5316,7 +5323,7 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
       catch(_){ans={error:"timeout"}}
       if(ans.error||!String(ans.text||"").trim())return{reviewed:false,verdicts:new Map()};
       const parsed=aiParseAnswer(ans.text);
-      if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web en esta consulta. "+(parsed.summary||""),800);
+      if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web"+(ans.modelFallback?" · respaldo "+ans.modelFallback:"")+" en esta consulta. "+(parsed.summary||""),800);
       rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,row.provider,parsed,ans.sources)];
     }
     const verdicts=new Map();
