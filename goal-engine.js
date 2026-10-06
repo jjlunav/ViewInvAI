@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.06-g3-entry-guard';
+  const VERSION='2026.10.06-g4-limit-wait';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -42,29 +42,41 @@
   // Filtro de entrada compartido por web y backend. Un candidato puede tener buen score
   // y aun así ser una mala compra AHORA por FOMO, spread o extensión.
   function candidateEntry(c,risk='aggressive'){
-    const b=band(risk),reasons=[];let timing=100;
+    const b=band(risk),limitReasons=[],waitReasons=[];let timing=100;
     const spread=n(c.spreadPct),extension=n(c.extensionPct),day=n(c.dayChangePct),week=n(c.perfWeek),
-      nearHigh=n(c.nearHighPct),rsi=n(c.rsi),quality=n(c.quality);
+      nearHigh=n(c.nearHighPct),rsi=n(c.rsi),quality=n(c.quality),current=n(c.askEur)??n(c.priceEur);
     if(extension!==null&&extension>0)timing-=Math.min(34,extension*3.1);
     if(day!==null&&day>3)timing-=Math.min(24,(day-3)*2);
     if(week!==null&&week>8)timing-=Math.min(18,(week-8)*.8);
     if(nearHigh!==null&&nearHigh<.8&&day!==null&&day>4)timing-=10;
     if(spread===null){
       timing-=quality!==null&&quality>=80?4:10;
-      if(quality===null||quality<80)reasons.push('spread sin verificar');
+      if(quality===null||quality<80)waitReasons.push('spread sin verificar');
     }else{
       timing-=Math.min(18,spread*2);
-      if(spread>b.maxSpreadPct)reasons.push('spread demasiado amplio');
+      if(spread>b.maxSpreadPct)waitReasons.push('spread demasiado amplio');
     }
-    if(day!==null&&day<-.75){timing-=Math.min(18,Math.abs(day+.75)*3);reasons.push('momentum de entrada deteriorado')}
-    if(extension!==null&&extension>b.maxExtensionPct)reasons.push('demasiado alejada de EMA20');
-    if(day!==null&&day>b.maxDayChangePct)reasons.push('subida intradía demasiado extendida');
-    if(week!==null&&week>b.maxWeekPerfPct)reasons.push('subida semanal demasiado extendida');
-    if(nearHigh!==null&&nearHigh<.5&&day!==null&&day>6)reasons.push('riesgo de perseguir máximos');
-    if(rsi!==null&&rsi>78)reasons.push('RSI sobrecalentado');
+    if(day!==null&&day<-.75){timing-=Math.min(18,Math.abs(day+.75)*3);waitReasons.push('momentum de entrada deteriorado')}
+    if(extension!==null&&extension>b.maxExtensionPct)limitReasons.push('demasiado alejada de EMA20');
+    if(day!==null&&day>b.maxDayChangePct)limitReasons.push('subida intradía demasiado extendida');
+    if(week!==null&&week>b.maxWeekPerfPct)limitReasons.push('subida semanal demasiado extendida');
+    if(nearHigh!==null&&nearHigh<.5&&day!==null&&day>6)limitReasons.push('riesgo de perseguir máximos');
+    if(rsi!==null&&rsi>78)waitReasons.push('RSI sobrecalentado');
     timing=clamp(timing,0,100);
-    if(timing<b.minTiming)reasons.push('punto de entrada débil');
-    return{eligible:reasons.length===0,timing:r2(timing),reasons};
+    if(timing<b.minTiming&&!waitReasons.length)limitReasons.push('punto de entrada débil');
+
+    let discount=0;
+    if(extension!==null)discount=Math.max(discount,Math.max(0,extension-b.maxExtensionPct)+.5);
+    if(day!==null)discount=Math.max(discount,Math.max(0,day-b.maxDayChangePct)*.65+.5);
+    if(week!==null)discount=Math.max(discount,Math.max(0,week-b.maxWeekPerfPct)*.25+.5);
+    if(nearHigh!==null&&nearHigh<.5&&day!==null&&day>6)discount=Math.max(discount,1.5);
+    if(timing<b.minTiming)discount=Math.max(discount,(b.minTiming-timing)*.12+.5);
+    discount=clamp(discount,0,12);
+    const limitPriceEur=current!==null&&current>0&&discount>0?r2(current*(1-discount/100)):null;
+    const eligible=!waitReasons.length&&!limitReasons.length;
+    const decision=eligible?'BUY_NOW':(!waitReasons.length&&limitReasons.length&&limitPriceEur!==null?'BUY_LIMIT':'WAIT');
+    return{eligible,decision,timing:r2(timing),reasons:[...waitReasons,...limitReasons],waitReasons,limitReasons,
+      limitPriceEur,limitDiscountPct:r2(discount)};
   }
 
   // Puntuación específica del Objetivo: busca el movimiento ANTES de que esté demasiado
@@ -103,7 +115,8 @@
       score>=80&&(ch===null||ch<=5)&&(rsi===null||rsi<=68)?'early':
       score>=b.minBurst&&(ch===null||ch<=10)?'active':
       ch!==null&&ch>10?'late':'watch';
-    return{score:r2(score),phase,parts,entryTiming:timing,entryEligible:entry.eligible,entryReasons:entry.reasons};
+    return{score:r2(score),phase,parts,entryTiming:timing,entryEligible:entry.eligible,entryDecision:entry.decision,
+      entryReasons:entry.reasons,limitPriceEur:entry.limitPriceEur,limitDiscountPct:entry.limitDiscountPct};
   }
   // Stop vigente de una posición: el inicial y, si ya gana más que su stop, el que sube detrás
   // del máximo. Una vez gana el doble del stop, nunca baja de precio de entrada + comisiones.
@@ -169,7 +182,7 @@
     // la probabilidad de alejarse aún más del objetivo. Solo reducimos algo el riesgo si vamos adelantados.
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
     const minScore=b.minScore+adj.score,minQuality=b.minQuality;
-    const actions=[],holds=[],notes=[];
+    const actions=[],holds=[],notes=[],waits=[];
     let pool=cash;
     const remaining=[];
 
@@ -205,16 +218,29 @@
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
       return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,
-        entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryReasons:burst.entryReasons,
+        entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryDecision:burst.entryDecision,entryReasons:burst.entryReasons,
+        limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
         stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
-    }).filter(c=>c.entryEligible)
-      .filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
-      .filter(c=>c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase))
+    }).filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
+      .filter(c=>c.burstScore>=b.minBurst-4&&c.burstPhase!=='avoid')
       .sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
-    // cuando está realmente cerca de la primera. Esto mantiene el ranking accionable.
-    const cands=rankedCands.length>1&&rankedCands[1].burstScore>=rankedCands[0].burstScore-5
+    // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
+    // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
+    const shortlist=rankedCands.length>1&&rankedCands[1].burstScore>=rankedCands[0].burstScore-5
       ?rankedCands.slice(0,2):rankedCands.slice(0,1);
+    const cands=shortlist.filter(c=>c.entryEligible&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase));
+    if(!defensive){
+      for(const c of shortlist.filter(c=>!c.entryEligible)){
+        const isLimit=c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
+        waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
+          limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
+          burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
+          text:isLimit
+            ?'Esperar '+c.ticker+': oportunidad válida, pero no comprar por encima de '+money(c.limitPriceEur)+'. La entrada actual está demasiado extendida.'
+            :'Esperar '+c.ticker+': '+((c.entryReasons||[]).join(', ')||'el punto de entrada no es suficientemente limpio')+'.'});
+      }
+    }
 
     // 3) Posiciones débiles: solo se sustituyen si compensa (pérdida + comisiones, con margen).
     const used=new Set();
@@ -285,13 +311,18 @@
         const ticket=units*ask;
         if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(c.ticker+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         pool-=ticket+feeB;slots--;
-        actions.push({type:'BUY',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
+        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiScoutReason||'',
           text:'Comprar '+units+' × '+c.ticker+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
-    return{version:VERSION,actions,holds,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
+    const decisions=[
+      ...actions.map(a=>({...a,decision:a.decision||(a.type==='SELL'?'VENDER':a.type==='RAISE_STOP'?'MANTENER / SUBIR STOP':a.type)})),
+      ...waits,
+      ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
+    ];
+    return{version:VERSION,actions,waits,holds,decisions,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions}};
   }
 
