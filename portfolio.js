@@ -1389,14 +1389,15 @@ async function persistPendingGoalHistory(){
 }
 function goalHistoryMoney(value){return num(value)===null?"—":formatMoney(value,"EUR")}
 function goalHistoryEntryHtml(entry,index){
-  const plan=entry&&entry.plan||{},sells=Array.isArray(plan.sells)?plan.sells:[],buys=Array.isArray(plan.buys)?plan.buys:[];
+  const plan=entry&&entry.plan||{},sells=Array.isArray(plan.sells)?plan.sells:[],buys=Array.isArray(plan.buys)?plan.buys:[],waits=Array.isArray(plan.waits)?plan.waits:[];
   const when=entry&&entry.created_at?new Date(entry.created_at):null;
   const stamp=when&&Number.isFinite(when.getTime())?when.toLocaleString("es-ES"):"";
   const sellsHtml=sells.length?sells.map(x=>'<div class="goal-history-op sell"><b>VENDER</b><span>'+esc(String(x.units||0))+' '+esc(x.ticker||x.name||"")+'</span><small>'+esc(x.instruction||"")+(num(x.price)!==null?' · '+esc(String(x.price))+' '+esc(x.currency||""):'')+(num(x.feeEur)!==null?' · comisión '+esc(goalHistoryMoney(x.feeEur)):'')+'</small></div>').join(''):'';
-  const buysHtml=buys.length?buys.map(x=>'<div class="goal-history-op buy"><b>#'+esc(String(x.rank||1))+' COMPRAR</b><span>'+esc(String(x.units||0))+' '+esc(x.ticker||x.name||"")+'</span><small>'+esc(x.instruction||"")+(num(x.price)!==null?' · límite '+esc(String(x.price))+' '+esc(x.currency||""):'')+(num(x.bid)!==null||num(x.ask)!==null?' · BID/ASK '+esc(String(x.bid??"—"))+'/'+esc(String(x.ask??"—")):'')+(num(x.feeEur)!==null?' · comisión '+esc(goalHistoryMoney(x.feeEur)):'')+(num(x.stop)!==null?' · stop '+esc(String(x.stop)):'')+(num(x.takeProfit)!==null?' · TP '+esc(String(x.takeProfit)):'')+'</small></div>').join(''):'';
-  const empty=!sellsHtml&&!buysHtml?'<div class="goal-history-empty">Sin cambios recomendados en esta revisión.</div>':'';
+  const buysHtml=buys.length?buys.map(x=>'<div class="goal-history-op buy"><b>#'+esc(String(x.rank||1))+' COMPRAR AHORA</b><span>'+esc(String(x.units||0))+' '+esc(x.ticker||x.name||"")+'</span><small>'+esc(x.instruction||"")+(num(x.price)!==null?' · precio '+esc(String(x.price))+' '+esc(x.currency||""):'')+(num(x.bid)!==null||num(x.ask)!==null?' · BID/ASK '+esc(String(x.bid??"—"))+'/'+esc(String(x.ask??"—")):'')+(num(x.feeEur)!==null?' · comisión '+esc(goalHistoryMoney(x.feeEur)):'')+(num(x.stop)!==null?' · stop '+esc(String(x.stop)):'')+(num(x.takeProfit)!==null?' · TP '+esc(String(x.takeProfit)):'')+'</small></div>').join(''):'';
+  const waitsHtml=waits.length?waits.map(x=>'<div class="goal-history-op wait"><b>'+esc(x.decision||"ESPERAR")+'</b><span>'+esc(x.ticker||x.name||"")+'</span><small>'+esc(x.instruction||"")+(num(x.limitPrice)!==null?' · máximo '+esc(String(x.limitPrice))+' EUR':'')+(num(x.currentPrice)!==null?' · actual '+esc(String(x.currentPrice))+' EUR':'')+'</small></div>').join(''):'';
+  const empty=!sellsHtml&&!buysHtml&&!waitsHtml?'<div class="goal-history-empty">Sin cambios recomendados en esta revisión.</div>':'';
   return '<article class="goal-history-entry"><header><div><strong>#'+esc(String(index+1))+' · '+esc(stamp)+'</strong><small>'+esc(entry.summary||"Recomendación Objetivo IA")+'</small></div><b>'+esc(goalHistoryMoney(plan.currentValueEur))+' → '+esc(goalHistoryMoney(plan.targetEur))+'</b></header>'+
-    '<div class="goal-history-ops">'+sellsHtml+buysHtml+empty+'</div>'+
+    '<div class="goal-history-ops">'+sellsHtml+buysHtml+waitsHtml+empty+'</div>'+
     '<footer><span>Efectivo '+esc(goalHistoryMoney(plan.cashEur))+'</span><span>Remanente '+esc(goalHistoryMoney(plan.residualEur))+'</span><span>Riesgo '+esc(plan.riskProfile||"—")+'</span></footer></article>';
 }
 async function openGoalHistory(portfolioId){
