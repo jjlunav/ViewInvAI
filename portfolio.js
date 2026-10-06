@@ -1480,9 +1480,9 @@ function goalPaceHtml(pc,metrics){
     (bits.length?'<small class="goal2-pace-bits">'+esc(bits.join(" · "))+'</small>':'')+'</div>';
 }
 function goalActionHtml(a,ctx){
-  const cand=a.type==="BUY"?ctx.candidates.find(c=>c.key===a.key):null,pos=a.type!=="BUY"?ctx.positions.find(p=>p.key===a.key):null;
-  const C=window.ViewInvAIContrast,ai=a.type==="BUY"&&C?C.badgeHtml(C.tickerVerdict?C.tickerVerdict(a.ticker):null):"";
-  const tag={BUY:"COMPRAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP"}[a.type]||a.type;
+  const cand=(a.type==="BUY"||a.type==="WAIT")?ctx.candidates.find(c=>c.key===a.key):null,pos=(a.type!=="BUY"&&a.type!=="WAIT")?ctx.positions.find(p=>p.key===a.key):null;
+  const C=window.ViewInvAIContrast,ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(C.tickerVerdict?C.tickerVerdict(a.ticker):null):"";
+  const tag={BUY:"COMPRAR AHORA",WAIT:a.decision||"ESPERAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};
@@ -1492,20 +1492,26 @@ function goalActionHtml(a,ctx){
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
-  const key=a.type==="BUY"&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
-  const preferTr=a.type==="BUY"?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
-  const extra=a.type==="BUY"?'<small>'+((a.burstPhase==="early")?'Fase temprana · ':'')+'score temprano '+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+(a.aiScoutReason?' · '+esc(a.aiScoutReason):'')+'</small>':'';
+  const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
+  const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
+  const extra=a.type==="BUY"
+    ?'<small>'+((a.burstPhase==="early")?'Fase temprana · ':'')+'score temprano '+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+(a.aiScoutReason?' · '+esc(a.aiScoutReason):'')+'</small>'
+    :a.type==="WAIT"
+      ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
+      :'';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+esc(a.text)+'</span>'+extra+button+'</div></div>';
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;
   const sells=plan.actions.filter(a=>a.type==="SELL").map(a=>({ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",instruction:a.reason==="stop"?"Stop alcanzado":a.reason==="rotation"?"Sustitución por "+(a.into||""):"Asegurar beneficio"}));
-  const buys=plan.actions.filter(a=>a.type==="BUY").map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",allocationEur:goalHistoryRound(a.ticketEur,2),stop:goalHistoryRound(a.stopEur,4),instruction:"Stop "+a.stopEur}));
-  const summary=plan.actions.length?plan.actions.map(a=>a.text).join(" "):"Sin cambios";
-  return{portfolioId:portfolio.id,signature:JSON.stringify(plan.actions.map(a=>[a.type,a.ticker,a.units||a.stopEur])),summary,
+  const buys=plan.actions.filter(a=>a.type==="BUY").map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",allocationEur:goalHistoryRound(a.ticketEur,2),stop:goalHistoryRound(a.stopEur,4),instruction:"Comprar ahora · stop "+a.stopEur}));
+  const waits=(plan.waits||[]).map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,decision:a.decision||"ESPERAR",limitPrice:goalHistoryRound(a.limitPriceEur,4),currentPrice:goalHistoryRound(a.currentPriceEur,4),instruction:a.text}));
+  const all=[...plan.actions,...(plan.waits||[])];
+  const summary=all.length?all.map(a=>a.text).join(" "):"Sin cambios";
+  return{portfolioId:portfolio.id,signature:JSON.stringify(all.map(a=>[a.type,a.ticker,a.units||a.stopEur||a.limitPriceEur||a.decision])),summary,
     plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.currentValue,2),
-      targetEur:goalHistoryRound(metrics.target,2),cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),sells,buys,residualEur:goalHistoryRound(plan.cashLeftEur,2)}};
+      targetEur:goalHistoryRound(metrics.target,2),cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),sells,buys,waits,residualEur:goalHistoryRound(plan.cashLeftEur,2)}};
 }
 function portfolioGoalViewHtml(){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;
@@ -1523,7 +1529,8 @@ function portfolioGoalViewHtml(){
   if(!engine)return '<section class="portfolio-goal-view goal2">'+head+'<div class="portfolio-goal-no-action">Cargando el motor del objetivo…</div></section>';
   const input=goalEngineInput(metrics,positionRows),plan=engine.plan(input);
   const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur};
-  const today=plan.actions.length?plan.actions.map(a=>goalActionHtml(a,ctx)).join('')
+  const visibleDecisions=[...plan.actions,...(plan.waits||[])];
+  const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
   const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>'<li>'+esc(h.text)+'</li>').join('')+'</ul>':'';
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
