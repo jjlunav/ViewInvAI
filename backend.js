@@ -5652,11 +5652,11 @@ async function scanPortfolioGoalNotifications(env,services){
       let notified={day:"",keys:[]};try{notified=JSON.parse(prev&&prev.notified||"{}")||notified}catch(_){}
       if(notified.day!==clock.day)notified={day:clock.day,keys:[]};
       const seen=new Set(notified.keys||[]),fresh=[];
+      const visibleDecisions=[...(plan.actions||[]),...(plan.waits||[])];
       for(const a of visibleDecisions){
         const k=a.type+":"+a.ticker+":"+(a.type==="RAISE_STOP"?a.stopEur:a.type==="BUY"?a.units:a.type==="WAIT"?(a.limitPriceEur||a.decision||"wait"):a.reason||"");
         if(seen.has(k))continue;seen.add(k);fresh.push(a);
       }
-      const visibleDecisions=[...(plan.actions||[]),...(plan.waits||[])];
       const summaryLine=visibleDecisions.length?visibleDecisions.map(a=>a.text).join(" "):(plan.defensive?plan.notes[0]:"Nada que hacer ahora.");
       const firstRun=!prev;
       if(!firstRun){
