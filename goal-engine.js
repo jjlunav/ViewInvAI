@@ -10,11 +10,11 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.05-g1';
+  const VERSION='2026.10.06-g2-short-alpha';
   const RISK={
-    conservative:{label:'Bajo',minScore:74,minQuality:65,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,stopK:2,rr:2.2},
-    balanced:{label:'Medio',minScore:70,minQuality:60,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,stopK:2.2,rr:2},
-    aggressive:{label:'Alto',minScore:66,minQuality:55,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,stopK:2.5,rr:1.8}
+    conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6},
+    balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5},
+    aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4}
   };
   const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5,SPEC_MAX_WEIGHT=10;
 
@@ -33,8 +33,45 @@
   }
   // Recorrido previsto de una entrada: stop × relación beneficio/riesgo, modulado por la puntuación.
   function targetPctFor(stopPct,score,risk){
-    const s=n(score)??60;
-    return stopPct*band(risk).rr*clamp((s-50)/30,.6,1.3);
+    const s=n(score)??60,b=band(risk);
+    const raw=stopPct*b.rr*clamp((s-50)/30,.6,1.3);
+    // Horizonte de Objetivo: días, no meses. Evitamos objetivos absurdamente lejanos.
+    return clamp(raw,risk==='aggressive'?5:4,risk==='aggressive'?18:risk==='balanced'?14:11);
+  }
+
+  // Puntuación específica del Objetivo: busca el movimiento ANTES de que esté demasiado
+  // extendido. No es una probabilidad; es un ranking de oportunidad temprana (0-100).
+  function candidateBurst(c,risk='aggressive'){
+    const b=band(risk),parts=[];let score=50;
+    const add=(name,v)=>{score+=v;if(Math.abs(v)>=4)parts.push(name+(v>0?' +':' ')+Math.round(v))};
+    const rv=n(c.relVolume),ch=n(c.dayChangePct),rsi=n(c.rsi),adx=n(c.adx),p=n(c.technicalPrice),
+      e20=n(c.ema20),e50=n(c.ema50),week=n(c.perfWeek),spread=n(c.spreadPct),
+      catalystImpact=n(c.catalystImpact),catalystDays=n(c.catalystDays),timing=n(c.entryTiming),
+      extension=n(c.extensionPct),nearHigh=n(c.nearHighPct),scout=n(c.aiScoutScore);
+    if(rv!==null){if(rv>=1.5&&rv<=4)add('volumen acelera',14);else if(rv>4)add('volumen extremo',ch!==null&&ch<=6?10:4);else if(rv>=1.05)add('volumen despierta',6);else if(rv<.65)add('volumen débil',-10)}
+    if(ch!==null){if(ch>=.25&&ch<=4)add('impulso temprano',11);else if(ch>4&&ch<=8)add('movimiento activo',6);else if(ch>10)add('demasiado extendida',-16);else if(ch<-.75)add('momentum negativo',-10)}
+    if(rsi!==null){if(rsi>=48&&rsi<=65)add('RSI con margen',10);else if(rsi>=42&&rsi<48)add('RSI despertando',4);else if(rsi>74)add('RSI caliente',-13);else if(rsi<36)add('RSI débil',-8)}
+    if(adx!==null){if(adx>=16&&adx<=30)add('tendencia naciente',9);else if(adx>30&&adx<=42)add('tendencia activa',5);else if(adx<12)add('sin tendencia',-5)}
+    if(p!==null&&e20!==null&&e50!==null){if(p>=e20&&e20>=e50)add('estructura alcista',10);else if(p>=e20)add('sobre EMA20',4);else add('bajo EMA20',-9)}
+    if(extension!==null){if(extension>=0&&extension<=4)add('entrada poco extendida',6);else if(extension>7)add('lejos de EMA20',-12)}
+    if(nearHigh!==null&&ch!==null){if(nearHigh<=2&&ch<=5)add('presión de ruptura',6);else if(nearHigh<.5&&ch>6)add('persigue máximos',-8)}
+    if(week!==null){if(week>=0&&week<=12)add('semana con margen',5);else if(week>20)add('semana sobreextendida',-10);else if(week<-6)add('semana débil',-7)}
+    if(spread!==null){if(spread<=1)add('spread limpio',4);else if(spread>b.maxSpreadPct)add('spread caro',-18);else if(spread>3)add('spread amplio',-6)}
+    if(catalystImpact!==null&&catalystDays!==null&&catalystDays>=0&&catalystDays<=7){
+      if(catalystImpact>=75)add('catalizador cercano fuerte',12);else if(catalystImpact>=55)add('catalizador cercano',7);
+    }
+    if(timing!==null)score=score*.72+timing*.28;
+    const aiPhase=String(c.aiScoutPhase||'').toLowerCase();
+    if(scout!==null)score=score*.72+clamp(scout,0,100)*.28;
+    if(aiPhase==='early')add('IA detecta fase temprana',6);
+    else if(aiPhase==='active')add('IA confirma movimiento',2);
+    else if(aiPhase==='late'||aiPhase==='avoid')add('IA detecta entrada tardía',-28);
+    score=clamp(score,0,100);
+    const phase=(aiPhase==='late'||aiPhase==='avoid')?aiPhase:
+      score>=80&&(ch===null||ch<=5)&&(rsi===null||rsi<=68)?'early':
+      score>=b.minBurst&&(ch===null||ch<=10)?'active':
+      ch!==null&&ch>10?'late':'watch';
+    return{score:r2(score),phase,parts};
   }
   // Stop vigente de una posición: el inicial y, si ya gana más que su stop, el que sube detrás
   // del máximo. Una vez gana el doble del stop, nunca baja de precio de entrada + comisiones.
@@ -96,8 +133,9 @@
     const drawdownPct=peak>0?(1-valueEur/peak)*100:0;
     const defensive=input.wasDefensive?drawdownPct>DEFENSIVE_OUT:drawdownPct>=DEFENSIVE_IN;
     const pc=pace(cfg,valueEur,input.nowMs);
-    // Con retraso se exige un poco menos y se invierte algo más; adelantado, al revés.
-    const adj=pc.status==='behind'?{score:-3,size:1.15}:pc.status==='ahead'?{score:3,size:.9}:{score:0,size:1};
+    // Ir retrasado NO autoriza a comprar señales peores ni a sobredimensionar: eso aumenta
+    // la probabilidad de alejarse aún más del objetivo. Solo reducimos algo el riesgo si vamos adelantados.
+    const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
     const minScore=b.minScore+adj.score,minQuality=b.minQuality;
     const actions=[],holds=[],notes=[];
     let pool=cash;
@@ -127,22 +165,32 @@
     const specHeld=remaining.some(p=>p.speculative);
     const cands=(input.candidates||[]).filter(c=>{
       if(held.has(String(c.key)))return false;
-      if(!['high','opportunity','spec'].includes(c.tier)&&!c.speculative)return false;
-      if(c.aiVerdict==='contradice')return false;
+      if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
+      if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
       if((n(c.score)??0)<minScore||(n(c.quality)??0)<minQuality)return false;
       if(c.speculative&&(cfg.allowSpec===false||specHeld))return false;
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
-      const stopPct=stopPctFor(c.atrPct,risk);
-      return{...c,stopPct,targetPct:targetPctFor(stopPct,c.score,risk)};
-    }).sort((x,y)=>y.targetPct-x.targetPct||(n(y.score)||0)-(n(x.score)||0));
+      const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
+      return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
+    }).filter(c=>c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase))
+      .sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
 
     // 3) Posiciones débiles: solo se sustituyen si compensa (pérdida + comisiones, con margen).
     const used=new Set();
     for(const p of remaining.slice()){
-      const score=n(p.score)??50,weak=score<=40||p.aiVerdict==='contradice';
+      const score=n(p.score)??50,holdingDays=n(p.holdingDays),priceNow=n(p.bidEur)??n(p.priceEur),avgNow=n(p.avgEur)??priceNow;
+      const ret=avgNow>0&&priceNow!==null?(priceNow/avgNow-1)*100:null;
+      const imminent=n(p.catalystDays)!==null&&n(p.catalystDays)>=0&&n(p.catalystDays)<=2&&(n(p.catalystImpact)||0)>=65;
+      const stagnant=holdingDays!==null&&holdingDays>=b.stagnantDays&&ret!==null&&ret<1.5&&ret>-4&&score<65&&!imminent;
+      const decaying=holdingDays!==null&&holdingDays>=2&&ret!==null&&ret<0&&score<=50&&!imminent;
+      const minHold=holdingDays!==null&&holdingDays<b.minHoldDays;
+      const weak=score<=40||p.aiVerdict==='contradice'||stagnant||decaying;
       if(!weak)continue;
-      const units=n(p.units)||0,price=n(p.bidEur)??n(p.priceEur)??0,avg=n(p.avgEur)??price;
+      if(minHold&&p.aiVerdict!=='contradice'){
+        holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': entrada demasiado reciente para rotar sin que haya saltado el stop.'});continue;
+      }
+      const units=n(p.units)||0,price=priceNow??0,avg=avgNow??price;
       const proceeds=units*price-feeOf(p,'SELL');
       const loss=Math.max(0,(avg-price)*units);
       const alt=cands.find(c=>!used.has(c.key));
@@ -155,7 +203,7 @@
       }
       // En modo defensivo no se rota (vender para no poder comprar sería solo consolidar la pérdida).
       if(defensive){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': modo defensivo, solo se vende por stop.'});continue}
-      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': señal débil, pero no hay una alternativa mejor que lo compense.'});continue}
+      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(stagnant?'está estancada en horizonte corto':'señal débil')+', pero no hay una alternativa mejor que compense el cambio.'});continue}
       const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL');
       const expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
       const needed=(loss+fees)*ROTATION_MARGIN;
@@ -163,7 +211,7 @@
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
         actions.push({type:'SELL',reason:'rotation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,into:alt.ticker,
           expectedGainEur:r2(expectedGain),neededEur:r2(needed),
-          text:'Vender '+units+' × '+p.ticker+' para pasar a '+alt.ticker+': se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
+          text:'Vender '+units+' × '+p.ticker+' para pasar a '+alt.ticker+': '+(stagnant?'no está respondiendo en el horizonte corto; ':'')+'la alternativa tiene score temprano '+Math.round(alt.burstScore||0)+'/100 y se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
       }else{
         holds.push({key:p.key,ticker:p.ticker,expectedGainEur:r2(expectedGain),neededEur:r2(needed),
           text:'Mantener '+p.ticker+': cambiarla consolidaría '+money(loss)+' de pérdida y '+money(fees)+' de comisiones que la mejor alternativa ('+alt.ticker+', '+pct(alt.targetPct)+' previsto) no compensa con margen.'});
@@ -197,5 +245,5 @@
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateBurst});
 })(globalThis);
