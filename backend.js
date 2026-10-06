@@ -5320,6 +5320,36 @@ function goalRadarRows(snapshot){
   goalRadarCache={at:Date.now(),stamp,rows};
   return rows;
 }
+let goalDiscoveryCache={stamp:"",scope:"",at:0,rows:[]};
+function goalDiscoveryRows(snapshot,scope){
+  const stamp=String(snapshot&&snapshot.meta&&(snapshot.meta.liveUpdatedAt||snapshot.meta.updatedAt)||"");
+  if(goalDiscoveryCache.stamp===stamp&&goalDiscoveryCache.scope===scope&&Date.now()-goalDiscoveryCache.at<10*60000)return goalDiscoveryCache.rows;
+  const engine=globalThis.ViewInvAIScore,goalEngine=globalThis.ViewInvAIGoal;
+  if(!engine||!goalEngine||!Array.isArray(snapshot&&snapshot.stocks))return goalRadarRows(snapshot);
+  const byTicker=new Map();
+  for(const e of Array.isArray(snapshot.events)?snapshot.events:[]){
+    const t=String(e&&e.ticker||"").toUpperCase();if(!t)continue;
+    if(!byTicker.has(t))byTicker.set(t,[]);byTicker.get(t).push(e);
+  }
+  const snapshotAt=Date.parse(snapshot.meta&&(snapshot.meta.liveUpdatedAt||snapshot.meta.updatedAt))||null,nowMs=Date.now(),rows=[];
+  for(const stock of snapshot.stocks){
+    if(!goalServerAllowed(stock,scope))continue;
+    const price=finiteNumber(stock.price);if(!(price>0))continue;
+    const events=byTicker.get(String(stock.ticker||"").toUpperCase())||[];
+    const a=engine.analyze({price,change:finiteNumber(stock.changePct),volume:finiteNumber(stock.volume),avgVolume:finiteNumber(stock.avgVolume),
+      relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20:finiteNumber(stock.ema20),ema50:finiteNumber(stock.ema50),
+      perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spread:null,bid:null,ask:null,quoteAgeMs:null,
+      snapshotAgeMs:snapshotAt?Math.max(0,nowMs-snapshotAt):null,chartAvailable:false},events,nowMs);
+    const score=finiteNumber(a&&a.score)??0,quality=finiteNumber(a&&a.quality&&a.quality.score)??0;
+    if(score<55||quality<45)continue;
+    const rt=typeof engine.radarTier==="function"?engine.radarTier({score,quality,price,marketCap:finiteNumber(stock.marketCap),avgVolume:finiteNumber(stock.avgVolume),events,nowMs,market:scope}):{};
+    rows.push({stock_key:goalServerKey(stock),ticker:String(stock.ticker||stock.trTicker||""),name:String(stock.name||""),tier:rt&&rt.tier?rt.tier:"watch",
+      score,quality,price,tr_tradable:stock.tradeRepublicTradable===true?1:0,speculative:rt&&rt.tier==="spec"?1:0,early_pool:rt&&rt.tier?0:1});
+  }
+  rows.sort((a,b)=>b.score-a.score||b.quality-a.quality);
+  goalDiscoveryCache={stamp,scope,at:Date.now(),rows:rows.slice(0,80)};
+  return goalDiscoveryCache.rows;
+}
 function goalServerSpreadPct(stock,preferTr){
   const bid=finiteNumber(preferTr?(stock&&stock.trLiveBid):(stock&&stock.usLiveBid));
   const ask=finiteNumber(preferTr?(stock&&stock.trLiveAsk):(stock&&stock.usLiveAsk));
@@ -5355,7 +5385,7 @@ async function goalWorkersScout(env,goal,candidates){
     "Usa SOLO los datos suministrados. Premia: volumen relativo despertando, tendencia naciente, RSI con margen, estructura técnica, catalizador cercano y liquidez.",
     "Penaliza: subida ya extendida, RSI recalentado, spread amplio, deterioro de momentum, falta de catalizador y FOMO.",
     "No confundas volatilidad con oportunidad. Si faltan datos, sé conservador.",
-    "Devuelve JSON solamente: {"valores":[{"ticker":"XXX","fase":"early|active|late|avoid","score":0,"veredicto":"boost|neutral|block","motivo":"frase breve"}]}",
+    'Devuelve JSON solamente: {"valores":[{"ticker":"XXX","fase":"early|active|late|avoid","score":0,"veredicto":"boost|neutral|block","motivo":"frase breve"}]}',
     JSON.stringify(payload)
   ].join("\n");
   try{
@@ -5478,7 +5508,7 @@ async function scanPortfolioGoalNotifications(env,services){
   const clock=goalServerReviewClock();
   const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
   const byKey=new Map(stocks.map(s=>[goalServerKey(s),s]));
-  const radar=goalRadarRows(snapshot);
+  const radarCacheByScope=new Map();
   const quoteCache=new Map();
   const quoteEur=async(stock,preferTr,side="LAST")=>{
     if(!stock||!services.loadQuote)return null;
@@ -5518,6 +5548,8 @@ async function scanPortfolioGoalNotifications(env,services){
       const preferTr=scope==="tr";
       const prev=await env.DB.prepare("SELECT signature,summary,review_day,plan_json,notified,updated_at FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
       const states=new Map(((await env.DB.prepare("SELECT stock_key,peak_eur,stop_eur FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).all()).results||[]).map(r=>[String(r.stock_key).toUpperCase(),r]));
+      const radar=radarCacheByScope.get(scope)||goalDiscoveryRows(snapshot,scope);
+      if(!radarCacheByScope.has(scope))radarCacheByScope.set(scope,radar);
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
