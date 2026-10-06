@@ -1422,26 +1422,44 @@ function goalAiOf(ticker){
 function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
-  const mode=metrics.marketScope==="us"?"us":"tr",preferTr=mode==="tr";
-  const radar=typeof radarAiCandidateRows==="function"?radarAiCandidateRows(mode,null):[];
+  const mode=metrics.marketScope==="us"?"us":"tr",preferTr=mode==="tr",shortBand=portfolioGoalRiskBand(cfg.riskProfile);
+  const radarPrimary=typeof radarAiCandidateRows==="function"?radarAiCandidateRows(mode,null):[];
+  const broad=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.rankCandidates==="function"
+    ?window.ViewInvAIPulseCoach.rankCandidates(60,[],mode,50):[];
+  const merged=new Map();
+  for(const row of radarPrimary||[]){const key=goalStockKey(row.s);if(key)merged.set(key,row)}
+  for(const row of broad||[]){
+    const stock=row.stock||row.s,key=goalStockKey(stock);if(!key)continue;
+    const old=merged.get(key);
+    if(!old)merged.set(key,{s:stock,score:row.score,quality:row.quality,tier:"watch",speculative:false,earlyPool:true});
+    else{old.score=Math.max(num(old.score)||0,num(row.score)||0);old.quality=Math.max(num(old.quality)||0,num(row.quality)||0)}
+  }
+  const radar=[...merged.values()].sort((a,b)=>(num(b.score)||0)-(num(a.score)||0)||(num(b.quality)||0)-(num(a.quality)||0));
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
   const positions=positionRows.filter(row=>(num(row.qty)||0)>0&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
     const sell=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,row.qty);
-    const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase();
+    const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase(),cat=portfolioGoalCatalyst(row.stock);
+    const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
+    const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     return{key,ticker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
-      feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),row};
+      feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),holdingDays,
+      catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
   });
   const held=new Set(positions.map(p=>p.key));
   const candidates=radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40).map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
-    const market=currentMarket(r.s,preferTr);
+    const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
     let priceEur=q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     return priceEur>0?{key:goalStockKey(r.s),ticker,name:r.s.name||"",priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
-      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q}:null;
+      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
+      relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
+      dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
+      extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
+      catalystDays:num(cat.days),catalystImpact:num(cat.impact)}:null;
   }).filter(Boolean);
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,allowSpec:Number(goal.allow_spec)!==0},
@@ -1476,7 +1494,7 @@ function goalActionHtml(a,ctx){
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
   const key=a.type==="BUY"&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=a.type==="BUY"?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
-  const extra=a.type==="BUY"?'<small>Recorrido previsto +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+'</small>':'';
+  const extra=a.type==="BUY"?'<small>'+((a.burstPhase==="early")?'Fase temprana · ':'')+'score temprano '+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+(a.aiScoutReason?' · '+esc(a.aiScoutReason):'')+'</small>':'';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+esc(a.text)+'</span>'+extra+button+'</div></div>';
 }
@@ -1494,7 +1512,7 @@ function portfolioGoalViewHtml(){
   if(!portfolio)return'<div class="portfolio-empty-state">Selecciona o crea una cartera para definir su objetivo.</div>';
   state.pendingGoalHistory=null;
   const goal=selectedPortfolioGoal()||state.goal||null,errorHtml=state.goalError?'<div class="portfolio-goal-error" role="alert">'+esc(state.goalError)+'</div>':'';
-  const head='<div class="goal2-head"><div><h2>Objetivo · '+esc(portfolio.name)+'</h2><small>'+esc(portfolioMarketLabel(metrics.marketScope))+(goal?' · riesgo '+esc((window.ViewInvAIGoal&&window.ViewInvAIGoal.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):''):'')+'</small></div>'+
+  const head='<div class="goal2-head"><div><h2>Objetivo · '+esc(portfolio.name)+'</h2><small>'+esc(portfolioMarketLabel(metrics.marketScope))+(goal?' · horizonte 1–5 sesiones · riesgo '+esc((window.ViewInvAIGoal&&window.ViewInvAIGoal.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):''):'')+'</small></div>'+
     '<button type="button" class="btn small'+(goal?' ghost':'')+'" data-goal-wizard>'+(goal?'Ajustar objetivo':'Crear objetivo')+'</button></div>';
   if(!goal||metrics.target===null)return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     '<div class="portfolio-goal-no-action"><strong>Define tu objetivo.</strong> Te haré unas preguntas: cuánto quieres alcanzar, para cuándo, cuánto riesgo y con cuántas acciones. Después, cada día verás qué toca hacer.</div></section>';
