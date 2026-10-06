@@ -244,7 +244,15 @@
       }
       // En modo defensivo no se rota (vender para no poder comprar sería solo consolidar la pérdida).
       if(defensive){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': modo defensivo, solo se vende por stop.'});continue}
-      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(expired?'ha agotado el tiempo objetivo de la operación':stagnant?'está estancada en horizonte corto':'señal débil')+', pero no hay una alternativa mejor que compense el cambio.'});continue}
+      // Si la tesis corta ya ha caducado o lleva días estancada, no hace falta inventar otra
+      // compra para justificar la salida. Con pérdida mínima (<=1 %) se libera liquidez.
+      if(!alt&&(expired||stagnant)&&ret!==null&&ret>=-1){
+        pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
+        actions.push({type:'SELL',reason:expired?'time-exit':'stagnation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
+          text:'Vender '+units+' × '+p.ticker+': '+(expired?'se agotó la ventana de la operación corta':'lleva demasiado tiempo sin avanzar')+'; se libera liquidez para la siguiente oportunidad.'});
+        continue;
+      }
+      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(expired?'ha agotado el tiempo objetivo de la operación':stagnant?'está estancada en horizonte corto':'señal débil')+', pero vender ahora consolidaría una pérdida sin una alternativa clara.'});continue}
       const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL');
       const expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
       const needed=(loss+fees)*ROTATION_MARGIN;
