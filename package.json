@@ -9,7 +9,8 @@
     "android:sync": "cap sync android",
     "android:open": "cap open android",
     "android:build:debug": "cd android && ./gradlew assembleDebug",
-    "mobile:build": "node scripts/build_mobile_shell.mjs"
+    "mobile:build": "node scripts/build_mobile_shell.mjs",
+    "test:goal": "node scripts/test_goal_engine.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
