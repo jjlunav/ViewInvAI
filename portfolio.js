@@ -1425,7 +1425,7 @@ function goalEngineInput(metrics,positionRows){
   const mode=metrics.marketScope==="us"?"us":"tr",preferTr=mode==="tr",shortBand=portfolioGoalRiskBand(cfg.riskProfile);
   const radarPrimary=typeof radarAiCandidateRows==="function"?radarAiCandidateRows(mode,null):[];
   const broad=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.rankCandidates==="function"
-    ?window.ViewInvAIPulseCoach.rankCandidates(40,[],mode):[];
+    ?window.ViewInvAIPulseCoach.rankCandidates(60,[],mode,50):[];
   const merged=new Map();
   for(const row of radarPrimary||[]){const key=goalStockKey(row.s);if(key)merged.set(key,row)}
   for(const row of broad||[]){
