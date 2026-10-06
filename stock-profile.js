@@ -307,8 +307,11 @@ function profileAskAiHtml(s,isTr=false){
   (own?own+'\n':'')+
   'Al final, después de tu análisis, incluye SOLO un bloque JSON con tu veredicto sobre si comprar o mantener '+ticker+' tiene sentido ahora:\n'+
   '{"veredicto":"respalda|dudas|contradice","resumen":"una o dos frases","valores":[{"ticker":"'+ticker+'","veredicto":"respalda|dudas|contradice","motivo":"dato clave"}]}';
- let prompt='Acción: '+ticker+' ('+(s.name||'')+(s.exchange?', '+s.exchange:'')+'). '+(own?own.slice(2)+'. ':'')+'Contrasta con noticias y datos actuales si comprar o mantener tiene sentido ahora.';
- return C.panelHtml({type:'stock',key:key+'|'+mode,title:ticker,ticker,inline:true,auto:false,prompt,manualPrompt});
+ const publicContext=C.stockContext?C.stockContext(s,isTr,4):'';
+ let prompt='Acción: '+ticker+' ('+(s.name||'')+(s.exchange?', '+s.exchange:'')+'). '+(own?own.slice(2)+'. ':'')+
+  'Contrasta usando prioritariamente los datos actuales aportados por ViewInvAI. Si falta información reciente, dilo y no inventes nada.'+
+  (publicContext?'\n\nDATOS ACTUALES Y EVENTOS APORTADOS POR VIEWINVAI:\n'+publicContext:'');
+ return C.panelHtml({type:'stock',key:key+'|'+mode,title:ticker,ticker,tickers:[ticker],inline:true,auto:false,prompt,manualPrompt});
 }
 function profileDetailRoot(el){
  return el&&el.closest?el.closest('.stock-profile-page,.stock-profile'):null;
