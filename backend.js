@@ -32,6 +32,54 @@ function booleanInt(value) {
   return value === true || value === 1 || value === "1" ? 1 : 0;
 }
 
+const AUTO_WRITE_BUDGET_LIMIT = 60000;
+const AUTO_WRITE_COST_FACTOR = 3;
+function madridDayKey(ms=Date.now()){
+  return Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Madrid",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(ms)).map(p=>[p.type,p.value]));
+}
+function scheduledAnalysisWindow(target,nowMs=Date.now()){
+  const api=globalThis.ViewInvAIMarketSession;
+  if(!api)return true;
+  if(Number(target&&target.prefer_tr)===1){
+    const p=api.zoneClock("Europe/Berlin",new Date(nowMs));
+    return api.lsxOpen(p);
+  }
+  const p=api.zoneClock("America/New_York",new Date(nowMs));
+  return api.usSession(p)!=="previous";
+}
+let automationBudgetSchemaReady=false;
+async function ensureAutomationWriteBudgetSchema(env){
+  if(automationBudgetSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS automation_write_budget (day TEXT PRIMARY KEY,estimated_rows INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_automation_write_budget_updated ON automation_write_budget(updated_at DESC)").run();
+  automationBudgetSchemaReady=true;
+}
+async function automationWriteBudget(env,nowMs=Date.now()){
+  const p=madridDayKey(nowMs),day=p.year+"-"+p.month+"-"+p.day;
+  try{
+    await ensureAutomationWriteBudgetSchema(env);
+    const row=await env.DB.prepare("SELECT estimated_rows FROM automation_write_budget WHERE day=?").bind(day).first();
+    const estimated=Math.max(0,Number(row&&row.estimated_rows)||0);
+    return{day,estimated,paused:estimated>=AUTO_WRITE_BUDGET_LIMIT};
+  }catch(error){
+    console.warn("Automation write budget unavailable",String(error&&error.message||error));
+    return{day,estimated:0,paused:false};
+  }
+}
+async function recordAutomationWrites(env,budget,logicalWrites){
+  const n=Math.max(0,Math.ceil(Number(logicalWrites)||0));
+  if(!n)return;
+  const estimated=n*AUTO_WRITE_COST_FACTOR+1,now=nowIso();
+  try{
+    await env.DB.prepare(
+      "INSERT INTO automation_write_budget (day,estimated_rows,updated_at) VALUES (?,?,?) "+
+      "ON CONFLICT(day) DO UPDATE SET estimated_rows=automation_write_budget.estimated_rows+excluded.estimated_rows,updated_at=excluded.updated_at"
+    ).bind(budget.day,estimated,now).run();
+  }catch(error){console.warn("Automation write budget update failed",String(error&&error.message||error))}
+}
+
 let fcmAccessCache = null;
 
 function base64UrlBytes(bytes) {
@@ -3788,43 +3836,63 @@ async function analyzeTarget(env, target, services) {
   current.quoteCurrency=Number(target.prefer_tr)===1?"EUR":"USD";
 
   const previous = await env.DB.prepare(
-    "SELECT signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
+    "SELECT id,signal,confidence,score,engine,thesis,risk_summary,market_json,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
   ).bind(target.user_id, target.subject_type, target.subject_id).first();
 
-  const snapshotId = uid("an_");
-  const now = nowIso();
-  current.snapshotId = snapshotId;
+  const now = nowIso(),previousAge=previous?Date.now()-new Date(previous.created_at||0).getTime():Infinity;
+  let previousPrice=null;
+  try{previousPrice=finiteNumber(JSON.parse(previous&&previous.market_json||"{}").price)}catch(_){}
+  const currentPrice=quoteVerified?finiteNumber(verifiedQuote.price):null;
+  const priceMove=previousPrice&&currentPrice?Math.abs(currentPrice/previousPrice-1)*100:0;
+  const resultChanged=!previous||
+    String(previous.signal||"")!==String(current.signal||"")||
+    Math.abs((finiteNumber(previous.confidence)??0)-(finiteNumber(current.confidence)??0))>=5||
+    Math.abs((finiteNumber(previous.score)??0)-(finiteNumber(current.score)??0))>=5;
+  const keepHistory=resultChanged||priceMove>=1||!Number.isFinite(previousAge)||previousAge>=60*60000;
+  const snapshotId=keepHistory?uid("an_"):String(previous&&previous.id||"");
+  current.snapshotId=snapshotId;
+  let automaticWrites=0;
 
-  await env.DB.prepare(
-    "INSERT INTO analysis_snapshots (id,user_id,subject_type,subject_id,stock_key,ticker,signal,confidence,score,previous_score,horizon,thesis,risk_summary,reasons_json,catalysts_json,technical_json,market_json,ai_model,engine,data_timestamp,created_at) " +
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-  ).bind(
-    snapshotId, target.user_id, target.subject_type, target.subject_id, target.stock_key, target.ticker,
-    current.signal, current.confidence, current.score, previous ? previous.score : null, current.horizon,
-    current.thesis, current.riskSummary, JSON.stringify(current.reasons || []), JSON.stringify(current.catalysts || []),
-    JSON.stringify(chart || {}), JSON.stringify({
-      market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
-      currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
-      quoteVerified,
-      quoteSource: trimText(verifiedQuote&&verifiedQuote.source,120),
-      quoteTimestamp: verifiedQuote&&verifiedQuote.timestamp||null,
-      price: quoteVerified ? finiteNumber(verifiedQuote.price) : null,
-      bid: quoteVerified ? finiteNumber(verifiedQuote.bid) : null,
-      ask: quoteVerified ? finiteNumber(verifiedQuote.ask) : null,
-      changePct: quoteVerified ? finiteNumber(verifiedQuote.changePct) : null,
-      relVolume: analysisStock.relVolume ?? null,
-      volume: Number(target.prefer_tr)===1 ? null : (analysisStock.usLiveVolume ?? analysisStock.volume ?? null),
-      rsi: analysisStock.rsi ?? null,
-      adx: analysisStock.adx ?? null,
-      ema20: analysisStock.ema20 ?? null,
-      ema50: analysisStock.ema50 ?? null
-    }), current.model || "", current.engine || "", snapshot && snapshot.meta && snapshot.meta.updatedAt || null, now
-  ).run();
+  if(keepHistory){
+    await env.DB.prepare(
+      "INSERT INTO analysis_snapshots (id,user_id,subject_type,subject_id,stock_key,ticker,signal,confidence,score,previous_score,horizon,thesis,risk_summary,reasons_json,catalysts_json,technical_json,market_json,ai_model,engine,data_timestamp,created_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(
+      snapshotId, target.user_id, target.subject_type, target.subject_id, target.stock_key, target.ticker,
+      current.signal, current.confidence, current.score, previous ? previous.score : null, current.horizon,
+      current.thesis, current.riskSummary, JSON.stringify(current.reasons || []), JSON.stringify(current.catalysts || []),
+      JSON.stringify(chart || {}), JSON.stringify({
+        market: Number(target.prefer_tr) === 1 ? "Trade Republic / LSX" : "EEUU",
+        currency: Number(target.prefer_tr) === 1 ? "EUR" : "USD",
+        quoteVerified,
+        quoteSource: trimText(verifiedQuote&&verifiedQuote.source,120),
+        quoteTimestamp: verifiedQuote&&verifiedQuote.timestamp||null,
+        price: currentPrice,
+        bid: quoteVerified ? finiteNumber(verifiedQuote.bid) : null,
+        ask: quoteVerified ? finiteNumber(verifiedQuote.ask) : null,
+        changePct: quoteVerified ? finiteNumber(verifiedQuote.changePct) : null,
+        relVolume: analysisStock.relVolume ?? null,
+        volume: Number(target.prefer_tr)===1 ? null : (analysisStock.usLiveVolume ?? analysisStock.volume ?? null),
+        rsi: analysisStock.rsi ?? null,
+        adx: analysisStock.adx ?? null,
+        ema20: analysisStock.ema20 ?? null,
+        ema50: analysisStock.ema50 ?? null
+      }), current.model || "", current.engine || "", snapshot && snapshot.meta && snapshot.meta.updatedAt || null, now
+    ).run();
+    automaticWrites++;
+  }
 
   const table = target.subject_type === "position" ? "positions" : "watchlist";
-  await env.DB.prepare(
-    "UPDATE " + table + " SET last_analysis_at=?,last_signal=?,last_confidence=?,last_score=?,last_snapshot_id=?,updated_at=? WHERE id=? AND user_id=?"
-  ).bind(now, current.signal, current.confidence, current.score, snapshotId, now, target.subject_id, target.user_id).run();
+  const stateChanged=resultChanged||String(target.last_snapshot_id||"")!==snapshotId;
+  if(stateChanged){
+    await env.DB.prepare(
+      "UPDATE " + table + " SET last_analysis_at=?,last_signal=?,last_confidence=?,last_score=?,last_snapshot_id=?,updated_at=? WHERE id=? AND user_id=?"
+    ).bind(now,current.signal,current.confidence,current.score,snapshotId,now,target.subject_id,target.user_id).run();
+  }else{
+    await env.DB.prepare("UPDATE " + table + " SET last_analysis_at=? WHERE id=? AND user_id=?")
+      .bind(now,target.subject_id,target.user_id).run();
+  }
+  automaticWrites++;
 
   const notificationSettings=await globalNotificationSettingsForUser(env,target.user_id);
   const assetNotificationPreference=await notificationPreferenceForTarget(env,target);
@@ -3852,7 +3920,8 @@ async function analyzeTarget(env, target, services) {
     catalysts: current.catalysts || [],
     engine: current.engine,
     model: current.model,
-    createdAt: now
+    createdAt: now,
+    automaticWrites
   };
 }
 
@@ -4231,30 +4300,27 @@ async function sendPreferenceAlert(env,pref,type,severity,title,message){
   return id;
 }
 
-async function scanNotificationPreferences(env,services){
+async function scanNotificationPreferences(env,services,{allowAi=true}={}){
   await ensureNotificationPreferenceSchema(env);
   await ensureGlobalNotificationSettingsSchema(env);
   const rows=await env.DB.prepare(
     "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
-    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.updated_at ASC LIMIT 24"
+    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.user_id,p.id"
   ).all();
   if(!(rows.results||[]).length)return{processed:0};
-  const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();
+  const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();let writes=0;
   for(const pref of rows.results||[]){
     try{
       let global=globalByUser.get(pref.user_id);
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       if(!global.enabled)continue;
       const stock=findStock(snapshot,pref);
-      if(!stock){
-        await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run();
-        continue;
-      }
+      if(!stock)continue;
       const pulseConfigured=global.pulseAi&&Number(pref.pulse_enabled)===1;
       const radarConfigured=global.radar&&(Number(pref.radar_enabled)===1||Number(pref.pulse_enabled)===1);
       const signalConfigured=pulseConfigured||radarConfigured;
       const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
-      const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
+      const aiDue=allowAi&&signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
       // NULL means "no level" (finiteNumber(null) would read it as 0).
       const priceLevel=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0?n:null};
       const priceLevelsSet=priceLevel(pref.price_above)!==null||priceLevel(pref.price_below)!==null;
@@ -4280,7 +4346,7 @@ async function scanNotificationPreferences(env,services){
       let anchorPrice=priceLevel(pref.anchor_price);
       if(anchorPrice===null&&price!==null&&price>0){
         anchorPrice=price;
-        await env.DB.prepare("UPDATE notification_preferences SET anchor_price=?,updated_at=? WHERE id=?").bind(anchorPrice,nowIso(),pref.id).run();
+        await env.DB.prepare("UPDATE notification_preferences SET anchor_price=?,updated_at=? WHERE id=?").bind(anchorPrice,nowIso(),pref.id).run();writes++;
       }
       let upBucket=Number(pref.last_up_bucket)||0,downBucket=Number(pref.last_down_bucket)||0;
       if(anchorPrice&&price!==null){
@@ -4300,11 +4366,11 @@ async function scanNotificationPreferences(env,services){
         const above=priceLevel(pref.price_above),below=priceLevel(pref.price_below);
         if(above!==null&&price>=above){
           await sendPreferenceAlert(env,pref,"price-level-up","high","Nivel alcanzado · "+pref.ticker,"Cotiza a "+fmt(price)+": ha superado tu nivel de "+fmt(above)+".");
-          await env.DB.prepare("UPDATE notification_preferences SET price_above=NULL WHERE id=?").bind(pref.id).run();
+          await env.DB.prepare("UPDATE notification_preferences SET price_above=NULL WHERE id=?").bind(pref.id).run();writes++;
         }
         if(below!==null&&price<=below){
           await sendPreferenceAlert(env,pref,"price-level-down","warning","Nivel alcanzado · "+pref.ticker,"Cotiza a "+fmt(price)+": ha caído por debajo de tu nivel de "+fmt(below)+".");
-          await env.DB.prepare("UPDATE notification_preferences SET price_below=NULL WHERE id=?").bind(pref.id).run();
+          await env.DB.prepare("UPDATE notification_preferences SET price_below=NULL WHERE id=?").bind(pref.id).run();writes++;
         }
       }
       let directNews=[],officialEvents=[];
@@ -4358,16 +4424,20 @@ async function scanNotificationPreferences(env,services){
         }
         pulseState=nextPulse;radarState=nextRadar;
       }
-      const scanNow=nowIso();
-      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
-        .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
+      const scanNow=nowIso(),scanChanged=upBucket!==Number(pref.last_up_bucket||0)||downBucket!==Number(pref.last_down_bucket||0)||
+        pulseState!==String(pref.last_pulse_state||"")||radarState!==String(pref.last_radar_state||"")||aiDue;
+      if(scanChanged){
+        await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
+          .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
+        writes++;
+      }
       results.push(pref.id);
     }catch(error){
       console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error));
-      try{await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run()}catch(_){}
+      // A transient scan failure must not generate a database write; the next cron retries it.
     }
   }
-  return{processed:results.length};
+  return{processed:results.length,writes};
 }
 
 async function handleDevices(request, env, user, json, parts) {
@@ -5267,7 +5337,7 @@ async function scanPortfolioGoalNotifications(env,services){
     await dispatchPushAlert(env,{id,alert_type:"portfolio-goal",severity,title,message},{user_id:goal.user_id,route:"portfolio-goal",portfolio_id:goal.portfolio_id,stock_key:stockKey,ticker,prefer_tr:preferTr});
     return true;
   };
-  let processed=0,alerts=0;
+  let processed=0,alerts=0,writes=0;
   for(const goal of goals.results||[]){
     try{
       const positions=(await env.DB.prepare(
@@ -5277,7 +5347,7 @@ async function scanPortfolioGoalNotifications(env,services){
       if(scope==="auto"&&positions.length){const mk=new Set(positions.map(p=>Number(p.prefer_tr)===1?"tr":"us"));if(mk.size===1)scope=[...mk][0]}
       if(!["tr","us"].includes(scope)){processed++;continue}
       const preferTr=scope==="tr";
-      const prev=await env.DB.prepare("SELECT review_day,notified FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
+      const prev=await env.DB.prepare("SELECT signature,summary,review_day,plan_json,notified,updated_at FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
       const states=new Map(((await env.DB.prepare("SELECT stock_key,peak_eur,stop_eur FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).all()).results||[]).map(r=>[String(r.stock_key).toUpperCase(),r]));
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
@@ -5320,18 +5390,32 @@ async function scanPortfolioGoalNotifications(env,services){
         if(rejected.size||buys.some(b=>candidates.find(c=>c.key===b.key&&c.askEur)))plan=engine.plan(input);
         plan.aiReviewed=review.reviewed;plan.aiProvider=review.provider||"";
       }
-      // Estado: máximo de la cartera, modo defensivo y stops (el stop que sube nunca baja).
-      const now=nowIso();
-      await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
-        .bind(plan.peakValueEur,plan.defensive?1:0,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
-      for(const p of enginePositions){
-        const st=engine.positionStop(p,input.config.risk);
-        await env.DB.prepare("INSERT INTO portfolio_goal_position_state (portfolio_id,user_id,stock_key,peak_eur,stop_eur,updated_at) VALUES (?,?,?,?,?,?) "+
-          "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET peak_eur=MAX(COALESCE(peak_eur,0),excluded.peak_eur),stop_eur=MAX(COALESCE(stop_eur,0),excluded.stop_eur),updated_at=excluded.updated_at")
-          .bind(goal.portfolio_id,goal.user_id,p.key,st.peakEur??null,st.stopEur??null,now).run();
+      // Estado persistente: solo se escribe cuando cambia de verdad.
+      const now=nowIso();let automaticWrites=0;
+      const nextPeak=finiteNumber(plan.peakValueEur),oldPeak=finiteNumber(goal.peak_value_eur),nextDefensive=plan.defensive?1:0;
+      const goalStateChanged=(nextPeak!==oldPeak)||nextDefensive!==Number(goal.defensive)||
+        goal.start_value_eur===null||goal.start_value_eur===undefined||!goal.start_date;
+      if(goalStateChanged){
+        await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
+          .bind(nextPeak,nextDefensive,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
+        automaticWrites++;
       }
-      if(held.size)await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=? AND stock_key NOT IN ("+[...held].map(()=>"?").join(",")+")").bind(goal.user_id,goal.portfolio_id,...held).run();
-      else await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).run();
+      for(const p of enginePositions){
+        const st=engine.positionStop(p,input.config.risk),old=states.get(String(p.key).toUpperCase());
+        const oldP=finiteNumber(old&&old.peak_eur),oldS=finiteNumber(old&&old.stop_eur),newP=finiteNumber(st.peakEur),newS=finiteNumber(st.stopEur);
+        if(!old||newP!==oldP||newS!==oldS){
+          await env.DB.prepare("INSERT INTO portfolio_goal_position_state (portfolio_id,user_id,stock_key,peak_eur,stop_eur,updated_at) VALUES (?,?,?,?,?,?) "+
+            "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET peak_eur=MAX(COALESCE(peak_eur,0),excluded.peak_eur),stop_eur=MAX(COALESCE(stop_eur,0),excluded.stop_eur),updated_at=excluded.updated_at")
+            .bind(goal.portfolio_id,goal.user_id,p.key,newP,newS,now).run();
+          automaticWrites++;
+        }
+      }
+      const stale=[...states.keys()].filter(k=>!held.has(k));
+      if(stale.length){
+        await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=? AND stock_key IN ("+stale.map(()=>"?").join(",")+")")
+          .bind(goal.user_id,goal.portfolio_id,...stale).run();
+        automaticWrites+=stale.length;
+      }
       // Avisos al momento: cada acción una vez por día (por tipo, valor y nivel).
       let notified={day:"",keys:[]};try{notified=JSON.parse(prev&&prev.notified||"{}")||notified}catch(_){}
       if(notified.day!==clock.day)notified={day:clock.day,keys:[]};
@@ -5357,17 +5441,26 @@ async function scanPortfolioGoalNotifications(env,services){
         const msg=trimText([progress,goalPaceText(pc),"Hoy: "+summaryLine].filter(Boolean).join(" · "),500);
         if(!firstRun&&await pushGoal(goal,{title:"Resumen del objetivo · "+goal.name,message:msg,severity:"info"}))alerts++;
       }
-      const planJson=JSON.stringify({at:now,actions:plan.actions,holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""}).slice(0,20000);
-      await env.DB.prepare(
-        "INSERT INTO portfolio_goal_notification_state (portfolio_id,user_id,signature,summary,review_day,candidates,risk_signature,plan_json,notified,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "+
-        "ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,review_day=excluded.review_day,plan_json=excluded.plan_json,notified=excluded.notified,updated_at=excluded.updated_at"
-      ).bind(goal.portfolio_id,goal.user_id,plan.actions.map(a=>a.type+":"+a.ticker).join("|"),trimText(summaryLine,500),reviewDay,"[]","",planJson,JSON.stringify({day:notified.day,keys:[...seen].slice(-200)}),now).run();
-      processed++;
+      const planCore={actions:plan.actions,holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""};
+      const planJson=JSON.stringify({at:now,...planCore}).slice(0,20000);
+      const signature=JSON.stringify(planCore.actions||[]).slice(0,4000),summary=trimText(summaryLine,500),notifiedJson=JSON.stringify({day:notified.day,keys:[...seen].slice(-200)});
+      let previousCore="";
+      try{const oldPlan=JSON.parse(prev&&prev.plan_json||"{}");delete oldPlan.at;previousCore=JSON.stringify(oldPlan)}catch(_){}
+      const stateChanged=!prev||String(prev.signature||"")!==signature||String(prev.summary||"")!==summary||
+        String(prev.review_day||"")!==reviewDay||String(prev.notified||"")!==notifiedJson||previousCore!==JSON.stringify(planCore);
+      if(stateChanged){
+        await env.DB.prepare(
+          "INSERT INTO portfolio_goal_notification_state (portfolio_id,user_id,signature,summary,review_day,candidates,risk_signature,plan_json,notified,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "+
+          "ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,review_day=excluded.review_day,plan_json=excluded.plan_json,notified=excluded.notified,updated_at=excluded.updated_at"
+        ).bind(goal.portfolio_id,goal.user_id,signature,summary,reviewDay,"[]","",planJson,notifiedJson,now).run();
+        automaticWrites++;
+      }
+      processed++;writes+=automaticWrites;
     }catch(error){
       console.warn("Portfolio goal scan failed",goal.portfolio_id,String(error&&error.message||error));
     }
   }
-  return{processed,alerts};
+  return{processed,alerts,writes};
 }
 
 export async function runScheduledPortfolioAnalysis(env, services = {}) {
@@ -5384,36 +5477,38 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
 
   const [positionRows, watchRows] = await Promise.all([
     env.DB.prepare(
-      "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at," +
+      "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at,p.last_signal,p.last_confidence,p.last_score,p.last_snapshot_id," +
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 5 ELSE COALESCE(s.analysis_positions_minutes,10) END AS analysis_interval_minutes " +
       "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id LEFT JOIN portfolio_goals g ON g.portfolio_id=p.portfolio_id AND g.user_id=p.user_id WHERE p.active=1 " +
       "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 40"
     ).all(),
     env.DB.prepare(
-      "SELECT 'watchlist' AS subject_type,w.id AS subject_id,w.user_id,w.stock_key,w.ticker,w.name,w.exchange,w.isin,w.prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,w.last_analysis_at," +
+      "SELECT 'watchlist' AS subject_type,w.id AS subject_id,w.user_id,w.stock_key,w.ticker,w.name,w.exchange,w.isin,w.prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,w.last_analysis_at,w.last_signal,w.last_confidence,w.last_score,w.last_snapshot_id," +
       "COALESCE(s.analysis_watchlist_minutes,30) AS analysis_interval_minutes " +
       "FROM watchlist w LEFT JOIN user_settings s ON s.user_id=w.user_id " +
       "ORDER BY COALESCE(w.last_analysis_at,'') ASC LIMIT 40"
     ).all()
   ]);
 
-  const nowMs = Date.now();
+  const nowMs = Date.now(),budget=await automationWriteBudget(env,nowMs);
   const due = row => {
+    if (!scheduledAnalysisWindow(row,nowMs)) return false;
     if (!row.last_analysis_at) return true;
     const last = new Date(row.last_analysis_at).getTime();
     const minutes = Math.max(row.subject_type === "position" ? 5 : 10, finiteNumber(row.analysis_interval_minutes) ?? (row.subject_type === "position" ? 10 : 30));
     return !Number.isFinite(last) || nowMs - last >= minutes * 60000;
   };
-  const positions = (positionRows.results || []).filter(due);
-  const watchlist = (watchRows.results || []).filter(due);
+  const positions = budget.paused?[]:(positionRows.results || []).filter(due);
+  const watchlist = budget.paused?[]:(watchRows.results || []).filter(due);
   const queue = [...positions, ...watchlist]
     .sort((a,b) => String(a.last_analysis_at || "").localeCompare(String(b.last_analysis_at || "")))
     .slice(0, 8);
-  const results = [];
+  const results = [];let automaticWrites=0;
 
   for (const target of queue) {
     try {
       const analysis = await analyzeTarget(env, target, services);
+      automaticWrites+=Number(analysis.automaticWrites)||0;
       results.push({ ok: true, subjectId: target.subject_id, signal: analysis.signal, confidence: analysis.confidence });
     } catch (error) {
       console.warn("Scheduled analysis target failed", target.subject_id, String(error && error.message || error));
@@ -5427,7 +5522,9 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   let catalystEve={processed:0,alerts:0};
   try{catalystEve=await scanCatalystEve(env,services,positionRows.results||[],watchRows.results||[])}
   catch(error){console.warn("Catalyst eve sweep failed",String(error&&error.message||error))}
-  try{preferences=await scanNotificationPreferences(env,services)}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
+  try{preferences=await scanNotificationPreferences(env,services,{allowAi:!budget.paused})}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
   try{portfolioGoals=await scanPortfolioGoalNotifications(env,services)}catch(error){console.warn("Portfolio goal notification sweep failed",String(error&&error.message||error))}
-  return { processed: results.length, results, trackedNews, catalystEve, preferences, portfolioGoals };
+  automaticWrites+=(Number(preferences&&preferences.writes)||0)+(Number(portfolioGoals&&portfolioGoals.writes)||0);
+  await recordAutomationWrites(env,budget,automaticWrites);
+  return { processed: results.length, results, trackedNews, catalystEve, preferences, portfolioGoals, budget:{paused:budget.paused,estimated:budget.estimated,limit:AUTO_WRITE_BUDGET_LIMIT}, automaticWrites };
 }

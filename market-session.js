@@ -91,18 +91,27 @@
     if(minutes>=regularEnd&&minutes<postEnd)return'postmarket';
     return'previous';
   }
+  const lsxCalendarCache=new Map();
   function lsxMarketCalendar(parts){
     if(!weekdayOpen(parts))return{open:false,closeMinute:0,reason:'fin de semana'};
-    const y=+parts.year,key=dateKey(y,+parts.month,+parts.day);
-    if(y===2026){
-      const closed=new Set([
-        '2026-01-01','2026-04-03','2026-04-06','2026-05-01',
-        '2026-12-24','2026-12-25','2026-12-26','2026-12-31'
-      ]);
-      if(closed.has(key))return{open:false,closeMinute:0,reason:'festivo LSX'};
-      if(key==='2026-12-30')return{open:true,closeMinute:840,reason:'cierre anticipado LSX'};
-    }
-    return{open:true,closeMinute:1380,reason:''};
+    const y=+parts.year,m=+parts.month,d=+parts.day,key=dateKey(y,m,d);
+    if(lsxCalendarCache.has(key))return lsxCalendarCache.get(key);
+    const easter=easterSundayUtc(y);
+    const goodFriday=new Date(easter.getTime()-2*86400000);
+    const easterMonday=new Date(easter.getTime()+86400000);
+    const closed=new Set([
+      dateKey(y,1,1),
+      dateKey(goodFriday.getUTCFullYear(),goodFriday.getUTCMonth()+1,goodFriday.getUTCDate()),
+      dateKey(easterMonday.getUTCFullYear(),easterMonday.getUTCMonth()+1,easterMonday.getUTCDate()),
+      dateKey(y,5,1),
+      dateKey(y,12,24),dateKey(y,12,25),dateKey(y,12,26),dateKey(y,12,31)
+    ]);
+    let result;
+    if(closed.has(key))result={open:false,closeMinute:0,reason:'festivo LSX'};
+    else if(m===12&&d===30)result={open:true,closeMinute:840,reason:'cierre anticipado LSX'};
+    else result={open:true,closeMinute:1380,reason:''};
+    lsxCalendarCache.set(key,result);
+    return result;
   }
   function lsxOpen(parts){
     const calendar=lsxMarketCalendar(parts);
