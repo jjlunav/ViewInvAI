@@ -47,13 +47,24 @@ function scheduledAnalysisWindow(target,nowMs=Date.now()){
   const p=api.zoneClock("America/New_York",new Date(nowMs));
   return api.usSession(p)!=="previous";
 }
+let automationBudgetSchemaReady=false;
+async function ensureAutomationWriteBudgetSchema(env){
+  if(automationBudgetSchemaReady)return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS automation_write_budget (day TEXT PRIMARY KEY,estimated_rows INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_automation_write_budget_updated ON automation_write_budget(updated_at DESC)").run();
+  automationBudgetSchemaReady=true;
+}
 async function automationWriteBudget(env,nowMs=Date.now()){
   const p=madridDayKey(nowMs),day=p.year+"-"+p.month+"-"+p.day;
   try{
+    await ensureAutomationWriteBudgetSchema(env);
     const row=await env.DB.prepare("SELECT estimated_rows FROM automation_write_budget WHERE day=?").bind(day).first();
     const estimated=Math.max(0,Number(row&&row.estimated_rows)||0);
     return{day,estimated,paused:estimated>=AUTO_WRITE_BUDGET_LIMIT};
-  }catch(_){
+  }catch(error){
+    console.warn("Automation write budget unavailable",String(error&&error.message||error));
     return{day,estimated:0,paused:false};
   }
 }
@@ -3836,9 +3847,7 @@ async function analyzeTarget(env, target, services) {
   const resultChanged=!previous||
     String(previous.signal||"")!==String(current.signal||"")||
     Math.abs((finiteNumber(previous.confidence)??0)-(finiteNumber(current.confidence)??0))>=5||
-    Math.abs((finiteNumber(previous.score)??0)-(finiteNumber(current.score)??0))>=5||
-    String(previous.thesis||"")!==String(current.thesis||"")||
-    String(previous.risk_summary||"")!==String(current.riskSummary||"");
+    Math.abs((finiteNumber(previous.score)??0)-(finiteNumber(current.score)??0))>=5;
   const keepHistory=resultChanged||priceMove>=1||!Number.isFinite(previousAge)||previousAge>=60*60000;
   const snapshotId=keepHistory?uid("an_"):String(previous&&previous.id||"");
   current.snapshotId=snapshotId;
@@ -5385,7 +5394,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const now=nowIso();let automaticWrites=0;
       const nextPeak=finiteNumber(plan.peakValueEur),oldPeak=finiteNumber(goal.peak_value_eur),nextDefensive=plan.defensive?1:0;
       const goalStateChanged=(nextPeak!==oldPeak)||nextDefensive!==Number(goal.defensive)||
-        finiteNumber(goal.start_value_eur)===null||!goal.start_date;
+        goal.start_value_eur===null||goal.start_value_eur===undefined||!goal.start_date;
       if(goalStateChanged){
         await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
           .bind(nextPeak,nextDefensive,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
