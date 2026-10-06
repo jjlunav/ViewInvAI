@@ -4812,7 +4812,7 @@ async function aiFetch(url,init,timeoutMs=60000){
 function aiProviderError(provider,status,data){
   const raw=String(data&&data.error&&(data.error.message||data.error.type)||data&&data.message||"").slice(0,200);
   if(status===401||status===403)return AI_PROVIDERS[provider].label+" rechaza la clave (no es válida o no tiene permisos).";
-  if(status===429)return AI_PROVIDERS[provider].label+" indica que has superado tu límite de uso o tu saldo. Inténtalo más tarde.";
+  if(status===429)return AI_PROVIDERS[provider].label+" no permite esta solicitud ahora mismo por cuota o límite del proyecto. Puede ocurrir incluso sin consumo previo; revisa los límites del proyecto o inténtalo más tarde.";
   if(status===400&&/model/i.test(raw))return AI_PROVIDERS[provider].label+" no reconoce el modelo indicado: "+raw;
   return AI_PROVIDERS[provider].label+" respondió con un error ("+status+")"+(raw?": "+raw:".");
 }
@@ -4882,16 +4882,31 @@ function aiCleanSources(list){
   return out;
 }
 async function aiAskGemini(apiKey,model,prompt){
-  const res=await aiFetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
-    method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},
-    body:JSON.stringify({systemInstruction:{parts:[{text:AI_CONTRAST_SYSTEM}]},contents:[{role:"user",parts:[{text:prompt}]}],tools:[{google_search:{}}]})
-  });
-  const data=await res.json().catch(()=>({}));
-  if(!res.ok)return{error:aiProviderError("gemini",res.status,data)};
-  const cand=data.candidates&&data.candidates[0]||{};
+  const endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
+  const call=async withSearch=>{
+    const system=withSearch?AI_CONTRAST_SYSTEM:
+      AI_CONTRAST_SYSTEM+"\nIMPORTANTE: en este intento no tienes acceso a búsqueda web. No afirmes haber verificado noticias actuales; si el veredicto depende de información reciente que no aparece en el prompt, indícalo y usa «dudas».";
+    const body={systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}]};
+    if(withSearch)body.tools=[{google_search:{}}];
+    const res=await aiFetch(endpoint,{method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data=await res.json().catch(()=>({}));
+    return{res,data};
+  };
+  let attempt=await call(true),freeFallback=false;
+  if(!attempt.res.ok){
+    const raw=String(attempt.data&&attempt.data.error&&(attempt.data.error.message||attempt.data.error.status)||"");
+    const searchUnavailable=attempt.res.status===429||
+      ((attempt.res.status===400||attempt.res.status===403)&&/google.?search|grounding|free.?tier|quota|billing|resource.?exhausted/i.test(raw));
+    if(searchUnavailable){
+      const retry=await call(false);
+      if(retry.res.ok){attempt=retry;freeFallback=true}
+      else return{error:aiProviderError("gemini",retry.res.status,retry.data)};
+    }else return{error:aiProviderError("gemini",attempt.res.status,attempt.data)};
+  }
+  const data=attempt.data,cand=data.candidates&&data.candidates[0]||{};
   const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
   const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
-  return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean)};
+  return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean),freeFallback};
 }
 async function aiAskClaude(apiKey,model,prompt){
   const messages=[{role:"user",content:prompt}];
@@ -5063,7 +5078,9 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       }));
       for(const a of answers){
         if(a.error){errors.push({provider:a.row.provider,error:a.error});continue}
-        contrasts.push(await aiSaveContrast(env,user,type,key,a.row.provider,aiParseAnswer(a.text),a.sources));
+        const parsed=aiParseAnswer(a.text);
+        if(a.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web en esta consulta. "+(parsed.summary||""),800);
+        contrasts.push(await aiSaveContrast(env,user,type,key,a.row.provider,parsed,a.sources));
       }
     }
     return json({contrasts,errors},200,noStore);
@@ -5275,7 +5292,9 @@ async function goalAiReviewBuys(env,goal,buys,positions){
       try{ans=row.provider==="gemini"?await aiAskGemini(apiKey,model,prompt):row.provider==="anthropic"?await aiAskClaude(apiKey,model,prompt):await aiAskOpenAi(apiKey,model,prompt)}
       catch(_){ans={error:"timeout"}}
       if(ans.error||!String(ans.text||"").trim())return{reviewed:false,verdicts:new Map()};
-      rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,row.provider,aiParseAnswer(ans.text),ans.sources)];
+      const parsed=aiParseAnswer(ans.text);
+      if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web en esta consulta. "+(parsed.summary||""),800);
+      rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,row.provider,parsed,ans.sources)];
     }
     const verdicts=new Map();
     for(const c of rows)for(const i of c.items||[])verdicts.set(String(i.ticker||"").toUpperCase(),i.verdict);

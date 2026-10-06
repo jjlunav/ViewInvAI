@@ -6,7 +6,7 @@
 (function(){
  const PROVIDERS=[
   {id:'gemini',name:'Gemini',company:'Google',badge:'Gratis',free:true,prefix:'AIza',
-   blurb:'Recomendada para empezar: gratis con tu cuenta de Google y con búsqueda en Google para contrastar con noticias actuales.'},
+   blurb:'Recomendada para empezar: el modelo tiene nivel gratuito. Si Google no permite búsqueda web en tu nivel, ViewInvAI reintenta el contraste sin búsqueda y lo indica claramente.'},
   {id:'anthropic',name:'Claude',company:'Anthropic',badge:'Clave de pago',prefix:'sk-ant-',
    blurb:'Análisis muy cuidadoso con búsqueda web. Usa tu propia clave de API (prepago en la consola de Anthropic).'},
   {id:'openai',name:'ChatGPT (API)',company:'OpenAI',badge:'Clave de pago',prefix:'sk-',
@@ -21,9 +21,9 @@
    'Pulsa <b>«Create API key»</b> (Crear clave de API). Si te pregunta por un proyecto, elige <b>crear uno nuevo</b>.',
    'Copia la clave que aparece (empieza por <code>AIza…</code>).',
    'Vuelve aquí, pégala en el campo de <b>Gemini</b> y pulsa <b>«Guardar y probar»</b>. Si es correcta, queda activa al momento.'],
-   notes:['Es gratis y no pide tarjeta. El plan gratuito tiene un límite diario de consultas de sobra para el uso de ViewInvAI.',
-   'En el plan gratuito Google puede usar las consultas para mejorar sus productos. ViewInvAI solo envía datos públicos de las acciones (tickers, puntuaciones, precios), nunca tus importes.',
-   'Si algún día ves «límite superado», espera al día siguiente: el contador se reinicia.']},
+   notes:['El modelo Gemini dispone de nivel gratuito y no requiere tarjeta. Los límites dependen del proyecto y del modelo.',
+   'La búsqueda web integrada de la API puede no estar incluida en el nivel gratuito. En ese caso ViewInvAI reintenta automáticamente sin búsqueda y lo muestra en el resultado.',
+   'En el plan gratuito Google puede usar las consultas para mejorar sus productos. ViewInvAI solo envía datos públicos de las acciones (tickers, puntuaciones, precios), nunca tus importes.']},
   anthropic:{title:'Cómo conseguir tu clave de Claude (Anthropic)',steps:[
    'Abre <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> y crea una cuenta o inicia sesión. <b>Ojo:</b> la suscripción Pro/Max de claude.ai no incluye la API; es una cuenta aparte.',
    'Ve a <b>Billing</b> (Facturación) y añade saldo de prepago (con 5 $ hay para mucho tiempo).',
