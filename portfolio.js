@@ -1423,7 +1423,18 @@ function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
   const mode=metrics.marketScope==="us"?"us":"tr",preferTr=mode==="tr",shortBand=portfolioGoalRiskBand(cfg.riskProfile);
-  const radar=typeof radarAiCandidateRows==="function"?radarAiCandidateRows(mode,null):[];
+  const radarPrimary=typeof radarAiCandidateRows==="function"?radarAiCandidateRows(mode,null):[];
+  const broad=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.rankCandidates==="function"
+    ?window.ViewInvAIPulseCoach.rankCandidates(40,[],mode):[];
+  const merged=new Map();
+  for(const row of radarPrimary||[]){const key=goalStockKey(row.s);if(key)merged.set(key,row)}
+  for(const row of broad||[]){
+    const stock=row.stock||row.s,key=goalStockKey(stock);if(!key)continue;
+    const old=merged.get(key);
+    if(!old)merged.set(key,{s:stock,score:row.score,quality:row.quality,tier:"watch",speculative:false,earlyPool:true});
+    else{old.score=Math.max(num(old.score)||0,num(row.score)||0);old.quality=Math.max(num(old.quality)||0,num(row.quality)||0)}
+  }
+  const radar=[...merged.values()].sort((a,b)=>(num(b.score)||0)-(num(a.score)||0)||(num(b.quality)||0)-(num(a.quality)||0));
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
   const positions=positionRows.filter(row=>(num(row.qty)||0)>0&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
@@ -1447,7 +1458,7 @@ function goalEngineInput(metrics,positionRows){
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
-      entryTiming:num(entry.timing),rr:num(entry.rr),extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
+      extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
       catalystDays:num(cat.days),catalystImpact:num(cat.impact)}:null;
   }).filter(Boolean);
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
