@@ -1,7 +1,7 @@
 // Motor del Objetivo de la cartera: el mismo código en la app y en el servidor.
 // Objetivo «rápido»: crecer lo antes posible asumiendo riesgo, pero sin locuras:
 // · compra al momento si la acción supera el filtro (sin esperar al día siguiente);
-// · de 3 a 5 acciones; como mucho una especulativa y pequeña;
+// · recomienda 1 entrada principal y, como máximo, una segunda de calidad casi equivalente;
 // · stop según la volatilidad de cada acción y stop que sube cuando gana (trailing);
 // · no se vende en pérdidas para cambiar de acción salvo que la nueva prevea recuperar
 //   esa pérdida y todas las comisiones con margen;
@@ -10,11 +10,11 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.06-g2-short-alpha';
+  const VERSION='2026.10.06-g3-entry-guard';
   const RISK={
-    conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6},
-    balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5},
-    aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4}
+    conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6},
+    balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5},
+    aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4}
   };
   const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5,SPEC_MAX_WEIGHT=10;
 
@@ -39,14 +39,44 @@
     return clamp(raw,risk==='aggressive'?5:4,risk==='aggressive'?18:risk==='balanced'?14:11);
   }
 
+  // Filtro de entrada compartido por web y backend. Un candidato puede tener buen score
+  // y aun así ser una mala compra AHORA por FOMO, spread o extensión.
+  function candidateEntry(c,risk='aggressive'){
+    const b=band(risk),reasons=[];let timing=100;
+    const spread=n(c.spreadPct),extension=n(c.extensionPct),day=n(c.dayChangePct),week=n(c.perfWeek),
+      nearHigh=n(c.nearHighPct),rsi=n(c.rsi),quality=n(c.quality);
+    if(extension!==null&&extension>0)timing-=Math.min(34,extension*3.1);
+    if(day!==null&&day>3)timing-=Math.min(24,(day-3)*2);
+    if(week!==null&&week>8)timing-=Math.min(18,(week-8)*.8);
+    if(nearHigh!==null&&nearHigh<.8&&day!==null&&day>4)timing-=10;
+    if(spread===null){
+      timing-=quality!==null&&quality>=80?4:10;
+      if(quality===null||quality<80)reasons.push('spread sin verificar');
+    }else{
+      timing-=Math.min(18,spread*2);
+      if(spread>b.maxSpreadPct)reasons.push('spread demasiado amplio');
+    }
+    if(day!==null&&day<-.75){timing-=Math.min(18,Math.abs(day+.75)*3);reasons.push('momentum de entrada deteriorado')}
+    if(extension!==null&&extension>b.maxExtensionPct)reasons.push('demasiado alejada de EMA20');
+    if(day!==null&&day>b.maxDayChangePct)reasons.push('subida intradía demasiado extendida');
+    if(week!==null&&week>b.maxWeekPerfPct)reasons.push('subida semanal demasiado extendida');
+    if(nearHigh!==null&&nearHigh<.5&&day!==null&&day>6)reasons.push('riesgo de perseguir máximos');
+    if(rsi!==null&&rsi>78)reasons.push('RSI sobrecalentado');
+    timing=clamp(timing,0,100);
+    if(timing<b.minTiming)reasons.push('punto de entrada débil');
+    return{eligible:reasons.length===0,timing:r2(timing),reasons};
+  }
+
   // Puntuación específica del Objetivo: busca el movimiento ANTES de que esté demasiado
   // extendido. No es una probabilidad; es un ranking de oportunidad temprana (0-100).
   function candidateBurst(c,risk='aggressive'){
+    const entry=candidateEntry(c,risk);
     const b=band(risk),parts=[];let score=50;
     const add=(name,v)=>{score+=v;if(Math.abs(v)>=4)parts.push(name+(v>0?' +':' ')+Math.round(v))};
     const rv=n(c.relVolume),ch=n(c.dayChangePct),rsi=n(c.rsi),adx=n(c.adx),p=n(c.technicalPrice),
       e20=n(c.ema20),e50=n(c.ema50),week=n(c.perfWeek),spread=n(c.spreadPct),avgVolume=n(c.avgVolume),
-      catalystImpact=n(c.catalystImpact),catalystDays=n(c.catalystDays),timing=n(c.entryTiming),
+      catalystImpact=n(c.catalystImpact),catalystDays=n(c.catalystDays),
+      externalTiming=n(c.entryTiming),timing=externalTiming===null?entry.timing:Math.min(entry.timing,externalTiming),
       extension=n(c.extensionPct),nearHigh=n(c.nearHighPct),scout=n(c.aiScoutScore);
     if(rv!==null){if(rv>=1.5&&rv<=4)add('volumen acelera',14);else if(rv>4)add('volumen extremo',ch!==null&&ch<=6?10:4);else if(rv>=1.05)add('volumen despierta',6);else if(rv<.65)add('volumen débil',-10)}
     if(ch!==null){if(ch>=.25&&ch<=4)add('impulso temprano',11);else if(ch>4&&ch<=8)add('movimiento activo',6);else if(ch>10)add('demasiado extendida',-16);else if(ch<-.75)add('momentum negativo',-10)}
@@ -73,7 +103,7 @@
       score>=80&&(ch===null||ch<=5)&&(rsi===null||rsi<=68)?'early':
       score>=b.minBurst&&(ch===null||ch<=10)?'active':
       ch!==null&&ch>10?'late':'watch';
-    return{score:r2(score),phase,parts};
+    return{score:r2(score),phase,parts,entryTiming:timing,entryEligible:entry.eligible,entryReasons:entry.reasons};
   }
   // Stop vigente de una posición: el inicial y, si ya gana más que su stop, el que sube detrás
   // del máximo. Una vez gana el doble del stop, nunca baja de precio de entrada + comisiones.
@@ -165,7 +195,7 @@
     // 2) Candidatas válidas (antes de decidir rotaciones).
     const held=new Set(remaining.map(p=>String(p.key)));
     const specHeld=remaining.some(p=>p.speculative);
-    const cands=(input.candidates||[]).filter(c=>{
+    const rankedCands=(input.candidates||[]).filter(c=>{
       if(held.has(String(c.key)))return false;
       if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
@@ -174,10 +204,17 @@
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
-      return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
-    }).filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
+      return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,
+        entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryReasons:burst.entryReasons,
+        stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
+    }).filter(c=>c.entryEligible)
+      .filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
       .filter(c=>c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase))
       .sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
+    // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
+    // cuando está realmente cerca de la primera. Esto mantiene el ranking accionable.
+    const cands=rankedCands.length>1&&rankedCands[1].burstScore>=rankedCands[0].burstScore-5
+      ?rankedCands.slice(0,2):rankedCands.slice(0,1);
 
     // 3) Posiciones débiles: solo se sustituyen si compensa (pérdida + comisiones, con margen).
     const used=new Set();
@@ -249,5 +286,5 @@
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateBurst});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst});
 })(globalThis);
