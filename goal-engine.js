@@ -167,13 +167,14 @@
       if(held.has(String(c.key)))return false;
       if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
-      if((n(c.score)??0)<minScore||(n(c.quality)??0)<minQuality)return false;
+      if((n(c.score)??0)<50||(n(c.quality)??0)<minQuality)return false;
       if(c.speculative&&(cfg.allowSpec===false||specHeld))return false;
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
       return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
-    }).filter(c=>c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase))
+    }).filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
+      .filter(c=>c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase))
       .sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
 
     // 3) Posiciones débiles: solo se sustituyen si compensa (pérdida + comisiones, con margen).
