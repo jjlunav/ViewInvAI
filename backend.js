@@ -5267,7 +5267,7 @@ async function goalAiVerdicts(env,userId){
 }
 // Antes de proponer compras nuevas, las IA activas del usuario (Gemini gratis primero) las
 // contrastan. El Objetivo tiene prioridad en la cuota diaria; el Radar usa lo que sobra.
-async function goalAiReviewBuys(env,goal,buys,positions){
+async function goalAiReviewBuys(env,goal,buys,positions,candidates=[]){
   if(!buys.length)return{reviewed:false,verdicts:new Map()};
   try{
     await ensureAiIntegrationSchema(env);
@@ -5283,10 +5283,23 @@ async function goalAiReviewBuys(env,goal,buys,positions){
       // Una sola IA por revisión (la primera activa, Gemini si está) para no gastar cuota de más.
       const row=keys[0],apiKey=await aiDecrypt(env,goal.user_id,row.provider,row);
       if(!apiKey)return{reviewed:false,verdicts:new Map()};
+      const ctxRows=buys.map(x=>{
+        const c=candidates.find(v=>v.key===x.key||String(v.ticker||"").toUpperCase()===String(x.ticker||"").toUpperCase()),s=c&&c.stock||{};
+        const bits=["ticker "+x.ticker,"score "+(finiteNumber(c&&c.score)??"—")+"/100","calidad "+(finiteNumber(c&&c.quality)??"—")+"/100",
+          finiteNumber(s.relVolume)!==null?"volumen relativo "+finiteNumber(s.relVolume)+"x":"",
+          finiteNumber(s.rsi)!==null?"RSI14 "+finiteNumber(s.rsi):"",
+          finiteNumber(s.adx)!==null?"ADX14 "+finiteNumber(s.adx):"",
+          finiteNumber(s.ema20)!==null?"EMA20 "+finiteNumber(s.ema20):"",
+          finiteNumber(s.ema50)!==null?"EMA50 "+finiteNumber(s.ema50):""].filter(Boolean);
+        let ev=[];try{ev=recentEvents({events:Array.isArray(s.events)?s.events:[]},s,8)}catch(_){ev=[]}
+        const news=(ev||[]).slice(0,3).map(e=>String(e.date||"").slice(0,10)+" · "+trimText(e.title||e.fact||"",180)+(e.source?" · "+trimText(e.source,80):""));
+        return bits.join(" · ")+(news.length?"\n  Eventos conocidos: "+news.join(" | "):"");
+      }).join("\n");
       const prompt="Objetivo de cartera de ViewInvAI (perfil "+(goal.risk_profile||"aggressive")+", crecer rápido con riesgo controlado).\n"+
         "Posiciones actuales: "+(positions.map(p=>p.ticker).join(", ")||"ninguna")+".\n"+
         "El motor propone COMPRAR ahora:\n"+buys.map(x=>"- "+x.ticker+" ("+(x.name||"")+") · stop −"+x.stopPct+" % · recorrido previsto +"+x.targetPct+" %").join("\n")+
-        "\nContrasta con noticias y datos actuales si cada compra tiene sentido en los próximos días o semanas (dilución, resultados, rebajas de rating, litigios, sector).";
+        "\n\nDATOS ACTUALES APORTADOS POR VIEWINVAI:\n"+ctxRows+
+        "\n\nContrasta prioritariamente con estos datos. Si no tienes búsqueda web disponible o falta una noticia reciente, dilo; no inventes información.";
       const model=row.model||AI_PROVIDERS[row.provider].model;
       let ans;
       try{ans=row.provider==="gemini"?await aiAskGemini(apiKey,model,prompt):row.provider==="anthropic"?await aiAskClaude(apiKey,model,prompt):await aiAskOpenAi(apiKey,model,prompt)}
@@ -5402,7 +5415,7 @@ async function scanPortfolioGoalNotifications(env,services){
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
       let buys=plan.actions.filter(a=>a.type==="BUY");
       if(buys.length){
-        const review=await goalAiReviewBuys(env,goal,buys,enginePositions);
+        const review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates);
         const rejected=new Set([...review.verdicts].filter(([,v])=>v==="contradice").map(([t])=>t));
         for(const c of candidates)if(review.verdicts.has(c.ticker))c.aiVerdict=review.verdicts.get(c.ticker);
         for(const c of candidates.filter(c=>buys.some(b=>b.key===c.key))){const ask=await quoteEur(c.stock,preferTr,"BUY");if(ask!==null)c.askEur=ask}
