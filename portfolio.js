@@ -1645,11 +1645,16 @@ function goalAiContrastPanel(metrics,portfolio,positionRows,buys,sells){
   const held=positionRows.map(r=>"- "+tickerOf(r.stock,r.p)+" ("+(r.stock&&r.stock.name||"")+") · peso "+formatNumber(r.currentWeight,1)+"% · resultado "+pct(r.positionReturnPct)+" · score "+formatNumber(r.score,0)+"/100 · acción propuesta: "+r.action+(r.reasons&&r.reasons.length?" ("+r.reasons.join(", ")+")":""));
   const sellLines=sells.map(r=>"- VENDER "+formatNumber(r.reducePct,0)+"% de "+tickerOf(r.stock,r.p));
   const buyLines=buys.map(r=>{const lv=r.levels||{},s=r.stock||{};return "- COMPRAR "+tickerOf(s)+" ("+(s.name||"")+") · convicción "+formatNumber(r.score,0)+"/100 · calidad "+formatNumber(r.quality,0)+"/100 · R:R "+formatNumber(r.entry&&r.entry.rr,2)+(num(lv.stopPct)!==null?" · stop -"+formatNumber(lv.stopPct,1)+"%":"")+(num(lv.takePct)!==null?" · objetivo +"+formatNumber(lv.takePct,1)+"%":"")+(r.catalyst&&r.catalyst.label?" · "+r.catalyst.label:"")});
+  const contextStocks=[];const seenContext=new Set();
+  for(const row of positionRows){const st=row.stock,t=tickerOf(st,row.p);if(st&&t&&!seenContext.has(t)){seenContext.add(t);contextStocks.push({stock:st,preferTr:!!row.preferTr})}}
+  for(const row of buys){const st=row.stock,t=tickerOf(st);if(st&&t&&!seenContext.has(t)){seenContext.add(t);contextStocks.push({stock:st,preferTr:metrics.marketScope!=="us"})}}
+  const publicContext=contextStocks.map(x=>C.stockContext?C.stockContext(x.stock,x.preferTr,3):"").filter(Boolean).join("\n\n");
   const prompt="Objetivo de cartera en ViewInvAI. Mercado: "+portfolioMarketLabel(metrics.marketScope)+". Perfil de riesgo: "+((metrics.riskBand&&metrics.riskBand.label)||"alto")+". Progreso hacia el objetivo: "+formatNumber(metrics.progress,1)+"%.\n"+
     "El motor rota la cartera hacia las acciones con mejor convicción y momento, con stop-loss y sin perseguir subidas.\n"+
-    "Contrasta con noticias y datos actuales si el plan tiene sentido ahora y qué riesgos ve que el motor podría no ver.\n\n"+
+    "Contrasta el plan usando prioritariamente los datos actuales aportados por ViewInvAI. Si faltan noticias recientes o un dato no está verificado, dilo; no lo inventes.\n\n"+
     "Posiciones actuales:\n"+(held.length?held.join("\n"):"(sin posiciones)")+"\n\n"+
-    "Plan propuesto:\n"+([...sellLines,...buyLines].join("\n")||"No hacer cambios ahora.");
+    "Plan propuesto:\n"+([...sellLines,...buyLines].join("\n")||"No hacer cambios ahora.")+
+    (publicContext?"\n\nDATOS ACTUALES Y EVENTOS APORTADOS POR VIEWINVAI:\n"+publicContext:"");
   const day=new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Madrid"});
   const tickers=[...new Set([...positionRows.map(r=>tickerOf(r.stock,r.p)),...buys.map(r=>tickerOf(r.stock))].filter(Boolean))];
   // Pregunta manual más extensa (ChatGPT/Claude/Gemini con la cuenta del usuario), a demanda.
@@ -1664,7 +1669,7 @@ function goalAiContrastPanel(metrics,portfolio,positionRows,buys,sells){
     "Al final incluye SOLO un bloque JSON con esta forma (un elemento por cada acción citada: "+tickers.join(", ")+"):\n"+
     '{"veredicto":"respalda|dudas|contradice","resumen":"una o dos frases sobre el plan","valores":[{"ticker":"XXX","veredicto":"respalda|dudas|contradice","motivo":"dato clave"}]}\n'+
     "«respalda» = mantener/comprar tiene sentido; «dudas» = hay riesgos que lo debilitan; «contradice» = hay hechos para no comprar o para salir.";
-  return C.panelHtml({type:"goal",key:portfolio.id+":"+day,title:"Plan de "+(portfolio.name||"la cartera"),prompt,manualPrompt});
+  return C.panelHtml({type:"goal",key:portfolio.id+":"+day,title:"Plan de "+(portfolio.name||"la cartera"),tickers,prompt,manualPrompt});
 }
 function goalRiskSummaryHtml(band){
   if(!band)return"";
