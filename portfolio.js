@@ -1494,7 +1494,7 @@ function goalActionHtml(a,ctx){
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
   const key=a.type==="BUY"&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=a.type==="BUY"?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
-  const extra=a.type==="BUY"?'<small>Recorrido previsto +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+'</small>':'';
+  const extra=a.type==="BUY"?'<small>'+((a.burstPhase==="early")?'Fase temprana · ':'')+'score temprano '+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+(a.aiScoutReason?' · '+esc(a.aiScoutReason):'')+'</small>':'';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+esc(a.text)+'</span>'+extra+button+'</div></div>';
 }
