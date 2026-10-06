@@ -5652,16 +5652,17 @@ async function scanPortfolioGoalNotifications(env,services){
       let notified={day:"",keys:[]};try{notified=JSON.parse(prev&&prev.notified||"{}")||notified}catch(_){}
       if(notified.day!==clock.day)notified={day:clock.day,keys:[]};
       const seen=new Set(notified.keys||[]),fresh=[];
-      for(const a of plan.actions){
-        const k=a.type+":"+a.ticker+":"+(a.type==="RAISE_STOP"?a.stopEur:a.type==="BUY"?a.units:a.reason||"");
+      for(const a of visibleDecisions){
+        const k=a.type+":"+a.ticker+":"+(a.type==="RAISE_STOP"?a.stopEur:a.type==="BUY"?a.units:a.type==="WAIT"?(a.limitPriceEur||a.decision||"wait"):a.reason||"");
         if(seen.has(k))continue;seen.add(k);fresh.push(a);
       }
-      const summaryLine=plan.actions.length?plan.actions.map(a=>a.text).join(" "):(plan.defensive?plan.notes[0]:"Nada que hacer ahora.");
+      const visibleDecisions=[...(plan.actions||[]),...(plan.waits||[])];
+      const summaryLine=visibleDecisions.length?visibleDecisions.map(a=>a.text).join(" "):(plan.defensive?plan.notes[0]:"Nada que hacer ahora.");
       const firstRun=!prev;
       if(!firstRun){
         for(const a of fresh.slice(0,4)){
           const sev=a.type==="SELL"?"high":a.type==="BUY"?"high":"info";
-          const title=(a.type==="BUY"?"Comprar":a.type==="SELL"?(a.reason==="stop"?"Stop alcanzado":"Vender"):"Subir stop")+" · "+goal.name;
+          const title=(a.type==="BUY"?"Comprar ahora":a.type==="WAIT"?(a.decision==="COMPRA LÍMITE"?"Compra límite":"Esperar"):a.type==="SELL"?(a.reason==="stop"?"Stop alcanzado":"Vender"):"Subir stop")+" · "+goal.name;
           if(await pushGoal(goal,{title,message:trimText(a.text+(a.type==="BUY"&&plan.aiReviewed?" Contrastado con IA.":""),500),severity:sev,stockKey:a.key,ticker:a.ticker,preferTr:preferTr?1:0}))alerts++;
         }
       }
@@ -5673,7 +5674,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const msg=trimText([progress,goalPaceText(pc),"Hoy: "+summaryLine].filter(Boolean).join(" · "),500);
         if(!firstRun&&await pushGoal(goal,{title:"Resumen del objetivo · "+goal.name,message:msg,severity:"info"}))alerts++;
       }
-      const planCore={actions:plan.actions,holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""};
+      const planCore={actions:plan.actions,waits:plan.waits||[],holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""};
       const planJson=JSON.stringify({at:now,...planCore}).slice(0,20000);
       const signature=JSON.stringify(planCore.actions||[]).slice(0,4000),summary=trimText(summaryLine,500),notifiedJson=JSON.stringify({day:notified.day,keys:[...seen].slice(-200)});
       let previousCore="";
