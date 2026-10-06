@@ -550,10 +550,13 @@ function radarAiContrastPrompt(rows,mode,selected=null){
   if(r.speculative&&r.specReasons.length)bits.push('avisos: '+r.specReasons.join(', '));
   return '- '+bits.join(' · ');
  });
+ const C=window.ViewInvAIContrast;
+ const context=pick.map(x=>C&&C.stockContext?C.stockContext(x.s,isTr,2):'').filter(Boolean).join('\n\n');
  return 'Selección de hoy del Radar AI de ViewInvAI para '+(isTr?'Trade Republic (acciones negociables en LSX, en euros)':'EEUU (NASDAQ/NYSE/AMEX)')+'.\n'+
   'El motor puntúa momentum, tendencia, volumen, RSI/ADX, liquidez, catalizadores y calidad de datos. Niveles: alta convicción > oportunidad > vigilancia; «especulativo» = señal fuerte pero sin pasar el filtro de entrada.\n'+
-  'Para cada valor, contrasta con noticias y datos actuales si la propuesta tiene sentido ahora mismo (próximos días/semanas) y señala riesgos que el motor podría no ver.\n\n'+
-  (lines.length?lines.join('\n'):'(sin valores seleccionados hoy)');
+  'Contrasta prioritariamente con los datos actuales aportados por ViewInvAI. Si falta información reciente, dilo; no inventes noticias ni fechas.\n\n'+
+  (lines.length?lines.join('\n'):'(sin valores seleccionados hoy)')+
+  (context?'\n\nDATOS ACTUALES Y EVENTOS APORTADOS POR VIEWINVAI:\n'+context:'');
 }
 function radarAiContrastPanel(rows,mode){
  const C=window.ViewInvAIContrast;if(!C||!rows.length)return'';
