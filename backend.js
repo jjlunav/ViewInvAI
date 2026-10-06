@@ -5347,7 +5347,7 @@ function goalDiscoveryRows(snapshot,scope){
     const extensionPct=price!==null&&ema20>0?(price/ema20-1)*100:null;
     const nearHighPct=price!==null&&dayHigh>0&&price<=dayHigh?(dayHigh-price)/dayHigh*100:null;
     const prelim={score,quality,relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,
-      ema50:finiteNumber(stock.ema50),technicalPrice:price,dayChangePct:finiteNumber(scope==="tr"?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct)),
+      ema50:finiteNumber(stock.ema50),technicalPrice:price,avgVolume:finiteNumber(stock.avgVolume),dayChangePct:finiteNumber(scope==="tr"?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct)),
       perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,scope==="tr"),
       extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact};
     const early=goalEngine.candidateBurst(prelim,"aggressive");
@@ -5596,7 +5596,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const nearHighPct=techPrice!==null&&dayHigh>0&&techPrice<=dayHigh?(dayHigh-techPrice)/dayHigh*100:null;
         const dayChangePct=finiteNumber(preferTr?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct));
         return priceEur>0?{key:r.stock_key,ticker,name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
-          relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,
+          relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,avgVolume:finiteNumber(stock.avgVolume),
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
           extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact,catalystTitle:cat.title}:null;
       }).filter(Boolean);
