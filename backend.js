@@ -5081,7 +5081,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     if(request.method==="GET"){
       // Opiniones de los últimos 3 días (todas): la app las usa para reforzar o rebajar cada acción.
       if(url.searchParams.get("recent")==="1"){
-        const since=new Date(Date.now()-3*86400000).toISOString();
+        const since=new Date(Date.now()-12*3600000).toISOString();
         const {results}=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 60").bind(user.id,since).all();
         return json({contrasts:(results||[]).map(aiContrastRow)},200,noStore);
       }
@@ -5369,7 +5369,9 @@ function goalServerCatalyst(snapshot,stock){
   const now=Date.now(),future=events.filter(e=>{
     const t=Date.parse(e&&e.date||"");return Number.isFinite(t)&&t>=now-3600000&&t<=now+14*86400000;
   }).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date)||(finiteNumber(b.impactScore)||0)-(finiteNumber(a.impactScore)||0));
-  const e=future[0]||null;if(!e)return{days:null,impact:0,title:""};
+  const recentNews=events.filter(e=>e&&e.eventKind==="news"&&Number.isFinite(Date.parse(e.date||""))&&Date.parse(e.date)>=now-72*3600000)
+    .sort((a,b)=>Date.parse(b.date)-Date.parse(a.date)||(finiteNumber(b.impactScore)||0)-(finiteNumber(a.impactScore)||0));
+  const e=future[0]||recentNews[0]||null;if(!e)return{days:null,impact:0,title:""};
   return{days:Math.max(0,(Date.parse(e.date)-now)/86400000),impact:Math.max(0,Math.min(100,finiteNumber(e.impactScore)??50)),title:trimText(e.title||e.fact||"",180)};
 }
 async function goalWorkersScout(env,goal,candidates){
@@ -5386,7 +5388,9 @@ async function goalWorkersScout(env,goal,candidates){
   if(cached&&Date.now()-cached.at<GOAL_SCOUT_CACHE_MS)return{reviewed:true,map:new Map(cached.rows),cached:true,model:GOAL_WORKERS_AI_MODEL};
   const payload=ranked.map(({c,b})=>({ticker:c.ticker,deterministicBurst:b.score,phase:b.phase,score:c.score,quality:c.quality,
     relVolume:c.relVolume,dayChangePct:c.dayChangePct,rsi:c.rsi,adx:c.adx,ema20:c.ema20,ema50:c.ema50,technicalPrice:c.technicalPrice,
-    perfWeek:c.perfWeek,spreadPct:c.spreadPct,catalystDays:c.catalystDays,catalystImpact:c.catalystImpact,catalyst:c.catalystTitle||""}));
+    perfWeek:c.perfWeek,perfMonth:c.perfMonth,spreadPct:c.spreadPct,extensionPct:c.extensionPct,nearHighPct:c.nearHighPct,
+    marketCap:finiteNumber(c.stock&&c.stock.marketCap),avgVolume:finiteNumber(c.stock&&c.stock.avgVolume),volume:finiteNumber(c.stock&&(c.stock.usLiveVolume??c.stock.volume)),
+    catalystDays:c.catalystDays,catalystImpact:c.catalystImpact,catalyst:c.catalystTitle||""}));
   const prompt=[
     "Eres el scout de muy corto plazo de ViewInvAI. Horizonte: 1-5 sesiones. No busques empresas buenas a largo plazo.",
     "Tu objetivo es detectar oportunidades TEMPRANAS con posibilidad de aceleración fuerte, antes de que el movimiento esté agotado.",
@@ -5436,15 +5440,14 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
     if(!(await aiCryptoKey(env)))return{reviewed:false,verdicts:new Map()};
     const {results:keys}=await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND active=1 ORDER BY CASE provider WHEN 'gemini' THEN 0 ELSE 1 END").bind(goal.user_id).all();
     if(!keys||!keys.length)return{reviewed:false,verdicts:new Map()};
-    const today=nowIso().slice(0,10),subjectKey=goal.portfolio_id+":buys:"+today+":"+buys.map(x=>x.ticker).sort().join(",");
+    const today=nowIso().slice(0,10),reviewBucket=Math.floor(Date.now()/(30*60000)),subjectKey=goal.portfolio_id+":buys:"+reviewBucket+":"+buys.map(x=>x.ticker).sort().join(",");
     const cached=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type='goal' AND subject_key=? ORDER BY created_at DESC LIMIT 1").bind(goal.user_id,subjectKey).first();
     let rows=cached?[aiContrastRow(cached)]:[];
     if(!rows.length){
       const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(goal.user_id,today).first();
       if((Number(used&&used.n)||0)>=AI_CONTRAST_DAILY_LIMIT)return{reviewed:false,verdicts:new Map()};
-      // Una sola IA por revisión (la primera activa, Gemini si está) para no gastar cuota de más.
-      const row=keys[0],apiKey=await aiDecrypt(env,goal.user_id,row.provider,row);
-      if(!apiKey)return{reviewed:false,verdicts:new Map()};
+      // Objetivo tiene prioridad. Probamos Gemini primero y, si no responde, la siguiente IA
+      // que el usuario haya activado. Nunca llamamos varias de pago si la anterior ya respondió.
       const ctxParts=[];
       for(const x of buys){
         const c=candidates.find(v=>v.key===x.key||String(v.ticker||"").toUpperCase()===String(x.ticker||"").toUpperCase()),s=c&&c.stock||{};
@@ -5473,14 +5476,18 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
         "El motor propone COMPRAR ahora:\n"+buys.map(x=>"- "+x.ticker+" ("+(x.name||"")+") · stop −"+x.stopPct+" % · recorrido previsto +"+x.targetPct+" %"+(x.burstScore?" · score temprano "+x.burstScore+"/100":"")).join("\n")+
         "\n\nDATOS ACTUALES APORTADOS POR VIEWINVAI:\n"+ctxRows+
         "\n\nContrasta prioritariamente con estos datos. Si no tienes búsqueda web disponible o falta una noticia reciente, dilo; no inventes información.";
-      const model=row.model||AI_PROVIDERS[row.provider].model;
-      let ans;
-      try{ans=row.provider==="gemini"?await aiAskGemini(apiKey,model,prompt):row.provider==="anthropic"?await aiAskClaude(apiKey,model,prompt):await aiAskOpenAi(apiKey,model,prompt)}
-      catch(_){ans={error:"timeout"}}
-      if(ans.error||!String(ans.text||"").trim())return{reviewed:false,verdicts:new Map()};
+      let chosen=null,ans=null;
+      for(const row of keys){
+        const apiKey=await aiDecrypt(env,goal.user_id,row.provider,row);if(!apiKey)continue;
+        const model=row.model||AI_PROVIDERS[row.provider].model;
+        try{ans=row.provider==="gemini"?await aiAskGemini(apiKey,model,prompt):row.provider==="anthropic"?await aiAskClaude(apiKey,model,prompt):await aiAskOpenAi(apiKey,model,prompt)}
+        catch(_){ans={error:"timeout"}}
+        if(!ans.error&&String(ans.text||"").trim()){chosen=row;break}
+      }
+      if(!chosen||!ans||ans.error||!String(ans.text||"").trim())return{reviewed:false,verdicts:new Map()};
       const parsed=aiParseAnswer(ans.text);
       if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · "+(ans.effectiveModel||"Flash")+(ans.modelFallback?" (respaldo)":"")+" · sin búsqueda web. "+(parsed.summary||""),800);
-      rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,row.provider,parsed,ans.sources)];
+      rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,chosen.provider,parsed,ans.sources)];
     }
     const verdicts=new Map();
     for(const c of rows)for(const i of c.items||[])verdicts.set(String(i.ticker||"").toUpperCase(),i.verdict);
