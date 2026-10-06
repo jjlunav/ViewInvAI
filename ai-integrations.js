@@ -6,7 +6,7 @@
 (function(){
  const PROVIDERS=[
   {id:'gemini',name:'Gemini',company:'Google',badge:'Gratis',free:true,prefix:'AIza',
-   blurb:'Recomendada para empezar: el modelo tiene nivel gratuito. Si Google no permite búsqueda web en tu nivel, ViewInvAI reintenta el contraste sin búsqueda y lo indica claramente.'},
+   blurb:'Recomendada para empezar: ViewInvAI detecta automáticamente los Flash estables disponibles en tu proyecto y usa primero el más nuevo; si falla, baja modelo por modelo.'},
   {id:'anthropic',name:'Claude',company:'Anthropic',badge:'Clave de pago',prefix:'sk-ant-',
    blurb:'Análisis muy cuidadoso con búsqueda web. Usa tu propia clave de API (prepago en la consola de Anthropic).'},
   {id:'openai',name:'ChatGPT (API)',company:'OpenAI',badge:'Clave de pago',prefix:'sk-',
@@ -21,9 +21,9 @@
    'Pulsa <b>«Create API key»</b> (Crear clave de API). Si te pregunta por un proyecto, elige <b>crear uno nuevo</b>.',
    'Copia la clave que aparece (empieza por <code>AIza…</code>).',
    'Vuelve aquí, pégala en el campo de <b>Gemini</b> y pulsa <b>«Guardar y probar»</b>. Si es correcta, queda activa al momento.'],
-   notes:['El modelo Gemini dispone de nivel gratuito y no requiere tarjeta. Los límites dependen del proyecto y del modelo.',
-   'La búsqueda web integrada de la API puede no estar incluida en el nivel gratuito. En ese caso ViewInvAI reintenta automáticamente sin búsqueda y lo muestra en el resultado.',
-   'En el plan gratuito Google puede usar las consultas para mejorar sus productos. ViewInvAI solo envía datos públicos de las acciones (tickers, puntuaciones, precios), nunca tus importes.']},
+   notes:['Gemini dispone de nivel gratuito y no requiere tarjeta. Los límites dependen del proyecto y del modelo.',
+   'ViewInvAI consulta el catálogo de modelos de tu propia clave, usa los Flash estables del más nuevo al más antiguo y después los Flash-Lite. La lista se guarda unas horas en memoria, sin escribir en D1.',
+   'La búsqueda web integrada no es necesaria: ViewInvAI aporta cotización, técnica y noticias/eventos conocidos. En el plan gratuito Google puede usar las consultas para mejorar sus productos; nunca se envían tus importes.']},
   anthropic:{title:'Cómo conseguir tu clave de Claude (Anthropic)',steps:[
    'Abre <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> y crea una cuenta o inicia sesión. <b>Ojo:</b> la suscripción Pro/Max de claude.ai no incluye la API; es una cuenta aparte.',
    'Ve a <b>Billing</b> (Facturación) y añade saldo de prepago (con 5 $ hay para mucho tiempo).',
@@ -97,7 +97,11 @@
     (c?'<div class="settings-status-row ai-int-toggle-row"><span>Usar en el análisis automático</span><label class="settings-switch" aria-label="Usar '+esc(p.name)+'"><input type="checkbox" data-ai-toggle="'+p.id+'"'+(c.active?' checked':'')+'><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>':'')+
     '<form class="ai-int-form" data-ai-key-form="'+p.id+'" autocomplete="off">'+
      '<input type="password" name="key" inputmode="text" autocomplete="off" spellcheck="false" placeholder="'+(c?'Pega una clave nueva para cambiarla':'Pega aquí tu clave ('+esc(p.prefix)+'…)')+'" aria-label="Clave de '+esc(p.name)+'">'+
-     '<details class="ai-int-advanced"><summary>Opciones avanzadas</summary><label><span>Modelo</span><input name="model" type="text" spellcheck="false" value="'+esc(model)+'" placeholder="'+esc(config.defaults[p.id]||'')+'"></label></details>'+
+     '<details class="ai-int-advanced"><summary>Opciones avanzadas</summary>'+
+      (p.id==='gemini'
+       ?'<p class="settings-note"><b>Modelo automático.</b> Se detectan los Flash estables disponibles y se prueban de más nuevo a más antiguo; después, Flash-Lite.</p>'
+       :'<label><span>Modelo</span><input name="model" type="text" spellcheck="false" value="'+esc(model)+'" placeholder="'+esc(config.defaults[p.id]||'')+'"></label>')+
+     '</details>'+
      '<div class="ai-int-actions"><button type="submit" class="btn small">Guardar y probar</button>'+
      '<button type="button" class="btn small ghost" data-ai-manual="'+p.id+'">Cómo conseguirla</button>'+
      (c?'<button type="button" class="btn small ghost danger" data-ai-remove="'+p.id+'">Quitar</button>':'')+'</div>'+

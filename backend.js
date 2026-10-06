@@ -4762,7 +4762,7 @@ export async function handleBackendApi(request, env, services = {}) {
 // opinión bajo petición. Las claves se guardan cifradas (AES-GCM con AI_KEYS_SECRET,
 // ligadas al usuario) y nunca se devuelven; a la IA solo se envían datos públicos.
 const AI_PROVIDERS={
-  gemini:{label:"Gemini",model:"gemini-3.6-flash"},
+  gemini:{label:"Gemini",model:"gemini-3.8-flash"},
   anthropic:{label:"Claude",model:"claude-opus-5-5"},
   openai:{label:"OpenAI",model:"gpt-5-mini"}
 };
@@ -4812,7 +4812,8 @@ async function aiFetch(url,init,timeoutMs=60000){
 function aiProviderError(provider,status,data){
   const raw=String(data&&data.error&&(data.error.message||data.error.type)||data&&data.message||"").slice(0,200);
   if(status===401||status===403)return AI_PROVIDERS[provider].label+" rechaza la clave (no es válida o no tiene permisos).";
-  if(status===429)return AI_PROVIDERS[provider].label+" no permite esta solicitud ahora mismo por cuota o límite del proyecto. Puede ocurrir incluso sin consumo previo; revisa los límites del proyecto o inténtalo más tarde.";
+  if(status===429)return AI_PROVIDERS[provider].label+" no permite esta solicitud ahora mismo por cuota o límite del proyecto. Puede ocurrir incluso sin consumo previo; ViewInvAI probará otros modelos disponibles antes de mostrar este error.";
+  if(status===503)return AI_PROVIDERS[provider].label+" está temporalmente saturado. ViewInvAI ya ha probado los modelos Flash disponibles y no ha conseguido una respuesta.";
   if(status===400&&/model/i.test(raw))return AI_PROVIDERS[provider].label+" no reconoce el modelo indicado: "+raw;
   return AI_PROVIDERS[provider].label+" respondió con un error ("+status+")"+(raw?": "+raw:".");
 }
@@ -4881,20 +4882,76 @@ function aiCleanSources(list){
   }
   return out;
 }
+const AI_GEMINI_CATALOG_TTL_MS=6*60*60*1000;
+const AI_GEMINI_EMERGENCY_MODELS=[
+  "gemini-3.8-flash","gemini-3.7-flash","gemini-3.6-flash","gemini-3.5-flash","gemini-3-flash",
+  "gemini-3.5-flash-lite","gemini-3.1-flash-lite"
+];
+const aiGeminiCatalogCache=new Map();
+function aiGeminiStableFlashMeta(value){
+  const id=String(value||"").replace(/^models\//,"").toLowerCase();
+  const m=id.match(/^gemini-(\d+)(?:\.(\d+))?(?:\.(\d+))?-flash(-lite)?$/);
+  if(!m)return null;
+  return{id,major:Number(m[1]||0),minor:Number(m[2]||0),patch:Number(m[3]||0),lite:!!m[4]};
+}
+function aiGeminiSortModels(values){
+  const seen=new Set(),rows=[];
+  for(const value of values||[]){
+    const meta=aiGeminiStableFlashMeta(value);
+    if(!meta||seen.has(meta.id))continue;
+    seen.add(meta.id);rows.push(meta);
+  }
+  rows.sort((a,b)=>(Number(a.lite)-Number(b.lite))||(b.major-a.major)||(b.minor-a.minor)||(b.patch-a.patch)||a.id.localeCompare(b.id));
+  return rows.map(x=>x.id);
+}
+async function aiGeminiCatalogKey(apiKey){
+  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(apiKey||"")));
+  return [...new Uint8Array(hash).slice(0,12)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+async function aiGeminiModelChain(apiKey,configuredModel=""){
+  const key=await aiGeminiCatalogKey(apiKey),cached=aiGeminiCatalogCache.get(key),now=Date.now();
+  if(cached&&now-cached.at<AI_GEMINI_CATALOG_TTL_MS)return{models:cached.models,source:"catalog-cache"};
+  try{
+    const res=await aiFetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",{headers:{"x-goog-api-key":apiKey}},15000);
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(aiProviderError("gemini",res.status,data));
+    const available=[];
+    for(const row of data.models||[]){
+      const id=String(row&&row.name||"").replace(/^models\//,""),meta=aiGeminiStableFlashMeta(id);
+      if(!meta)continue;
+      const actions=Array.isArray(row.supportedGenerationMethods)?row.supportedGenerationMethods:
+        Array.isArray(row.supportedActions)?row.supportedActions:[];
+      if(actions.length&&!actions.includes("generateContent"))continue;
+      available.push(meta.id);
+    }
+    const models=aiGeminiSortModels(available);
+    if(!models.length)throw new Error("No stable Flash models in Gemini catalog");
+    aiGeminiCatalogCache.set(key,{at:now,models});
+    if(aiGeminiCatalogCache.size>24){
+      const oldest=[...aiGeminiCatalogCache.entries()].sort((x,y)=>x[1].at-y[1].at).slice(0,aiGeminiCatalogCache.size-24);
+      for(const [k] of oldest)aiGeminiCatalogCache.delete(k);
+    }
+    return{models,source:"catalog"};
+  }catch(error){
+    // Si Google no deja listar modelos, usamos una cadena local conocida. El modelo
+    // configurado solo entra si también es un Flash estable; nunca previews/latest/experimental.
+    const emergency=aiGeminiSortModels([configuredModel,...AI_GEMINI_EMERGENCY_MODELS]);
+    return{models:emergency,source:"emergency",catalogError:String(error&&error.message||error)};
+  }
+}
 async function aiAskGemini(apiKey,model,prompt){
-  // ViewInvAI ya adjunta cotización, técnica y noticias/eventos conocidos. Para el nivel
-  // gratuito no dependemos de Google Search grounding: así evitamos una llamada que el
-  // free tier puede rechazar y reducimos latencia/carga.
-  const preferred=String(model||"")==="gemini-flash-latest"?"gemini-3.6-flash":String(model||"gemini-3.6-flash");
-  const models=[preferred,"gemini-3.6-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"].filter((m,i,a)=>m&&a.indexOf(m)===i);
+  // ViewInvAI ya adjunta cotización, técnica y noticias/eventos conocidos. El backend
+  // descubre automáticamente todos los Flash estables disponibles para esta API key,
+  // prueba primero los normales del más nuevo al más antiguo y después los Flash-Lite.
+  const chain=await aiGeminiModelChain(apiKey,model),models=chain.models;
   const system=AI_CONTRAST_SYSTEM+
     "\nIMPORTANTE: no tienes búsqueda web en esta consulta. Usa los datos actuales aportados por ViewInvAI en el prompt. No afirmes haber verificado fuera de ellos; si falta un dato reciente, indícalo y usa «dudas».";
   const body=JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}]});
-  let last=null,usedModel=preferred;
-  for(const candidate of models){
-    usedModel=candidate;
-    // Un 503 es saturación temporal de Google. Reintentamos una vez el mismo modelo
-    // y, si sigue ocupado, pasamos automáticamente a un Flash-Lite gratuito.
+  let last=null,usedModel="",index=-1;
+  for(let i=0;i<models.length;i++){
+    const candidate=models[i];usedModel=candidate;index=i;
+    // Un 503/5xx/429 puede ser transitorio o específico de un modelo: reintento corto y,
+    // si persiste, seguimos exactamente con el siguiente modelo del catálogo ordenado.
     for(let attemptNo=0;attemptNo<2;attemptNo++){
       const endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(candidate)+":generateContent";
       const res=await aiFetch(endpoint,{method:"POST",headers:{"x-goog-api-key":apiKey,"Content-Type":"application/json"},body});
@@ -4904,7 +4961,7 @@ async function aiAskGemini(apiKey,model,prompt){
         const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
         const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
         return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean),
-          freeFallback:true,modelFallback:candidate!==preferred?candidate:"",effectiveModel:candidate};
+          freeFallback:true,modelFallback:i>0?candidate:"",effectiveModel:candidate,modelCatalogSource:chain.source};
       }
       last={res,data};
       const transient=[429,500,502,503,504].includes(res.status);
@@ -4913,7 +4970,7 @@ async function aiAskGemini(apiKey,model,prompt){
     }
     if(last&&[401,403].includes(last.res.status))break;
   }
-  return{error:aiProviderError("gemini",last&&last.res?last.res.status:503,last&&last.data||{}),effectiveModel:usedModel};
+  return{error:aiProviderError("gemini",last&&last.res?last.res.status:503,last&&last.data||{}),effectiveModel:usedModel,modelIndex:index,modelCatalogSource:chain.source};
 }
 async function aiAskClaude(apiKey,model,prompt){
   const messages=[{role:"user",content:prompt}];
@@ -5086,7 +5143,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       for(const a of answers){
         if(a.error){errors.push({provider:a.row.provider,error:a.error});continue}
         const parsed=aiParseAnswer(a.text);
-        if(a.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web"+(a.modelFallback?" · respaldo "+a.modelFallback:"")+" en esta consulta. "+(parsed.summary||""),800);
+        if(a.freeFallback)parsed.summary=trimText("Gemini gratis · "+(a.effectiveModel||"Flash")+(a.modelFallback?" (respaldo)":"")+" · sin búsqueda web. "+(parsed.summary||""),800);
         contrasts.push(await aiSaveContrast(env,user,type,key,a.row.provider,parsed,a.sources));
       }
     }
@@ -5323,7 +5380,7 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
       catch(_){ans={error:"timeout"}}
       if(ans.error||!String(ans.text||"").trim())return{reviewed:false,verdicts:new Map()};
       const parsed=aiParseAnswer(ans.text);
-      if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · sin búsqueda web"+(ans.modelFallback?" · respaldo "+ans.modelFallback:"")+" en esta consulta. "+(parsed.summary||""),800);
+      if(ans.freeFallback)parsed.summary=trimText("Gemini gratis · "+(ans.effectiveModel||"Flash")+(ans.modelFallback?" (respaldo)":"")+" · sin búsqueda web. "+(parsed.summary||""),800);
       rows=[await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,row.provider,parsed,ans.sources)];
     }
     const verdicts=new Map();
