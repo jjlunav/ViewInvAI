@@ -1768,9 +1768,21 @@ function portfolioWorkbarHtml(selected){
   '</div>';
 }
 
+function portfolioAssetMode(){
+  const view=$("#view-portfolios"),goalBox=$("#portfolioGoalApp"),goalTab=$("#portfolioGoalTab");
+  const declared=String(view&&view.dataset&&view.dataset.portfolioAssetMode||"").toLowerCase();
+  if(["stocks","funds","goal","favorites"].includes(declared))return declared;
+  if(goalTab&&goalTab.getAttribute("aria-selected")==="true")return"goal";
+  if(goalBox&&!goalBox.hidden&&!goalBox.classList.contains("is-hidden"))return"goal";
+  return"stocks";
+}
+
 function renderApp() {
+  // Un repintado secundario (favoritos, posiciones, efectivo, etc.) no puede vaciar Objetivo
+  // mientras esa pestaña siga visible. Antes se borraba #portfolioGoalApp y quedaba en blanco
+  // hasta cambiar de pestaña.
+  if(portfolioAssetMode()==="goal")return renderGoalApp();
   const box=$("#portfolioApp");if(!box)return;
-  const goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML="";
   state.primaryTab="portfolio";
   if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
   state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
@@ -3799,6 +3811,11 @@ function bind() {
     state.goalCandidateCache={at:0,key:"",rows:[]};
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
     schedulePortfolioQuoteRender();
+  });
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden||portfolioAssetMode()!=="goal")return;
+    const box=$("#portfolioGoalApp");
+    if(box&&(!box.innerHTML.trim()||!box.querySelector(".portfolio-goal-controls,.portfolio-empty-state,.portfolio-loading")))renderGoalApp();
   });
 }
 
