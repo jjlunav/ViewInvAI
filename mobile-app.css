@@ -2750,3 +2750,50 @@ html[data-native-app="1"] #view-recommendation .radar-ai-card .list-copy-isin{
 html[data-native-app="1"] #view-recommendation .radar-ai-card .asset-investing-main strong{
  font-size:13px!important;
 }
+
+
+/* 0.6.65 · native top chrome: page actions sit beside search/settings/account, never underneath. */
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.section-help,
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.heading-actions,
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.icon-btn{
+ position:fixed!important;
+ top:calc(var(--native-safe-top) + 8px)!important;
+ right:calc(var(--native-safe-right) + 137px)!important;
+ left:auto!important;
+ bottom:auto!important;
+ z-index:1695!important;
+ margin:0!important;
+}
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.heading-actions{
+ display:flex!important;
+ flex-wrap:nowrap!important;
+ align-items:center!important;
+ justify-content:flex-end!important;
+ gap:5px!important;
+ width:auto!important;
+ max-width:calc(100vw - 155px)!important;
+}
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.section-help,
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.icon-btn,
+html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.heading-actions>*{
+ width:38px!important;
+ min-width:38px!important;
+ height:38px!important;
+ min-height:38px!important;
+ padding:0!important;
+ border-radius:50%!important;
+ display:grid!important;
+ place-items:center!important;
+}
+@media(max-width:370px){
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.section-help,
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.heading-actions,
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.icon-btn{
+  right:calc(var(--native-safe-right) + 119px)!important;
+ }
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.section-help,
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.icon-btn,
+ html[data-native-app="1"] body:not(.stock-detail-open) .view.active>.page-heading>.heading-actions>*{
+  width:35px!important;min-width:35px!important;height:35px!important;min-height:35px!important;
+ }
+}
