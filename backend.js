@@ -4312,8 +4312,9 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
   const rows=await env.DB.prepare(
     "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
     "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 AND ("+
-    "COALESCE(p.news_enabled,0)<>0 OR COALESCE(p.pulse_enabled,0)<>0 OR COALESCE(p.radar_enabled,0)<>0 OR "+
-    "COALESCE(p.price_up_enabled,0)<>0 OR COALESCE(p.price_down_enabled,0)<>0 OR p.price_above IS NOT NULL OR p.price_below IS NOT NULL) "+
+    "(COALESCE(g.news_events_enabled,0)<>0 AND COALESCE(p.news_enabled,0)<>0) OR "+
+    "((COALESCE(g.radar_high_enabled,0)<>0 OR COALESCE(g.radar_opportunity_enabled,0)<>0 OR COALESCE(g.radar_watch_enabled,0)<>0) AND (COALESCE(p.radar_enabled,0)<>0 OR COALESCE(p.pulse_enabled,0)<>0)) OR "+
+    "(COALESCE(g.price_enabled,0)<>0 AND (COALESCE(p.price_up_enabled,0)<>0 OR COALESCE(p.price_down_enabled,0)<>0 OR p.price_above IS NOT NULL OR p.price_below IS NOT NULL))) "+
     "ORDER BY p.user_id,p.id"
   ).all();
   if(!(rows.results||[]).length)return{processed:0};
