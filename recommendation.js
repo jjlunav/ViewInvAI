@@ -653,10 +653,33 @@ function rerenderRadarAiList(){
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
 }
 document.addEventListener('click',e=>{
+ const card=e.target.closest&&e.target.closest('[data-radar-open-key]');
+ if(card&&card.closest('#recommendationResults')){
+  const control=e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,label,[data-radar-market],[data-radar-tier],[data-reco-mobile-group]');
+  if(!control){
+   const s=stockByKey(card.dataset.radarOpenKey);
+   if(s){
+    e.preventDefault();
+    e.stopPropagation();
+    openStock(s,'Radar AI',card.dataset.radarOpenTr==='1');
+    return;
+   }
+  }
+ }
  const m=e.target.closest&&e.target.closest('[data-radar-market]');
  if(m){radarAiMarket=m.dataset.radarMarket==='us'?'us':'tr';try{localStorage.setItem('viewinvai:radar-market',radarAiMarket)}catch(_){}rerenderRadarAiList();return}
  const t=e.target.closest&&e.target.closest('[data-radar-tier]');
  if(t){radarAiTierFilter=t.dataset.radarTier===radarAiTierFilter?'all':t.dataset.radarTier;rerenderRadarAiList()}
+});
+document.addEventListener('keydown',e=>{
+ if(!['Enter',' '].includes(e.key))return;
+ const card=e.target.closest&&e.target.closest('[data-radar-open-key]');
+ if(!card||!card.closest('#recommendationResults'))return;
+ const s=stockByKey(card.dataset.radarOpenKey);
+ if(!s)return;
+ e.preventDefault();
+ e.stopPropagation();
+ openStock(s,'Radar AI',card.dataset.radarOpenTr==='1');
 });
 
 function recommendationLoadingSection(mode){
