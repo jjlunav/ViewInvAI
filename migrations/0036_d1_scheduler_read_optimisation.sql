@@ -13,12 +13,6 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_analysis_due_global
 CREATE INDEX IF NOT EXISTS idx_user_notification_settings_enabled
   ON user_notification_settings(opted_in_explicitly, notifications_enabled, user_id);
 
-CREATE INDEX IF NOT EXISTS idx_notification_preferences_actionable
-  ON notification_preferences(user_id, id)
-  WHERE news_enabled <> 0
-     OR pulse_enabled <> 0
-     OR radar_enabled <> 0
-     OR price_up_enabled <> 0
-     OR price_down_enabled <> 0
-     OR price_above IS NOT NULL
-     OR price_below IS NOT NULL;
+-- The existing UNIQUE(user_id,stock_key,prefer_tr) index already covers the user side
+-- of the preference join. Avoid an additional wide partial index: pulse_enabled was
+-- historically default-on and would make that index almost as large as the table.
