@@ -127,6 +127,7 @@ function nativeCorsResponse(request, response) {
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Expose-Headers", "ETag,X-ViewInvAI-Market-Storage");
+  headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   headers.append("Vary", "Origin");
   return new Response(response.body, {
     status: response.status,
@@ -152,6 +153,7 @@ function nativePreflightResponse(request) {
   headers.set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   headers.set("Access-Control-Allow-Headers", requestedHeaders);
   headers.set("Access-Control-Max-Age", "600");
+  headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   return new Response(null, { status: 204, headers });
 }
 
