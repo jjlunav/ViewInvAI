@@ -4028,7 +4028,11 @@ async function handlePortfolioGoal(request,env,user,json,url){
     const requestedRisk=String(body.riskProfile!==undefined?body.riskProfile:(existing&&existing.risk_profile||"aggressive")).trim().toLowerCase();
     const riskProfile=["conservative","balanced","aggressive"].includes(requestedRisk)?requestedRisk:"aggressive";
     const maxPositions=Math.max(1,Math.min(10,Math.round(finiteNumber(body.maxPositions)??finiteNumber(existing&&existing.max_positions)??5)));
-    const allowSpec=body.allowSpec!==undefined?(body.allowSpec===false?0:1):(existing?Number(existing.allow_spec)===0?0:1:1);
+    const requestedSpec=body.specMode!==undefined?finiteNumber(body.specMode):null;
+    const allowSpec=requestedSpec!==null
+      ?Math.max(0,Math.min(3,Math.round(requestedSpec)))
+      :body.allowSpec!==undefined?(body.allowSpec===false?0:1)
+      :(existing?Math.max(0,Math.min(3,Math.round(finiteNumber(existing.allow_spec)??1))):1);
     // El ritmo se mide desde que se fija (o cambia) el objetivo o su fecha.
     const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date;
     const startValue=restart?finiteNumber(body.currentValueEur):finiteNumber(existing.start_value_eur);
@@ -5608,7 +5612,7 @@ async function scanPortfolioGoalNotifications(env,services){
         if(x){c.aiScoutScore=x.score;c.aiScoutPhase=x.phase;c.aiScoutVerdict=x.verdict;c.aiScoutReason=x.reason}
       }
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
-          risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,allowSpec:Number(goal.allow_spec)!==0},
+          risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
         positions:enginePositions,candidates,cashEur,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";

@@ -10,13 +10,19 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.06-g4-limit-wait';
+  const VERSION='2026.10.07-g5-spec-modes';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
     aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4,maxHoldDays:6}
   };
-  const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5,SPEC_MAX_WEIGHT=10;
+  const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
+  const SPEC_POLICY={
+    0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
+    1:{maxCount:1,maxWeight:10,maxTotalWeight:10,minBurstExtra:4,minQualityExtra:3,maxSpread:4,edgeOverNormal:2},
+    2:{maxCount:2,maxWeight:10,maxTotalWeight:20,minBurstExtra:7,minQualityExtra:5,maxSpread:3,edgeOverNormal:3},
+    3:{maxCount:10,maxWeight:12,maxTotalWeight:35,minBurstExtra:4,minQualityExtra:3,maxSpread:4,edgeOverNormal:0}
+  };
 
   const n=v=>{if(v===null||v===undefined||v==='')return null;const x=Number(v);return Number.isFinite(x)?x:null};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -25,6 +31,11 @@
   const pct=v=>(v>0?'+':'')+(Math.round(v*10)/10).toLocaleString('es-ES')+' %';
 
   function band(risk){return RISK[risk]||RISK.aggressive}
+  function specPolicy(cfg,maxPositions){
+    const raw=n(cfg&&cfg.specMode),mode=clamp(Math.round(raw===null?(cfg&&cfg.allowSpec===false?0:1):raw),0,3);
+    const base=SPEC_POLICY[mode]||SPEC_POLICY[1];
+    return{...base,mode,maxCount:mode===3?maxPositions:Math.min(base.maxCount,maxPositions)};
+  }
 
   // Stop inicial según volatilidad: k × ATR diario, entre −6 % y −12 %.
   function stopPctFor(atrPct,risk){
@@ -162,7 +173,7 @@
   function feeOf(x,side){const f=n(side==='SELL'?x.sellFeeEur:x.buyFeeEur);return f===null?n(x.feeEur)||0:f}
 
   /* plan(input) → { actions, holds, pace, defensive, drawdownPct, notes, band }
-   * input.config: {target, deadline, startValue, startDate, risk, maxPositions(3–5), allowSpec}
+   * input.config: {target, deadline, startValue, startDate, risk, maxPositions(3–5), specMode(0–3), allowSpec}
    * input.positions: [{key,ticker,name,units,avgEur,priceEur,bidEur,score,quality,tier,
    *                    speculative,atrPct,peakEur,stopEur,feeEur,aiVerdict}]
    * input.candidates: [{key,ticker,name,priceEur,askEur,score,quality,tier,speculative,
@@ -170,7 +181,7 @@
    * input.cashEur, input.peakValueEur, input.wasDefensive, input.nowMs */
   function plan(input={}){
     const cfg=input.config||{},risk=RISK[cfg.risk]?cfg.risk:'aggressive',b=band(risk);
-    const maxPositions=clamp(Math.round(n(cfg.maxPositions)||5),1,10);
+    const maxPositions=clamp(Math.round(n(cfg.maxPositions)||5),1,10),spec=specPolicy(cfg,maxPositions);
     const positions=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
     const cash=Math.max(0,n(input.cashEur)||0);
     const valueEur=cash+positions.reduce((s,p)=>s+(n(p.units)||0)*(n(p.priceEur)||0),0);
@@ -206,14 +217,13 @@
     }
 
     // 2) Candidatas válidas (antes de decidir rotaciones).
-    const held=new Set(remaining.map(p=>String(p.key)));
-    const specHeld=remaining.some(p=>p.speculative);
-    const rankedCands=(input.candidates||[]).filter(c=>{
+    const held=new Set(remaining.map(p=>String(p.key))),specHeldCount=remaining.filter(p=>p.speculative).length;
+    const mappedCands=(input.candidates||[]).filter(c=>{
       if(held.has(String(c.key)))return false;
       if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
       if((n(c.score)??0)<50||(n(c.quality)??0)<minQuality)return false;
-      if(c.speculative&&(cfg.allowSpec===false||specHeld))return false;
+      if(c.speculative&&spec.maxCount<=0)return false;
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
@@ -221,9 +231,19 @@
         entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryDecision:burst.entryDecision,entryReasons:burst.entryReasons,
         limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
         stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
-    }).filter(c=>(n(c.score)??0)>=minScore||c.burstScore>=b.minBurst+8)
-      .filter(c=>c.burstScore>=b.minBurst-4&&c.burstPhase!=='avoid')
-      .sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
+    });
+    const bestNormalBurst=Math.max(-Infinity,...mappedCands.filter(c=>!c.speculative).map(c=>n(c.burstScore)??0));
+    const rankedCands=mappedCands.filter(c=>{
+      if((n(c.score)??0)<minScore&&c.burstScore<b.minBurst+8)return false;
+      if(c.burstScore<b.minBurst-4||c.burstPhase==='avoid')return false;
+      if(!c.speculative)return true;
+      if(specHeldCount>=spec.maxCount)return false;
+      if((n(c.quality)??0)<minQuality+spec.minQualityExtra)return false;
+      if(c.burstScore<b.minBurst+spec.minBurstExtra)return false;
+      if(spec.maxSpread!==null&&n(c.spreadPct)!==null&&n(c.spreadPct)>spec.maxSpread)return false;
+      if(Number.isFinite(bestNormalBurst)&&c.burstScore<bestNormalBurst+spec.edgeOverNormal)return false;
+      return true;
+    }).sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
     // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
@@ -298,11 +318,15 @@
       notes.push('Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.');
     }else{
       let slots=maxPositions-remaining.length;
+      let specCount=remaining.filter(p=>p.speculative).length;
+      let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       for(const c of cands){
         if(slots<=0||pool<=0)break;
+        if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
-        const maxW=(c.speculative?SPEC_MAX_WEIGHT:b.maxWeight)/100;
-        const share=Math.min(pool/slots*adj.size,valueEur*maxW,pool);
+        const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
+        const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
+        const share=Math.min(pool/slots*adj.size,valueEur*maxW,pool,specCapacity);
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
@@ -311,6 +335,7 @@
         const ticket=units*ask;
         if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(c.ticker+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         pool-=ticket+feeB;slots--;
+        if(c.speculative){specCount++;specExposure+=ticket}
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiScoutReason||'',
@@ -323,7 +348,7 @@
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
     return{version:VERSION,actions,waits,holds,decisions,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
-      cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions}};
+      cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
   root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst});
