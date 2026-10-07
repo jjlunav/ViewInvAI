@@ -1768,9 +1768,16 @@ function portfolioWorkbarHtml(selected){
   '</div>';
 }
 
+function portfolioAssetMode(){
+  const mode=String(document.querySelector("#view-portfolios")?.dataset.portfolioAssetMode||"");
+  return ["stocks","funds","goal","favorites"].includes(mode)?mode:"stocks";
+}
+
 function renderApp() {
+  // Async portfolio/favorite/transaction callbacks may finish after the user has opened
+  // Objetivo. Never let a stale stocks render clear or replace the visible goal panel.
+  if(portfolioAssetMode()==="goal")return renderGoalApp();
   const box=$("#portfolioApp");if(!box)return;
-  const goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML="";
   state.primaryTab="portfolio";
   if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
   state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
@@ -1844,7 +1851,7 @@ function schedulePortfolioQuoteRender(){
 }
 
 function renderActivePortfolioPanel(){
-  if(state.primaryTab==="goal")return renderGoalApp();
+  if(portfolioAssetMode()==="goal"||state.primaryTab==="goal")return renderGoalApp();
   return renderApp();
 }
 
@@ -2005,7 +2012,7 @@ async function deletePortfolio(id, button) {
     savePortfolioUi();
     syncPortfolioStars();
     keys.forEach(stockKey => window.dispatchEvent(new CustomEvent("viewinvai:portfolio-membership-changed", { detail:{ stockKey } })));
-    renderApp();
+    renderActivePortfolioPanel();
     if (state.portfolios.length) openPortfolioOrderModal(true); else closeModal();
     toast("Cartera «" + (removed && removed.name || "") + "» borrada");
   } catch (error) {
@@ -2037,7 +2044,7 @@ async function savePortfolioOrder() {
     }));
     portfolioNameDrafts = {};
     closeModal();
-    renderApp();
+    renderActivePortfolioPanel();
     toast("Carteras actualizadas");
   } catch (error) {
     toast(error.message || "No se pudieron guardar los cambios.", true);
@@ -3089,7 +3096,7 @@ async function removePositionMembership(position) {
   window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{stockKey:position.stock_key}}));
   state.goalCandidateCache={at:0,key:"",rows:[]};
   if(portfolioHasGoal(position.portfolio_id))scheduleGoalPortfolioReview(position.portfolio_id,null);
-  renderApp();
+  renderActivePortfolioPanel();
   return true;
 }
 
@@ -3195,7 +3202,7 @@ async function syncFavorite(active, key, preferTrOverride=null) {
       state.watchlist = state.watchlist.filter(x => x.id !== existing.id);
     }
     syncPortfolioStars();
-    renderApp();
+    renderActivePortfolioPanel();
     return state.watchlist.find(x=>sameStockRef(x.stock_key,key))||null;
   } catch (error) {
     console.warn("Favorite sync failed", error);
@@ -3788,6 +3795,14 @@ function bind() {
     // Re-sync instead of allowing a local-only star to drift from the account state.
     if(state.user)syncPortfolioStars();
   });
+  const ensureVisiblePortfolioPanel=()=>{
+    if(portfolioAssetMode()!=="goal")return;
+    const box=document.getElementById("portfolioGoalApp");
+    if(!box)return;
+    if(state.primaryTab!=="goal"||!box.firstElementChild)renderGoalApp();
+  };
+  window.addEventListener("viewinvai:portfolios-loaded",ensureVisiblePortfolioPanel);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)ensureVisiblePortfolioPanel()});
 
   window.addEventListener("viewinvai:quote-updated", event => {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
