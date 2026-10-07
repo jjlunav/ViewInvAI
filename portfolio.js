@@ -1817,14 +1817,20 @@ function renderGoalApp() {
   savePortfolioUi();
   const portfolioOptions=state.portfolios.map(item=>'<option value="'+esc(item.id)+'"'+(selected&&String(item.id)===String(selected.id)?' selected':'')+'>'+esc(item.name)+'</option>').join('');
   const cashLabel=selected?formatMoney(Math.max(0,num(selected.cash_balance)||0),String(selected.base_currency||"EUR").toUpperCase()):"—";
-  box.innerHTML='<div class="portfolio-goal-controls">'+
+  const controls='<div class="portfolio-goal-controls">'+
     '<label class="portfolio-goal-picker"><span>Cartera</span><select data-goal-portfolio-select'+(!state.portfolios.length?' disabled':'')+'>'+portfolioOptions+'</select></label>'+
     '<div class="portfolio-goal-cash-status"><small>EFECTIVO DISPONIBLE</small><strong>'+esc(cashLabel)+'</strong></div>'+
     '<div class="portfolio-goal-tools" role="toolbar" aria-label="Herramientas de estrategia">'+
       '<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de estrategias" title="Historial de estrategias">≣</button>'+
       '<button type="button" class="portfolio-icon-action" data-goal-refresh-plan'+(selected?'':' disabled')+' aria-label="Reanalizar estrategia" title="Reanalizar estrategia">↻</button>'+
     '</div>'+
-  '</div>'+portfolioGoalViewHtml();
+  '</div>';
+  try{
+    box.innerHTML=controls+portfolioGoalViewHtml();
+  }catch(error){
+    console.warn("Goal panel render failed",error);
+    box.innerHTML=controls+'<section class="portfolio-goal-view goal2"><div class="portfolio-goal-error" role="alert"><strong>No se pudo mostrar Objetivo.</strong><br>La cartera sigue intacta. Vuelve a intentarlo para recalcular la vista.</div><button type="button" class="btn small" data-goal-render-retry>Reintentar</button></section>';
+  }
   requestAnimationFrame(()=>{
     box.querySelectorAll("[data-goal-progress]").forEach(el=>el.style.setProperty("width",el.dataset.goalProgress+"%"));
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
@@ -3334,6 +3340,8 @@ function bind() {
     if(cashEdit){openPortfolioCashModal(cashEdit.dataset.portfolioCashEdit);return}
     const marketConfig=event.target.closest?.("[data-portfolio-market-config]");
     if(marketConfig){openPortfolioMarketModal(marketConfig.dataset.portfolioMarketConfig);return}
+    const goalRenderRetry=event.target.closest?.("[data-goal-render-retry]");
+    if(goalRenderRetry){state.goalCandidateCache={at:0,key:"",rows:[]};renderGoalApp();return}
     const goalRefresh=event.target.closest?.("[data-goal-refresh-plan]");
     if(goalRefresh){
       goalRefresh.disabled=true;const oldLabel=goalRefresh.getAttribute("aria-label")||"Reanalizar estrategia";
