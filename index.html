@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.61">
+<html lang="es" data-app-version="0.6.62">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -15,20 +15,20 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261002c1">
+  <link rel="stylesheet" href="styles.css?v=20261007s1">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20261002c1';
+      link.href = 'web-mobile.css?v=20261007s1';
       link.media = '(max-width:820px)';
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20261002c1">
+  <link rel="stylesheet" href="mobile-app.css?v=20261007s1">
   <link rel="stylesheet" href="ui-density.css?v=20261002u1">
-  <link rel="stylesheet" href="asset-card.css?v=20261002c1">
+  <link rel="stylesheet" href="asset-card.css?v=20261007s1">
   <link rel="stylesheet" href="theme-ai.css?v=20261005h1">
   <script src="security.js?v=20261002f9"></script>
   <script src="sync-screen.js?v=20261002L1"></script>
@@ -54,13 +54,13 @@
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="inbox"><span>◔</span>Avisos</button>
       <button class="nav-item" data-view="tax"><span>§</span>Fiscal (IRPF)</button>
-      <button class="nav-item" data-view="settings"><span>⚙</span>Configuración General</button>
     </nav>
 
   </aside>
 
   <main class="main">
     <div class="account-area floating-account" id="accountArea">
+      <button type="button" id="settingsButton" class="shell-icon-button settings-shell-button" data-shell-view="settings" aria-label="Configuración" title="Configuración"><span aria-hidden="true">⚙</span></button>
       <button type="button" id="accountButton" class="account-button" aria-haspopup="true" aria-expanded="false">
         <span id="accountAvatar" class="account-avatar">G</span>
         <span class="account-copy"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
@@ -462,136 +462,117 @@
     </section>
 
     <section class="view" id="view-settings">
-      <div class="page-heading compact-heading">
+      <div class="page-heading compact-heading settings-page-heading">
         <div>
-          <h1>Configuración General</h1>
-          <p class="lead">Preferencias de dispositivo, análisis y avisos. Los ajustes de cartera e IA se sincronizan con tu cuenta cuando inicias sesión.</p>
+          <h1>Configuración</h1>
+          <p class="lead">Ajustes de ViewInvAI organizados por categorías. Los cambios de cuenta se sincronizan cuando inicias sesión.</p>
         </div>
-        <button type="button" class="section-help" data-help-section="settings" aria-label="Ayuda sobre Configuración General">?</button>
+        <button type="button" class="section-help" data-help-section="settings" aria-label="Ayuda sobre Configuración">?</button>
       </div>
 
-      <div class="settings-grid">
-        <article class="settings-card appearance-settings-card">
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">APARIENCIA</span>
-              <h2>Tema de la aplicación</h2>
-              <p>Elige cómo quieres ver ViewInvAI en este dispositivo.</p>
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="Categorías de configuración">
+          <button type="button" class="settings-nav-item active" data-settings-section="general" aria-current="page"><span>⚙</span><b>General</b><small>Apariencia, dispositivo e IA</small></button>
+          <button type="button" class="settings-nav-item" data-settings-section="notifications"><span>◔</span><b>Notificaciones</b><small>Avisos, Radar AI y carteras</small></button>
+          <button type="button" class="settings-nav-item" data-settings-section="services"><span>⌁</span><b>Datos y servicios</b><small>Estado de fuentes y proveedores</small></button>
+          <button type="button" class="settings-nav-item" data-settings-section="data"><span>▣</span><b>Tus datos</b><small>Copia y restauración</small></button>
+          <button type="button" class="settings-nav-item" data-settings-section="help"><span>?</span><b>Ayuda</b><small>Introducción a ViewInvAI</small></button>
+        </nav>
+
+        <div class="settings-content">
+          <section class="settings-section active" data-settings-panel="general" aria-label="General">
+            <div class="settings-section-heading"><span>GENERAL</span><h2>Preferencias de la aplicación</h2><p>Aspecto, comportamiento del dispositivo e integraciones opcionales.</p></div>
+            <div class="settings-stack">
+              <article class="settings-card appearance-settings-card">
+                <div class="settings-card-head"><div><span class="settings-kicker">APARIENCIA</span><h2>Tema de la aplicación</h2><p>Elige cómo quieres ver ViewInvAI en este dispositivo.</p></div></div>
+                <div class="theme-setting-options" role="group" aria-label="Tema de la aplicación">
+                  <button type="button" class="theme-setting-option" data-theme-setting="dark" aria-pressed="true"><span class="theme-setting-icon">☾</span><span><strong>Oscuro</strong><small>Mayor contraste en mercados</small></span></button>
+                  <button type="button" class="theme-setting-option" data-theme-setting="light" aria-pressed="false"><span class="theme-setting-icon">☀</span><span><strong>Claro</strong><small>Fondos claros y alto contraste</small></span></button>
+                </div>
+              </article>
+
+              <article class="settings-card" id="screenWakeSettingsCard" hidden>
+                <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA Y DISPOSITIVO</span><h2>Mantener pantalla activa</h2><p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p></div><label class="settings-switch" aria-label="Mantener pantalla activa"><input id="keepScreenAwake" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                <div class="settings-status-row"><span>Estado</span><strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong></div>
+                <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
+              </article>
+
+              <article class="settings-card" id="appLockSettingsCard" hidden>
+                <div class="settings-card-head"><div><span class="settings-kicker">SEGURIDAD</span><h2>Bloqueo con huella o cara</h2><p>Pide tu huella, tu cara o el PIN del móvil al abrir ViewInvAI y al volver a ella tras más de 30 segundos fuera. Mientras está en segundo plano, el contenido queda oculto.</p></div><label class="settings-switch" aria-label="Bloqueo con huella o cara"><input id="appLockEnabled" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                <div class="settings-status-row"><span>Estado</span><strong id="appLockStatus" class="settings-status">Desactivado</strong></div>
+                <p class="settings-note">El token de Interactive Brokers que decidas recordar se guarda cifrado en el almacén seguro de Android, nunca en texto plano.</p>
+              </article>
+
+              <article class="settings-card ai-integration-card" id="aiIntegrationCard">
+                <div class="settings-card-head"><div><span class="settings-kicker">INTEGRAR LA IA · OPCIONAL</span><h2>Contrastar con tus IA</h2><p>ViewInvAI sigue calculando el Radar AI y el Objetivo como siempre. Si conectas una o varias IA, cada una contrasta ese resultado con información actual para reforzar o matizar la decisión.</p></div></div>
+                <div id="aiIntegrationBody" class="ai-integration-body"><p class="settings-note">Cargando…</p></div>
+              </article>
             </div>
-          </div>
-          <div class="theme-setting-options" role="group" aria-label="Tema de la aplicación">
-            <button type="button" class="theme-setting-option" data-theme-setting="dark" aria-pressed="true">
-              <span class="theme-setting-icon">☾</span>
-              <span><strong>Oscuro</strong><small>Mayor contraste en mercados</small></span>
-            </button>
-            <button type="button" class="theme-setting-option" data-theme-setting="light" aria-pressed="false">
-              <span class="theme-setting-icon">☀</span>
-              <span><strong>Claro</strong><small>Fondos claros y alto contraste</small></span>
-            </button>
-          </div>
-        </article>
+          </section>
 
-        <article class="settings-card" id="screenWakeSettingsCard" hidden>
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">PANTALLA Y DISPOSITIVO</span>
-              <h2>Mantener pantalla activa</h2>
-              <p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p>
+          <section class="settings-section" data-settings-panel="notifications" aria-label="Notificaciones" hidden>
+            <div class="settings-section-heading"><span>NOTIFICACIONES</span><h2>Avisos y alertas</h2><p>Controla desde un único sitio qué avisos quieres recibir y en qué dispositivo.</p></div>
+            <div class="settings-stack">
+              <article class="settings-card notification-master-card compact-settings-card">
+                <div class="settings-card-head"><div><span class="settings-kicker">ACTIVACIÓN GENERAL</span><h2>Activar notificaciones</h2><p>Activa los avisos de tu cuenta en cualquier dispositivo. En la APK Android, al activarlas se habilitarán también las notificaciones push del dispositivo.</p></div><label class="settings-switch" aria-label="Activar todas las notificaciones"><input id="globalNotificationsEnabled" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                <div class="settings-status-row"><span>Cuenta</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
+                <div class="settings-status-row" id="pushDeviceStatusRow"><span id="pushDeviceStatusLabel">Notificaciones en este dispositivo</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-save-row push-settings-actions" id="pushDeviceActionsRow"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button></div></div>
+              </article>
+
+              <article class="settings-card notification-categories-card compact-settings-card">
+                <div class="settings-card-head"><div><span class="settings-kicker">TIPOS DE AVISO</span><h2>Notificarme cuando…</h2></div></div>
+                <div class="notification-category-list">
+                  <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos importantes</strong><small>Avisos generales de noticias y eventos relevantes.</small></span><label class="settings-switch" aria-label="Noticias y eventos importantes"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="settings-status-row" data-notification-child-setting><span><strong>Catalizadores mañana</strong><small>La víspera, desde las 17:00: resultados, FDA y ensayos clínicos de tus posiciones y favoritos.</small></span><label class="settings-switch" aria-label="Catalizadores mañana"><input id="globalNotifyCatalystEve" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="radar-tier-group" data-notification-child-setting><div class="radar-tier-head"><strong>✦ Radar AI</strong><small>Elige de qué niveles quieres enterarte. Se aplica a tus favoritos y a los valores con avisos activados.</small></div>
+                    <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Alta convicción</strong><small>Cuando una acción alcanza el nivel más alto: validada por el motor y la IA.</small></span><label class="settings-switch" aria-label="Radar AI · Alta convicción"><input id="globalNotifyRadarHigh" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                    <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Oportunidades</strong><small>Cuando una acción entra en oportunidades o mejora claramente su puntuación.</small></span><label class="settings-switch" aria-label="Radar AI · Oportunidades"><input id="globalNotifyRadarOpportunity" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                    <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>En vigilancia</strong><small>Cuando una acción empieza a moverse y pasa a vigilancia.</small></span><label class="settings-switch" aria-label="Radar AI · En vigilancia"><input id="globalNotifyRadarWatch" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  </div>
+                  <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong><small>Permite avisos de precio configurados para cada activo.</small></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de cartera</strong><small>Avisa de entradas, salidas y cambios relevantes en las posiciones.</small></span><label class="settings-switch" aria-label="Movimientos de cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong><small>Avisa de movimientos que requieran atención y envía un resumen actualizado del objetivo.</small></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                </div>
+              </article>
             </div>
-            <label class="settings-switch" aria-label="Mantener pantalla activa">
-              <input id="keepScreenAwake" type="checkbox">
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row">
-            <span>Estado</span>
-            <strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong>
-          </div>
-          <p class="settings-note">Al minimizar la app o apagar tú mismo la pantalla, ViewInvAI libera el bloqueo. Si vuelves a la app y la opción sigue activa, intentará reactivarlo automáticamente.</p>
-        </article>
+          </section>
 
-        <article class="settings-card" id="appLockSettingsCard" hidden>
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">SEGURIDAD</span>
-              <h2>Bloqueo con huella o cara</h2>
-              <p>Pide tu huella, tu cara o el PIN del móvil al abrir ViewInvAI y al volver a ella tras más de 30 segundos fuera. Mientras está en segundo plano, el contenido queda oculto.</p>
+          <section class="settings-section" data-settings-panel="services" aria-label="Datos y servicios" hidden>
+            <div class="settings-section-heading"><span>DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2><p>Comprueba de forma clara qué proveedores están disponibles y cuándo se verificaron por última vez.</p></div>
+            <div class="settings-stack">
+              <details class="settings-card source-health-settings-card compact-settings-card source-health-collapsible" open>
+                <summary class="settings-card-head"><div><span class="settings-kicker">FUENTES</span><h2>Servicios conectados</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></summary>
+                <div class="settings-status-row" data-source-row="tradeRepublic"><span><strong>Trade Republic / LSX</strong></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-status-row" data-source-row="nasdaq"><span><strong>Nasdaq / EEUU</strong></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-status-row" data-source-row="sec"><span><strong>SEC / EDGAR</strong></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-status-row" data-source-row="clinicalTrials"><span><strong>ClinicalTrials.gov</strong></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-status-row" data-source-row="fda"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
+                <div class="settings-status-row" data-source-row="push" id="sourceStatusPushRow"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
+              </details>
             </div>
-            <label class="settings-switch" aria-label="Bloqueo con huella o cara">
-              <input id="appLockEnabled" type="checkbox">
-              <span class="settings-switch-track" aria-hidden="true"><span></span></span>
-            </label>
-          </div>
-          <div class="settings-status-row">
-            <span>Estado</span>
-            <strong id="appLockStatus" class="settings-status">Desactivado</strong>
-          </div>
-          <p class="settings-note">El token de Interactive Brokers que decidas recordar se guarda cifrado en el almacén seguro de Android, nunca en texto plano.</p>
-        </article>
+          </section>
 
-        <article class="settings-card ai-integration-card" id="aiIntegrationCard">
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">INTEGRAR LA IA · OPCIONAL</span>
-              <h2>Contrastar con tus IA</h2>
-              <p>ViewInvAI sigue calculando el Radar AI y el Objetivo como siempre. Si conectas una o varias IA, cada una contrasta ese resultado con información actual para reforzar o matizar la decisión.</p>
+          <section class="settings-section" data-settings-panel="data" aria-label="Tus datos" hidden>
+            <div class="settings-section-heading"><span>TUS DATOS</span><h2>Copia y restauración</h2><p>Gestiona una copia portable de tus datos sin incluir credenciales ni tokens.</p></div>
+            <div class="settings-stack">
+              <article class="settings-card compact-settings-card backup-settings-card">
+                <div class="settings-card-head"><div><span class="settings-kicker">COPIA DE SEGURIDAD</span><h2>Exportar o restaurar</h2></div></div>
+                <div class="backup-actions"><button type="button" class="btn" data-backup-download>Descargar copia</button><label class="btn ghost backup-restore"><input type="file" accept=".json,application/json" data-backup-file hidden>Restaurar copia…</label></div>
+                <div class="backup-status" data-backup-status aria-live="polite">Carteras, operaciones, dividendos, favoritos, listas y avisos en un archivo JSON. Restaurarla no duplica nada y nunca incluye contraseñas ni tokens.</div>
+              </article>
             </div>
-          </div>
-          <div id="aiIntegrationBody" class="ai-integration-body"><p class="settings-note">Cargando…</p></div>
-        </article>
+          </section>
 
-        <article class="settings-card notification-master-card compact-settings-card">
-          <div class="settings-card-head">
-            <div>
-              <span class="settings-kicker">ACTIVACIÓN GENERAL</span>
-              <h2>Activar notificaciones</h2>
-              <p>Activa los avisos de tu cuenta en cualquier dispositivo. En la APK Android, al activarlas se habilitarán también las notificaciones push del dispositivo.</p>
+          <section class="settings-section" data-settings-panel="help" aria-label="Ayuda" hidden>
+            <div class="settings-section-heading"><span>AYUDA</span><h2>Aprender y resolver dudas</h2><p>Accede a la introducción de ViewInvAI y a las explicaciones integradas de cada función.</p></div>
+            <div class="settings-stack">
+              <article class="settings-card compact-settings-card onboarding-settings-card">
+                <div class="settings-card-head"><div><span class="settings-kicker">INTRODUCCIÓN</span><h2>Introducción a ViewInvAI</h2><p>Recorre las áreas principales de la aplicación y cómo se relacionan entre sí.</p></div><button type="button" class="btn ghost small" data-onboarding-open>Ver</button></div>
+              </article>
             </div>
-            <label class="settings-switch" aria-label="Activar todas las notificaciones"><input id="globalNotificationsEnabled" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label>
-          </div>
-          <div class="settings-status-row"><span>Cuenta</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
-          <div class="settings-status-row" id="pushDeviceStatusRow"><span id="pushDeviceStatusLabel">Notificaciones en este dispositivo</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-save-row push-settings-actions" id="pushDeviceActionsRow"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button></div></div>
-        </article>
-
-        <article class="settings-card notification-categories-card compact-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">TIPOS DE AVISO</span><h2>Notificarme cuando…</h2></div></div>
-          <div class="notification-category-list">
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Noticias y eventos importantes</strong><small>Avisos generales de noticias y eventos relevantes.</small></span><label class="settings-switch" aria-label="Noticias y eventos importantes"><input id="globalNotifyNewsEvents" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Catalizadores mañana</strong><small>La víspera, desde las 17:00: resultados, FDA y ensayos clínicos de tus posiciones y favoritos.</small></span><label class="settings-switch" aria-label="Catalizadores mañana"><input id="globalNotifyCatalystEve" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="radar-tier-group" data-notification-child-setting><div class="radar-tier-head"><strong>✦ Radar AI</strong><small>Elige de qué niveles quieres enterarte. Se aplica a tus favoritos y a los valores con avisos activados.</small></div>
-            <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Alta convicción</strong><small>Cuando una acción alcanza el nivel más alto: validada por el motor y la IA.</small></span><label class="settings-switch" aria-label="Radar AI · Alta convicción"><input id="globalNotifyRadarHigh" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>Oportunidades</strong><small>Cuando una acción entra en oportunidades o mejora claramente su puntuación.</small></span><label class="settings-switch" aria-label="Radar AI · Oportunidades"><input id="globalNotifyRadarOpportunity" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row radar-tier-row" data-notification-child-setting><span><strong>En vigilancia</strong><small>Cuando una acción empieza a moverse y pasa a vigilancia.</small></span><label class="settings-switch" aria-label="Radar AI · En vigilancia"><input id="globalNotifyRadarWatch" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            </div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong><small>Permite avisos de precio configurados para cada activo.</small></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de cartera</strong><small>Avisa de entradas, salidas y cambios relevantes en las posiciones.</small></span><label class="settings-switch" aria-label="Movimientos de cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-            <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong><small>Avisa de movimientos que requieran atención y envía un resumen actualizado del objetivo.</small></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
-          </div>
-        </article>
-
-        <details class="settings-card source-health-settings-card compact-settings-card source-health-collapsible">
-          <summary class="settings-card-head"><div><span class="settings-kicker">DATOS Y SERVICIOS</span><h2>Estado de fuentes</h2></div><span id="sourceStatusCadence" class="settings-status">Comprobando…</span></summary>
-          <div class="settings-status-row" data-source-row="tradeRepublic"><span><strong>Trade Republic / LSX</strong></span><strong id="sourceStatusTradeRepublic" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row" data-source-row="nasdaq"><span><strong>Nasdaq / EEUU</strong></span><strong id="sourceStatusNasdaq" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row" data-source-row="sec"><span><strong>SEC / EDGAR</strong></span><strong id="sourceStatusSec" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row" data-source-row="clinicalTrials"><span><strong>ClinicalTrials.gov</strong></span><strong id="sourceStatusClinical" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row" data-source-row="fda"><span><strong>FDA / openFDA</strong></span><strong id="sourceStatusFda" class="settings-status">Comprobando…</strong></div>
-          <div class="settings-status-row" data-source-row="push" id="sourceStatusPushRow"><span><strong>Firebase push</strong></span><strong id="sourceStatusPush" class="settings-status">Comprobando…</strong></div>
-        </details>
-
-        <article class="settings-card compact-settings-card onboarding-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">AYUDA</span><h2>Introducción a ViewInvAI</h2></div><button type="button" class="btn ghost small" data-onboarding-open>Ver</button></div>
-        </article>
-
-        <article class="settings-card compact-settings-card backup-settings-card">
-          <div class="settings-card-head"><div><span class="settings-kicker">TUS DATOS</span><h2>Copia de seguridad</h2></div></div>
-          <div class="backup-actions">
-            <button type="button" class="btn" data-backup-download>Descargar copia</button>
-            <label class="btn ghost backup-restore"><input type="file" accept=".json,application/json" data-backup-file hidden>Restaurar copia…</label>
-          </div>
-          <div class="backup-status" data-backup-status aria-live="polite">Carteras, operaciones, dividendos, favoritos, listas y avisos en un archivo JSON. Restaurarla no duplica nada y nunca incluye contraseñas ni tokens.</div>
-        </article>
+          </section>
+        </div>
       </div>
     </section>
 
@@ -678,7 +659,6 @@
         <button type="button" class="mobile-more-item" data-mobile-view="heatmap"><span>▦</span><b>Mapa de calor</b><small>Visión rápida por sectores</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="future"><span>✦</span><b>Potencial futuro</b><small>Catalizadores próximos</small></button>
         <button type="button" class="mobile-more-item" data-mobile-view="catalogUS"><span>▥</span><b>Catálogo EEUU</b><small>Nasdaq, NYSE y AMEX</small></button>
-        <button type="button" class="mobile-more-item" data-mobile-view="settings"><span>⚙</span><b>Configuración General</b><small>Preferencias, avisos y dispositivo</small></button>
       </div>
     </aside>
 
@@ -704,30 +684,30 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.61 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.62 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261005r1"></script>
 <script src="goal-engine.js?v=20261005g1"></script>
 <script src="app.js?v=20261002L1"></script>
-<script src="settings.js?v=20261002f1"></script>
+<script src="settings.js?v=20261007s1"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261002w9"></script>
 <script src="stock-charts.js?v=20261002w9"></script>
 <script src="events.js?v=20261002f2"></script>
 <script src="asset-card.js?v=20261001r23"></script>
-<script src="stock-list.js?v=20261002y1"></script>
+<script src="stock-list.js?v=20261007s1"></script>
 <script src="recommendation.js?v=20261005j1"></script>
 <script src="today.js?v=20261003h1"></script>
 <script src="help.js?v=20261005g1"></script>
 <script src="ai-integrations.js?v=20261005w1"></script>
 <script src="stock-profile.js?v=20261005j1"></script>
-<script src="catalog.js?v=20261002y1"></script>
+<script src="catalog.js?v=20261007s1"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261001r3"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261002y1"></script>
+<script src="navigation.js?v=20261007s1"></script>
 <script src="mobile-app.js?v=20261002L1"></script>
 <script src="ui-shell.js?v=20261002r1"></script>
 <script src="onboarding.js?v=20261002L1"></script>
