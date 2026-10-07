@@ -7492,3 +7492,19 @@ body.stock-detail-open #stockQuickDetail>.profile-sticky-shell::before{
 @media(max-width:1100px){
  #view-recommendation .radar-list{grid-template-columns:minmax(0,1fr)!important}
 }
+
+
+/* 0.6.64 · profile navigation must win over per-view active display rules.
+   Some views (notably Radar AI) declare #view-*.active with !important later in the cascade. */
+body.stock-detail-open .main > .view,
+body.stock-detail-open .main > .view.active,
+body.stock-detail-open #view-recommendation,
+body.stock-detail-open #view-recommendation.active{
+ display:none!important;
+}
+body.stock-detail-open .main > #stockQuickDetail.stock-profile-page,
+body.stock-detail-open .main > #stockQuickDetail.stock-profile-page:not(.is-hidden){
+ display:grid!important;
+ visibility:visible!important;
+ opacity:1!important;
+}
