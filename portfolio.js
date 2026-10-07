@@ -1463,7 +1463,7 @@ function goalEngineInput(metrics,positionRows){
       catalystDays:num(cat.days),catalystImpact:num(cat.impact)}:null;
   }).filter(Boolean);
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
-      risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,allowSpec:Number(goal.allow_spec)!==0},
+      risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
     positions,candidates,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
 }
 function goalPaceHtml(pc,metrics){
@@ -1560,7 +1560,7 @@ function openGoalWizard(){
   const in6=new Date(Date.now()+182*86400000).toISOString().slice(0,10);
   goalWizard={step:0,portfolioId:portfolio.id,name:portfolio.name,current:cur,
     v:{target:num(goal.target_value_eur)??num(goal.target_profit_eur)??(cur?Math.round(cur*1.5):null),date:goal.target_date||in6,risk:goal.risk_profile||"aggressive",
-       positions:num(goal.max_positions)??4,spec:goal.allow_spec===undefined?true:Number(goal.allow_spec)!==0},fromSummary:false};
+       positions:num(goal.max_positions)??4,specMode:goal.allow_spec===undefined?1:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1)))},fromSummary:false};
   let el=document.getElementById("goalWizard");
   if(!el){el=document.createElement("div");el.id="goalWizard";el.setAttribute("role","dialog");el.setAttribute("aria-modal","true");document.body.appendChild(el)}
   el.hidden=false;document.body.classList.add("goal-wizard-open");
@@ -1593,15 +1593,18 @@ function goalWizardStepHtml(id){
     goalWizardChoice("risk","aggressive","Alto","Crecer rápido: más entradas y más tamaño, siempre con stop.",v.risk==="aggressive")+'</div>';
   if(id==="positions")return '<h2>¿Cuántas acciones a la vez?</h2><p>Concentrado para crecer rápido sin depender de una sola acción.</p><div class="goal-wizard-choices row">'+
     [3,4,5].map(nn=>goalWizardChoice("positions",nn,String(nn),nn===3?"Más concentrado":nn===5?"Más repartido":"Equilibrado",v.positions===nn)).join('')+'</div>';
-  if(id==="spec")return '<h2>¿Acciones especulativas?</h2><p>Son señales fuertes que no pasan el filtro de entrada (poca capitalización o liquidez, dilución reciente…).</p><div class="goal-wizard-choices">'+
-    goalWizardChoice("spec","1","Solo una y pequeña","Como máximo una posición, con un peso de hasta el 10 %.",v.spec)+
-    goalWizardChoice("spec","0","No, nunca","Solo Oportunidad y Alta convicción.",!v.spec)+'</div>';
+  if(id==="spec")return '<h2>¿Acciones especulativas?</h2><p>Solo entran si el potencial temprano compensa claramente el riesgo. Siempre mantienen stop, control de liquidez, spread y dilución.</p><div class="goal-wizard-choices">'+
+    goalWizardChoice("specMode","1","Solo una y pequeña","Máximo 1 posición · hasta 10 % de la cartera.",v.specMode===1)+
+    goalWizardChoice("specMode","2","Hasta 2, con control estricto","Máximo 2 · hasta 10 % cada una y 20 % entre ambas · filtros reforzados.",v.specMode===2)+
+    goalWizardChoice("specMode","3","Flexible para alcanzar el objetivo","El motor decide cuántas, sin superar el máximo de posiciones ni el 35 % agregado especulativo.",v.specMode===3)+
+    goalWizardChoice("specMode","0","No, nunca","Solo Oportunidad y Alta convicción.",v.specMode===0)+'</div>';
   const riskLabel={conservative:"Bajo",balanced:"Medio",aggressive:"Alto"}[v.risk]||v.risk;
+  const specLabel={0:"No",1:"Una y pequeña",2:"Hasta 2 · control estricto",3:"Flexible · control de riesgo"}[v.specMode]||"Una y pequeña";
   const row=(step,label,value)=>'<button type="button" class="goal-wizard-sum-row" data-gw-goto="'+step+'"><span>'+esc(label)+'</span><b>'+esc(value)+'</b><i aria-hidden="true">›</i></button>';
   return '<h2>Resumen</h2><p>Toca una línea para cambiarla.</p><div class="goal-wizard-sum">'+
     row(0,"Objetivo",v.target?formatMoney(v.target,"EUR"):"—")+
     row(1,"Fecha",v.date?new Date(v.date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}):"Sin fecha")+
-    row(2,"Riesgo",riskLabel)+row(3,"Acciones a la vez",String(v.positions))+row(4,"Especulativas",v.spec?"Una y pequeña":"No")+'</div>'+
+    row(2,"Riesgo",riskLabel)+row(3,"Acciones a la vez",String(v.positions))+row(4,"Especulativas",specLabel)+'</div>'+
     '<p class="goal-wizard-hint">Fondos y ETFs van aparte. El plan compra al momento con stop según volatilidad, sube el stop cuando gana y no cambia una acción en pérdidas salvo que la nueva prevea recuperar la pérdida y las comisiones.</p>';
 }
 function paintGoalWizard(){
@@ -1628,7 +1631,7 @@ async function saveGoalWizard(){
   const w=goalWizard;if(!w)return;
   const btn=document.querySelector("#goalWizard [data-gw-save]");if(btn)btn.disabled=true;
   try{
-    const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,allowSpec:!!w.v.spec,currentValueEur:w.current};
+    const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,specMode:w.v.specMode,allowSpec:w.v.specMode>0,currentValueEur:w.current};
     const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
     if(data.goal)state.goals[String(w.portfolioId)]=data.goal;
@@ -1645,7 +1648,7 @@ document.addEventListener("click",event=>{
   if(t.hasAttribute("data-gw-close")){closeGoalWizard();return}
   if(t.hasAttribute("data-gw-set")){
     const k=t.dataset.gwSet,val=t.dataset.gwValue;
-    goalWizard.v[k]=k==="positions"?Number(val):k==="target"?Number(val):k==="spec"?val==="1":val;
+    goalWizard.v[k]=k==="positions"||k==="target"||k==="specMode"?Number(val):val;
     goalWizardMsg("");paintGoalWizard();return;
   }
   if(t.hasAttribute("data-gw-goto")){goalWizard.step=Number(t.dataset.gwGoto)||0;goalWizard.fromSummary=true;paintGoalWizard();return}
@@ -3326,15 +3329,26 @@ function bind() {
     if(marketConfig){openPortfolioMarketModal(marketConfig.dataset.portfolioMarketConfig);return}
     const goalRefresh=event.target.closest?.("[data-goal-refresh-plan]");
     if(goalRefresh){
-      goalRefresh.disabled=true;const old=goalRefresh.textContent;goalRefresh.textContent="Analizando…";state.goalCandidateCache={at:0,key:"",rows:[]};
+      goalRefresh.disabled=true;const oldLabel=goalRefresh.getAttribute("aria-label")||"Reanalizar estrategia";
+      goalRefresh.setAttribute("aria-busy","true");goalRefresh.setAttribute("aria-label","Reanalizando estrategia");goalRefresh.title="Reanalizando estrategia";
+      state.goalCandidateCache={at:0,key:"",rows:[]};
+      const selected=selectedPortfolio(),noticeId="goal-reanalysis:"+(selected&&selected.id||state.selectedPortfolioId||"current");
+      const notice=typeof window.AppAlerts?.pushNotice==="function"?window.AppAlerts.pushNotice:null;
+      if(notice)notice({id:noticeId,kind:"portfolio-goal",severity:"info",title:"Reanalizando estrategia",
+        message:"Cartera: "+(selected&&selected.name||"seleccionada")+" · buscando oportunidades y actualizando recomendaciones.",createdAt:new Date().toISOString()});
       try{
         const done=await refreshGoalAnalysis(true);
-        toast(done?"Estrategia reanalizada · "+done+" posiciones":"No había posiciones que analizar");
+        const message=done?"Se han actualizado las recomendaciones ("+done+" posiciones analizadas).":"No había posiciones que analizar; el plan se ha recalculado con los datos disponibles.";
+        if(notice)notice({id:noticeId,kind:"portfolio-goal",severity:"success",title:"Análisis completado",
+          message:"Cartera: "+(selected&&selected.name||"seleccionada")+" · "+message,createdAt:new Date().toISOString()});
+        else toast(done?"Estrategia reanalizada · "+done+" posiciones":"Estrategia recalculada");
       }catch(error){
         const message=/too many requests/i.test(String(error&&error.message||""))?"Demasiadas solicitudes. Espera un momento y vuelve a reanalizar.":(error.message||"No se pudo reanalizar la estrategia.");
-        toast(message,true);
+        if(notice)notice({id:noticeId,kind:"portfolio-goal",severity:"error",title:"No se pudo reanalizar la estrategia",
+          message:"Cartera: "+(selected&&selected.name||"seleccionada")+" · "+message,createdAt:new Date().toISOString()});
+        else toast(message,true);
       }
-      finally{if(goalRefresh.isConnected){goalRefresh.disabled=false;goalRefresh.textContent=old||"↻ Reanalizar cartera"}}return;
+      finally{if(goalRefresh.isConnected){goalRefresh.disabled=false;goalRefresh.removeAttribute("aria-busy");goalRefresh.setAttribute("aria-label",oldLabel);goalRefresh.title=oldLabel}}return;
     }
     const login = event.target.closest?.(".portfolio-google-login");
     if (login) {
