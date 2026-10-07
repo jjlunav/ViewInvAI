@@ -295,10 +295,38 @@ function applyTheme(theme,rerenderCharts=true){
  if(changed)window.dispatchEvent(new CustomEvent('viewinvai:theme-changed',{detail:{theme:next}}));
 }
 
+const SETTINGS_SECTION_KEY='viewinvai:settings-section:v1';
+function selectSettingsSection(name='general',persist=true){
+ const allowed=['general','notifications','services','data','help'];
+ const next=allowed.includes(name)?name:'general';
+ document.querySelectorAll('[data-settings-section]').forEach(button=>{
+  const active=button.dataset.settingsSection===next;
+  button.classList.toggle('active',active);
+  button.setAttribute('aria-current',active?'page':'false');
+ });
+ document.querySelectorAll('[data-settings-panel]').forEach(panel=>{
+  const active=panel.dataset.settingsPanel===next;
+  panel.classList.toggle('active',active);
+  panel.hidden=!active;
+ });
+ if(persist){try{localStorage.setItem(SETTINGS_SECTION_KEY,next)}catch(_){}}
+ requestAnimationFrame(()=>window.ViewInvAIShell?.resetChrome?.());
+}
+function initSettingsNavigation(){
+ let initial='general';
+ try{initial=localStorage.getItem(SETTINGS_SECTION_KEY)||'general'}catch(_){}
+ selectSettingsSection(initial,false);
+ document.querySelectorAll('[data-settings-section]').forEach(button=>button.addEventListener('click',()=>selectSettingsSection(button.dataset.settingsSection)));
+ window.addEventListener('viewinvai:view-changed',e=>{
+  if(e.detail&&e.detail.view==='settings')selectSettingsSection((()=>{try{return localStorage.getItem(SETTINGS_SECTION_KEY)||'general'}catch(_){return'general'}})(),false);
+ });
+}
+
 function initSettings(){
  applyTheme(readTheme(),false);
  syncDeviceSettingsUi();
  syncScreenWakeLock();
+ initSettingsNavigation();
 
  document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
   applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
