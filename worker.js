@@ -1747,10 +1747,23 @@ function overlayMarketLive(snapshot,live){
   return snapshot;
 }
 let radarScoreboardMemo={at:0,value:null};
+const RADAR_SCOREBOARD_KV_KEY="radar:scoreboard:summary";
 async function radarScoreboardResponse(env){
   try{
     if(!radarScoreboardMemo.value||Date.now()-radarScoreboardMemo.at>10*60000){
-      radarScoreboardMemo={at:Date.now(),value:await radarScoreboardSummary(env)};
+      let value=null;
+      if(env.HOT_STATE_KV){
+        try{value=await env.HOT_STATE_KV.get(RADAR_SCOREBOARD_KV_KEY,"json")}
+        catch(error){console.warn("Radar scoreboard KV read fallback",String(error&&error.message||error))}
+      }
+      if(!value){
+        value=await radarScoreboardSummary(env);
+        if(env.HOT_STATE_KV){
+          try{await env.HOT_STATE_KV.put(RADAR_SCOREBOARD_KV_KEY,JSON.stringify(value))}
+          catch(error){console.warn("Radar scoreboard KV warm failed",String(error&&error.message||error))}
+        }
+      }
+      radarScoreboardMemo={at:Date.now(),value};
     }
     return jsonResponse(radarScoreboardMemo.value,200,{"Cache-Control":"public, max-age=300"});
   }catch(error){
@@ -1783,8 +1796,15 @@ async function loadFundsSnapshotForRanking(env){
   const data=await response.json();
   return data&&Array.isArray(data.products)?data:{products:[],meta:{}};
 }
+const ATTENTION_KV_PREFIX="attention:";
 const ATTENTION_R2_PREFIX="state/attention/";
 async function readAttentionRanking(env,kind){
+  if(env.HOT_STATE_KV){
+    try{
+      const payload=await env.HOT_STATE_KV.get(ATTENTION_KV_PREFIX+kind,"json");
+      if(payload&&typeof payload==="object")return payload;
+    }catch(error){console.warn("Attention KV read fallback",kind,String(error&&error.message||error))}
+  }
   const key=ATTENTION_R2_PREFIX+kind+".json";
   if(env.MARKET_DATA_BUCKET){
     try{
@@ -1806,6 +1826,12 @@ async function readAttentionRanking(env,kind){
 }
 async function writeAttentionRanking(env,kind,payload){
   const now=new Date().toISOString(),value={...payload,kind,updatedAt:now},json=JSON.stringify(value);
+  if(env.HOT_STATE_KV){
+    try{
+      await env.HOT_STATE_KV.put(ATTENTION_KV_PREFIX+kind,json);
+      return value;
+    }catch(error){console.warn("Attention KV write fallback",kind,String(error&&error.message||error))}
+  }
   if(env.MARKET_DATA_BUCKET){
     try{
       await env.MARKET_DATA_BUCKET.put(ATTENTION_R2_PREFIX+kind+".json",json,{
