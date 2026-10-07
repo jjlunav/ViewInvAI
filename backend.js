@@ -4311,7 +4311,10 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
   await ensureGlobalNotificationSettingsSchema(env);
   const rows=await env.DB.prepare(
     "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
-    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.user_id,p.id"
+    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 AND ("+
+    "COALESCE(p.news_enabled,0)<>0 OR COALESCE(p.pulse_enabled,0)<>0 OR COALESCE(p.radar_enabled,0)<>0 OR "+
+    "COALESCE(p.price_up_enabled,0)<>0 OR COALESCE(p.price_down_enabled,0)<>0 OR p.price_above IS NOT NULL OR p.price_below IS NOT NULL) "+
+    "ORDER BY p.user_id,p.id"
   ).all();
   if(!(rows.results||[]).length)return{processed:0};
   const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();let writes=0;
@@ -5718,13 +5721,13 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 1 ELSE 0 END AS goal_priority,"+
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 5 ELSE COALESCE(s.analysis_positions_minutes,10) END AS analysis_interval_minutes " +
       "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id LEFT JOIN portfolio_goals g ON g.portfolio_id=p.portfolio_id AND g.user_id=p.user_id WHERE p.active=1 " +
-      "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 40"
+      "ORDER BY p.last_analysis_at ASC LIMIT 40"
     ).all(),
     env.DB.prepare(
       "SELECT 'watchlist' AS subject_type,w.id AS subject_id,w.user_id,w.stock_key,w.ticker,w.name,w.exchange,w.isin,w.prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,w.last_analysis_at,w.last_signal,w.last_confidence,w.last_score,w.last_snapshot_id,0 AS goal_priority," +
       "COALESCE(s.analysis_watchlist_minutes,30) AS analysis_interval_minutes " +
       "FROM watchlist w LEFT JOIN user_settings s ON s.user_id=w.user_id " +
-      "ORDER BY COALESCE(w.last_analysis_at,'') ASC LIMIT 40"
+      "ORDER BY w.last_analysis_at ASC LIMIT 40"
     ).all()
   ]);
 
