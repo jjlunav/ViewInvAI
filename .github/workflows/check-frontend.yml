@@ -407,6 +407,10 @@ jobs:
               raise SystemExit("El modo especulativo no se guarda o no llega al motor")
           if 'goal-reanalysis:' not in portfolio or 'title:"Reanalizando estrategia"' not in portfolio or 'title:"Análisis completado"' not in portfolio:
               raise SystemExit("El reanálisis no informa su progreso en el centro de notificaciones")
+          if 'if(portfolioAssetMode()==="goal")return renderGoalApp();' not in portfolio:
+              raise SystemExit("Un repintado general puede volver a dejar Objetivo en blanco")
+          if 'goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML=""' in portfolio:
+              raise SystemExit("renderApp no puede vaciar el panel de Objetivo")
           if "#view-heatmap:not(.active){display:none!important" not in styles:
               raise SystemExit("El mapa de calor puede invadir otras vistas")
           if "--positive:var(--green)" not in styles or "--negative:var(--red)" not in styles:
