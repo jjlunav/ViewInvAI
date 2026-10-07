@@ -32,6 +32,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "HOT_STATE_KV",
+      "id": "c8a5ad6458c44f64a03d876bede73f91"
+    }
+  ],
   "ratelimits": [
     {
       "name": "AI_RATE_LIMITER",
