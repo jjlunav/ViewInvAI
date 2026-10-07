@@ -51,6 +51,16 @@ function initStockInteractions(){
 
  const radarRoot=$('#recommendationResults');
  const openRadarCard=(event)=>{
+  const explicit=event.target&&event.target.closest?event.target.closest('[data-radar-open-key]'):null;
+  if(explicit&&radarRoot&&radarRoot.contains(explicit)){
+   const control=event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label,[data-reco-mobile-group],[data-radar-tier],[data-radar-market]');
+   if(control)return false;
+   const stock=stockByKey(explicit.dataset.radarOpenKey);
+   if(!stock)return false;
+   event.preventDefault();event.stopPropagation();
+   openStock(stock,'Radar AI',explicit.dataset.radarOpenTr==='1');
+   return true;
+  }
   const card=event.target&&event.target.closest?event.target.closest('.asset-card[data-card-context="recommendation"]'):null;
   if(!card||!radarRoot||!radarRoot.contains(card))return false;
   const control=event.target.closest&&event.target.closest('button,a,input,select,textarea,summary,label,[data-reco-mobile-group]');
