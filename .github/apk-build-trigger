@@ -1,1 +1,1 @@
-Build requested after D1 read optimisation and R2 hot-state migration for ViewInvAI 0.6.64; frontend and security audits passed (2026-10-07T15:24:00Z).
+Build requested after native push/CORS and top chrome fixes for ViewInvAI 0.6.65; frontend smoke + security audit passed (2026-10-07T17:55:00Z).
