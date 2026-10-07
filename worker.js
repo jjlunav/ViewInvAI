@@ -1783,7 +1783,18 @@ async function loadFundsSnapshotForRanking(env){
   const data=await response.json();
   return data&&Array.isArray(data.products)?data:{products:[],meta:{}};
 }
+const ATTENTION_R2_PREFIX="state/attention/";
 async function readAttentionRanking(env,kind){
+  const key=ATTENTION_R2_PREFIX+kind+".json";
+  if(env.MARKET_DATA_BUCKET){
+    try{
+      const object=await env.MARKET_DATA_BUCKET.get(key);
+      if(object){
+        const payload=JSON.parse(await object.text());
+        if(payload&&typeof payload==="object")return payload;
+      }
+    }catch(error){console.warn("Attention R2 read fallback",kind,String(error&&error.message||error))}
+  }
   await ensureAttentionSchema(env);
   const row=await env.DB.prepare("SELECT payload_json,updated_at FROM public_attention_rankings WHERE kind=?").bind(kind).first();
   if(!row)return null;
@@ -1794,13 +1805,22 @@ async function readAttentionRanking(env,kind){
   }catch(_){return null}
 }
 async function writeAttentionRanking(env,kind,payload){
+  const now=new Date().toISOString(),value={...payload,kind,updatedAt:now},json=JSON.stringify(value);
+  if(env.MARKET_DATA_BUCKET){
+    try{
+      await env.MARKET_DATA_BUCKET.put(ATTENTION_R2_PREFIX+kind+".json",json,{
+        httpMetadata:{contentType:"application/json; charset=utf-8"},
+        customMetadata:{updatedAt:now,kind}
+      });
+      return value;
+    }catch(error){console.warn("Attention R2 write fallback",kind,String(error&&error.message||error))}
+  }
   await ensureAttentionSchema(env);
-  const now=new Date().toISOString(),json=JSON.stringify({...payload,kind,updatedAt:now});
   await env.DB.prepare(
     "INSERT INTO public_attention_rankings (kind,payload_json,updated_at) VALUES (?,?,?) "+
     "ON CONFLICT(kind) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at"
   ).bind(kind,json,now).run();
-  return JSON.parse(json);
+  return value;
 }
 function textNewsCount(xml){
   const m=String(xml||"").match(/<item\b/gi);
