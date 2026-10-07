@@ -7175,3 +7175,153 @@ html[data-theme="light"] .notification-head-actions #notificationHistory.active{
 /* Logo VIAI: el propio favicon hace de marca, sin marco adicional */
 .brand-mark,html[data-theme="light"] .brand-mark{border:0!important;background:none!important;box-shadow:none!important;overflow:hidden}
 .brand-mark img{display:block;width:100%;height:100%}
+
+
+/* 0.6.62 · shell controls + structured settings */
+.account-area.floating-account{
+ display:flex!important;
+ align-items:center!important;
+ gap:8px!important;
+}
+.shell-icon-button,
+.account-area.floating-account .global-search-button{
+ width:42px!important;
+ min-width:42px!important;
+ height:42px!important;
+ min-height:42px!important;
+ padding:0!important;
+ border:1px solid #29424e!important;
+ border-radius:50%!important;
+ background:#0b1a23!important;
+ color:#dce9ed!important;
+ display:grid!important;
+ place-items:center!important;
+ cursor:pointer!important;
+ box-shadow:none!important;
+}
+.shell-icon-button:hover,
+.account-area.floating-account .global-search-button:hover{
+ border-color:#477282!important;
+ background:#10242e!important;
+ color:#f1fbfd!important;
+}
+.settings-shell-button span{font-size:18px;line-height:1}
+.account-area.floating-account .global-search-button .gs-label,
+.account-area.floating-account .global-search-button kbd{display:none!important}
+.account-area.floating-account .account-button{
+ width:42px!important;
+ min-width:42px!important;
+ height:42px!important;
+ min-height:42px!important;
+ padding:4px!important;
+ border-radius:50%!important;
+ justify-content:center!important;
+}
+.account-area.floating-account .account-copy{display:none!important}
+.account-area.floating-account .account-avatar{width:32px;height:32px}
+.account-area.floating-account .account-menu{right:0}
+body.stock-detail-open .settings-shell-button{display:none!important}
+
+#view-settings{
+ max-width:1480px!important;
+}
+.settings-layout{
+ display:grid;
+ grid-template-columns:240px minmax(0,1fr);
+ gap:18px;
+ align-items:start;
+ width:100%;
+ max-width:1320px;
+ margin:0 auto;
+}
+.settings-nav{
+ position:sticky;
+ top:18px;
+ display:grid;
+ gap:7px;
+ min-width:0;
+ padding:8px;
+ border:1px solid #203743;
+ border-radius:16px;
+ background:rgba(9,22,30,.84);
+ box-shadow:0 14px 36px rgba(0,0,0,.16);
+ backdrop-filter:blur(12px);
+ -webkit-backdrop-filter:blur(12px);
+}
+.settings-nav-item{
+ appearance:none;
+ border:1px solid transparent;
+ border-radius:11px;
+ background:transparent;
+ color:#9eb2bc;
+ min-width:0;
+ padding:11px 10px;
+ display:grid;
+ grid-template-columns:28px minmax(0,1fr);
+ grid-template-rows:auto auto;
+ column-gap:9px;
+ text-align:left;
+ cursor:pointer;
+}
+.settings-nav-item>span{
+ grid-row:1/3;
+ width:28px;height:28px;
+ display:grid;place-items:center;
+ border-radius:9px;
+ background:#10232c;
+ color:#79dcbc;
+ font-size:14px;
+}
+.settings-nav-item b{font-size:11px;color:#dbe7eb;line-height:1.2}
+.settings-nav-item small{font-size:8px;color:#718893;line-height:1.35;margin-top:2px}
+.settings-nav-item:hover{background:#0d2029;border-color:#25404c}
+.settings-nav-item.active{
+ background:linear-gradient(135deg,rgba(49,115,94,.28),rgba(21,57,55,.34));
+ border-color:rgba(77,227,177,.26);
+}
+.settings-nav-item.active>span{background:#173b34;color:#8af0cf}
+
+.settings-content{min-width:0}
+.settings-section{min-width:0}
+.settings-section[hidden]{display:none!important}
+.settings-section-heading{
+ margin:0 0 10px;
+ padding:2px 2px 10px;
+ border-bottom:1px solid rgba(116,147,161,.12);
+}
+.settings-section-heading>span{
+ color:#61dfb7;
+ font-size:9px;
+ font-weight:850;
+ letter-spacing:1.1px;
+}
+.settings-section-heading h2{margin:4px 0 4px;font-size:20px;letter-spacing:-.25px}
+.settings-section-heading p{margin:0;color:#7f96a1;font-size:10px;line-height:1.45}
+.settings-stack{display:grid;gap:12px;min-width:0}
+#view-settings .settings-card{
+ width:100%;
+ min-width:0;
+ margin:0!important;
+}
+#view-settings .settings-grid{display:block!important}
+#view-settings .notification-category-list .settings-status-row>span{min-width:0}
+#view-settings .settings-status-row{min-width:0}
+#view-settings .settings-status-row>span:first-child{min-width:0}
+#view-settings .settings-status-row small{overflow-wrap:anywhere}
+#view-settings .radar-tier-group{min-width:0}
+
+html[data-theme="light"] .shell-icon-button,
+html[data-theme="light"] .account-area.floating-account .global-search-button{
+ background:#fff!important;border-color:#cbdce3!important;color:#17303b!important;
+}
+html[data-theme="light"] .settings-nav{background:rgba(255,255,255,.9);border-color:#cedee4}
+html[data-theme="light"] .settings-nav-item b{color:#17303b}
+html[data-theme="light"] .settings-nav-item>span{background:#edf5f5;color:#27785f}
+html[data-theme="light"] .settings-nav-item.active{background:#eaf7f2;border-color:#9fd7c4}
+
+@media(max-width:1100px) and (min-width:821px){
+ .settings-layout{grid-template-columns:205px minmax(0,1fr);gap:12px}
+ .settings-nav-item{padding:9px 8px}
+ .settings-nav-item small{display:none}
+ .settings-nav-item>span{grid-row:auto}
+}
