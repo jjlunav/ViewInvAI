@@ -413,6 +413,11 @@ jobs:
               raise SystemExit("Faltan colores semánticos de subida/bajada")
           if "portfolio-workbar-actions" not in portfolio:
               raise SystemExit("La barra de Carteras puede volver a descuadrarse")
+          for required in ("function portfolioAssetMode()", 'if(portfolioAssetMode()==="goal")return renderGoalApp();', 'data-goal-render-retry', 'No se pudo mostrar Objetivo.'):
+              if required not in portfolio:
+                  raise SystemExit("Objetivo puede volver a quedarse en blanco: falta " + required)
+          if 'const goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML=""' in portfolio:
+              raise SystemExit("renderApp no debe vaciar Objetivo cuando termina un refresco asíncrono")
           for required in ("portfolioGoalHoldingsSignature", "scheduleGoalPortfolioReview", "portfolioHasGoal"):
               if required not in portfolio:
                   raise SystemExit("Objetivo IA no sigue cambios reales de cartera: falta " + required)

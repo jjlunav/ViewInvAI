@@ -1768,9 +1768,16 @@ function portfolioWorkbarHtml(selected){
   '</div>';
 }
 
+function portfolioAssetMode(){
+  const mode=String(document.querySelector("#view-portfolios")?.dataset.portfolioAssetMode||"");
+  return ["stocks","funds","goal","favorites"].includes(mode)?mode:"stocks";
+}
+
 function renderApp() {
+  // Async portfolio/favorite/transaction callbacks may finish after the user has opened
+  // Objetivo. Never let a stale stocks render clear or replace the visible goal panel.
+  if(portfolioAssetMode()==="goal")return renderGoalApp();
   const box=$("#portfolioApp");if(!box)return;
-  const goalBox=$("#portfolioGoalApp");if(goalBox)goalBox.innerHTML="";
   state.primaryTab="portfolio";
   if(!state.user)return renderLoggedOut(box);if(state.loading)return renderLoading(box);
   state.portfolios.sort((a,b)=>{const ao=num(a.sort_order)??0,bo=num(b.sort_order)??0;return ao-bo||String(a.created_at||"").localeCompare(String(b.created_at||""))});
@@ -1810,14 +1817,20 @@ function renderGoalApp() {
   savePortfolioUi();
   const portfolioOptions=state.portfolios.map(item=>'<option value="'+esc(item.id)+'"'+(selected&&String(item.id)===String(selected.id)?' selected':'')+'>'+esc(item.name)+'</option>').join('');
   const cashLabel=selected?formatMoney(Math.max(0,num(selected.cash_balance)||0),String(selected.base_currency||"EUR").toUpperCase()):"—";
-  box.innerHTML='<div class="portfolio-goal-controls">'+
+  const controls='<div class="portfolio-goal-controls">'+
     '<label class="portfolio-goal-picker"><span>Cartera</span><select data-goal-portfolio-select'+(!state.portfolios.length?' disabled':'')+'>'+portfolioOptions+'</select></label>'+
     '<div class="portfolio-goal-cash-status"><small>EFECTIVO DISPONIBLE</small><strong>'+esc(cashLabel)+'</strong></div>'+
     '<div class="portfolio-goal-tools" role="toolbar" aria-label="Herramientas de estrategia">'+
       '<button type="button" class="portfolio-icon-action portfolio-goal-history"'+(selected?' data-goal-history="'+esc(selected.id)+'"':' disabled')+' aria-label="Historial de estrategias" title="Historial de estrategias">≣</button>'+
       '<button type="button" class="portfolio-icon-action" data-goal-refresh-plan'+(selected?'':' disabled')+' aria-label="Reanalizar estrategia" title="Reanalizar estrategia">↻</button>'+
     '</div>'+
-  '</div>'+portfolioGoalViewHtml();
+  '</div>';
+  try{
+    box.innerHTML=controls+portfolioGoalViewHtml();
+  }catch(error){
+    console.warn("Goal panel render failed",error);
+    box.innerHTML=controls+'<section class="portfolio-goal-view goal2"><div class="portfolio-goal-error" role="alert"><strong>No se pudo mostrar Objetivo.</strong><br>La cartera sigue intacta. Vuelve a intentarlo para recalcular la vista.</div><button type="button" class="btn small" data-goal-render-retry>Reintentar</button></section>';
+  }
   requestAnimationFrame(()=>{
     box.querySelectorAll("[data-goal-progress]").forEach(el=>el.style.setProperty("width",el.dataset.goalProgress+"%"));
     if(window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(box);
@@ -1844,7 +1857,7 @@ function schedulePortfolioQuoteRender(){
 }
 
 function renderActivePortfolioPanel(){
-  if(state.primaryTab==="goal")return renderGoalApp();
+  if(portfolioAssetMode()==="goal"||state.primaryTab==="goal")return renderGoalApp();
   return renderApp();
 }
 
@@ -2005,7 +2018,7 @@ async function deletePortfolio(id, button) {
     savePortfolioUi();
     syncPortfolioStars();
     keys.forEach(stockKey => window.dispatchEvent(new CustomEvent("viewinvai:portfolio-membership-changed", { detail:{ stockKey } })));
-    renderApp();
+    renderActivePortfolioPanel();
     if (state.portfolios.length) openPortfolioOrderModal(true); else closeModal();
     toast("Cartera «" + (removed && removed.name || "") + "» borrada");
   } catch (error) {
@@ -2037,7 +2050,7 @@ async function savePortfolioOrder() {
     }));
     portfolioNameDrafts = {};
     closeModal();
-    renderApp();
+    renderActivePortfolioPanel();
     toast("Carteras actualizadas");
   } catch (error) {
     toast(error.message || "No se pudieron guardar los cambios.", true);
@@ -3089,7 +3102,7 @@ async function removePositionMembership(position) {
   window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed', {detail:{stockKey:position.stock_key}}));
   state.goalCandidateCache={at:0,key:"",rows:[]};
   if(portfolioHasGoal(position.portfolio_id))scheduleGoalPortfolioReview(position.portfolio_id,null);
-  renderApp();
+  renderActivePortfolioPanel();
   return true;
 }
 
@@ -3195,7 +3208,7 @@ async function syncFavorite(active, key, preferTrOverride=null) {
       state.watchlist = state.watchlist.filter(x => x.id !== existing.id);
     }
     syncPortfolioStars();
-    renderApp();
+    renderActivePortfolioPanel();
     return state.watchlist.find(x=>sameStockRef(x.stock_key,key))||null;
   } catch (error) {
     console.warn("Favorite sync failed", error);
@@ -3327,6 +3340,8 @@ function bind() {
     if(cashEdit){openPortfolioCashModal(cashEdit.dataset.portfolioCashEdit);return}
     const marketConfig=event.target.closest?.("[data-portfolio-market-config]");
     if(marketConfig){openPortfolioMarketModal(marketConfig.dataset.portfolioMarketConfig);return}
+    const goalRenderRetry=event.target.closest?.("[data-goal-render-retry]");
+    if(goalRenderRetry){state.goalCandidateCache={at:0,key:"",rows:[]};renderGoalApp();return}
     const goalRefresh=event.target.closest?.("[data-goal-refresh-plan]");
     if(goalRefresh){
       goalRefresh.disabled=true;const oldLabel=goalRefresh.getAttribute("aria-label")||"Reanalizar estrategia";
@@ -3788,6 +3803,14 @@ function bind() {
     // Re-sync instead of allowing a local-only star to drift from the account state.
     if(state.user)syncPortfolioStars();
   });
+  const ensureVisiblePortfolioPanel=()=>{
+    if(portfolioAssetMode()!=="goal")return;
+    const box=document.getElementById("portfolioGoalApp");
+    if(!box)return;
+    if(state.primaryTab!=="goal"||!box.firstElementChild)renderGoalApp();
+  };
+  window.addEventListener("viewinvai:portfolios-loaded",ensureVisiblePortfolioPanel);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)ensureVisiblePortfolioPanel()});
 
   window.addEventListener("viewinvai:quote-updated", event => {
     if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
