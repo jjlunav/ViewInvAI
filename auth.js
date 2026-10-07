@@ -183,7 +183,11 @@ async function ensureNativePushRegistration(requestPermission = true) {
     return registerPushToken(result && result.token, "android");
   } catch (error) {
     console.warn("Push registration unavailable", error);
-    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, error: String(error && error.message || error), platform:"android" } }));
+    const raw=String(error && error.message || error || "");
+    const message=/failed to fetch|networkerror|network request failed/i.test(raw)
+      ?"No se puede contactar con el servidor push. Reintentando al volver a abrir la app."
+      :raw;
+    window.dispatchEvent(new CustomEvent("viewinvai:push-status", { detail: { enabled: false, error: message, platform:"android" } }));
     return false;
   }
 }
@@ -347,25 +351,48 @@ async function getIdToken(forceRefresh = false) {
   return isNativePlatform() ? getNativeToken(forceRefresh) : getWebToken(forceRefresh);
 }
 
+function resolvedApiUrl(path) {
+  const raw = String(path || "");
+  if (!raw) return raw;
+  try {
+    if (window.ViewInvAIRuntime && typeof window.ViewInvAIRuntime.url === "function") {
+      return window.ViewInvAIRuntime.url(raw);
+    }
+  } catch (_) {}
+  if (isNativePlatform() && raw.startsWith("/api/")) {
+    return "https://viewinvai.sonarlab.workers.dev" + raw;
+  }
+  return raw;
+}
+
 async function apiFetch(path, options = {}, retry = true) {
   const token = await getIdToken(false);
   if (!token) throw new Error("Debes iniciar sesión.");
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", "Bearer " + token);
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  let response = await fetch(path, Object.assign({}, options, { headers }));
+  const target = resolvedApiUrl(path);
+  const requestOptions = Object.assign({}, options, { headers });
+  let response;
+  try {
+    response = await fetch(target, requestOptions);
+  } catch (error) {
+    if (!(retry && isNativePlatform() && String(path || "").startsWith("/api/"))) throw error;
+    await new Promise(resolve => setTimeout(resolve, 650));
+    response = await fetch("https://viewinvai.sonarlab.workers.dev" + String(path), requestOptions);
+  }
   if (response.status === 401 && retry) {
     // Sesión caducada (p. ej. tras suspender el equipo): se renueva el token y se repite.
     const fresh = await getIdToken(true).catch(() => "");
     if (fresh) {
       headers.set("Authorization", "Bearer " + fresh);
-      response = await fetch(path, Object.assign({}, options, { headers }));
+      response = await fetch(target, Object.assign({}, options, { headers }));
     }
   }
   if (response.status === 503 && retry) {
     // Fallo temporal del servidor (claves de Google o base de datos): un reintento tras una pausa.
     await new Promise(resolve => setTimeout(resolve, 900));
-    response = await fetch(path, Object.assign({}, options, { headers }));
+    response = await fetch(target, Object.assign({}, options, { headers }));
   }
   return response;
 }
