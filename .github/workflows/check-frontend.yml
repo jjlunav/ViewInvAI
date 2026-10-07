@@ -397,9 +397,16 @@ jobs:
           if "Hoy toca" not in portfolio or "goalEngineInput" not in portfolio:
               raise SystemExit("Objetivo IA debe mostrar un plan único y accionable («Hoy toca» con el motor común)")
           goal_engine = Path("goal-engine.js").read_text(encoding="utf-8")
-          for required in ("ROTATION_MARGIN", "positionStop", "DEFENSIVE_IN", "SPEC_MAX_WEIGHT", "maxRoundTripFeePct", "riskPerTradePct"):
+          for required in ("ROTATION_MARGIN", "positionStop", "DEFENSIVE_IN", "SPEC_POLICY", "maxTotalWeight", "maxRoundTripFeePct", "riskPerTradePct"):
               if required not in goal_engine:
                   raise SystemExit("El motor del Objetivo pierde una protección: " + required)
+          for required in ('goalWizardChoice("specMode","1"', 'goalWizardChoice("specMode","2"', 'goalWizardChoice("specMode","3"', 'goalWizardChoice("specMode","0"'):
+              if required not in portfolio:
+                  raise SystemExit("Falta un modo de control de especulativas en el asistente: " + required)
+          if 'specMode:w.v.specMode' not in portfolio or 'specMode:Math.max(0,Math.min(3' not in backend:
+              raise SystemExit("El modo especulativo no se guarda o no llega al motor")
+          if 'goal-reanalysis:' not in portfolio or 'title:"Reanalizando estrategia"' not in portfolio or 'title:"Análisis completado"' not in portfolio:
+              raise SystemExit("El reanálisis no informa su progreso en el centro de notificaciones")
           if "#view-heatmap:not(.active){display:none!important" not in styles:
               raise SystemExit("El mapa de calor puede invadir otras vistas")
           if "--positive:var(--green)" not in styles or "--negative:var(--red)" not in styles:
