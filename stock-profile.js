@@ -523,10 +523,10 @@ function nativeProfileChrome(){
 }
 function profileStickyShellHtml(s,isTr=false,opts={}){
  const hero=profileHeroHtml(s,isTr,opts);
- return nativeProfileChrome()?'<div class="profile-sticky-shell">'+hero+profileTabs()+'</div>':hero;
+ return '<div class="profile-sticky-shell">'+hero+profileTabs()+'</div>';
 }
 function profileBodyTabsHtml(){
- return nativeProfileChrome()?'':profileTabs();
+ return '';
 }
 const profileLiveEventCache=new Map();
 function profileNewsPanelHtml(s){
