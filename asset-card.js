@@ -33,7 +33,7 @@
    ?'<span class="list-copy-isin '+(options.context==='catalog'?'catalog-row-isin':options.context==='portfolio'?'portfolio-row-isin':'')+'">'+escape(options.isin)+'</span>'
    :'';
 
-  return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'"'+(options.cardAttrs||'')+'>
+  return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'"'+(options.cardAttrs||'')+'>'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(chevronOnly?' data-end="chevron"':'')+(options.openAttrs||'')+'>'+
     '<div class="asset-card-marker">'+(options.leadingHtml||'')+'</div>'+
     '<div class="asset-card-identity'+(options.sparkHtml?' has-spark':'')+'"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+(options.sparkHtml||'')+'</div></div>'+
