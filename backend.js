@@ -4329,8 +4329,16 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
       const pulseConfigured=global.pulseAi&&Number(pref.pulse_enabled)===1;
       const radarConfigured=global.radar&&(Number(pref.radar_enabled)===1||Number(pref.pulse_enabled)===1);
       const signalConfigured=pulseConfigured||radarConfigured;
-      const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
-      const aiDue=allowAi&&signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
+      // Keep the same 5-minute alert-analysis cadence without persisting a heartbeat row
+      // on every scan. Each preference is deterministically assigned to one minute bucket.
+      // A missed cron is retried on the next matching bucket; no alert category is disabled.
+      const aiSlot=(()=>{
+        const s=String(pref.id||pref.stock_key||"");
+        let h=0;
+        for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;
+        return h%5;
+      })();
+      const aiDue=allowAi&&signalConfigured&&(Math.floor(Date.now()/60000)%5===aiSlot);
       // NULL means "no level" (finiteNumber(null) would read it as 0).
       const priceLevel=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0?n:null};
       const priceLevelsSet=priceLevel(pref.price_above)!==null||priceLevel(pref.price_below)!==null;
@@ -4435,7 +4443,7 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
         pulseState=nextPulse;radarState=nextRadar;
       }
       const scanNow=nowIso(),scanChanged=upBucket!==Number(pref.last_up_bucket||0)||downBucket!==Number(pref.last_down_bucket||0)||
-        pulseState!==String(pref.last_pulse_state||"")||radarState!==String(pref.last_radar_state||"")||aiDue;
+        pulseState!==String(pref.last_pulse_state||"")||radarState!==String(pref.last_radar_state||"");
       if(scanChanged){
         await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
           .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
