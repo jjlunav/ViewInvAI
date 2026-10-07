@@ -7325,3 +7325,170 @@ html[data-theme="light"] .settings-nav-item.active{background:#eaf7f2;border-col
  .settings-nav-item small{display:none}
  .settings-nav-item>span{grid-row:auto}
 }
+
+
+/* 0.6.63 · full-width pinned stock chrome + compact Radar AI */
+body.stock-detail-open #stockQuickDetail.stock-profile-page{
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+ padding:0 0 34px!important;
+ gap:0!important;
+}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell{
+ position:sticky!important;
+ top:0!important;
+ z-index:1750!important;
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+ padding:0!important;
+ background:rgba(5,14,20,.985)!important;
+ border-bottom:1px solid #203640!important;
+ box-shadow:0 10px 26px rgba(0,0,0,.24)!important;
+ backdrop-filter:blur(16px)!important;
+ -webkit-backdrop-filter:blur(16px)!important;
+}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.unified-stock-header{
+ position:relative!important;
+ top:auto!important;
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+ padding:0!important;
+ border:0!important;
+ border-radius:0!important;
+ box-shadow:none!important;
+ background:transparent!important;
+}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.unified-stock-header .unified-stock-header-inner{
+ width:min(100%,1540px)!important;
+ max-width:1540px!important;
+ margin:0 auto!important;
+ padding:10px 18px!important;
+}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.profile-tabs{
+ position:relative!important;
+ top:auto!important;
+ z-index:1!important;
+ display:flex!important;
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+ padding:0 max(18px,calc((100% - 1540px)/2 + 18px))!important;
+ gap:18px!important;
+ overflow-x:auto!important;
+ overflow-y:hidden!important;
+ white-space:nowrap!important;
+ scrollbar-width:none!important;
+ background:rgba(5,14,20,.985)!important;
+ border-top:1px solid rgba(104,138,151,.08)!important;
+ border-bottom:1px solid #203640!important;
+}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.profile-tabs::-webkit-scrollbar{display:none!important}
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.profile-tabs button{
+ flex:0 0 auto!important;
+ min-height:46px!important;
+ padding:0 12px!important;
+}
+body.stock-detail-open #stockQuickDetail>.unified-profile-body{
+ width:min(100%,1540px)!important;
+ max-width:1540px!important;
+ margin:12px auto 0!important;
+ padding:0 18px 34px!important;
+ min-width:0!important;
+}
+body.stock-detail-open .floating-account{
+ z-index:1800!important;
+}
+
+/* The shell itself masks scrolled content; no card can appear through its sides. */
+body.stock-detail-open #stockQuickDetail>.profile-sticky-shell::before{
+ content:"";
+ position:absolute;
+ inset:0;
+ z-index:-1;
+ background:rgba(5,14,20,.985);
+}
+
+/* Radar cards: dense information rows, not oversized showcase tiles. */
+#view-recommendation .radar-list{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ gap:8px!important;
+ align-items:start!important;
+}
+#view-recommendation .radar-ai-card{
+ width:100%!important;
+ min-width:0!important;
+ margin:0!important;
+ border-radius:10px!important;
+ cursor:pointer!important;
+}
+#view-recommendation .radar-ai-card .asset-card-row{
+ min-height:82px!important;
+ height:auto!important;
+ padding:7px 9px!important;
+ grid-template-columns:28px minmax(0,1.45fr) minmax(180px,.95fr) 12px!important;
+ gap:7px!important;
+ align-items:center!important;
+}
+#view-recommendation .radar-ai-card .asset-card-marker{
+ align-self:center!important;
+}
+#view-recommendation .radar-ai-card .asset-card-copy{
+ min-width:0!important;
+ gap:2px!important;
+}
+#view-recommendation .radar-ai-card .asset-card-copy>strong{
+ font-size:13px!important;
+ line-height:1.15!important;
+ white-space:nowrap!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+}
+#view-recommendation .radar-ai-card .asset-card-copy>small,
+#view-recommendation .radar-ai-card .list-copy-isin{
+ font-size:8px!important;
+ line-height:1.2!important;
+ white-space:nowrap!important;
+ overflow:hidden!important;
+ text-overflow:ellipsis!important;
+}
+#view-recommendation .radar-ai-card .asset-card-quote-slot{
+ min-width:0!important;
+ align-self:center!important;
+}
+#view-recommendation .radar-ai-card .asset-investing-quote{
+ gap:2px!important;
+}
+#view-recommendation .radar-ai-card .asset-investing-main strong{
+ font-size:18px!important;
+}
+#view-recommendation .radar-ai-card .asset-investing-main span,
+#view-recommendation .radar-ai-card .asset-investing-extended{
+ font-size:9px!important;
+}
+#view-recommendation .radar-ai-card .asset-card-context-slot{
+ display:none!important;
+}
+#view-recommendation .radar-ai-card .asset-card-end-actions{
+ min-width:8px!important;
+}
+#view-recommendation .radar-ai-card .asset-card-meta{
+ min-height:0!important;
+ padding:3px 9px 5px!important;
+ font-size:7.5px!important;
+}
+#view-recommendation .radar-ai-card:hover{
+ border-color:#3c675f!important;
+ transform:translateY(-1px);
+}
+#view-recommendation .radar-ai-card:focus-visible{
+ outline:2px solid #69d9b8!important;
+ outline-offset:2px!important;
+}
+
+@media(max-width:1100px){
+ #view-recommendation .radar-list{grid-template-columns:minmax(0,1fr)!important}
+}
