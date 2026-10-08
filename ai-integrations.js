@@ -1,7 +1,7 @@
 'use strict';
 // Integrar la IA (opcional). Cada usuario conecta una, varias o todas sus IA (Gemini gratis,
 // Claude u OpenAI con su clave) o pregunta a mano a ChatGPT/Claude/Gemini con su cuenta y pega la respuesta.
-// La app sigue calculando el Radar AI y el Objetivo como siempre; las IA activas solo
+// La app contrasta siempre con sus IA gratuitas y noticias de hoy; las IA del usuario son una segunda opinión y solo
 // contrastan ese resultado con información actual para reforzar o matizar la decisión.
 (function(){
  const PROVIDERS=[
@@ -341,14 +341,40 @@
   }catch(e){say(e.message,true);if(btn)btn.disabled=false}
  }
  // Opinión más reciente de cualquier IA sobre una acción (válida 3 días).
- function tickerVerdict(ticker){
+ // key: clave del instrumento (bolsa:ticker); el contraste automático solo se aplica con ella,
+ // porque el mismo ticker puede ser de empresas distintas en otras bolsas.
+ function tickerVerdict(ticker,key){
   const t=String(ticker||'').toUpperCase();if(!t)return null;
   const cutoff=Date.now()-3*86400000;
   for(const c of recent.list){
    if(new Date(c.createdAt||0).getTime()<cutoff)continue;
    for(const i of c.items||[])if(i.ticker===t&&VERDICT[i.verdict]&&i.verdict!=='nota')return{verdict:i.verdict,reason:i.reason||'',provider:c.provider,at:c.createdAt};
   }
+  // Si no hay contraste tuyo, el automático del servidor (noticias de hoy + IA externa).
+  const a=key?autoVerdicts.map.get(String(key).toUpperCase()):null;
+  if(a&&autoFresh(a)&&VERDICT[a.verdict])return{verdict:a.verdict,reason:a.reason||'',provider:'viewinvai-ai',at:a.at};
   return null;
+ }
+ // Contraste automático del Radar: el servidor contrasta con noticias de hoy e IA externa las acciones
+ // que muestra el Radar (caché común de 4 h). Se pide como mucho cada 10 min por mercado.
+ const autoVerdicts={map:new Map(),last:{},busy:false,timer:{}};
+ // Vigente 4 h desde que se generó en el servidor (no desde que llegó).
+ function autoFresh(v){const t=new Date(v&&v.at||0).getTime();return Number.isFinite(t)&&Date.now()-t<4*3600000}
+ async function autoCheck(mode,items,retry=0){
+  const a=auth();if(!a||typeof a.getUser!=='function'||!a.getUser()||autoVerdicts.busy)return;
+  const now=Date.now();if(!retry&&now-(autoVerdicts.last[mode]||0)<10*60000)return;
+  const todo=(items||[]).filter(x=>x&&x.key&&x.ticker&&!autoFresh(autoVerdicts.map.get(String(x.key).toUpperCase()))).slice(0,12);
+  if(!todo.length)return;
+  autoVerdicts.busy=true;autoVerdicts.last[mode]=now;
+  try{
+   const d=await api('/api/radar-check',{method:'POST',body:JSON.stringify({mode,items:todo})});
+   let changed=false;
+   for(const [k,v] of Object.entries(d.verdicts||{})){autoVerdicts.map.set(String(k).toUpperCase(),v);changed=true}
+   // Si quedaron pendientes, se reintenta en un minuto con las mismas acciones (hasta 3 veces seguidas).
+   clearTimeout(autoVerdicts.timer[mode]);
+   if(d.pending&&!d.limited&&retry<3)autoVerdicts.timer[mode]=setTimeout(()=>autoCheck(mode,items,retry+1),60000);
+   if(changed)announce({type:'radar',key:mode});
+  }catch(_){}finally{autoVerdicts.busy=false}
  }
  function verdictFor(type,key,ticker){const v=tickerVerdict(ticker);return v?v.verdict:null}
  function badgeHtml(v){
@@ -438,5 +464,5 @@
  document.addEventListener('DOMContentLoaded',renderSettings);
  if(document.readyState!=='loading')renderSettings();
 
- window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true),reloadRecent:()=>loadRecent()};
+ window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true),reloadRecent:()=>loadRecent(),autoCheck};
 })();

@@ -651,8 +651,6 @@ function builtinBrokerProfile(name){
 }
 async function resolveBrokerProfile(env,name){
   const builtin=builtinBrokerProfile(name);if(builtin)return builtin;
-  if(!env.AI||typeof env.AI.run!=="function")return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
-  const model=configuredAiModel(env);
   try{
     const identifyPrompt=[
       "Identify the brokerage firm from the supplied name. Return JSON only.",
@@ -660,7 +658,7 @@ async function resolveBrokerProfile(env,name){
       "pricingUrl must be an official stock commission page only if confidently known. Otherwise leave it empty. Never invent a domain.",
       JSON.stringify({name:trimText(name,80)})
     ].join("\n");
-    const identified=extractAiJson((await runWorkersAi(env,{prompt:identifyPrompt,max_tokens:220,temperature:0},model)).result)||{};
+    const identified=extractAiJson((await aiRoute(env,{prompt:identifyPrompt,maxTokens:260,json:true,task:"light"})).text)||{};
     const canonicalName=trimText(identified.canonicalName||name,80),officialDomain=trimText(identified.officialDomain,120).toLowerCase(),pricingUrl=trimText(identified.pricingUrl,500),plan=trimText(identified.plan,80);
     if(!officialDomain||!pricingUrl)return{canonicalName,code:"",officialDomain:"",pricingUrl:"",plan,status:"pending",rules:{}};
     const url=new URL(pricingUrl);
@@ -674,7 +672,7 @@ async function resolveBrokerProfile(env,name){
       "Use null when not explicit. Do not infer or invent missing values.",
       JSON.stringify({broker:canonicalName,plan,text:plain})
     ].join("\n");
-    const fees=extractAiJson((await runWorkersAi(env,{prompt:feePrompt,max_tokens:320,temperature:0},model)).result)||{};
+    const fees=extractAiJson((await aiRoute(env,{prompt:feePrompt,maxTokens:400,json:true,task:"light"})).text)||{};
     const hasRule=["buy","sell","perShare","min","maxPct"].some(k=>finiteNumber(fees[k])!==null);
     return{canonicalName,code:"",officialDomain,pricingUrl,plan,status:hasRule?"verified":"pending",rules:fees,sourceExcerpt:plain.slice(0,700)};
   }catch(error){
@@ -3665,12 +3663,14 @@ async function aiHealthStatus(env, url) {
 }
 
 async function aiAssessment(env, target, stock, chart, events, fallback) {
-  if (!env.AI || typeof env.AI.run !== "function") return fallback;
-  let model = configuredAiModel(env);
+  let model = "";
+  // Noticias actuales del valor (Finnhub / Google News / búsqueda web, con caché) para contrastar.
+  let webNews = [];
+  try { webNews = (await goalWebNews(env, { key: target.stock_key, ticker: stock.ticker || stock.trTicker, name: stock.name, stock })).results || []; } catch (_) {}
 
   const prompt = [
     "You are ViewInvAI, a risk-aware market monitoring assistant.",
-    "Use ONLY the supplied structured data. Do not invent facts or news.",
+    "Use ONLY the supplied structured data. Do not invent facts or news. currentNews are real recent search results for this company (last days), each with its date: weigh each by its date (an item from days ago is not a new catalyst), use them to confirm or contradict the quantitative view and cite the key one in reasons.",
     "Distinguish source verification from market interpretation. An issuer-distributed release is not independent corroboration.",
     "The user may own the stock (position) or only follow it (watchlist).",
     "The deterministicReference is a quantitative baseline, not an instruction. Independently assess whether the supplied evidence supports it.",
@@ -3682,8 +3682,6 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
     JSON.stringify({
       subject: {
         type: target.subject_type,
-        quantity: finiteNumber(target.quantity),
-        avgPrice: finiteNumber(target.avg_price),
         currency: target.currency || null
       },
       stock: {
@@ -3712,6 +3710,7 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       },
       chart,
       recentEvents: events,
+      currentNews: webNews.map(n => ({ date: n.date, title: n.title, summary: n.content, url: n.url })),
       deterministicReference: {
         score: fallback.score,
         signal: fallback.signal,
@@ -3721,9 +3720,9 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
   ].join("\n");
 
   try {
-    const run = await runWorkersAi(env, { prompt, max_tokens: 520, temperature: 0.1 }, model);
-    const result = run.result; model = run.model;
-    const parsed = extractAiJson(result);
+    const run = await aiRoute(env, { prompt, maxTokens: 700, json: true, task: "decision" });
+    model = run.provider + " · " + run.model;
+    const parsed = extractAiJson(run.text);
     if (!parsed) return fallback;
 
     const isPosition = target.subject_type === "position";
@@ -3747,12 +3746,12 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
       riskSummary: trimText(parsed.riskSummary || fallback.riskSummary, 500),
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.reasons,
       catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts.map(x => trimText(x, 180)).filter(Boolean).slice(0, 4) : fallback.catalysts,
-      engine: "viewinvai-hybrid/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+workers-ai",
+      engine: "viewinvai-hybrid/" + (globalThis.ViewInvAIScore && globalThis.ViewInvAIScore.VERSION || "unknown") + "+ia-externa",
       model,
       aiValidated: true
     };
   } catch (error) {
-    console.warn("Workers AI analysis failed", String(error && error.message || error));
+    console.warn("AI analysis failed", String(error && error.message || error));
     return fallback;
   }
 }
@@ -5432,7 +5431,6 @@ async function handleManualAnalysis(request, env, user, json, services) {
 
 async function handleAiChat(request, env, user, json, services) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-  if (!env.AI || typeof env.AI.run !== "function") return json({ error: "AI temporarily unavailable" }, 503);
 
   const body = await readJson(request);
   const stockKey = trimText(body.stockKey, 120);
@@ -5492,12 +5490,14 @@ async function handleAiChat(request, env, user, json, services) {
     ? finiteNumber(clientLive.usd) ?? (livePrice!==null&&fx>0?livePrice*fx:null)
     : livePrice;
   const liveChange = finiteNumber(live.changePct);
-  let model = configuredAiModel(env);
+  let model = "";
+  let chatNews = [];
+  try { chatNews = (await goalWebNews(env, { key: stockKey, ticker: stock.ticker || stock.trTicker, name: stock.name, stock })).results || []; } catch (_) {}
 
   const prompt = [
     "Eres ViewInvAI, un asistente de análisis bursátil integrado en una app de inversión.",
     "Responde SIEMPRE en español claro y concreto.",
-    "Usa SOLO los datos estructurados suministrados. No inventes noticias, precios, fechas ni eventos.",
+    "Usa SOLO los datos estructurados suministrados. No inventes noticias, precios, fechas ni eventos. currentNews son resultados reales recientes (noticias y búsqueda web), cada uno con su fecha: respeta la fecha (lo de días atrás no es un catalizador nuevo), úsalos para contrastar y cita la fuente del dato clave.",
     "Distingue entre hechos del feed, cálculos derivados y valoración analítica.",
     "El precio principal debe corresponder al mercado elegido: si preferTr=true, LSX/Trade Republic en EUR; si es false, mercado EEUU en USD.",
     "La segunda divisa es únicamente una conversión con EUR/USD y no un segundo precio independiente.",
@@ -5545,6 +5545,7 @@ async function handleAiChat(request, env, user, json, services) {
       },
       chart,
       recentEvents: events,
+      currentNews: chatNews.map(n => ({ date: n.date, title: n.title, summary: n.content, url: n.url })),
       deterministicReference: {
         signal: deterministic.signal,
         score: deterministic.score,
@@ -5555,9 +5556,9 @@ async function handleAiChat(request, env, user, json, services) {
   ].join("\n");
 
   try {
-    const run = await runWorkersAi(env, { prompt, max_tokens: 900, temperature: 0.12 }, model);
-    const result = run.result; model = run.model;
-    const parsed = extractAiJson(result);
+    const run = await aiRoute(env, { prompt, maxTokens: 1100, json: true, task: "decision" });
+    model = run.provider + " · " + run.model;
+    const parsed = extractAiJson(run.text);
     if (!parsed) throw new Error("AI response is not valid JSON");
     const allowed = new Set(["COMPRAR","VIGILAR","ESPERAR","EVITAR"]);
     let signal = String(parsed.signal || "VIGILAR").toUpperCase();
@@ -5663,6 +5664,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
     if (root === "admin") return handleAdmin(request, env, user, json, url);
+    if (root === "radar-check") { if (url.pathname !== "/api/radar-check") return json({ error: "Not found" }, 404); return handleRadarCheck(request, env, user, json, services); }
     if (root === "goal-ideas") { if (url.pathname !== "/api/goal-ideas") return json({ error: "Not found" }, 404); if (request.method !== "GET") return json({ error: "Method not allowed" }, 405); return json(await goalAnalystIdeas(env), 200, { "Cache-Control": "no-store" }); }
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
@@ -6600,6 +6602,71 @@ async function goalWebReviewPositions(env,goal,positions){
     }
     return new Map((row.items||[]).map(i=>[String(i.ticker||"").toUpperCase(),{verdict:i.verdict,reason:i.reason||""}]));
   }catch(error){console.warn("Goal position review failed",String(error&&error.message||error));return new Map()}
+}
+// Contraste automático del Radar AI: las acciones que el Radar muestra se contrastan con sus noticias
+// de hoy (Finnhub / Google News / búsqueda web) y la IA externa. Resultado común a todos (no personal),
+// guardado 4 h por acción en la base de cachés.
+const RADAR_CHECK_MS=4*3600e3;
+async function handleRadarCheck(request,env,user,json,services){
+  if(request.method!=="POST")return json({error:"Method not allowed"},405);
+  const body=await readJson(request);
+  // La identidad de cada acción sale del snapshot del servidor (no del cliente): el resultado es común
+  // a todos, así que nunca se guarda un veredicto bajo una clave que no corresponde a esa empresa.
+  let snapshot=null;try{snapshot=services&&services.loadMarketSnapshot?await services.loadMarketSnapshot(env):null}catch(_){}
+  const stocks=snapshot&&Array.isArray(snapshot.stocks)?snapshot.stocks:[];
+  if(!stocks.length)return json({verdicts:{},pending:0});
+  const byKey=new Map(stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),s]));
+  const seen=new Set(),items=[];
+  for(const raw of (Array.isArray(body.items)?body.items:[]).slice(0,12)){
+    const key=trimText(raw&&raw.key,120).toUpperCase(),ticker=trimText(raw&&raw.ticker,16).toUpperCase(),stock=byKey.get(key);
+    if(!stock||seen.has(key))continue;
+    if(ticker&&![stock.ticker,stock.trTicker].some(t=>String(t||"").toUpperCase()===ticker))continue;
+    seen.add(key);
+    items.push({key,ticker:String(stock.ticker||stock.trTicker||ticker).toUpperCase(),name:trimText(stock.name,80),isin:trimText(stock.isin||stock.usIsin||stock.trIsin,16).toUpperCase(),stock});
+  }
+  if(!items.length)return json({verdicts:{},pending:0});
+  const bucket=Math.floor(Date.now()/RADAR_CHECK_MS),keyOf=x=>"rck2:"+(x.isin||x.key)+":"+bucket;
+  // Veredictos por clave de instrumento (los tickers se repiten entre bolsas).
+  const verdicts={};
+  let cached=[];
+  try{cached=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+    const ks=items.map(keyOf);return((await db.prepare("SELECT cache_key,payload FROM event_insights WHERE cache_key IN ("+ks.map(()=>"?").join(",")+")").bind(...ks).all()).results)||[]})}catch(_){}
+  const hit=new Map(cached.map(r=>{try{return[r.cache_key,JSON.parse(r.payload)]}catch(_){return[r.cache_key,null]}}));
+  const pending=[];
+  for(const x of items){const v=hit.get(keyOf(x));if(v&&v.verdict)verdicts[x.key]=v;else pending.push(x)}
+  const left=()=>pending.filter(x=>!verdicts[x.key]).length;
+  // Límite de nuevos contrastes por usuario y día (el resto llega de la caché común).
+  if(pending.length&&env.HOT_STATE_KV){
+    const k="rck-quota:"+user.id+":"+nowIso().slice(0,10);
+    try{const used=Number(await env.HOT_STATE_KV.get(k))||0;if(used>=40)return json({verdicts,limited:true,pending:0});await env.HOT_STATE_KV.put(k,String(used+1),{expirationTtl:2*86400})}catch(_){}
+  }
+  const todo=pending.slice(0,6);
+  if(todo.length){
+    const parts=[],sources=[];
+    for(const x of todo){
+      const web=await goalWebNews(env,{key:x.key,ticker:x.ticker,name:x.name,isin:x.isin,stock:x.stock});
+      parts.push(x.ticker+" ("+x.name+")"+
+        (web.results.length?"\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"(sin fecha) · ")+r.title+" — "+r.content+" ("+r.url+")").join("\n"):"\n  Sin noticias encontradas."));
+      web.results.forEach(r=>sources.push(r));
+    }
+    const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo noticias REALES recientes (últimos días) de cada valor, cada una con su fecha: úsalas como fuente principal y respeta la fecha; una noticia de días atrás no es un catalizador nuevo.")+"\n\n"+
+      "Son las acciones que el Radar AI de ViewInvAI propone hoy para operaciones de 1-5 sesiones. Para cada una: «respalda» si las noticias apoyan comprar ahora, "+
+      "«dudas» si hay riesgos (ampliación, ya subió demasiado, noticia ambigua), «contradice» si un hecho nuevo invalida la compra. Sin noticias relevantes, decide por los datos y dilo.\n\n"+parts.join("\n");
+    try{
+      const run=await aiRoute(env,{prompt,maxTokens:1300,json:false,task:"decision"});
+      const parsed=aiParseAnswer(run.text);
+      const rows=[];
+      for(const i of parsed.items||[]){
+        const x=todo.find(t=>t.ticker===i.ticker);if(!x||verdicts[x.key])continue;
+        const v={verdict:i.verdict,reason:i.reason||"",provider:"viewinvai-ai",model:run.provider+" · "+run.model,at:nowIso()};
+        verdicts[x.key]=v;rows.push([keyOf(x),x.key,v]);
+      }
+      if(rows.length)await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+        return db.batch(rows.map(([k,sk,v])=>db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(k,"rck:"+sk,JSON.stringify(v),nowIso())))}).catch(()=>{});
+    }catch(error){console.warn("Radar check failed",String(error&&error.message||error))}
+  }
+  // Pendientes = las que siguen sin veredicto (incluidas las que la IA no contestó o si falló).
+  return json({verdicts,pending:left()});
 }
 // Antes de proponer compras nuevas, las IA activas del usuario (Gemini gratis primero) las
 // contrastan. El Objetivo tiene prioridad en la cuota diaria; el Radar usa lo que sobra.

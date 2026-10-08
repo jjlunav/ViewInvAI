@@ -1959,7 +1959,7 @@ async function attentionRankingResponse(env,request){
 const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "fund-catalog-extra", "watchlist",
-  "analysis", "ai", "alerts", "position-decisions", "event-insight", "admin", "goal-ideas", "notification-preferences", "portfolio-goal",
+  "analysis", "ai", "alerts", "position-decisions", "event-insight", "admin", "goal-ideas", "radar-check", "notification-preferences", "portfolio-goal",
   "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
 ]);
 function isBackendApiPath(pathname) {
@@ -2010,6 +2010,7 @@ export default {
     if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/goal-ideas")limited=await enforcedRateLimit(request,env,"goal-ideas",10,60000,"AI_RATE_LIMITER");
+    else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
