@@ -1758,6 +1758,8 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 .admin-toolbar{display:flex;gap:8px;max-width:1320px;margin:0 auto 12px}
 #view-admin .admin-grid+.settings-section-heading{margin-top:18px}
 #view-admin .admin-grid-gap{margin-top:8px}
+#view-admin .settings-nav-item{align-items:center}
+#view-admin .settings-nav-item b{grid-row:1/3;align-self:center}
 #view-admin a,#view-admin a:visited{color:var(--accent,#5cc8e8);text-decoration:none}
 #view-admin a:hover{text-decoration:underline}
 #view-admin .admin-card-head{align-items:center}
