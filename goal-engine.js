@@ -27,9 +27,10 @@
   const n=v=>{if(v===null||v===undefined||v==='')return null;const x=Number(v);return Number.isFinite(x)?x:null};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const r2=v=>Math.round(v*100)/100;
-  // Varios mercados reutilizan el mismo ticker (WOLF es Wolfspeed en NYSE y Meta Wolf en XETRA):
-  // en las propuestas de compra o cambio se añade el nombre para que no haya duda.
-  const label=c=>String(c.ticker||'')+(c.name&&String(c.name)!==String(c.ticker)?' ('+c.name+')':'');
+  // Varios mercados reutilizan el mismo ticker (WOLF es Wolfspeed en NYSE y Meta Wolf en XETRA)
+  // y en Trade Republic se opera con otro (Wolfspeed es CR6 en LSX). Los textos usan el ticker
+  // del mercado donde se opera (marketTicker) y el nombre, y el pintado lo enlaza a la ficha.
+  const label=c=>{const t=String(c.marketTicker||c.ticker||'');return t+(c.name&&String(c.name)!==t?' ('+c.name+')':'')};
   const money=v=>(Math.round(v*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
   const pct=v=>(v>0?'+':'')+(Math.round(v*10)/10).toLocaleString('es-ES')+' %';
 
@@ -70,6 +71,10 @@
       timing-=Math.min(18,spread*2);
       if(spread>b.maxSpreadPct)waitReasons.push('spread demasiado amplio');
     }
+    // Un salto que se está devolviendo (precio muy por debajo de la apertura de hoy) no es una
+    // entrada temprana aunque el cambio frente al cierre anterior siga en positivo.
+    const fade=n(c.openFadePct);
+    if(fade!==null&&fade<=-4){timing-=Math.min(30,Math.abs(fade)*2);waitReasons.push('devuelve la subida de la apertura ('+(Math.round(fade*10)/10).toLocaleString('es-ES')+' % desde la apertura)')}
     if(day!==null&&day<-.75){timing-=Math.min(18,Math.abs(day+.75)*3);waitReasons.push('momentum de entrada deteriorado')}
     if(extension!==null&&extension>b.maxExtensionPct)limitReasons.push('demasiado alejada de EMA20');
     if(day!==null&&day>b.maxDayChangePct)limitReasons.push('subida intradía demasiado extendida');
@@ -208,13 +213,13 @@
         const proceeds=units*price-feeOf(p,'SELL');
         pool+=Math.max(0,proceeds);
         actions.push({type:'SELL',reason:'stop',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,stopEur:r2(st.stopEur),
-          text:'Vender '+units+' × '+p.ticker+': stop alcanzado ('+money(st.stopEur)+').'});
+          text:'Vender '+units+' × '+label(p)+': stop alcanzado ('+money(st.stopEur)+').'});
         continue;
       }
       const stored=n(p.stopEur);
       if(st.stopEur!==null&&st.trailing&&(stored===null||st.stopEur>stored*1.005)){
         actions.push({type:'RAISE_STOP',key:p.key,ticker:p.ticker,name:p.name,stopEur:r2(st.stopEur),fromEur:stored===null?null:r2(stored),
-          text:'Subir el stop de '+p.ticker+' a '+money(st.stopEur)+' para asegurar ganancia.'});
+          text:'Subir el stop de '+label(p)+' a '+money(st.stopEur)+' para asegurar ganancia.'});
       }
       remaining.push(row);
     }
@@ -252,15 +257,19 @@
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
     const shortlist=rankedCands.length>1&&rankedCands[1].burstScore>=rankedCands[0].burstScore-5
       ?rankedCands.slice(0,2):rankedCands.slice(0,1);
-    const cands=shortlist.filter(c=>c.entryEligible&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase));
+    // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
+    // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
+    const stale=c=>c.quoteFresh===false;
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase));
     if(!defensive){
-      for(const c of shortlist.filter(c=>!c.entryEligible)){
-        const isLimit=c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
+      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c))){
+        const isLimit=!stale(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
         waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
           burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
           text:isLimit
             ?'Esperar '+label(c)+': oportunidad válida, pero no comprar por encima de '+money(c.limitPriceEur)+'. La entrada actual está demasiado extendida.'
+            :stale(c)?'Esperar '+label(c)+': no hay cotización en vivo; antes de comprar hay que ver cómo cotiza ahora.'
             :'Esperar '+label(c)+': '+((c.entryReasons||[]).join(', ')||'el punto de entrada no es suficientemente limpio')+'.'});
       }
     }
@@ -278,7 +287,7 @@
       const weak=score<=40||p.aiVerdict==='contradice'||stagnant||decaying||expired;
       if(!weak)continue;
       if(minHold&&p.aiVerdict!=='contradice'){
-        holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': entrada demasiado reciente para rotar sin que haya saltado el stop.'});continue;
+        holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+label(p)+': entrada demasiado reciente para rotar sin que haya saltado el stop.'});continue;
       }
       const units=n(p.units)||0,price=priceNow??0,avg=avgNow??price;
       const proceeds=units*price-feeOf(p,'SELL');
@@ -288,31 +297,31 @@
         // En ganancia y con la señal rota: se asegura el beneficio.
         pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
         actions.push({type:'SELL',reason:'weak-profit',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
-          text:'Vender '+units+' × '+p.ticker+': la señal se ha debilitado y está en ganancia; se asegura.'});
+          text:'Vender '+units+' × '+label(p)+': la señal se ha debilitado y está en ganancia; se asegura.'});
         continue;
       }
       // En modo defensivo no se rota (vender para no poder comprar sería solo consolidar la pérdida).
-      if(defensive){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': modo defensivo, solo se vende por stop.'});continue}
+      if(defensive){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+label(p)+': modo defensivo, solo se vende por stop.'});continue}
       // Si la tesis corta ya ha caducado o lleva días estancada, no hace falta inventar otra
       // compra para justificar la salida. Con pérdida mínima (<=1 %) se libera liquidez.
       if(!alt&&(expired||stagnant)&&ret!==null&&ret>=-1){
         pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
         actions.push({type:'SELL',reason:expired?'time-exit':'stagnation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
-          text:'Vender '+units+' × '+p.ticker+': '+(expired?'se agotó la ventana de la operación corta':'lleva demasiado tiempo sin avanzar')+'; se libera liquidez para la siguiente oportunidad.'});
+          text:'Vender '+units+' × '+label(p)+': '+(expired?'se agotó la ventana de la operación corta':'lleva demasiado tiempo sin avanzar')+'; se libera liquidez para la siguiente oportunidad.'});
         continue;
       }
-      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+p.ticker+': '+(expired?'ha agotado el tiempo objetivo de la operación':stagnant?'está estancada en horizonte corto':'señal débil')+', pero vender ahora consolidaría una pérdida sin una alternativa clara.'});continue}
+      if(!alt){holds.push({key:p.key,ticker:p.ticker,text:'Mantener '+label(p)+': '+(expired?'ha agotado el tiempo objetivo de la operación':stagnant?'está estancada en horizonte corto':'señal débil')+', pero vender ahora consolidaría una pérdida sin una alternativa clara.'});continue}
       const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL');
       const expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
       const needed=(loss+fees)*ROTATION_MARGIN;
       if(expectedGain>=needed){
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
-        actions.push({type:'SELL',reason:'rotation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,into:alt.ticker,
+        actions.push({type:'SELL',reason:'rotation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,into:alt.marketTicker||alt.ticker,intoKey:alt.key,intoLabel:label(alt),
           expectedGainEur:r2(expectedGain),neededEur:r2(needed),
-          text:'Vender '+units+' × '+p.ticker+' para pasar a '+label(alt)+': '+(expired?'ha superado el tiempo máximo de una operación corta; ':stagnant?'no está respondiendo en el horizonte corto; ':'')+'la alternativa tiene score temprano '+Math.round(alt.burstScore||0)+'/100 y se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
+          text:'Vender '+units+' × '+label(p)+' para pasar a '+label(alt)+': '+(expired?'ha superado el tiempo máximo de una operación corta; ':stagnant?'no está respondiendo en el horizonte corto; ':'')+'la alternativa tiene score temprano '+Math.round(alt.burstScore||0)+'/100 y se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
       }else{
-        holds.push({key:p.key,ticker:p.ticker,expectedGainEur:r2(expectedGain),neededEur:r2(needed),
-          text:'Mantener '+p.ticker+': cambiarla consolidaría '+money(loss)+' de pérdida y '+money(fees)+' de comisiones que la mejor alternativa ('+label(alt)+', '+pct(alt.targetPct)+' previsto) no compensa con margen.'});
+        holds.push({key:p.key,ticker:p.ticker,altKey:alt.key,altLabel:label(alt),expectedGainEur:r2(expectedGain),neededEur:r2(needed),
+          text:'Mantener '+label(p)+': cambiarla consolidaría '+money(loss)+' de pérdida y '+money(fees)+' de comisiones que la mejor alternativa ('+label(alt)+', '+pct(alt.targetPct)+' previsto) no compensa con margen.'});
       }
     }
 
@@ -334,9 +343,9 @@
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
         const units=Math.floor(budget/ask);
-        if(units<1){notes.push(c.ticker+': no alcanza para una acción entera con el tamaño permitido.');continue}
+        if(units<1){notes.push(label(c)+': no alcanza para una acción entera con el tamaño permitido.');continue}
         const ticket=units*ask;
-        if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(c.ticker+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
+        if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
@@ -345,6 +354,9 @@
           text:'Comprar '+units+' × '+label(c)+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
+    // Cada propuesta lleva la etiqueta (ticker del mercado + nombre) de la acción a la que se refiere.
+    const labels=new Map([...positions,...(input.candidates||[])].map(x=>[String(x.key),label(x)]));
+    for(const x of [...actions,...waits,...holds])x.label=labels.get(String(x.key))||label(x);
     const decisions=[
       ...actions.map(a=>({...a,decision:a.decision||(a.type==='SELL'?'VENDER':a.type==='RAISE_STOP'?'MANTENER / SUBIR STOP':a.type)})),
       ...waits,

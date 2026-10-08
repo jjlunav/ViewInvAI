@@ -1443,7 +1443,8 @@ function goalEngineInput(metrics,positionRows){
     const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase(),cat=portfolioGoalCatalyst(row.stock);
     const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
-    return{key,ticker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
+    const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
+    return{key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
@@ -1455,7 +1456,10 @@ function goalEngineInput(metrics,positionRows){
     let priceEur=q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
-    return priceEur>0?{key:goalStockKey(r.s),ticker,name:r.s.name||"",priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
+    const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
+    const livePx=num(preferTr?r.s.trLivePrice:r.s.usLivePrice),liveOpen=num(preferTr?r.s.trLiveOpen:r.s.usLiveOpen);
+    const openFadePct=livePx!==null&&liveOpen>0?(livePx/liveOpen-1)*100:null;
+    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteFresh===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
@@ -1480,6 +1484,22 @@ function goalPaceHtml(pc,metrics){
     '<div class="goal2-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+Math.round(progress)+'"><i data-goal-progress="'+Math.round(progress)+'"></i></div>'+
     (bits.length?'<small class="goal2-pace-bits">'+esc(bits.join(" · "))+'</small>':'')+'</div>';
 }
+// Enlaza en el texto del plan cada acción citada («CR6 (Wolfspeed, Inc.)») con su ficha completa.
+function goalLinkedText(text,links){
+  const list=links.filter(l=>l&&l.label&&l.key).sort((x,y)=>String(y.label).length-String(x.label).length);
+  let html=esc(text||"");
+  list.forEach((l,i)=>{html=html.split(esc(l.label)).join("\u0000"+i+"\u0000")});
+  return html.replace(/\u0000(\d+)\u0000/g,(_,i)=>{const l=list[Number(i)];
+    return '<button type="button" class="goal2-stock-link" data-open-stock="'+esc(l.key)+'" data-position-prefer-tr="'+(l.preferTr?'1':'0')+'" title="Abrir la ficha">'+esc(l.label)+'</button>'});
+}
+function goalCandidateLink(ctx,key,label){
+  const c=key?ctx.candidates.find(x=>x.key===key):null;
+  return c&&label?{label,key:portfolioStockKey(c.stock),preferTr:ctx.preferTr}:null;
+}
+function goalPositionLink(ctx,key,label){
+  const p=key?ctx.positions.find(x=>x.key===key):null;
+  return p&&label?{label,key:p.row.p.stock_key,preferTr:p.row.preferTr}:null;
+}
 function goalActionHtml(a,ctx){
   const cand=(a.type==="BUY"||a.type==="WAIT")?ctx.candidates.find(c=>c.key===a.key):null,pos=(a.type!=="BUY"&&a.type!=="WAIT")?ctx.positions.find(p=>p.key===a.key):null;
   const C=window.ViewInvAIContrast,ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(C.tickerVerdict?C.tickerVerdict(a.ticker):null):"";
@@ -1501,7 +1521,7 @@ function goalActionHtml(a,ctx){
       ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
       :'';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+esc(a.text)+'</span>'+extra+button+'</div></div>';
+    '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+extra+button+'</div></div>';
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;
@@ -1533,7 +1553,7 @@ function portfolioGoalViewHtml(){
   const visibleDecisions=[...plan.actions,...(plan.waits||[])];
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
-  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>'<li>'+esc(h.text)+'</li>').join('')+'</ul>':'';
+  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>'<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+'</li>').join('')+'</ul>':'';
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
   const posList=input.positions.length?'<div class="goal2-positions">'+input.positions.map(p=>{
       const st=engine.positionStop(p,input.config.risk),ret=p.avgEur>0?(p.priceEur/p.avgEur-1)*100:null;
