@@ -204,7 +204,9 @@
     const maxPositions=clamp(Math.round(n(cfg.maxPositions)||5),1,10),spec=specPolicy(cfg,maxPositions);
     const positions=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
     const cash=Math.max(0,n(input.cashEur)||0);
-    const valueEur=cash+positions.reduce((s,p)=>s+(n(p.units)||0)*(n(p.priceEur)||0),0);
+    // Acciones congeladas: cuentan en el valor de la cartera, pero el plan no las toca.
+    const lockedValue=Math.max(0,n(input.lockedValueEur)||0);
+    const valueEur=cash+lockedValue+positions.reduce((s,p)=>s+(n(p.units)||0)*(n(p.priceEur)||0),0);
     const peak=Math.max(n(input.peakValueEur)||0,valueEur);
     const drawdownPct=peak>0?(1-valueEur/peak)*100:0;
     const defensive=input.wasDefensive?drawdownPct>DEFENSIVE_OUT:drawdownPct>=DEFENSIVE_IN;
@@ -237,7 +239,7 @@
     }
 
     // 2) Candidatas válidas (antes de decidir rotaciones).
-    const held=new Set(remaining.map(p=>String(p.key))),specHeldCount=remaining.filter(p=>p.speculative).length;
+    const held=new Set([...remaining.map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]),specHeldCount=remaining.filter(p=>p.speculative).length;
     const mappedCands=(input.candidates||[]).filter(c=>{
       if(held.has(String(c.key)))return false;
       if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;

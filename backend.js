@@ -568,6 +568,9 @@ async function ensurePositionBrokerSchema(env){
   if(!names.has("broker"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
   if(!names.has("cost_basis"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN cost_basis REAL").run();
   if(!names.has("fees_total"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN fees_total REAL NOT NULL DEFAULT 0").run();
+  // Acciones congeladas: cantidad que el Objetivo no puede tocar hasta frozen_until (inclusive).
+  if(!names.has("frozen_qty"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN frozen_qty REAL NOT NULL DEFAULT 0").run();
+  if(!names.has("frozen_until"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN frozen_until TEXT").run();
   await env.DB.prepare("DROP INDEX IF EXISTS idx_positions_portfolio_stock").run();
   await env.DB.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_portfolio_identity ON positions(portfolio_id,stock_key,broker,currency,prefer_tr,exchange)"
@@ -1477,6 +1480,23 @@ async function handlePositions(request, env, user, json, parts, url) {
   if (!id) return json({ error: "Position id required" }, 400);
   const existing = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first();
   if (!existing) return json({ error: "Position not found" }, 404);
+
+  // Congelar acciones: el Objetivo no propone vender, stops ni cambios sobre esa cantidad hasta la fecha.
+  if (request.method === "POST" && parts[2] === "freeze") {
+    const body = await readJson(request);
+    const qty = finiteNumber(body.quantity) ?? 0, until = String(body.until || "").trim();
+    const held = finiteNumber(existing.quantity) ?? 0;
+    let frozenQty = 0, frozenUntil = null;
+    if (qty > 0) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || !Number.isFinite(Date.parse(until + "T00:00:00Z"))) return json({ error: "Indica hasta qué fecha quedan congeladas." }, 400);
+      if (until < nowIso().slice(0, 10)) return json({ error: "La fecha tiene que ser hoy o posterior." }, 400);
+      if (qty > held + 1e-9) return json({ error: "No puedes congelar más acciones de las que tienes." }, 400);
+      frozenQty = Math.round(qty * 1e8) / 1e8; frozenUntil = until;
+    }
+    await env.DB.prepare("UPDATE positions SET frozen_qty=?,frozen_until=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(frozenQty, frozenUntil, nowIso(), id, user.id).run();
+    return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
+  }
 
   if (request.method === "PATCH") {
     const body = await readJson(request);
@@ -5819,6 +5839,7 @@ async function scanPortfolioGoalNotifications(env,services){
   const engine=globalThis.ViewInvAIGoal;
   if(!services.loadMarketSnapshot||!engine)return{processed:0,alerts:0};
   await ensurePortfolioGoalNotificationStateSchema(env);
+  await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
     "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
@@ -5862,7 +5883,7 @@ async function scanPortfolioGoalNotifications(env,services){
   for(const goal of goals.results||[]){
     try{
       const positions=(await env.DB.prepare(
-        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,"+
+        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,p.frozen_qty,p.frozen_until,"+
         "(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=p.id AND t.user_id=p.user_id AND t.side='BUY') AS last_buy_at "+
         "FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 ORDER BY p.created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all()).results||[];
@@ -5877,12 +5898,17 @@ async function scanPortfolioGoalNotifications(env,services){
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
-      const enginePositions=[];let incomplete=false;
+      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0;
+      const today=nowIso().slice(0,10);
       for(const p of positions){
-        const key=String(p.stock_key||"").toUpperCase(),stock=byKey.get(key)||findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0);
-        if(!(qty>0))continue;
+        const key=String(p.stock_key||"").toUpperCase(),stock=byKey.get(key)||findStock(snapshot,p),total=Math.max(0,finiteNumber(p.quantity)??0);
+        const frozen=p.frozen_until&&String(p.frozen_until)>=today?Math.min(total,Math.max(0,finiteNumber(p.frozen_qty)??0)):0;
+        const qty=Math.max(0,total-frozen);
+        if(!(total>0))continue;
         const ptr=Number(p.prefer_tr)===1,mark=await quoteEur(stock,ptr,"LAST"),bid=await quoteEur(stock,ptr,"SELL");
         if(mark===null){incomplete=true;break}
+        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key)}
+        if(!(qty>1e-9))continue;
         const avg=finiteNumber(p.avg_price),cur=String(p.currency||(ptr?"EUR":"USD")).toUpperCase();
         const avgEur=avg===null?null:cur==="EUR"?avg:cur==="USD"&&usdToEur!==null?avg*usdToEur:null;
         const st=states.get(key)||{},rr=radarByKey.get(key);
@@ -5919,7 +5945,7 @@ async function scanPortfolioGoalNotifications(env,services){
       }
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
-        positions:enginePositions,candidates,cashEur,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.

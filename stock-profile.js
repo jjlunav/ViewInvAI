@@ -455,7 +455,11 @@ function planRiskKey(){try{const v=localStorage.getItem('viewinvai:plan-risk');r
 function profileGoalPlanHtml(g){
  const px=v=>{const n=N(v);if(n===null)return'—';const d=Math.abs(n)<10?3:2;return n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d})+' €'},pct=v=>F(Math.abs(N(v)||0),1)+'%';
  let head='',grid='',note='';
- if(g.kind==='buy'){
+ const until=g.frozenUntil?new Date(g.frozenUntil+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}):'';
+ const frozenNote=N(g.frozenQty)>0?'<p class="plan-note">🔒 '+E(F(g.frozenQty,6))+' acciones congeladas hasta el '+E(until)+' (incluido): el Objetivo no las toca.</p>':'';
+ if(g.kind==='frozen'){
+  head='Congeladas hasta el '+until+' · el Objetivo no las toca';
+ }else if(g.kind==='buy'){
   head='Comprar '+F(g.units,0)+' acciones · Stop '+px(g.stopEur)+' (−'+pct(g.stopPct)+')'+(N(g.targetEur)!==null?' · Objetivo '+px(g.targetEur)+' (+'+pct(g.targetPct)+')':'');
   grid='<div><small>ENTRADA</small><b>'+px(g.entryEur)+'</b><span>precio de compra</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>−'+pct(g.stopPct)+'</span></div><div><small>OBJETIVO</small><b class="positive">'+px(g.targetEur)+'</b><span>+'+pct(g.targetPct)+'</span></div>';
  }else if(g.kind==='wait'){
@@ -467,7 +471,7 @@ function profileGoalPlanHtml(g){
   if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
  }
  return '<details class="profile-plan" data-profile-plan data-plan-source="goal"><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
-  '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+
+  '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+frozenNote+
   '<p class="plan-note">Es el mismo plan que «Hoy toca» en el Objetivo de esta cartera (importes en €).</p></div></details>';
 }
 function profileTradePlanHtml(s,isTr=false){
