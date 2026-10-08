@@ -18,10 +18,89 @@ function configuredAiModel(env) {
   const m = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
   return RETIRED_AI_MODELS.has(m) ? DEFAULT_AI_MODEL : m;
 }
-// Ejecuta Workers AI con el modelo pedido y, si falla (modelo retirado, sin capacidad…),
-// prueba una vez con los modelos de respaldo. Devuelve {result, model}.
+// Catálogo vivo de Workers AI: los modelos se retiran (llama-3.1-8b-instruct el 30/05/2026 dejó
+// el análisis sin IA en silencio). Una vez al día se consulta env.AI.models(), se descartan los
+// retirados o con retirada próxima y se ordenan los candidatos; el preferido solo se usa si sigue
+// vigente. Caché: memoria 6 h + KV 24 h (una escritura diaria).
+const AI_CATALOG_KV_KEY = "ai-catalog:v1", AI_CATALOG_TTL_MS = 24 * 3600e3, AI_CATALOG_MEMO_MS = 6 * 3600e3;
+const AI_RETIRE_MARGIN_MS = 14 * 864e5, AI_BAD_MODEL_MS = 6 * 3600e3;
+let aiCatalogMemo = null, aiCatalogForce = false, aiCatalogLastForce = 0;
+const aiBadModels = new Map();
+function aiModelRetirement(m) {
+  const props = Array.isArray(m && m.properties) ? m.properties : [];
+  const tags = Array.isArray(m && m.tags) ? m.tags.map(t => String(t).toLowerCase()) : [];
+  if (tags.some(t => t.includes("deprecat") || t.includes("retired"))) return 0;
+  for (const p of props) {
+    const id = String(p && p.property_id || "").toLowerCase();
+    if (!id.includes("deprecat") && !id.includes("retire") && !id.includes("sunset")) continue;
+    const v = String(p && p.value || "");
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return t;
+    if (/^(true|1|yes)$/i.test(v)) return 0;
+  }
+  return null;
+}
+function aiModelScore(name) {
+  const n = String(name).toLowerCase();
+  const fam = [
+    [/llama-3\.\d+-8b-instruct-fast/, 100], [/llama.*instruct.*fast/, 92], [/llama-4/, 88], [/llama.*instruct/, 84],
+    [/mistral-small|mistral.*instruct/, 80], [/qwen.*(instruct|qwen3)/, 76], [/gemma-3/, 72], [/glm/, 68], [/gpt-oss/, 64]
+  ].find(([re]) => re.test(n));
+  const version = (n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
+  const size = (n.match(/(\d+(?:\.\d+)?)b\b/) || [0, 0])[1] * 1;
+  return (fam ? fam[1] : (/instruct|chat/.test(n) ? 50 : 30)) * 1000 + Math.min(version, 99) * 5 + (n.includes("fast") ? 3 : 0) - Math.min(size, 400) / 100;
+}
+function rankAiCatalog(list, now = Date.now()) {
+  const names = [];
+  for (const m of Array.isArray(list) ? list : []) {
+    const name = String(m && m.name || "");
+    if (!name.startsWith("@cf/")) continue;
+    const task = String(m && m.task && m.task.name || "");
+    if (task && !/text generation/i.test(task)) continue;
+    if (/lora|awq|guard|embed|bge|vision|coder|math|whisper|-base\b|reward|sql|tts|stable-diffusion|flux/i.test(name)) continue;
+    const retire = aiModelRetirement(m);
+    if (retire !== null && retire - now < AI_RETIRE_MARGIN_MS) { RETIRED_AI_MODELS.add(name); continue; }
+    names.push(name);
+  }
+  return [...new Set(names)].sort((a, b) => aiModelScore(b) - aiModelScore(a));
+}
+async function aiCatalog(env, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && aiCatalogMemo && now - aiCatalogMemo.at < AI_CATALOG_MEMO_MS) return aiCatalogMemo;
+  if (!force && env.HOT_STATE_KV) {
+    try {
+      const cached = await env.HOT_STATE_KV.get(AI_CATALOG_KV_KEY, "json");
+      if (cached && Array.isArray(cached.models) && now - Number(cached.at || 0) < AI_CATALOG_TTL_MS) {
+        for (const r of cached.retired || []) RETIRED_AI_MODELS.add(r);
+        return (aiCatalogMemo = cached);
+      }
+    } catch (_) {}
+  }
+  if (!env.AI || typeof env.AI.models !== "function") return aiCatalogMemo || { at: now, models: [], source: "none" };
+  try {
+    const list = await env.AI.models({ task: "Text Generation", hide_experimental: true, per_page: 100 });
+    const valid = rankAiCatalog(list, now), models = valid.slice(0, 8);
+    if (models.length) {
+      aiCatalogMemo = { at: now, models, valid: valid.slice(0, 80), retired: [...RETIRED_AI_MODELS].slice(0, 60), source: "catalog" };
+      if (env.HOT_STATE_KV) { try { await env.HOT_STATE_KV.put(AI_CATALOG_KV_KEY, JSON.stringify(aiCatalogMemo), { expirationTtl: 2 * 86400 }); } catch (_) {} }
+      return aiCatalogMemo;
+    }
+  } catch (error) {
+    console.warn("Workers AI catalog unavailable", String(error && error.message || error));
+  }
+  return aiCatalogMemo || { at: now, models: [], source: "none" };
+}
+// Ejecuta Workers AI con el primer modelo vigente: el preferido si no está retirado, luego los
+// mejores del catálogo y, si el catálogo no responde, una lista fija. Un modelo que falla por
+// retirado/no encontrado se aparta 6 h y fuerza refrescar el catálogo. Devuelve {result, model}.
 async function runWorkersAi(env, input, preferred) {
-  const models = [...new Set([preferred || configuredAiModel(env), ...FALLBACK_AI_MODELS].filter(Boolean))];
+  const force = aiCatalogForce && Date.now() - aiCatalogLastForce > 3600e3;
+  if (force) { aiCatalogForce = false; aiCatalogLastForce = Date.now(); }
+  const catalog = await aiCatalog(env, { force });
+  const valid = new Set(catalog.valid || catalog.models || []), now = Date.now();
+  const ok = m => m && !RETIRED_AI_MODELS.has(m) && !(aiBadModels.get(m) > now) && (!valid.size || valid.has(m));
+  let models = [...new Set([preferred || configuredAiModel(env), ...(catalog.models || []), ...FALLBACK_AI_MODELS])].filter(ok).slice(0, 4);
+  if (!models.length) models = FALLBACK_AI_MODELS.slice();
   let lastError = null;
   for (const model of models) {
     try {
@@ -30,9 +109,13 @@ async function runWorkersAi(env, input, preferred) {
       return { result, model };
     } catch (error) {
       lastError = error;
-      aiHealth.lastErrorAt = nowIso(); aiHealth.lastErrorModel = model;
-      aiHealth.lastError = trimText(String(error && error.message || error), 240);
-      console.warn("Workers AI model failed", model, aiHealth.lastError);
+      const msg = trimText(String(error && error.message || error), 240);
+      aiHealth.lastErrorAt = nowIso(); aiHealth.lastErrorModel = model; aiHealth.lastError = msg;
+      console.warn("Workers AI model failed", model, msg);
+      if (/not found|no such model|unknown model|deprecat|retired|5007|invalid model/i.test(msg)) {
+        aiBadModels.set(model, Date.now() + AI_BAD_MODEL_MS);
+        aiCatalogForce = true;
+      }
     }
   }
   throw lastError || new Error("Workers AI unavailable");
@@ -3350,7 +3433,8 @@ function extractAiJson(result) {
 // Diagnóstico de Workers AI para /api/backend/status: estado en memoria y, con ?probe=ai, una
 // llamada mínima cuyo resultado se guarda una hora en KV (como mucho 24 escrituras al día).
 async function aiHealthStatus(env, url) {
-  const out = { ...aiHealth };
+  const cat = aiCatalogMemo || {};
+  const out = { ...aiHealth, catalog: { at: cat.at ? new Date(cat.at).toISOString() : null, source: cat.source || "pending", models: (cat.models || []).slice(0, 5) } };
   if (url.searchParams.get("probe") !== "ai" || !env.AI || typeof env.AI.run !== "function") return out;
   const key = "ai-probe:v1";
   if (env.HOT_STATE_KV) {
