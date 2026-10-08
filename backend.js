@@ -5900,10 +5900,11 @@ async function scanPortfolioGoalNotifications(env,services){
         const stock=byKey.get(r.stock_key);if(!stock||!goalServerAllowed(stock,scope))return null;
         const priceEur=goalServerPriceEur(stock,preferTr,usdToEur,"BUY")??(finiteNumber(stock.price)!==null&&usdToEur!==null?finiteNumber(stock.price)*usdToEur:null);
         const ticker=String(stock.ticker||stock.trTicker||"").toUpperCase(),cat=goalServerCatalyst(snapshot,stock);
-        const techPrice=finiteNumber(stock.price),ema20=finiteNumber(stock.ema20),dayHigh=finiteNumber(stock.usLiveDayHigh??stock.dayHigh);
+        const techPrice=finiteNumber(stock.price),ema20=finiteNumber(stock.ema20),dayHigh=finiteNumber(stock.dayHigh);
         const extensionPct=techPrice!==null&&ema20>0?(techPrice/ema20-1)*100:null;
         const nearHighPct=techPrice!==null&&dayHigh>0&&techPrice<=dayHigh?(dayHigh-techPrice)/dayHigh*100:null;
-        const dayChangePct=finiteNumber(preferTr?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct));
+        // En Trade Republic la variación del día es la de LSX; sin ella no se usa la de NYSE/NASDAQ.
+        const dayChangePct=finiteNumber(preferTr?stock.trLiveChangePct:(stock.usLiveChangePct??stock.changePct));
         return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
           relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,avgVolume:finiteNumber(stock.avgVolume),
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
@@ -5941,6 +5942,8 @@ async function scanPortfolioGoalNotifications(env,services){
           if(ask===null)continue;
           const raw=(quoteCache.get((preferTr?"tr:":"us:")+goalServerKey(c.stock))||{}).quote||{};
           c.askEur=ask;c.quoteFresh=true;
+          // La variación del día del mercado donde se opera (LSX en Trade Republic) sale de la cotización verificada.
+          if(finiteNumber(raw.changePct)!==null)c.dayChangePct=finiteNumber(raw.changePct);
           c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:raw.price,open:raw.open});
         }
         plan=engine.plan(input);

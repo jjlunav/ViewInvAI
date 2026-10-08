@@ -1133,13 +1133,17 @@ function portfolioGoalVelocityScore(stock,score,quality,preferTr=false){
 function portfolioGoalEntryTiming(stock,preferTr,execution,band){
   const market=execution&&execution.market||currentMarket(stock,preferTr);
   const nativePrice=num(execution&&execution.price)??num(market&&market.price);
-  const eurUsd=window.ViewInvAI&&typeof window.ViewInvAI.getEurUsd==="function"?num(window.ViewInvAI.getEurUsd()):null;
-  const technicalPrice=preferTr
-    ?(num(market&&market.usd)??(nativePrice!==null&&eurUsd!==null?nativePrice*eurUsd:null))
-    :nativePrice;
+  // EMA, máximo y mínimo son niveles del mercado principal (NYSE/NASDAQ en $, o XETRA/Viena en €):
+  // se comparan con el precio de ESE mismo mercado y solo se usan como porcentaje. Nunca se
+  // convierte el precio de LSX a otra divisa para compararlo con niveles de otra bolsa.
+  // La cotización en vivo de EE. UU. solo se usa si es reciente (puede ser de otra sesión);
+  // si no, precio, máximo y mínimo salen juntos del snapshot.
+  const usAt=num(stock&&stock.usLiveReceivedAt);
+  const usLive=usAt!==null&&Date.now()-usAt<=10*60000?num(stock&&stock.usLivePrice):null;
+  const technicalPrice=preferTr?(usLive??num(stock&&stock.price)):nativePrice;
   const ema20=num(stock&&stock.ema20),ema50=num(stock&&stock.ema50);
-  const dayHigh=num(stock&&stock.usLiveDayHigh)??num(stock&&stock.dayHigh);
-  const dayLow=num(stock&&stock.usLiveDayLow)??num(stock&&stock.dayLow);
+  const dayHigh=usLive!==null?num(stock&&stock.usLiveDayHigh):num(stock&&stock.dayHigh);
+  const dayLow=usLive!==null?num(stock&&stock.usLiveDayLow):num(stock&&stock.dayLow);
   const dayChange=num(market&&market.change)??0,weekPerf=num(stock&&stock.perfWeek);
   const spread=num(execution&&execution.spreadPct);
 
