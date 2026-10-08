@@ -394,7 +394,7 @@ function initSettings(){
  const auth=()=>window.ViewInvAIAuth;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=n=>Number(n||0).toLocaleString('es-ES');
- const SECTIONS=['summary','ai','search','market','cloudflare','infra'];
+ const SECTIONS=['summary','ai','search','market','infra','app'];
  const SECTION_KEY='viewinvai:admin-section:v1';
  let checked=false,isAdmin=false,loading=false,last=null;
  async function api(path){const a=auth();const r=await a.apiFetch(path);const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('Error '+r.status)),{status:r.status});return d}
@@ -402,7 +402,7 @@ function initSettings(){
   const a=auth();
   if(checked||!a||typeof a.apiFetch!=='function'||(typeof a.getUser==='function'&&!a.getUser()))return;
   checked=true;
-  try{last=await api('/api/admin');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);render(last)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
+  try{await api('/api/admin?lite=1');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);load(false)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
  }
  // Solo se sale de la pantalla cuando la sesión ya se ha resuelto (evento de Firebase) y no hay usuario.
  ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;isAdmin=false;last=null;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;
@@ -422,27 +422,82 @@ function initSettings(){
  const status=p=>!p.configured?'<b class="admin-st warn">⚠️ sin clave</b>':p.cooldownUntil?'<b class="admin-st warn">⏸ en pausa (cupo)</b>':p.test?(p.test.ok?'<b class="admin-st ok">✅ conectado</b>':'<b class="admin-st bad">❌ '+esc(p.test.detail||'error')+'</b>'):'<b class="admin-st">● con clave</b>';
  function providerCard(p){
   const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
-  return '<article class="settings-card admin-card"><div class="admin-card-head"><strong>'+esc(p.label)+'</strong>'+status(p)+'</div>'+
-   '<small>Gratis: '+esc(p.free)+'</small>'+
+  return '<article class="settings-card admin-card">'+cardHead(p.label,p.dashboard)+status(p)+
+   '<small>Gratis: '+esc(p.free)+'</small>'+(p.unused?'<small class="admin-st warn">Clave guardada, pero la app aún no usa este servicio.</small>':'')+
    '<small>Hoy: '+fmt(p.today.calls)+' llamadas'+(p.today.errors?' · '+fmt(p.today.errors)+' errores':'')+' · Mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+bar(used,limit)+
    (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
    (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
-   (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+
-   '<a href="'+esc(p.dashboard)+'" target="_blank" rel="noopener noreferrer">Abrir panel ↗</a></article>';
+   (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+'</article>';
  }
  function providerSection(d,kinds,kicker,title,text){
   const list=(d.providers||[]).filter(p=>kinds.includes(p.kind));
   return heading(kicker,title,text)+'<div class="admin-grid">'+(list.map(providerCard).join('')||'<p class="settings-note">Sin servicios.</p>')+'</div>';
  }
- function tursoBlock(t){
-  const u=t.usage||{},gb=b=>(b/1024**3).toLocaleString('es-ES',{maximumFractionDigits:2})+' GB';
-  return heading('TURSO','Cachés de mercado · este mes','Plan gratuito: 500 M filas leídas, 10 M filas escritas y 5 GB al mes. '+(t.active==='turso'?'En uso.':'Ahora no se usa (las cachés van a D1).'))+
-   (!u.configured?'<p class="settings-note">Añade el secreto <code>TURSO_API_TOKEN</code> (token de la plataforma Turso, no el de la base) para ver el consumo.</p>'
-   :!u.ok?'<p class="settings-note admin-err">No se pudo leer el consumo de Turso: '+esc(u.detail||'')+'</p>'
-   :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Turso'+(u.org?' · '+esc(u.org):'')+'</strong>'+
-    '<small>Filas leídas: '+fmt(u.rowsRead)+' de '+fmt(u.readLimit)+'</small>'+bar(u.rowsRead,u.readLimit)+
-    '<small>Filas escritas: '+fmt(u.rowsWritten)+' de '+fmt(u.writeLimit)+'</small>'+bar(u.rowsWritten,u.writeLimit)+
-    '<small>Almacenamiento: '+gb(u.storageBytes)+' de '+gb(u.storageLimit)+'</small>'+bar(u.storageBytes,u.storageLimit)+'</article></div>');
+ const cardHead=(title,url)=>'<div class="admin-card-head"><strong>'+esc(title)+'</strong>'+(url?'<a class="admin-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Abrir panel ↗</a>':'')+'</div>';
+ const card=(title,url,body,extra='')=>'<article class="settings-card admin-card'+extra+'">'+cardHead(title,url)+body+'</article>';
+ const metric=(label,used,limit,fmtv=fmt)=>'<small>'+label+': '+fmtv(used)+(limit?' de '+fmtv(limit):'')+'</small>'+bar(used,limit);
+ const err=t=>'<small class="admin-err">'+esc(t||'sin datos')+'</small>';
+ const note=t=>'<small>'+t+'</small>';
+ const STATUS_ES={scriptThrewException:'excepción en el código',exceededResources:'límite de CPU o memoria',clientDisconnected:'el cliente cerró la conexión',internalError:'error interno de Cloudflare',exceededMemory:'sin memoria',exceededCpu:'límite de CPU',responseStreamDisconnected:'respuesta cortada',loadSheddingAppError:'sobrecarga'};
+ function infraHtml(d){
+  const cf=d.cloudflare||{},w=cf.workers||{},dd=cf.d1||{},kv=cf.kv||{},t=d.turso||{},tu=t.usage||{},gh=d.github||{};
+  const url=id=>((d.infra||[]).find(x=>x.id===id)||{}).url||'';
+  const gb=b=>(b/1024**3).toLocaleString('es-ES',{maximumFractionDigits:2})+' GB';
+  const cfMissing=note('Añade <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.');
+  const worker=!cf.configured?cfMissing:!w.ok?err(w.detail||cf.detail):
+   metric('Peticiones hoy',w.requests,w.limit)+note(fmt(w.errors)+' errores ('+(w.requests?Math.round(w.errors/w.requests*1000)/10:0)+' %) · '+fmt(w.subrequests)+' llamadas a servicios externos')+
+   ((w.errorsByStatus||[]).length?'<small>Motivo de los fallos: '+w.errorsByStatus.map(x=>esc(STATUS_ES[x.status]||x.status)+' '+fmt(x.count)).join(' · ')+'</small>':'');
+  const d1=!cf.configured?cfMissing:!dd.ok?err(dd.detail):metric('Filas escritas hoy',dd.rowsWritten,dd.writeLimit)+metric('Filas leídas hoy',dd.rowsRead,dd.readLimit);
+  const kvb=!cf.configured?cfMissing:!kv.ok?err(kv.detail):metric('Lecturas hoy',kv.reads,kv.readLimit)+metric('Escrituras hoy',kv.writes,kv.writeLimit)+metric('Borrados hoy',kv.deletes,kv.writeLimit)+metric('Listados hoy',kv.lists,kv.writeLimit);
+  const turso=(t.active==='turso'?'<b class="admin-st ok">✅ en uso</b>':'<b class="admin-st warn">⚠️ no activa: las cachés van a D1</b>')+
+   (!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
+    metric('Filas leídas este mes',tu.rowsRead,tu.readLimit)+metric('Filas escritas este mes',tu.rowsWritten,tu.writeLimit)+metric('Almacenamiento',tu.storageBytes,tu.storageLimit,gb));
+  const actions=!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
+   metric('Minutos este mes ('+esc(gh.minutesSource)+')',gh.minutes,gh.limit)+note(fmt(gh.runs)+' ejecuciones · '+fmt(gh.failed)+' fallidas')+
+   ((gh.workflows||[]).length?'<small>'+gh.workflows.map(x=>esc(x.name)+': '+fmt(x.runs)+(x.failed?' ('+fmt(x.failed)+' ✗)':'')).join(' · ')+'</small>':'')+
+   (gh.lastApk?'<small>Última APK: '+(gh.lastApk.conclusion==='success'?'✅':gh.lastApk.status!=='completed'?'⏳':'❌')+' '+esc(new Date(gh.lastApk.at).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+' · <a href="'+esc(gh.lastApk.url)+'" target="_blank" rel="noopener noreferrer">descargar ↗</a></small>':'');
+  const info=id=>((d.infra||[]).find(x=>x.id===id)||{}).detail||'';
+  return heading('INFRAESTRUCTURA','Consumo y paneles','Cloudflare se reinicia cada día a las 00:00 UTC; Turso y GitHub, cada mes.')+
+   '<div class="admin-grid">'+
+   card('Worker · web y servidor',url('worker'),worker)+
+   card('D1 · base de datos personal',url('d1'),d1)+
+   card('KV · estado rápido',url('kv'),kvb)+
+   card('Turso · cachés de mercado',url('turso'),turso)+
+   card('GitHub Actions · datos y APK',url('actions'),actions)+
+   card('GitHub · código',url('github'),note(esc(info('github'))))+
+   card('Firebase · acceso y avisos',url('firebase'),note('Proyecto '+esc(info('firebase')||'—')+'. Inicio de sesión con Google y notificaciones push.'))+
+   card('Secretos de Cloudflare',url('secrets'),note('Donde se guardan todas las claves.'))+
+   '</div>';
+ }
+ function appHtml(d,sources){
+  const a=d.app||{},v=n=>n===null||n===undefined?'—':fmt(n);
+  const row=(label,val)=>'<div class="settings-status-row"><span>'+label+'</span><strong class="settings-status">'+val+'</strong></div>';
+  return heading('DATOS DE LA APP','Uso interno','Solo recuentos: ningún dato personal sale de D1.')+
+   '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CUENTAS</span></div></div>'+
+   row('Usuarios',v(a.users))+row('Dispositivos con avisos',v(a.devices))+'</article>'+
+   '<article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CARTERAS</span></div></div>'+
+   row('Carteras de acciones',v(a.portfolios))+row('Posiciones de acciones',v(a.positions))+row('Carteras de fondos',v(a.fund_portfolios))+row('Posiciones de fondos',v(a.fund_positions))+
+   row('Objetivos activos',v(a.portfolio_goals))+row('Decisiones «Decidir qué hacer»',v(a.position_decisions))+'</article></div>';
+ }
+ // Fuentes públicas (sin clave): el mismo estado que Configuración › Datos y servicios.
+ let publicSources=null;
+ async function loadPublicSources(){
+  try{const r=await fetch('/api/backend/status',{cache:'no-store'});const d=r.ok?await r.json():{};
+   let tr={ok:false};try{const t=await fetch('/api/tr-health',{cache:'no-store'});tr=t.ok?await t.json():{ok:false,error:'HTTP '+t.status}}catch(_){}
+   publicSources={sources:d.sources||{},tr,at:d.updatedAt}}catch(_){publicSources={sources:{},tr:{ok:false}}}
+  if(last){fill('market',marketHtml(last));document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'})}
+ }
+ function marketHtml(d){
+  const src=(publicSources&&publicSources.sources)||{},tr=(publicSources&&publicSources.tr)||{};
+  const st=(ok,txt)=>'<b class="admin-st '+(ok?'ok':'bad')+'">'+(ok?'✅ ':'❌ ')+esc(txt)+'</b>';
+  const pub=[
+   ['Trade Republic / LSX','tradeRepublic','https://www.ls-x.de/',tr.ok===true,tr.ok===true?'precios en vivo':(tr.error||'sin precios')],
+   ['Nasdaq / EE. UU.','nasdaq','https://www.nasdaq.com/'],['SEC / EDGAR','sec','https://www.sec.gov/edgar/search/'],
+   ['ClinicalTrials.gov','clinicalTrials','https://clinicaltrials.gov/'],['FDA / openFDA','fda','https://open.fda.gov/']
+  ].map(([label,key,link,okOverride,txt])=>{const x=src[key];const ok=okOverride!==undefined?okOverride:!!x&&x.configured!==false&&!x.error;
+   return card(label,link,!publicSources?note('Comprobando…'):okOverride===undefined&&!x?note('Sin datos de estado.'):st(ok,txt||(ok?'operativa':x.error||'sin configurar')))}).join('');
+  return providerSection(d,['Datos de mercado'],'DATOS DE MERCADO','Cotizaciones y datos','Con clave (Finnhub) y fuentes públicas sin clave.')+
+   '<div class="admin-grid admin-grid-gap">'+pub+'</div>';
  }
  function fill(name,html){const el=document.querySelector('[data-admin-panel="'+name+'"]');if(el)el.innerHTML=html}
  function render(d){
@@ -457,7 +512,7 @@ function initSettings(){
    (failed?row('Con error',String(failed),'admin-st bad'):'')+
    (noKey?row('Sin clave',String(noKey),'admin-st warn'):'')+
    (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
-   row('Consultas hoy',fmt(calls))+
+   row('Consultas hoy a IA y búsqueda web <small>(análisis de eventos)</small>',fmt(calls))+
    row('Caché de mercado',d.turso&&d.turso.active==='turso'?'Turso (activa)':'D1 (Turso no activa)',d.turso&&d.turso.active==='turso'?'admin-st ok':'admin-st warn')+
    row('Cloudflare',!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
    '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
@@ -465,15 +520,9 @@ function initSettings(){
    '</article></div>');
   fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Se prueban por orden: Gemini → Groq → OpenRouter → Workers AI. Si uno agota su cupo, pasa al siguiente.'));
   fill('search',providerSection(d,['Búsqueda','Lectura web'],'BÚSQUEDA WEB','Búsqueda y lectura web','Orden: Tavily → Exa → LangSearch → Jina.'));
-  fill('market',providerSection(d,['Datos de mercado'],'DATOS DE MERCADO','Cotizaciones y datos',''));
-  const w=cf.workers||{},dd=cf.d1||{};
-  fill('cloudflare',heading('CLOUDFLARE','Consumo de hoy','Límites del plan gratuito. Se reinicia cada día a las 00:00 UTC.')+
-   (!cf.configured?'<p class="settings-note">Añade los secretos <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.</p>'
-   :cf.detail&&!w.ok&&!dd.ok?'<p class="settings-note admin-err">No se pudo leer el consumo: '+esc(cf.detail)+'</p>'
-   :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Worker (web y servidor)</strong>'+(w.ok?'<small>'+fmt(w.requests)+' peticiones de '+fmt(w.limit)+' al día · '+fmt(w.errors)+' errores</small>'+bar(w.requests,w.limit):'<small class="admin-err">'+esc(w.detail||'sin datos')+'</small>')+'</article>'+
-    '<article class="settings-card admin-card"><strong>D1 (base de datos personal)</strong>'+(dd.ok?'<small>Filas escritas: '+fmt(dd.rowsWritten)+' de '+fmt(dd.writeLimit)+'</small>'+bar(dd.rowsWritten,dd.writeLimit)+'<small>Filas leídas: '+fmt(dd.rowsRead)+' de '+fmt(dd.readLimit)+'</small>'+bar(dd.rowsRead,dd.readLimit):'<small class="admin-err">'+esc(dd.detail||'sin datos')+'</small>')+'</article></div>')+tursoBlock(d.turso||{}));
-  fill('infra',heading('INFRAESTRUCTURA','Dónde está cada cosa','Enlaces directos a cada panel.')+
-   '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">PANELES</span></div></div>'+(d.infra||[]).map(x=>'<div class="settings-status-row"><span><a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.label)+' ↗</a></span><strong class="settings-status">'+esc(x.detail||'')+'</strong></div>').join('')+'</article></div>');
+  fill('market',marketHtml(d));if(!publicSources)loadPublicSources();
+  fill('infra',infraHtml(d));
+  fill('app',appHtml(d));
   document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});
  }
  async function load(probe=false){
@@ -490,7 +539,7 @@ function initSettings(){
   const t=e.target.closest?e.target:null;if(!t)return;
   if(t.closest('#accountAdmin')){const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}return}
   const sec=t.closest('[data-admin-section]');if(sec){e.preventDefault();selectSection(sec.dataset.adminSection);return}
-  if(t.closest('[data-admin-probe]')){e.preventDefault();load(true);return}
-  if(t.closest('[data-admin-refresh]')){e.preventDefault();load(false)}
+  if(t.closest('[data-admin-probe]')){e.preventDefault();publicSources=null;load(true);return}
+  if(t.closest('[data-admin-refresh]')){e.preventDefault();publicSources=null;load(false)}
  });
 })();
