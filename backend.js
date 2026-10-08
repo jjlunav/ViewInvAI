@@ -4083,11 +4083,14 @@ const PROVIDERS=[
   {id:"openrouter",label:"OpenRouter (modelos free)",kind:"IA",secret:"OPENROUTER_API_KEY",free:"50 consultas/día en modelos :free",dashboard:"https://openrouter.ai/settings/keys"},
   {id:"cohere",label:"Cohere (clave de prueba)",kind:"IA",secret:"COHERE_API_KEY",free:"1.000 llamadas/mes",dashboard:"https://dashboard.cohere.com/api-keys",base:"https://api.cohere.ai/compatibility/v1",probe:"https://api.cohere.ai/v1/models",models:["command-a-03-2025","command-r-plus"]},
   {id:"sambanova",label:"SambaNova Cloud",kind:"IA",secret:"SAMBANOVA_API_KEY",free:"Plan gratuito con límites por minuto",dashboard:"https://cloud.sambanova.ai/apis",base:"https://api.sambanova.ai/v1",models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-V3-0324"]},
-  {id:"cerebras",label:"Cerebras",kind:"IA",secret:"CEREBRAS_API_KEY",free:"Plan gratuito por tokens/día",dashboard:"https://cloud.cerebras.ai/",base:"https://api.cerebras.ai/v1",models:["llama-3.3-70b","gpt-oss-120b"]},
+  {id:"nvidia",label:"NVIDIA NIM",kind:"IA",secret:"NVIDIA_API_KEY",free:"Gratis sin tarjeta; ~40 consultas/minuto",dashboard:"https://build.nvidia.com/",base:"https://integrate.api.nvidia.com/v1",models:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b","deepseek-ai/deepseek-v3.1"]},
+  {id:"ollama",label:"Ollama Cloud",kind:"IA",secret:"OLLAMA_API_KEY",free:"Plan gratuito con límites de uso",dashboard:"https://ollama.com/settings/keys",base:"https://ollama.com/v1",models:["gpt-oss:120b","gpt-oss:20b"]},
   {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
   {id:"tavily",label:"Tavily",kind:"Búsqueda",secret:"TAVILY_API_KEY",free:"1.000 créditos/mes",dashboard:"https://app.tavily.com/home",monthlyLimit:1000},
+  {id:"serper",label:"Serper (Google)",kind:"Búsqueda",secret:"SERPER_API_KEY",free:"2.500 búsquedas gratis al registrarse (una vez)",dashboard:"https://serper.dev/dashboard"},
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
+  {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
   {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard",unused:true}
 ];
@@ -4175,7 +4178,7 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true}){
   }
   const e=new Error("Ninguna IA disponible ("+tried.join(" · ")+")");e.tried=tried;throw e;
 }
-// --- Búsqueda web: Tavily → Exa → LangSearch → Jina --------------------------------------------
+// --- Búsqueda web: Tavily → Serper → Exa → LangSearch → Firecrawl → Jina --------------------------------------------
 async function searchRoute(env,query){
   const tried=[];
   if(providerReady(env,"tavily")){
@@ -4193,12 +4196,19 @@ async function searchRoute(env,query){
   const fail=(id,r)=>{const e=new Error(id+" HTTP "+r.status);e.status=r.status;return e};
   const clean=v=>trimText(String(v||"").replace(/\s+/g," "),700);
   const order=[
+    ["serper",async key=>{const r=await providerFetch("serper","https://google.serper.dev/search",{method:"POST",headers:{"Content-Type":"application/json","X-API-KEY":key},
+      body:JSON.stringify({q:trimText(query,380),num:8,tbs:"qdr:w"})});if(!r.ok)throw fail("serper",r);const d=await r.json();
+      return [...(d.news||[]),...(d.organic||[])].slice(0,6).map(x=>({title:trimText(x.title,160),url:String(x.link||""),content:clean(x.snippet),date:x.date||""}))}],
     ["exa",async key=>{const r=await providerFetch("exa","https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},
       body:JSON.stringify({query:trimText(query,380),numResults:6,contents:{text:{maxCharacters:700}}})});if(!r.ok)throw fail("exa",r);const d=await r.json();
       return (d.results||[]).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.text||x.summary),date:x.publishedDate||""}))}],
     ["langsearch",async key=>{const r=await providerFetch("langsearch","https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
       body:JSON.stringify({query:trimText(query,380),count:6,summary:true,freshness:"oneYear"})});if(!r.ok)throw fail("langsearch",r);const d=await r.json();
       const vals=(d.data&&d.data.webPages&&d.data.webPages.value)||[];return vals.map(x=>({title:trimText(x.name,160),url:String(x.url||""),content:clean(x.summary||x.snippet),date:x.datePublished||""}))}],
+    ["firecrawl",async key=>{const r=await providerFetch("firecrawl","https://api.firecrawl.dev/v2/search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({query:trimText(query,380),limit:6,tbs:"qdr:w"})});if(!r.ok)throw fail("firecrawl",r);const d=await r.json();
+      const rows=Array.isArray(d.data)?d.data:[...((d.data&&d.data.news)||[]),...((d.data&&d.data.web)||[])];
+      return rows.slice(0,6).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.description||x.snippet||x.markdown),date:x.date||""}))}],
     ["jina",async key=>{const r=await providerFetch("jina","https://s.jina.ai/?q="+encodeURIComponent(trimText(query,300)),{headers:{"Authorization":"Bearer "+key,"Accept":"application/json","X-Respond-With":"no-content"}});
       if(!r.ok)throw fail("jina",r);const d=await r.json();return (d.data||[]).slice(0,6).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.description||x.content),date:x.date||""}))}]
   ];
@@ -4224,6 +4234,8 @@ async function providerProbe(env,p){
       if(r.ok){const d=await r.json().catch(()=>({}));const k=d.key||d.account||d;const used=finiteNumber(k.usage??k.plan_usage),limit=finiteNumber(k.limit??k.plan_limit);
         return{ok:true,status:200,detail:used!==null?"créditos usados "+used+(limit!==null?" de "+limit:""):"conectado",used,limit}}}
     else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
+    else if(p.id==="serper"){r=await res("https://google.serper.dev/search",{method:"POST",headers:{"Content-Type":"application/json","X-API-KEY":key},body:JSON.stringify({q:"FDA",num:1})})}
+    else if(p.id==="firecrawl"){r=await res("https://api.firecrawl.dev/v1/team/credit-usage",{headers:{"Authorization":"Bearer "+key}})}
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
     else if(p.id==="jina"){r=await res("https://r.jina.ai/https://example.com",{headers:{"Authorization":"Bearer "+key,"Accept":"application/json"}})}
     else if(p.base){r=await res(p.probe||p.base+"/models",{headers:{"Authorization":"Bearer "+key}})}
@@ -6283,7 +6295,7 @@ async function goalBuysContext(goal,buys,candidates,snapshot,services){
   }
   return ctxParts.join("\n");
 }
-// Búsqueda web por valor (Tavily → Exa → LangSearch → Jina) guardada 6 h en la base de cachés
+// Búsqueda web por valor (Tavily → Serper → Exa → LangSearch → Firecrawl → Jina) guardada 6 h en la base de cachés
 // (no personal): varias revisiones del mismo valor no gastan cupo de búsqueda.
 const GOAL_WEB_NEWS_MS=6*3600e3;
 async function goalWebNews(env,c){
