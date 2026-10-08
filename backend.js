@@ -108,12 +108,14 @@ async function runWorkersAi(env, input, preferred) {
     try {
       const result = await env.AI.run(model, input);
       aiHealth.lastOkAt = nowIso(); aiHealth.lastOkModel = model;
+      await recordProviderUse(env, "workersai", true);
       return { result, model };
     } catch (error) {
       lastError = error;
       const msg = trimText(String(error && error.message || error), 240);
       aiHealth.lastErrorAt = nowIso(); aiHealth.lastErrorModel = model; aiHealth.lastError = msg;
       console.warn("Workers AI model failed", model, msg);
+      await recordProviderUse(env, "workersai", false, msg);
       if (/not found|no such model|unknown model|deprecat|retired|5007|invalid model/i.test(msg)) {
         aiBadModels.set(model, Date.now() + AI_BAD_MODEL_MS);
         aiCatalogForce = true;
@@ -4084,7 +4086,7 @@ const PROVIDERS=[
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
-  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
+  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard",unused:true}
 ];
 const providerKey=(env,p)=>p.secret?String(env[p.secret]||"").trim():"";
 const providerCooldown=new Map();
@@ -4156,8 +4158,8 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true}){
   if(env.AI&&typeof env.AI.run==="function"){
     try{const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
       const r=run.result,text=typeof r==="string"?r:r&&typeof r.response==="string"?r.response:r&&r.response?JSON.stringify(r.response):r&&r.choices?String(r.choices[0].message&&r.choices[0].message.content||""):"";
-      await recordProviderUse(env,"workersai",true);return{text,provider:"workersai",model:run.model}}
-    catch(error){tried.push("workersai:"+String(error&&error.message||error));await recordProviderUse(env,"workersai",false,String(error&&error.message||error))}
+      return{text,provider:"workersai",model:run.model}}
+    catch(error){tried.push("workersai:"+String(error&&error.message||error))}
   }
   const e=new Error("Ninguna IA disponible ("+tried.join(" · ")+")");e.tried=tried;throw e;
 }
@@ -4322,7 +4324,7 @@ async function handleAdmin(request,env,user,json,url){
     let test=probes[p.id]||null;
     if(needProbe&&configured)test=await providerProbe(env,p);
     const d=usage(p.id,day),m=usage(p.id,month);
-    return{id:p.id,label:p.label,kind:p.kind,secret:p.secret,free:p.free,dashboard:p.dashboard,configured,
+    return{id:p.id,label:p.label,kind:p.kind,secret:p.secret,free:p.free,dashboard:p.dashboard,unused:!!p.unused,configured,
       cooldownUntil:(providerCooldown.get(p.id)||0)>Date.now()?new Date(providerCooldown.get(p.id)).toISOString():null,
       today:d?{calls:d.calls,errors:d.errors}:{calls:0,errors:0},month:m?{calls:m.calls,errors:m.errors,lastAt:m.last_at,lastError:m.last_error}:{calls:0,errors:0},
       monthlyLimit:p.monthlyLimit||null,test};

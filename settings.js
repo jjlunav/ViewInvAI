@@ -423,7 +423,7 @@ function initSettings(){
  function providerCard(p){
   const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
   return '<article class="settings-card admin-card">'+cardHead(p.label,p.dashboard)+status(p)+
-   '<small>Gratis: '+esc(p.free)+'</small>'+
+   '<small>Gratis: '+esc(p.free)+'</small>'+(p.unused?'<small class="admin-st warn">Clave guardada, pero la app aún no usa este servicio.</small>':'')+
    '<small>Hoy: '+fmt(p.today.calls)+' llamadas'+(p.today.errors?' · '+fmt(p.today.errors)+' errores':'')+' · Mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+bar(used,limit)+
    (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
    (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
