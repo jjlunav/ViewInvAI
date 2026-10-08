@@ -1586,10 +1586,27 @@ async function loadEcbRates(env,currency,fromDay,toDay){
     const cols=line.split(",");const date=cols[iDate],rate=Number(cols[iVal]);
     if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&rate>0)fresh.push({date,rate});
   }
-  for(let i=0;i<fresh.length;i+=80){
-    await env.DB.batch(fresh.slice(i,i+80).map(r=>env.DB.prepare("INSERT OR REPLACE INTO fx_rates (currency,date,rate) VALUES (?,?,?)").bind(currency,r.date,r.rate)));
-  }
+  if(fresh.length)await writeChangedDailyRows(env,"fx_rates","currency",currency,"rate",fresh.map(r=>({date:r.date,value:r.rate})));
   return fresh.length?fresh:rows;
+}
+// Cuota de D1 (100k filas escritas/día): un histórico descargado de nuevo trae casi siempre los
+// mismos cierres. Solo se escriben los días que faltan o cuyo valor ha cambiado (el último cierre
+// del día en curso); reescribirlo entero con INSERT OR REPLACE costaba miles de filas por apertura.
+async function writeChangedDailyRows(env,table,keyColumn,key,valueColumn,rows){
+  if(!rows.length)return 0;
+  const first=rows.reduce((m,r)=>r.date<m?r.date:m,rows[0].date);
+  const existing=await env.DB.prepare("SELECT date,"+valueColumn+" AS value FROM "+table+" WHERE "+keyColumn+"=? AND date>=?").bind(key,first).all();
+  const have=new Map((existing.results||[]).map(r=>[String(r.date),Number(r.value)]));
+  const changed=rows.filter(r=>{
+    const old=have.get(r.date);
+    return old===undefined||!(Math.abs(old-r.value)<=Math.abs(old)*1e-7);
+  });
+  for(let i=0;i<changed.length;i+=90){
+    await env.DB.batch(changed.slice(i,i+90).map(r=>env.DB.prepare(
+      "INSERT INTO "+table+" ("+keyColumn+",date,"+valueColumn+") VALUES (?,?,?) ON CONFLICT("+keyColumn+",date) DO UPDATE SET "+valueColumn+"="+"excluded."+valueColumn
+    ).bind(key,r.date,r.value)));
+  }
+  return changed.length;
 }
 function fxLookup(rows){
   const sorted=rows.slice().sort((a,b)=>a.date<b.date?-1:1);
@@ -1925,9 +1942,7 @@ async function loadPriceDaily(env,services,inst,fromDay){
     catch(error){console.warn("Daily history unavailable",key,String(error&&error.message||error))}
     const rows=(got&&Array.isArray(got.rows)?got.rows:[]).filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.close>0);
     if(rows.length){
-      for(let i=0;i<rows.length;i+=90){
-        await env.DB.batch(rows.slice(i,i+90).map(r=>env.DB.prepare("INSERT OR REPLACE INTO price_daily (key,date,close) VALUES (?,?,?)").bind(key,r.date,r.close)));
-      }
+      await writeChangedDailyRows(env,"price_daily","key",key,"close",rows.map(r=>({date:r.date,value:r.close})));
       await env.DB.prepare("INSERT OR REPLACE INTO price_daily_meta (key,currency,source,first_day,fetched_at) VALUES (?,?,?,?,?)")
         .bind(key,String(got.currency||"EUR").toUpperCase(),String(got.source||""),rows[0].date,Date.now()).run();
     }else if(!meta){
