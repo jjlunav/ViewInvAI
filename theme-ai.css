@@ -1693,8 +1693,14 @@ html[data-theme="light"] .goal-wizard-input{background:#fff;border-color:#d7dcec
 #accountArea .global-search-button{order:-1}
 @media (max-width:820px){
  #globalHelpButton{display:none!important}
+ /* En la ficha de una acción la campana no flota sobre su cabecera fija (como antes). */
+ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>.notification-bell{display:none!important}
 }
+/* La ficha de una acción no es una sección con ayuda propia: el «?» global no aplica. */
+html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{display:none!important}
 @media (min-width:821px){
+ /* La cabecera reserva el ancho del grupo: 5 botones de 42 px + 4 huecos de 8 px + margen. */
+ :root{--ph-reserve:270px}
  html:root:root body:not(#tb-x) #accountArea{display:flex!important;align-items:center!important;gap:8px!important}
  html:root:root body:not(#tb-x) #accountArea>.notification-bell,
  html:root:root body:not(#tb-x) #accountArea>#globalHelpButton{

@@ -52,8 +52,14 @@
   if(src.dataset.helpTitle)help.dataset.helpTitle=src.dataset.helpTitle;
  }
  function mountTopActions(){
-  const area=document.getElementById('accountArea'),bell=document.getElementById('notificationBell');
-  if(area&&bell&&bell.parentElement!==area)area.insertBefore(bell,area.firstChild);
+  // Orden real del DOM = orden visual (? · campana · buscar · ajustes · cuenta), también para el teclado.
+  const area=document.getElementById('accountArea');
+  if(area){
+   const seq=[document.getElementById('globalHelpButton'),document.getElementById('notificationBell'),document.getElementById('globalSearchButton')].filter(Boolean);
+   for(let i=0;i<seq.length;i++)if(area.children[i]!==seq[i])area.insertBefore(seq[i],area.children[i]||null);
+   // search.js puede añadir la lupa más tarde: se reordena si cambia el grupo (idempotente).
+   if(!area.__orderWatch&&window.MutationObserver){area.__orderWatch=new MutationObserver(()=>mountTopActions());area.__orderWatch.observe(area,{childList:true})}
+  }
   syncGlobalHelp();
  }
  document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#globalHelpButton'))syncGlobalHelp()},true);
