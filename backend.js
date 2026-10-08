@@ -4254,13 +4254,56 @@ async function cloudflareUsage(env){
     }catch(error){return{ok:false,detail:trimText(String(error&&error.message||error),160)}}
   };
   const sum=(rows,k)=>(rows||[]).reduce((s,x)=>s+(finiteNumber(x.sum&&x.sum[k])||0),0);
-  const [w,d]=await Promise.all([
-    ask("query($a:string!,$t:Time!){viewer{accounts(filter:{accountTag:$a}){rows:workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$t}){sum{requests errors subrequests}}}}}",{t:sinceTime}),
-    ask("query($a:string!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){rows:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}",{d:since})
+  const [w,d,k]=await Promise.all([
+    ask("query($a:string!,$t:Time!){viewer{accounts(filter:{accountTag:$a}){rows:workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$t}){sum{requests errors subrequests}dimensions{status}}}}}",{t:sinceTime}),
+    ask("query($a:string!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){rows:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}",{d:since}),
+    ask("query($a:string!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){rows:kvOperationsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{requests}dimensions{actionType}}}}}",{d:since})
   ]);
-  return{configured:true,ok:w.ok||d.ok,day:since,detail:w.ok||d.ok?"":w.detail,
-    workers:w.ok?{ok:true,requests:sum(w.acc.rows,"requests"),errors:sum(w.acc.rows,"errors"),limit:100000}:{ok:false,detail:w.detail},
-    d1:d.ok?{ok:true,rowsRead:sum(d.acc.rows,"rowsRead"),rowsWritten:sum(d.acc.rows,"rowsWritten"),readLimit:5000000,writeLimit:100000}:{ok:false,detail:d.detail}};
+  // Reparto de los errores del Worker por motivo (excepción, cliente desconectado, límites…).
+  const errorsByStatus=w.ok?(w.acc.rows||[]).map(r=>({status:String(r.dimensions&&r.dimensions.status||""),count:finiteNumber(r.sum&&r.sum.errors)||0,requests:finiteNumber(r.sum&&r.sum.requests)||0}))
+    .filter(x=>x.status&&x.status!=="success").sort((a,b)=>b.requests-a.requests).slice(0,5):[];
+  const kvBy=t=>k.ok?(k.acc.rows||[]).filter(r=>String(r.dimensions&&r.dimensions.actionType||"").toLowerCase()===t).reduce((s,r)=>s+(finiteNumber(r.sum&&r.sum.requests)||0),0):0;
+  return{configured:true,ok:w.ok||d.ok||k.ok,day:since,detail:w.ok||d.ok||k.ok?"":w.detail,
+    workers:w.ok?{ok:true,requests:sum(w.acc.rows,"requests"),errors:sum(w.acc.rows,"errors"),subrequests:sum(w.acc.rows,"subrequests"),errorsByStatus,limit:100000}:{ok:false,detail:w.detail},
+    d1:d.ok?{ok:true,rowsRead:sum(d.acc.rows,"rowsRead"),rowsWritten:sum(d.acc.rows,"rowsWritten"),readLimit:5000000,writeLimit:100000}:{ok:false,detail:d.detail},
+    kv:k.ok?{ok:true,reads:kvBy("read"),writes:kvBy("write"),deletes:kvBy("delete"),lists:kvBy("list"),readLimit:100000,writeLimit:1000}:{ok:false,detail:k.detail}};
+}
+// Minutos de GitHub Actions del mes (repositorio privado: 2.000 min gratis). Necesita GH_ANALYTICS_TOKEN.
+const GH_REPO="jjlunav/ViewInvAI";
+async function githubUsage(env){
+  const token=String(env.GH_ANALYTICS_TOKEN||"").trim();
+  if(!token)return{configured:false};
+  const headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"viewinvai-admin"};
+  const get=async path=>{const r=await providerFetch("github","https://api.github.com"+path,{headers},12000);const d=await r.json().catch(()=>({}));
+    if(!r.ok){const e=new Error(r.status===401?"token rechazado":r.status===403||r.status===404?"sin permiso":"HTTP "+r.status);e.status=r.status;throw e}return d};
+  const now=new Date(),y=now.getUTCFullYear(),m=now.getUTCMonth()+1,monthStart=y+"-"+String(m).padStart(2,"0")+"-01";
+  try{
+    const runs=[];
+    for(let page=1;page<=4;page++){
+      const d=await get("/repos/"+GH_REPO+"/actions/runs?per_page=100&page="+page+"&created=%3E%3D"+monthStart);
+      runs.push(...(d.workflow_runs||[]));if(!d.workflow_runs||d.workflow_runs.length<100)break;
+    }
+    // Estimación por duración de cada ejecución (redondeo al minuto, como factura GitHub).
+    const approx=runs.reduce((s,r)=>{const a=Date.parse(r.run_started_at||r.created_at),b=Date.parse(r.updated_at);return s+(Number.isFinite(a)&&Number.isFinite(b)&&b>a?Math.ceil((b-a)/60000):0)},0);
+    let billed=null;
+    try{const b=await get("/users/"+GH_REPO.split("/")[0]+"/settings/billing/usage?year="+y+"&month="+m);
+      billed=(b.usageItems||[]).filter(i=>String(i.product||"").toLowerCase()==="actions"&&/minute/i.test(String(i.unitType||""))).reduce((s,i)=>s+(finiteNumber(i.quantity)||0),0)}catch(_){}
+    const byName={};runs.forEach(r=>{const n=String(r.name||"?");const x=byName[n]||(byName[n]={name:n,runs:0,failed:0});x.runs++;if(r.conclusion==="failure")x.failed++});
+    const apk=runs.find(r=>/android|apk/i.test(String(r.name||"")));
+    return{configured:true,ok:true,month:monthStart.slice(0,7),runs:runs.length,failed:runs.filter(r=>r.conclusion==="failure").length,
+      minutes:billed!==null?billed:approx,minutesSource:billed!==null?"facturación":"estimado",limit:2000,
+      workflows:Object.values(byName).sort((a,b)=>b.runs-a.runs).slice(0,6),
+      lastApk:apk?{status:apk.status,conclusion:apk.conclusion,at:apk.updated_at,url:apk.html_url}:null};
+  }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
+}
+// Datos internos de la app (solo recuentos, nada personal sale del servidor).
+async function appStats(env){
+  const tables=["users","devices","portfolios","positions","fund_portfolios","fund_positions","position_decisions","portfolio_goals"];
+  const out={};
+  try{const res=await env.DB.batch(tables.map(t=>env.DB.prepare("SELECT COUNT(*) AS n FROM "+t)));
+    tables.forEach((t,i)=>{const r=res[i]&&res[i].results&&res[i].results[0];out[t]=r?Number(r.n)||0:null})}
+  catch(_){for(const t of tables){try{const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM "+t).first();out[t]=r?Number(r.n)||0:null}catch(__){out[t]=null}}}
+  return out;
 }
 async function handleAdmin(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
@@ -4285,18 +4328,18 @@ async function handleAdmin(request,env,user,json,url){
   if(needProbe&&env.HOT_STATE_KV){const save={at:nowIso()};providers.forEach(p=>{if(p.test)save[p.id]=p.test});try{await env.HOT_STATE_KV.put("admin-probes:v1",JSON.stringify(save),{expirationTtl:3600})}catch(_){}}
   const account=String(env.CF_ACCOUNT_ID||"").trim(),project=String(env.FIREBASE_PROJECT_ID||"").trim();
   const infra=[
-    {label:"Código (GitHub)",detail:"jjlunav/ViewInvAI",url:"https://github.com/jjlunav/ViewInvAI"},
-    {label:"Compilaciones y APK (GitHub Actions)",detail:"build-android.yml",url:"https://github.com/jjlunav/ViewInvAI/actions"},
-    {label:"Web y servidor (Cloudflare Worker)",detail:"viewinvai",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production":"https://dash.cloudflare.com/"},
-    {label:"Base de datos personal (Cloudflare D1)",detail:"viewinvai-db",url:account?"https://dash.cloudflare.com/"+account+"/workers/d1":"https://dash.cloudflare.com/"},
-    {label:"Estado rápido (Cloudflare KV)",detail:"HOT_STATE_KV",url:account?"https://dash.cloudflare.com/"+account+"/workers/kv/namespaces":"https://dash.cloudflare.com/"},
-    {label:"Cachés de mercado (Turso)",detail:cacheDbLabel(cacheDb(env))==="turso"?"activa":"no activa (se usa D1)",url:"https://app.turso.tech/"},
-    {label:"Acceso y avisos (Firebase)",detail:project||"",url:project?"https://console.firebase.google.com/project/"+project+"/overview":"https://console.firebase.google.com/"},
-    {label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
+    {id:"github",label:"Código (GitHub)",detail:"jjlunav/ViewInvAI",url:"https://github.com/jjlunav/ViewInvAI"},
+    {id:"actions",label:"Compilaciones y APK (GitHub Actions)",detail:"build-android.yml",url:"https://github.com/jjlunav/ViewInvAI/actions"},
+    {id:"worker",label:"Web y servidor (Cloudflare Worker)",detail:"viewinvai",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production":"https://dash.cloudflare.com/"},
+    {id:"d1",label:"Base de datos personal (Cloudflare D1)",detail:"viewinvai-db",url:account?"https://dash.cloudflare.com/"+account+"/workers/d1":"https://dash.cloudflare.com/"},
+    {id:"kv",label:"Estado rápido (Cloudflare KV)",detail:"HOT_STATE_KV",url:account?"https://dash.cloudflare.com/"+account+"/workers/kv/namespaces":"https://dash.cloudflare.com/"},
+    {id:"turso",label:"Cachés de mercado (Turso)",detail:cacheDbLabel(cacheDb(env))==="turso"?"activa":"no activa (se usa D1)",url:"https://app.turso.tech/"},
+    {id:"firebase",label:"Acceso y avisos (Firebase)",detail:project||"",url:project?"https://console.firebase.google.com/project/"+project+"/overview":"https://console.firebase.google.com/"},
+    {id:"secrets",label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
   return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
-    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env)),usage:await tursoUsage(env)},
-    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim()}});
+    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env)),usage:await tursoUsage(env)},github:await githubUsage(env),app:await appStats(env),
+    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim(),GH_ANALYTICS_TOKEN:!!String(env.GH_ANALYTICS_TOKEN||"").trim()}});
 }
 
 let positionDecisionsSchemaReady=false;
