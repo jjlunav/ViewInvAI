@@ -5942,6 +5942,8 @@ async function scanPortfolioGoalNotifications(env,services){
           if(ask===null)continue;
           const raw=(quoteCache.get((preferTr?"tr:":"us:")+goalServerKey(c.stock))||{}).quote||{};
           c.askEur=ask;c.quoteFresh=true;
+          // La variación del día del mercado donde se opera (LSX en Trade Republic) sale de la cotización verificada.
+          if(finiteNumber(raw.changePct)!==null)c.dayChangePct=finiteNumber(raw.changePct);
           c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:raw.price,open:raw.open});
         }
         plan=engine.plan(input);

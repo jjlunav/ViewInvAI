@@ -1136,7 +1136,10 @@ function portfolioGoalEntryTiming(stock,preferTr,execution,band){
   // EMA, máximo y mínimo son niveles del mercado principal (NYSE/NASDAQ en $, o XETRA/Viena en €):
   // se comparan con el precio de ESE mismo mercado y solo se usan como porcentaje. Nunca se
   // convierte el precio de LSX a otra divisa para compararlo con niveles de otra bolsa.
-  const usLive=num(stock&&stock.usLivePrice);
+  // La cotización en vivo de EE. UU. solo se usa si es reciente (puede ser de otra sesión);
+  // si no, precio, máximo y mínimo salen juntos del snapshot.
+  const usAt=num(stock&&stock.usLiveReceivedAt);
+  const usLive=usAt!==null&&Date.now()-usAt<=10*60000?num(stock&&stock.usLivePrice):null;
   const technicalPrice=preferTr?(usLive??num(stock&&stock.price)):nativePrice;
   const ema20=num(stock&&stock.ema20),ema50=num(stock&&stock.ema50);
   const dayHigh=usLive!==null?num(stock&&stock.usLiveDayHigh):num(stock&&stock.dayHigh);
