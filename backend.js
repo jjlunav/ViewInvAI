@@ -10,8 +10,8 @@ const FIREBASE_JWKS = createRemoteJWKSet(
 
 // @cf/meta/llama-3.1-8b-instruct se retiró el 30/05/2026 (changelog de Workers AI): sus llamadas
 // fallaban y el análisis caía en silencio al motor determinista (0 neuronas usadas).
-const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const FALLBACK_AI_MODELS = ["@cf/meta/llama-3.1-8b-instruct-fast", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const FALLBACK_AI_MODELS = ["@cf/meta/llama-3.1-8b-instruct-fp8", "@cf/meta/llama-4-scout-17b-16e-instruct", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
 const RETIRED_AI_MODELS = new Set(["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.1-8b-instruct-awq"]);
 const aiHealth = { lastOkAt: null, lastOkModel: "", lastErrorAt: null, lastError: "", lastErrorModel: "" };
 function configuredAiModel(env) {
@@ -43,7 +43,9 @@ function aiModelRetirement(m) {
 function aiModelScore(name) {
   const n = String(name).toLowerCase();
   const fam = [
-    [/llama-3\.\d+-8b-instruct-fast/, 100], [/llama.*instruct.*fast/, 92], [/llama-4/, 88], [/llama.*instruct/, 84],
+    // Coste primero (cuota gratuita de 10k neuronas/día): 8B ≈ 30 neuronas por análisis, Scout ≈ 60,
+    // 70B ≈ 100. Los de 1-3B son baratos pero flojos para un JSON fiable.
+    [/llama-3\.\d+-8b-instruct/, 100], [/llama-4-scout/, 92], [/llama.*70b.*instruct/, 86], [/llama.*instruct/, 70],
     [/mistral-small|mistral.*instruct/, 80], [/qwen.*(instruct|qwen3)/, 76], [/gemma-3/, 72], [/glm/, 68], [/gpt-oss/, 64]
   ].find(([re]) => re.test(n));
   const version = (n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
@@ -143,6 +145,110 @@ function finiteNumber(value) {
 
 function booleanInt(value) {
   return value === true || value === 1 || value === "1" ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Base de datos de caché (Turso / libSQL) para datos NO personales que se pueden regenerar:
+// históricos de precios, tipos BCE y el marcador público del Radar. Así D1 queda para los datos
+// del usuario y su cuota diaria no se agota por cachés. Imita la API de D1 (prepare/bind/first/
+// all/run/raw/batch) sobre la API HTTP de Turso (/v2/pipeline). Sin secretos TURSO_URL y
+// TURSO_TOKEN, o si Turso falla, todo vuelve a D1 automáticamente (pausa de 5 min tras un fallo).
+// ---------------------------------------------------------------------------------------------
+const CACHE_DB_RETRY_MS = 5 * 60000;
+const cacheDbState = { adapter: null, url: "", failedUntil: 0, radarSyncPending: true, lastError: "", lastErrorAt: null, lastOkAt: null };
+function tursoHttpUrl(raw) {
+  const u = String(raw || "").trim().replace(/^libsql:\/\//i, "https://").replace(/\/+$/, "");
+  return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : "";
+}
+function tursoArg(v) {
+  if (v === null || v === undefined) return { type: "null" };
+  if (typeof v === "boolean") return { type: "integer", value: v ? "1" : "0" };
+  if (typeof v === "number") return Number.isInteger(v) ? { type: "integer", value: String(v) } : { type: "float", value: v };
+  if (typeof v === "bigint") return { type: "integer", value: v.toString() };
+  return { type: "text", value: String(v) };
+}
+function tursoValue(c) {
+  if (!c || c.type === "null") return null;
+  if (c.type === "integer") return Number(c.value);
+  if (c.type === "float") return Number(c.value);
+  return c.value;
+}
+function tursoAdapter(baseUrl, token) {
+  async function pipeline(stmts) {
+    const requests = stmts.map(s => ({ type: "execute", stmt: { sql: s.sql, args: s.args.map(tursoArg) } }));
+    requests.push({ type: "close" });
+    const res = await fetch(baseUrl + "/v2/pipeline", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ requests }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) throw new Error("Turso HTTP " + res.status);
+    const data = await res.json();
+    return (data.results || []).slice(0, stmts.length).map(r => {
+      if (!r || r.type !== "ok") throw new Error("Turso: " + trimText(r && r.error && r.error.message || "error", 200));
+      const out = r.response && r.response.result || {};
+      const cols = (out.cols || []).map(c => c.name);
+      const rows = (out.rows || []).map(row => Object.fromEntries(cols.map((name, i) => [name, tursoValue(row[i])])));
+      return { results: rows, success: true, cols, rawRows: (out.rows || []).map(row => row.map(tursoValue)),
+        meta: { changes: Number(out.affected_row_count) || 0, rows_written: Number(out.rows_written) || 0, rows_read: Number(out.rows_read) || 0, last_row_id: out.last_insert_rowid ? Number(out.last_insert_rowid) : null } };
+    });
+  }
+  const statement = (sql, args = []) => ({
+    sql, args, __turso: true,
+    bind: (...a) => statement(sql, a),
+    all: async () => (await pipeline([{ sql, args }]))[0],
+    run: async () => (await pipeline([{ sql, args }]))[0],
+    first: async col => { const r = (await pipeline([{ sql, args }]))[0].results[0]; return r === undefined ? null : col ? (r[col] ?? null) : r; },
+    raw: async () => (await pipeline([{ sql, args }]))[0].rawRows
+  });
+  return { label: "turso", prepare: sql => statement(sql), batch: async list => list.length ? pipeline(list.map(s => ({ sql: s.sql, args: s.args || [] }))) : [] };
+}
+// Envuelve el adaptador: si una llamada a Turso falla, la repite en D1 y pausa Turso unos minutos.
+function cacheDb(env) {
+  const url = tursoHttpUrl(env.TURSO_URL), token = String(env.TURSO_TOKEN || "").trim();
+  if (!url || !token || !env.DB || Date.now() < cacheDbState.failedUntil) return env.DB;
+  const key = url + "#" + token.length + ":" + token.slice(-6);
+  if (!cacheDbState.adapter || cacheDbState.url !== key) { cacheDbState.adapter = tursoAdapter(url, token); cacheDbState.url = key; }
+  return cacheDbState.adapter;
+}
+function cacheDbLabel(db) { return db && db.label === "turso" ? "turso" : "d1"; }
+function noteCacheDbFailure(error) {
+  cacheDbState.failedUntil = Date.now() + CACHE_DB_RETRY_MS;
+  cacheDbState.radarSyncPending = true; // lo escrito en D1 durante la caída se sincroniza al volver
+  cacheDbState.lastError = trimText(String(error && error.message || error), 240);
+  cacheDbState.lastErrorAt = nowIso();
+  console.warn("Turso cache DB failed; falling back to D1", cacheDbState.lastError);
+}
+// Ejecuta fn(db) en la base de caché; si Turso falla, la repite en D1.
+async function withCacheDb(env, fn) {
+  const db = cacheDb(env);
+  if (cacheDbLabel(db) !== "turso") return fn(env.DB);
+  try { const out = await fn(db); cacheDbState.lastOkAt = nowIso(); return out; }
+  catch (error) { noteCacheDbFailure(error); return fn(env.DB); }
+}
+const cacheSchemaReady = new Set();
+async function ensureCacheSchema(db, name, statements) {
+  const key = name + ":" + cacheDbLabel(db);
+  if (cacheSchemaReady.has(key)) return;
+  await db.batch(statements.map(sql => db.prepare(sql)));
+  cacheSchemaReady.add(key);
+}
+async function cacheDbStatus(env, url) {
+  const out = { configured: !!(tursoHttpUrl(env.TURSO_URL) && String(env.TURSO_TOKEN || "").trim()), active: cacheDbLabel(cacheDb(env)),
+    lastOkAt: cacheDbState.lastOkAt, lastErrorAt: cacheDbState.lastErrorAt, lastError: cacheDbState.lastError,
+    pausedUntil: cacheDbState.failedUntil > Date.now() ? new Date(cacheDbState.failedUntil).toISOString() : null };
+  if (url.searchParams.get("probe") !== "turso" || !out.configured) return out;
+  const t0 = Date.now();
+  try {
+    const db = tursoAdapter(tursoHttpUrl(env.TURSO_URL), String(env.TURSO_TOKEN).trim());
+    const [one, tables] = await db.batch([db.prepare("SELECT 1 AS ok"), db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]);
+    out.probe = { ok: one.results[0] && one.results[0].ok === 1, ms: Date.now() - t0, tables: tables.results.map(r => r.name).slice(0, 40) };
+    cacheDbState.lastOkAt = nowIso();
+  } catch (error) {
+    out.probe = { ok: false, ms: Date.now() - t0, error: trimText(String(error && error.message || error), 240) };
+  }
+  return out;
 }
 
 const AUTO_WRITE_BUDGET_LIMIT = 60000;
@@ -1669,14 +1775,17 @@ async function handleBrokerSync(request, env, user, json, parts) {
  * del coste y de la transmisión, y la regla de los dos meses (art. 33.5.f LIRPF) para
  * pérdidas con recompra de valores homogéneos. Es un cálculo orientativo.
  */
-let fxSchemaReady=false;
 async function ensureFxSchema(env){
-  if(fxSchemaReady)return;
+  const schemaKey="fx:"+cacheDbLabel(env.DB);
+  if(cacheSchemaReady.has(schemaKey))return;
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS fx_rates (currency TEXT NOT NULL,date TEXT NOT NULL,rate REAL NOT NULL CHECK(rate>0),PRIMARY KEY(currency,date))").run();
-  fxSchemaReady=true;
+  cacheSchemaReady.add(schemaKey);
 }
 const isoDay=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):""};
-async function loadEcbRates(env,currency,fromDay,toDay){
+// Datos no personales: viven en la base de caché (Turso) con vuelta a D1 si falla.
+const onCacheDb=(env,fn)=>withCacheDb(env,db=>fn(db===env.DB?env:{...env,DB:db,D1_PRIMARY:env.DB}));
+async function loadEcbRates(env,...args){return onCacheDb(env,e=>loadEcbRatesOn(e,...args))}
+async function loadEcbRatesOn(env,currency,fromDay,toDay){
   await ensureFxSchema(env);
   const cached=await env.DB.prepare("SELECT date,rate FROM fx_rates WHERE currency=? AND date>=? AND date<=? ORDER BY date").bind(currency,fromDay,toDay).all();
   const rows=cached.results||[];
@@ -2028,14 +2137,15 @@ export const PERF_BENCHMARKS=[
   {key:"msci",isin:"IE00B4L5Y983",label:"MSCI World"},
   {key:"sp500",isin:"IE00B5BMR087",label:"S&P 500"}
 ];
-let priceDailySchemaReady=false;
-async function ensurePriceDailySchema(env){
-  if(priceDailySchemaReady)return;
+async function ensurePriceDailySchema(env){return onCacheDb(env,ensurePriceDailySchemaOn)}
+async function ensurePriceDailySchemaOn(env){
+  const schemaKey="price:"+cacheDbLabel(env.DB);
+  if(cacheSchemaReady.has(schemaKey))return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS price_daily (key TEXT NOT NULL,date TEXT NOT NULL,close REAL NOT NULL CHECK(close>0),PRIMARY KEY(key,date))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS price_daily_meta (key TEXT PRIMARY KEY,currency TEXT NOT NULL,source TEXT NOT NULL,first_day TEXT NOT NULL DEFAULT '',fetched_at INTEGER NOT NULL)")
   ]);
-  priceDailySchemaReady=true;
+  cacheSchemaReady.add(schemaKey);
 }
 const PRICE_DAILY_TTL_MS=60*60000;
 function perfRangeFor(fromDay){
@@ -2070,7 +2180,9 @@ async function loadPriceDaily(env,services,inst,fromDay){
 // históricos caducados o que faltan (los que nunca se han descargado van primero). Devuelve
 // cuántos siguen sin histórico para que la app vuelva a pedir la curva hasta completarla.
 const PERF_FETCH_BUDGET=20;
-async function loadPriceDailyBatch(env,services,list,fromDay,budget=PERF_FETCH_BUDGET){
+async function loadPriceDailyBatch(env,...args){return onCacheDb(env,e=>loadPriceDailyBatchOn(e,...args))}
+async function loadPriceDailyBatchOn(env,services,list,fromDay,budget=PERF_FETCH_BUDGET){
+  await ensurePriceDailySchemaOn(env);
   const keys=list.map(i=>i.key),metas=new Map();
   for(let i=0;i<keys.length;i+=80){
     const part=keys.slice(i,i+80);
@@ -2290,15 +2402,42 @@ async function handlePortfolioPerformance(request,env,user,json,url,services){
  * y la del S&P 500 (SPY) en el mismo intervalo. Nada se reescribe: es un registro.
  */
 const RADAR_HORIZONS=[1,5,20];
-let radarScoreboardSchemaReady=false;
 async function ensureRadarScoreboardSchema(env){
-  if(radarScoreboardSchemaReady)return;
+  const schemaKey="radar:"+cacheDbLabel(env.DB);
+  if(cacheSchemaReady.has(schemaKey)&&!(schemaKey==="radar:turso"&&cacheDbState.radarSyncPending))return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL,score REAL NOT NULL,quality REAL NOT NULL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,speculative INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_radar_signals_day ON radar_signals(day)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)")
   ]);
-  radarScoreboardSchemaReady=true;
+  // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
+  if(schemaKey==="radar:turso"){await migrateRadarToCache(env);cacheDbState.radarSyncPending=false}
+  cacheSchemaReady.add(schemaKey);
+}
+// Sincroniza el marcador de D1 hacia Turso: la primera vez copia todo el historial y después
+// (al arrancar cada isolate y tras cualquier caída de Turso) los últimos 45 días, para recoger
+// las señales y resultados que se guardaron en D1 mientras Turso no respondía. Los ids son
+// aleatorios, así que se concilia por (day, stock_key): INSERT OR IGNORE para lo nuevo y un
+// UPDATE que solo rellena resultados vacíos en Turso (no escribe si ya están).
+async function migrateRadarToCache(env){
+  if(cacheDbLabel(env.DB)!=="turso"||!env.D1_PRIMARY)return;
+  const d1=env.D1_PRIMARY;
+  const exists=await d1.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='radar_signals'").first();
+  if(!exists)return;
+  const has=await env.DB.prepare("SELECT COUNT(*) AS n FROM radar_signals").first();
+  const since=Number(has&&has.n)>0?isoDay(Date.now()-45*864e5):"";
+  const cols="id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at";
+  const names=cols.split(","),marks=names.map(()=>"?").join(",");
+  const rows=(await d1.prepare("SELECT "+cols+" FROM radar_signals WHERE day>=? ORDER BY day").bind(since).all()).results||[];
+  for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_signals ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
+  const done=rows.filter(r=>r.ret_1d!==null&&r.ret_1d!==undefined||r.ret_5d!==null&&r.ret_5d!==undefined||r.ret_20d!==null&&r.ret_20d!==undefined);
+  const v=x=>x===undefined?null:x;
+  for(let i=0;i<done.length;i+=60)await env.DB.batch(done.slice(i,i+60).map(r=>env.DB.prepare(
+    "UPDATE radar_signals SET ret_1d=COALESCE(ret_1d,?),bench_1d=COALESCE(bench_1d,?),ret_5d=COALESCE(ret_5d,?),bench_5d=COALESCE(bench_5d,?),ret_20d=COALESCE(ret_20d,?),bench_20d=COALESCE(bench_20d,?) "+
+    "WHERE day=? AND stock_key=? AND ((ret_1d IS NULL AND ? IS NOT NULL) OR (ret_5d IS NULL AND ? IS NOT NULL) OR (ret_20d IS NULL AND ? IS NOT NULL))"
+  ).bind(v(r.ret_1d),v(r.bench_1d),v(r.ret_5d),v(r.bench_5d),v(r.ret_20d),v(r.bench_20d),r.day,r.stock_key,v(r.ret_1d),v(r.ret_5d),v(r.ret_20d))));
+  const bench=(await d1.prepare("SELECT day,price,created_at FROM radar_bench WHERE day>=?").bind(since).all()).results||[];
+  for(let i=0;i<bench.length;i+=60)await env.DB.batch(bench.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(r.day,r.price,r.created_at)));
 }
 function radarMarkWindow(nowMs){
   const api=globalThis.ViewInvAIMarketSession;
@@ -2351,7 +2490,8 @@ export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
   const opp=rows.filter(r=>r.tier==="opportunity"&&!r.speculative).slice(0,24),watch=rows.filter(r=>r.tier==="watch").slice(0,30),spec=rows.filter(r=>r.speculative).slice(0,20);
   return[...opp,...watch,...spec];
 }
-export async function runRadarScoreboard(env,services={},nowMs=Date.now()){
+export async function runRadarScoreboard(env,...args){return onCacheDb(env,e=>runRadarScoreboardOn(e,...args))}
+async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
   const win=radarMarkWindow(nowMs);
   if(!win)return{skipped:"outside-window"};
@@ -2398,7 +2538,8 @@ function radarStats(rows,h){
     median:Math.round(rets[Math.floor(rets.length/2)]*100)/100,avgExcess:excess.length?Math.round(avg(excess)*100)/100:null,
     beatRate:excess.length?Math.round(beat/excess.length*1000)/10:null,best:Math.round(rets[rets.length-1]*10)/10,worst:Math.round(rets[0]*10)/10};
 }
-export async function radarScoreboardSummary(env){
+export async function radarScoreboardSummary(env){return onCacheDb(env,radarScoreboardSummaryOn)}
+async function radarScoreboardSummaryOn(env){
   await ensureRadarScoreboardSchema(env);
   const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
   const firstDay=rows.length?rows[rows.length-1].day:null;
@@ -4869,6 +5010,7 @@ export async function handleBackendApi(request, env, services = {}) {
       push: pushConfigured,
       model: configuredAiModel(env),
       aiHealth: await aiHealthStatus(env, url),
+      cacheDb: await cacheDbStatus(env, url),
       alertsCadenceMinutes: 1,
       sources: {
         tradeRepublic: { integrated: true, configured: true, mode: "direct-origin", label: "Trade Republic / LSX" },
