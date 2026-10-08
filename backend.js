@@ -4083,7 +4083,6 @@ const PROVIDERS=[
   {id:"openrouter",label:"OpenRouter (modelos free)",kind:"IA",secret:"OPENROUTER_API_KEY",free:"50 consultas/día en modelos :free",dashboard:"https://openrouter.ai/settings/keys"},
   {id:"cohere",label:"Cohere (clave de prueba)",kind:"IA",secret:"COHERE_API_KEY",free:"1.000 llamadas/mes",dashboard:"https://dashboard.cohere.com/api-keys",base:"https://api.cohere.ai/compatibility/v1",probe:"https://api.cohere.ai/v1/models",models:["command-a-03-2025","command-r-plus"]},
   {id:"sambanova",label:"SambaNova Cloud",kind:"IA",secret:"SAMBANOVA_API_KEY",free:"Plan gratuito con límites por minuto",dashboard:"https://cloud.sambanova.ai/apis",base:"https://api.sambanova.ai/v1",models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-V3-0324"]},
-  {id:"cerebras",label:"Cerebras",kind:"IA",secret:"CEREBRAS_API_KEY",free:"Plan gratuito por tokens/día",dashboard:"https://cloud.cerebras.ai/",base:"https://api.cerebras.ai/v1",models:["llama-3.3-70b","gpt-oss-120b"]},
   {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
   {id:"tavily",label:"Tavily",kind:"Búsqueda",secret:"TAVILY_API_KEY",free:"1.000 créditos/mes",dashboard:"https://app.tavily.com/home",monthlyLimit:1000},
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},

@@ -518,7 +518,7 @@ function initSettings(){
    '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
    Object.entries(sec).map(([k,v])=>row('<code>'+esc(k==='TURSO'?'TURSO_URL + TURSO_TOKEN':k)+'</code>',v?'configurado':'falta',v?'admin-st ok':'admin-st warn')).join('')+
    '</article></div>');
-  fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Se prueban por orden: Gemini → Groq → OpenRouter → Cohere → SambaNova → Cerebras → Workers AI. Si uno no tiene clave o agota su cupo, pasa al siguiente.'));
+  fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Se prueban por orden: Gemini → Groq → OpenRouter → Cohere → SambaNova → Workers AI. Si uno no tiene clave o agota su cupo, pasa al siguiente.'));
   fill('search',providerSection(d,['Búsqueda','Lectura web'],'BÚSQUEDA WEB','Búsqueda y lectura web','Orden: Tavily → Exa → LangSearch → Jina.'));
   fill('market',marketHtml(d));if(!publicSources)loadPublicSources();
   fill('infra',infraHtml(d));
