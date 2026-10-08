@@ -400,12 +400,13 @@ function initSettings(){
  async function api(path){const a=auth();const r=await a.apiFetch(path);const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('Error '+r.status)),{status:r.status});return d}
  async function detectAdmin(){
   const a=auth();
-  if(a&&typeof a.getUser==='function'&&!a.getUser()&&currentView()==='admin'){try{show('today')}catch(_){}}
   if(checked||!a||typeof a.apiFetch!=='function'||(typeof a.getUser==='function'&&!a.getUser()))return;
   checked=true;
   try{last=await api('/api/admin');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);render(last)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
  }
- ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;isAdmin=false;last=null;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;setTimeout(detectAdmin,300)}));
+ // Solo se sale de la pantalla cuando la sesión ya se ha resuelto (evento de Firebase) y no hay usuario.
+ ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;isAdmin=false;last=null;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;
+  setTimeout(()=>{const a=auth();if(a&&typeof a.getUser==='function'&&!a.getUser()&&currentView()==='admin'){try{show('today')}catch(_){}}detectAdmin()},300)}));
  setTimeout(detectAdmin,1500);
  function currentView(){try{return state.currentView}catch(_){return''}}
  function selectSection(name,persist=true){
@@ -471,7 +472,7 @@ function initSettings(){
   try{last=await api('/api/admin'+(probe?'?probe=1':''));isAdmin=true;render(last)}
   catch(e){
    if(e.status===403||e.status===401){isAdmin=false;try{show('today')}catch(_){}}
-   else fill('summary','<p class="settings-note admin-err">'+esc(e.message)+'</p>');
+   else{selectSection('summary',false);fill('summary','<p class="settings-note admin-err">No se pudo cargar: '+esc(e.message)+'</p>')}
   }finally{loading=false}
  }
  window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='admin'){selectSection(savedSection(),false);if(last)render(last);load(false)}});
