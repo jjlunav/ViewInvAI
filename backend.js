@@ -1536,10 +1536,27 @@ async function loadEcbRates(env,currency,fromDay,toDay){
     const cols=line.split(",");const date=cols[iDate],rate=Number(cols[iVal]);
     if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&rate>0)fresh.push({date,rate});
   }
-  for(let i=0;i<fresh.length;i+=80){
-    await env.DB.batch(fresh.slice(i,i+80).map(r=>env.DB.prepare("INSERT OR REPLACE INTO fx_rates (currency,date,rate) VALUES (?,?,?)").bind(currency,r.date,r.rate)));
-  }
+  if(fresh.length)await writeChangedDailyRows(env,"fx_rates","currency",currency,"rate",fresh.map(r=>({date:r.date,value:r.rate})));
   return fresh.length?fresh:rows;
+}
+// Cuota de D1 (100k filas escritas/día): un histórico descargado de nuevo trae casi siempre los
+// mismos cierres. Solo se escriben los días que faltan o cuyo valor ha cambiado (el último cierre
+// del día en curso); reescribirlo entero con INSERT OR REPLACE costaba miles de filas por apertura.
+async function writeChangedDailyRows(env,table,keyColumn,key,valueColumn,rows){
+  if(!rows.length)return 0;
+  const first=rows.reduce((m,r)=>r.date<m?r.date:m,rows[0].date);
+  const existing=await env.DB.prepare("SELECT date,"+valueColumn+" AS value FROM "+table+" WHERE "+keyColumn+"=? AND date>=?").bind(key,first).all();
+  const have=new Map((existing.results||[]).map(r=>[String(r.date),Number(r.value)]));
+  const changed=rows.filter(r=>{
+    const old=have.get(r.date);
+    return old===undefined||!(Math.abs(old-r.value)<=Math.abs(old)*1e-7);
+  });
+  for(let i=0;i<changed.length;i+=90){
+    await env.DB.batch(changed.slice(i,i+90).map(r=>env.DB.prepare(
+      "INSERT INTO "+table+" ("+keyColumn+",date,"+valueColumn+") VALUES (?,?,?) ON CONFLICT("+keyColumn+",date) DO UPDATE SET "+valueColumn+"=excluded."+valueColumn
+    ).bind(key,r.date,r.value)));
+  }
+  return changed.length;
 }
 function fxLookup(rows){
   const sorted=rows.slice().sort((a,b)=>a.date<b.date?-1:1);
@@ -1875,9 +1892,7 @@ async function loadPriceDaily(env,services,inst,fromDay){
     catch(error){console.warn("Daily history unavailable",key,String(error&&error.message||error))}
     const rows=(got&&Array.isArray(got.rows)?got.rows:[]).filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.close>0);
     if(rows.length){
-      for(let i=0;i<rows.length;i+=90){
-        await env.DB.batch(rows.slice(i,i+90).map(r=>env.DB.prepare("INSERT OR REPLACE INTO price_daily (key,date,close) VALUES (?,?,?)").bind(key,r.date,r.close)));
-      }
+      await writeChangedDailyRows(env,"price_daily","key",key,"close",rows.map(r=>({date:r.date,value:r.close})));
       await env.DB.prepare("INSERT OR REPLACE INTO price_daily_meta (key,currency,source,first_day,fetched_at) VALUES (?,?,?,?,?)")
         .bind(key,String(got.currency||"EUR").toUpperCase(),String(got.source||""),rows[0].date,Date.now()).run();
     }else if(!meta){
@@ -3733,7 +3748,7 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
   return id;
 }
 
-async function analyzeTarget(env, target, services) {
+async function analyzeTarget(env, target, services, options = {}) {
   const snapshot = await services.loadMarketSnapshot(env);
   const stock = findStock(snapshot, target);
   if (!stock) throw new Error("Stock not found in market snapshot: " + target.stock_key);
@@ -3788,14 +3803,18 @@ async function analyzeTarget(env, target, services) {
   current.quoteCurrency=Number(target.prefer_tr)===1?"EUR":"USD";
 
   const previous = await env.DB.prepare(
-    "SELECT signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
+    "SELECT id,signal,confidence,score,engine,created_at FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
   ).bind(target.user_id, target.subject_type, target.subject_id).first();
 
-  const snapshotId = uid("an_");
   const now = nowIso();
+  // Cuota de D1: el historial solo guarda un análisis nuevo si cambia algo (señal, confianza,
+  // puntuación o el precio de forma apreciable) o si el último tiene más de una hora. La señal
+  // vigente de la posición se actualiza igualmente en cada pasada.
+  const keepPrevious = !options.forceSnapshot && analysisUnchanged(previous, current, verifiedQuote);
+  const snapshotId = keepPrevious ? previous.id : uid("an_");
   current.snapshotId = snapshotId;
 
-  await env.DB.prepare(
+  if (!keepPrevious) await env.DB.prepare(
     "INSERT INTO analysis_snapshots (id,user_id,subject_type,subject_id,stock_key,ticker,signal,confidence,score,previous_score,horizon,thesis,risk_summary,reasons_json,catalysts_json,technical_json,market_json,ai_model,engine,data_timestamp,created_at) " +
     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
   ).bind(
@@ -3820,6 +3839,7 @@ async function analyzeTarget(env, target, services) {
       ema50: analysisStock.ema50 ?? null
     }), current.model || "", current.engine || "", snapshot && snapshot.meta && snapshot.meta.updatedAt || null, now
   ).run();
+  if (!keepPrevious) analysisSnapshotPrice.set(snapshotId, quoteVerified ? finiteNumber(verifiedQuote.price) : null);
 
   const table = target.subject_type === "position" ? "positions" : "watchlist";
   await env.DB.prepare(
@@ -3854,6 +3874,37 @@ async function analyzeTarget(env, target, services) {
     model: current.model,
     createdAt: now
   };
+}
+
+const analysisSnapshotPrice = new Map();
+function analysisUnchanged(previous, current, verifiedQuote) {
+  if (!previous || !previous.id) return false;
+  const age = Date.now() - new Date(previous.created_at).getTime();
+  if (!Number.isFinite(age) || age < 0 || age >= 60 * 60000) return false;
+  if (String(previous.signal || "") !== String(current.signal || "")) return false;
+  if (String(previous.engine || "") !== String(current.engine || "")) return false;
+  const conf = finiteNumber(previous.confidence), score = finiteNumber(previous.score);
+  if (conf === null || Math.abs(conf - (finiteNumber(current.confidence) ?? 0)) >= 5) return false;
+  if (score === null || Math.abs(score - (finiteNumber(current.score) ?? 0)) >= 3) return false;
+  // Precio: si sabemos el del último snapshot guardado (memoria), un movimiento ≥1 % lo renueva.
+  const lastPrice = analysisSnapshotPrice.get(previous.id), price = finiteNumber(verifiedQuote && verifiedQuote.price);
+  if (lastPrice > 0 && price > 0 && Math.abs(price / lastPrice - 1) >= 0.01) return false;
+  return true;
+}
+
+// Horario de cada bolsa (UTC, con pre y post-mercado y margen para el cambio de hora). Fuera de él
+// el precio no se mueve: el análisis automático pasa a cada 6 h (las noticias, los eventos y los
+// avisos de precio siguen su propio barrido cada minuto).
+const ASIA_ISIN = /^(JP|HK|AU|SG|KR|TW|CN|NZ)/;
+const ASIA_EXCHANGE = /^(TSE|TYO|JPX|HKEX|HKG|ASX|SGX|KRX|TWSE|SSE|SZSE|NZX)\b/i;
+export function marketSessionOpen(target, at = new Date()) {
+  const day = at.getUTCDay(), hour = at.getUTCHours() + at.getUTCMinutes() / 60;
+  const isin = String(target && target.isin || "").toUpperCase(), exchange = String(target && target.exchange || "");
+  if (ASIA_EXCHANGE.test(exchange) || (Number(target && target.prefer_tr) !== 1 && ASIA_ISIN.test(isin))) {
+    return (day >= 1 && day <= 5 && hour < 9) || (day === 0 && hour >= 23);
+  }
+  // Europa / Trade Republic (LSX 7:30-23:00 CET) y EEUU (pre 4:00 - post 20:00 ET).
+  return (day >= 1 && day <= 5 && hour >= 5) || (day >= 2 && day <= 6 && hour < 1);
 }
 
 async function subjectForUser(env, userId, subjectType, subjectId) {
@@ -4231,29 +4282,35 @@ async function sendPreferenceAlert(env,pref,type,severity,title,message){
   return id;
 }
 
+// Cuota de escritura de D1 (100k filas/día en el plan gratuito): el turno de los avisos y la
+// cadencia del pulso IA viven en memoria; D1 solo se escribe cuando cambia el estado de un aviso.
+let notificationScanCursor="";
+const notificationAiScanAt=new Map();
 async function scanNotificationPreferences(env,services){
   await ensureNotificationPreferenceSchema(env);
   await ensureGlobalNotificationSettingsSchema(env);
-  const rows=await env.DB.prepare(
+  const page=cursor=>env.DB.prepare(
     "SELECT p.* FROM notification_preferences p LEFT JOIN user_notification_settings g ON g.user_id=p.user_id "+
-    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 ORDER BY p.updated_at ASC LIMIT 24"
-  ).all();
+    "WHERE COALESCE(g.opted_in_explicitly,0)=1 AND COALESCE(g.notifications_enabled,0)<>0 AND p.id>? ORDER BY p.id ASC LIMIT 24"
+  ).bind(cursor).all();
+  let rows=await page(notificationScanCursor);
+  if(!(rows.results||[]).length&&notificationScanCursor){notificationScanCursor="";rows=await page("")}
   if(!(rows.results||[]).length)return{processed:0};
+  const list=rows.results||[];
+  notificationScanCursor=list.length<24?"":String(list[list.length-1].id);
   const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();
-  for(const pref of rows.results||[]){
+  for(const pref of list){
     try{
       let global=globalByUser.get(pref.user_id);
       if(!global){global=await globalNotificationSettingsForUser(env,pref.user_id);globalByUser.set(pref.user_id,global)}
       if(!global.enabled)continue;
       const stock=findStock(snapshot,pref);
-      if(!stock){
-        await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run();
-        continue;
-      }
+      if(!stock)continue;
       const pulseConfigured=global.pulseAi&&Number(pref.pulse_enabled)===1;
       const radarConfigured=global.radar&&(Number(pref.radar_enabled)===1||Number(pref.pulse_enabled)===1);
       const signalConfigured=pulseConfigured||radarConfigured;
-      const lastAiScan=new Date(pref.last_ai_scan_at||0).getTime();
+      const storedAiScan=new Date(pref.last_ai_scan_at||0).getTime();
+      const lastAiScan=Math.max(Number.isFinite(storedAiScan)?storedAiScan:0,notificationAiScanAt.get(pref.id)||0);
       const aiDue=signalConfigured&&(!Number.isFinite(lastAiScan)||Date.now()-lastAiScan>=5*60000);
       // NULL means "no level" (finiteNumber(null) would read it as 0).
       const priceLevel=v=>{if(v===null||v===undefined||v==="")return null;const n=finiteNumber(v);return n!==null&&n>0?n:null};
@@ -4359,12 +4416,19 @@ async function scanNotificationPreferences(env,services){
         pulseState=nextPulse;radarState=nextRadar;
       }
       const scanNow=nowIso();
-      await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
-        .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
+      if(aiDue)notificationAiScanAt.set(pref.id,Date.now());
+      // Solo se escribe si cambia el estado del aviso; la hora del pulso IA se guarda como mucho
+      // cada hora (en memoria manda la cadencia de 5 min).
+      const stateChanged=upBucket!==(Number(pref.last_up_bucket)||0)||downBucket!==(Number(pref.last_down_bucket)||0)||
+        pulseState!==String(pref.last_pulse_state||"")||radarState!==String(pref.last_radar_state||"");
+      const persistAi=aiDue&&(!Number.isFinite(storedAiScan)||Date.now()-storedAiScan>=60*60000);
+      if(stateChanged||persistAi){
+        await env.DB.prepare("UPDATE notification_preferences SET last_up_bucket=?,last_down_bucket=?,last_pulse_state=?,last_radar_state=?,last_ai_scan_at=CASE WHEN ? THEN ? ELSE last_ai_scan_at END,updated_at=? WHERE id=?")
+          .bind(upBucket,downBucket,pulseState,radarState,aiDue?1:0,scanNow,scanNow,pref.id).run();
+      }
       results.push(pref.id);
     }catch(error){
       console.warn("Notification preference scan failed",pref.id,String(error&&error.message||error));
-      try{await env.DB.prepare("UPDATE notification_preferences SET updated_at=? WHERE id=?").bind(nowIso(),pref.id).run()}catch(_){}
     }
   }
   return{processed:results.length};
@@ -4431,7 +4495,8 @@ async function handleManualAnalysis(request, env, user, json, services) {
       const latest = await env.DB.prepare(
         "SELECT * FROM analysis_snapshots WHERE user_id=? AND subject_type=? AND subject_id=? ORDER BY created_at DESC LIMIT 1"
       ).bind(user.id, subjectType, subjectId).first();
-      return json({ analysis: latest, reused: true });
+      const latestAge = latest ? Date.now() - new Date(latest.created_at).getTime() : NaN;
+      if (Number.isFinite(latestAge) && latestAge < 120000) return json({ analysis: latest, reused: true });
     }
   }
 
@@ -5224,6 +5289,16 @@ function goalPaceText(pc){
   if(pc.status==="on")return"Vas en plazo.";
   return"";
 }
+// Un máximo o un stop solo se guardan si suben al menos un 0,1 % (o no había valor): el motor
+// recalcula cada minuto con el precio real, así que el margen nunca adelanta ni retrasa una venta
+// más de ese 0,1 %, y evita reescribir la misma fila cada minuto.
+function goalStateRises(next,stored){
+  const n=finiteNumber(next),s=finiteNumber(stored);
+  if(n===null||!(n>0))return false;
+  if(s===null||!(s>0))return true;
+  return n>s*1.001;
+}
+
 async function scanPortfolioGoalNotifications(env,services){
   const engine=globalThis.ViewInvAIGoal;
   if(!services.loadMarketSnapshot||!engine)return{processed:0,alerts:0};
@@ -5277,7 +5352,7 @@ async function scanPortfolioGoalNotifications(env,services){
       if(scope==="auto"&&positions.length){const mk=new Set(positions.map(p=>Number(p.prefer_tr)===1?"tr":"us"));if(mk.size===1)scope=[...mk][0]}
       if(!["tr","us"].includes(scope)){processed++;continue}
       const preferTr=scope==="tr";
-      const prev=await env.DB.prepare("SELECT review_day,notified FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
+      const prev=await env.DB.prepare("SELECT signature,review_day,notified FROM portfolio_goal_notification_state WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
       const states=new Map(((await env.DB.prepare("SELECT stock_key,peak_eur,stop_eur FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).all()).results||[]).map(r=>[String(r.stock_key).toUpperCase(),r]));
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
@@ -5321,17 +5396,23 @@ async function scanPortfolioGoalNotifications(env,services){
         plan.aiReviewed=review.reviewed;plan.aiProvider=review.provider||"";
       }
       // Estado: máximo de la cartera, modo defensivo y stops (el stop que sube nunca baja).
+      // Cuota de D1: solo se escribe lo que cambia (un máximo nuevo, un stop que sube, el modo defensivo).
       const now=nowIso();
-      await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
-        .bind(plan.peakValueEur,plan.defensive?1:0,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
+      if(goalStateRises(plan.peakValueEur,goal.peak_value_eur)||(plan.defensive?1:0)!==(Number(goal.defensive)===1?1:0)||goal.start_value_eur===null||goal.start_value_eur===undefined||!goal.start_date){
+        await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
+          .bind(plan.peakValueEur,plan.defensive?1:0,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
+      }
       for(const p of enginePositions){
-        const st=engine.positionStop(p,input.config.risk);
+        const st=engine.positionStop(p,input.config.risk),old=states.get(p.key);
+        if(old&&!goalStateRises(st.peakEur,old.peak_eur)&&!goalStateRises(st.stopEur,old.stop_eur))continue;
         await env.DB.prepare("INSERT INTO portfolio_goal_position_state (portfolio_id,user_id,stock_key,peak_eur,stop_eur,updated_at) VALUES (?,?,?,?,?,?) "+
           "ON CONFLICT(portfolio_id,stock_key) DO UPDATE SET peak_eur=MAX(COALESCE(peak_eur,0),excluded.peak_eur),stop_eur=MAX(COALESCE(stop_eur,0),excluded.stop_eur),updated_at=excluded.updated_at")
           .bind(goal.portfolio_id,goal.user_id,p.key,st.peakEur??null,st.stopEur??null,now).run();
       }
-      if(held.size)await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=? AND stock_key NOT IN ("+[...held].map(()=>"?").join(",")+")").bind(goal.user_id,goal.portfolio_id,...held).run();
-      else await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).run();
+      if([...states.keys()].some(k=>!held.has(k))){
+        if(held.size)await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=? AND stock_key NOT IN ("+[...held].map(()=>"?").join(",")+")").bind(goal.user_id,goal.portfolio_id,...held).run();
+        else await env.DB.prepare("DELETE FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(goal.user_id,goal.portfolio_id).run();
+      }
       // Avisos al momento: cada acción una vez por día (por tipo, valor y nivel).
       let notified={day:"",keys:[]};try{notified=JSON.parse(prev&&prev.notified||"{}")||notified}catch(_){}
       if(notified.day!==clock.day)notified={day:clock.day,keys:[]};
@@ -5357,11 +5438,14 @@ async function scanPortfolioGoalNotifications(env,services){
         const msg=trimText([progress,goalPaceText(pc),"Hoy: "+summaryLine].filter(Boolean).join(" · "),500);
         if(!firstRun&&await pushGoal(goal,{title:"Resumen del objetivo · "+goal.name,message:msg,severity:"info"}))alerts++;
       }
+      const signature=plan.actions.map(a=>a.type+":"+a.ticker).join("|"),notifiedJson=JSON.stringify({day:notified.day,keys:[...seen].slice(-200)});
+      const prevNotified=prev?String(prev.notified||""):"";
+      if(prev&&signature===String(prev.signature||"")&&reviewDay===String(prev.review_day||"")&&notifiedJson===prevNotified){processed++;continue}
       const planJson=JSON.stringify({at:now,actions:plan.actions,holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""}).slice(0,20000);
       await env.DB.prepare(
         "INSERT INTO portfolio_goal_notification_state (portfolio_id,user_id,signature,summary,review_day,candidates,risk_signature,plan_json,notified,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "+
         "ON CONFLICT(portfolio_id) DO UPDATE SET signature=excluded.signature,summary=excluded.summary,review_day=excluded.review_day,plan_json=excluded.plan_json,notified=excluded.notified,updated_at=excluded.updated_at"
-      ).bind(goal.portfolio_id,goal.user_id,plan.actions.map(a=>a.type+":"+a.ticker).join("|"),trimText(summaryLine,500),reviewDay,"[]","",planJson,JSON.stringify({day:notified.day,keys:[...seen].slice(-200)}),now).run();
+      ).bind(goal.portfolio_id,goal.user_id,signature,trimText(summaryLine,500),reviewDay,"[]","",planJson,notifiedJson,now).run();
       processed++;
     }catch(error){
       console.warn("Portfolio goal scan failed",goal.portfolio_id,String(error&&error.message||error));
@@ -5387,13 +5471,13 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
       "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at," +
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 5 ELSE COALESCE(s.analysis_positions_minutes,10) END AS analysis_interval_minutes " +
       "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id LEFT JOIN portfolio_goals g ON g.portfolio_id=p.portfolio_id AND g.user_id=p.user_id WHERE p.active=1 " +
-      "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 40"
+      "ORDER BY COALESCE(p.last_analysis_at,'') ASC LIMIT 100"
     ).all(),
     env.DB.prepare(
       "SELECT 'watchlist' AS subject_type,w.id AS subject_id,w.user_id,w.stock_key,w.ticker,w.name,w.exchange,w.isin,w.prefer_tr,NULL AS quantity,NULL AS avg_price,'EUR' AS currency,w.last_analysis_at," +
       "COALESCE(s.analysis_watchlist_minutes,30) AS analysis_interval_minutes " +
       "FROM watchlist w LEFT JOIN user_settings s ON s.user_id=w.user_id " +
-      "ORDER BY COALESCE(w.last_analysis_at,'') ASC LIMIT 40"
+      "ORDER BY COALESCE(w.last_analysis_at,'') ASC LIMIT 100"
     ).all()
   ]);
 
@@ -5401,14 +5485,17 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   const due = row => {
     if (!row.last_analysis_at) return true;
     const last = new Date(row.last_analysis_at).getTime();
-    const minutes = Math.max(row.subject_type === "position" ? 5 : 10, finiteNumber(row.analysis_interval_minutes) ?? (row.subject_type === "position" ? 10 : 30));
+    const open = marketSessionOpen(row, nowDate);
+    const minutes = open
+      ? Math.max(row.subject_type === "position" ? 5 : 10, finiteNumber(row.analysis_interval_minutes) ?? (row.subject_type === "position" ? 10 : 30))
+      : 360;
     return !Number.isFinite(last) || nowMs - last >= minutes * 60000;
   };
   const positions = (positionRows.results || []).filter(due);
   const watchlist = (watchRows.results || []).filter(due);
   const queue = [...positions, ...watchlist]
     .sort((a,b) => String(a.last_analysis_at || "").localeCompare(String(b.last_analysis_at || "")))
-    .slice(0, 8);
+    .slice(0, env.D1_WRITE_BRAKE ? 0 : 8);
   const results = [];
 
   for (const target of queue) {

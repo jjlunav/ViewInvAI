@@ -1886,6 +1886,34 @@ async function buildIndexAttentionRanking(env){
     .sort((a,b)=>b.score-a.score).slice(0,10);
   return writeAttentionRanking(env,"indices",{items:rows,sources:["Google News RSS"]});
 }
+const D1_CRON_BRAKE_ROWS=60000,D1_CRON_STOP_ROWS=85000;
+function countingD1(db,counter){
+  if(!db)return db;
+  const inner=new WeakMap();
+  const add=result=>{const n=Number(result&&result.meta&&result.meta.rows_written);if(n>0)counter.rows+=n;return result};
+  const wrap=stmt=>{
+    const w={bind:(...args)=>wrap(stmt.bind(...args)),first:(...args)=>stmt.first(...args),raw:(...args)=>stmt.raw(...args),
+      all:async()=>add(await stmt.all()),run:async()=>add(await stmt.run())};
+    inner.set(w,stmt);return w;
+  };
+  return{prepare:sql=>wrap(db.prepare(sql)),
+    batch:async list=>{const results=await db.batch(list.map(s=>inner.get(s)||s));for(const r of results||[])add(r);return results}};
+}
+let d1BudgetSchemaReady=false;
+async function d1WriteBudget(env,at){
+  const day=new Date(at).toISOString().slice(0,10);
+  if(!env.DB)return{day,rows:0};
+  try{
+    if(!d1BudgetSchemaReady){await env.DB.prepare("CREATE TABLE IF NOT EXISTS d1_write_budget (day TEXT PRIMARY KEY,rows INTEGER NOT NULL DEFAULT 0)").run();d1BudgetSchemaReady=true}
+    const row=await env.DB.prepare("SELECT rows FROM d1_write_budget WHERE day=?").bind(day).first();
+    return{day,rows:Number(row&&row.rows)||0};
+  }catch(error){return{day,rows:0}}
+}
+async function recordD1Writes(env,day,rows){
+  if(!(rows>0)||!env.DB)return;
+  await env.DB.prepare("INSERT INTO d1_write_budget (day,rows) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET rows=rows+excluded.rows").bind(day,rows+1).run();
+}
+
 async function refreshAttentionRankings(env,{force=false}={}){
   const now=Date.now();
   const stock=await readAttentionRanking(env,"stocks"),funds=await readAttentionRanking(env,"funds"),indices=await readAttentionRanking(env,"indices");
@@ -2062,6 +2090,13 @@ export default {
     if(env.GITHUB_DISPATCH_TOKEN&&shouldDispatchMarketUpdate(dispatchAt,Number(env.MARKET_DISPATCH_MINUTES)||10))ctx.waitUntil(dispatchMarketUpdate(env).catch(error=>console.warn("Market update dispatch failed",String(error&&error.message||error))));
     const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
     const minute=new Date(scheduledAt).getUTCMinutes();
+    // Freno de cuota de D1 (100k filas escritas/día en el plan gratuito): el cron cuenta lo que
+    // escribe. Con 60k filas pausa los análisis automáticos y con 85k todas sus escrituras, para
+    // dejar siempre sitio a lo que hace el usuario (operaciones, objetivos, ajustes).
+    const budget=await d1WriteBudget(env,scheduledAt);
+    if(budget.rows>=D1_CRON_STOP_ROWS){console.warn("D1 write budget exhausted for cron",budget.rows);return}
+    const counter={rows:0};
+    env={...env,DB:countingD1(env.DB,counter),D1_WRITE_BRAKE:budget.rows>=D1_CRON_BRAKE_ROWS?"1":""};
     const tasks=[
       runScheduledPortfolioAnalysis(env, {
         jsonResponse,
@@ -2075,8 +2110,9 @@ export default {
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
     tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt));
     if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));
-    ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
+    ctx.waitUntil(Promise.allSettled(tasks).then(async results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
+      await recordD1Writes(env,budget.day,counter.rows).catch(error=>console.warn("D1 write budget update failed",String(error&&error.message||error)));
     }));
   }
 };
