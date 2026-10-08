@@ -4094,6 +4094,7 @@ async function ensureProviderUsageSchema(db){
   await ensureCacheSchema(db,"provider_usage",["CREATE TABLE IF NOT EXISTS provider_usage (provider TEXT NOT NULL,period TEXT NOT NULL,calls INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,last_at TEXT,last_error TEXT,PRIMARY KEY(provider,period))"]);
 }
 async function recordProviderUse(env,id,ok,error=""){
+  if(ok)providerCooldown.delete(id);
   const now=nowIso(),periods=["d:"+now.slice(0,10),"m:"+now.slice(0,7)];
   try{await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);
     return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,last_at=excluded.last_at,last_error=CASE WHEN excluded.errors>0 THEN excluded.last_error ELSE last_error END")
@@ -4106,9 +4107,9 @@ async function providerFetch(id,url,init,timeoutMs=20000){
 // --- IA: Gemini → Groq → OpenRouter → Workers AI ---------------------------------------------
 const GROQ_MODELS=["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"];
 let openRouterFreeMemo={at:0,models:[]};
-async function openRouterFreeModels(){
+async function openRouterFreeModels(key){
   if(Date.now()-openRouterFreeMemo.at<6*3600e3&&openRouterFreeMemo.models.length)return openRouterFreeMemo.models;
-  try{const r=await providerFetch("openrouter","https://openrouter.ai/api/v1/models",{},12000);const d=await r.json();
+  try{const r=await providerFetch("openrouter","https://openrouter.ai/api/v1/models",{headers:{"Authorization":"Bearer "+key}},12000);const d=await r.json();
     const ids=(d.data||[]).map(m=>String(m.id||"")).filter(id=>id.endsWith(":free"));
     const rank=id=>/llama-3\.3-70b|gpt-oss-120b|qwen3|deepseek/.test(id)?0:1;
     openRouterFreeMemo={at:Date.now(),models:ids.sort((a,b)=>rank(a)-rank(b)).slice(0,4)}}catch(_){}
@@ -4131,28 +4132,26 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true}){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
           body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
-        if(!r.ok){tried.push("gemini:"+model+":"+r.status);providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
+        if(!r.ok){tried.push("gemini:"+model+":"+r.status);providerFail("gemini",r.status);await recordProviderUse(env,"gemini",false,"HTTP "+r.status);if(r.status===429||r.status>=500)continue;break}
         const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
         if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
+        await recordProviderUse(env,"gemini",false,"respuesta vacía");
       }
-      await recordProviderUse(env,"gemini",false,tried.join(" "));
     }catch(error){tried.push("gemini:"+String(error&&error.message||error));await recordProviderUse(env,"gemini",false,String(error&&error.message||error))}
   }
   if(providerReady(env,"groq")){
     for(const model of GROQ_MODELS){
       try{const text=await openAiCompatible("groq","https://api.groq.com/openai/v1/chat/completions",providerKey(env,PROVIDERS[1]),model,prompt,maxTokens);
         await recordProviderUse(env,"groq",true);return{text,provider:"groq",model}}
-      catch(error){tried.push("groq:"+model+":"+(error.status||error.message));providerFail("groq",error.status||0);if(error.status===429)break}
+      catch(error){tried.push("groq:"+model+":"+(error.status||error.message));providerFail("groq",error.status||0);await recordProviderUse(env,"groq",false,String(error.message||error));if(error.status===429)break}
     }
-    await recordProviderUse(env,"groq",false,tried.slice(-1)[0]||"");
   }
   if(providerReady(env,"openrouter")){
-    for(const model of await openRouterFreeModels()){
+    for(const model of await openRouterFreeModels(providerKey(env,PROVIDERS[2]))){
       try{const text=await openAiCompatible("openrouter","https://openrouter.ai/api/v1/chat/completions",providerKey(env,PROVIDERS[2]),model,prompt,maxTokens);
         await recordProviderUse(env,"openrouter",true);return{text,provider:"openrouter",model}}
-      catch(error){tried.push("openrouter:"+model+":"+(error.status||error.message));providerFail("openrouter",error.status||0);if(error.status===429)break}
+      catch(error){tried.push("openrouter:"+model+":"+(error.status||error.message));providerFail("openrouter",error.status||0);await recordProviderUse(env,"openrouter",false,String(error.message||error));if(error.status===429)break}
     }
-    await recordProviderUse(env,"openrouter",false,tried.slice(-1)[0]||"");
   }
   if(env.AI&&typeof env.AI.run==="function"){
     try{const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
@@ -4169,7 +4168,7 @@ async function searchRoute(env,query){
     const t=await tavilySearch(env,query);
     await recordProviderUse(env,"tavily",t.ok,t.reason||"");
     if(t.ok&&t.results.length)return{ok:true,provider:"tavily",results:t.results};
-    tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);
+    tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);else{const st=Number((/^http-(\d+)/.exec(t.reason||"")||[])[1])||0;providerFail("tavily",st)}
   }
   const attempt=async(id,fn)=>{
     if(!providerReady(env,id))return null;
@@ -4222,13 +4221,13 @@ async function providerProbe(env,p){
 async function cloudflareUsage(env){
   const token=String(env.CF_ANALYTICS_TOKEN||"").trim(),account=String(env.CF_ACCOUNT_ID||"").trim();
   if(!token||!account)return{configured:false};
-  const since=nowIso().slice(0,10);
-  const query="query($a:String!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){"+
-    "workers:workersInvocationsAdaptive(limit:100,filter:{date_geq:$d}){sum{requests errors subrequests}dimensions{scriptName}}"+
+  const since=nowIso().slice(0,10),sinceTime=since+"T00:00:00Z";
+  const query="query($a:string!,$d:Date!,$t:Time!){viewer{accounts(filter:{accountTag:$a}){"+
+    "workers:workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$t}){sum{requests errors subrequests}dimensions{scriptName}}"+
     "d1:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}";
   try{
     const r=await providerFetch("cloudflare","https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
-      body:JSON.stringify({query,variables:{a:account,d:since}})},15000);
+      body:JSON.stringify({query,variables:{a:account,d:since,t:sinceTime}})},15000);
     const d=await r.json().catch(()=>({}));
     if(!r.ok||d.errors&&d.errors.length)return{configured:true,ok:false,detail:trimText((d.errors&&d.errors[0]&&d.errors[0].message)||("HTTP "+r.status),200)};
     const acc=(d.data&&d.data.viewer&&d.data.viewer.accounts&&d.data.viewer.accounts[0])||{};
