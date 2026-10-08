@@ -4090,6 +4090,7 @@ const PROVIDERS=[
   {id:"serper",label:"Serper (Google)",kind:"Búsqueda",secret:"SERPER_API_KEY",free:"2.500 búsquedas gratis al registrarse (una vez)",dashboard:"https://serper.dev/dashboard"},
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
+  {id:"googlenews",label:"Google News (RSS)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; noticias de cualquier país e idioma",dashboard:"https://news.google.com/"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
   {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
@@ -4275,6 +4276,7 @@ async function providerProbe(env,p){
       if(r.ok){const d=await r.json().catch(()=>({}));const k=d.key||d.account||d;const used=finiteNumber(k.usage??k.plan_usage),limit=finiteNumber(k.limit??k.plan_limit);
         return{ok:true,status:200,detail:used!==null?"créditos usados "+used+(limit!==null?" de "+limit:""):"conectado",used,limit}}}
     else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
+    else if(p.id==="googlenews"){r=await res("https://news.google.com/rss/search?q=FDA&hl=en-US&gl=US&ceid=US:en")}
     else if(p.id==="serper"){r=await res("https://google.serper.dev/search",{method:"POST",headers:{"Content-Type":"application/json","X-API-KEY":key},body:JSON.stringify({q:"FDA",num:1})})}
     else if(p.id==="firecrawl"){r=await res("https://api.firecrawl.dev/v1/team/credit-usage",{headers:{"Authorization":"Bearer "+key}})}
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
@@ -6383,6 +6385,24 @@ async function finnhubCompanyNews(env,ticker){
   return (Array.isArray(d)?d:[]).sort((a,b)=>(b.datetime||0)-(a.datetime||0)).slice(0,5).map(x=>({title:trimText(x.headline,160),url:String(x.url||""),
     content:trimText(x.summary,420),date:x.datetime?new Date(x.datetime*1000).toISOString().slice(0,10):"",source:"finnhub"})).filter(x=>x.title);
 }
+// Google News por RSS: sin clave, cualquier empresa y país. El idioma sale del país del ISIN.
+const ISIN_LANG={DE:["de","DE"],AT:["de","AT"],CH:["de","CH"],ES:["es","ES"],FR:["fr","FR"],BE:["fr","BE"],IT:["it","IT"],NL:["nl","NL"],
+  NO:["no","NO"],SE:["sv","SE"],DK:["da","DK"],FI:["fi","FI"],PT:["pt-PT","PT"],GB:["en-GB","GB"],IE:["en-GB","IE"],CA:["en-CA","CA"],AU:["en-AU","AU"],JP:["ja","JP"]};
+async function googleNewsRss(env,query,isin){
+  const [hl,gl]=ISIN_LANG[String(isin||"").slice(0,2).toUpperCase()]||["en-US","US"];
+  const lang=hl.split("-")[0];
+  const url="https://news.google.com/rss/search?q="+encodeURIComponent(query+" when:7d")+"&hl="+hl+"&gl="+gl+"&ceid="+gl+":"+lang;
+  try{
+    const r=await providerFetch("googlenews",url,{headers:{"Accept":"application/rss+xml"}},10000);
+    if(!r.ok){await recordProviderUse(env,"googlenews",false,"HTTP "+r.status);return[]}
+    const xml=await r.text();await recordProviderUse(env,"googlenews",true);
+    const tag=(item,name)=>{const m=item.match(new RegExp("<"+name+"[^>]*>([\\s\\S]*?)</"+name+">"));return m?m[1].replace(/<!\[CDATA\[|\]\]>/g,"").replace(/<[^>]+>/g," ").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim():""};
+    return (xml.match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,6).map(item=>{
+      const pub=Date.parse(tag(item,"pubDate"));
+      return{title:trimText(tag(item,"title"),160),url:tag(item,"link"),content:trimText(tag(item,"source")?"Fuente: "+tag(item,"source"):"",420),date:Number.isFinite(pub)?new Date(pub).toISOString().slice(0,10):"",source:"googlenews"};
+    }).filter(x=>x.title&&/^https:\/\//.test(x.url));
+  }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error));return[]}
+}
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
@@ -6398,7 +6418,14 @@ async function goalWebNews(env,c){
   const us=usTickerOf(s)||String(c&&c.usTicker||"").toUpperCase()||await finnhubUsTickerFromIsin(env,isin);
   const fh=us?await finnhubCompanyNews(env,us):[];
   let results=fh.slice(0,5),provider=fh.length?"finnhub":"";
-  if(fh.length<3){
+  // Google News para todas (imprescindible fuera de EE. UU.), en el idioma del país del ISIN.
+  if(results.length<3&&name){
+    const gn=await googleNewsRss(env,'"'+name.replace(/\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?)$/i,"")+'"',isin);
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of gn){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
+    if(gn.length)provider=provider?provider+" + googlenews":"googlenews";
+  }
+  if(results.length<3){
     const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
     const seen=new Set(results.map(r=>r.url));
     for(const r of web.results||[]){if(results.length>=5)break;if(seen.has(String(r.url||"")))continue;results.push({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})}
