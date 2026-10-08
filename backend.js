@@ -3986,11 +3986,11 @@ const optionalNumber=v=>v===null||v===undefined||v===""?null:finiteNumber(v);
 async function buildEventInsight(env,stock,ev,related){
   const kind=eventInsightKind(ev),base=EVENT_BASE_RATES[kind]||null,name=String(stock.name||stock.ticker||"");
   const query=name+" "+(stock.ticker||"")+" "+(kind==="pdufa"?"PDUFA FDA decision":kind==="trial-completion"?"clinical trial topline data timing":kind.startsWith("phase")?"clinical trial results":kind==="earnings"?"earnings expectations":"")+" "+String(ev.date||"").slice(0,7);
-  const web=await tavilySearch(env,query);
+  const web=await searchRoute(env,query);
   const official=(related||[]).map(e=>"- "+eventDay(e)+" · "+trimText(e.title,140)+" · "+trimText(e.fact||"",260)+" ("+(e.source||"")+")").join("\n");
   const news=(web.results||[]).map((r,i)=>"["+(i+1)+"] "+r.title+" ("+(r.date||"s/f")+")\n"+r.content).join("\n\n");
   let ai=null,model="";
-  if(env.AI&&typeof env.AI.run==="function"){
+  {
     const prompt=["Eres un analista de biotecnología y mercados. Analiza el próximo evento de una acción con los datos aportados.",
       "Acción: "+name+" ("+(stock.ticker||"")+", "+(stock.exchange||"")+"), sector "+(stock.sector||"")+", capitalización "+(finiteNumber(stock.marketCap)?Math.round(stock.marketCap/1e6)+" M$":"desconocida")+".",
       "Evento: "+(ev.title||"")+" · fecha "+eventDateLabel(ev)+" · fuente "+(ev.source||"")+".",
@@ -4001,8 +4001,8 @@ async function buildEventInsight(env,stock,ev,related){
       "Responde SOLO con JSON en español: {\"confirmedDate\":\"AAAA-MM-DD o null\",\"summary\":\"2-3 frases\",\"probabilityPct\":número 0-100 o null,\"probabilityReason\":\"1 frase\",\"factorsFor\":[\"...\"],\"factorsAgainst\":[\"...\"],\"expectedMovePct\":número o null,\"marketExpectation\":\"qué descuenta el precio\",\"sources\":[números de noticia usadas]}.",
       "Parte de la probabilidad histórica y ajústala solo con hechos concretos de los datos. No inventes datos: si algo no aparece, usa null."].filter(Boolean).join("\n\n");
     try{
-      const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:700,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
-      ai=extractAiJson(run.result);model=run.model;
+      const run=await aiRoute(env,{prompt,maxTokens:900,json:true});
+      ai=extractAiJson(run.text);model=run.provider+" · "+run.model;
     }catch(error){console.warn("Event insight AI failed",String(error&&error.message||error))}
   }
   const clampPct=v=>{const n=optionalNumber(v);return n===null?null:Math.max(0,Math.min(100,Math.round(n)))};
@@ -4017,7 +4017,7 @@ async function buildEventInsight(env,stock,ev,related){
     ai:ai?{confirmedDate:/^\d{4}-\d{2}-\d{2}$/.test(String(ai.confirmedDate||""))?ai.confirmedDate:null,summary:trimText(ai.summary,600),
       probabilityPct:clampPct(ai.probabilityPct),probabilityReason:trimText(ai.probabilityReason,300),factorsFor:list(ai.factorsFor),factorsAgainst:list(ai.factorsAgainst),
       expectedMovePct:optionalNumber(ai.expectedMovePct),marketExpectation:trimText(ai.marketExpectation,300),model}:null,
-    web:{ok:!!web.ok,reason:web.ok?"":web.reason||""},
+    web:{ok:!!web.ok,provider:web.provider||"",reason:web.ok?"":web.reason||""},
     sources,generatedAt:nowIso()
   };
 }
@@ -4068,6 +4068,211 @@ async function tavilyStatus(env,runProbe=false){
   const probe={ok:!!r.ok,results:(r.results||[]).length,reason:r.ok?"":r.reason,at:nowIso()};
   if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.put("tavily-probe:v1",JSON.stringify(probe),{expirationTtl:3600})}catch(_){}}
   return{...out,probe};
+}
+
+// ---------------------------------------------------------------------------
+// Proveedores externos gratuitos: inventario, contadores de uso y reparto con respaldo automático.
+// Cada tarea prueba los proveedores por orden; si uno no tiene clave, agota su cupo o falla,
+// se pasa al siguiente. Las claves viven solo como secretos de Cloudflare (nunca se devuelven).
+// ---------------------------------------------------------------------------
+const PROVIDERS=[
+  {id:"gemini",label:"Google Gemini",kind:"IA",secret:"GEMINI_API_KEY",free:"Flash/Flash-Lite: cientos a ~1.500 consultas/día según modelo",dashboard:"https://aistudio.google.com/usage"},
+  {id:"groq",label:"Groq",kind:"IA",secret:"GROQ_API_KEY",free:"~1.000 consultas/día",dashboard:"https://console.groq.com/settings/limits"},
+  {id:"openrouter",label:"OpenRouter (modelos free)",kind:"IA",secret:"OPENROUTER_API_KEY",free:"50 consultas/día en modelos :free",dashboard:"https://openrouter.ai/settings/keys"},
+  {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
+  {id:"tavily",label:"Tavily",kind:"Búsqueda",secret:"TAVILY_API_KEY",free:"1.000 créditos/mes",dashboard:"https://app.tavily.com/home",monthlyLimit:1000},
+  {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
+  {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
+  {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
+  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
+];
+const providerKey=(env,p)=>p.secret?String(env[p.secret]||"").trim():"";
+const providerCooldown=new Map();
+const providerReady=(env,id)=>{const p=PROVIDERS.find(x=>x.id===id);return !!p&&(!p.secret||!!providerKey(env,p))&&!((providerCooldown.get(id)||0)>Date.now())};
+function providerFail(id,status){if(status===429||status===402||status===432||status>=500)providerCooldown.set(id,Date.now()+(status===429||status===432||status===402?30:5)*60e3)}
+async function ensureProviderUsageSchema(db){
+  await ensureCacheSchema(db,"provider_usage",["CREATE TABLE IF NOT EXISTS provider_usage (provider TEXT NOT NULL,period TEXT NOT NULL,calls INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,last_at TEXT,last_error TEXT,PRIMARY KEY(provider,period))"]);
+}
+async function recordProviderUse(env,id,ok,error=""){
+  const now=nowIso(),periods=["d:"+now.slice(0,10),"m:"+now.slice(0,7)];
+  try{await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);
+    return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,last_at=excluded.last_at,last_error=CASE WHEN excluded.errors>0 THEN excluded.last_error ELSE last_error END")
+      .bind(id,period,ok?0:1,now,ok?null:trimText(error,200))))})}catch(_){}
+}
+async function providerFetch(id,url,init,timeoutMs=20000){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{return await fetch(url,{...init,signal:controller.signal})}finally{clearTimeout(timer)}
+}
+// --- IA: Gemini → Groq → OpenRouter → Workers AI ---------------------------------------------
+const GROQ_MODELS=["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"];
+let openRouterFreeMemo={at:0,models:[]};
+async function openRouterFreeModels(){
+  if(Date.now()-openRouterFreeMemo.at<6*3600e3&&openRouterFreeMemo.models.length)return openRouterFreeMemo.models;
+  try{const r=await providerFetch("openrouter","https://openrouter.ai/api/v1/models",{},12000);const d=await r.json();
+    const ids=(d.data||[]).map(m=>String(m.id||"")).filter(id=>id.endsWith(":free"));
+    const rank=id=>/llama-3\.3-70b|gpt-oss-120b|qwen3|deepseek/.test(id)?0:1;
+    openRouterFreeMemo={at:Date.now(),models:ids.sort((a,b)=>rank(a)-rank(b)).slice(0,4)}}catch(_){}
+  return openRouterFreeMemo.models;
+}
+async function openAiCompatible(id,url,key,model,prompt,maxTokens){
+  const r=await providerFetch(id,url,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+    body:JSON.stringify({model,messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2})},45000);
+  if(!r.ok){const e=new Error(id+" HTTP "+r.status);e.status=r.status;throw e}
+  const d=await r.json();const text=String(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"");
+  if(!text)throw new Error(id+": respuesta vacía");
+  return text;
+}
+async function aiRoute(env,{prompt,maxTokens=900,json=true}){
+  const tried=[];
+  if(providerReady(env,"gemini")){
+    try{
+      const key=providerKey(env,PROVIDERS[0]),chain=await aiGeminiModelChain(key,"");
+      for(const model of (chain.models||[]).slice(0,3)){
+        const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
+          headers:{"Content-Type":"application/json","x-goog-api-key":key},
+          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
+        if(!r.ok){tried.push("gemini:"+model+":"+r.status);providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
+        const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
+        if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
+      }
+      await recordProviderUse(env,"gemini",false,tried.join(" "));
+    }catch(error){tried.push("gemini:"+String(error&&error.message||error));await recordProviderUse(env,"gemini",false,String(error&&error.message||error))}
+  }
+  if(providerReady(env,"groq")){
+    for(const model of GROQ_MODELS){
+      try{const text=await openAiCompatible("groq","https://api.groq.com/openai/v1/chat/completions",providerKey(env,PROVIDERS[1]),model,prompt,maxTokens);
+        await recordProviderUse(env,"groq",true);return{text,provider:"groq",model}}
+      catch(error){tried.push("groq:"+model+":"+(error.status||error.message));providerFail("groq",error.status||0);if(error.status===429)break}
+    }
+    await recordProviderUse(env,"groq",false,tried.slice(-1)[0]||"");
+  }
+  if(providerReady(env,"openrouter")){
+    for(const model of await openRouterFreeModels()){
+      try{const text=await openAiCompatible("openrouter","https://openrouter.ai/api/v1/chat/completions",providerKey(env,PROVIDERS[2]),model,prompt,maxTokens);
+        await recordProviderUse(env,"openrouter",true);return{text,provider:"openrouter",model}}
+      catch(error){tried.push("openrouter:"+model+":"+(error.status||error.message));providerFail("openrouter",error.status||0);if(error.status===429)break}
+    }
+    await recordProviderUse(env,"openrouter",false,tried.slice(-1)[0]||"");
+  }
+  if(env.AI&&typeof env.AI.run==="function"){
+    try{const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+      const r=run.result,text=typeof r==="string"?r:r&&typeof r.response==="string"?r.response:r&&r.response?JSON.stringify(r.response):r&&r.choices?String(r.choices[0].message&&r.choices[0].message.content||""):"";
+      await recordProviderUse(env,"workersai",true);return{text,provider:"workersai",model:run.model}}
+    catch(error){tried.push("workersai:"+String(error&&error.message||error));await recordProviderUse(env,"workersai",false,String(error&&error.message||error))}
+  }
+  const e=new Error("Ninguna IA disponible ("+tried.join(" · ")+")");e.tried=tried;throw e;
+}
+// --- Búsqueda web: Tavily → Exa → LangSearch → Jina --------------------------------------------
+async function searchRoute(env,query){
+  const tried=[];
+  if(providerReady(env,"tavily")){
+    const t=await tavilySearch(env,query);
+    await recordProviderUse(env,"tavily",t.ok,t.reason||"");
+    if(t.ok&&t.results.length)return{ok:true,provider:"tavily",results:t.results};
+    tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);
+  }
+  const attempt=async(id,fn)=>{
+    if(!providerReady(env,id))return null;
+    try{const results=await fn(providerKey(env,PROVIDERS.find(p=>p.id===id)));await recordProviderUse(env,id,true);if(results.length)return{ok:true,provider:id,results};tried.push(id+":0")}
+    catch(error){tried.push(id+":"+(error.status||error.message));providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error))}
+    return null;
+  };
+  const fail=(id,r)=>{const e=new Error(id+" HTTP "+r.status);e.status=r.status;return e};
+  const clean=v=>trimText(String(v||"").replace(/\s+/g," "),700);
+  const order=[
+    ["exa",async key=>{const r=await providerFetch("exa","https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},
+      body:JSON.stringify({query:trimText(query,380),numResults:6,contents:{text:{maxCharacters:700}}})});if(!r.ok)throw fail("exa",r);const d=await r.json();
+      return (d.results||[]).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.text||x.summary),date:x.publishedDate||""}))}],
+    ["langsearch",async key=>{const r=await providerFetch("langsearch","https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({query:trimText(query,380),count:6,summary:true,freshness:"oneYear"})});if(!r.ok)throw fail("langsearch",r);const d=await r.json();
+      const vals=(d.data&&d.data.webPages&&d.data.webPages.value)||[];return vals.map(x=>({title:trimText(x.name,160),url:String(x.url||""),content:clean(x.summary||x.snippet),date:x.datePublished||""}))}],
+    ["jina",async key=>{const r=await providerFetch("jina","https://s.jina.ai/?q="+encodeURIComponent(trimText(query,300)),{headers:{"Authorization":"Bearer "+key,"Accept":"application/json","X-Respond-With":"no-content"}});
+      if(!r.ok)throw fail("jina",r);const d=await r.json();return (d.data||[]).slice(0,6).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.description||x.content),date:x.date||""}))}]
+  ];
+  for(const [id,fn] of order){const out=await attempt(id,fn);if(out)return out}
+  return{ok:false,provider:"",reason:tried.join(" · ")||"not-configured",results:[]};
+}
+// --- Administración: inventario, uso y pruebas -------------------------------------------------
+async function isAdminUser(env,user){
+  const list=String(env.ADMIN_EMAILS||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+  if(list.length)return list.includes(String(user.email||"").toLowerCase());
+  try{const first=await env.DB.prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1").first();return !!first&&first.id===user.id}catch(_){return false}
+}
+async function providerProbe(env,p){
+  const key=providerKey(env,p);
+  const res=async(url,init={})=>{const r=await providerFetch(p.id,url,init,12000);return r};
+  try{
+    let r,detail="";
+    if(p.id==="gemini")r=await res("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",{headers:{"x-goog-api-key":key}});
+    else if(p.id==="groq")r=await res("https://api.groq.com/openai/v1/models",{headers:{"Authorization":"Bearer "+key}});
+    else if(p.id==="openrouter"){r=await res("https://openrouter.ai/api/v1/key",{headers:{"Authorization":"Bearer "+key}});
+      if(r.ok){const d=await r.json();const x=d.data||{};detail="uso "+(finiteNumber(x.usage)??0)+(x.is_free_tier?" · plan gratuito":"");return{ok:true,status:200,detail}}}
+    else if(p.id==="tavily"){r=await res("https://api.tavily.com/usage",{headers:{"Authorization":"Bearer "+key}});
+      if(r.ok){const d=await r.json().catch(()=>({}));const k=d.key||d.account||d;const used=finiteNumber(k.usage??k.plan_usage),limit=finiteNumber(k.limit??k.plan_limit);
+        return{ok:true,status:200,detail:used!==null?"créditos usados "+used+(limit!==null?" de "+limit:""):"conectado",used,limit}}}
+    else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
+    else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
+    else if(p.id==="jina"){r=await res("https://r.jina.ai/https://example.com",{headers:{"Authorization":"Bearer "+key,"Accept":"application/json"}})}
+    else if(p.id==="finnhub"){r=await res("https://finnhub.io/api/v1/quote?symbol=AAPL&token="+encodeURIComponent(key))}
+    else if(p.id==="workersai"){const a=await aiHealthStatus(env,new URL("https://x/?probe=ai"));return{ok:!!(a.probe&&a.probe.ok),status:a.probe&&a.probe.ok?200:0,detail:a.probe&&a.probe.model||a.lastError||""}}
+    if(!r)return{ok:false,status:0,detail:"sin prueba"};
+    return{ok:r.ok,status:r.status,detail:r.ok?"conectado":r.status===401||r.status===403?"clave rechazada":"HTTP "+r.status};
+  }catch(error){return{ok:false,status:0,detail:trimText(String(error&&error.message||error),120)}}
+}
+async function cloudflareUsage(env){
+  const token=String(env.CF_ANALYTICS_TOKEN||"").trim(),account=String(env.CF_ACCOUNT_ID||"").trim();
+  if(!token||!account)return{configured:false};
+  const since=nowIso().slice(0,10);
+  const query="query($a:String!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){"+
+    "workers:workersInvocationsAdaptive(limit:100,filter:{date_geq:$d}){sum{requests errors subrequests}dimensions{scriptName}}"+
+    "d1:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}";
+  try{
+    const r=await providerFetch("cloudflare","https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+      body:JSON.stringify({query,variables:{a:account,d:since}})},15000);
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.errors&&d.errors.length)return{configured:true,ok:false,detail:trimText((d.errors&&d.errors[0]&&d.errors[0].message)||("HTTP "+r.status),200)};
+    const acc=(d.data&&d.data.viewer&&d.data.viewer.accounts&&d.data.viewer.accounts[0])||{};
+    const sum=(rows,k)=>(rows||[]).reduce((s,x)=>s+(finiteNumber(x.sum&&x.sum[k])||0),0);
+    return{configured:true,ok:true,day:since,
+      workers:{requests:sum(acc.workers,"requests"),errors:sum(acc.workers,"errors"),limit:100000},
+      d1:{rowsRead:sum(acc.d1,"rowsRead"),rowsWritten:sum(acc.d1,"rowsWritten"),readLimit:5000000,writeLimit:100000}};
+  }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
+}
+async function handleAdmin(request,env,user,json,url){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  if(!await isAdminUser(env,user))return json({error:"Solo para la cuenta de administración."},403);
+  const day="d:"+nowIso().slice(0,10),month="m:"+nowIso().slice(0,7);
+  const usageRows=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return(await db.prepare("SELECT provider,period,calls,errors,last_at,last_error FROM provider_usage WHERE period IN (?,?)").bind(day,month).all()).results||[]}).catch(()=>[]);
+  const usage=(id,period)=>usageRows.find(r=>r.provider===id&&r.period===period)||null;
+  const probe=url.searchParams.get("probe")==="1";
+  let probes={};
+  if(probe&&env.HOT_STATE_KV){try{probes=await env.HOT_STATE_KV.get("admin-probes:v1","json")||{}}catch(_){}}
+  const needProbe=probe&&!probes.at;
+  const providers=await Promise.all(PROVIDERS.map(async p=>{
+    const configured=!p.secret||!!providerKey(env,p);
+    let test=probes[p.id]||null;
+    if(needProbe&&configured)test=await providerProbe(env,p);
+    const d=usage(p.id,day),m=usage(p.id,month);
+    return{id:p.id,label:p.label,kind:p.kind,secret:p.secret,free:p.free,dashboard:p.dashboard,configured,
+      cooldownUntil:(providerCooldown.get(p.id)||0)>Date.now()?new Date(providerCooldown.get(p.id)).toISOString():null,
+      today:d?{calls:d.calls,errors:d.errors}:{calls:0,errors:0},month:m?{calls:m.calls,errors:m.errors,lastAt:m.last_at,lastError:m.last_error}:{calls:0,errors:0},
+      monthlyLimit:p.monthlyLimit||null,test};
+  }));
+  if(needProbe&&env.HOT_STATE_KV){const save={at:nowIso()};providers.forEach(p=>{if(p.test)save[p.id]=p.test});try{await env.HOT_STATE_KV.put("admin-probes:v1",JSON.stringify(save),{expirationTtl:3600})}catch(_){}}
+  const account=String(env.CF_ACCOUNT_ID||"").trim(),project=String(env.FIREBASE_PROJECT_ID||"").trim();
+  const infra=[
+    {label:"Código (GitHub)",detail:"jjlunav/ViewInvAI",url:"https://github.com/jjlunav/ViewInvAI"},
+    {label:"Compilaciones y APK (GitHub Actions)",detail:"build-android.yml",url:"https://github.com/jjlunav/ViewInvAI/actions"},
+    {label:"Web y servidor (Cloudflare Worker)",detail:"viewinvai",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production":"https://dash.cloudflare.com/"},
+    {label:"Base de datos personal (Cloudflare D1)",detail:"viewinvai-db",url:account?"https://dash.cloudflare.com/"+account+"/workers/d1":"https://dash.cloudflare.com/"},
+    {label:"Estado rápido (Cloudflare KV)",detail:"HOT_STATE_KV",url:account?"https://dash.cloudflare.com/"+account+"/workers/kv/namespaces":"https://dash.cloudflare.com/"},
+    {label:"Cachés de mercado (Turso)",detail:cacheDbLabel(cacheDb(env))==="turso"?"activa":"no activa (se usa D1)",url:"https://app.turso.tech/"},
+    {label:"Acceso y avisos (Firebase)",detail:project||"",url:project?"https://console.firebase.google.com/project/"+project+"/overview":"https://console.firebase.google.com/"},
+    {label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
+  ];
+  return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
+    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env))},
+    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim()}});
 }
 
 let positionDecisionsSchemaReady=false;
@@ -5276,6 +5481,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
+    if (root === "admin") return handleAdmin(request, env, user, json, url);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
