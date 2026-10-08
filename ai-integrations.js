@@ -12,7 +12,7 @@
   {id:'openai',name:'ChatGPT (API)',company:'OpenAI',badge:'Clave de pago',prefix:'sk-',
    blurb:'Modelos de OpenAI con búsqueda web. Usa tu propia clave de API (prepago en la plataforma de OpenAI).'}
  ];
- const LABEL={gemini:'Gemini',anthropic:'Claude',openai:'ChatGPT',"chatgpt-web":'ChatGPT (tu cuenta)',"claude-web":'Claude (tu cuenta)',"gemini-web":'Gemini (tu cuenta)'};
+ const LABEL={gemini:'Gemini',anthropic:'Claude',openai:'ChatGPT',"chatgpt-web":'ChatGPT (tu cuenta)',"claude-web":'Claude (tu cuenta)',"gemini-web":'Gemini (tu cuenta)',"viewinvai-ai":'IA de ViewInvAI + búsqueda web'};
  const VERDICT={respalda:{icon:'✓',text:'Respalda',cls:'ok'},dudas:{icon:'⚠',text:'Tiene dudas',cls:'warn'},contradice:{icon:'✕',text:'Contradice',cls:'bad'},nota:{icon:'✎',text:'Opinión',cls:'note'}};
  const MANUALS={
   gemini:{title:'Cómo conseguir tu clave gratis de Gemini',steps:[
@@ -237,7 +237,7 @@
   if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA')+'…</p>';
   (st.list||[]).forEach(c=>{body+=contrastHtml(c)});
   (st.errors||[]).forEach(e=>{body+='<p class="ai-contrast-error">'+(e.provider?'<b>'+esc(LABEL[e.provider]||e.provider)+':</b> ':'')+esc(e.error)+'</p>'});
-  const tools=act.length?'<button type="button" class="btn small ghost ai-run-btn" data-ai-contrast-run'+(st.loading?' disabled':'')+'>'+((st.list||[]).some(c=>!/-web$/.test(c.provider))?'Repetir con mis IA':(auto?'Contrastar ahora':'Contrastar con mis IA'))+'</button>'
+  const tools=act.length?'<button type="button" class="btn small ghost ai-run-btn" data-ai-contrast-run'+(st.loading?' disabled':'')+'>'+((st.list||[]).some(c=>!/-web$/.test(c.provider)&&c.provider!=='viewinvai-ai')?'Repetir con mis IA':(auto?'Contrastar ahora':'Contrastar con mis IA'))+'</button>'
    :(subject.inline?'':'<p class="settings-note ai-setup-note">Para que tus IA lo contrasten solas, conéctalas en <button type="button" class="link-btn" data-ai-open-settings>Configuración › Integrar la IA</button>.</p>');
   const inner=askBoxHtml(subject,st)+body+tools+
    '<p class="ai-contrast-disclaimer">'+(subject.type==='stock'?'La respuesta pegada refuerza o rebaja esta acción en el Radar AI y en el Objetivo durante 3 días.':'Si la IA respalda una acción se marca como reforzada; si la contradice, baja un nivel. El cálculo de ViewInvAI no cambia; decide siempre tú.')+'</p>';

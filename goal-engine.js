@@ -142,6 +142,9 @@
     if(aiPhase==='early')add('IA detecta fase temprana',6);
     else if(aiPhase==='active')add('IA confirma movimiento',2);
     else if(aiPhase==='late'||aiPhase==='avoid')add('IA detecta entrada tardía',-28);
+    // Idea del analista IA respaldada por noticias reales de la web.
+    const idea=n(c.aiIdeaConfidence);
+    if(idea!==null&&idea>=55&&aiPhase!=='late'&&aiPhase!=='avoid')add('analista IA con noticia',idea>=75?12:7);
     score=clamp(score,0,100);
     const phase=(aiPhase==='late'||aiPhase==='avoid')?aiPhase:
       score>=80&&(ch===null||ch<=5)&&(rsi===null||rsi<=68)?'early':
@@ -364,6 +367,13 @@
       const proceeds=units*price-feeOf(p,'SELL');
       const loss=Math.max(0,(avg-price)*units);
       const alt=cands.find(c=>!used.has(c.key));
+      // Noticia nueva que invalida la tesis (verificada en la web por la IA): se sale aunque haya pérdida.
+      if(p.aiVerdict==='contradice'&&p.aiNewsReason){
+        pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
+        actions.push({type:'SELL',reason:'news',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
+          text:'Vender '+units+' × '+label(p)+': noticia que invalida la operación — '+p.aiNewsReason});
+        continue;
+      }
       if(loss<=0&&score<=35){
         // En ganancia y con la señal rota: se asegura el beneficio.
         pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
@@ -422,7 +432,7 @@
         if(c.speculative){specCount++;specExposure+=ticket}
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
-          burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiScoutReason||'',
+          burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
           text:'Comprar '+units+' × '+label(c)+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
