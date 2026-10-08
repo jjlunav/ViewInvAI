@@ -8,7 +8,118 @@ const FIREBASE_JWKS = createRemoteJWKSet(
   { cooldownDuration: 30000, cacheMaxAge: 3600000, timeoutDuration: 5000 }
 );
 
-const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+// @cf/meta/llama-3.1-8b-instruct se retiró el 30/05/2026 (changelog de Workers AI): sus llamadas
+// fallaban y el análisis caía en silencio al motor determinista (0 neuronas usadas).
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const FALLBACK_AI_MODELS = ["@cf/meta/llama-3.1-8b-instruct-fast", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
+const RETIRED_AI_MODELS = new Set(["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.1-8b-instruct-awq"]);
+const aiHealth = { lastOkAt: null, lastOkModel: "", lastErrorAt: null, lastError: "", lastErrorModel: "" };
+function configuredAiModel(env) {
+  const m = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+  return RETIRED_AI_MODELS.has(m) ? DEFAULT_AI_MODEL : m;
+}
+// Catálogo vivo de Workers AI: los modelos se retiran (llama-3.1-8b-instruct el 30/05/2026 dejó
+// el análisis sin IA en silencio). Una vez al día se consulta env.AI.models(), se descartan los
+// retirados o con retirada próxima y se ordenan los candidatos; el preferido solo se usa si sigue
+// vigente. Caché: memoria 6 h + KV 24 h (una escritura diaria).
+const AI_CATALOG_KV_KEY = "ai-catalog:v1", AI_CATALOG_TTL_MS = 24 * 3600e3, AI_CATALOG_MEMO_MS = 6 * 3600e3;
+const AI_RETIRE_MARGIN_MS = 14 * 864e5, AI_BAD_MODEL_MS = 6 * 3600e3;
+let aiCatalogMemo = null, aiCatalogForce = false, aiCatalogLastForce = 0;
+const aiBadModels = new Map();
+function aiModelRetirement(m) {
+  const props = Array.isArray(m && m.properties) ? m.properties : [];
+  const tags = Array.isArray(m && m.tags) ? m.tags.map(t => String(t).toLowerCase()) : [];
+  if (tags.some(t => t.includes("deprecat") || t.includes("retired"))) return 0;
+  for (const p of props) {
+    const id = String(p && p.property_id || "").toLowerCase();
+    if (!id.includes("deprecat") && !id.includes("retire") && !id.includes("sunset")) continue;
+    const v = String(p && p.value || "");
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return t;
+    if (/^(true|1|yes)$/i.test(v)) return 0;
+  }
+  return null;
+}
+function aiModelScore(name) {
+  const n = String(name).toLowerCase();
+  const fam = [
+    [/llama-3\.\d+-8b-instruct-fast/, 100], [/llama.*instruct.*fast/, 92], [/llama-4/, 88], [/llama.*instruct/, 84],
+    [/mistral-small|mistral.*instruct/, 80], [/qwen.*(instruct|qwen3)/, 76], [/gemma-3/, 72], [/glm/, 68], [/gpt-oss/, 64]
+  ].find(([re]) => re.test(n));
+  const version = (n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
+  const size = (n.match(/(\d+(?:\.\d+)?)b\b/) || [0, 0])[1] * 1;
+  return (fam ? fam[1] : (/instruct|chat/.test(n) ? 50 : 30)) * 1000 + Math.min(version, 99) * 5 + (n.includes("fast") ? 3 : 0) - Math.min(size, 400) / 100;
+}
+function rankAiCatalog(list, now = Date.now()) {
+  const names = [];
+  for (const m of Array.isArray(list) ? list : []) {
+    const name = String(m && m.name || "");
+    if (!name.startsWith("@cf/")) continue;
+    const task = String(m && m.task && m.task.name || "");
+    if (task && !/text generation/i.test(task)) continue;
+    if (/lora|awq|guard|embed|bge|vision|coder|math|whisper|-base\b|reward|sql|tts|stable-diffusion|flux/i.test(name)) continue;
+    const retire = aiModelRetirement(m);
+    if (retire !== null && retire - now < AI_RETIRE_MARGIN_MS) { RETIRED_AI_MODELS.add(name); continue; }
+    names.push(name);
+  }
+  return [...new Set(names)].sort((a, b) => aiModelScore(b) - aiModelScore(a));
+}
+async function aiCatalog(env, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && aiCatalogMemo && now - aiCatalogMemo.at < AI_CATALOG_MEMO_MS) return aiCatalogMemo;
+  if (!force && env.HOT_STATE_KV) {
+    try {
+      const cached = await env.HOT_STATE_KV.get(AI_CATALOG_KV_KEY, "json");
+      if (cached && Array.isArray(cached.models) && now - Number(cached.at || 0) < AI_CATALOG_TTL_MS) {
+        for (const r of cached.retired || []) RETIRED_AI_MODELS.add(r);
+        return (aiCatalogMemo = cached);
+      }
+    } catch (_) {}
+  }
+  if (!env.AI || typeof env.AI.models !== "function") return aiCatalogMemo || { at: now, models: [], source: "none" };
+  try {
+    const list = await env.AI.models({ task: "Text Generation", hide_experimental: true, per_page: 100 });
+    const valid = rankAiCatalog(list, now), models = valid.slice(0, 8);
+    if (models.length) {
+      aiCatalogMemo = { at: now, models, valid: valid.slice(0, 80), retired: [...RETIRED_AI_MODELS].slice(0, 60), source: "catalog" };
+      if (env.HOT_STATE_KV) { try { await env.HOT_STATE_KV.put(AI_CATALOG_KV_KEY, JSON.stringify(aiCatalogMemo), { expirationTtl: 2 * 86400 }); } catch (_) {} }
+      return aiCatalogMemo;
+    }
+  } catch (error) {
+    console.warn("Workers AI catalog unavailable", String(error && error.message || error));
+  }
+  return aiCatalogMemo || { at: now, models: [], source: "none" };
+}
+// Ejecuta Workers AI con el primer modelo vigente: el preferido si no está retirado, luego los
+// mejores del catálogo y, si el catálogo no responde, una lista fija. Un modelo que falla por
+// retirado/no encontrado se aparta 6 h y fuerza refrescar el catálogo. Devuelve {result, model}.
+async function runWorkersAi(env, input, preferred) {
+  const force = aiCatalogForce && Date.now() - aiCatalogLastForce > 3600e3;
+  if (force) { aiCatalogForce = false; aiCatalogLastForce = Date.now(); }
+  const catalog = await aiCatalog(env, { force });
+  const valid = new Set(catalog.valid || catalog.models || []), now = Date.now();
+  const ok = m => m && !RETIRED_AI_MODELS.has(m) && !(aiBadModels.get(m) > now) && (!valid.size || valid.has(m));
+  let models = [...new Set([preferred || configuredAiModel(env), ...(catalog.models || []), ...FALLBACK_AI_MODELS])].filter(ok).slice(0, 4);
+  if (!models.length) models = FALLBACK_AI_MODELS.slice();
+  let lastError = null;
+  for (const model of models) {
+    try {
+      const result = await env.AI.run(model, input);
+      aiHealth.lastOkAt = nowIso(); aiHealth.lastOkModel = model;
+      return { result, model };
+    } catch (error) {
+      lastError = error;
+      const msg = trimText(String(error && error.message || error), 240);
+      aiHealth.lastErrorAt = nowIso(); aiHealth.lastErrorModel = model; aiHealth.lastError = msg;
+      console.warn("Workers AI model failed", model, msg);
+      if (/not found|no such model|unknown model|deprecat|retired|5007|invalid model/i.test(msg)) {
+        aiBadModels.set(model, Date.now() + AI_BAD_MODEL_MS);
+        aiCatalogForce = true;
+      }
+    }
+  }
+  throw lastError || new Error("Workers AI unavailable");
+}
 const GOAL_WORKERS_AI_MODEL = "@cf/zai-org/glm-4.7-flash";
 const GOAL_SCOUT_CACHE_MS = 10 * 60 * 1000;
 const MAX_BODY_BYTES = 32768;
@@ -421,7 +532,7 @@ function builtinBrokerProfile(name){
 async function resolveBrokerProfile(env,name){
   const builtin=builtinBrokerProfile(name);if(builtin)return builtin;
   if(!env.AI||typeof env.AI.run!=="function")return{canonicalName:trimText(name,80),code:"",officialDomain:"",pricingUrl:"",plan:"",status:"pending",rules:{}};
-  const model=trimText(env.AI_MODEL||DEFAULT_AI_MODEL,120)||DEFAULT_AI_MODEL;
+  const model=configuredAiModel(env);
   try{
     const identifyPrompt=[
       "Identify the brokerage firm from the supplied name. Return JSON only.",
@@ -429,7 +540,7 @@ async function resolveBrokerProfile(env,name){
       "pricingUrl must be an official stock commission page only if confidently known. Otherwise leave it empty. Never invent a domain.",
       JSON.stringify({name:trimText(name,80)})
     ].join("\n");
-    const identified=extractAiJson(await env.AI.run(model,{prompt:identifyPrompt,max_tokens:220,temperature:0}))||{};
+    const identified=extractAiJson((await runWorkersAi(env,{prompt:identifyPrompt,max_tokens:220,temperature:0},model)).result)||{};
     const canonicalName=trimText(identified.canonicalName||name,80),officialDomain=trimText(identified.officialDomain,120).toLowerCase(),pricingUrl=trimText(identified.pricingUrl,500),plan=trimText(identified.plan,80);
     if(!officialDomain||!pricingUrl)return{canonicalName,code:"",officialDomain:"",pricingUrl:"",plan,status:"pending",rules:{}};
     const url=new URL(pricingUrl);
@@ -443,7 +554,7 @@ async function resolveBrokerProfile(env,name){
       "Use null when not explicit. Do not infer or invent missing values.",
       JSON.stringify({broker:canonicalName,plan,text:plain})
     ].join("\n");
-    const fees=extractAiJson(await env.AI.run(model,{prompt:feePrompt,max_tokens:320,temperature:0}))||{};
+    const fees=extractAiJson((await runWorkersAi(env,{prompt:feePrompt,max_tokens:320,temperature:0},model)).result)||{};
     const hasRule=["buy","sell","perShare","min","maxPct"].some(k=>finiteNumber(fees[k])!==null);
     return{canonicalName,code:"",officialDomain,pricingUrl,plan,status:hasRule?"verified":"pending",rules:fees,sourceExcerpt:plain.slice(0,700)};
   }catch(error){
@@ -3307,6 +3418,11 @@ function extractAiJson(result) {
   else if (result && typeof result.response === "string") text = result.response;
   else if (result && typeof result.result === "string") text = result.result;
   else if (result && result.response && typeof result.response.response === "string") text = result.response.response;
+  else if (result && Array.isArray(result.choices) && result.choices[0]) {
+    const c = result.choices[0];
+    text = String(c.message && c.message.content || c.text || "");
+  }
+  else if (result && result.response && typeof result.response === "object") text = JSON.stringify(result.response);
   if (!text) return null;
   const first = text.indexOf("{");
   const last = text.lastIndexOf("}");
@@ -3314,9 +3430,30 @@ function extractAiJson(result) {
   try { return JSON.parse(text.slice(first, last + 1)); } catch (_) { return null; }
 }
 
+// Diagnóstico de Workers AI para /api/backend/status: estado en memoria y, con ?probe=ai, una
+// llamada mínima cuyo resultado se guarda una hora en KV (como mucho 24 escrituras al día).
+async function aiHealthStatus(env, url) {
+  const cat = aiCatalogMemo || {};
+  const out = { ...aiHealth, catalog: { at: cat.at ? new Date(cat.at).toISOString() : null, source: cat.source || "pending", models: (cat.models || []).slice(0, 5) } };
+  if (url.searchParams.get("probe") !== "ai" || !env.AI || typeof env.AI.run !== "function") return out;
+  const key = "ai-probe:v1";
+  if (env.HOT_STATE_KV) {
+    try { const cached = await env.HOT_STATE_KV.get(key, "json"); if (cached) return { ...out, probe: cached, probeCached: true }; } catch (_) {}
+  }
+  let probe;
+  try {
+    const run = await runWorkersAi(env, { prompt: 'Responde solo con JSON: {"ok":true}', max_tokens: 12, temperature: 0 });
+    probe = { ok: true, model: run.model, at: nowIso(), parsed: !!extractAiJson(run.result) };
+  } catch (error) {
+    probe = { ok: false, error: trimText(String(error && error.message || error), 240), at: nowIso() };
+  }
+  if (env.HOT_STATE_KV) { try { await env.HOT_STATE_KV.put(key, JSON.stringify(probe), { expirationTtl: 3600 }); } catch (_) {} }
+  return { ...out, probe };
+}
+
 async function aiAssessment(env, target, stock, chart, events, fallback) {
   if (!env.AI || typeof env.AI.run !== "function") return fallback;
-  const model = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+  let model = configuredAiModel(env);
 
   const prompt = [
     "You are ViewInvAI, a risk-aware market monitoring assistant.",
@@ -3371,11 +3508,8 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
   ].join("\n");
 
   try {
-    const result = await env.AI.run(model, {
-      prompt,
-      max_tokens: 520,
-      temperature: 0.1
-    });
+    const run = await runWorkersAi(env, { prompt, max_tokens: 520, temperature: 0.1 }, model);
+    const result = run.result; model = run.model;
     const parsed = extractAiJson(result);
     if (!parsed) return fallback;
 
@@ -4610,7 +4744,7 @@ async function handleAiChat(request, env, user, json, services) {
     ? finiteNumber(clientLive.usd) ?? (livePrice!==null&&fx>0?livePrice*fx:null)
     : livePrice;
   const liveChange = finiteNumber(live.changePct);
-  const model = trimText(env.AI_MODEL || DEFAULT_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+  let model = configuredAiModel(env);
 
   const prompt = [
     "Eres ViewInvAI, un asistente de análisis bursátil integrado en una app de inversión.",
@@ -4673,7 +4807,8 @@ async function handleAiChat(request, env, user, json, services) {
   ].join("\n");
 
   try {
-    const result = await env.AI.run(model, { prompt, max_tokens: 900, temperature: 0.12 });
+    const run = await runWorkersAi(env, { prompt, max_tokens: 900, temperature: 0.12 }, model);
+    const result = run.result; model = run.model;
     const parsed = extractAiJson(result);
     if (!parsed) throw new Error("AI response is not valid JSON");
     const allowed = new Set(["COMPRAR","VIGILAR","ESPERAR","EVITAR"]);
@@ -4732,7 +4867,8 @@ export async function handleBackendApi(request, env, services = {}) {
       ai: !!env.AI,
       firebase: !!String(env.FIREBASE_PROJECT_ID || "").trim(),
       push: pushConfigured,
-      model: String(env.AI_MODEL || DEFAULT_AI_MODEL),
+      model: configuredAiModel(env),
+      aiHealth: await aiHealthStatus(env, url),
       alertsCadenceMinutes: 1,
       sources: {
         tradeRepublic: { integrated: true, configured: true, mode: "direct-origin", label: "Trade Republic / LSX" },
@@ -5432,7 +5568,7 @@ async function goalWorkersScout(env,goal,candidates){
     JSON.stringify(payload)
   ].join("\n");
   try{
-    const result=await env.AI.run(GOAL_WORKERS_AI_MODEL,{prompt,max_tokens:850,temperature:.05});
+    const result=(await runWorkersAi(env,{prompt,max_tokens:850,temperature:.05},GOAL_WORKERS_AI_MODEL)).result;
     const parsed=extractAiJson(result),rows=[];
     for(const x of parsed&&Array.isArray(parsed.valores)?parsed.valores:[]){
       const ticker=trimText(x&&x.ticker,24).toUpperCase(),phase=String(x&&x.fase||"").toLowerCase(),verdict=String(x&&x.veredicto||"").toLowerCase();

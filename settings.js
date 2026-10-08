@@ -109,7 +109,23 @@ async function refreshPushDeviceStatus(){
  }catch(_){pushDeviceRegistered=false}
  renderPushSettingsStatus();
 }
+// Motivo legible del último fallo de registro push (en vez de un «No disponible» genérico).
+let lastPushProblem='';
+function pushProblemText(detail){
+ if(!detail)return'';
+ const android=String(detail.platform||'')==='android';
+ if(android&&(detail.permission==='denied'||detail.permission==='prompt'||detail.permission==='prompt-with-rationale'))return'Las notificaciones de ViewInvAI están desactivadas en Android: actívalas en Ajustes del teléfono › Aplicaciones › ViewInvAI › Notificaciones y vuelve a probar.';
+ if(detail.permission==='denied')return'Las notificaciones están bloqueadas para esta web: permítelas en el candado de la barra de direcciones y vuelve a probar.';
+ if(detail.permission==='default')return'El navegador no ha concedido permiso para notificaciones.';
+ const raw=String(detail.error||'');
+ if(!raw)return'';
+ if(/permission-blocked|permission.*denied|NotAllowedError/i.test(raw))return'Las notificaciones están bloqueadas para esta web: permítelas en el candado de la barra de direcciones y vuelve a probar.';
+ if(/push service|AbortError|Registration failed|token-subscribe-failed|unsupported-browser/i.test(raw))return'Este navegador no ofrece servicio push (pasa en Brave, Opera o en modo privado). Prueba con Chrome, Edge o Firefox. Detalle: '+raw.slice(0,140);
+ if(/service ?worker/i.test(raw))return'No se pudo activar el servicio de avisos del navegador. Detalle: '+raw.slice(0,140);
+ return raw.slice(0,200);
+}
 function renderPushSettingsStatus(detail=null){
+ if(detail&&detail.enabled===false)lastPushProblem=pushProblemText(detail);else if(detail&&detail.enabled===true)lastPushProblem='';
  const status=$('#pushNotificationStatus'),row=$('#pushDeviceStatusRow'),actions=$('#pushDeviceActionsRow'),label=$('#pushDeviceStatusLabel');
  if(!status)return;
  status.classList.remove('active','pending','error');
@@ -127,7 +143,7 @@ function renderPushSettingsStatus(detail=null){
   status.textContent='Permiso denegado';status.classList.add('error');return;
  }
  if(detail&&detail.error){
-  status.textContent='No disponible';status.title=String(detail.error||'');status.classList.add('error');return;
+  status.textContent=pushProblemText(detail)||'No disponible';status.title=String(detail.error||'');status.classList.add('error');return;
  }
  if(detail&&detail.enabled===true){
   pushDeviceRegistered=true;
@@ -167,7 +183,7 @@ async function testPushNotification(){
  if(pushBackendConfigured===false){if(status){status.textContent='Servidor push pendiente';status.classList.add('pending');status.classList.remove('error')}return}
  if(button){button.textContent='Enviando…'}
  try{
-  if(!(await auth.ensurePushRegistration?.(true)))throw Error('No se pudo registrar el dispositivo.');
+  if(!(await auth.ensurePushRegistration?.(true)))throw Error(lastPushProblem||'No se pudo registrar el dispositivo.');
   const response=await auth.apiFetch('/api/devices/test',{method:'POST',body:'{}'});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||'La prueba push ha fallado.');

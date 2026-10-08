@@ -103,9 +103,55 @@ function openPushTarget(notification) {
   if (!open()) setTimeout(open, 900);
 }
 
+// Android no pinta en la bandeja del sistema los push que llegan con la app abierta: el plugin
+// solo los entrega a la app. Se publican como notificación local en el mismo canal, para que se
+// vean igual que con la app cerrada (sonido, bandeja y pantalla de bloqueo).
+let localNotificationsProxy = null, localNotificationsBound = false, localNotificationSeq = 0;
+function nativeLocalNotifications() {
+  const cap = window.Capacitor;
+  if (!cap) return null;
+  if (localNotificationsProxy) return localNotificationsProxy;
+  if (cap.Plugins && cap.Plugins.LocalNotifications) return (localNotificationsProxy = cap.Plugins.LocalNotifications);
+  if (typeof cap.isPluginAvailable === "function" && typeof cap.registerPlugin === "function" && cap.isPluginAvailable("LocalNotifications")) {
+    try { localNotificationsProxy = cap.registerPlugin("LocalNotifications"); return localNotificationsProxy; }
+    catch (error) { console.warn("LocalNotifications bridge registration failed", error); }
+  }
+  return null;
+}
+// El toque se escucha desde el arranque: si Android cerró la app, la notificación local sigue en
+// la bandeja y al pulsarla la app reabierta debe poder abrir el valor o el Objetivo.
+async function bindLocalNotificationTaps() {
+  const local = nativeLocalNotifications();
+  if (!local || localNotificationsBound || typeof local.addListener !== "function") return;
+  localNotificationsBound = true;
+  try {
+    await local.addListener("localNotificationActionPerformed", event => {
+      const extra = event && event.notification && event.notification.extra || {};
+      openPushTarget({ data: extra });
+    });
+  } catch (error) { console.warn("Local notification tap listener failed", error); }
+}
+async function showForegroundPush(title, body, data) {
+  const local = nativeLocalNotifications();
+  if (!local || typeof local.schedule !== "function") return false;
+  try {
+    await bindLocalNotificationTaps();
+    localNotificationSeq = (localNotificationSeq + 1) % 100000;
+    await local.schedule({ notifications: [{
+      id: Math.floor(Date.now() / 1000) % 1000000000 + localNotificationSeq,
+      title, body, largeBody: body, channelId: "viewinvai_market_alerts", extra: data || {}
+    }] });
+    return true;
+  } catch (error) {
+    console.warn("Foreground push display failed", error);
+    return false;
+  }
+}
+
 async function bindPushListeners(plugin) {
   if (!plugin || pushListenersBound) return;
   pushListenersBound = true;
+  await bindLocalNotificationTaps();
   await plugin.addListener("tokenReceived", event => {
     registerPushToken(event && event.token).catch(error => console.warn("FCM token sync failed", error));
   });
@@ -116,8 +162,10 @@ async function bindPushListeners(plugin) {
     const notification = event && event.notification ? event.notification : (event || {});
     const title = String(notification.title || "ViewInvAI");
     const body = String(notification.body || notification.message || "");
-    showToast(body ? title + " · " + body : title);
     window.dispatchEvent(new CustomEvent("viewinvai:push-received", { detail: event || {} }));
+    showForegroundPush(title, body, notification.data || {}).then(shown => {
+      if (!shown) showToast(body ? title + " · " + body : title);
+    });
   });
 }
 
@@ -211,8 +259,11 @@ async function ensureWebPushRegistration(requestPermission = true) {
         const data = payload && payload.data || {};
         const title = String(notification.title || data.title || "ViewInvAI");
         const body = String(notification.body || data.body || "");
-        showToast(body ? title + " · " + body : title);
         window.dispatchEvent(new CustomEvent("viewinvai:push-received", { detail: payload || {} }));
+        // Con la web abierta, Firebase no muestra nada: se publica como notificación del sistema.
+        Promise.resolve(registration && Notification.permission === "granted"
+          ? registration.showNotification(title, { body, icon: "/favicon.svg", badge: "/favicon.svg", data: { ...data, url: "/" } }).then(() => true)
+          : false).catch(() => false).then(shown => { if (!shown) showToast(body ? title + " · " + body : title); });
       });
     }
     const ok = await registerPushToken(token, "web");
