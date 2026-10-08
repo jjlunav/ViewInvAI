@@ -1449,7 +1449,10 @@ async function refreshGoalIdeas(){
   if(goalIdeasMemo.loading||Date.now()-goalIdeasMemo.at<20*60000||!auth||!auth.getUser||!auth.getUser())return;
   goalIdeasMemo.loading=true;
   try{const r=await auth.apiFetch("/api/goal-ideas");const d=await r.json().catch(()=>({}));
-    if(r.ok){goalIdeasMemo.map=new Map((d.ideas||[]).map(i=>[String(i.ticker||"").toUpperCase(),i]));goalIdeasMemo.at=Date.now();if(goalIdeasMemo.map.size)renderApp()}}
+    if(r.ok){const had=goalIdeasMemo.map.size;goalIdeasMemo.map=new Map((d.ideas||[]).map(i=>[String(i.ticker||"").toUpperCase(),i]));goalIdeasMemo.at=Date.now();
+      // Las revisiones de noticias del servidor llegan como contrastes: se recargan a la vez.
+      try{window.ViewInvAIContrast?.reloadRecent?.()}catch(_){}
+      if(had||goalIdeasMemo.map.size)renderApp()}}
   catch(_){}finally{goalIdeasMemo.loading=false;if(!goalIdeasMemo.at||Date.now()-goalIdeasMemo.at>20*60000)goalIdeasMemo.at=Date.now()-15*60000}
 }
 // Acciones congeladas de una posición que siguen vigentes hoy (fecha local, inclusive).

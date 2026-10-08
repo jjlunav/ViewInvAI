@@ -5568,7 +5568,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
     if (root === "admin") return handleAdmin(request, env, user, json, url);
-    if (root === "goal-ideas") { if (request.method !== "GET") return json({ error: "Method not allowed" }, 405); return json(await goalAnalystIdeas(env), 200, { "Cache-Control": "no-store" }); }
+    if (root === "goal-ideas") { if (url.pathname !== "/api/goal-ideas") return json({ error: "Not found" }, 404); if (request.method !== "GET") return json({ error: "Method not allowed" }, 405); return json(await goalAnalystIdeas(env), 200, { "Cache-Control": "no-store" }); }
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
@@ -5858,7 +5858,9 @@ async function aiSaveContrast(env,user,subjectType,subjectKey,provider,parsed,so
   await env.DB.prepare("INSERT INTO ai_contrasts (id,user_id,subject_type,subject_key,day,provider,verdict,summary,items_json,sources_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .bind(row.id,row.user_id,row.subject_type,row.subject_key,row.day,row.provider,row.verdict,row.summary,row.items_json,row.sources_json,row.created_at).run();
   // Se guardan las 60 últimas por usuario: es una ayuda puntual, no un histórico.
-  await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
+  // Las revisiones automáticas del Objetivo («viewinvai-ai») tienen su propio cupo y no desplazan las del usuario.
+  if(provider==="viewinvai-ai")await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND provider='viewinvai-ai' AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? AND provider='viewinvai-ai' ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
+  else await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
   return aiContrastRow(row);
 }
 async function handleAiIntegration(request,env,user,json,parts,url){
@@ -6287,7 +6289,8 @@ const GOAL_WEB_NEWS_MS=6*3600e3;
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
-  const key="gwn1:"+ticker+":"+Math.floor(Date.now()/GOAL_WEB_NEWS_MS);
+  const ident=String(c&&c.key||s.isin||s.stock_key||name||"").toUpperCase().replace(/[^A-Z0-9:.\-]/g,"").slice(0,40);
+  const key="gwn2:"+ticker+":"+ident+":"+Math.floor(Date.now()/GOAL_WEB_NEWS_MS);
   try{
     const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(key).first()});
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.results))return p}
@@ -6350,20 +6353,29 @@ async function goalWebReviewBuys(env,goal,buys,positions,candidates=[],snapshot=
 // semana, subidas con noticia, mejoras de recomendación) y la IA extrae ideas concretas con su tesis.
 // Es común a todos los usuarios (no personal) y se guarda 3 h en la base de cachés.
 const GOAL_ANALYST_MS=3*3600e3;
-let goalAnalystMemo={key:"",ideas:null};
+let goalAnalystMemo={key:"",ideas:null,retryAt:0};
+const GOAL_ANALYST_RETRY_MS=30*60000;
 async function goalAnalystIdeas(env){
-  const key="gai1:"+Math.floor(Date.now()/GOAL_ANALYST_MS);
+  const key="gai1:"+Math.floor(Date.now()/GOAL_ANALYST_MS),failKey="gai1fail:"+Math.floor(Date.now()/GOAL_ANALYST_RETRY_MS);
   if(goalAnalystMemo.key===key&&goalAnalystMemo.ideas)return goalAnalystMemo.ideas;
+  if(goalAnalystMemo.retryAt>Date.now())return{ideas:[],at:nowIso(),failed:true};
   try{
-    const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(key).first()});
-    if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.ideas)){goalAnalystMemo={key,ideas:p};return p}}
+    const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT cache_key,payload FROM event_insights WHERE cache_key IN (?,?)").bind(key,failKey).all()});
+    const rows=(hit&&hit.results)||[],ok=rows.find(r=>r.cache_key===key);
+    if(ok&&ok.payload){const p=JSON.parse(ok.payload);if(p&&Array.isArray(p.ideas)){goalAnalystMemo={key,ideas:p,retryAt:0};return p}}
+    // Un fallo reciente (sin búsqueda o sin IA) no se reintenta hasta pasados 30 min.
+    if(rows.some(r=>r.cache_key===failKey)){goalAnalystMemo.retryAt=Date.now()+GOAL_ANALYST_RETRY_MS;return{ideas:[],at:nowIso(),failed:true}}
   }catch(_){}
+  const markFailed=async()=>{goalAnalystMemo.retryAt=Date.now()+GOAL_ANALYST_RETRY_MS;
+    try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+      return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO NOTHING").bind(failKey,"gai",JSON.stringify({ideas:[],failed:true}),nowIso()).run()})}catch(_){}
+    return{ideas:[],at:nowIso(),failed:true}};
   const queries=["stocks with FDA PDUFA dates, clinical trial readouts or earnings catalysts this week",
     "stock market top gainers today reason news premarket movers",
     "analyst upgrades price target raised today stocks"];
   const web=[];
   for(const q of queries){const r=await searchRoute(env,q);(r.results||[]).slice(0,6).forEach(x=>web.push({q,provider:r.provider,title:trimText(x.title,160),url:String(x.url||""),content:trimText(x.content,380),date:String(x.date||"").slice(0,10)}))}
-  if(!web.length)return{ideas:[],at:nowIso()};
+  if(!web.length)return await markFailed();
   const prompt="Eres el analista de bolsa de ViewInvAI. Objetivo único: hacer crecer carteras lo antes posible con operaciones de 1-5 sesiones, con riesgo controlado.\n"+
     "Con los resultados REALES de búsqueda web de abajo, propone las mejores ideas de compra de acciones cotizadas en EE. UU. (NASDAQ/NYSE/AMEX) para los próximos días.\n"+
     "Prioriza catalizadores con fecha próxima, noticias nuevas que el mercado aún no ha descontado del todo y mejoras de recomendación. Descarta lo ya disparado (FOMO), las ampliaciones de capital y los chicharros sin liquidez.\n"+
@@ -6379,19 +6391,19 @@ async function goalAnalystIdeas(env){
       sources:(Array.isArray(x&&x.fuentes)?x.fuentes:[]).map(n=>web[Number(n)-1]).filter(Boolean).slice(0,3).map(w=>({title:w.title,url:w.url}))
     })).filter(x=>x.ticker&&x.thesis);
     const out={ideas,at:nowIso(),model:run.provider+" · "+run.model};
-    goalAnalystMemo={key,ideas:out};
+    goalAnalystMemo={key,ideas:out,retryAt:0};
     try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
       return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
         .bind(key,"gai",JSON.stringify(out),out.at).run()})}catch(_){}
     return out;
-  }catch(error){console.warn("Goal analyst ideas failed",String(error&&error.message||error));return{ideas:[],at:nowIso()}}
+  }catch(error){console.warn("Goal analyst ideas failed",String(error&&error.message||error));return await markFailed()}
 }
 // Vigilancia de las posiciones abiertas: noticias de la web + IA. Si una noticia invalida la tesis
 // (ampliación, ensayo fallido, rebaja de guía…) la posición queda marcada «contradice» y el Objetivo
 // propone salir; se guarda como contraste del Objetivo para que también lo vean las siguientes revisiones.
 const GOAL_POSITION_REVIEW_DAILY_LIMIT=12;
 async function goalWebReviewPositions(env,goal,positions){
-  const held=(positions||[]).filter(p=>p&&p.ticker).slice(0,6);
+  const held=(positions||[]).filter(p=>p&&p.ticker).slice(0,10);
   if(!held.length)return new Map();
   try{
     await ensureAiIntegrationSchema(env);
@@ -6404,7 +6416,7 @@ async function goalWebReviewPositions(env,goal,positions){
       if((Number(used&&used.n)||0)>=GOAL_POSITION_REVIEW_DAILY_LIMIT)return new Map();
       const parts=[],sources=[];
       for(const p of held){
-        const web=await goalWebNews(env,{ticker:p.ticker,name:p.name,stock:{}});
+        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,name:p.name,stock:{}});
         const avg=finiteNumber(p.avgEur),px=finiteNumber(p.priceEur),pnl=avg>0&&px!==null?(px/avg-1)*100:null;
         parts.push(p.ticker+" ("+(p.name||"")+") · resultado actual "+(pnl!==null?Math.round(pnl*10)/10+" %":"—")+
           (web.results.length?"\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"):"\n  Sin resultados de búsqueda web."));
@@ -6600,8 +6612,9 @@ async function scanPortfolioGoalNotifications(env,services){
       const posNews=await goalWebReviewPositions(env,goal,enginePositions);
       for(const p of enginePositions){
         const v=posNews.get(String(p.ticker||"").toUpperCase());
-        if(v&&(v.verdict==="contradice"||!p.aiVerdict))p.aiVerdict=v.verdict;
-        if(v&&v.reason)p.aiNewsReason=v.reason;
+        if(!v)continue;
+        if(v.verdict==="contradice"){p.aiVerdict="contradice";p.aiNewsReason=v.reason||"noticia desfavorable"}
+        else if(!p.aiVerdict)p.aiVerdict=v.verdict;
       }
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},

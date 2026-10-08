@@ -438,5 +438,5 @@
  document.addEventListener('DOMContentLoaded',renderSettings);
  if(document.readyState!=='loading')renderSettings();
 
- window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true)};
+ window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true),reloadRecent:()=>loadRecent()};
 })();
