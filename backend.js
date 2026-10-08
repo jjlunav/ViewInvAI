@@ -3915,6 +3915,11 @@ async function ensurePositionDecisionsSchema(env){
   ]);
   const cols=await env.DB.prepare("PRAGMA table_info(alert_events)").all();
   if(!(cols.results||[]).some(c=>c.name==="subject_id"))await env.DB.prepare("ALTER TABLE alert_events ADD COLUMN subject_id TEXT").run();
+  // «Decidir» del Objetivo: tipo de espera, precio de venta objetivo, stop de emergencia (en €) y fecha.
+  const dcols=new Set(((await env.DB.prepare("PRAGMA table_info(position_decisions)").all()).results||[]).map(c=>String(c.name)));
+  for(const [name,type] of [["hold_mode","TEXT"],["hold_pct","REAL"],["target_eur","REAL"],["emergency_eur","REAL"],["hold_until","TEXT"]]){
+    if(!dcols.has(name))await env.DB.prepare("ALTER TABLE position_decisions ADD COLUMN "+name+" "+type).run();
+  }
   positionDecisionsSchemaReady=true;
 }
 async function positionDecisionFor(env,userId,positionId){
@@ -3989,6 +3994,10 @@ async function handlePositionDecisions(request,env,user,json,parts){
       return json({decision:await env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=? AND position_id=?").bind(user.id,w.id).first()});
     }
     if(!["hold","sell","later"].includes(decision))return json({error:"Decisión no válida."},400);
+    const holdMode=["recover","pct","catalyst","better","date"].includes(String(body.holdMode||""))?String(body.holdMode):null;
+    const holdUntil=/^\d{4}-\d{2}-\d{2}$/.test(String(body.holdUntil||""))?String(body.holdUntil):null;
+    if((holdMode==="catalyst"||holdMode==="date")&&!holdUntil)return json({error:"Falta la fecha."},400);
+    const posNum=v=>{const n=finiteNumber(v);return n!==null&&n>0?n:null};
     const pos=await env.DB.prepare("SELECT id,stock_key,ticker,avg_price FROM positions WHERE id=? AND user_id=?").bind(id,user.id).first();
     if(!pos)return json({error:"Posición no encontrada."},404);
     const price=finiteNumber(body.price);
@@ -3996,12 +4005,15 @@ async function handlePositionDecisions(request,env,user,json,parts){
     const lossPct=price!==null&&avg!==null&&avg>0?(price/avg-1)*100:null;
     const now=nowIso();
     const days=Math.max(1,Math.min(60,finiteNumber(body.days)??7));
-    const reviewAt=decision==="later"?new Date(Date.now()+days*24*3600e3).toISOString():decision==="sell"?new Date(Date.now()+3*24*3600e3).toISOString():null;
+    // Las esperas con fecha (catalizador o pausa) terminan al acabar ese día: después el Objetivo vuelve a decidir.
+    const reviewAt=holdUntil&&decision==="later"?new Date(Date.parse(holdUntil+"T23:59:59Z")+86400000).toISOString()
+      :decision==="later"?new Date(Date.now()+days*24*3600e3).toISOString():decision==="sell"?new Date(Date.now()+3*24*3600e3).toISOString():null;
     const alertId=trimText(body.alertId,80)||null;
     await env.DB.prepare(
-      "INSERT INTO position_decisions (id,user_id,position_id,stock_key,ticker,decision,alert_id,avg_price,price_at_decision,loss_pct_at_decision,last_risk_loss_pct,review_at,recovered_notified_at,average_notified_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?) "+
-      "ON CONFLICT(user_id,position_id) DO UPDATE SET decision=excluded.decision,alert_id=excluded.alert_id,avg_price=excluded.avg_price,price_at_decision=excluded.price_at_decision,loss_pct_at_decision=excluded.loss_pct_at_decision,last_risk_loss_pct=excluded.last_risk_loss_pct,review_at=excluded.review_at,recovered_notified_at=excluded.recovered_notified_at,average_notified_at=NULL,updated_at=excluded.updated_at"
-    ).bind(uid("pd_"),user.id,pos.id,pos.stock_key,pos.ticker,decision,alertId,avg,price,lossPct,lossPct,reviewAt,lossPct!==null&&lossPct>=0?now:null,now,now).run();
+      "INSERT INTO position_decisions (id,user_id,position_id,stock_key,ticker,decision,alert_id,avg_price,price_at_decision,loss_pct_at_decision,last_risk_loss_pct,review_at,recovered_notified_at,average_notified_at,hold_mode,hold_pct,target_eur,emergency_eur,hold_until,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?) "+
+      "ON CONFLICT(user_id,position_id) DO UPDATE SET decision=excluded.decision,alert_id=excluded.alert_id,avg_price=excluded.avg_price,price_at_decision=excluded.price_at_decision,loss_pct_at_decision=excluded.loss_pct_at_decision,last_risk_loss_pct=excluded.last_risk_loss_pct,review_at=excluded.review_at,recovered_notified_at=excluded.recovered_notified_at,average_notified_at=NULL,hold_mode=excluded.hold_mode,hold_pct=excluded.hold_pct,target_eur=excluded.target_eur,emergency_eur=excluded.emergency_eur,hold_until=excluded.hold_until,updated_at=excluded.updated_at"
+    ).bind(uid("pd_"),user.id,pos.id,pos.stock_key,pos.ticker,decision,alertId,avg,price,lossPct,lossPct,reviewAt,lossPct!==null&&lossPct>=0?now:null,
+      holdMode,holdMode==="pct"?posNum(body.holdPct):null,holdMode==="recover"||holdMode==="pct"?posNum(body.targetEur):null,holdMode?posNum(body.emergencyEur):null,holdUntil,now,now).run();
     if(alertId)await env.DB.prepare("UPDATE alert_events SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?").bind(now,alertId,user.id).run();
     return json({decision:await env.DB.prepare("SELECT * FROM position_decisions WHERE user_id=? AND position_id=?").bind(user.id,pos.id).first()});
   }
@@ -5920,6 +5932,10 @@ async function scanPortfolioGoalNotifications(env,services){
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
       const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0;
+      // Decisiones «Decidir» vigentes de las posiciones de esta cartera.
+      await ensurePositionDecisionsSchema(env);
+      const decisionsById=new Map(((await env.DB.prepare("SELECT position_id,decision,hold_mode,hold_pct,target_eur,emergency_eur,hold_until,review_at FROM position_decisions WHERE user_id=? AND subject_type='position'").bind(goal.user_id).all()).results||[])
+        .filter(d=>decisionIsCurrent(d)&&(d.decision==="hold"||d.decision==="later")).map(d=>[d.position_id,d]));
       for(const p of positions){
         const key=String(p.stock_key||"").toUpperCase(),stock=byKey.get(key)||findStock(snapshot,p),total=Math.max(0,finiteNumber(p.quantity)??0);
         const frozen=Math.min(total,serverFrozenQty(p));
@@ -5935,7 +5951,10 @@ async function scanPortfolioGoalNotifications(env,services){
         const ticker=String(stock&&(stock.ticker||stock.trTicker)||p.ticker||"").toUpperCase();
         const openedMs=Date.parse(p.last_buy_at||p.opened_at||""),holdingDays=Number.isFinite(openedMs)?Math.max(0,(Date.now()-openedMs)/86400000):null;
         const cat=goalServerCatalyst(snapshot,stock);
-        enginePositions.push({key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
+        const dec=decisionsById.get(p.id);
+        const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
+          targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
+        enginePositions.push({hold,key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
           quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});

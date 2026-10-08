@@ -663,7 +663,12 @@ function renderPositionRow(p, index = 0) {
 function positionDecisionChip(p, avg, currency) {
   const d = window.ViewInvAIDecisions && typeof window.ViewInvAIDecisions.forPosition === "function" ? window.ViewInvAIDecisions.forPosition(p.id) : null;
   if (!d) return "";
-  const label = d.decision === "hold"
+  const until = d.hold_until ? new Date(d.hold_until + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "";
+  const label = d.hold_mode === "pct" ? "Mantienes hasta +" + formatNumber(num(d.hold_pct) || 0, 1) + " %"
+    : d.hold_mode === "catalyst" ? "Mantienes hasta el catalizador · " + until
+    : d.hold_mode === "better" ? "Mantienes hasta un cambio mejor"
+    : d.hold_mode === "date" ? "En pausa hasta el " + until
+    : d.decision === "hold"
     ? "Mantienes · objetivo " + formatMoney(avg, currency)
     : d.decision === "later" ? "Decidir el " + new Date(d.review_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "Vas a vender";
   return '<div class="position-decision-chip is-' + esc(d.decision) + '"><span>' + esc(label) + '</span>' +
@@ -1436,6 +1441,29 @@ function positionFrozenQty(p){
   const today=new Date().toLocaleDateString("sv-SE");
   return until>=today?Math.min(qty,Math.max(0,num(p.quantity)||qty)):0;
 }
+// Decisión «Decidir» vigente de una posición, en el formato del motor del Objetivo.
+function goalDecisionFor(positionId){
+  const D=window.ViewInvAIDecisions;
+  const d=D&&typeof D.forPosition==="function"?D.forPosition(positionId):null;
+  return d&&(d.decision==="hold"||d.decision==="later")?d:null;
+}
+function goalHoldFor(p,avgEur){
+  const d=p?goalDecisionFor(p.id):null;if(!d)return null;
+  return{mode:d.hold_mode||(d.decision==="hold"?"recover":"date"),pct:num(d.hold_pct),
+    targetEur:num(d.target_eur)??(d.decision==="hold"&&!d.hold_mode?num(avgEur):null),emergencyEur:num(d.emergency_eur),
+    until:d.hold_until||String(d.review_at||"").slice(0,10)};
+}
+// Próximo evento con fecha (resultados, FDA, junta…) de una acción, para «mantener hasta el catalizador».
+function goalNextCatalyst(stock){
+  let events=[];
+  try{events=typeof stockEvents==="function"?stockEvents(stock):[]}catch(_){events=[]}
+  const now=Date.now(),next=events.filter(e=>e&&e.eventKind!=="news"&&Number.isFinite(new Date(e.date||0).getTime())&&new Date(e.date).getTime()>=now-3600000)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date))[0];
+  if(!next)return null;
+  let label="";try{label=typeof EL==="function"?EL(next):String(next.title||next.type||"Catalizador")}catch(_){label=String(next.title||next.type||"Catalizador")}
+  return{date:new Date(next.date).toLocaleDateString("sv-SE"),label};
+}
+let lastGoalCtx=null;
 function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
@@ -1470,7 +1498,7 @@ function goalEngineInput(metrics,positionRows){
     const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
-    return{key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
+    return{hold:goalHoldFor(row.p,row.avgEur),key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
@@ -1525,7 +1553,8 @@ function goalPlanForStock(stock){
     if(pos){
       const st=engine.positionStop(pos,c.risk),act=c.plan.actions.find(a=>a.key===pos.key&&(a.type==="SELL"||a.type==="RAISE_STOP"));
       const bid=num(pos.bidEur),price=bid??num(pos.priceEur),stopEur=num(act&&act.stopEur)??num(st.stopEur);
-      return{...base,kind:"position",label:pos.label||pos.ticker,priceEur:price,priceIsBid:bid!==null,stopEur,trailing:!!st.trailing,
+      const held=pos.hold?c.plan.holds.find(h=>h.key===pos.key&&h.holdMode):null;
+      return{...base,kind:"position",label:pos.label||pos.ticker,priceEur:price,priceIsBid:bid!==null,stopEur:held?null:stopEur,trailing:!!st.trailing,holdText:held?held.text:"",
         stopDistPct:price>0&&stopEur!==null?(1-stopEur/price)*100:null,action:act?{type:act.type,text:act.text}:null};
     }
     const buy=c.plan.actions.find(a=>a.type==="BUY"&&a.key===key);
@@ -1579,6 +1608,7 @@ function goalActionHtml(a,ctx){
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
+  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="btn ghost compact goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'">Decidir ▾</button></div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
   const extra=a.type==="BUY"
@@ -1616,10 +1646,13 @@ function portfolioGoalViewHtml(){
   if(!engine)return '<section class="portfolio-goal-view goal2">'+head+'<div class="portfolio-goal-no-action">Cargando el motor del objetivo…</div></section>';
   const input=goalEngineInput(metrics,positionRows),plan=engine.plan(input);
   const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur};
+  lastGoalCtx=ctx;
   const visibleDecisions=[...plan.actions,...(plan.waits||[])];
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
-  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>'<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+'</li>').join('')+'</ul>':'';
+  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?ctx.positions.find(p=>p.key===h.key):null;
+    return '<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+
+      (pos?' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(pos.row.p.id)+'">Cambiar</button>':'')+'</li>'}).join('')+'</ul>':'';
   const frozenRows=positionRows.map(row=>({row,q:Math.min(num(row.qty)||0,positionFrozenQty(row.p))})).filter(x=>x.q>0);
   const frozenNote=frozenRows.length?'<ul class="goal2-notes muted goal2-frozen">'+frozenRows.map(({row,q})=>'<li>🔒 '+esc(formatNumber(q,6))+' × '+esc(row.stock&&row.stock.name||row.p.name||row.p.ticker||'')+' congeladas hasta el '+esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"}))+': el plan no las toca.</li>').join('')+'</ul>':'';
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
@@ -2600,6 +2633,69 @@ async function savePositionFreeze(form,clear=false){
   }catch(error){
     if(status)status.textContent=error.message||'No se pudo guardar la congelación.';
   }finally{form.dataset.saving=''}
+}
+
+// «Decidir ▾» en una tarjeta de STOP/VENDER del Objetivo: vender ahora o mantener con una condición.
+function openGoalDecisionModal(positionId){
+  const ctx=lastGoalCtx,pos=ctx&&ctx.positions.find(p=>String(p.row.p.id)===String(positionId));
+  const raw=state.positions.find(p=>String(p.id)===String(positionId));
+  if(!pos||!raw)return toast("No se encuentra la posición en el plan del Objetivo.",true);
+  const price=num(pos.bidEur)??num(pos.priceEur),avg=num(pos.avgEur),units=num(pos.units)||0,fee=num(pos.feeEur)||1;
+  const breakeven=avg!==null&&units>0?avg+(2*fee)/units:null;
+  const cat=goalNextCatalyst(pos.row.stock),current=goalDecisionFor(positionId);
+  const in7=new Date(Date.now()+7*86400000).toLocaleDateString("sv-SE"),today=new Date().toLocaleDateString("sv-SE");
+  const eur=v=>v===null?"—":formatMoney(v,"EUR");
+  const opt=(value,title,desc,extra="",disabled=false)=>'<label class="goal-decide-option'+(disabled?' disabled':'')+'"><input type="radio" name="mode" value="'+value+'"'+(disabled?' disabled':'')+'><span><b>'+esc(title)+'</b><small>'+desc+'</small>'+extra+'</span></label>';
+  openModal("Decidir · "+(pos.label||pos.ticker),
+    '<form id="goalDecisionForm" class="portfolio-form goal-decide-form" data-position-id="'+esc(positionId)+'">'+
+      '<p class="goal-decide-head">Precio actual '+eur(price)+' · tu precio medio '+eur(avg)+(breakeven!==null?' · sin pérdidas desde '+eur(breakeven)+' (con comisiones)':'')+'</p>'+
+      opt("sell","Vender ahora","Abre el registro de la venta con el precio ejecutable.")+
+      opt("recover","Mantener hasta recuperar","El Objetivo propondrá vender cuando llegue a "+esc(eur(breakeven))+".")+
+      opt("pct","Mantener hasta +X %","Vender cuando gane este porcentaje sobre tu precio medio (con comisiones).",'<input name="pct" type="number" inputmode="decimal" step="any" min="0.1" value="5" aria-label="Porcentaje"> %')+
+      opt("catalyst","Mantener hasta el catalizador",cat?esc(cat.label)+" · "+esc(new Date(cat.date+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"long"}))+". Al día siguiente el Objetivo la vuelve a evaluar.":"Sin catalizador con fecha conocido para esta acción.","",!cat)+
+      opt("better","Mantener hasta un cambio mejor","Solo propone soltarla si aparece una alternativa con score ≥ 85/100 cuya ganancia prevista cubra la pérdida y las comisiones.")+
+      opt("date","Revisar el día…","Pausa: el Objetivo no propone nada hasta esa fecha.",'<input name="until" type="date" min="'+today+'" value="'+in7+'" aria-label="Fecha">')+
+      '<label class="goal-decide-emergency"><input type="checkbox" name="emergency" checked> Stop de emergencia si cae otro <input name="emergencyPct" type="number" inputmode="decimal" step="any" min="1" max="90" value="15" aria-label="Caída"> % desde ahora</label>'+
+      '<div class="portfolio-form-status" data-goal-decide-status aria-live="polite"></div>'+
+      '<div class="position-freeze-actions"><button type="submit" class="btn">Guardar decisión</button>'+
+      (current?'<button type="button" class="btn ghost" data-goal-decide-clear="'+esc(positionId)+'">Quitar decisión</button>':'')+'</div>'+
+    '</form>');
+  const form=$("#goalDecisionForm");
+  if(form)form.dataset.ctx=JSON.stringify({price,avg,breakeven,catDate:cat?cat.date:"",units,fee});
+}
+async function saveGoalDecisionForm(form){
+  if(!form||form.dataset.saving==="1")return;
+  const positionId=form.dataset.positionId,c=JSON.parse(form.dataset.ctx||"{}"),fd=new FormData(form),mode=String(fd.get("mode")||"");
+  const status=form.querySelector("[data-goal-decide-status]");
+  if(!mode){if(status)status.textContent="Elige una opción.";return}
+  if(mode==="sell"){
+    closeModal();
+    const btn=document.querySelector('[data-register-goal-operation="SELL"][data-goal-position-id="'+CSS.escape(positionId)+'"]');
+    if(btn)btn.click();else toast("La venta se podrá registrar cuando haya cotización ejecutable.");
+    if(goalDecisionFor(positionId)&&window.ViewInvAIDecisions)try{await window.ViewInvAIDecisions.clear(positionId)}catch(_){}
+    return;
+  }
+  const price=num(c.price),avg=num(c.avg),units=num(c.units)||0,fee=num(c.fee)||1;
+  const body={positionId,decision:mode==="catalyst"||mode==="date"?"later":"hold",holdMode:mode};
+  if(mode==="recover")body.targetEur=num(c.breakeven);
+  if(mode==="pct"){
+    const pct=num(fd.get("pct"));if(!(pct>0)){if(status)status.textContent="Indica el porcentaje.";return}
+    body.holdPct=pct;body.targetEur=avg!==null?avg*(1+pct/100)+(units>0?2*fee/units:0):null;
+  }
+  if(mode==="catalyst")body.holdUntil=c.catDate;
+  if(mode==="date"){body.holdUntil=String(fd.get("until")||"");if(!body.holdUntil){if(status)status.textContent="Indica la fecha.";return}}
+  if(fd.get("emergency")&&price!==null){const e=num(fd.get("emergencyPct"));if(e>0)body.emergencyEur=price*(1-e/100)}
+  const raw=state.positions.find(p=>String(p.id)===String(positionId));
+  if(raw&&String(raw.currency||"EUR").toUpperCase()==="EUR"&&price!==null)body.price=price;
+  form.dataset.saving="1";if(status)status.textContent="Guardando…";
+  try{
+    const response=await api("/api/position-decisions",{method:"POST",body:JSON.stringify(body)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo guardar la decisión.");
+    if(window.ViewInvAIDecisions&&typeof window.ViewInvAIDecisions.load==="function")await window.ViewInvAIDecisions.load(true);
+    goalPlanCache=null;closeModal();toast("Decisión guardada: el Objetivo la respetará.");renderApp();
+  }catch(error){if(status)status.textContent=error.message||"No se pudo guardar la decisión."}
+  finally{form.dataset.saving=""}
 }
 
 async function saveTransactionForm(form) {
@@ -3771,6 +3867,20 @@ function bind() {
       return;
     }
 
+    const decideButton = event.target.closest?.("[data-goal-decide]");
+    if (decideButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      openGoalDecisionModal(decideButton.dataset.goalDecide);
+      return;
+    }
+    const decideClear = event.target.closest?.("[data-goal-decide-clear]");
+    if (decideClear) {
+      event.preventDefault();
+      try { await window.ViewInvAIDecisions.clear(decideClear.dataset.goalDecideClear); goalPlanCache=null; closeModal(); toast("Decisión quitada."); renderApp(); }
+      catch (error) { toast(error.message || "No se pudo quitar la decisión.", true); }
+      return;
+    }
     const freezeClear = event.target.closest?.("[data-freeze-clear]");
     if (freezeClear) {
       event.preventDefault();
@@ -3878,6 +3988,11 @@ function bind() {
       return;
     }
 
+    if (event.target.id === "goalDecisionForm") {
+      event.preventDefault();
+      await saveGoalDecisionForm(event.target);
+      return;
+    }
     if (event.target.id === "positionFreezeForm") {
       event.preventDefault();
       await savePositionFreeze(event.target);

@@ -469,6 +469,7 @@ function profileGoalPlanHtml(g){
   head=g.action&&g.action.type==='SELL'?'Vender: stop alcanzado o salida del plan':'En cartera · Stop '+px(g.stopEur)+(N(g.stopDistPct)!==null?' (−'+pct(g.stopDistPct)+' del precio)':'');
   grid='<div><small>PRECIO</small><b>'+px(g.priceEur)+'</b><span>'+(g.priceIsBid?'venta en BID':'precio actual (sin BID)')+'</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>'+(g.trailing?'dinámico, sube con el precio':'fijo desde la compra')+'</span></div>';
   if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
+  if(g.holdText){head='⏳ '+String(g.holdText).replace(/^Mantener [^:]*: /,'');note+='<p class="plan-note">'+E(g.holdText)+'</p>'}
  }
  return '<details class="profile-plan" data-profile-plan data-plan-source="goal"><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
   '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+frozenNote+

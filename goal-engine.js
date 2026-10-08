@@ -16,6 +16,7 @@
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
     aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4,maxHoldDays:6}
   };
+  const BETTER_SCORE=85;
   const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
@@ -219,10 +220,45 @@
     let pool=cash;
     const remaining=[];
 
+    // 0) Decisiones del usuario sobre una posición («Decidir»): mantener hasta recuperar, hasta +X %,
+    //    hasta un catalizador, hasta un cambio mejor o en pausa hasta una fecha. Mientras dure, el plan no
+    //    propone su stop ni cambiarla (salvo «mejor cambio»), pero sí vende si salta el stop de emergencia
+    //    o se alcanza el precio que el usuario fijó.
+    const holdLabel=(p,h,price)=>{
+      const target=n(h.targetEur),left=target!==null&&price>0?(target/price-1)*100:null;
+      const dd=v=>{const d=new Date(String(v).slice(0,10)+'T12:00:00Z');return Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES',{day:'numeric',month:'short',timeZone:'UTC'}):''};
+      const base=h.mode==='pct'?'mantener hasta '+(n(h.pct)!==null?'+'+(Math.round(n(h.pct)*10)/10).toLocaleString('es-ES')+' %':'el objetivo')+(target!==null?' · vender desde '+money(target):'')
+        :h.mode==='catalyst'?'mantener hasta el catalizador'+(h.until?' del '+dd(h.until):'')
+        :h.mode==='better'?'mantener hasta que aparezca un cambio mejor (score ≥ '+BETTER_SCORE+')'
+        :h.mode==='date'?'en pausa hasta el '+dd(h.until)
+        :'mantener hasta recuperar'+(target!==null?' · vender desde '+money(target):'');
+      return base+(left!==null&&left>0&&(h.mode==='pct'||h.mode==='recover')?' (faltan +'+(Math.round(left*10)/10).toLocaleString('es-ES')+' %)':'')+
+        (n(h.emergencyEur)!==null?' · stop de emergencia '+money(h.emergencyEur):'');
+    };
+
     // 1) Stops (siempre) y stops que suben.
     for(const p of positions){
       const st=positionStop(p,risk),price=n(p.bidEur)??n(p.priceEur),units=n(p.units)||0;
       const row={...p,stop:st};
+      const h=p.hold&&p.hold.mode?p.hold:null;
+      if(h){
+        const emergency=n(h.emergencyEur),target=n(h.targetEur);
+        if(emergency!==null&&price!==null&&price<=emergency){
+          pool+=Math.max(0,units*price-feeOf(p,'SELL'));
+          actions.push({type:'SELL',reason:'emergency',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,stopEur:r2(emergency),
+            text:'Vender '+units+' × '+label(p)+': salta el stop de emergencia ('+money(emergency)+') que pusiste al decidir mantenerla.'});
+          continue;
+        }
+        if((h.mode==='recover'||h.mode==='pct')&&target!==null&&price!==null&&price>=target){
+          pool+=Math.max(0,units*price-feeOf(p,'SELL'));
+          actions.push({type:'SELL',reason:'hold-target',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,
+            text:'Vender '+units+' × '+label(p)+': '+(h.mode==='recover'?'ya ha recuperado tu precio de compra con comisiones':'alcanza el objetivo que fijaste')+' ('+money(target)+').'});
+          continue;
+        }
+        holds.push({key:p.key,ticker:p.ticker,holdMode:h.mode,text:'Mantener '+label(p)+': '+holdLabel(p,h,price)+'.'});
+        remaining.push({...row,holdActive:h});
+        continue;
+      }
       if(st.stopEur!==null&&price!==null&&price<=st.stopEur){
         const proceeds=units*price-feeOf(p,'SELL');
         pool+=Math.max(0,proceeds);
@@ -291,6 +327,22 @@
     // 3) Posiciones débiles: solo se sustituyen si compensa (pérdida + comisiones, con margen).
     const used=new Set();
     for(const p of remaining.slice()){
+      // Posiciones con decisión del usuario: solo «mejor cambio» puede proponer soltarla.
+      if(p.holdActive){
+        if(p.holdActive.mode!=='better')continue;
+        const alt=cands.find(c=>!used.has(c.key)&&(n(c.burstScore)||0)>=BETTER_SCORE);
+        if(!alt)continue;
+        const units=n(p.units)||0,price=n(p.bidEur)??n(p.priceEur)??0,avg=n(p.avgEur)??price;
+        const proceeds=units*price-feeOf(p,'SELL'),loss=Math.max(0,(avg-price)*units);
+        const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL'),expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
+        if(expectedGain<loss+fees)continue;
+        used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
+        const hi=holds.findIndex(h=>h.key===p.key);if(hi>=0)holds.splice(hi,1);
+        actions.push({type:'SELL',reason:'rotation',key:p.key,ticker:p.ticker,name:p.name,units,priceEur:price,into:alt.marketTicker||alt.ticker,intoKey:alt.key,intoLabel:label(alt),
+          expectedGainEur:r2(expectedGain),neededEur:r2(loss+fees),
+          text:'Vender '+units+' × '+label(p)+' para pasar a '+label(alt)+': es el cambio mejor que esperabas (score temprano '+Math.round(alt.burstScore||0)+'/100); se prevé '+money(expectedGain)+' frente a '+money(loss)+' de pérdida + '+money(fees)+' de comisiones.'});
+        continue;
+      }
       const score=n(p.score)??50,holdingDays=n(p.holdingDays),priceNow=n(p.bidEur)??n(p.priceEur),avgNow=n(p.avgEur)??priceNow;
       const ret=avgNow>0&&priceNow!==null?(priceNow/avgNow-1)*100:null;
       const imminent=n(p.catalystDays)!==null&&n(p.catalystDays)>=0&&n(p.catalystDays)<=2&&(n(p.catalystImpact)||0)>=65;
