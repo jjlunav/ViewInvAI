@@ -1286,10 +1286,15 @@ function portfolioCoachCandidates(metrics,positionRows){
   }).filter(Boolean);
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
+// Compras en acciones enteras; ventas con decimales (posiciones fraccionadas o parte libre de una congelación).
+function goalOperationUnits(side,value){
+  const v=Math.max(0,num(value)||0);
+  return String(side||"BUY").toUpperCase()==="SELL"?Math.floor(v*1e6+1e-6)/1e6:Math.round(v);
+}
 function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
   if(!(num(units)>0)||num(price)===null)return"";
   if(!executable)return '<span class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Esperar cotización ejecutable</span>';
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1449,10 +1454,13 @@ function goalEngineInput(metrics,positionRows){
   const radar=[...merged.values()].sort((a,b)=>(num(b.score)||0)-(num(a.score)||0)||(num(b.quality)||0)-(num(a.quality)||0));
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
   // Las acciones congeladas suman al valor de la cartera, pero el plan no las vende ni les pone stop.
-  let lockedValueEur=0;const lockedKeys=[];
+  let lockedValueEur=0,lockedHoldings=0;const lockedKeys=[];
   for(const row of positionRows){
-    const frozen=Math.min(num(row.qty)||0,positionFrozenQty(row.p));
-    if(frozen>0&&row.unitEur!==null){lockedValueEur+=frozen*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock))}
+    const total=num(row.qty)||0,frozen=Math.min(total,positionFrozenQty(row.p));
+    if(frozen>0&&row.unitEur!==null){
+      lockedValueEur+=frozen*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock));
+      if(total-frozen<=1e-9)lockedHoldings++;
+    }
   }
   const positions=positionRows.map(row=>({...row,qty:Math.max(0,(num(row.qty)||0)-positionFrozenQty(row.p))}))
     .filter(row=>row.qty>1e-9&&row.unitEur!==null).map(row=>{
@@ -1487,7 +1495,7 @@ function goalEngineInput(metrics,positionRows){
   }).filter(Boolean);
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
-    positions,candidates,lockedValueEur,lockedKeys,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
+    positions,candidates,lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
 }
 // Plan del Objetivo para una acción concreta (lo usa la ficha): mismo motor y mismos datos que
 // «Hoy toca» de la cartera seleccionada, para que la ficha no muestre un stop distinto.
@@ -1505,11 +1513,13 @@ function goalPlanForStock(stock){
       Object.assign(c,{plan:engine.plan(input),input,portfolioName:metrics.portfolio.name,risk:input.config.risk});
     }
     if(!c.plan)return null;
-    const raw=state.positions.find(p=>String(p.portfolio_id)===String(c.portfolioId)&&Number(p.active)!==0&&
+    // Todos los lotes de la misma acción en la cartera (puede haber varios por bróker o mercado).
+    const lots=state.positions.filter(p=>String(p.portfolio_id)===String(c.portfolioId)&&Number(p.active)!==0&&
       (String(p.stock_key||"").toUpperCase()===key||goalStockKey(stockByKey(p.stock_key))===key));
-    const frozenQty=raw?positionFrozenQty(raw):0;
-    const base={portfolioName:c.portfolioName,preferTr:!!c.input.preferTr,frozenQty,frozenUntil:frozenQty>0?String(raw.frozen_until).slice(0,10):""};
-    if(raw&&frozenQty>0&&frozenQty>=(num(raw.quantity)||0)-1e-9)return{...base,kind:"frozen",label:raw.ticker||key};
+    const heldQty=lots.reduce((s,p)=>s+(num(p.quantity)||0),0),frozenQty=lots.reduce((s,p)=>s+positionFrozenQty(p),0);
+    const frozenUntil=lots.filter(p=>positionFrozenQty(p)>0).map(p=>String(p.frozen_until).slice(0,10)).sort()[0]||"";
+    const base={portfolioName:c.portfolioName,preferTr:!!c.input.preferTr,frozenQty,frozenUntil};
+    if(lots.length&&frozenQty>0&&frozenQty>=heldQty-1e-9)return{...base,kind:"frozen",label:lots[0].ticker||key};
     // Una posición en cartera manda sobre compras o esperas (la clave guardada puede ser el ISIN).
     const pos=c.input.positions.find(p=>p.key===key||goalStockKey(p.row&&p.row.stock)===key);
     if(pos){
@@ -2664,8 +2674,8 @@ function openGoalOperationModal(button){
   const stock=stockByKey(stockKey),portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));
   if(!stock||!portfolio)return toast("No se pudo preparar la operación.",true);
   const preferTr=button.dataset.goalPreferTr==="1",currency=String(button.dataset.goalCurrency||(preferTr?"EUR":"USD")).toUpperCase();
-  const units=Math.max(0,Math.round(num(button.dataset.goalUnits)||0)),price=num(button.dataset.goalPrice);
-  if(units<1||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
+  const units=goalOperationUnits(side,button.dataset.goalUnits),price=num(button.dataset.goalPrice);
+  if(!(units>0)||(side!=="SELL"&&units<1)||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
   const positionId=String(button.dataset.goalPositionId||"");
   const position=positionId
     ?state.positions.find(p=>String(p.id)===positionId&&Number(p.active)!==0)||null
@@ -2681,7 +2691,7 @@ function openGoalOperationModal(button){
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
       '<input name="side" type="hidden" value="'+esc(side)+'">'+
       '<div class="portfolio-form-grid">'+
-        '<label><span>Acciones</span><input name="quantity" type="number" inputmode="numeric" step="1" min="1" value="'+esc(String(units))+'" required></label>'+
+        '<label><span>Acciones</span><input name="quantity" type="number" inputmode="'+(side==="SELL"?'decimal':'numeric')+'" step="'+(side==="SELL"?'any':'1')+'" min="'+(side==="SELL"?'0.000001':'1')+'"'+(side==="SELL"&&position?' max="'+esc(String(Math.max(0,(num(position.quantity)||0)-positionFrozenQty(position))))+'"':'')+' value="'+esc(String(units))+'" required></label>'+
         '<label><span>Precio ejecutado</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(price))+'" required></label>'+
       '</div>'+
       '<div class="portfolio-form-grid">'+
@@ -2721,7 +2731,7 @@ async function saveGoalOperationForm(form){
     portfolioId:form.dataset.portfolioId,positionId:form.dataset.positionId||"",broker:form.dataset.broker||String(fd.get("broker")||""),
     stockKey:form.dataset.stockKey,ticker:form.dataset.ticker||"",
     name:form.dataset.name||"",exchange:form.dataset.exchange||"",isin:form.dataset.isin||"",preferTr,
-    side,quantity:Math.max(0,Math.round(num(fd.get("quantity"))||0)),price:num(fd.get("price")),
+    side,quantity:goalOperationUnits(side,fd.get("quantity")),price:num(fd.get("price")),
     fees:num(fd.get("fees")),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
     executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
   };
@@ -2732,7 +2742,12 @@ async function saveGoalOperationForm(form){
     else if(payload.currency==="EUR"&&baseCurrency==="USD"&&num(fxUsdEur)!==null&&num(fxUsdEur)>0)payload.cashFxRate=1/num(fxUsdEur);
   }
   const status=form.querySelector("[data-goal-operation-status]"),button=form.querySelector('button[type="submit"]');
-  if(payload.quantity<1||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
+  if(!(payload.quantity>0)||(side!=="SELL"&&payload.quantity<1)||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
+  if(side==="SELL"&&payload.positionId){
+    const pos=state.positions.find(p=>String(p.id)===String(payload.positionId));
+    const free=pos?Math.max(0,(num(pos.quantity)||0)-positionFrozenQty(pos)):null;
+    if(free!==null&&payload.quantity>free+1e-9){if(status)status.textContent="Solo puedes vender "+formatNumber(free,6)+" acciones: el resto están congeladas.";return}
+  }
   form.dataset.saving="1";if(button){button.disabled=true;button.textContent="Guardando…"}
   try{
     const response=await api("/api/transactions",{method:"POST",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));

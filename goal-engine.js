@@ -343,7 +343,8 @@
     if(defensive){
       notes.push('Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.');
     }else{
-      let slots=maxPositions-remaining.length;
+      // Las posiciones congeladas enteras siguen ocupando hueco en la cartera.
+      let slots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       let specCount=remaining.filter(p=>p.speculative).length;
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       for(const c of cands){
