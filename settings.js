@@ -512,7 +512,7 @@ function initSettings(){
    (failed?row('Con error',String(failed),'admin-st bad'):'')+
    (noKey?row('Sin clave',String(noKey),'admin-st warn'):'')+
    (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
-   row('Consultas hoy',fmt(calls))+
+   row('Consultas hoy a IA y búsqueda web <small>(análisis de eventos)</small>',fmt(calls))+
    row('Caché de mercado',d.turso&&d.turso.active==='turso'?'Turso (activa)':'D1 (Turso no activa)',d.turso&&d.turso.active==='turso'?'admin-st ok':'admin-st warn')+
    row('Cloudflare',!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
    '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
