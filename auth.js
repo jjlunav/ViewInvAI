@@ -118,17 +118,24 @@ function nativeLocalNotifications() {
   }
   return null;
 }
+// El toque se escucha desde el arranque: si Android cerró la app, la notificación local sigue en
+// la bandeja y al pulsarla la app reabierta debe poder abrir el valor o el Objetivo.
+async function bindLocalNotificationTaps() {
+  const local = nativeLocalNotifications();
+  if (!local || localNotificationsBound || typeof local.addListener !== "function") return;
+  localNotificationsBound = true;
+  try {
+    await local.addListener("localNotificationActionPerformed", event => {
+      const extra = event && event.notification && event.notification.extra || {};
+      openPushTarget({ data: extra });
+    });
+  } catch (error) { console.warn("Local notification tap listener failed", error); }
+}
 async function showForegroundPush(title, body, data) {
   const local = nativeLocalNotifications();
   if (!local || typeof local.schedule !== "function") return false;
   try {
-    if (!localNotificationsBound && typeof local.addListener === "function") {
-      localNotificationsBound = true;
-      await local.addListener("localNotificationActionPerformed", event => {
-        const extra = event && event.notification && event.notification.extra || {};
-        openPushTarget({ data: extra });
-      });
-    }
+    await bindLocalNotificationTaps();
     localNotificationSeq = (localNotificationSeq + 1) % 100000;
     await local.schedule({ notifications: [{
       id: Math.floor(Date.now() / 1000) % 1000000000 + localNotificationSeq,
@@ -144,6 +151,7 @@ async function showForegroundPush(title, body, data) {
 async function bindPushListeners(plugin) {
   if (!plugin || pushListenersBound) return;
   pushListenersBound = true;
+  await bindLocalNotificationTaps();
   await plugin.addListener("tokenReceived", event => {
     registerPushToken(event && event.token).catch(error => console.warn("FCM token sync failed", error));
   });

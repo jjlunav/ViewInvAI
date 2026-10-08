@@ -113,6 +113,8 @@ async function refreshPushDeviceStatus(){
 let lastPushProblem='';
 function pushProblemText(detail){
  if(!detail)return'';
+ const android=String(detail.platform||'')==='android';
+ if(android&&(detail.permission==='denied'||detail.permission==='prompt'||detail.permission==='prompt-with-rationale'))return'Las notificaciones de ViewInvAI están desactivadas en Android: actívalas en Ajustes del teléfono › Aplicaciones › ViewInvAI › Notificaciones y vuelve a probar.';
  if(detail.permission==='denied')return'Las notificaciones están bloqueadas para esta web: permítelas en el candado de la barra de direcciones y vuelve a probar.';
  if(detail.permission==='default')return'El navegador no ha concedido permiso para notificaciones.';
  const raw=String(detail.error||'');
