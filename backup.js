@@ -65,6 +65,22 @@
      out.tx+=r.imported||0;out.txSkipped+=r.skipped||0;out.errors+=(r.errors||[]).length;done+=rows.length;
     }
    }
+   // Congelaciones vigentes: se vuelven a aplicar a la posición equivalente (misma acción, bróker y mercado).
+   const today=new Date().toLocaleDateString('sv-SE');
+   const frozen=(b.positions||[]).filter(p=>Number(p.frozen_qty)>0&&String(p.frozen_until||'').slice(0,10)>=today&&idMap.has(String(p.portfolio_id)));
+   if(frozen.length){
+    status('Restaurando acciones congeladas…');
+    const byPortfolio=new Map();
+    for(const p of frozen){
+     const pid=idMap.get(String(p.portfolio_id));
+     if(!byPortfolio.has(pid))byPortfolio.set(pid,(await api('/api/positions?portfolioId='+encodeURIComponent(pid))).positions||[]);
+     const match=byPortfolio.get(pid).find(x=>Number(x.active)!==0&&String(x.stock_key).toUpperCase()===String(p.stock_key).toUpperCase()&&
+      String(x.broker||'')===String(p.broker||'')&&Number(x.prefer_tr)===Number(p.prefer_tr));
+     if(!match)continue;
+     try{await api('/api/positions/'+encodeURIComponent(match.id)+'/freeze',{method:'POST',body:JSON.stringify({quantity:Math.min(Number(p.frozen_qty),Number(match.quantity)||0),until:String(p.frozen_until).slice(0,10)})})}
+     catch(_){out.errors++}
+    }
+   }
    const divs=b.dividends||[];
    for(let i=0;i<divs.length;i+=200){
     status('Restaurando dividendos…');

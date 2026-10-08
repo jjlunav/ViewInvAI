@@ -1286,10 +1286,15 @@ function portfolioCoachCandidates(metrics,positionRows){
   }).filter(Boolean);
   state.goalCandidateCache={at:Date.now(),key:cacheKey,rows:result};return result;
 }
+// Compras en acciones enteras; ventas con decimales (posiciones fraccionadas o parte libre de una congelación).
+function goalOperationUnits(side,value){
+  const v=Math.max(0,num(value)||0);
+  return String(side||"BUY").toUpperCase()==="SELL"?Math.floor(v*1e6+1e-6)/1e6:Math.round(v);
+}
 function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
   if(!(num(units)>0)||num(price)===null)return"";
   if(!executable)return '<span class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Esperar cotización ejecutable</span>';
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(Math.round(num(units)||0)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1424,6 +1429,13 @@ function goalAiOf(ticker){
   const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker):null;
   return v&&v.verdict||"";
 }
+// Acciones congeladas de una posición que siguen vigentes hoy (fecha local, inclusive).
+function positionFrozenQty(p){
+  const until=String(p&&p.frozen_until||"").slice(0,10),qty=num(p&&p.frozen_qty)||0;
+  if(!until||!(qty>0))return 0;
+  const today=new Date().toLocaleDateString("sv-SE");
+  return until>=today?Math.min(qty,Math.max(0,num(p.quantity)||qty)):0;
+}
 function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
@@ -1441,7 +1453,17 @@ function goalEngineInput(metrics,positionRows){
   }
   const radar=[...merged.values()].sort((a,b)=>(num(b.score)||0)-(num(a.score)||0)||(num(b.quality)||0)-(num(a.quality)||0));
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
-  const positions=positionRows.filter(row=>(num(row.qty)||0)>0&&row.unitEur!==null).map(row=>{
+  // Las acciones congeladas suman al valor de la cartera, pero el plan no las vende ni les pone stop.
+  let lockedValueEur=0,lockedHoldings=0;const lockedKeys=[];
+  for(const row of positionRows){
+    const total=num(row.qty)||0,frozen=Math.min(total,positionFrozenQty(row.p));
+    if(frozen>0&&row.unitEur!==null){
+      lockedValueEur+=frozen*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock));
+      if(total-frozen<=1e-9)lockedHoldings++;
+    }
+  }
+  const positions=positionRows.map(row=>({...row,qty:Math.max(0,(num(row.qty)||0)-positionFrozenQty(row.p))}))
+    .filter(row=>row.qty>1e-9&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
     const sell=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,row.qty);
     const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase(),cat=portfolioGoalCatalyst(row.stock);
@@ -1473,7 +1495,7 @@ function goalEngineInput(metrics,positionRows){
   }).filter(Boolean);
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
-    positions,candidates,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
+    positions,candidates,lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
 }
 // Plan del Objetivo para una acción concreta (lo usa la ficha): mismo motor y mismos datos que
 // «Hoy toca» de la cartera seleccionada, para que la ficha no muestre un stop distinto.
@@ -1491,7 +1513,13 @@ function goalPlanForStock(stock){
       Object.assign(c,{plan:engine.plan(input),input,portfolioName:metrics.portfolio.name,risk:input.config.risk});
     }
     if(!c.plan)return null;
-    const base={portfolioName:c.portfolioName,preferTr:!!c.input.preferTr};
+    // Todos los lotes de la misma acción en la cartera (puede haber varios por bróker o mercado).
+    const lots=state.positions.filter(p=>String(p.portfolio_id)===String(c.portfolioId)&&Number(p.active)!==0&&
+      (String(p.stock_key||"").toUpperCase()===key||goalStockKey(stockByKey(p.stock_key))===key));
+    const heldQty=lots.reduce((s,p)=>s+(num(p.quantity)||0),0),frozenQty=lots.reduce((s,p)=>s+positionFrozenQty(p),0);
+    const frozenUntil=lots.filter(p=>positionFrozenQty(p)>0).map(p=>String(p.frozen_until).slice(0,10)).sort()[0]||"";
+    const base={portfolioName:c.portfolioName,preferTr:!!c.input.preferTr,frozenQty,frozenUntil};
+    if(lots.length&&frozenQty>0&&frozenQty>=heldQty-1e-9)return{...base,kind:"frozen",label:lots[0].ticker||key};
     // Una posición en cartera manda sobre compras o esperas (la clave guardada puede ser el ISIN).
     const pos=c.input.positions.find(p=>p.key===key||goalStockKey(p.row&&p.row.stock)===key);
     if(pos){
@@ -1592,6 +1620,8 @@ function portfolioGoalViewHtml(){
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
   const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>'<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+'</li>').join('')+'</ul>':'';
+  const frozenRows=positionRows.map(row=>({row,q:Math.min(num(row.qty)||0,positionFrozenQty(row.p))})).filter(x=>x.q>0);
+  const frozenNote=frozenRows.length?'<ul class="goal2-notes muted goal2-frozen">'+frozenRows.map(({row,q})=>'<li>🔒 '+esc(formatNumber(q,6))+' × '+esc(row.stock&&row.stock.name||row.p.name||row.p.ticker||'')+' congeladas hasta el '+esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"}))+': el plan no las toca.</li>').join('')+'</ul>':'';
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
   const posList=input.positions.length?'<div class="goal2-positions">'+input.positions.map(p=>{
       const st=engine.positionStop(p,input.config.risk),ret=p.avgEur>0?(p.priceEur/p.avgEur-1)*100:null;
@@ -1603,7 +1633,7 @@ function portfolioGoalViewHtml(){
   return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     goalPaceHtml(plan.pace,metrics)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+holds+'</section>'+
+    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+holds+frozenNote+'</section>'+
     (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+
     goalAiContrastPanel(metrics,portfolio,positionRows,plan.actions.filter(a=>a.type==="BUY").map(a=>{const c=input.candidates.find(x=>x.key===a.key);return c?{stock:c.stock,score:c.score,quality:c.quality,entry:{rr:null},levels:{stopPct:a.stopPct,takePct:a.targetPct}}:null}).filter(Boolean),[])+
     '<p class="portfolio-goal-note compact-note">El plan se recalcula al momento con los precios en vivo. No vende una acción en pérdidas para cambiarla salvo que la nueva prevea recuperar esa pérdida y las comisiones con margen; los stops suben solos cuando la acción gana. Opinión orientativa: decide siempre tú.</p>'+
@@ -2496,6 +2526,7 @@ async function openTransactionsModal(positionId, preferredSide = null) {
           '<div class="portfolio-form-status" data-transaction-status aria-live="polite"></div>' +
           '<button type="submit" class="btn">Registrar operación</button>' +
         '</form>' +
+        positionFreezeFormHtml(position) +
         '<div class="transaction-history-head"><strong>Historial</strong><span>' + (data.transactions || []).length + ' operaciones</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(data.transactions || [], currency) + '</div>' +
       '</div>';
@@ -2523,6 +2554,52 @@ async function openTransactionsModal(positionId, preferredSide = null) {
     if (body) body.innerHTML = '<div class="portfolio-empty-state compact">No se pudieron cargar las operaciones.</div>';
     toast(error.message || 'No se pudieron cargar las operaciones.', true);
   }
+}
+
+// «Congelar acciones»: cantidad (con decimales) y fecha hasta la que el Objetivo no las toca.
+function positionFreezeFormHtml(position){
+  const held=num(position.quantity)||0,active=positionFrozenQty(position),until=String(position.frozen_until||"").slice(0,10);
+  const today=new Date().toLocaleDateString("sv-SE");
+  const status=active>0
+    ?'Congeladas '+formatNumber(active,6)+' de '+formatNumber(held,6)+' acciones hasta el '+new Date(until+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"})+' (incluido). El Objetivo no propone vender, stops ni cambios con ellas.'
+    :'Ninguna acción congelada. El Objetivo puede proponer vender, stops o cambios con toda la posición.';
+  return '<form id="positionFreezeForm" class="portfolio-form transaction-form position-freeze-form" data-position-id="'+esc(position.id)+'">'+
+    '<div class="transaction-form-head"><strong>Congelar acciones</strong><span>no se tocan hasta la fecha</span></div>'+
+    '<p class="position-freeze-status'+(active>0?' active':'')+'">'+esc(status)+'</p>'+
+    '<div class="portfolio-form-grid">'+
+      '<label><span>Cantidad congelada</span><input name="frozenQty" type="number" inputmode="decimal" step="any" min="0" max="'+esc(String(held))+'" value="'+(active>0?esc(String(active)):'')+'" placeholder="p. ej. '+esc(formatNumber(held,4))+'"></label>'+
+      '<label><span>Hasta (incluido)</span><input name="frozenUntil" type="date" min="'+today+'" value="'+(active>0?esc(until):'')+'"></label>'+
+    '</div>'+
+    '<div class="portfolio-form-status" data-freeze-status aria-live="polite"></div>'+
+    '<div class="position-freeze-actions"><button type="submit" class="btn">Guardar congelación</button>'+
+    (active>0?'<button type="button" class="btn ghost" data-freeze-clear>Descongelar</button>':'')+'</div>'+
+  '</form>';
+}
+async function savePositionFreeze(form,clear=false){
+  if(!form||form.dataset.saving==='1')return;
+  const position=transactionPosition(form.dataset.positionId);
+  if(!position)return toast('No se encuentra la posición.',true);
+  const status=form.querySelector('[data-freeze-status]');
+  const quantity=clear?0:(num(form.querySelector('[name="frozenQty"]')?.value)||0);
+  const until=clear?'':String(form.querySelector('[name="frozenUntil"]')?.value||'');
+  if(!clear&&quantity>0&&!until){if(status)status.textContent='Indica hasta qué fecha quedan congeladas.';return}
+  if(!clear&&quantity>(num(position.quantity)||0)+1e-9){if(status)status.textContent='No puedes congelar más acciones de las que tienes.';return}
+  form.dataset.saving='1';if(status)status.textContent='Guardando…';
+  try{
+    const response=await api('/api/positions/'+encodeURIComponent(position.id)+'/freeze',{method:'POST',body:JSON.stringify({quantity,until})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'No se pudo guardar la congelación.');
+    if(data.position){
+      const i=state.positions.findIndex(p=>String(p.id)===String(position.id));
+      if(i>=0)state.positions[i]={...state.positions[i],...data.position};
+    }
+    goalPlanCache=null;
+    toast(quantity>0?'Acciones congeladas: el Objetivo no las tocará hasta la fecha.':'Acciones descongeladas.');
+    form.outerHTML=positionFreezeFormHtml(transactionPosition(position.id)||position);
+    renderApp();
+  }catch(error){
+    if(status)status.textContent=error.message||'No se pudo guardar la congelación.';
+  }finally{form.dataset.saving=''}
 }
 
 async function saveTransactionForm(form) {
@@ -2597,8 +2674,8 @@ function openGoalOperationModal(button){
   const stock=stockByKey(stockKey),portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId));
   if(!stock||!portfolio)return toast("No se pudo preparar la operación.",true);
   const preferTr=button.dataset.goalPreferTr==="1",currency=String(button.dataset.goalCurrency||(preferTr?"EUR":"USD")).toUpperCase();
-  const units=Math.max(0,Math.round(num(button.dataset.goalUnits)||0)),price=num(button.dataset.goalPrice);
-  if(units<1||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
+  const units=goalOperationUnits(side,button.dataset.goalUnits),price=num(button.dataset.goalPrice);
+  if(!(units>0)||(side!=="SELL"&&units<1)||price===null)return toast("La recomendación no contiene una operación ejecutable.",true);
   const positionId=String(button.dataset.goalPositionId||"");
   const position=positionId
     ?state.positions.find(p=>String(p.id)===positionId&&Number(p.active)!==0)||null
@@ -2614,7 +2691,7 @@ function openGoalOperationModal(button){
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
       '<input name="side" type="hidden" value="'+esc(side)+'">'+
       '<div class="portfolio-form-grid">'+
-        '<label><span>Acciones</span><input name="quantity" type="number" inputmode="numeric" step="1" min="1" value="'+esc(String(units))+'" required></label>'+
+        '<label><span>Acciones</span><input name="quantity" type="number" inputmode="'+(side==="SELL"?'decimal':'numeric')+'" step="'+(side==="SELL"?'any':'1')+'" min="'+(side==="SELL"?'0.000001':'1')+'"'+(side==="SELL"&&position?' max="'+esc(String(Math.max(0,(num(position.quantity)||0)-positionFrozenQty(position))))+'"':'')+' value="'+esc(String(units))+'" required></label>'+
         '<label><span>Precio ejecutado</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(price))+'" required></label>'+
       '</div>'+
       '<div class="portfolio-form-grid">'+
@@ -2654,7 +2731,7 @@ async function saveGoalOperationForm(form){
     portfolioId:form.dataset.portfolioId,positionId:form.dataset.positionId||"",broker:form.dataset.broker||String(fd.get("broker")||""),
     stockKey:form.dataset.stockKey,ticker:form.dataset.ticker||"",
     name:form.dataset.name||"",exchange:form.dataset.exchange||"",isin:form.dataset.isin||"",preferTr,
-    side,quantity:Math.max(0,Math.round(num(fd.get("quantity"))||0)),price:num(fd.get("price")),
+    side,quantity:goalOperationUnits(side,fd.get("quantity")),price:num(fd.get("price")),
     fees:num(fd.get("fees")),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
     executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
   };
@@ -2665,7 +2742,12 @@ async function saveGoalOperationForm(form){
     else if(payload.currency==="EUR"&&baseCurrency==="USD"&&num(fxUsdEur)!==null&&num(fxUsdEur)>0)payload.cashFxRate=1/num(fxUsdEur);
   }
   const status=form.querySelector("[data-goal-operation-status]"),button=form.querySelector('button[type="submit"]');
-  if(payload.quantity<1||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
+  if(!(payload.quantity>0)||(side!=="SELL"&&payload.quantity<1)||payload.price===null||payload.price<0||!payload.executedAt){if(status)status.textContent="Revisa cantidad, precio y fecha.";return}
+  if(side==="SELL"&&payload.positionId){
+    const pos=state.positions.find(p=>String(p.id)===String(payload.positionId));
+    const free=pos?Math.max(0,(num(pos.quantity)||0)-positionFrozenQty(pos)):null;
+    if(free!==null&&payload.quantity>free+1e-9){if(status)status.textContent="Solo puedes vender "+formatNumber(free,6)+" acciones: el resto están congeladas.";return}
+  }
   form.dataset.saving="1";if(button){button.disabled=true;button.textContent="Guardando…"}
   try{
     const response=await api("/api/transactions",{method:"POST",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
@@ -3689,6 +3771,12 @@ function bind() {
       return;
     }
 
+    const freezeClear = event.target.closest?.("[data-freeze-clear]");
+    if (freezeClear) {
+      event.preventDefault();
+      await savePositionFreeze(freezeClear.closest("#positionFreezeForm"), true);
+      return;
+    }
     const transactionsButton = event.target.closest?.("[data-position-transactions]");
     if (transactionsButton) {
       event.preventDefault();
@@ -3790,6 +3878,11 @@ function bind() {
       return;
     }
 
+    if (event.target.id === "positionFreezeForm") {
+      event.preventDefault();
+      await savePositionFreeze(event.target);
+      return;
+    }
     if (event.target.id === "transactionForm") {
       event.preventDefault();
       await saveTransactionForm(event.target);

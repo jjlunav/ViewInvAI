@@ -568,11 +568,23 @@ async function ensurePositionBrokerSchema(env){
   if(!names.has("broker"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN broker TEXT NOT NULL DEFAULT ''").run();
   if(!names.has("cost_basis"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN cost_basis REAL").run();
   if(!names.has("fees_total"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN fees_total REAL NOT NULL DEFAULT 0").run();
+  // Acciones congeladas: cantidad que el Objetivo no puede tocar hasta frozen_until (inclusive).
+  if(!names.has("frozen_qty"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN frozen_qty REAL NOT NULL DEFAULT 0").run();
+  if(!names.has("frozen_until"))await env.DB.prepare("ALTER TABLE positions ADD COLUMN frozen_until TEXT").run();
   await env.DB.prepare("DROP INDEX IF EXISTS idx_positions_portfolio_stock").run();
   await env.DB.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_portfolio_identity ON positions(portfolio_id,stock_key,broker,currency,prefer_tr,exchange)"
   ).run();
   positionBrokerSchemaReady=true;
+}
+
+// Congelación vigente: la fecha es la del calendario del usuario (inclusive). El servidor va en UTC,
+// así que da un día de margen (UTC de ayer): nunca descongela antes de que acabe el día del usuario.
+function serverFreezeFloorDate(){return new Date(Date.now()-86400000).toISOString().slice(0,10)}
+function serverFrozenQty(p){
+  const until=String(p&&p.frozen_until||"").slice(0,10),qty=finiteNumber(p&&p.frozen_qty)??0;
+  if(!until||!(qty>0)||until<serverFreezeFloorDate())return 0;
+  return Math.min(qty,Math.max(0,finiteNumber(p.quantity)??qty));
 }
 
 let portfolioMarketSchemaReady=false;
@@ -1234,6 +1246,14 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
       existing.isin||first.isin||"",booleanInt(existing.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,
       existing.broker||first.broker||"",existing.opened_at||ledger.firstBuyAt,ledger.quantity>1e-8?1:0,now,resolvedId,userId
     ).run();
+    // Si baja la cantidad, la congelación no puede pasar de lo que queda (y se borra al cerrar la posición):
+    // así una recompra posterior no hereda una congelación antigua.
+    const frozenNow=finiteNumber(existing.frozen_qty)??0;
+    if(frozenNow>0&&ledger.quantity<frozenNow-1e-9){
+      const keep=ledger.quantity>1e-8?Math.round(ledger.quantity*1e8)/1e8:0;
+      await env.DB.prepare("UPDATE positions SET frozen_qty=?,frozen_until=CASE WHEN ?>0 THEN frozen_until ELSE NULL END WHERE id=? AND user_id=?")
+        .bind(keep,keep,resolvedId,userId).run();
+    }
   }else{
     await env.DB.prepare(
       "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
@@ -1477,6 +1497,23 @@ async function handlePositions(request, env, user, json, parts, url) {
   if (!id) return json({ error: "Position id required" }, 400);
   const existing = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first();
   if (!existing) return json({ error: "Position not found" }, 404);
+
+  // Congelar acciones: el Objetivo no propone vender, stops ni cambios sobre esa cantidad hasta la fecha.
+  if (request.method === "POST" && parts[2] === "freeze") {
+    const body = await readJson(request);
+    const qty = finiteNumber(body.quantity) ?? 0, until = String(body.until || "").trim();
+    const held = finiteNumber(existing.quantity) ?? 0;
+    let frozenQty = 0, frozenUntil = null;
+    if (qty > 0) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || !Number.isFinite(Date.parse(until + "T00:00:00Z"))) return json({ error: "Indica hasta qué fecha quedan congeladas." }, 400);
+      if (until < serverFreezeFloorDate()) return json({ error: "La fecha tiene que ser hoy o posterior." }, 400);
+      if (qty > held + 1e-9) return json({ error: "No puedes congelar más acciones de las que tienes." }, 400);
+      frozenQty = Math.round(qty * 1e8) / 1e8; frozenUntil = until;
+    }
+    await env.DB.prepare("UPDATE positions SET frozen_qty=?,frozen_until=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(frozenQty, frozenUntil, nowIso(), id, user.id).run();
+    return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
+  }
 
   if (request.method === "PATCH") {
     const body = await readJson(request);
@@ -1985,10 +2022,11 @@ async function handleBackup(request,env,user,json){
   await ensureDividendsSchema(env);
   await ensureNotificationPreferenceSchema(env);
   await ensureUiPreferencesSchema(env);
+  await ensurePositionBrokerSchema(env);
   const all=async(sql)=>{try{return(await env.DB.prepare(sql).bind(user.id).all()).results||[]}catch(_){return[]}};
   const [portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences]=await Promise.all([
     all("SELECT id,name,broker,base_currency,cash_balance,sort_order,created_at FROM portfolios WHERE user_id=? ORDER BY sort_order,created_at"),
-    all("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,active FROM positions WHERE user_id=?"),
+    all("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,active,frozen_qty,frozen_until FROM positions WHERE user_id=?"),
     all("SELECT id,portfolio_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id FROM transactions WHERE user_id=? ORDER BY executed_at,created_at"),
     all("SELECT id,portfolio_id,external_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? ORDER BY paid_at"),
     all("SELECT stock_key,ticker,name,exchange,isin,prefer_tr,notes FROM watchlist WHERE user_id=?"),
@@ -4015,6 +4053,9 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
 
   if (target.subject_type === "position") {
     if (!globalNotifications.portfolio) return null;
+    // Posición congelada entera: no se avisa de vender ni de deterioro hasta que pase la fecha.
+    const frozen = serverFrozenQty(target);
+    if (frozen > 0 && frozen >= (finiteNumber(target.quantity) ?? 0) - 1e-9) return null;
     const decision = await positionDecisionFor(env, target.user_id, target.subject_id);
     if (decision && decision.decision === "hold") {
       const hold = holdModeAlert(target, current, decision);
@@ -5819,6 +5860,7 @@ async function scanPortfolioGoalNotifications(env,services){
   const engine=globalThis.ViewInvAIGoal;
   if(!services.loadMarketSnapshot||!engine)return{processed:0,alerts:0};
   await ensurePortfolioGoalNotificationStateSchema(env);
+  await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
     "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
@@ -5862,7 +5904,7 @@ async function scanPortfolioGoalNotifications(env,services){
   for(const goal of goals.results||[]){
     try{
       const positions=(await env.DB.prepare(
-        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,"+
+        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,p.frozen_qty,p.frozen_until,"+
         "(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=p.id AND t.user_id=p.user_id AND t.side='BUY') AS last_buy_at "+
         "FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 ORDER BY p.created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all()).results||[];
@@ -5877,12 +5919,16 @@ async function scanPortfolioGoalNotifications(env,services){
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
-      const enginePositions=[];let incomplete=false;
+      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0;
       for(const p of positions){
-        const key=String(p.stock_key||"").toUpperCase(),stock=byKey.get(key)||findStock(snapshot,p),qty=Math.max(0,finiteNumber(p.quantity)??0);
-        if(!(qty>0))continue;
+        const key=String(p.stock_key||"").toUpperCase(),stock=byKey.get(key)||findStock(snapshot,p),total=Math.max(0,finiteNumber(p.quantity)??0);
+        const frozen=Math.min(total,serverFrozenQty(p));
+        const qty=Math.max(0,total-frozen);
+        if(!(total>0))continue;
         const ptr=Number(p.prefer_tr)===1,mark=await quoteEur(stock,ptr,"LAST"),bid=await quoteEur(stock,ptr,"SELL");
         if(mark===null){incomplete=true;break}
+        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++}
+        if(!(qty>1e-9))continue;
         const avg=finiteNumber(p.avg_price),cur=String(p.currency||(ptr?"EUR":"USD")).toUpperCase();
         const avgEur=avg===null?null:cur==="EUR"?avg:cur==="USD"&&usdToEur!==null?avg*usdToEur:null;
         const st=states.get(key)||{},rr=radarByKey.get(key);
@@ -5895,7 +5941,7 @@ async function scanPortfolioGoalNotifications(env,services){
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});
       }
       if(incomplete){processed++;continue}
-      const held=new Set(enginePositions.map(p=>p.key));
+      const held=new Set([...enginePositions.map(p=>p.key),...lockedKeys]);
       const candidates=radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true)).slice(0,40).map(r=>{
         const stock=byKey.get(r.stock_key);if(!stock||!goalServerAllowed(stock,scope))return null;
         const priceEur=goalServerPriceEur(stock,preferTr,usdToEur,"BUY")??(finiteNumber(stock.price)!==null&&usdToEur!==null?finiteNumber(stock.price)*usdToEur:null);
@@ -5919,7 +5965,7 @@ async function scanPortfolioGoalNotifications(env,services){
       }
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
-        positions:enginePositions,candidates,cashEur,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
@@ -6028,6 +6074,7 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
     return { skipped: true, reason: "backend-not-configured" };
   }
   await ensurePortfolioGoalSchema(env);
+  await ensurePositionBrokerSchema(env);
 
   const nowDate = new Date();
   if (nowDate.getUTCHours() === 3 && nowDate.getUTCMinutes() < 5) {
@@ -6037,7 +6084,7 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
 
   const [positionRows, watchRows] = await Promise.all([
     env.DB.prepare(
-      "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_analysis_at,p.last_signal,p.last_confidence,p.last_score,p.last_snapshot_id," +
+      "SELECT 'position' AS subject_type,p.id AS subject_id,p.user_id,p.stock_key,p.ticker,p.name,p.exchange,p.isin,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.frozen_qty,p.frozen_until,p.last_analysis_at,p.last_signal,p.last_confidence,p.last_score,p.last_snapshot_id," +
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 1 ELSE 0 END AS goal_priority,"+
       "CASE WHEN g.portfolio_id IS NOT NULL THEN 5 ELSE COALESCE(s.analysis_positions_minutes,10) END AS analysis_interval_minutes " +
       "FROM positions p LEFT JOIN user_settings s ON s.user_id=p.user_id LEFT JOIN portfolio_goals g ON g.portfolio_id=p.portfolio_id AND g.user_id=p.user_id WHERE p.active=1 " +
