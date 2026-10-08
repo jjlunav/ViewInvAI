@@ -20,7 +20,8 @@ const NAV_META={
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
  inbox:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.4 15.4A1 1 0 0 0 5.3 17h13.4a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0h-4.4Z"/></svg>',short:'Avisos',desc:'Historial de tus avisos, leídos y sin leer'},
  tax:{icon:'§',short:'Fiscal',desc:'IRPF: plusvalías FIFO, regla de 2 meses y 720'},
- settings:{icon:'⚙',short:'Configuración',desc:'Preferencias, avisos y dispositivo'}
+ settings:{icon:'⚙',short:'Configuración',desc:'Preferencias, avisos y dispositivo'},
+ admin:{icon:'⚙',short:'Administración',desc:'Servicios, consumo y enlaces'}
 };
 // Bottom bar: Inicio · Radar AI · [⌃ Mercados, the centre arrow] · Carteras · Más.
 // Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
@@ -34,7 +35,8 @@ const NAV_GROUPS={
  catalogs:['catalog','catalogUS','funds','heatmap'],
  inbox:['inbox'],
  tax:['tax'],
- settings:['settings']
+ settings:['settings'],
+ admin:['admin']
 };
 const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};

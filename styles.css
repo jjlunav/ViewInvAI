@@ -7222,7 +7222,7 @@ html[data-theme="light"] .notification-head-actions #notificationHistory.active{
 .account-area.floating-account .account-menu{right:0}
 body.stock-detail-open .settings-shell-button{display:none!important}
 
-#view-settings{
+:is(#view-settings,#view-admin){
  max-width:1480px!important;
 }
 .settings-layout{
@@ -7298,17 +7298,17 @@ body.stock-detail-open .settings-shell-button{display:none!important}
 .settings-section-heading h2{margin:4px 0 4px;font-size:20px;letter-spacing:-.25px}
 .settings-section-heading p{margin:0;color:#7f96a1;font-size:10px;line-height:1.45}
 .settings-stack{display:grid;gap:12px;min-width:0}
-#view-settings .settings-card{
+:is(#view-settings,#view-admin) .settings-card{
  width:100%;
  min-width:0;
  margin:0!important;
 }
-#view-settings .settings-grid{display:block!important}
-#view-settings .notification-category-list .settings-status-row>span{min-width:0}
-#view-settings .settings-status-row{min-width:0}
-#view-settings .settings-status-row>span:first-child{min-width:0}
-#view-settings .settings-status-row small{overflow-wrap:anywhere}
-#view-settings .radar-tier-group{min-width:0}
+:is(#view-settings,#view-admin) .settings-grid{display:block!important}
+:is(#view-settings,#view-admin) .notification-category-list .settings-status-row>span{min-width:0}
+:is(#view-settings,#view-admin) .settings-status-row{min-width:0}
+:is(#view-settings,#view-admin) .settings-status-row>span:first-child{min-width:0}
+:is(#view-settings,#view-admin) .settings-status-row small{overflow-wrap:anywhere}
+:is(#view-settings,#view-admin) .radar-tier-group{min-width:0}
 
 html[data-theme="light"] .shell-icon-button,
 html[data-theme="light"] .account-area.floating-account .global-search-button{

@@ -1468,7 +1468,7 @@ html[data-theme="light"] .filter-count-badge{background:#4f46e5}
  html body.chrome-hide .mobile-bottom-nav{transform:translateY(115%)!important}
  
  /* Section heading sticks to the top and compacts once the list scrolls. */
- html body :is(#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,#view-settings,#view-today).active>.page-heading{
+ html body :is(#view-home,#view-entry,#view-recommendation,#view-future,#view-portfolios,#view-favorites,#view-funds,#view-heatmap,#view-alerts,#view-catalog,#view-catalogUS,:is(#view-settings,#view-admin),#view-today).active>.page-heading{
   position:sticky!important;top:0!important;z-index:40!important;transition:padding .18s ease;width:auto!important;
   margin:calc(-1 * var(--shell-top,0px)) calc(-1 * var(--shell-x,12px)) var(--ph-gap)!important;
   padding:calc(6px + var(--shell-top,0px)) calc(var(--shell-x,12px) + var(--ph-reserve)) 8px var(--shell-x,12px)!important;
