@@ -1976,13 +1976,41 @@ export function computeSpanishTax(rows,fxFor,year){
   return{year:Number(year),sales:out,totals,holdings,warnings:[...warnings]};
 }
 
+// Revisión de los datos del informe: de dónde vienen las operaciones, posibles duplicados
+// (misma acción, sentido, cantidad y precio el mismo día) y precios fuera de rango.
+const TAX_ORIGIN_LABEL={manual:"A mano","position-seed":"Alta de la posición","position-adjustment":"Ajuste de la posición",goal:"Objetivo"};
+function taxDataAudit(rows,year){
+  const inYear=r=>String(r.executed_at||"").startsWith(String(year));
+  const originOf=r=>{const o=String(r.origin||"manual");return o.startsWith("import:")?"Importado "+o.slice(7).toUpperCase():TAX_ORIGIN_LABEL[o]||o};
+  const byOrigin={};
+  for(const r of rows.filter(inYear)){const k=originOf(r)+(r.broker?" · "+r.broker:"");byOrigin[k]=byOrigin[k]||{buys:0,sells:0};byOrigin[k][String(r.side).toUpperCase()==="SELL"?"sells":"buys"]++}
+  const groups=new Map();
+  for(const r of rows.filter(inYear)){
+    const k=[String(r.isin||r.stock_key||"").toUpperCase(),String(r.side).toUpperCase(),Math.round(Number(r.quantity)*1e6),Math.round(Number(r.price)*1e4),isoDay(r.executed_at)].join("|");
+    const g=groups.get(k)||[];g.push(r);groups.set(k,g);
+  }
+  const duplicates=[...groups.values()].filter(g=>g.length>1).slice(0,50).map(g=>({ticker:g[0].ticker,name:g[0].name,side:String(g[0].side).toUpperCase(),quantity:Number(g[0].quantity),
+    price:Number(g[0].price),currency:String(g[0].currency||"EUR").toUpperCase(),date:isoDay(g[0].executed_at),
+    items:g.map(r=>({id:r.id,origin:originOf(r),broker:r.broker||"",at:r.executed_at}))}));
+  // Precio muy distinto de la mediana de esa acción (unidades o divisa mal registradas).
+  const prices=new Map();
+  for(const r of rows){const k=String(r.isin||r.stock_key||"").toUpperCase()+"|"+String(r.currency||"EUR").toUpperCase(),p=Number(r.price);if(p>0){const a=prices.get(k)||[];a.push(p);prices.set(k,a)}}
+  const median=a=>{const b=a.slice().sort((x,y)=>x-y);return b[Math.floor(b.length/2)]};
+  const outliers=[];
+  for(const r of rows.filter(inYear)){
+    const k=String(r.isin||r.stock_key||"").toUpperCase()+"|"+String(r.currency||"EUR").toUpperCase(),a=prices.get(k)||[];
+    if(a.length<3)continue;const m=median(a),p=Number(r.price);
+    if(m>0&&(p/m>4||p/m<.25))outliers.push({id:r.id,ticker:r.ticker,side:String(r.side).toUpperCase(),quantity:Number(r.quantity),price:p,median:m,currency:String(r.currency||"EUR").toUpperCase(),date:isoDay(r.executed_at),origin:originOf(r)});
+  }
+  return{byOrigin,duplicates,outliers:outliers.slice(0,50),total:rows.filter(inYear).length};
+}
 async function handleTaxReport(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   await ensureTransactionsSchema(env);
   const nowYear=new Date().getUTCFullYear();
   const year=Math.max(2000,Math.min(nowYear,Math.round(finiteNumber(url.searchParams.get("year"))||nowYear)));
   const cutoff=year<nowYear?(year+1)+"-01-01T00:00:00.000Z":new Date(Date.now()+864e5).toISOString();
-  const res=await env.DB.prepare("SELECT ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
+  const res=await env.DB.prepare("SELECT id,ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
   const rows=res.results||[];
   const needed=new Map();
   for(const r of rows){
@@ -2013,6 +2041,7 @@ async function handleTaxReport(request,env,user,json,url){
   report.savings.dueEur=Math.max(0,report.savings.taxEur-report.savings.deductionEur)-report.savings.withheldEsEur;
   report.asOf=year<nowYear?year+"-12-31":isoDay(Date.now());
   report.transactions=rows.length;
+  report.audit=taxDataAudit(rows,year);
   return json(report);
 }
 
@@ -4090,9 +4119,10 @@ const PROVIDERS=[
   {id:"serper",label:"Serper (Google)",kind:"Búsqueda",secret:"SERPER_API_KEY",free:"2.500 búsquedas gratis al registrarse (una vez)",dashboard:"https://serper.dev/dashboard"},
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
+  {id:"googlenews",label:"Google News (RSS)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; noticias de cualquier país e idioma",dashboard:"https://news.google.com/"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
-  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard",unused:true}
+  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
 ];
 const providerKey=(env,p)=>p.secret?String(env[p.secret]||"").trim():"";
 const providerCooldown=new Map();
@@ -4275,6 +4305,7 @@ async function providerProbe(env,p){
       if(r.ok){const d=await r.json().catch(()=>({}));const k=d.key||d.account||d;const used=finiteNumber(k.usage??k.plan_usage),limit=finiteNumber(k.limit??k.plan_limit);
         return{ok:true,status:200,detail:used!==null?"créditos usados "+used+(limit!==null?" de "+limit:""):"conectado",used,limit}}}
     else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
+    else if(p.id==="googlenews"){r=await res("https://news.google.com/rss/search?q=FDA&hl=en-US&gl=US&ceid=US:en")}
     else if(p.id==="serper"){r=await res("https://google.serper.dev/search",{method:"POST",headers:{"Content-Type":"application/json","X-API-KEY":key},body:JSON.stringify({q:"FDA",num:1})})}
     else if(p.id==="firecrawl"){r=await res("https://api.firecrawl.dev/v1/team/credit-usage",{headers:{"Authorization":"Bearer "+key}})}
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
@@ -6350,17 +6381,86 @@ async function goalBuysContext(goal,buys,candidates,snapshot,services){
 // Búsqueda web por valor (Tavily → Serper → Exa → LangSearch → Firecrawl → Jina) guardada 6 h en la base de cachés
 // (no personal): varias revisiones del mismo valor no gastan cupo de búsqueda.
 const GOAL_WEB_NEWS_MS=6*3600e3;
+// Finnhub: noticias de empresa (EE. UU.) y del mercado, gratis a 60 consultas/minuto.
+async function finnhubGet(env,path){
+  const key=String(env.FINNHUB_API_KEY||"").trim();
+  if(!key||!providerReady(env,"finnhub"))return null;
+  try{
+    const r=await providerFetch("finnhub","https://finnhub.io/api/v1"+path+(path.includes("?")?"&":"?")+"token="+encodeURIComponent(key),{},12000);
+    if(!r.ok){providerFail("finnhub",r.status);await recordProviderUse(env,"finnhub",false,"HTTP "+r.status);return null}
+    const d=await r.json();await recordProviderUse(env,"finnhub",true);return d;
+  }catch(error){await recordProviderUse(env,"finnhub",false,String(error&&error.message||error));return null}
+}
+// Ticker de EE. UU. solo si la empresa cotiza de verdad en NASDAQ/NYSE/AMEX (aunque se opere en LSX).
+function usTickerOf(stock){
+  return stock&&["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(stock.exchange||"").toUpperCase())?String(stock.ticker||"").toUpperCase():"";
+}
+// ISIN → ticker de EE. UU. con Finnhub (perfil de empresa), solo si cotiza en NASDAQ/NYSE. Se recuerda 24 h.
+const finnhubIsinMemo=new Map();
+async function finnhubUsTickerFromIsin(env,isin){
+  const code=String(isin||"").toUpperCase();
+  if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(code))return"";
+  const hit=finnhubIsinMemo.get(code);if(hit&&Date.now()-hit.at<86400000)return hit.ticker;
+  const d=await finnhubGet(env,"/stock/profile2?isin="+encodeURIComponent(code));
+  const ex=String(d&&d.exchange||"").toUpperCase(),t=String(d&&d.ticker||"").toUpperCase();
+  const ticker=t&&/NASDAQ|NEW YORK|NYSE|AMERICAN/.test(ex)&&/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t)?t:"";
+  if(d)finnhubIsinMemo.set(code,{at:Date.now(),ticker});
+  return ticker;
+}
+async function finnhubCompanyNews(env,ticker){
+  if(!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker))return[];
+  const to=new Date(),from=new Date(Date.now()-7*86400000),f=d=>d.toISOString().slice(0,10);
+  const d=await finnhubGet(env,"/company-news?symbol="+encodeURIComponent(ticker)+"&from="+f(from)+"&to="+f(to));
+  return (Array.isArray(d)?d:[]).sort((a,b)=>(b.datetime||0)-(a.datetime||0)).slice(0,5).map(x=>({title:trimText(x.headline,160),url:String(x.url||""),
+    content:trimText(x.summary,420),date:x.datetime?new Date(x.datetime*1000).toISOString().slice(0,10):"",source:"finnhub"})).filter(x=>x.title);
+}
+// Google News por RSS: sin clave, cualquier empresa y país. El idioma sale del país del ISIN.
+const ISIN_LANG={DE:["de","DE"],AT:["de","AT"],CH:["de","CH"],ES:["es","ES"],FR:["fr","FR"],BE:["fr","BE"],IT:["it","IT"],NL:["nl","NL"],
+  NO:["no","NO"],SE:["sv","SE"],DK:["da","DK"],FI:["fi","FI"],PT:["pt-PT","PT"],GB:["en-GB","GB"],IE:["en-GB","IE"],CA:["en-CA","CA"],AU:["en-AU","AU"],JP:["ja","JP"]};
+async function googleNewsRss(env,query,isin){
+  const [hl,gl]=ISIN_LANG[String(isin||"").slice(0,2).toUpperCase()]||["en-US","US"];
+  const lang=hl.split("-")[0];
+  const url="https://news.google.com/rss/search?q="+encodeURIComponent(query+" when:7d")+"&hl="+hl+"&gl="+gl+"&ceid="+gl+":"+lang;
+  try{
+    const r=await providerFetch("googlenews",url,{headers:{"Accept":"application/rss+xml"}},10000);
+    if(!r.ok){await recordProviderUse(env,"googlenews",false,"HTTP "+r.status);return[]}
+    const xml=await r.text();await recordProviderUse(env,"googlenews",true);
+    const tag=(item,name)=>{const m=item.match(new RegExp("<"+name+"[^>]*>([\\s\\S]*?)</"+name+">"));return m?m[1].replace(/<!\[CDATA\[|\]\]>/g,"").replace(/<[^>]+>/g," ").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim():""};
+    return (xml.match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,6).map(item=>{
+      const pub=Date.parse(tag(item,"pubDate"));
+      return{title:trimText(tag(item,"title"),160),url:tag(item,"link"),content:trimText(tag(item,"source")?"Fuente: "+tag(item,"source"):"",420),date:Number.isFinite(pub)?new Date(pub).toISOString().slice(0,10):"",source:"googlenews"};
+    }).filter(x=>x.title&&/^https:\/\//.test(x.url));
+  }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error));return[]}
+}
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
-  const ident=String(c&&c.key||s.isin||s.stock_key||name||"").toUpperCase().replace(/[^A-Z0-9:.\-]/g,"").slice(0,40);
+  const ident=String(s.isin||c&&c.isin||c&&c.key||s.stock_key||name||"").toUpperCase().replace(/[^A-Z0-9:.\-]/g,"").slice(0,40);
   const key="gwn2:"+ticker+":"+ident+":"+Math.floor(Date.now()/GOAL_WEB_NEWS_MS);
   try{
     const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(key).first()});
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.results))return p}
   }catch(_){}
-  const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
-  const out={results:(web.results||[]).slice(0,5).map(r=>({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})),provider:web.provider||""};
+  // Primero las noticias de Finnhub (gratis y fechadas); la búsqueda web solo completa si hay pocas.
+  // Finnhub solo con el ticker de EE. UU. real: un código de LSX podría ser otra empresa allí.
+  const isin=String(s.isin||s.usIsin||s.trIsin||c&&c.isin||"").toUpperCase();
+  const us=usTickerOf(s)||String(c&&c.usTicker||"").toUpperCase()||await finnhubUsTickerFromIsin(env,isin);
+  const fh=us?await finnhubCompanyNews(env,us):[];
+  let results=fh.slice(0,5),provider=fh.length?"finnhub":"";
+  // Google News para todas (imprescindible fuera de EE. UU.), en el idioma del país del ISIN.
+  if(results.length<3&&name){
+    const gn=await googleNewsRss(env,'"'+name.replace(/\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?)$/i,"")+'"',isin);
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of gn){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
+    if(gn.length)provider=provider?provider+" + googlenews":"googlenews";
+  }
+  if(results.length<3){
+    const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of web.results||[]){if(results.length>=5)break;if(seen.has(String(r.url||"")))continue;results.push({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})}
+    if(web.provider)provider=provider?provider+" + "+web.provider:web.provider;
+  }
+  const out={results,provider};
   if(out.results.length){
     try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
       return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
@@ -6439,6 +6539,9 @@ async function goalAnalystIdeas(env){
     "analyst upgrades price target raised today stocks"];
   const web=[];
   for(const q of queries){const r=await searchRoute(env,q);(r.results||[]).slice(0,6).forEach(x=>web.push({q,provider:r.provider,title:trimText(x.title,160),url:String(x.url||""),content:trimText(x.content,380),date:String(x.date||"").slice(0,10)}))}
+  // Titulares generales del mercado de Finnhub (gratis) como fuente adicional.
+  const market=await finnhubGet(env,"/news?category=general");
+  (Array.isArray(market)?market:[]).slice(0,8).forEach(x=>{if(x&&x.headline)web.push({q:"finnhub",provider:"finnhub",title:trimText(x.headline,160),url:String(x.url||""),content:trimText(x.summary,380),date:x.datetime?new Date(x.datetime*1000).toISOString().slice(0,10):""})});
   if(!web.length)return await markFailed();
   const prompt="Eres el analista de bolsa de ViewInvAI. Objetivo único: hacer crecer carteras lo antes posible con operaciones de 1-5 sesiones, con riesgo controlado.\n"+
     "Con los resultados REALES de búsqueda web de abajo, propone las mejores ideas de compra de acciones cotizadas en EE. UU. (NASDAQ/NYSE/AMEX) para los próximos días.\n"+
@@ -6480,7 +6583,7 @@ async function goalWebReviewPositions(env,goal,positions){
       if((Number(used&&used.n)||0)>=GOAL_POSITION_REVIEW_DAILY_LIMIT)return new Map();
       const parts=[],sources=[];
       for(const p of held){
-        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,name:p.name,stock:{}});
+        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,usTicker:p.usTicker,isin:p.isin,name:p.name,stock:{}});
         const avg=finiteNumber(p.avgEur),px=finiteNumber(p.priceEur),pnl=avg>0&&px!==null?(px/avg-1)*100:null;
         parts.push(p.ticker+" ("+(p.name||"")+") · resultado actual "+(pnl!==null?Math.round(pnl*10)/10+" %":"—")+
           (web.results.length?"\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"):"\n  Sin resultados de búsqueda web."));
@@ -6638,7 +6741,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const dec=decisionsById.get(p.id);
         const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
           targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
-        enginePositions.push({hold,positionId:p.id,key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
+        enginePositions.push({hold,positionId:p.id,key,ticker,usTicker:usTickerOf(stock),isin:String(stock&&(stock.isin||stock.usIsin||stock.trIsin)||p.isin||"").toUpperCase(),marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
           quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});

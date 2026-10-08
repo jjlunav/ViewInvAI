@@ -1789,3 +1789,17 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 .admin-list{margin:0;padding-left:18px;display:grid;gap:4px;font-size:12.5px}
 .admin-list a{color:var(--accent,#5cc8e8)}
 .admin-panel code{font-size:11px}
+
+/* Fiscal: revisión de los datos */
+.tax-audit h3{margin:12px 0 4px;font-size:13px}
+.tax-audit-origins{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px;font-size:12.5px}
+.tax-audit-origins li{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line,#24404b);padding:4px 0}
+.tax-audit-origins span{color:var(--muted,#8ea0bf)}
+.tax-audit-item{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:8px 10px;margin:6px 0;border:1px solid var(--line,#24404b);border-radius:10px;font-size:12.5px}
+.tax-audit-item ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:3px}
+.tax-audit-item li{display:flex;gap:8px;align-items:center;color:var(--muted,#8ea0bf)}
+.tax-audit-item>div{display:grid;gap:2px}
+/* Pestaña IA ViewInvAI: lectura, «¿por qué se mueve hoy?», plan y próximo evento arriba del todo */
+.profile-ai-overview{display:grid;gap:8px;margin:0 0 12px}
+.profile-ai-overview .profile-ai-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.profile-ai-overview .profile-why,.profile-ai-overview .profile-plan{margin:0}

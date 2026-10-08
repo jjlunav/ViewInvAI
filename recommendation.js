@@ -622,6 +622,20 @@ const RADAR_TIER_LIMIT={high:5,opportunity:12,watch:15,spec:10};
 let radarAiMarket=(()=>{try{return localStorage.getItem('viewinvai:radar-market')==='us'?'us':'tr'}catch(_){return'tr'}})();
 let radarAiTierFilter='all',radarAiLastAdvanced={};
 // Cada nivel muestra solo sus mejores señales: el Radar es una selección, no un listado del mercado.
+// Nivel con el que aparece una acción en el Radar AI (mismas reglas y límites que la lista), para
+// que la ficha diga lo mismo que el Radar. Se recalcula como mucho cada minuto por mercado.
+const radarTierMemo={};
+function radarAiTierFor(s,preferTr){
+ const mode=preferTr?'tr':'us',now=Date.now();
+ let m=radarTierMemo[mode];
+ if(!m||now-m.at>60000||m.count!==(db.stocks||[]).length){
+  const rows=radarAiCandidateRows(mode,(typeof radarAiLastAdvanced!=='undefined'&&radarAiLastAdvanced&&radarAiLastAdvanced[mode])||null),map=new Map();
+  ['high','opportunity','watch','spec'].forEach(t=>radarAiTierRows(rows,t).forEach(r=>{const k=stockKey(r.s);if(!map.has(k))map.set(k,t)}));
+  m=radarTierMemo[mode]={at:now,count:(db.stocks||[]).length,map};
+ }
+ return m.map.get(stockKey(s))||'';
+}
+window.ViewInvAIRadarTier=radarAiTierFor;
 function radarAiTierRows(rows,t){return(t==='spec'?rows.filter(x=>x.speculative):rows.filter(x=>x.tier===t&&!x.speculative)).slice(0,RADAR_TIER_LIMIT[t])}
 function radarAiVisibleRows(rows){
  if(radarAiTierFilter!=='all')return radarAiTierRows(rows,radarAiTierFilter);
