@@ -492,10 +492,12 @@ function eventInsightRender(box,data){
  const ins=data&&data.insight,ev=ins?ins.event:data&&data.event,base=ins?ins.baseRate:data&&data.baseRate;
  if(!ev){box.hidden=true;body.innerHTML='';return}
  box.hidden=false;
- const d=new Date(ev.date),when=Number.isFinite(d.getTime())?d.toLocaleDateString('es-ES',{day:'numeric',month:'short'}):'';
+ const d=new Date(ev.date),month=String(ev.datePrecision||'')==='month';
+ const when=Number.isFinite(d.getTime())?(month?d.toLocaleDateString('es-ES',{month:'short',year:'numeric'})+' (aprox.)':d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})):'';
  const ai=ins&&ins.ai;
  head.textContent=(ev.title||'Evento')+' · '+when+(base?' · histórica '+base.pct+' %':'')+(ai&&ai.probabilityPct!==null?' · IA '+ai.probabilityPct+' %':'');
  let html='';
+ if(ev.kind==='trial-completion')html+='<p class="plan-note">Es la fecha de finalización registrada del ensayo, no la publicación de resultados: los datos suelen llegar semanas o meses después.</p>';
  if(base)html+='<p class="plan-note"><b>Probabilidad histórica: '+base.pct+' %</b> · '+E(base.label)+' <small>('+E(base.source)+')</small></p>';
  if(ai){
   if(ai.confirmedDate)html+='<p class="plan-note">Fecha confirmada: '+E(new Date(ai.confirmedDate+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}))+'</p>';
@@ -508,27 +510,36 @@ function eventInsightRender(box,data){
  if(ins&&ins.sources&&ins.sources.length)html+='<p class="plan-note"><b>Fuentes:</b></p><ul class="event-insight-list">'+ins.sources.map(x=>'<li><a href="'+E(x.url)+'" target="_blank" rel="noopener noreferrer">'+E(x.title||x.url)+'</a>'+(x.official?' · oficial':'')+'</li>').join('')+'</ul>';
  if(ins&&ins.web&&!ins.web.ok&&ins.web.reason)html+='<p class="plan-note">Sin búsqueda web en este análisis ('+E(ins.web.reason==='not-configured'?'búsqueda no configurada':ins.web.reason==='monthly-budget'?'límite mensual gratuito alcanzado':ins.web.reason)+').</p>';
  html+='<p class="plan-note">Estimación orientativa: nadie puede predecir un resultado clínico o de la FDA. Sirve para medir el riesgo, no como garantía.</p>';
- html+='<div class="position-freeze-actions"><button type="button" class="btn ghost compact" data-event-insight-run="'+E(box.dataset.eventInsight)+'">'+(ins?'Volver a analizar':'Analizar el evento con IA')+'</button></div>'+(ins&&ins.generatedAt?'<small class="plan-note">Analizado el '+E(new Date(ins.generatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+(ins.cached?' (guardado)':'')+'</small>':'');
+ html+='<div class="position-freeze-actions"><button type="button" class="btn ghost compact" data-event-insight-run="'+E(box.dataset.eventInsight)+'"'+(ins?' data-event-insight-refresh="1"':'')+'>'+(ins?'Volver a analizar':'Analizar el evento con IA')+'</button></div>'+(ins&&ins.generatedAt?'<small class="plan-note">Analizado el '+E(new Date(ins.generatedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+(ins.cached?' (guardado)':'')+'</small>':'');
  body.innerHTML=html;
 }
-async function loadEventInsight(key,cacheOnly){
+async function loadEventInsight(key,cacheOnly,refresh=false){
  const box=document.querySelector('[data-event-insight="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');if(!box)return;
  const auth=window.ViewInvAIAuth;
  if(!auth||typeof auth.apiFetch!=='function'||(typeof auth.getUser==='function'&&!auth.getUser())){box.hidden=true;return}
  if(!cacheOnly){const h=box.querySelector('[data-event-head]');if(h)h.textContent='Analizando el evento… (puede tardar unos segundos)';box.open=true}
  try{
-  const r=await auth.apiFetch('/api/event-insight?stockKey='+encodeURIComponent(key)+(cacheOnly?'&cacheOnly=1':''));
+  const r=await auth.apiFetch('/api/event-insight?stockKey='+encodeURIComponent(key)+(cacheOnly?'&cacheOnly=1':'')+(refresh?'&refresh=1':''));
   const data=await r.json().catch(()=>({}));
-  if(!r.ok){const h=box.querySelector('[data-event-head]');if(h)h.textContent=data.error||'No se pudo analizar el evento.';return}
+  if(!r.ok){const h=box.querySelector('[data-event-head]');if(h)h.textContent=data.error||'No se pudo analizar el evento.';
+   box.querySelectorAll('[data-event-insight-run]').forEach(b=>{b.disabled=false});return}
   eventInsightMemo.set(key,{at:Date.now(),data});
   const fresh=document.querySelector('[data-event-insight="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]')||box;
   eventInsightRender(fresh,data);
- }catch(_){box.hidden=!!cacheOnly}
+ }catch(_){
+  if(cacheOnly)box.hidden=true;
+  else{const h=box.querySelector('[data-event-head]');if(h)h.textContent='No se pudo analizar el evento. Inténtalo de nuevo.'}
+  box.querySelectorAll('[data-event-insight-run]').forEach(b=>{b.disabled=false});
+ }
 }
 document.addEventListener('click',e=>{
  const b=e.target.closest&&e.target.closest('[data-event-insight-run]');if(!b)return;
- e.preventDefault();e.stopPropagation();b.disabled=true;loadEventInsight(b.dataset.eventInsightRun,false);
+ e.preventDefault();e.stopPropagation();b.disabled=true;loadEventInsight(b.dataset.eventInsightRun,false,b.dataset.eventInsightRefresh==='1');
 });
+// Si la sesión se inicia (o termina de cargar) con la ficha abierta, se vuelve a pedir el bloque.
+['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{
+ document.querySelectorAll('[data-event-insight]').forEach(box=>{eventInsightMemo.delete(box.dataset.eventInsight);loadEventInsight(box.dataset.eventInsight,true)});
+}));
 function profileTradePlanHtml(s,isTr=false){
  window.__planCtx={key:stockKey(s),isTr};
  const goalPlan=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getGoalPlanFor==='function'?window.ViewInvAIPortfolios.getGoalPlanFor(s):null;

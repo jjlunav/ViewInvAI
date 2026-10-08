@@ -2008,7 +2008,7 @@ export default {
 
     let limited=null;
     if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
-    else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",10,60000,"AI_RATE_LIMITER");
+    else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
