@@ -7410,6 +7410,16 @@ body.stock-detail-open #stockQuickDetail>.profile-sticky-shell::before{
  z-index:-1;
  background:rgba(5,14,20,.985);
 }
+/* Tema claro: la máscara y las pestañas siguen el fondo claro de la cabecera (con el fondo
+   oscuro fijo, el nombre, el precio y «¿Por qué se mueve hoy?» quedaban oscuros sobre oscuro). */
+html[data-theme="light"] body.stock-detail-open #stockQuickDetail>.profile-sticky-shell::before{
+ background:rgba(248,251,252,.985);
+}
+html[data-theme="light"] body.stock-detail-open #stockQuickDetail>.profile-sticky-shell>.profile-tabs{
+ background:rgba(248,251,252,.985)!important;
+ border-top-color:#e3eaee!important;
+ border-bottom-color:#d7e2e6!important;
+}
 
 /* Radar cards: dense information rows, not oversized showcase tiles. */
 #view-recommendation .radar-list{
