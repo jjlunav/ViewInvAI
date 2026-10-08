@@ -39,6 +39,27 @@
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',reset,{once:true});else reset();
  window.ViewInvAIShell=Object.assign(window.ViewInvAIShell||{},{resetChrome:reset,openSelectSheet:openPicker});
 
+ /* Barra superior: la campana de avisos vive en el mismo grupo que buscar/ajustes/cuenta y un
+  * único «?» abre la ayuda de la sección activa (en móvil se sigue usando el de cada cabecera). */
+ function syncGlobalHelp(){
+  const help=document.getElementById('globalHelpButton');if(!help)return;
+  const src=document.querySelector('.view.active .page-heading [data-help-section]')||document.querySelector('.view.active [data-help-section]');
+  help.hidden=!src;
+  if(!src)return;
+  // help.js trata cualquier .section-help con data-help como disparador y ancla el globo a él.
+  help.dataset.helpSection=src.dataset.helpSection||'';
+  if(src.dataset.help)help.dataset.help=src.dataset.help;
+  if(src.dataset.helpTitle)help.dataset.helpTitle=src.dataset.helpTitle;
+ }
+ function mountTopActions(){
+  const area=document.getElementById('accountArea'),bell=document.getElementById('notificationBell');
+  if(area&&bell&&bell.parentElement!==area)area.insertBefore(bell,area.firstChild);
+  syncGlobalHelp();
+ }
+ document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#globalHelpButton'))syncGlobalHelp()},true);
+ window.addEventListener('viewinvai:view-changed',()=>setTimeout(mountTopActions,0));
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountTopActions,{once:true});else mountTopActions();
+
  /* Desplegables propios en móvil.
   * El menú nativo de Android se cierra solo si la vista se repinta (p. ej. con una
   * cotización en vivo) y no sigue el tema. En pantallas táctiles ≤ 820 px cada <select>
