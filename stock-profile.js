@@ -383,8 +383,10 @@ function profileAiStripHtml(s,isTr=false){
  try{
   const mode=isTr?'tr':'us',a=recommendationAnalysis(s,mode),score=N(a.score),q=stockDataQuality(s,mode,false);
   if(score!==null){
-   const tone=q.score<55?'wait':score>=72?'high':score>=60?'watch':'wait';
-   const label=q.score<55?'Datos insuficientes':score>=72?'Alta convicción':score>=60?'Vigilar':'Esperar';
+   // Mismo nivel que en el Radar AI (no una etiqueta propia por puntuación).
+   let tier='';try{tier=typeof window.ViewInvAIRadarTier==='function'?window.ViewInvAIRadarTier(s,isTr):''}catch(_){}
+   const tone=q.score<55?'wait':tier==='high'?'high':tier==='opportunity'||tier==='spec'?'watch':tier==='watch'?'watch':'wait';
+   const label=q.score<55?'Datos insuficientes':{high:'Alta convicción',opportunity:'Oportunidad',watch:'Vigilancia',spec:'Especulativo'}[tier]||'Fuera del Radar';
    chip='<button type="button" class="profile-ai-verdict '+tone+'" data-profile-tab="ai" aria-label="Ver lectura IA: '+E(label)+' '+F(score,0)+' de 100"><span>✦ IA</span><b>'+E(label)+'</b><em>'+F(score,0)+'</em></button>';
   }
  }catch(e){}
