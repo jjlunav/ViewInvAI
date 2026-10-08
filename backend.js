@@ -6360,6 +6360,10 @@ async function finnhubGet(env,path){
     const d=await r.json();await recordProviderUse(env,"finnhub",true);return d;
   }catch(error){await recordProviderUse(env,"finnhub",false,String(error&&error.message||error));return null}
 }
+// Ticker de EE. UU. solo si la empresa cotiza de verdad en NASDAQ/NYSE/AMEX (aunque se opere en LSX).
+function usTickerOf(stock){
+  return stock&&["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(stock.exchange||"").toUpperCase())?String(stock.ticker||"").toUpperCase():"";
+}
 async function finnhubCompanyNews(env,ticker){
   if(!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker))return[];
   const to=new Date(),from=new Date(Date.now()-7*86400000),f=d=>d.toISOString().slice(0,10);
@@ -6377,7 +6381,9 @@ async function goalWebNews(env,c){
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.results))return p}
   }catch(_){}
   // Primero las noticias de Finnhub (gratis y fechadas); la búsqueda web solo completa si hay pocas.
-  const fh=await finnhubCompanyNews(env,ticker);
+  // Finnhub solo con el ticker de EE. UU. real: un código de LSX podría ser otra empresa allí.
+  const us=usTickerOf(s)||String(c&&c.usTicker||"").toUpperCase();
+  const fh=us?await finnhubCompanyNews(env,us):[];
   let results=fh.slice(0,5),provider=fh.length?"finnhub":"";
   if(fh.length<3){
     const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
@@ -6508,7 +6514,7 @@ async function goalWebReviewPositions(env,goal,positions){
       if((Number(used&&used.n)||0)>=GOAL_POSITION_REVIEW_DAILY_LIMIT)return new Map();
       const parts=[],sources=[];
       for(const p of held){
-        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,name:p.name,stock:{}});
+        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,usTicker:p.usTicker,name:p.name,stock:{}});
         const avg=finiteNumber(p.avgEur),px=finiteNumber(p.priceEur),pnl=avg>0&&px!==null?(px/avg-1)*100:null;
         parts.push(p.ticker+" ("+(p.name||"")+") · resultado actual "+(pnl!==null?Math.round(pnl*10)/10+" %":"—")+
           (web.results.length?"\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"):"\n  Sin resultados de búsqueda web."));
@@ -6666,7 +6672,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const dec=decisionsById.get(p.id);
         const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
           targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
-        enginePositions.push({hold,positionId:p.id,key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
+        enginePositions.push({hold,positionId:p.id,key,ticker,usTicker:usTickerOf(stock),marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
           quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});
