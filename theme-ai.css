@@ -1740,3 +1740,20 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
  html:root:root body:not(#tb-x) .view.active>.page-heading .heading-actions:not(:has(>:not(.section-help))){display:none!important}
  html:root:root body:not(#tb-x) .notification-center{top:60px!important;bottom:auto!important;right:12px!important;left:auto!important}
 }
+
+.account-admin{margin-bottom:6px}
+.admin-panel h4{margin:14px 0 6px;font-size:13px}
+.admin-note{font-size:12px;color:var(--muted,#8ea0bf);margin:4px 0}
+.admin-err{color:#ff8a8a}
+.admin-actions{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.admin-card{display:grid;gap:3px;padding:10px;border:1px solid var(--line,#24404b);border-radius:12px;font-size:12px}
+.admin-card small{color:var(--muted,#8ea0bf);line-height:1.35}
+.admin-card a{color:var(--accent,#5cc8e8);font-size:12px}
+.admin-card-head{display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.admin-st{font-size:12px}.admin-st.ok{color:#5fe0a6}.admin-st.warn{color:#f0c35c}.admin-st.bad{color:#ff8a8a}
+.admin-bar{height:5px;border-radius:99px;background:rgba(127,127,127,.25);overflow:hidden}
+.admin-bar i{display:block;height:100%;background:#5fe0a6}.admin-bar i.warm{background:#f0c35c}.admin-bar i.hot{background:#ff6b6b}
+.admin-list{margin:0;padding-left:18px;display:grid;gap:4px;font-size:12.5px}
+.admin-list a{color:var(--accent,#5cc8e8)}
+.admin-panel code{font-size:11px}
