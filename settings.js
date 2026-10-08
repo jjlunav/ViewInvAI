@@ -434,6 +434,16 @@ function initSettings(){
   const list=(d.providers||[]).filter(p=>kinds.includes(p.kind));
   return heading(kicker,title,text)+'<div class="admin-grid">'+(list.map(providerCard).join('')||'<p class="settings-note">Sin servicios.</p>')+'</div>';
  }
+ function tursoBlock(t){
+  const u=t.usage||{},gb=b=>(b/1024**3).toLocaleString('es-ES',{maximumFractionDigits:2})+' GB';
+  return heading('TURSO','Cachés de mercado · este mes','Plan gratuito: 500 M filas leídas, 10 M filas escritas y 5 GB al mes. '+(t.active==='turso'?'En uso.':'Ahora no se usa (las cachés van a D1).'))+
+   (!u.configured?'<p class="settings-note">Añade el secreto <code>TURSO_API_TOKEN</code> (token de la plataforma Turso, no el de la base) para ver el consumo.</p>'
+   :!u.ok?'<p class="settings-note admin-err">No se pudo leer el consumo de Turso: '+esc(u.detail||'')+'</p>'
+   :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Turso'+(u.org?' · '+esc(u.org):'')+'</strong>'+
+    '<small>Filas leídas: '+fmt(u.rowsRead)+' de '+fmt(u.readLimit)+'</small>'+bar(u.rowsRead,u.readLimit)+
+    '<small>Filas escritas: '+fmt(u.rowsWritten)+' de '+fmt(u.writeLimit)+'</small>'+bar(u.rowsWritten,u.writeLimit)+
+    '<small>Almacenamiento: '+gb(u.storageBytes)+' de '+gb(u.storageLimit)+'</small>'+bar(u.storageBytes,u.storageLimit)+'</article></div>');
+ }
  function fill(name,html){const el=document.querySelector('[data-admin-panel="'+name+'"]');if(el)el.innerHTML=html}
  function render(d){
   const ps=d.providers||[],ok=ps.filter(p=>p.test&&p.test.ok).length,noKey=ps.filter(p=>!p.configured).length,paused=ps.filter(p=>p.cooldownUntil).length,failed=ps.filter(p=>p.test&&!p.test.ok).length;
@@ -461,7 +471,7 @@ function initSettings(){
    (!cf.configured?'<p class="settings-note">Añade los secretos <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.</p>'
    :cf.detail&&!w.ok&&!dd.ok?'<p class="settings-note admin-err">No se pudo leer el consumo: '+esc(cf.detail)+'</p>'
    :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Worker (web y servidor)</strong>'+(w.ok?'<small>'+fmt(w.requests)+' peticiones de '+fmt(w.limit)+' al día · '+fmt(w.errors)+' errores</small>'+bar(w.requests,w.limit):'<small class="admin-err">'+esc(w.detail||'sin datos')+'</small>')+'</article>'+
-    '<article class="settings-card admin-card"><strong>D1 (base de datos personal)</strong>'+(dd.ok?'<small>Filas escritas: '+fmt(dd.rowsWritten)+' de '+fmt(dd.writeLimit)+'</small>'+bar(dd.rowsWritten,dd.writeLimit)+'<small>Filas leídas: '+fmt(dd.rowsRead)+' de '+fmt(dd.readLimit)+'</small>'+bar(dd.rowsRead,dd.readLimit):'<small class="admin-err">'+esc(dd.detail||'sin datos')+'</small>')+'</article></div>'));
+    '<article class="settings-card admin-card"><strong>D1 (base de datos personal)</strong>'+(dd.ok?'<small>Filas escritas: '+fmt(dd.rowsWritten)+' de '+fmt(dd.writeLimit)+'</small>'+bar(dd.rowsWritten,dd.writeLimit)+'<small>Filas leídas: '+fmt(dd.rowsRead)+' de '+fmt(dd.readLimit)+'</small>'+bar(dd.rowsRead,dd.readLimit):'<small class="admin-err">'+esc(dd.detail||'sin datos')+'</small>')+'</article></div>')+tursoBlock(d.turso||{}));
   fill('infra',heading('INFRAESTRUCTURA','Dónde está cada cosa','Enlaces directos a cada panel.')+
    '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">PANELES</span></div></div>'+(d.infra||[]).map(x=>'<div class="settings-status-row"><span><a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.label)+' ↗</a></span><strong class="settings-status">'+esc(x.detail||'')+'</strong></div>').join('')+'</article></div>');
   document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});

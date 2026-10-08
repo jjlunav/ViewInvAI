@@ -1756,6 +1756,7 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 
 .account-admin{margin-bottom:6px}
 .admin-toolbar{display:flex;gap:8px;max-width:1320px;margin:0 auto 12px}
+#view-admin .admin-grid+.settings-section-heading{margin-top:18px}
 .admin-toolbar>.btn{flex:0 1 auto;width:auto!important;min-width:0}
 @media(max-width:700px){.admin-toolbar>.btn{flex:1 1 0}}
 #view-admin .admin-err{color:#ff8a8a!important}

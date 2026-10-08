@@ -4218,6 +4218,23 @@ async function providerProbe(env,p){
     return{ok:r.ok,status:r.status,detail:r.ok?"conectado":r.status===401||r.status===403?"clave rechazada":"HTTP "+r.status};
   }catch(error){return{ok:false,status:0,detail:trimText(String(error&&error.message||error),120)}}
 }
+// Consumo del mes en Turso (API de la plataforma). Necesita TURSO_API_TOKEN, distinto del token de la base.
+async function tursoUsage(env){
+  const token=String(env.TURSO_API_TOKEN||"").trim();
+  if(!token)return{configured:false};
+  const get=async path=>{const r=await providerFetch("turso","https://api.turso.tech/v1"+path,{headers:{"Authorization":"Bearer "+token}},12000);
+    const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(r.status===401||r.status===403?"token rechazado":"HTTP "+r.status);throw e}return d};
+  try{
+    let org=String(env.TURSO_ORG||"").trim();
+    if(!org){const list=await get("/organizations");const orgs=Array.isArray(list)?list:(list.organizations||[]);
+      const pick=orgs.find(o=>o.type==="personal")||orgs[0];org=pick&&(pick.slug||pick.name)||""}
+    if(!org)return{configured:true,ok:false,detail:"no se encontró la organización"};
+    const d=await get("/organizations/"+encodeURIComponent(org)+"/usage");
+    const u=(d.organization&&d.organization.usage)||d.usage||{};
+    return{configured:true,ok:true,org,rowsRead:finiteNumber(u.rows_read)||0,rowsWritten:finiteNumber(u.rows_written)||0,storageBytes:finiteNumber(u.storage_bytes)||0,
+      databases:finiteNumber(u.databases),readLimit:500000000,writeLimit:10000000,storageLimit:5*1024**3};
+  }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
+}
 async function cloudflareUsage(env){
   const token=String(env.CF_ANALYTICS_TOKEN||"").trim(),account=String(env.CF_ACCOUNT_ID||"").trim();
   if(!token||!account)return{configured:false};
@@ -4278,8 +4295,8 @@ async function handleAdmin(request,env,user,json,url){
     {label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
   return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
-    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env))},
-    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim())}});
+    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env)),usage:await tursoUsage(env)},
+    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim()}});
 }
 
 let positionDecisionsSchemaReady=false;
