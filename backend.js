@@ -5889,7 +5889,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const ticker=String(stock&&(stock.ticker||stock.trTicker)||p.ticker||"").toUpperCase();
         const openedMs=Date.parse(p.last_buy_at||p.opened_at||""),holdingDays=Number.isFinite(openedMs)?Math.max(0,(Date.now()-openedMs)/86400000):null;
         const cat=goalServerCatalyst(snapshot,stock);
-        enginePositions.push({key,ticker,name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
+        enginePositions.push({key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
           quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});
@@ -5904,7 +5904,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const extensionPct=techPrice!==null&&ema20>0?(techPrice/ema20-1)*100:null;
         const nearHighPct=techPrice!==null&&dayHigh>0&&techPrice<=dayHigh?(dayHigh-techPrice)/dayHigh*100:null;
         const dayChangePct=finiteNumber(preferTr?(stock.trLiveChangePct??stock.changePct):(stock.usLiveChangePct??stock.changePct));
-        return priceEur>0?{key:r.stock_key,ticker,name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
+        return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
           relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,avgVolume:finiteNumber(stock.avgVolume),
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
           extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact,catalystTitle:cat.title}:null;
@@ -5927,9 +5927,24 @@ async function scanPortfolioGoalNotifications(env,services){
         const review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
         const rejected=new Set([...review.verdicts].filter(([,v])=>v==="contradice").map(([t])=>t));
         for(const c of candidates)if(review.verdicts.has(c.ticker))c.aiVerdict=review.verdicts.get(c.ticker);
-        for(const c of candidates.filter(c=>buys.some(b=>b.key===c.key))){const ask=await quoteEur(c.stock,preferTr,"BUY");if(ask!==null)c.askEur=ask}
-        if(rejected.size||buys.some(b=>candidates.find(c=>c.key===b.key&&c.askEur)))plan=engine.plan(input);
         plan.aiReviewed=review.reviewed;plan.aiProvider=review.provider||"";
+      }
+      // Compras y destinos de cambio: solo con una cotización en vivo verificada ahora y sin estar
+      // devolviendo la subida de la apertura. Lo no verificado queda como «Esperar».
+      const targets=new Set([...buys.map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey)]);
+      if(targets.size){
+        const reviewMeta={aiScoutReviewed:plan.aiScoutReviewed,aiScoutModel:plan.aiScoutModel,aiReviewed:plan.aiReviewed,aiProvider:plan.aiProvider};
+        for(const c of candidates){
+          c.quoteFresh=false;
+          if(!targets.has(c.key))continue;
+          const ask=await quoteEur(c.stock,preferTr,"BUY");
+          if(ask===null)continue;
+          const raw=(quoteCache.get((preferTr?"tr:":"us:")+goalServerKey(c.stock))||{}).quote||{};
+          c.askEur=ask;c.quoteFresh=true;
+          c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:raw.price,open:raw.open});
+        }
+        plan=engine.plan(input);
+        Object.assign(plan,reviewMeta);
       }
       // Estado persistente: solo se escribe cuando cambia de verdad.
       const now=nowIso();let automaticWrites=0;

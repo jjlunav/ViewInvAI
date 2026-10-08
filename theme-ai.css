@@ -1570,6 +1570,9 @@ html[data-theme="light"] .goal2-action{background:#fff;border-color:#dfe3f3}
 .goal2-action span{font-size:13px;line-height:1.4}
 .goal2-action small{font-size:11.5px;color:var(--muted,#8ea0bf)}
 .goal2-action .portfolio-goal-register,.goal2-action .portfolio-goal-execution-blocked{justify-self:start;margin-top:4px}
+.goal2-stock-link{display:inline;padding:0;margin:0;border:0;background:none;font:inherit;font-weight:700;color:var(--accent,#5cc8e8);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.goal2-stock-link:hover,.goal2-stock-link:focus-visible{color:var(--text,#fff);outline:none}
+html[data-theme="light"] .goal2-stock-link{color:#0b6f8f}
 .goal2-notes{margin:0;padding-left:18px;display:grid;gap:4px;font-size:12.5px;line-height:1.4}
 .goal2-notes.muted{color:var(--muted,#8ea0bf)}
 .goal2-positions{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}

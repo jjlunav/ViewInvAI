@@ -41,13 +41,14 @@
   return[];
  }
  function money(v,cur){const n=Number(v);if(!Number.isFinite(n))return'';return n.toLocaleString('es-ES',{minimumFractionDigits:n<1?3:2,maximumFractionDigits:n<1?4:2})+' '+cur}
+ function curSymbol(c){const k=String(c||'USD').toUpperCase();return k==='USD'?'$':k==='EUR'?'€':k==='GBP'?'£':k}
  function chg(v){const n=Number(v);if(!Number.isFinite(n))return'';return'<em class="'+(n>0?'up':n<0?'down':'')+'">'+(n>0?'+':'')+n.toLocaleString('es-ES',{maximumFractionDigits:2})+' %</em>'}
  function stockRow(s,i){
   const a=app(),key=a.getStockKey(s),tr=tradable(s);
   return '<button type="button" class="gs-row" role="option" id="gs-opt-'+i+'" data-gs-kind="stock" data-gs-key="'+esc(key)+'">'+
    '<span class="gs-ticker">'+esc(s.ticker||s.trTicker||'')+'</span>'+
    '<span class="gs-main"><b>'+esc(s.name||s.ticker)+'</b><small>'+esc(s.exchange||'')+(tr?' · <i class="gs-tr">TR</i>':'')+(s.isin||s.trIsin?' · '+esc(s.isin||s.trIsin):'')+'</small></span>'+
-   '<span class="gs-quote">'+money(s.price,'$')+chg(s.changePct)+'</span></button>';
+   '<span class="gs-quote">'+money(s.price,curSymbol(s.currency))+chg(s.changePct)+'</span></button>';
  }
  function fundRow(p,i){
   const ter=Number(p.ter);
