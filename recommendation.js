@@ -506,7 +506,7 @@ function radarAiCandidateRows(mode,advanced=null){
   const spec={speculative:rt.tier==='spec',reasons:rt.reasons};
   // Opinión de una IA externa (pegada o con clave, últimos 3 días): si contradice baja un nivel
   // (sin salir del Radar); si respalda, la acción queda marcada como reforzada.
-  const ai=window.ViewInvAIContrast&&window.ViewInvAIContrast.tickerVerdict?window.ViewInvAIContrast.tickerVerdict(s.ticker||s.trTicker):null;
+  const ai=window.ViewInvAIContrast&&window.ViewInvAIContrast.tickerVerdict?window.ViewInvAIContrast.tickerVerdict(s.ticker||s.trTicker,stockKey(s)):null;
   if(ai&&ai.verdict==='contradice'&&!spec.speculative)tier=tier==='high'?'opportunity':'watch';
   rows.push({s,mode,preferTr,analysis:a,quality,score,tier,liveVenue,speculative:spec.speculative,specReasons:spec.reasons||[],ai,advanced:advanced&&advanced.s&&stockKey(advanced.s)===stockKey(s)?advanced:null});
  }

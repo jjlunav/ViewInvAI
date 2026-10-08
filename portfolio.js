@@ -1325,7 +1325,7 @@ function goalCandidateConfirmed(stock){
 }
 function goalCandidateHtml(row){
   // Una IA externa que contradice la compra (respuesta pegada o con clave) la deja en observación.
-  const C=window.ViewInvAIContrast,ai=C&&C.tickerVerdict?C.tickerVerdict(row.stock&&(row.stock.ticker||row.stock.trTicker)):null,aiBlocked=!!(ai&&ai.verdict==="contradice");
+  const C=window.ViewInvAIContrast,ai=C&&C.tickerVerdict?C.tickerVerdict(row.stock&&(row.stock.ticker||row.stock.trTicker),portfolioStockKey(row.stock)):null,aiBlocked=!!(ai&&ai.verdict==="contradice");
   const key=portfolioStockKey(row.stock),confirmed=goalCandidateConfirmed(row.stock)&&!aiBlocked,marketLabel=row.preferTr?"TR / LSX":"EEUU",units=formatNumber(Math.max(0,Math.round(num(row.units)||0)),0)+" acciones";
   const catalyst=row.catalyst||portfolioGoalCatalyst(row.stock),levels=row.levels||{},execution=row.execution||{};
   const stop=levels.stop!==null&&levels.stop!==undefined?formatMoney(levels.stop,levels.currency||"EUR"):"—";
@@ -1620,7 +1620,7 @@ function goalPositionLink(ctx,key,label){
 }
 function goalActionHtml(a,ctx){
   const cand=(a.type==="BUY"||a.type==="WAIT")?ctx.candidates.find(c=>c.key===a.key):null,pos=(a.type!=="BUY"&&a.type!=="WAIT")?ctx.positions.find(p=>p.key===a.key):null;
-  const C=window.ViewInvAIContrast,ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(C.tickerVerdict?C.tickerVerdict(a.ticker):null):"";
+  const C=window.ViewInvAIContrast,ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(C.tickerVerdict?C.tickerVerdict(a.ticker,a.key):null):"";
   const tag={BUY:"COMPRAR AHORA",WAIT:a.decision||"ESPERAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
   let button="";
   if(a.type==="BUY"&&cand){
