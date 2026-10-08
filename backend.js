@@ -4261,7 +4261,7 @@ async function cloudflareUsage(env){
   ]);
   // Reparto de los errores del Worker por motivo (excepción, cliente desconectado, límites…).
   const errorsByStatus=w.ok?(w.acc.rows||[]).map(r=>({status:String(r.dimensions&&r.dimensions.status||""),count:finiteNumber(r.sum&&r.sum.errors)||0,requests:finiteNumber(r.sum&&r.sum.requests)||0}))
-    .filter(x=>x.status&&x.status!=="success").sort((a,b)=>b.requests-a.requests).slice(0,5):[];
+    .filter(x=>x.status&&x.count>0).sort((a,b)=>b.count-a.count).slice(0,5):[];
   const kvBy=t=>k.ok?(k.acc.rows||[]).filter(r=>String(r.dimensions&&r.dimensions.actionType||"").toLowerCase()===t).reduce((s,r)=>s+(finiteNumber(r.sum&&r.sum.requests)||0),0):0;
   return{configured:true,ok:w.ok||d.ok||k.ok,day:since,detail:w.ok||d.ok||k.ok?"":w.detail,
     workers:w.ok?{ok:true,requests:sum(w.acc.rows,"requests"),errors:sum(w.acc.rows,"errors"),subrequests:sum(w.acc.rows,"subrequests"),errorsByStatus,limit:100000}:{ok:false,detail:w.detail},
@@ -4279,7 +4279,8 @@ async function githubUsage(env){
   const now=new Date(),y=now.getUTCFullYear(),m=now.getUTCMonth()+1,monthStart=y+"-"+String(m).padStart(2,"0")+"-01";
   try{
     const runs=[];
-    for(let page=1;page<=4;page++){
+    // Hasta 12 páginas (1.200 ejecuciones): por encima del volumen mensual esperado y dentro del límite de subpeticiones.
+    for(let page=1;page<=12;page++){
       const d=await get("/repos/"+GH_REPO+"/actions/runs?per_page=100&page="+page+"&created=%3E%3D"+monthStart);
       runs.push(...(d.workflow_runs||[]));if(!d.workflow_runs||d.workflow_runs.length<100)break;
     }
@@ -4298,16 +4299,17 @@ async function githubUsage(env){
 }
 // Datos internos de la app (solo recuentos, nada personal sale del servidor).
 async function appStats(env){
-  const tables=["users","devices","portfolios","positions","fund_portfolios","fund_positions","position_decisions","portfolio_goals"];
+  const tables=["users","devices WHERE enabled=1","portfolios","positions","fund_portfolios","fund_positions","position_decisions","portfolio_goals"];
   const out={};
   try{const res=await env.DB.batch(tables.map(t=>env.DB.prepare("SELECT COUNT(*) AS n FROM "+t)));
-    tables.forEach((t,i)=>{const r=res[i]&&res[i].results&&res[i].results[0];out[t]=r?Number(r.n)||0:null})}
-  catch(_){for(const t of tables){try{const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM "+t).first();out[t]=r?Number(r.n)||0:null}catch(__){out[t]=null}}}
+    tables.forEach((t,i)=>{const r=res[i]&&res[i].results&&res[i].results[0];out[t.split(" ")[0]]=r?Number(r.n)||0:null})}
+  catch(_){for(const t of tables){try{const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM "+t).first();out[t.split(" ")[0]]=r?Number(r.n)||0:null}catch(__){out[t.split(" ")[0]]=null}}}
   return out;
 }
 async function handleAdmin(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   if(!await isAdminUser(env,user))return json({error:"Solo para la cuenta de administración."},403);
+  if(url.searchParams.get("lite")==="1")return json({admin:true});
   const day="d:"+nowIso().slice(0,10),month="m:"+nowIso().slice(0,7);
   const usageRows=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return(await db.prepare("SELECT provider,period,calls,errors,last_at,last_error FROM provider_usage WHERE period IN (?,?)").bind(day,month).all()).results||[]}).catch(()=>[]);
   const usage=(id,period)=>usageRows.find(r=>r.provider===id&&r.period===period)||null;
@@ -4337,8 +4339,10 @@ async function handleAdmin(request,env,user,json,url){
     {id:"firebase",label:"Acceso y avisos (Firebase)",detail:project||"",url:project?"https://console.firebase.google.com/project/"+project+"/overview":"https://console.firebase.google.com/"},
     {id:"secrets",label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
+  // Consultas independientes en paralelo para no sumar sus esperas.
+  const [cloudflare,tursoUse,github,app]=await Promise.all([cloudflareUsage(env),tursoUsage(env),githubUsage(env),appStats(env)]);
   return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
-    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env)),usage:await tursoUsage(env)},github:await githubUsage(env),app:await appStats(env),
+    cloudflare,turso:{active:cacheDbLabel(cacheDb(env)),usage:tursoUse},github,app,
     secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim(),GH_ANALYTICS_TOKEN:!!String(env.GH_ANALYTICS_TOKEN||"").trim()}});
 }
 

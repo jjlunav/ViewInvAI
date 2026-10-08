@@ -402,7 +402,7 @@ function initSettings(){
   const a=auth();
   if(checked||!a||typeof a.apiFetch!=='function'||(typeof a.getUser==='function'&&!a.getUser()))return;
   checked=true;
-  try{last=await api('/api/admin');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);render(last)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
+  try{await api('/api/admin?lite=1');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);load(false)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
  }
  // Solo se sale de la pantalla cuando la sesión ya se ha resuelto (evento de Firebase) y no hay usuario.
  ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;isAdmin=false;last=null;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;
@@ -446,9 +446,9 @@ function initSettings(){
   const cfMissing=note('Añade <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.');
   const worker=!cf.configured?cfMissing:!w.ok?err(w.detail||cf.detail):
    metric('Peticiones hoy',w.requests,w.limit)+note(fmt(w.errors)+' errores ('+(w.requests?Math.round(w.errors/w.requests*1000)/10:0)+' %) · '+fmt(w.subrequests)+' llamadas a servicios externos')+
-   ((w.errorsByStatus||[]).length?'<small>Motivo de los fallos: '+w.errorsByStatus.map(x=>esc(STATUS_ES[x.status]||x.status)+' '+fmt(x.requests)).join(' · ')+'</small>':'');
+   ((w.errorsByStatus||[]).length?'<small>Motivo de los fallos: '+w.errorsByStatus.map(x=>esc(STATUS_ES[x.status]||x.status)+' '+fmt(x.count)).join(' · ')+'</small>':'');
   const d1=!cf.configured?cfMissing:!dd.ok?err(dd.detail):metric('Filas escritas hoy',dd.rowsWritten,dd.writeLimit)+metric('Filas leídas hoy',dd.rowsRead,dd.readLimit);
-  const kvb=!cf.configured?cfMissing:!kv.ok?err(kv.detail):metric('Escrituras hoy',kv.writes+kv.deletes+kv.lists,kv.writeLimit)+metric('Lecturas hoy',kv.reads,kv.readLimit)+note('Las escrituras incluyen borrados y listados (límite conjunto de 1.000 al día).');
+  const kvb=!cf.configured?cfMissing:!kv.ok?err(kv.detail):metric('Lecturas hoy',kv.reads,kv.readLimit)+metric('Escrituras hoy',kv.writes,kv.writeLimit)+metric('Borrados hoy',kv.deletes,kv.writeLimit)+metric('Listados hoy',kv.lists,kv.writeLimit);
   const turso=(t.active==='turso'?'<b class="admin-st ok">✅ en uso</b>':'<b class="admin-st warn">⚠️ no activa: las cachés van a D1</b>')+
    (!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
     metric('Filas leídas este mes',tu.rowsRead,tu.readLimit)+metric('Filas escritas este mes',tu.rowsWritten,tu.writeLimit)+metric('Almacenamiento',tu.storageBytes,tu.storageLimit,gb));
@@ -539,7 +539,7 @@ function initSettings(){
   const t=e.target.closest?e.target:null;if(!t)return;
   if(t.closest('#accountAdmin')){const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}return}
   const sec=t.closest('[data-admin-section]');if(sec){e.preventDefault();selectSection(sec.dataset.adminSection);return}
-  if(t.closest('[data-admin-probe]')){e.preventDefault();load(true);return}
-  if(t.closest('[data-admin-refresh]')){e.preventDefault();load(false)}
+  if(t.closest('[data-admin-probe]')){e.preventDefault();publicSources=null;load(true);return}
+  if(t.closest('[data-admin-refresh]')){e.preventDefault();publicSources=null;load(false)}
  });
 })();
