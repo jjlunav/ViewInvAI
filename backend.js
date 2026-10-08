@@ -3907,6 +3907,129 @@ async function maybeCreateEventAlerts(env,target,stock,events,snapshotId){
 // usuario decide. Con «mantener» se dejan de enviar avisos de venta y se pasa a vigilar
 // la recuperación: vuelta al precio de compra, oportunidad de promediar y caídas adicionales.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Ficha de evento: próximo catalizador de una acción con su probabilidad histórica, el contexto de
+// fuentes oficiales (SEC, ClinicalTrials.gov, FDA), búsqueda web gratuita (Tavily, 1.000 créditos al
+// mes) y un resumen de Workers AI. Datos públicos: se cachean en la base de cachés (Turso o D1) por
+// evento y solo se recalculan si cambia la fecha o faltan 3 días.
+// ---------------------------------------------------------------------------
+const EVENT_BASE_RATES={
+  pdufa:{pct:90,label:"Aprobación de la FDA en la fecha PDUFA (solicitudes NDA/BLA)",source:"BIO/Informa/QLS, Clinical Development Success Rates 2011-2020"},
+  phase3:{pct:58,label:"Éxito de un ensayo de fase 3",source:"BIO/Informa/QLS, Clinical Development Success Rates 2011-2020"},
+  phase2:{pct:29,label:"Éxito de un ensayo de fase 2",source:"BIO/Informa/QLS, Clinical Development Success Rates 2011-2020"},
+  phase1:{pct:52,label:"Paso de fase 1 a fase 2",source:"BIO/Informa/QLS, Clinical Development Success Rates 2011-2020"},
+  earnings:{pct:75,label:"Empresas del S&P 500 que baten la previsión de beneficio por acción",source:"FactSet Earnings Insight (media de 5-10 años)"}
+};
+const EVENT_INSIGHT_TTL_MS=3*24*3600e3,TAVILY_MONTHLY_BUDGET=900;
+function eventInsightKind(ev){
+  const t=(String(ev&&ev.title||"")+" "+String(ev&&ev.fact||"")+" "+String(ev&&ev.type||"")).toLowerCase();
+  if(/pdufa|nda|bla|fda (approval|decision)|aprobaci[oó]n/.test(t))return "pdufa";
+  if(/fase 3|phase 3|phase iii|fase iii/.test(t))return "phase3";
+  if(/fase 2|phase 2|phase ii|fase ii/.test(t))return "phase2";
+  if(/fase 1|phase 1|phase i\b/.test(t))return "phase1";
+  if(/earnings|resultados|results/.test(t)||String(ev&&ev.type||"")==="earnings")return "earnings";
+  return "other";
+}
+async function nextStockEvent(snapshot,stock,services){
+  const now=Date.now(),limit=now+60*86400e3,ticker=String(stock.ticker||"").toUpperCase();
+  let list=(Array.isArray(snapshot&&snapshot.events)?snapshot.events:[]).filter(e=>String(e.ticker||"").toUpperCase()===ticker);
+  if(services.loadOfficialEvents){try{list=list.concat(await services.loadOfficialEvents(stock,{ticker:stock.ticker,stock_key:goalServerKey(stock)})||[])}catch(_){}}
+  const future=list.filter(e=>e&&e.eventKind!=="news"&&Number.isFinite(Date.parse(e.date||""))&&Date.parse(e.date)>=now-3600e3&&Date.parse(e.date)<=limit)
+    .sort((a,b)=>Date.parse(a.date)-Date.parse(b.date)||(finiteNumber(b.impactScore)||0)-(finiteNumber(a.impactScore)||0));
+  return{next:future[0]||null,related:future.slice(0,6)};
+}
+async function tavilyBudgetOk(env){
+  if(!env.HOT_STATE_KV)return true;
+  const key="tavily-used:"+nowIso().slice(0,7);
+  try{const used=Number(await env.HOT_STATE_KV.get(key))||0;if(used>=TAVILY_MONTHLY_BUDGET)return false;await env.HOT_STATE_KV.put(key,String(used+1),{expirationTtl:40*86400});return true}catch(_){return true}
+}
+async function tavilySearch(env,query){
+  const keyValue=String(env.TAVILY_API_KEY||"").trim();
+  if(!keyValue)return{ok:false,reason:"not-configured",results:[]};
+  if(!await tavilyBudgetOk(env))return{ok:false,reason:"monthly-budget",results:[]};
+  try{
+    const res=await fetch("https://api.tavily.com/search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+keyValue},
+      body:JSON.stringify({query:trimText(query,380),search_depth:"basic",max_results:6,include_answer:false,topic:"news",days:120})});
+    if(!res.ok)return{ok:false,reason:"http-"+res.status,results:[]};
+    const data=await res.json();
+    return{ok:true,results:(data.results||[]).slice(0,6).map(r=>({title:trimText(r.title,160),url:String(r.url||"").slice(0,400),content:trimText(r.content,700),date:r.published_date||""}))};
+  }catch(error){return{ok:false,reason:trimText(String(error&&error.message||error),120),results:[]}}
+}
+async function ensureEventInsightSchema(db){
+  await ensureCacheSchema(db,"event_insights",["CREATE TABLE IF NOT EXISTS event_insights (cache_key TEXT PRIMARY KEY,stock_key TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL)"]);
+}
+async function buildEventInsight(env,services,stock,ev,related){
+  const kind=eventInsightKind(ev),base=EVENT_BASE_RATES[kind]||null,name=String(stock.name||stock.ticker||"");
+  const when=String(ev.date||"").slice(0,10);
+  const web=await tavilySearch(env,name+" "+(stock.ticker||"")+" "+(kind==="pdufa"?"PDUFA FDA decision":kind.startsWith("phase")?"clinical trial results":kind==="earnings"?"earnings expectations":"")+" "+(ev.title||"")+" "+when.slice(0,7));
+  const official=(related||[]).map(e=>"- "+String(e.date||"").slice(0,10)+" · "+trimText(e.title,140)+" · "+trimText(e.fact||"",260)+" ("+(e.source||"")+")").join("\n");
+  const news=(web.results||[]).map((r,i)=>"["+(i+1)+"] "+r.title+" ("+(r.date||"s/f")+")\n"+r.content).join("\n\n");
+  let ai=null,model="";
+  if(env.AI&&typeof env.AI.run==="function"){
+    const prompt=["Eres un analista de biotecnología y mercados. Analiza el próximo evento de una acción con los datos aportados.",
+      "Acción: "+name+" ("+(stock.ticker||"")+"), sector "+(stock.sector||"")+", capitalización "+(finiteNumber(stock.marketCap)?Math.round(stock.marketCap/1e6)+" M$":"desconocida")+".",
+      "Evento: "+(ev.title||"")+" · fecha "+when+" · fuente "+(ev.source||"")+".",
+      base?"Probabilidad histórica de este tipo de evento: "+base.pct+" % ("+base.label+").":"No hay probabilidad histórica para este tipo de evento.",
+      "Eventos oficiales relacionados:\n"+(official||"(ninguno)"),
+      "Noticias recientes (búsqueda web):\n"+(news||"(sin resultados)"),
+      "Responde SOLO con JSON en español: {\"confirmedDate\":\"AAAA-MM-DD o null\",\"summary\":\"2-3 frases\",\"probabilityPct\":número 0-100 o null,\"probabilityReason\":\"1 frase\",\"factorsFor\":[\"...\"],\"factorsAgainst\":[\"...\"],\"expectedMovePct\":número o null,\"marketExpectation\":\"qué descuenta el precio\",\"sources\":[números de noticia usadas]}.",
+      "Parte de la probabilidad histórica y ajústala solo con hechos concretos de los datos. No inventes datos: si algo no aparece, usa null."].join("\n\n");
+    try{
+      const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:700,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+      ai=extractAiJson(run.result);model=run.model;
+    }catch(error){console.warn("Event insight AI failed",String(error&&error.message||error))}
+  }
+  const clampPct=v=>{const n=finiteNumber(v);return n===null?null:Math.max(0,Math.min(100,Math.round(n)))};
+  const usedIdx=Array.isArray(ai&&ai.sources)?ai.sources.map(Number).filter(n=>n>=1&&n<=(web.results||[]).length):[];
+  const sources=[...(related||[]).filter(e=>e.url).slice(0,4).map(e=>({title:trimText(e.title,140),url:e.url,official:true})),
+    ...(web.results||[]).filter((r,i)=>!usedIdx.length||usedIdx.includes(i+1)).slice(0,5).map(r=>({title:r.title,url:r.url,official:false}))];
+  const list=v=>Array.isArray(v)?v.map(x=>trimText(String(x),220)).filter(Boolean).slice(0,5):[];
+  return{
+    stockKey:goalServerKey(stock),ticker:stock.ticker||"",name,
+    event:{date:ev.date,title:trimText(ev.title,200),type:ev.type||"",kind,source:ev.source||"",url:ev.url||""},
+    baseRate:base,
+    ai:ai?{confirmedDate:/^\d{4}-\d{2}-\d{2}$/.test(String(ai.confirmedDate||""))?ai.confirmedDate:null,summary:trimText(ai.summary,600),
+      probabilityPct:clampPct(ai.probabilityPct),probabilityReason:trimText(ai.probabilityReason,300),factorsFor:list(ai.factorsFor),factorsAgainst:list(ai.factorsAgainst),
+      expectedMovePct:finiteNumber(ai.expectedMovePct),marketExpectation:trimText(ai.marketExpectation,300),model}:null,
+    web:{ok:!!web.ok,reason:web.ok?"":web.reason||""},
+    sources,generatedAt:nowIso()
+  };
+}
+async function handleEventInsight(request,env,user,json,url,services){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  const stockKey=trimText(url.searchParams.get("stockKey")||"",80).toUpperCase(),cacheOnly=url.searchParams.get("cacheOnly")==="1";
+  if(!stockKey||!services.loadMarketSnapshot)return json({error:"Falta la acción."},400);
+  const snapshot=await services.loadMarketSnapshot(env),stock=findStock(snapshot,{stock_key:stockKey});
+  if(!stock)return json({error:"Acción no encontrada."},404);
+  const{next,related}=await nextStockEvent(snapshot,stock,services);
+  if(!next)return json({insight:null,reason:"Sin evento con fecha en los próximos 60 días."});
+  const cacheKey="ev1:"+goalServerKey(stock)+":"+String(next.date).slice(0,10)+":"+eventInsightKind(next);
+  const fresh=Date.parse(next.date)-Date.now()<=3*86400e3?24*3600e3:EVENT_INSIGHT_TTL_MS;
+  const cached=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload,created_at FROM event_insights WHERE cache_key=?").bind(cacheKey).first()}).catch(()=>null);
+  if(cached&&Date.now()-Date.parse(cached.created_at)<fresh){try{return json({insight:{...JSON.parse(cached.payload),cached:true}})}catch(_){}}
+  if(cacheOnly)return json({insight:null,event:{date:next.date,title:next.title,kind:eventInsightKind(next)},baseRate:EVENT_BASE_RATES[eventInsightKind(next)]||null});
+  // Límite por usuario: 12 análisis nuevos al día (cada uno puede gastar 1 búsqueda web).
+  if(env.HOT_STATE_KV){
+    const k="ev-quota:"+user.id+":"+nowIso().slice(0,10);
+    try{const used=Number(await env.HOT_STATE_KV.get(k))||0;if(used>=12)return json({error:"Has llegado al máximo de 12 análisis de eventos por hoy."},429);await env.HOT_STATE_KV.put(k,String(used+1),{expirationTtl:2*86400})}catch(_){}
+  }
+  const insight=await buildEventInsight(env,services,stock,next,related);
+  await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+    return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
+      .bind(cacheKey,insight.stockKey,JSON.stringify(insight),insight.generatedAt).run()}).catch(()=>{});
+  return json({insight});
+}
+// Diagnóstico de la búsqueda web (?probe=tavily): una consulta mínima, resultado guardado 1 hora.
+async function tavilyStatus(env,url){
+  const out={configured:!!String(env.TAVILY_API_KEY||"").trim()};
+  if(url.searchParams.get("probe")!=="tavily"||!out.configured)return out;
+  if(env.HOT_STATE_KV){try{const c=await env.HOT_STATE_KV.get("tavily-probe:v1","json");if(c)return{...out,probe:c,probeCached:true}}catch(_){}}
+  const r=await tavilySearch(env,"FDA PDUFA date this month");
+  const probe={ok:!!r.ok,results:(r.results||[]).length,reason:r.ok?"":r.reason,at:nowIso()};
+  if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.put("tavily-probe:v1",JSON.stringify(probe),{expirationTtl:3600})}catch(_){}}
+  return{...out,probe};
+}
+
 let positionDecisionsSchemaReady=false;
 // Solo avisos que piden una acción: vender (o vender sin pérdidas al recuperar) y comprar.
 const DECISION_ALERT_TYPES=["position-sell","position-recovered","radar-ai"];
@@ -5069,6 +5192,7 @@ export async function handleBackendApi(request, env, services = {}) {
       model: configuredAiModel(env),
       aiHealth: await aiHealthStatus(env, url),
       cacheDb: await cacheDbStatus(env, url),
+      webSearch: await tavilyStatus(env, url),
       alertsCadenceMinutes: 1,
       sources: {
         tradeRepublic: { integrated: true, configured: true, mode: "direct-origin", label: "Trade Republic / LSX" },
@@ -5111,6 +5235,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
+    if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
