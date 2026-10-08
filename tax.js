@@ -53,6 +53,24 @@
 
  // Positions now in loss with a purchase in the last two months: selling them today
  // would leave the loss deferred (art. 33.5.f LIRPF).
+ // De dónde salen los datos y qué puede estar mal: duplicados y precios fuera de rango.
+ function auditHtml(r){
+  const a=r.audit;if(!a)return'';
+  const origins=Object.entries(a.byOrigin||{}).sort((x,y)=>(y[1].buys+y[1].sells)-(x[1].buys+x[1].sells));
+  const dups=a.duplicates||[],outs=a.outliers||[];
+  const num=v=>Number(v).toLocaleString('es-ES',{maximumFractionDigits:4});
+  const delBtn=id=>'<button type="button" class="tax-div-del" data-tax-tx-del="'+esc(id)+'" title="Borrar esta operación" aria-label="Borrar esta operación">✕</button>';
+  return '<section class="tax-card tax-audit"><header><small>REVISIÓN DE TUS DATOS</small><h2>'+(dups.length||outs.length?'⚠️ Hay operaciones que revisar':'✅ Sin problemas detectados')+'</h2></header>'+
+   '<p class="tax-hint">Todo se calcula con las operaciones guardadas en tu cuenta ('+a.total+' en '+r.year+'): importadas de tu bróker, añadidas a mano o registradas desde el Objetivo. Si el resultado no cuadra con tu bróker, revisa aquí.</p>'+
+   '<ul class="tax-audit-origins">'+origins.map(([k,v])=>'<li><b>'+esc(k)+'</b><span>'+v.buys+' compras · '+v.sells+' ventas</span></li>').join('')+'</ul>'+
+   (dups.length?'<h3>Posibles duplicados ('+dups.length+')</h3><p class="tax-hint">Misma acción, sentido, cantidad y precio el mismo día. Si es la misma operación guardada dos veces, borra la sobrante.</p>'+
+     dups.map(d=>'<div class="tax-audit-item"><div><b>'+esc(d.ticker||d.name)+'</b> · '+(d.side==='SELL'?'venta':'compra')+' '+num(d.quantity)+' × '+num(d.price)+' '+esc(d.currency)+' · '+day(d.date)+'</div><ul>'+
+      d.items.map(i=>'<li><span>'+esc(i.origin)+(i.broker?' · '+esc(i.broker):'')+'</span>'+delBtn(i.id)+'</li>').join('')+'</ul></div>').join(''):'')+
+   (outs.length?'<h3>Precios fuera de rango ('+outs.length+')</h3><p class="tax-hint">El precio es más de 4 veces mayor o menor que el habitual de esa acción: suele ser un error de unidades o de divisa.</p>'+
+     outs.map(o=>'<div class="tax-audit-item"><div><b>'+esc(o.ticker)+'</b> · '+(o.side==='SELL'?'venta':'compra')+' '+num(o.quantity)+' × '+num(o.price)+' '+esc(o.currency)+' (habitual '+num(o.median)+') · '+day(o.date)+' · '+esc(o.origin)+'</div>'+delBtn(o.id)+'</div>').join(''):'')+
+  '</section>';
+ }
+
  function beforeSellHtml(){
   if(year!==thisYear||typeof P().getPositionsDetail!=='function')return'';
   const now=Date.now(),rows=P().getPositionsDetail().filter(p=>p.pnlEur!==null&&p.pnlEur<0&&p.lastBuyAt&&now-new Date(p.lastBuyAt).getTime()<61*864e5);
@@ -184,7 +202,7 @@
   try{
    loading=load(wanted,force);const r=await loading;
    if(wanted!==year)return;
-   box.innerHTML=yearTabs()+summaryHtml(r)+dividendsHtml(r)+savingsHtml(r)+beforeSellHtml()+salesHtml(r)+model720Html(r)+notesHtml(r);
+   box.innerHTML=yearTabs()+auditHtml(r)+summaryHtml(r)+dividendsHtml(r)+savingsHtml(r)+beforeSellHtml()+salesHtml(r)+model720Html(r)+notesHtml(r);
    paintMeters(box);
    box._report=r;
   }catch(e){
@@ -197,6 +215,15 @@
   if(y){year=Number(y.dataset.taxYear)||thisYear;render();return}
   if(e.target.closest&&e.target.closest('[data-tax-retry]')){render(true);return}
   if(e.target.closest&&e.target.closest('[data-tax-export]')){const box=document.getElementById('taxResults');if(box&&box._report)exportCsv(box._report);return}
+  const txDel=e.target.closest&&e.target.closest('[data-tax-tx-del]');
+  if(txDel){
+   if(!confirm('¿Borrar esta operación? Se recalculará la posición y el informe.'))return;
+   txDel.disabled=true;
+   window.ViewInvAIAuth.apiFetch('/api/transactions/'+encodeURIComponent(txDel.dataset.taxTxDel),{method:'DELETE'})
+    .then(async res=>{if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.error||'No se pudo borrar.')}cache={};window.dispatchEvent(new CustomEvent('viewinvai:portfolio-membership-changed'));render(true)})
+    .catch(err=>{alert(err.message);txDel.disabled=false});
+   return;
+  }
   const del=e.target.closest&&e.target.closest('[data-tax-div-del]');
   if(del){
    if(!confirm('¿Borrar este dividendo?'))return;

@@ -1976,13 +1976,41 @@ export function computeSpanishTax(rows,fxFor,year){
   return{year:Number(year),sales:out,totals,holdings,warnings:[...warnings]};
 }
 
+// Revisión de los datos del informe: de dónde vienen las operaciones, posibles duplicados
+// (misma acción, sentido, cantidad y precio el mismo día) y precios fuera de rango.
+const TAX_ORIGIN_LABEL={manual:"A mano","position-seed":"Alta de la posición","position-adjustment":"Ajuste de la posición",goal:"Objetivo"};
+function taxDataAudit(rows,year){
+  const inYear=r=>String(r.executed_at||"").startsWith(String(year));
+  const originOf=r=>{const o=String(r.origin||"manual");return o.startsWith("import:")?"Importado "+o.slice(7).toUpperCase():TAX_ORIGIN_LABEL[o]||o};
+  const byOrigin={};
+  for(const r of rows.filter(inYear)){const k=originOf(r)+(r.broker?" · "+r.broker:"");byOrigin[k]=byOrigin[k]||{buys:0,sells:0};byOrigin[k][String(r.side).toUpperCase()==="SELL"?"sells":"buys"]++}
+  const groups=new Map();
+  for(const r of rows.filter(inYear)){
+    const k=[String(r.isin||r.stock_key||"").toUpperCase(),String(r.side).toUpperCase(),Math.round(Number(r.quantity)*1e6),Math.round(Number(r.price)*1e4),isoDay(r.executed_at)].join("|");
+    const g=groups.get(k)||[];g.push(r);groups.set(k,g);
+  }
+  const duplicates=[...groups.values()].filter(g=>g.length>1).slice(0,50).map(g=>({ticker:g[0].ticker,name:g[0].name,side:String(g[0].side).toUpperCase(),quantity:Number(g[0].quantity),
+    price:Number(g[0].price),currency:String(g[0].currency||"EUR").toUpperCase(),date:isoDay(g[0].executed_at),
+    items:g.map(r=>({id:r.id,origin:originOf(r),broker:r.broker||"",at:r.executed_at}))}));
+  // Precio muy distinto de la mediana de esa acción (unidades o divisa mal registradas).
+  const prices=new Map();
+  for(const r of rows){const k=String(r.isin||r.stock_key||"").toUpperCase()+"|"+String(r.currency||"EUR").toUpperCase(),p=Number(r.price);if(p>0){const a=prices.get(k)||[];a.push(p);prices.set(k,a)}}
+  const median=a=>{const b=a.slice().sort((x,y)=>x-y);return b[Math.floor(b.length/2)]};
+  const outliers=[];
+  for(const r of rows.filter(inYear)){
+    const k=String(r.isin||r.stock_key||"").toUpperCase()+"|"+String(r.currency||"EUR").toUpperCase(),a=prices.get(k)||[];
+    if(a.length<3)continue;const m=median(a),p=Number(r.price);
+    if(m>0&&(p/m>4||p/m<.25))outliers.push({id:r.id,ticker:r.ticker,side:String(r.side).toUpperCase(),quantity:Number(r.quantity),price:p,median:m,currency:String(r.currency||"EUR").toUpperCase(),date:isoDay(r.executed_at),origin:originOf(r)});
+  }
+  return{byOrigin,duplicates,outliers:outliers.slice(0,50),total:rows.filter(inYear).length};
+}
 async function handleTaxReport(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   await ensureTransactionsSchema(env);
   const nowYear=new Date().getUTCFullYear();
   const year=Math.max(2000,Math.min(nowYear,Math.round(finiteNumber(url.searchParams.get("year"))||nowYear)));
   const cutoff=year<nowYear?(year+1)+"-01-01T00:00:00.000Z":new Date(Date.now()+864e5).toISOString();
-  const res=await env.DB.prepare("SELECT ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
+  const res=await env.DB.prepare("SELECT id,ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
   const rows=res.results||[];
   const needed=new Map();
   for(const r of rows){
@@ -2013,6 +2041,7 @@ async function handleTaxReport(request,env,user,json,url){
   report.savings.dueEur=Math.max(0,report.savings.taxEur-report.savings.deductionEur)-report.savings.withheldEsEur;
   report.asOf=year<nowYear?year+"-12-31":isoDay(Date.now());
   report.transactions=rows.length;
+  report.audit=taxDataAudit(rows,year);
   return json(report);
 }
 
