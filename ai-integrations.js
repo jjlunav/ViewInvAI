@@ -1,7 +1,7 @@
 'use strict';
 // Integrar la IA (opcional). Cada usuario conecta una, varias o todas sus IA (Gemini gratis,
 // Claude u OpenAI con su clave) o pregunta a mano a ChatGPT/Claude/Gemini con su cuenta y pega la respuesta.
-// La app sigue calculando el Radar AI y el Objetivo como siempre; las IA activas solo
+// La app contrasta siempre con sus IA gratuitas y noticias de hoy; las IA del usuario son una segunda opinión y solo
 // contrastan ese resultado con información actual para reforzar o matizar la decisión.
 (function(){
  const PROVIDERS=[
@@ -348,7 +348,28 @@
    if(new Date(c.createdAt||0).getTime()<cutoff)continue;
    for(const i of c.items||[])if(i.ticker===t&&VERDICT[i.verdict]&&i.verdict!=='nota')return{verdict:i.verdict,reason:i.reason||'',provider:c.provider,at:c.createdAt};
   }
+  // Si no hay contraste tuyo, el automático del servidor (noticias de hoy + IA externa).
+  const a=autoVerdicts.map.get(t);
+  if(a&&Date.now()-a.fetchedAt<4*3600000&&VERDICT[a.verdict])return{verdict:a.verdict,reason:a.reason||'',provider:'viewinvai-ai',at:a.at};
   return null;
+ }
+ // Contraste automático del Radar: el servidor contrasta con noticias de hoy e IA externa las acciones
+ // que muestra el Radar (caché común de 4 h). Se pide como mucho cada 10 min por mercado.
+ const autoVerdicts={map:new Map(),last:{},busy:false};
+ async function autoCheck(mode,items){
+  const a=auth();if(!a||typeof a.getUser!=='function'||!a.getUser()||autoVerdicts.busy)return;
+  const now=Date.now();if(now-(autoVerdicts.last[mode]||0)<10*60000)return;
+  const todo=(items||[]).filter(x=>x&&x.ticker&&!(autoVerdicts.map.get(x.ticker)&&now-autoVerdicts.map.get(x.ticker).fetchedAt<4*3600000)).slice(0,12);
+  if(!todo.length)return;
+  autoVerdicts.busy=true;autoVerdicts.last[mode]=now;
+  try{
+   const d=await api('/api/radar-check',{method:'POST',body:JSON.stringify({mode,items:todo})});
+   let changed=false;
+   for(const [t,v] of Object.entries(d.verdicts||{})){autoVerdicts.map.set(String(t).toUpperCase(),{...v,fetchedAt:Date.now()});changed=true}
+   if(changed)announce({type:'radar',key:mode});
+   // Si quedaron pendientes, se reintenta pronto.
+   if(d.pending)autoVerdicts.last[mode]=Date.now()-9*60000;
+  }catch(_){}finally{autoVerdicts.busy=false}
  }
  function verdictFor(type,key,ticker){const v=tickerVerdict(ticker);return v?v.verdict:null}
  function badgeHtml(v){
@@ -438,5 +459,5 @@
  document.addEventListener('DOMContentLoaded',renderSettings);
  if(document.readyState!=='loading')renderSettings();
 
- window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true),reloadRecent:()=>loadRecent()};
+ window.ViewInvAIContrast={panelHtml,verdictFor,tickerVerdict,badgeHtml,stockContext,openManual,reload:()=>loadConfig(true),reloadRecent:()=>loadRecent(),autoCheck};
 })();

@@ -647,6 +647,9 @@ function radarAiShell(advanced=radarAiLastAdvanced){
  const rows=radarAiCandidateRows(mode,radarAiLastAdvanced[mode]||null);
  const counts={};['high','opportunity','watch','spec'].forEach(t=>{counts[t]=radarAiTierRows(rows,t).length});
  const visible=radarAiVisibleRows(rows);
+ // Contraste automático con noticias de hoy e IA externa de lo que el Radar enseña (en segundo plano).
+ try{const pool=radarAiContrastPool(rows).slice(0,12).map(r=>({key:stockKey(r.s),ticker:String(r.s.ticker||r.s.trTicker||'').toUpperCase(),name:r.s.name||'',isin:r.s.isin||r.s.usIsin||r.s.trIsin||'',score:Math.round(r.score),tier:r.speculative?'spec':r.tier}));
+  if(pool.length&&window.ViewInvAIContrast&&window.ViewInvAIContrast.autoCheck)setTimeout(()=>window.ViewInvAIContrast.autoCheck(mode,pool),400)}catch(_){}
  const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
  const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';
  const list=visible.length?visible.map(radarAiCard).join(''):'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
