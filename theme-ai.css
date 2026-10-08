@@ -1627,9 +1627,9 @@ html[data-theme="light"] .goal-wizard-input{background:#fff;border-color:#d7dcec
    Cada grupo tiene su hueco reservado (antes la ayuda/recargar quedaba debajo de la lupa). */
 @media (max-width:820px){
  html{--tb-top:env(safe-area-inset-top,0px);--tb-head-top:var(--tb-top);--tb-h:48px;--tb-btn:34px;--tb-gap:4px;
-  --tb-account:calc(8px + 3*var(--tb-btn) + 2*var(--tb-gap));
-  --tb-bell:calc(var(--tb-account) + 6px);
-  --tb-actions:calc(var(--tb-bell) + var(--tb-btn) + 6px)}
+  /* Grupo fijo de la derecha: campana, buscar, ajustes y cuenta (4 botones). */
+  --tb-account:calc(8px + 4*var(--tb-btn) + 3*var(--tb-gap));
+  --tb-actions:calc(var(--tb-account) + 6px)}
  html:root:root body:not(#tb-x):not(.stock-detail-open) .view.active>.page-heading{
   position:fixed!important;top:0!important;left:0!important;right:0!important;width:auto!important;max-width:none!important;z-index:1700!important;
   display:flex!important;align-items:center!important;
@@ -1675,13 +1675,47 @@ html[data-theme="light"] .goal-wizard-input{background:#fff;border-color:#d7dcec
   width:var(--tb-btn)!important;min-width:var(--tb-btn)!important;height:var(--tb-btn)!important;min-height:var(--tb-btn)!important;padding:0!important;
  }
  html:root:root body:not(#tb-x) .floating-account .account-copy{display:none!important}
- html:root:root body:not(#tb-x):not(.stock-detail-open) .notification-bell{
-  display:grid!important;place-items:center!important;position:fixed!important;
-  top:calc(var(--tb-top) + 7px)!important;right:var(--tb-bell)!important;bottom:auto!important;left:auto!important;
-  width:var(--tb-btn)!important;height:var(--tb-btn)!important;min-width:0!important;font-size:14px!important;z-index:2196!important;
+ /* La campana va dentro del grupo de la derecha (ui-shell.js la mueve allí). */
+ html:root:root body:not(#tb-x) #accountArea>.notification-bell{
+  display:grid!important;place-items:center!important;position:relative!important;inset:auto!important;transform:none!important;margin:0!important;
+  width:var(--tb-btn)!important;height:var(--tb-btn)!important;min-width:0!important;padding:0!important;font-size:14px!important;z-index:auto!important;flex:0 0 auto!important;
  }
  html:root:root body:not(#tb-x):not(.stock-detail-open) .notification-center{
   top:calc(var(--tb-top) + var(--tb-h) + 6px)!important;bottom:auto!important;left:8px!important;right:8px!important;
   width:auto!important;max-height:calc(100dvh - var(--tb-top) - var(--tb-h) - 110px)!important;z-index:2190!important;
  }
+}
+
+/* 0.6.68 · Escritorio: avisos y ayuda en la barra superior, como en móvil.
+   Orden: ? · campana · buscar · ajustes · cuenta; mismos botones redondos de 42 px. */
+#accountArea .global-help-button{order:-3}
+#accountArea .notification-bell{order:-2}
+#accountArea .global-search-button{order:-1}
+@media (max-width:820px){
+ #globalHelpButton{display:none!important}
+ /* En la ficha de una acción la campana no flota sobre su cabecera fija (como antes). */
+ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>.notification-bell{display:none!important}
+}
+/* La ficha de una acción no es una sección con ayuda propia: el «?» global no aplica. */
+html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{display:none!important}
+@media (min-width:821px){
+ /* La cabecera reserva el ancho del grupo: 5 botones de 42 px + 4 huecos de 8 px + margen. */
+ :root{--ph-reserve:270px}
+ html:root:root body:not(#tb-x) #accountArea{display:flex!important;align-items:center!important;gap:8px!important}
+ html:root:root body:not(#tb-x) #accountArea>.notification-bell,
+ html:root:root body:not(#tb-x) #accountArea>#globalHelpButton{
+  position:relative!important;inset:auto!important;transform:none!important;
+  display:grid!important;place-items:center!important;flex:0 0 auto!important;
+  width:42px!important;height:42px!important;min-width:42px!important;padding:0!important;margin:0!important;
+  border-radius:50%!important;border:1px solid rgb(41,66,78)!important;background:rgb(11,26,35)!important;
+  color:#dce8ec!important;font-size:15px!important;font-weight:800!important;line-height:1!important;
+  box-shadow:none!important;cursor:pointer!important;z-index:auto!important;
+ }
+ html:root:root body:not(#tb-x) #accountArea>#globalHelpButton[hidden]{display:none!important}
+ html:root:root[data-theme="light"] body:not(#tb-x) #accountArea>.notification-bell,
+ html:root:root[data-theme="light"] body:not(#tb-x) #accountArea>#globalHelpButton{background:#fff!important;border-color:#cbdce3!important;color:#17303b!important}
+ /* El «?» suelto de cada cabecera se sustituye por el global (el resto de acciones se queda). */
+ html:root:root body:not(#tb-x) .view.active>.page-heading .section-help{display:none!important}
+ html:root:root body:not(#tb-x) .view.active>.page-heading .heading-actions:not(:has(>:not(.section-help))){display:none!important}
+ html:root:root body:not(#tb-x) .notification-center{top:60px!important;bottom:auto!important;right:12px!important;left:auto!important}
 }

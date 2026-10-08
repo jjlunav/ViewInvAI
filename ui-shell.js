@@ -39,6 +39,33 @@
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',reset,{once:true});else reset();
  window.ViewInvAIShell=Object.assign(window.ViewInvAIShell||{},{resetChrome:reset,openSelectSheet:openPicker});
 
+ /* Barra superior: la campana de avisos vive en el mismo grupo que buscar/ajustes/cuenta y un
+  * único «?» abre la ayuda de la sección activa (en móvil se sigue usando el de cada cabecera). */
+ function syncGlobalHelp(){
+  const help=document.getElementById('globalHelpButton');if(!help)return;
+  const src=document.querySelector('.view.active .page-heading [data-help-section]')||document.querySelector('.view.active [data-help-section]');
+  help.hidden=!src;
+  if(!src)return;
+  // help.js trata cualquier .section-help con data-help como disparador y ancla el globo a él.
+  help.dataset.helpSection=src.dataset.helpSection||'';
+  if(src.dataset.help)help.dataset.help=src.dataset.help;
+  if(src.dataset.helpTitle)help.dataset.helpTitle=src.dataset.helpTitle;
+ }
+ function mountTopActions(){
+  // Orden real del DOM = orden visual (? · campana · buscar · ajustes · cuenta), también para el teclado.
+  const area=document.getElementById('accountArea');
+  if(area){
+   const seq=[document.getElementById('globalHelpButton'),document.getElementById('notificationBell'),document.getElementById('globalSearchButton')].filter(Boolean);
+   for(let i=0;i<seq.length;i++)if(area.children[i]!==seq[i])area.insertBefore(seq[i],area.children[i]||null);
+   // search.js puede añadir la lupa más tarde: se reordena si cambia el grupo (idempotente).
+   if(!area.__orderWatch&&window.MutationObserver){area.__orderWatch=new MutationObserver(()=>mountTopActions());area.__orderWatch.observe(area,{childList:true})}
+  }
+  syncGlobalHelp();
+ }
+ document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#globalHelpButton'))syncGlobalHelp()},true);
+ window.addEventListener('viewinvai:view-changed',()=>setTimeout(mountTopActions,0));
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountTopActions,{once:true});else mountTopActions();
+
  /* Desplegables propios en móvil.
   * El menú nativo de Android se cierra solo si la vista se repinta (p. ej. con una
   * cotización en vivo) y no sigue el tema. En pantallas táctiles ≤ 820 px cada <select>
