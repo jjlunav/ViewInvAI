@@ -4168,7 +4168,7 @@ async function searchRoute(env,query){
     const t=await tavilySearch(env,query);
     await recordProviderUse(env,"tavily",t.ok,t.reason||"");
     if(t.ok&&t.results.length)return{ok:true,provider:"tavily",results:t.results};
-    tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);else{const st=Number((/^http-(\d+)/.exec(t.reason||"")||[])[1])||0;providerFail("tavily",st)}
+    tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);else{const st=Number((String(t.reason||"").match(/^http-(\d+)/)||[])[1])||0;providerFail("tavily",st)}
   }
   const attempt=async(id,fn)=>{
     if(!providerReady(env,id))return null;
