@@ -58,4 +58,16 @@ const input=candidates=>({
   assert.ok(p.actions.some(x=>x.type==="SELL"&&(x.reason==="time-exit"||x.reason==="stagnation")),"stale flat position should release cash");
 }
 
+{
+  const position={key:"NASDAQ:BAD",ticker:"BAD",name:"Bad",units:10,avgEur:10,priceEur:9.5,bidEur:9.5,score:70,quality:80,
+    tier:"watch",speculative:false,atrPct:2,feeEur:1,holdingDays:3,catalystDays:null,catalystImpact:0,aiVerdict:"contradice",aiNewsReason:"anuncia una ampliación de capital"};
+  const p=G.plan({...input([]),positions:[position],cashEur:100,peakValueEur:200});
+  assert.ok(p.actions.some(x=>x.type==="SELL"&&x.reason==="news"),"invalidating news must propose exiting even at a loss");
+}
+{
+  const weak={...base,relVolume:.5,rsi:30,dayChangePct:-1};const plain=G.candidateBurst(weak,"aggressive").score;
+  const idea=G.candidateBurst({...weak,aiIdeaConfidence:80},"aggressive").score;
+  assert.ok(idea>plain,"AI analyst idea with news must raise the early score");
+}
+
 console.log("Goal engine tests: OK");

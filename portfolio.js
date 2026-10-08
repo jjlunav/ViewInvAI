@@ -1434,6 +1434,27 @@ function goalAiOf(ticker){
   const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker):null;
   return v&&v.verdict||"";
 }
+// Motivo de la vigilancia de noticias (IA de la app + búsqueda web) cuando invalida una posición.
+function goalNewsReasonOf(ticker){
+  const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker):null;
+  return v&&v.provider==="viewinvai-ai"&&v.verdict==="contradice"?v.reason||"":"";
+}
+// Ideas del analista IA (búsqueda web + IA en el servidor, comunes a todos y cacheadas 3 h).
+let goalIdeasMemo={at:0,map:new Map(),loading:false};
+function goalIdeaOf(ticker,marketTicker){
+  const m=goalIdeasMemo.map;return m.get(String(marketTicker||"").toUpperCase())||m.get(String(ticker||"").toUpperCase())||null;
+}
+async function refreshGoalIdeas(){
+  const auth=window.ViewInvAIAuth;
+  if(goalIdeasMemo.loading||Date.now()-goalIdeasMemo.at<20*60000||!auth||!auth.getUser||!auth.getUser())return;
+  goalIdeasMemo.loading=true;
+  try{const r=await auth.apiFetch("/api/goal-ideas");const d=await r.json().catch(()=>({}));
+    if(r.ok){const had=goalIdeasMemo.map.size;goalIdeasMemo.map=new Map((d.ideas||[]).map(i=>[String(i.ticker||"").toUpperCase(),i]));goalIdeasMemo.at=Date.now();
+      // Las revisiones de noticias del servidor llegan como contrastes: se recargan a la vez.
+      try{window.ViewInvAIContrast?.reloadRecent?.()}catch(_){}
+      if(had||goalIdeasMemo.map.size)renderApp()}}
+  catch(_){}finally{goalIdeasMemo.loading=false;if(!goalIdeasMemo.at||Date.now()-goalIdeasMemo.at>20*60000)goalIdeasMemo.at=Date.now()-15*60000}
+}
 // Acciones congeladas de una posición que siguen vigentes hoy (fecha local, inclusive).
 function positionFrozenQty(p){
   const until=String(p&&p.frozen_until||"").slice(0,10),qty=num(p&&p.frozen_qty)||0;
@@ -1500,7 +1521,7 @@ function goalEngineInput(metrics,positionRows){
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
     return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
-      feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),holdingDays,
+      feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),aiNewsReason:goalNewsReasonOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
   });
   const held=new Set(positions.map(p=>p.key));
@@ -1519,8 +1540,10 @@ function goalEngineInput(metrics,positionRows){
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
-      catalystDays:num(cat.days),catalystImpact:num(cat.impact)}:null;
+      catalystDays:num(cat.days),catalystImpact:num(cat.impact),
+      ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
   }).filter(Boolean);
+  refreshGoalIdeas();
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
     positions,candidates,lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
@@ -1621,7 +1644,7 @@ function goalActionHtml(a,ctx){
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;
-  const sells=plan.actions.filter(a=>a.type==="SELL").map(a=>({ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",instruction:a.reason==="stop"?"Stop alcanzado":a.reason==="rotation"?"Sustitución por "+(a.into||""):"Asegurar beneficio"}));
+  const sells=plan.actions.filter(a=>a.type==="SELL").map(a=>({ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",instruction:a.reason==="stop"?"Stop alcanzado":a.reason==="rotation"?"Sustitución por "+(a.into||""):a.reason==="news"?"Noticia que invalida la operación":"Asegurar beneficio"}));
   const buys=plan.actions.filter(a=>a.type==="BUY").map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,units:a.units,price:goalHistoryRound(a.priceEur,4),currency:"EUR",allocationEur:goalHistoryRound(a.ticketEur,2),stop:goalHistoryRound(a.stopEur,4),instruction:"Comprar ahora · stop "+a.stopEur}));
   const waits=(plan.waits||[]).map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,decision:a.decision||"ESPERAR",limitPrice:goalHistoryRound(a.limitPriceEur,4),currentPrice:goalHistoryRound(a.currentPriceEur,4),instruction:a.text}));
   const all=[...plan.actions,...(plan.waits||[])];

@@ -4081,6 +4081,9 @@ const PROVIDERS=[
   {id:"gemini",label:"Google Gemini",kind:"IA",secret:"GEMINI_API_KEY",free:"Flash/Flash-Lite: cientos a ~1.500 consultas/día según modelo",dashboard:"https://aistudio.google.com/usage"},
   {id:"groq",label:"Groq",kind:"IA",secret:"GROQ_API_KEY",free:"~1.000 consultas/día",dashboard:"https://console.groq.com/settings/limits"},
   {id:"openrouter",label:"OpenRouter (modelos free)",kind:"IA",secret:"OPENROUTER_API_KEY",free:"50 consultas/día en modelos :free",dashboard:"https://openrouter.ai/settings/keys"},
+  {id:"cohere",label:"Cohere (clave de prueba)",kind:"IA",secret:"COHERE_API_KEY",free:"1.000 llamadas/mes",dashboard:"https://dashboard.cohere.com/api-keys",base:"https://api.cohere.ai/compatibility/v1",probe:"https://api.cohere.ai/v1/models",models:["command-a-03-2025","command-r-plus"]},
+  {id:"sambanova",label:"SambaNova Cloud",kind:"IA",secret:"SAMBANOVA_API_KEY",free:"Plan gratuito con límites por minuto",dashboard:"https://cloud.sambanova.ai/apis",base:"https://api.sambanova.ai/v1",models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-V3-0324"]},
+  {id:"cerebras",label:"Cerebras",kind:"IA",secret:"CEREBRAS_API_KEY",free:"Plan gratuito por tokens/día",dashboard:"https://cloud.cerebras.ai/",base:"https://api.cerebras.ai/v1",models:["llama-3.3-70b","gpt-oss-120b"]},
   {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
   {id:"tavily",label:"Tavily",kind:"Búsqueda",secret:"TAVILY_API_KEY",free:"1.000 créditos/mes",dashboard:"https://app.tavily.com/home",monthlyLimit:1000},
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
@@ -4155,6 +4158,15 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true}){
       catch(error){tried.push("openrouter:"+model+":"+(error.status||error.message));providerFail("openrouter",error.status||0);await recordProviderUse(env,"openrouter",false,String(error.message||error));if(error.status===429)break}
     }
   }
+  // IA gratuitas adicionales con API compatible con OpenAI: solo si su clave está guardada.
+  for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA")){
+    if(!providerReady(env,p.id))continue;
+    for(const model of p.models){
+      try{const text=await openAiCompatible(p.id,p.base+"/chat/completions",providerKey(env,p),model,prompt,maxTokens);
+        await recordProviderUse(env,p.id,true);return{text,provider:p.id,model}}
+      catch(error){tried.push(p.id+":"+model+":"+(error.status||error.message));providerFail(p.id,error.status||0);await recordProviderUse(env,p.id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
+    }
+  }
   if(env.AI&&typeof env.AI.run==="function"){
     try{const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
       const r=run.result,text=typeof r==="string"?r:r&&typeof r.response==="string"?r.response:r&&r.response?JSON.stringify(r.response):r&&r.choices?String(r.choices[0].message&&r.choices[0].message.content||""):"";
@@ -4214,6 +4226,7 @@ async function providerProbe(env,p){
     else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
     else if(p.id==="jina"){r=await res("https://r.jina.ai/https://example.com",{headers:{"Authorization":"Bearer "+key,"Accept":"application/json"}})}
+    else if(p.base){r=await res(p.probe||p.base+"/models",{headers:{"Authorization":"Bearer "+key}})}
     else if(p.id==="finnhub"){r=await res("https://finnhub.io/api/v1/quote?symbol=AAPL&token="+encodeURIComponent(key))}
     else if(p.id==="workersai"){const a=await aiHealthStatus(env,new URL("https://x/?probe=ai"));return{ok:!!(a.probe&&a.probe.ok),status:a.probe&&a.probe.ok?200:0,detail:a.probe&&a.probe.model||a.lastError||""}}
     if(!r)return{ok:false,status:0,detail:"sin prueba"};
@@ -5555,6 +5568,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
     if (root === "admin") return handleAdmin(request, env, user, json, url);
+    if (root === "goal-ideas") { if (url.pathname !== "/api/goal-ideas") return json({ error: "Not found" }, 404); if (request.method !== "GET") return json({ error: "Method not allowed" }, 405); return json(await goalAnalystIdeas(env), 200, { "Cache-Control": "no-store" }); }
     if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
     if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
@@ -5844,7 +5858,9 @@ async function aiSaveContrast(env,user,subjectType,subjectKey,provider,parsed,so
   await env.DB.prepare("INSERT INTO ai_contrasts (id,user_id,subject_type,subject_key,day,provider,verdict,summary,items_json,sources_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .bind(row.id,row.user_id,row.subject_type,row.subject_key,row.day,row.provider,row.verdict,row.summary,row.items_json,row.sources_json,row.created_at).run();
   // Se guardan las 60 últimas por usuario: es una ayuda puntual, no un histórico.
-  await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
+  // Las revisiones automáticas del Objetivo («viewinvai-ai») tienen su propio cupo y no desplazan las del usuario.
+  if(provider==="viewinvai-ai")await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND provider='viewinvai-ai' AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? AND provider='viewinvai-ai' ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
+  else await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
   return aiContrastRow(row);
 }
 async function handleAiIntegration(request,env,user,json,parts,url){
@@ -6187,7 +6203,7 @@ function goalServerCatalyst(snapshot,stock){
 }
 async function goalWorkersScout(env,goal,candidates){
   const engine=globalThis.ViewInvAIGoal;
-  if(!env.AI||typeof env.AI.run!=="function"||!engine||typeof engine.candidateBurst!=="function"||!candidates.length)return{reviewed:false,map:new Map()};
+  if(!engine||typeof engine.candidateBurst!=="function"||!candidates.length)return{reviewed:false,map:new Map()};
   const ranked=candidates.map(c=>({c,b:engine.candidateBurst(c,goal.risk_profile||"aggressive")}))
     .sort((x,y)=>y.b.score-x.b.score||(finiteNumber(y.c.score)||0)-(finiteNumber(x.c.score)||0)).slice(0,8);
   if(!ranked.length)return{reviewed:false,map:new Map()};
@@ -6196,7 +6212,7 @@ async function goalWorkersScout(env,goal,candidates){
     Math.round(finiteNumber(x.c.rsi)||0),Math.round(finiteNumber(x.c.adx)||0),Math.round(finiteNumber(x.c.catalystImpact)||0)
   ].join(":")).join("|");
   const cached=goalWorkersScoutCache.get(signature);
-  if(cached&&Date.now()-cached.at<GOAL_SCOUT_CACHE_MS)return{reviewed:true,map:new Map(cached.rows),cached:true,model:GOAL_WORKERS_AI_MODEL};
+  if(cached&&Date.now()-cached.at<GOAL_SCOUT_CACHE_MS)return{reviewed:true,map:new Map(cached.rows),cached:true,model:cached.model||""};
   const payload=ranked.map(({c,b})=>({ticker:c.ticker,deterministicBurst:b.score,phase:b.phase,score:c.score,quality:c.quality,
     relVolume:c.relVolume,dayChangePct:c.dayChangePct,rsi:c.rsi,adx:c.adx,ema20:c.ema20,ema50:c.ema50,technicalPrice:c.technicalPrice,
     perfWeek:c.perfWeek,perfMonth:c.perfMonth,spreadPct:c.spreadPct,extensionPct:c.extensionPct,nearHighPct:c.nearHighPct,
@@ -6212,22 +6228,22 @@ async function goalWorkersScout(env,goal,candidates){
     JSON.stringify(payload)
   ].join("\n");
   try{
-    const result=(await runWorkersAi(env,{prompt,max_tokens:850,temperature:.05},GOAL_WORKERS_AI_MODEL)).result;
-    const parsed=extractAiJson(result),rows=[];
+    const run=await aiRoute(env,{prompt,maxTokens:900,json:true});
+    const parsed=extractAiJson(run.text),rows=[];
     for(const x of parsed&&Array.isArray(parsed.valores)?parsed.valores:[]){
       const ticker=trimText(x&&x.ticker,24).toUpperCase(),phase=String(x&&x.fase||"").toLowerCase(),verdict=String(x&&x.veredicto||"").toLowerCase();
       if(!ticker||!["early","active","late","avoid"].includes(phase)||!["boost","neutral","block"].includes(verdict))continue;
       rows.push([ticker,{score:Math.max(0,Math.min(100,finiteNumber(x.score)??50)),phase,verdict,reason:trimText(x.motivo,220)}]);
     }
     if(rows.length){
-      goalWorkersScoutCache.set(signature,{at:Date.now(),rows});
+      goalWorkersScoutCache.set(signature,{at:Date.now(),rows,model:run.provider+" · "+run.model});
       if(goalWorkersScoutCache.size>30){
         const oldest=[...goalWorkersScoutCache.entries()].sort((a,b)=>a[1].at-b[1].at).slice(0,goalWorkersScoutCache.size-30);
         for(const [k] of oldest)goalWorkersScoutCache.delete(k);
       }
-      return{reviewed:true,map:new Map(rows),model:GOAL_WORKERS_AI_MODEL};
+      return{reviewed:true,map:new Map(rows),model:run.provider+" · "+run.model};
     }
-  }catch(error){console.warn("Goal Workers AI scout failed",String(error&&error.message||error))}
+  }catch(error){console.warn("Goal AI scout failed",String(error&&error.message||error))}
   return{reviewed:false,map:new Map()};
 }
 async function goalAiVerdicts(env,userId){
@@ -6241,6 +6257,182 @@ async function goalAiVerdicts(env,userId){
       for(const i of items){const t=String(i&&i.ticker||"").toUpperCase();if(t&&!map.has(t)&&["respalda","dudas","contradice"].includes(i.verdict))map.set(t,i.verdict)}}
     return map;
   }catch(_){return new Map()}
+}
+// Datos del motor + noticias y eventos ya conocidos por la app para cada compra propuesta.
+async function goalBuysContext(goal,buys,candidates,snapshot,services){
+  const ctxParts=[];
+  for(const x of buys){
+    const c=candidates.find(v=>v.key===x.key||String(v.ticker||"").toUpperCase()===String(x.ticker||"").toUpperCase()),s=c&&c.stock||{};
+    const bits=["ticker "+x.ticker,"score "+(finiteNumber(c&&c.score)??"—")+"/100","calidad "+(finiteNumber(c&&c.quality)??"—")+"/100",
+      finiteNumber(c&&c.priceEur)!==null?"precio compra estimado "+finiteNumber(c.priceEur)+" EUR":"",
+      finiteNumber(s.relVolume)!==null?"volumen relativo "+finiteNumber(s.relVolume)+"x":"",
+      finiteNumber(s.rsi)!==null?"RSI14 "+finiteNumber(s.rsi):"",
+      finiteNumber(s.adx)!==null?"ADX14 "+finiteNumber(s.adx):"",
+      finiteNumber(s.ema20)!==null?"EMA20 "+finiteNumber(s.ema20):"",
+      finiteNumber(s.ema50)!==null?"EMA50 "+finiteNumber(s.ema50):""].filter(Boolean);
+    let ev=[];try{ev=recentEvents(snapshot,s,8)}catch(_){ev=[]}
+    if(services.loadOfficialEvents&&s&&Object.keys(s).length){
+      try{ev=mergeEventRows(ev,await services.loadOfficialEvents(s,{prefer_tr:Number(c&&c.preferTr||goal.market_scope==="tr")?1:0,ticker:s.ticker||s.trTicker||""}),10)}catch(_){}
+    }
+    if(services.loadNews&&s&&Object.keys(s).length){
+      try{ev=mergeEventRows(ev,await services.loadNews(s,{prefer_tr:Number(c&&c.preferTr||goal.market_scope==="tr")?1:0,ticker:s.ticker||s.trTicker||""}),10)}catch(_){}
+    }
+    const news=(ev||[]).slice(0,4).map(e=>String(e.date||"").slice(0,10)+" · "+(e.eventKind==="news"?"noticia":"evento")+
+      (e.official?" oficial":"")+" · "+trimText(e.title||e.fact||"",180)+(e.source?" · fuente "+trimText(e.source,80):""));
+    ctxParts.push(bits.join(" · ")+(news.length?"\n  Noticias/eventos conocidos por ViewInvAI: "+news.join(" | "):"\n  Sin noticias/eventos adicionales verificados por ViewInvAI."));
+  }
+  return ctxParts.join("\n");
+}
+// Búsqueda web por valor (Tavily → Exa → LangSearch → Jina) guardada 6 h en la base de cachés
+// (no personal): varias revisiones del mismo valor no gastan cupo de búsqueda.
+const GOAL_WEB_NEWS_MS=6*3600e3;
+async function goalWebNews(env,c){
+  const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
+  if(!ticker)return{results:[],provider:""};
+  const ident=String(c&&c.key||s.isin||s.stock_key||name||"").toUpperCase().replace(/[^A-Z0-9:.\-]/g,"").slice(0,40);
+  const key="gwn2:"+ticker+":"+ident+":"+Math.floor(Date.now()/GOAL_WEB_NEWS_MS);
+  try{
+    const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(key).first()});
+    if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.results))return p}
+  }catch(_){}
+  const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
+  const out={results:(web.results||[]).slice(0,5).map(r=>({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})),provider:web.provider||""};
+  if(out.results.length){
+    try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+      return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
+        .bind(key,"gwn:"+ticker,JSON.stringify(out),nowIso()).run()})}catch(_){}
+  }
+  return out;
+}
+// Contraste de las compras del Objetivo con la IA externa de la app (Gemini → Groq → OpenRouter →
+// Workers AI) y resultados reales de búsqueda web. Se guarda como contraste del Objetivo.
+const GOAL_WEB_REVIEW_DAILY_LIMIT=30;
+async function goalWebReviewBuys(env,goal,buys,positions,candidates=[],snapshot=null,services={}){
+  if(!buys.length)return{reviewed:false,verdicts:new Map()};
+  try{
+    await ensureAiIntegrationSchema(env);
+    const today=nowIso().slice(0,10),bucket=Math.floor(Date.now()/(30*60000));
+    const subjectKey=goal.portfolio_id+":buysweb:"+bucket+":"+buys.map(x=>x.ticker).sort().join(",");
+    const cached=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type='goal' AND subject_key=? ORDER BY created_at DESC LIMIT 1").bind(goal.user_id,subjectKey).first();
+    let row=cached?aiContrastRow(cached):null;
+    if(!row){
+      const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider='viewinvai-ai'").bind(goal.user_id,today).first();
+      if((Number(used&&used.n)||0)>=GOAL_WEB_REVIEW_DAILY_LIMIT)return{reviewed:false,verdicts:new Map()};
+      const ctxRows=await goalBuysContext(goal,buys,candidates,snapshot,services);
+      const webParts=[],sources=[];
+      for(const x of buys.slice(0,4)){
+        const c=candidates.find(v=>v.key===x.key||String(v.ticker||"").toUpperCase()===String(x.ticker||"").toUpperCase())||{ticker:x.ticker,name:x.name};
+        const web=await goalWebNews(env,c);
+        if(!web.results.length){webParts.push(x.ticker+": la búsqueda web no ha devuelto resultados.");continue}
+        webParts.push(x.ticker+" (búsqueda web vía "+web.provider+"):\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"));
+        web.results.forEach(r=>sources.push({url:r.url,title:r.title}));
+      }
+      const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo resultados REALES de búsqueda web: úsalos como fuente principal y sé concreto y prudente.")+"\n\n"+
+        "Objetivo de cartera de ViewInvAI. Horizonte REAL: 1-5 sesiones. Perfil "+(goal.risk_profile||"aggressive")+".\n"+
+        "Buscamos movimientos tempranos con posibilidad de aceleración fuerte; rechazamos FOMO, ampliaciones de capital, malas noticias recientes, spreads malos y valores ya agotados.\n"+
+        "Posiciones actuales: "+(positions.map(p=>p.ticker).join(", ")||"ninguna")+".\n"+
+        "El motor propone COMPRAR ahora:\n"+buys.map(x=>"- "+x.ticker+" ("+(x.name||"")+") · stop −"+x.stopPct+" % · recorrido previsto +"+x.targetPct+" %"+(x.burstScore?" · score temprano "+x.burstScore+"/100":"")).join("\n")+
+        "\n\nDATOS DEL MOTOR Y NOTICIAS QUE YA TIENE VIEWINVAI:\n"+ctxRows+
+        "\n\nRESULTADOS DE BÚSQUEDA WEB DE HOY:\n"+(webParts.join("\n")||"sin resultados")+
+        "\n\nPara cada valor decide respalda, dudas o contradice citando el dato concreto (noticia, evento o cifra). Si la web no aporta nada relevante, dilo y usa «dudas» solo si hay un riesgo real.";
+      const run=await aiRoute(env,{prompt,maxTokens:1400,json:false});
+      const parsed=aiParseAnswer(run.text);
+      if(!parsed.items.length)return{reviewed:false,verdicts:new Map()};
+      parsed.summary=trimText("IA "+run.provider+" · "+run.model+" + búsqueda web. "+(parsed.summary||""),800);
+      row=await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,"viewinvai-ai",parsed,sources);
+    }
+    const verdicts=new Map();
+    for(const i of row.items||[])verdicts.set(String(i.ticker||"").toUpperCase(),i.verdict);
+    return{reviewed:true,verdicts,provider:"viewinvai-ai"};
+  }catch(error){
+    console.warn("Goal web review failed",String(error&&error.message||error));
+    return{reviewed:false,verdicts:new Map()};
+  }
+}
+// Analista IA del mercado: busca en la web oportunidades de muy corto plazo (catalizadores de la
+// semana, subidas con noticia, mejoras de recomendación) y la IA extrae ideas concretas con su tesis.
+// Es común a todos los usuarios (no personal) y se guarda 3 h en la base de cachés.
+const GOAL_ANALYST_MS=3*3600e3;
+let goalAnalystMemo={key:"",ideas:null,retryAt:0};
+const GOAL_ANALYST_RETRY_MS=30*60000;
+async function goalAnalystIdeas(env){
+  const key="gai1:"+Math.floor(Date.now()/GOAL_ANALYST_MS),failKey="gai1fail:"+Math.floor(Date.now()/GOAL_ANALYST_RETRY_MS);
+  if(goalAnalystMemo.key===key&&goalAnalystMemo.ideas)return goalAnalystMemo.ideas;
+  if(goalAnalystMemo.retryAt>Date.now())return{ideas:[],at:nowIso(),failed:true};
+  try{
+    const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT cache_key,payload FROM event_insights WHERE cache_key IN (?,?)").bind(key,failKey).all()});
+    const rows=(hit&&hit.results)||[],ok=rows.find(r=>r.cache_key===key);
+    if(ok&&ok.payload){const p=JSON.parse(ok.payload);if(p&&Array.isArray(p.ideas)){goalAnalystMemo={key,ideas:p,retryAt:0};return p}}
+    // Un fallo reciente (sin búsqueda o sin IA) no se reintenta hasta pasados 30 min.
+    if(rows.some(r=>r.cache_key===failKey)){goalAnalystMemo.retryAt=Date.now()+GOAL_ANALYST_RETRY_MS;return{ideas:[],at:nowIso(),failed:true}}
+  }catch(_){}
+  const markFailed=async()=>{goalAnalystMemo.retryAt=Date.now()+GOAL_ANALYST_RETRY_MS;
+    try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+      return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO NOTHING").bind(failKey,"gai",JSON.stringify({ideas:[],failed:true}),nowIso()).run()})}catch(_){}
+    return{ideas:[],at:nowIso(),failed:true}};
+  const queries=["stocks with FDA PDUFA dates, clinical trial readouts or earnings catalysts this week",
+    "stock market top gainers today reason news premarket movers",
+    "analyst upgrades price target raised today stocks"];
+  const web=[];
+  for(const q of queries){const r=await searchRoute(env,q);(r.results||[]).slice(0,6).forEach(x=>web.push({q,provider:r.provider,title:trimText(x.title,160),url:String(x.url||""),content:trimText(x.content,380),date:String(x.date||"").slice(0,10)}))}
+  if(!web.length)return await markFailed();
+  const prompt="Eres el analista de bolsa de ViewInvAI. Objetivo único: hacer crecer carteras lo antes posible con operaciones de 1-5 sesiones, con riesgo controlado.\n"+
+    "Con los resultados REALES de búsqueda web de abajo, propone las mejores ideas de compra de acciones cotizadas en EE. UU. (NASDAQ/NYSE/AMEX) para los próximos días.\n"+
+    "Prioriza catalizadores con fecha próxima, noticias nuevas que el mercado aún no ha descontado del todo y mejoras de recomendación. Descarta lo ya disparado (FOMO), las ampliaciones de capital y los chicharros sin liquidez.\n"+
+    "No inventes: cada idea debe apoyarse en un resultado concreto (cita su número). Si no hay ideas sólidas, devuelve la lista vacía.\n"+
+    'Devuelve SOLO JSON: {"ideas":[{"ticker":"XXX","tesis":"frase con el dato clave","catalizador":"qué y cuándo","confianza":0-100,"fuentes":[1,2]}]}\n\n'+
+    web.map((w,i)=>"["+(i+1)+"] "+(w.date?w.date+" · ":"")+w.title+" — "+w.content+" ("+w.url+")").join("\n");
+  try{
+    const run=await aiRoute(env,{prompt,maxTokens:1400,json:true});
+    const parsed=extractAiJson(run.text)||{};
+    const ideas=(Array.isArray(parsed.ideas)?parsed.ideas:[]).slice(0,12).map(x=>({
+      ticker:trimText(x&&x.ticker,12).toUpperCase().replace(/[^A-Z.\-]/g,""),thesis:trimText(x&&x.tesis,240),catalyst:trimText(x&&x.catalizador,160),
+      confidence:Math.max(0,Math.min(100,finiteNumber(x&&x.confianza)??50)),
+      sources:(Array.isArray(x&&x.fuentes)?x.fuentes:[]).map(n=>web[Number(n)-1]).filter(Boolean).slice(0,3).map(w=>({title:w.title,url:w.url}))
+    })).filter(x=>x.ticker&&x.thesis);
+    const out={ideas,at:nowIso(),model:run.provider+" · "+run.model};
+    goalAnalystMemo={key,ideas:out,retryAt:0};
+    try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+      return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
+        .bind(key,"gai",JSON.stringify(out),out.at).run()})}catch(_){}
+    return out;
+  }catch(error){console.warn("Goal analyst ideas failed",String(error&&error.message||error));return await markFailed()}
+}
+// Vigilancia de las posiciones abiertas: noticias de la web + IA. Si una noticia invalida la tesis
+// (ampliación, ensayo fallido, rebaja de guía…) la posición queda marcada «contradice» y el Objetivo
+// propone salir; se guarda como contraste del Objetivo para que también lo vean las siguientes revisiones.
+const GOAL_POSITION_REVIEW_DAILY_LIMIT=12;
+async function goalWebReviewPositions(env,goal,positions){
+  const held=(positions||[]).filter(p=>p&&p.ticker).slice(0,10);
+  if(!held.length)return new Map();
+  try{
+    await ensureAiIntegrationSchema(env);
+    const today=nowIso().slice(0,10),bucket=Math.floor(Date.now()/(2*3600e3));
+    const subjectKey=goal.portfolio_id+":posweb:"+bucket+":"+held.map(p=>p.ticker).sort().join(",");
+    const cached=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type='goal' AND subject_key=? ORDER BY created_at DESC LIMIT 1").bind(goal.user_id,subjectKey).first();
+    let row=cached?aiContrastRow(cached):null;
+    if(!row){
+      const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider='viewinvai-ai' AND subject_key LIKE ?").bind(goal.user_id,today,"%:posweb:%").first();
+      if((Number(used&&used.n)||0)>=GOAL_POSITION_REVIEW_DAILY_LIMIT)return new Map();
+      const parts=[],sources=[];
+      for(const p of held){
+        const web=await goalWebNews(env,{key:p.key,ticker:p.ticker,name:p.name,stock:{}});
+        const avg=finiteNumber(p.avgEur),px=finiteNumber(p.priceEur),pnl=avg>0&&px!==null?(px/avg-1)*100:null;
+        parts.push(p.ticker+" ("+(p.name||"")+") · resultado actual "+(pnl!==null?Math.round(pnl*10)/10+" %":"—")+
+          (web.results.length?"\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"):"\n  Sin resultados de búsqueda web."));
+        web.results.forEach(r=>sources.push({url:r.url,title:r.title}));
+      }
+      const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo resultados REALES de búsqueda web: úsalos como fuente principal.")+"\n\n"+
+        "Son las posiciones ABIERTAS de una cartera que busca crecer en 1-5 sesiones. Para cada una: «respalda» si las noticias mantienen o mejoran la tesis, "+
+        "«dudas» si hay riesgo pero no motivo claro de salida, «contradice» SOLO si hay un hecho nuevo que invalida mantenerla (ampliación de capital, ensayo fallido, rechazo regulatorio, rebaja de guía, fraude, delisting).\n\n"+parts.join("\n");
+      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false});
+      const parsed=aiParseAnswer(run.text);
+      if(!parsed.items.length)return new Map();
+      parsed.summary=trimText("Vigilancia de posiciones · IA "+run.provider+" + búsqueda web. "+(parsed.summary||""),800);
+      row=await aiSaveContrast(env,{id:goal.user_id},"goal",subjectKey,"viewinvai-ai",parsed,sources);
+    }
+    return new Map((row.items||[]).map(i=>[String(i.ticker||"").toUpperCase(),{verdict:i.verdict,reason:i.reason||""}]));
+  }catch(error){console.warn("Goal position review failed",String(error&&error.message||error));return new Map()}
 }
 // Antes de proponer compras nuevas, las IA activas del usuario (Gemini gratis primero) las
 // contrastan. El Objetivo tiene prioridad en la cuota diaria; el Radar usa lo que sobra.
@@ -6259,28 +6451,7 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
       if((Number(used&&used.n)||0)>=AI_CONTRAST_DAILY_LIMIT)return{reviewed:false,verdicts:new Map()};
       // Objetivo tiene prioridad. Probamos Gemini primero y, si no responde, la siguiente IA
       // que el usuario haya activado. Nunca llamamos varias de pago si la anterior ya respondió.
-      const ctxParts=[];
-      for(const x of buys){
-        const c=candidates.find(v=>v.key===x.key||String(v.ticker||"").toUpperCase()===String(x.ticker||"").toUpperCase()),s=c&&c.stock||{};
-        const bits=["ticker "+x.ticker,"score "+(finiteNumber(c&&c.score)??"—")+"/100","calidad "+(finiteNumber(c&&c.quality)??"—")+"/100",
-          finiteNumber(c&&c.priceEur)!==null?"precio compra estimado "+finiteNumber(c.priceEur)+" EUR":"",
-          finiteNumber(s.relVolume)!==null?"volumen relativo "+finiteNumber(s.relVolume)+"x":"",
-          finiteNumber(s.rsi)!==null?"RSI14 "+finiteNumber(s.rsi):"",
-          finiteNumber(s.adx)!==null?"ADX14 "+finiteNumber(s.adx):"",
-          finiteNumber(s.ema20)!==null?"EMA20 "+finiteNumber(s.ema20):"",
-          finiteNumber(s.ema50)!==null?"EMA50 "+finiteNumber(s.ema50):""].filter(Boolean);
-        let ev=[];try{ev=recentEvents(snapshot,s,8)}catch(_){ev=[]}
-        if(services.loadOfficialEvents&&s&&Object.keys(s).length){
-          try{ev=mergeEventRows(ev,await services.loadOfficialEvents(s,{prefer_tr:Number(c&&c.preferTr||goal.market_scope==="tr")?1:0,ticker:s.ticker||s.trTicker||""}),10)}catch(_){}
-        }
-        if(services.loadNews&&s&&Object.keys(s).length){
-          try{ev=mergeEventRows(ev,await services.loadNews(s,{prefer_tr:Number(c&&c.preferTr||goal.market_scope==="tr")?1:0,ticker:s.ticker||s.trTicker||""}),10)}catch(_){}
-        }
-        const news=(ev||[]).slice(0,4).map(e=>String(e.date||"").slice(0,10)+" · "+(e.eventKind==="news"?"noticia":"evento")+
-          (e.official?" oficial":"")+" · "+trimText(e.title||e.fact||"",180)+(e.source?" · fuente "+trimText(e.source,80):""));
-        ctxParts.push(bits.join(" · ")+(news.length?"\n  Noticias/eventos conocidos por ViewInvAI: "+news.join(" | "):"\n  Sin noticias/eventos adicionales verificados por ViewInvAI."));
-      }
-      const ctxRows=ctxParts.join("\n");
+      const ctxRows=await goalBuysContext(goal,buys,candidates,snapshot,services);
       const prompt="Objetivo de cartera de ViewInvAI. Horizonte REAL: 1-5 sesiones, aproximadamente una semana; no es una cartera de medio/largo plazo. Perfil "+(goal.risk_profile||"aggressive")+".\n"+
         "Buscamos movimientos tempranos con posibilidad de aceleración fuerte, pero rechazamos FOMO, spreads malos y valores ya agotados. Una buena empresa lenta NO basta.\n"+
         "Posiciones actuales: "+(positions.map(p=>p.ticker).join(", ")||"ninguna")+".\n"+
@@ -6431,6 +6602,20 @@ async function scanPortfolioGoalNotifications(env,services){
         const x=scout.map.get(c.ticker);
         if(x){c.aiScoutScore=x.score;c.aiScoutPhase=x.phase;c.aiScoutVerdict=x.verdict;c.aiScoutReason=x.reason}
       }
+      // Ideas del analista IA (búsqueda web) y vigilancia de noticias de las posiciones abiertas.
+      const analyst=await goalAnalystIdeas(env);
+      const ideaBy=new Map((analyst.ideas||[]).map(i=>[i.ticker,i]));
+      for(const c of candidates){
+        const idea=ideaBy.get(String(c.marketTicker||"").toUpperCase())||ideaBy.get(String(c.ticker||"").toUpperCase());
+        if(idea){c.aiIdeaConfidence=idea.confidence;c.aiIdeaThesis=idea.thesis+(idea.catalyst?" · "+idea.catalyst:"");c.aiIdeaSources=idea.sources}
+      }
+      const posNews=await goalWebReviewPositions(env,goal,enginePositions);
+      for(const p of enginePositions){
+        const v=posNews.get(String(p.ticker||"").toUpperCase());
+        if(!v)continue;
+        if(v.verdict==="contradice"){p.aiVerdict="contradice";p.aiNewsReason=v.reason||"noticia desfavorable"}
+        else if(!p.aiVerdict)p.aiVerdict=v.verdict;
+      }
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
@@ -6439,7 +6624,8 @@ async function scanPortfolioGoalNotifications(env,services){
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
       let buys=plan.actions.filter(a=>a.type==="BUY");
       if(buys.length){
-        const review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
+        let review=await goalWebReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
+        if(!review.reviewed)review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
         const rejected=new Set([...review.verdicts].filter(([,v])=>v==="contradice").map(([t])=>t));
         for(const c of candidates)if(review.verdicts.has(c.ticker))c.aiVerdict=review.verdicts.get(c.ticker);
         plan.aiReviewed=review.reviewed;plan.aiProvider=review.provider||"";
