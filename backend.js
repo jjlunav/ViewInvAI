@@ -4092,7 +4092,7 @@ const PROVIDERS=[
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
-  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard",unused:true}
+  {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
 ];
 const providerKey=(env,p)=>p.secret?String(env[p.secret]||"").trim():"";
 const providerCooldown=new Map();
@@ -6350,6 +6350,23 @@ async function goalBuysContext(goal,buys,candidates,snapshot,services){
 // Búsqueda web por valor (Tavily → Serper → Exa → LangSearch → Firecrawl → Jina) guardada 6 h en la base de cachés
 // (no personal): varias revisiones del mismo valor no gastan cupo de búsqueda.
 const GOAL_WEB_NEWS_MS=6*3600e3;
+// Finnhub: noticias de empresa (EE. UU.) y del mercado, gratis a 60 consultas/minuto.
+async function finnhubGet(env,path){
+  const key=String(env.FINNHUB_API_KEY||"").trim();
+  if(!key||!providerReady(env,"finnhub"))return null;
+  try{
+    const r=await providerFetch("finnhub","https://finnhub.io/api/v1"+path+(path.includes("?")?"&":"?")+"token="+encodeURIComponent(key),{},12000);
+    if(!r.ok){providerFail("finnhub",r.status);await recordProviderUse(env,"finnhub",false,"HTTP "+r.status);return null}
+    const d=await r.json();await recordProviderUse(env,"finnhub",true);return d;
+  }catch(error){await recordProviderUse(env,"finnhub",false,String(error&&error.message||error));return null}
+}
+async function finnhubCompanyNews(env,ticker){
+  if(!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker))return[];
+  const to=new Date(),from=new Date(Date.now()-7*86400000),f=d=>d.toISOString().slice(0,10);
+  const d=await finnhubGet(env,"/company-news?symbol="+encodeURIComponent(ticker)+"&from="+f(from)+"&to="+f(to));
+  return (Array.isArray(d)?d:[]).sort((a,b)=>(b.datetime||0)-(a.datetime||0)).slice(0,5).map(x=>({title:trimText(x.headline,160),url:String(x.url||""),
+    content:trimText(x.summary,420),date:x.datetime?new Date(x.datetime*1000).toISOString().slice(0,10):"",source:"finnhub"})).filter(x=>x.title);
+}
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
@@ -6359,8 +6376,16 @@ async function goalWebNews(env,c){
     const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(key).first()});
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(p&&Array.isArray(p.results))return p}
   }catch(_){}
-  const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
-  const out={results:(web.results||[]).slice(0,5).map(r=>({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})),provider:web.provider||""};
+  // Primero las noticias de Finnhub (gratis y fechadas); la búsqueda web solo completa si hay pocas.
+  const fh=await finnhubCompanyNews(env,ticker);
+  let results=fh.slice(0,5),provider=fh.length?"finnhub":"";
+  if(fh.length<3){
+    const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of web.results||[]){if(results.length>=5)break;if(seen.has(String(r.url||"")))continue;results.push({title:trimText(r.title,160),url:String(r.url||""),content:trimText(r.content,420),date:String(r.date||"").slice(0,10)})}
+    if(web.provider)provider=provider?provider+" + "+web.provider:web.provider;
+  }
+  const out={results,provider};
   if(out.results.length){
     try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
       return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at")
@@ -6439,6 +6464,9 @@ async function goalAnalystIdeas(env){
     "analyst upgrades price target raised today stocks"];
   const web=[];
   for(const q of queries){const r=await searchRoute(env,q);(r.results||[]).slice(0,6).forEach(x=>web.push({q,provider:r.provider,title:trimText(x.title,160),url:String(x.url||""),content:trimText(x.content,380),date:String(x.date||"").slice(0,10)}))}
+  // Titulares generales del mercado de Finnhub (gratis) como fuente adicional.
+  const market=await finnhubGet(env,"/news?category=general");
+  (Array.isArray(market)?market:[]).slice(0,8).forEach(x=>{if(x&&x.headline)web.push({q:"finnhub",provider:"finnhub",title:trimText(x.headline,160),url:String(x.url||""),content:trimText(x.summary,380),date:x.datetime?new Date(x.datetime*1000).toISOString().slice(0,10):""})});
   if(!web.length)return await markFailed();
   const prompt="Eres el analista de bolsa de ViewInvAI. Objetivo único: hacer crecer carteras lo antes posible con operaciones de 1-5 sesiones, con riesgo controlado.\n"+
     "Con los resultados REALES de búsqueda web de abajo, propone las mejores ideas de compra de acciones cotizadas en EE. UU. (NASDAQ/NYSE/AMEX) para los próximos días.\n"+
