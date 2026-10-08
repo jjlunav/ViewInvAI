@@ -450,7 +450,29 @@ const PLAN_BANDS={
  aggressive:{label:'Alto',risk:2,maxPos:25,maxStop:7,rr:1.8}
 };
 function planRiskKey(){try{const v=localStorage.getItem('viewinvai:plan-risk');return PLAN_BANDS[v]?v:'balanced'}catch(_){return'balanced'}}
+// Si la acción está en el plan del Objetivo de la cartera seleccionada (mismo mercado), la ficha
+// muestra ese plan (stop y objetivo de «Hoy toca») en lugar del plan orientativo por ATR.
+function profileGoalPlanHtml(g){
+ const px=v=>{const n=N(v);if(n===null)return'—';const d=Math.abs(n)<10?3:2;return n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d})+' €'},pct=v=>F(Math.abs(N(v)||0),1)+'%';
+ let head='',grid='',note='';
+ if(g.kind==='buy'){
+  head='Comprar '+F(g.units,0)+' acciones · Stop '+px(g.stopEur)+' (−'+pct(g.stopPct)+')'+(N(g.targetEur)!==null?' · Objetivo '+px(g.targetEur)+' (+'+pct(g.targetPct)+')':'');
+  grid='<div><small>ENTRADA</small><b>'+px(g.entryEur)+'</b><span>precio de compra</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>−'+pct(g.stopPct)+'</span></div><div><small>OBJETIVO</small><b class="positive">'+px(g.targetEur)+'</b><span>+'+pct(g.targetPct)+'</span></div>';
+ }else if(g.kind==='wait'){
+  head=N(g.limitPriceEur)!==null?'Esperar · no comprar por encima de '+px(g.limitPriceEur):'Esperar · el punto de entrada aún no es limpio';
+  note='<p class="plan-note">'+E(g.text||'')+'</p>';
+ }else{
+  head=g.action&&g.action.type==='SELL'?'Vender: stop alcanzado o salida del plan':'En cartera · Stop '+px(g.stopEur)+(N(g.stopDistPct)!==null?' (−'+pct(g.stopDistPct)+' del precio)':'');
+  grid='<div><small>PRECIO</small><b>'+px(g.priceEur)+'</b><span>venta en BID</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>'+(g.trailing?'dinámico, sube con el precio':'fijo desde la compra')+'</span></div>';
+  if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
+ }
+ return '<details class="profile-plan" data-profile-plan data-plan-source="goal"><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
+  '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+
+  '<p class="plan-note">Es el mismo plan que «Hoy toca» en el Objetivo de esta cartera (importes en €).</p></div></details>';
+}
 function profileTradePlanHtml(s,isTr=false){
+ const goalPlan=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getGoalPlanFor==='function'?window.ViewInvAIPortfolios.getGoalPlanFor(s):null;
+ if(goalPlan&&goalPlan.preferTr===!!isTr)return profileGoalPlanHtml(goalPlan);
  const usPrice=N(s.price),atr=N(s.atr);
  let atrPct=atr!==null&&usPrice>0?atr/usPrice*100:null,atrSource='ATR 14 días';
  // Without a real 14-day ATR there is no plan: the day range on a +60% day gives absurd stops.
