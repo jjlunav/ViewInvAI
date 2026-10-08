@@ -188,8 +188,11 @@ function initStockInteractions(){
    return
   }
   let row=e.target.closest&&e.target.closest('[data-stock-key][role="button"],.stock-open-row[data-stock-key],[data-open-stock]');
+  // Un botón que lleva su propio data-open-stock (p. ej. el nombre enlazado en «Hoy toca») abre esa ficha.
+  const ownButton=e.target.closest&&e.target.closest('button[data-open-stock]');
+  if(ownButton)row=ownButton;
   if(row){
-   if(e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,label,.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+   if(!ownButton&&e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,label,.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
    e.preventDefault();e.stopPropagation();
    let key=row.dataset.stockKey||row.dataset.openStock,s=stockByKey(key),pref=row.dataset.stockPreferTr||row.dataset.positionPreferTr;
    if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);

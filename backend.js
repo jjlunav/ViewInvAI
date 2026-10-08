@@ -5927,9 +5927,24 @@ async function scanPortfolioGoalNotifications(env,services){
         const review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
         const rejected=new Set([...review.verdicts].filter(([,v])=>v==="contradice").map(([t])=>t));
         for(const c of candidates)if(review.verdicts.has(c.ticker))c.aiVerdict=review.verdicts.get(c.ticker);
-        for(const c of candidates.filter(c=>buys.some(b=>b.key===c.key))){const ask=await quoteEur(c.stock,preferTr,"BUY");if(ask!==null)c.askEur=ask}
-        if(rejected.size||buys.some(b=>candidates.find(c=>c.key===b.key&&c.askEur)))plan=engine.plan(input);
         plan.aiReviewed=review.reviewed;plan.aiProvider=review.provider||"";
+      }
+      // Compras y destinos de cambio: solo con una cotización en vivo verificada ahora y sin estar
+      // devolviendo la subida de la apertura. Lo no verificado queda como «Esperar».
+      const targets=new Set([...buys.map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey)]);
+      if(targets.size){
+        const reviewMeta={aiScoutReviewed:plan.aiScoutReviewed,aiScoutModel:plan.aiScoutModel,aiReviewed:plan.aiReviewed,aiProvider:plan.aiProvider};
+        for(const c of candidates){
+          c.quoteFresh=false;
+          if(!targets.has(c.key))continue;
+          const ask=await quoteEur(c.stock,preferTr,"BUY");
+          if(ask===null)continue;
+          const raw=(quoteCache.get((preferTr?"tr:":"us:")+goalServerKey(c.stock))||{}).quote||{};
+          c.askEur=ask;c.quoteFresh=true;
+          c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:raw.price,open:raw.open});
+        }
+        plan=engine.plan(input);
+        Object.assign(plan,reviewMeta);
       }
       // Estado persistente: solo se escribe cuando cambia de verdad.
       const now=nowIso();let automaticWrites=0;

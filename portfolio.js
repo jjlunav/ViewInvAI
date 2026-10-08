@@ -1457,8 +1457,9 @@ function goalEngineInput(metrics,positionRows){
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
-    const livePx=num(preferTr?r.s.trLivePrice:r.s.usLivePrice),liveOpen=num(preferTr?r.s.trLiveOpen:r.s.usLiveOpen);
-    const openFadePct=livePx!==null&&liveOpen>0?(livePx/liveOpen-1)*100:null;
+    const G=window.ViewInvAIGoal;
+    const openFadePct=q.quoteFresh===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
+      price:preferTr?r.s.trLivePrice:r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
     return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteFresh===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),

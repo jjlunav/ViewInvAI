@@ -56,6 +56,18 @@
 
   // Filtro de entrada compartido por web y backend. Un candidato puede tener buen score
   // y aun así ser una mala compra AHORA por FOMO, spread o extensión.
+  // Variación desde la apertura de HOY. En EE. UU. solo en sesión regular: en pre/post el
+  // «open» que llega es el de la sesión anterior y la comparación no tendría sentido.
+  function openFadePct(q){
+    const p=n(q&&q.price),o=n(q&&q.open);
+    if(p===null||!(o>0))return null;
+    if(String(q.market||'')!=='tr'){
+      const st=String(q.marketStatus||'').toLowerCase();
+      if(/pre|post|after|closed/.test(st)||!/regular|open/.test(st))return null;
+    }
+    return (p/o-1)*100;
+  }
+
   function candidateEntry(c,risk='aggressive'){
     const b=band(risk),limitReasons=[],waitReasons=[];let timing=100;
     const spread=n(c.spreadPct),extension=n(c.extensionPct),day=n(c.dayChangePct),week=n(c.perfWeek),
@@ -366,5 +378,5 @@
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
 })(globalThis);
