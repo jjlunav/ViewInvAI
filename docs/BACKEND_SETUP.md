@@ -60,7 +60,7 @@ Set the non-secret Firebase project id as a Worker variable:
 
 ```json
 "vars": {
-  "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
+  "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8",
   "FIREBASE_PROJECT_ID": "<firebase-project-id>"
 }
 ```

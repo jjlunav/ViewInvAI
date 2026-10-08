@@ -10,8 +10,8 @@ const FIREBASE_JWKS = createRemoteJWKSet(
 
 // @cf/meta/llama-3.1-8b-instruct se retiró el 30/05/2026 (changelog de Workers AI): sus llamadas
 // fallaban y el análisis caía en silencio al motor determinista (0 neuronas usadas).
-const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const FALLBACK_AI_MODELS = ["@cf/meta/llama-3.1-8b-instruct-fast", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const FALLBACK_AI_MODELS = ["@cf/meta/llama-3.1-8b-instruct-fp8", "@cf/meta/llama-4-scout-17b-16e-instruct", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
 const RETIRED_AI_MODELS = new Set(["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.1-8b-instruct-awq"]);
 const aiHealth = { lastOkAt: null, lastOkModel: "", lastErrorAt: null, lastError: "", lastErrorModel: "" };
 function configuredAiModel(env) {
@@ -43,7 +43,9 @@ function aiModelRetirement(m) {
 function aiModelScore(name) {
   const n = String(name).toLowerCase();
   const fam = [
-    [/llama-3\.\d+-8b-instruct-fast/, 100], [/llama.*instruct.*fast/, 92], [/llama-4/, 88], [/llama.*instruct/, 84],
+    // Coste primero (cuota gratuita de 10k neuronas/día): 8B ≈ 30 neuronas por análisis, Scout ≈ 60,
+    // 70B ≈ 100. Los de 1-3B son baratos pero flojos para un JSON fiable.
+    [/llama-3\.\d+-8b-instruct/, 100], [/llama-4-scout/, 92], [/llama.*70b.*instruct/, 86], [/llama.*instruct/, 70],
     [/mistral-small|mistral.*instruct/, 80], [/qwen.*(instruct|qwen3)/, 76], [/gemma-3/, 72], [/glm/, 68], [/gpt-oss/, 64]
   ].find(([re]) => re.test(n));
   const version = (n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
