@@ -1758,6 +1758,11 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 .admin-toolbar{display:flex;gap:8px;max-width:1320px;margin:0 auto 12px}
 #view-admin .admin-grid+.settings-section-heading{margin-top:18px}
 #view-admin .admin-grid-gap{margin-top:8px}
+#view-admin .admin-route{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:12px}
+#view-admin .admin-route>span{color:var(--muted,#8ea0bf);margin-right:4px;flex-basis:100%}
+#view-admin .admin-route b{font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line,#24404b);background:rgba(127,127,127,.08)}
+#view-admin .admin-route b:first-of-type{border-color:color-mix(in srgb,var(--accent,#5cc8e8) 55%,transparent);color:var(--accent,#5cc8e8)}
+#view-admin .admin-route small{opacity:.7;font-weight:400}
 #view-admin .settings-nav-item{align-items:center}
 #view-admin .settings-nav-item b{grid-row:1/3;align-self:center}
 #view-admin a,#view-admin a:visited{color:var(--accent,#5cc8e8);text-decoration:none}

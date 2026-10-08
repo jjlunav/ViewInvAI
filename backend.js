@@ -4103,6 +4103,8 @@ async function ensureProviderUsageSchema(db){
 }
 async function recordProviderUse(env,id,ok,error=""){
   if(ok)providerCooldown.delete(id);
+  // Mantiene al día la copia en memoria que usa el repartidor para ordenar.
+  if(typeof providerStatsMemo!=="undefined"&&providerStatsMemo.rows){const st=providerStatsMemo.rows.get(id)||{calls:0,errors:0};st.calls++;if(!ok)st.errors++;providerStatsMemo.rows.set(id,st)}
   const now=nowIso(),periods=["d:"+now.slice(0,10),"m:"+now.slice(0,7)];
   try{await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);
     return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,last_at=excluded.last_at,last_error=CASE WHEN excluded.errors>0 THEN excluded.last_error ELSE last_error END")
@@ -4131,12 +4133,50 @@ async function openAiCompatible(id,url,key,model,prompt,maxTokens){
   if(!text)throw new Error(id+": respuesta vacía");
   return text;
 }
-async function aiRoute(env,{prompt,maxTokens=900,json=true}){
-  const tried=[];
-  if(providerReady(env,"gemini")){
-    try{
-      const key=providerKey(env,PROVIDERS[0]),chain=await aiGeminiModelChain(key,"");
-      for(const model of (chain.models||[]).slice(0,3)){
+// Reparto inteligente: cada servicio tiene una nota de calidad por tipo de tarea («decision»: comprar,
+// vender, ideas; «light»: cribar o extraer) y un cupo diario aproximado. La puntuación final combina
+// esa nota con su tasa de fallos y su consumo REALES de hoy (tabla provider_usage) y un pequeño azar
+// para repartir la carga entre los mejores en lugar de agotar siempre el primero.
+const PROVIDER_PROFILE={
+  gemini:{decision:95,light:80,daily:1000},groq:{decision:86,light:95,daily:1000},sambanova:{decision:86,light:70,daily:400},
+  nvidia:{decision:86,light:78,daily:1000},openrouter:{decision:80,light:60,daily:50},ollama:{decision:80,light:84,daily:300},
+  cohere:{decision:70,light:62,daily:33},workersai:{decision:52,light:70,daily:100000},
+  tavily:{search:90,daily:30},serper:{search:94,daily:40},exa:{search:86,daily:80},langsearch:{search:74,daily:100},firecrawl:{search:76,daily:33},jina:{search:66,daily:100}
+};
+let providerStatsMemo={at:0,rows:new Map()};
+async function providerStatsToday(env){
+  if(Date.now()-providerStatsMemo.at<5*60000)return providerStatsMemo.rows;
+  const day="d:"+nowIso().slice(0,10),rows=new Map();
+  try{const r=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return db.prepare("SELECT provider,calls,errors FROM provider_usage WHERE period=?").bind(day).all()});
+    for(const x of (r&&r.results)||[])rows.set(x.provider,{calls:Number(x.calls)||0,errors:Number(x.errors)||0})}catch(_){}
+  providerStatsMemo={at:Date.now(),rows};return rows;
+}
+function providerScore(id,task,stats,noise=true){
+  const prof=PROVIDER_PROFILE[id]||{},base=prof[task]??50,st=stats.get(id)||{calls:0,errors:0};
+  const health=1-Math.min(.8,st.errors/Math.max(5,st.calls));
+  const used=st.calls/Math.max(1,prof.daily||100),quota=used>=1?.2:1-.5*used;
+  return base*health*quota+(noise?Math.random()*12:0);
+}
+async function orderProviders(env,ids,task){
+  const stats=await providerStatsToday(env);
+  return ids.map(id=>({id,score:providerScore(id,task,stats)})).sort((a,b)=>b.score-a.score).map(x=>x.id);
+}
+// Modelos de cada servicio según la tarea: los grandes para decidir, los rápidos para cribar.
+const TASK_MODELS={
+  groq:{decision:["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"],light:["openai/gpt-oss-20b","qwen/qwen3-32b","openai/gpt-oss-120b"]},
+  nvidia:{decision:["deepseek-ai/deepseek-v3.1","openai/gpt-oss-120b","meta/llama-3.3-70b-instruct"],light:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b"]},
+  sambanova:{decision:["DeepSeek-V3-0324","Meta-Llama-3.3-70B-Instruct"],light:["Meta-Llama-3.3-70B-Instruct"]},
+  ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]}
+};
+async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
+  const tried=[],t=task==="light"?"light":"decision";
+  const fromList=(list)=>list;
+  const attempts={
+    gemini:async()=>{
+      const key=providerKey(env,PROVIDERS.find(p=>p.id==="gemini")),chain=await aiGeminiModelChain(key,"");
+      let models=chain.models||[];
+      if(t==="light")models=[...models.filter(m=>/lite/i.test(m)),...models.filter(m=>!/lite/i.test(m))];
+      for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
           body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
@@ -4145,48 +4185,43 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true}){
         if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
         await recordProviderUse(env,"gemini",false,"respuesta vacía");
       }
-    }catch(error){tried.push("gemini:"+String(error&&error.message||error));await recordProviderUse(env,"gemini",false,String(error&&error.message||error))}
-  }
-  if(providerReady(env,"groq")){
-    for(const model of GROQ_MODELS){
-      try{const text=await openAiCompatible("groq","https://api.groq.com/openai/v1/chat/completions",providerKey(env,PROVIDERS[1]),model,prompt,maxTokens);
-        await recordProviderUse(env,"groq",true);return{text,provider:"groq",model}}
-      catch(error){tried.push("groq:"+model+":"+(error.status||error.message));providerFail("groq",error.status||0);await recordProviderUse(env,"groq",false,String(error.message||error));if(error.status===429)break}
-    }
-  }
-  if(providerReady(env,"openrouter")){
-    for(const model of await openRouterFreeModels(providerKey(env,PROVIDERS[2]))){
-      try{const text=await openAiCompatible("openrouter","https://openrouter.ai/api/v1/chat/completions",providerKey(env,PROVIDERS[2]),model,prompt,maxTokens);
-        await recordProviderUse(env,"openrouter",true);return{text,provider:"openrouter",model}}
-      catch(error){tried.push("openrouter:"+model+":"+(error.status||error.message));providerFail("openrouter",error.status||0);await recordProviderUse(env,"openrouter",false,String(error.message||error));if(error.status===429)break}
-    }
-  }
-  // IA gratuitas adicionales con API compatible con OpenAI: solo si su clave está guardada.
-  for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA")){
-    if(!providerReady(env,p.id))continue;
-    for(const model of p.models){
-      try{const text=await openAiCompatible(p.id,p.base+"/chat/completions",providerKey(env,p),model,prompt,maxTokens);
-        await recordProviderUse(env,p.id,true);return{text,provider:p.id,model}}
-      catch(error){tried.push(p.id+":"+model+":"+(error.status||error.message));providerFail(p.id,error.status||0);await recordProviderUse(env,p.id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
-    }
-  }
-  if(env.AI&&typeof env.AI.run==="function"){
-    try{const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+      return null;
+    },
+    workersai:async()=>{
+      const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
       const r=run.result,text=typeof r==="string"?r:r&&typeof r.response==="string"?r.response:r&&r.response?JSON.stringify(r.response):r&&r.choices?String(r.choices[0].message&&r.choices[0].message.content||""):"";
-      return{text,provider:"workersai",model:run.model}}
-    catch(error){tried.push("workersai:"+String(error&&error.message||error))}
+      return text?{text,provider:"workersai",model:run.model}:null;
+    }
+  };
+  const compatible=async(id,url,key,models)=>{
+    for(const model of models){
+      try{const text=await openAiCompatible(id,url,key,model,prompt,maxTokens);await recordProviderUse(env,id,true);return{text,provider:id,model}}
+      catch(error){tried.push(id+":"+model+":"+(error.status||error.message));providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
+    }
+    return null;
+  };
+  attempts.groq=()=>compatible("groq","https://api.groq.com/openai/v1/chat/completions",providerKey(env,PROVIDERS.find(p=>p.id==="groq")),fromList(TASK_MODELS.groq[t]));
+  attempts.openrouter=async()=>{const key=providerKey(env,PROVIDERS.find(p=>p.id==="openrouter"));return compatible("openrouter","https://openrouter.ai/api/v1/chat/completions",key,await openRouterFreeModels(key))};
+  for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA"))attempts[p.id]=()=>compatible(p.id,p.base+"/chat/completions",providerKey(env,p),(TASK_MODELS[p.id]&&TASK_MODELS[p.id][t])||p.models);
+  const ready=Object.keys(attempts).filter(id=>id==="workersai"?!!(env.AI&&typeof env.AI.run==="function"):providerReady(env,id));
+  const order=await orderProviders(env,ready.filter(id=>id!=="workersai"),t);
+  // Workers AI queda siempre como último recurso: no tiene clave ni cupo que repartir, pero es el más flojo.
+  if(ready.includes("workersai"))order.push("workersai");
+  for(const id of order){
+    try{const out=await attempts[id]();if(out&&String(out.text||"").trim())return{...out,task:t}}
+    catch(error){tried.push(id+":"+String(error&&error.message||error));if(id==="gemini")await recordProviderUse(env,"gemini",false,String(error&&error.message||error))}
   }
   const e=new Error("Ninguna IA disponible ("+tried.join(" · ")+")");e.tried=tried;throw e;
 }
-// --- Búsqueda web: Tavily → Serper → Exa → LangSearch → Firecrawl → Jina --------------------------------------------
 async function searchRoute(env,query){
   const tried=[];
-  if(providerReady(env,"tavily")){
+  const tavily=async()=>{
     const t=await tavilySearch(env,query);
     await recordProviderUse(env,"tavily",t.ok,t.reason||"");
     if(t.ok&&t.results.length)return{ok:true,provider:"tavily",results:t.results};
     tried.push("tavily:"+(t.reason||"0"));if(/http-(429|432)|monthly/.test(t.reason||""))providerCooldown.set("tavily",Date.now()+6*3600e3);else{const st=Number((String(t.reason||"").match(/^http-(\d+)/)||[])[1])||0;providerFail("tavily",st)}
-  }
+    return null;
+  };
   const attempt=async(id,fn)=>{
     if(!providerReady(env,id))return null;
     try{const results=await fn(providerKey(env,PROVIDERS.find(p=>p.id===id)));await recordProviderUse(env,id,true);if(results.length)return{ok:true,provider:id,results};tried.push(id+":0")}
@@ -4212,7 +4247,13 @@ async function searchRoute(env,query){
     ["jina",async key=>{const r=await providerFetch("jina","https://s.jina.ai/?q="+encodeURIComponent(trimText(query,300)),{headers:{"Authorization":"Bearer "+key,"Accept":"application/json","X-Respond-With":"no-content"}});
       if(!r.ok)throw fail("jina",r);const d=await r.json();return (d.data||[]).slice(0,6).map(x=>({title:trimText(x.title,160),url:String(x.url||""),content:clean(x.description||x.content),date:x.date||""}))}]
   ];
-  for(const [id,fn] of order){const out=await attempt(id,fn);if(out)return out}
+  // Orden según calidad, fallos y consumo reales de hoy, con azar para repartir los cupos.
+  const fns=new Map(order);
+  const ready=["tavily",...fns.keys()].filter(id=>providerReady(env,id));
+  for(const id of await orderProviders(env,ready,"search")){
+    const out=id==="tavily"?await tavily():await attempt(id,fns.get(id));
+    if(out)return out;
+  }
   return{ok:false,provider:"",reason:tried.join(" · ")||"not-configured",results:[]};
 }
 // --- Administración: inventario, uso y pruebas -------------------------------------------------
@@ -4337,6 +4378,12 @@ async function handleAdmin(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   if(!await isAdminUser(env,user))return json({error:"Solo para la cuenta de administración."},403);
   if(url.searchParams.get("lite")==="1")return json({admin:true});
+  // El consumo (Cloudflare, Turso, GitHub, recuentos) es lento: se pide aparte para no bloquear el panel.
+  if(url.searchParams.get("usage")==="1"){
+    const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve({configured:true,ok:false,detail:label+": tiempo de espera agotado"}),ms))]);
+    const [cloudflare,tursoUse,github,app]=await Promise.all([withTimeout(cloudflareUsage(env),20000,"Cloudflare"),withTimeout(tursoUsage(env),15000,"Turso"),withTimeout(githubUsage(env),25000,"GitHub"),withTimeout(appStats(env),10000,"D1").then(a=>a&&a.ok===false?{error:a.detail}:a)]);
+    return json({cloudflare,turso:{active:cacheDbLabel(cacheDb(env)),usage:tursoUse},github,app});
+  }
   const day="d:"+nowIso().slice(0,10),month="m:"+nowIso().slice(0,7);
   const usageRows=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return(await db.prepare("SELECT provider,period,calls,errors,last_at,last_error FROM provider_usage WHERE period IN (?,?)").bind(day,month).all()).results||[]}).catch(()=>[]);
   const usage=(id,period)=>usageRows.find(r=>r.provider===id&&r.period===period)||null;
@@ -4349,7 +4396,9 @@ async function handleAdmin(request,env,user,json,url){
     let test=probes[p.id]||null;
     if(needProbe&&configured)test=await providerProbe(env,p);
     const d=usage(p.id,day),m=usage(p.id,month);
+    const prof=PROVIDER_PROFILE[p.id]||{};
     return{id:p.id,label:p.label,kind:p.kind,secret:p.secret,free:p.free,dashboard:p.dashboard,unused:!!p.unused,configured,
+      profile:{decision:prof.decision??null,light:prof.light??null,search:prof.search??null,daily:prof.daily??null},
       cooldownUntil:(providerCooldown.get(p.id)||0)>Date.now()?new Date(providerCooldown.get(p.id)).toISOString():null,
       today:d?{calls:d.calls,errors:d.errors}:{calls:0,errors:0},month:m?{calls:m.calls,errors:m.errors,lastAt:m.last_at,lastError:m.last_error}:{calls:0,errors:0},
       monthlyLimit:p.monthlyLimit||null,test};
@@ -4366,10 +4415,13 @@ async function handleAdmin(request,env,user,json,url){
     {id:"firebase",label:"Acceso y avisos (Firebase)",detail:project||"",url:project?"https://console.firebase.google.com/project/"+project+"/overview":"https://console.firebase.google.com/"},
     {id:"secrets",label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
-  // Consultas independientes en paralelo para no sumar sus esperas.
-  const [cloudflare,tursoUse,github,app]=await Promise.all([cloudflareUsage(env),tursoUsage(env),githubUsage(env),appStats(env)]);
-  return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
-    cloudflare,turso:{active:cacheDbLabel(cacheDb(env)),usage:tursoUse},github,app,
+  // Orden que usaría ahora el repartidor para cada tipo de tarea (sin el azar de reparto).
+  const stats=await providerStatsToday(env),readyIds=PROVIDERS.filter(p=>(p.id==="workersai"?!!(env.AI&&env.AI.run):providerReady(env,p.id))&&!p.unused).map(p=>p.id);
+  const rank=task=>readyIds.filter(id=>PROVIDER_PROFILE[id]&&PROVIDER_PROFILE[id][task]!==undefined&&(task==="search"||id!=="workersai"))
+    .map(id=>({id,score:Math.round(providerScore(id,task,stats,false))})).sort((a,b)=>b.score-a.score);
+  const routing={decision:[...rank("decision"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],light:[...rank("light"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],search:rank("search")};
+  return json({generatedAt:nowIso(),providers,routing,probedAt:probes.at||(needProbe?nowIso():null),infra,
+    turso:{active:cacheDbLabel(cacheDb(env))},
     secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim(),GH_ANALYTICS_TOKEN:!!String(env.GH_ANALYTICS_TOKEN||"").trim()}});
 }
 
@@ -6240,7 +6292,7 @@ async function goalWorkersScout(env,goal,candidates){
     JSON.stringify(payload)
   ].join("\n");
   try{
-    const run=await aiRoute(env,{prompt,maxTokens:900,json:true});
+    const run=await aiRoute(env,{prompt,maxTokens:900,json:true,task:"light"});
     const parsed=extractAiJson(run.text),rows=[];
     for(const x of parsed&&Array.isArray(parsed.valores)?parsed.valores:[]){
       const ticker=trimText(x&&x.ticker,24).toUpperCase(),phase=String(x&&x.fase||"").toLowerCase(),verdict=String(x&&x.veredicto||"").toLowerCase();

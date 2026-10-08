@@ -424,14 +424,21 @@ function initSettings(){
   const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
   return '<article class="settings-card admin-card">'+cardHead(p.label,p.dashboard)+status(p)+
    '<small>Gratis: '+esc(p.free)+'</small>'+(p.unused?'<small class="admin-st warn">Clave guardada, pero la app aún no usa este servicio.</small>':'')+
-   '<small>Hoy: '+fmt(p.today.calls)+' llamadas'+(p.today.errors?' · '+fmt(p.today.errors)+' errores':'')+' · Mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+bar(used,limit)+
+   (()=>{const pr=p.profile||{},daily=pr.daily&&pr.daily<100000?pr.daily:null,err=p.today.calls?Math.round(p.today.errors/p.today.calls*100):0;
+     return '<small>Hoy: '+fmt(p.today.calls)+' consultas'+(daily?' de ~'+fmt(daily)+' (cupo diario estimado)':'')+(p.today.errors?' · '+fmt(p.today.errors)+' fallos ('+err+' %)':'')+'</small>'+bar(p.today.calls,daily)+
+      '<small>Este mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+(limit?bar(used,limit):'')+
+      (pr.decision!=null||pr.search!=null?'<small>Nota del repartidor: '+(pr.search!=null?'búsqueda '+pr.search:'decidir '+pr.decision+' · cribar '+pr.light)+'/100</small>':'')})()+
    (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
    (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
    (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+'</article>';
  }
  function providerSection(d,kinds,kicker,title,text){
   const list=(d.providers||[]).filter(p=>kinds.includes(p.kind));
-  return heading(kicker,title,text)+'<div class="admin-grid">'+(list.map(providerCard).join('')||'<p class="settings-note">Sin servicios.</p>')+'</div>';
+  const label=id=>((d.providers||[]).find(p=>p.id===id)||{}).label||id;
+  const chain=(name,rows)=>rows&&rows.length?'<div class="admin-route"><span>'+esc(name)+'</span>'+rows.map((r,i)=>'<b>'+(i+1)+'. '+esc(label(r.id))+(r.score!=null?' <small>'+r.score+'</small>':' <small>reserva</small>')+'</b>').join('')+'</div>':'';
+  const rt=d.routing||{};
+  const routes=kinds.includes('IA')?chain('Para decidir (comprar, vender, ideas)',rt.decision)+chain('Para cribar candidatos',rt.light):kinds.includes('Búsqueda')?chain('Búsqueda web',rt.search):'';
+  return heading(kicker,title,text)+routes+'<div class="admin-grid">'+(list.map(providerCard).join('')||'<p class="settings-note">Sin servicios.</p>')+'</div>';
  }
  const cardHead=(title,url)=>'<div class="admin-card-head"><strong>'+esc(title)+'</strong>'+(url?'<a class="admin-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Abrir panel ↗</a>':'')+'</div>';
  const card=(title,url,body,extra='')=>'<article class="settings-card admin-card'+extra+'">'+cardHead(title,url)+body+'</article>';
@@ -443,16 +450,16 @@ function initSettings(){
   const cf=d.cloudflare||{},w=cf.workers||{},dd=cf.d1||{},kv=cf.kv||{},t=d.turso||{},tu=t.usage||{},gh=d.github||{};
   const url=id=>((d.infra||[]).find(x=>x.id===id)||{}).url||'';
   const gb=b=>(b/1024**3).toLocaleString('es-ES',{maximumFractionDigits:2})+' GB';
-  const cfMissing=note('Añade <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.');
+  const cfMissing=d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):note('Añade <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.');
   const worker=!cf.configured?cfMissing:!w.ok?err(w.detail||cf.detail):
    metric('Peticiones hoy',w.requests,w.limit)+note(fmt(w.errors)+' errores ('+(w.requests?Math.round(w.errors/w.requests*1000)/10:0)+' %) · '+fmt(w.subrequests)+' llamadas a servicios externos')+
    ((w.errorsByStatus||[]).length?'<small>Motivo de los fallos: '+w.errorsByStatus.map(x=>esc(STATUS_ES[x.status]||x.status)+' '+fmt(x.count)).join(' · ')+'</small>':'');
   const d1=!cf.configured?cfMissing:!dd.ok?err(dd.detail):metric('Filas escritas hoy',dd.rowsWritten,dd.writeLimit)+metric('Filas leídas hoy',dd.rowsRead,dd.readLimit);
   const kvb=!cf.configured?cfMissing:!kv.ok?err(kv.detail):metric('Lecturas hoy',kv.reads,kv.readLimit)+metric('Escrituras hoy',kv.writes,kv.writeLimit)+metric('Borrados hoy',kv.deletes,kv.writeLimit)+metric('Listados hoy',kv.lists,kv.writeLimit);
   const turso=(t.active==='turso'?'<b class="admin-st ok">✅ en uso</b>':'<b class="admin-st warn">⚠️ no activa: las cachés van a D1</b>')+
-   (!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
+   (d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
     metric('Filas leídas este mes',tu.rowsRead,tu.readLimit)+metric('Filas escritas este mes',tu.rowsWritten,tu.writeLimit)+metric('Almacenamiento',tu.storageBytes,tu.storageLimit,gb));
-  const actions=!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
+  const actions=d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
    metric('Minutos este mes ('+esc(gh.minutesSource)+')',gh.minutes,gh.limit)+note(fmt(gh.runs)+' ejecuciones · '+fmt(gh.failed)+' fallidas')+
    ((gh.workflows||[]).length?'<small>'+gh.workflows.map(x=>esc(x.name)+': '+fmt(x.runs)+(x.failed?' ('+fmt(x.failed)+' ✗)':'')).join(' · ')+'</small>':'')+
    (gh.lastApk?'<small>Última APK: '+(gh.lastApk.conclusion==='success'?'✅':gh.lastApk.status!=='completed'?'⏳':'❌')+' '+esc(new Date(gh.lastApk.at).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+' · <a href="'+esc(gh.lastApk.url)+'" target="_blank" rel="noopener noreferrer">descargar ↗</a></small>':'');
@@ -470,9 +477,10 @@ function initSettings(){
    '</div>';
  }
  function appHtml(d,sources){
-  const a=d.app||{},v=n=>n===null||n===undefined?'—':fmt(n);
+  const a=d.app||{},v=n=>d.usageLoading?'…':n===null||n===undefined?'—':fmt(n);
   const row=(label,val)=>'<div class="settings-status-row"><span>'+label+'</span><strong class="settings-status">'+val+'</strong></div>';
   return heading('DATOS DE LA APP','Uso interno','Solo recuentos: ningún dato personal sale de D1.')+
+   (d.usageError?'<p class="settings-note admin-err">No se pudieron leer los recuentos: '+esc(d.usageError)+'</p>':a.error?'<p class="settings-note admin-err">No se pudieron leer los recuentos: '+esc(a.error)+'</p>':'')+
    '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CUENTAS</span></div></div>'+
    row('Usuarios',v(a.users))+row('Dispositivos con avisos',v(a.devices))+'</article>'+
    '<article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CARTERAS</span></div></div>'+
@@ -514,21 +522,35 @@ function initSettings(){
    (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
    row('Consultas hoy a IA y búsqueda web <small>(análisis de eventos)</small>',fmt(calls))+
    row('Caché de mercado',d.turso&&d.turso.active==='turso'?'Turso (activa)':'D1 (Turso no activa)',d.turso&&d.turso.active==='turso'?'admin-st ok':'admin-st warn')+
-   row('Cloudflare',!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
+   row('Cloudflare',d.usageLoading?'cargando…':!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',d.usageLoading?'':!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
    '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
    Object.entries(sec).map(([k,v])=>row('<code>'+esc(k==='TURSO'?'TURSO_URL + TURSO_TOKEN':k)+'</code>',v?'configurado':'falta',v?'admin-st ok':'admin-st warn')).join('')+
    '</article></div>');
-  fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Se prueban por orden: Gemini → Groq → OpenRouter → Cohere → SambaNova → NVIDIA → Ollama → Workers AI. Si uno no tiene clave o agota su cupo, pasa al siguiente.'));
-  fill('search',providerSection(d,['Búsqueda','Lectura web'],'BÚSQUEDA WEB','Búsqueda y lectura web','Orden: Tavily → Serper → Exa → LangSearch → Firecrawl → Jina.'));
+  fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Cada consulta elige la mejor IA para su tarea según su nota, sus fallos y su consumo de hoy, y reparte la carga entre las mejores. Si una falla o agota su cupo, pasa a la siguiente. Orden actual (puntuación):'));
+  fill('search',providerSection(d,['Búsqueda','Lectura web'],'BÚSQUEDA WEB','Búsqueda y lectura web','Se reparten igual que la IA: calidad, fallos y consumo de hoy. Orden actual (puntuación):'));
   fill('market',marketHtml(d));if(!publicSources)loadPublicSources();
   fill('infra',infraHtml(d));
   fill('app',appHtml(d));
   document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});
  }
+ // El consumo (Cloudflare, Turso, GitHub y recuentos) llega aparte porque tarda más.
+ let usage=null,usageLoading=false;
+ const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('el servidor tarda demasiado; pulsa «Actualizar»')),ms))]);
+ async function loadUsage(){
+  if(usageLoading)return;usageLoading=true;
+  try{usage=await withTimeout(api('/api/admin?usage=1'),45000);if(last){last={...last,...usage,usageLoading:false,usageError:''};render(last)}}
+  catch(e){usage=null;if(last){const {cloudflare,github,app,...rest}=last;last={...rest,turso:{active:(last.turso||{}).active},usageLoading:false,usageError:e.message||'error'};render(last)}}
+  finally{usageLoading=false}
+ }
  async function load(probe=false){
   if(loading)return;loading=true;
   if(probe||!last)fill('summary','<p class="settings-note">'+(probe?'Probando cada servicio…':'Cargando…')+'</p>');
-  try{last=await api('/api/admin'+(probe?'?probe=1':''));isAdmin=true;render(last)}
+  if(!last)SECTIONS.forEach(n=>fill(n,'<p class="settings-note">'+(probe?'Probando cada servicio…':'Cargando…')+'</p>'));
+  try{
+   const core=await withTimeout(api('/api/admin'+(probe?'?probe=1':'')),probe?60000:20000);
+   isAdmin=true;last={...core,...(usage||{}),usageLoading:!usage,usageError:''};render(last);
+   loadUsage();
+  }
   catch(e){
    if(e.status===403||e.status===401){isAdmin=false;try{show('today')}catch(_){}}
    else{selectSection('summary',false);fill('summary','<p class="settings-note admin-err">No se pudo cargar: '+esc(e.message)+'</p>')}
@@ -540,6 +562,6 @@ function initSettings(){
   if(t.closest('#accountAdmin')){const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}return}
   const sec=t.closest('[data-admin-section]');if(sec){e.preventDefault();selectSection(sec.dataset.adminSection);return}
   if(t.closest('[data-admin-probe]')){e.preventDefault();publicSources=null;load(true);return}
-  if(t.closest('[data-admin-refresh]')){e.preventDefault();publicSources=null;load(false)}
+  if(t.closest('[data-admin-refresh]')){e.preventDefault();publicSources=null;usage=null;load(false)}
  });
 })();
