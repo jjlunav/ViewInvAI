@@ -291,6 +291,8 @@ function profileVisualAnalysisHtml(s,isTr=false){
    '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+
   '</section>'+
   '<section class="profile-tab-panel" data-profile-panel="ai" hidden>'+
+   // Lectura de la IA, por qué se mueve hoy, plan de operación y próximo evento: todo lo de IA, junto.
+   '<div class="profile-ai-overview">'+profileAiStripHtml(s,isTr)+profileWhyMovingHtml(s,isTr)+profileTradePlanHtml(s,isTr)+profileEventInsightHtml(s)+'</div>'+
    profileAskAiHtml(s,isTr)+
    profileAiPanel(s,isTr?'tr':'us')+
   '</section>';
@@ -613,7 +615,6 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
-    profileAiStripHtml(s,isTr)+profileWhyMovingHtml(s,isTr)+profileTradePlanHtml(s,isTr)+profileEventInsightHtml(s)+
    '</div>'+
   '</header>';
 }
