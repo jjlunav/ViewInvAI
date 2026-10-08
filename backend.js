@@ -155,7 +155,7 @@ function booleanInt(value) {
 // TURSO_TOKEN, o si Turso falla, todo vuelve a D1 automáticamente (pausa de 5 min tras un fallo).
 // ---------------------------------------------------------------------------------------------
 const CACHE_DB_RETRY_MS = 5 * 60000;
-const cacheDbState = { adapter: null, url: "", failedUntil: 0, lastError: "", lastErrorAt: null, lastOkAt: null };
+const cacheDbState = { adapter: null, url: "", failedUntil: 0, radarSyncPending: true, lastError: "", lastErrorAt: null, lastOkAt: null };
 function tursoHttpUrl(raw) {
   const u = String(raw || "").trim().replace(/^libsql:\/\//i, "https://").replace(/\/+$/, "");
   return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : "";
@@ -215,6 +215,7 @@ function cacheDb(env) {
 function cacheDbLabel(db) { return db && db.label === "turso" ? "turso" : "d1"; }
 function noteCacheDbFailure(error) {
   cacheDbState.failedUntil = Date.now() + CACHE_DB_RETRY_MS;
+  cacheDbState.radarSyncPending = true; // lo escrito en D1 durante la caída se sincroniza al volver
   cacheDbState.lastError = trimText(String(error && error.message || error), 240);
   cacheDbState.lastErrorAt = nowIso();
   console.warn("Turso cache DB failed; falling back to D1", cacheDbState.lastError);
@@ -2403,33 +2404,40 @@ async function handlePortfolioPerformance(request,env,user,json,url,services){
 const RADAR_HORIZONS=[1,5,20];
 async function ensureRadarScoreboardSchema(env){
   const schemaKey="radar:"+cacheDbLabel(env.DB);
-  if(cacheSchemaReady.has(schemaKey))return;
+  if(cacheSchemaReady.has(schemaKey)&&!(schemaKey==="radar:turso"&&cacheDbState.radarSyncPending))return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL,score REAL NOT NULL,quality REAL NOT NULL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,speculative INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_radar_signals_day ON radar_signals(day)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)")
   ]);
+  // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
+  if(schemaKey==="radar:turso"){await migrateRadarToCache(env);cacheDbState.radarSyncPending=false}
   cacheSchemaReady.add(schemaKey);
-  await migrateRadarToCache(env);
 }
-// Al pasar el marcador a Turso se copia una sola vez el historial que ya había en D1, para no
-// perder los aciertos acumulados. Solo corre si la tabla de Turso está vacía.
+// Sincroniza el marcador de D1 hacia Turso: la primera vez copia todo el historial y después
+// (al arrancar cada isolate y tras cualquier caída de Turso) los últimos 45 días, para recoger
+// las señales y resultados que se guardaron en D1 mientras Turso no respondía. Los ids son
+// aleatorios, así que se concilia por (day, stock_key): INSERT OR IGNORE para lo nuevo y un
+// UPDATE que solo rellena resultados vacíos en Turso (no escribe si ya están).
 async function migrateRadarToCache(env){
   if(cacheDbLabel(env.DB)!=="turso"||!env.D1_PRIMARY)return;
-  try{
-    const has=await env.DB.prepare("SELECT COUNT(*) AS n FROM radar_signals").first();
-    if(Number(has&&has.n)>0)return;
-    const d1=env.D1_PRIMARY;
-    const exists=await d1.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='radar_signals'").first();
-    if(!exists)return;
-    const cols="id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at";
-    const rows=(await d1.prepare("SELECT "+cols+" FROM radar_signals ORDER BY day").all()).results||[];
-    const names=cols.split(","),marks=names.map(()=>"?").join(",");
-    for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_signals ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
-    const bench=(await d1.prepare("SELECT day,price,created_at FROM radar_bench").all()).results||[];
-    for(let i=0;i<bench.length;i+=60)await env.DB.batch(bench.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(r.day,r.price,r.created_at)));
-    console.log("Radar scoreboard copied to Turso",rows.length,bench.length);
-  }catch(error){console.warn("Radar scoreboard migration to Turso failed",String(error&&error.message||error));throw error}
+  const d1=env.D1_PRIMARY;
+  const exists=await d1.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='radar_signals'").first();
+  if(!exists)return;
+  const has=await env.DB.prepare("SELECT COUNT(*) AS n FROM radar_signals").first();
+  const since=Number(has&&has.n)>0?isoDay(Date.now()-45*864e5):"";
+  const cols="id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at";
+  const names=cols.split(","),marks=names.map(()=>"?").join(",");
+  const rows=(await d1.prepare("SELECT "+cols+" FROM radar_signals WHERE day>=? ORDER BY day").bind(since).all()).results||[];
+  for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_signals ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
+  const done=rows.filter(r=>r.ret_1d!==null&&r.ret_1d!==undefined||r.ret_5d!==null&&r.ret_5d!==undefined||r.ret_20d!==null&&r.ret_20d!==undefined);
+  const v=x=>x===undefined?null:x;
+  for(let i=0;i<done.length;i+=60)await env.DB.batch(done.slice(i,i+60).map(r=>env.DB.prepare(
+    "UPDATE radar_signals SET ret_1d=COALESCE(ret_1d,?),bench_1d=COALESCE(bench_1d,?),ret_5d=COALESCE(ret_5d,?),bench_5d=COALESCE(bench_5d,?),ret_20d=COALESCE(ret_20d,?),bench_20d=COALESCE(bench_20d,?) "+
+    "WHERE day=? AND stock_key=? AND ((ret_1d IS NULL AND ? IS NOT NULL) OR (ret_5d IS NULL AND ? IS NOT NULL) OR (ret_20d IS NULL AND ? IS NOT NULL))"
+  ).bind(v(r.ret_1d),v(r.bench_1d),v(r.ret_5d),v(r.bench_5d),v(r.ret_20d),v(r.bench_20d),r.day,r.stock_key,v(r.ret_1d),v(r.ret_5d),v(r.ret_20d))));
+  const bench=(await d1.prepare("SELECT day,price,created_at FROM radar_bench WHERE day>=?").bind(since).all()).results||[];
+  for(let i=0;i<bench.length;i+=60)await env.DB.batch(bench.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(r.day,r.price,r.created_at)));
 }
 function radarMarkWindow(nowMs){
   const api=globalThis.ViewInvAIMarketSession;
