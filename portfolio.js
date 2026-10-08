@@ -1492,18 +1492,19 @@ function goalPlanForStock(stock){
     }
     if(!c.plan)return null;
     const base={portfolioName:c.portfolioName,preferTr:!!c.input.preferTr};
+    // Una posición en cartera manda sobre compras o esperas (la clave guardada puede ser el ISIN).
+    const pos=c.input.positions.find(p=>p.key===key||goalStockKey(p.row&&p.row.stock)===key);
+    if(pos){
+      const st=engine.positionStop(pos,c.risk),act=c.plan.actions.find(a=>a.key===pos.key&&(a.type==="SELL"||a.type==="RAISE_STOP"));
+      const bid=num(pos.bidEur),price=bid??num(pos.priceEur),stopEur=num(act&&act.stopEur)??num(st.stopEur);
+      return{...base,kind:"position",label:pos.label||pos.ticker,priceEur:price,priceIsBid:bid!==null,stopEur,trailing:!!st.trailing,
+        stopDistPct:price>0&&stopEur!==null?(1-stopEur/price)*100:null,action:act?{type:act.type,text:act.text}:null};
+    }
     const buy=c.plan.actions.find(a=>a.type==="BUY"&&a.key===key);
     if(buy)return{...base,kind:"buy",label:buy.label,units:buy.units,entryEur:buy.priceEur,stopEur:buy.stopEur,stopPct:buy.stopPct,
       targetPct:buy.targetPct,targetEur:num(buy.priceEur)!==null&&num(buy.targetPct)!==null?buy.priceEur*(1+buy.targetPct/100):null};
     const wait=(c.plan.waits||[]).find(a=>a.key===key);
     if(wait)return{...base,kind:"wait",label:wait.label,decision:wait.decision,limitPriceEur:wait.limitPriceEur,currentPriceEur:wait.currentPriceEur,text:wait.text};
-    const pos=c.input.positions.find(p=>p.key===key||goalStockKey(p.row&&p.row.stock)===key);
-    if(pos){
-      const st=engine.positionStop(pos,c.risk),act=c.plan.actions.find(a=>a.key===pos.key&&(a.type==="SELL"||a.type==="RAISE_STOP"));
-      const price=num(pos.bidEur)??num(pos.priceEur),stopEur=num(act&&act.stopEur)??num(st.stopEur);
-      return{...base,kind:"position",label:pos.label||pos.ticker,priceEur:price,stopEur,trailing:!!st.trailing,
-        stopDistPct:price>0&&stopEur!==null?(1-stopEur/price)*100:null,action:act?{type:act.type,text:act.text}:null};
-    }
     return null;
   }catch(_){return null}
 }
@@ -2200,6 +2201,7 @@ async function loadAll({ syncFavorites = false } = {}) {
   } finally {
     state.loading = false;
     renderActivePortfolioPanel();
+    goalPlanCache=null;
     window.dispatchEvent(new CustomEvent('viewinvai:portfolios-loaded', { detail: { ok } }));
     const summaryPortfolioId = state.selectedPortfolioId;
     if (summaryPortfolioId) refreshPortfolioTransactionSummary(summaryPortfolioId).catch(() => {});

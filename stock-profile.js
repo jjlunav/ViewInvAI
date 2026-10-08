@@ -463,7 +463,7 @@ function profileGoalPlanHtml(g){
   note='<p class="plan-note">'+E(g.text||'')+'</p>';
  }else{
   head=g.action&&g.action.type==='SELL'?'Vender: stop alcanzado o salida del plan':'En cartera · Stop '+px(g.stopEur)+(N(g.stopDistPct)!==null?' (−'+pct(g.stopDistPct)+' del precio)':'');
-  grid='<div><small>PRECIO</small><b>'+px(g.priceEur)+'</b><span>venta en BID</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>'+(g.trailing?'dinámico, sube con el precio':'fijo desde la compra')+'</span></div>';
+  grid='<div><small>PRECIO</small><b>'+px(g.priceEur)+'</b><span>'+(g.priceIsBid?'venta en BID':'precio actual (sin BID)')+'</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>'+(g.trailing?'dinámico, sube con el precio':'fijo desde la compra')+'</span></div>';
   if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
  }
  return '<details class="profile-plan" data-profile-plan data-plan-source="goal"><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
@@ -471,14 +471,15 @@ function profileGoalPlanHtml(g){
   '<p class="plan-note">Es el mismo plan que «Hoy toca» en el Objetivo de esta cartera (importes en €).</p></div></details>';
 }
 function profileTradePlanHtml(s,isTr=false){
+ window.__planCtx={key:stockKey(s),isTr};
  const goalPlan=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getGoalPlanFor==='function'?window.ViewInvAIPortfolios.getGoalPlanFor(s):null;
  if(goalPlan&&goalPlan.preferTr===!!isTr)return profileGoalPlanHtml(goalPlan);
  const usPrice=N(s.price),atr=N(s.atr);
  let atrPct=atr!==null&&usPrice>0?atr/usPrice*100:null,atrSource='ATR 14 días';
  // Without a real 14-day ATR there is no plan: the day range on a +60% day gives absurd stops.
  const entry=isTr?(N(s.trLiveAsk)??N(s.trLivePrice)):(N(s.usLiveAsk)??N(s.usLivePrice)??N(s.price));
- if(entry===null||!(entry>0)||atrPct===null||!(atrPct>0))return'';
- window.__planCtx={key:stockKey(s),isTr};
+ // Hueco vacío: si después llega el plan del Objetivo, se pinta aquí.
+ if(entry===null||!(entry>0)||atrPct===null||!(atrPct>0))return'<div data-profile-plan hidden></div>';
  const cur=isTr?'EUR':'USD',sym=isTr?'€':'$',key=planRiskKey(),band=PLAN_BANDS[key];
  const fx=typeof eurUsd==='function'?eurUsd():null;
  const stopPct=Math.max(1.5,1.5*atrPct),tooWide=stopPct>band.maxStop;
@@ -520,6 +521,13 @@ document.addEventListener('click',e=>{
  if(d&&s){const isTr=ctx.isTr;const wrap=document.createElement('div');wrap.innerHTML=profileTradePlanHtml(s,isTr);const next=wrap.firstElementChild;if(next)d.replaceWith(next)}
 });
 document.addEventListener('toggle',e=>{if(e.target&&e.target.matches&&e.target.matches('[data-profile-plan]'))window.__planOpen=e.target.open},true);
+// Las carteras y el Objetivo se cargan después de abrir la ficha: al llegar, se recalcula el plan.
+window.addEventListener('viewinvai:portfolios-loaded',()=>{
+ const d=document.querySelector('[data-profile-plan]'),ctx=window.__planCtx,s=ctx&&stockByKey(ctx.key);
+ if(!d||!s)return;
+ const wrap=document.createElement('div');wrap.innerHTML=profileTradePlanHtml(s,ctx.isTr);
+ const next=wrap.firstElementChild;if(next)d.replaceWith(next);
+});
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
