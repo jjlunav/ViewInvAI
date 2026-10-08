@@ -1248,6 +1248,9 @@ async function recalculatePositionFromTransactions(env, userId, portfolioId, sto
     ).run();
     // Si baja la cantidad, la congelación no puede pasar de lo que queda (y se borra al cerrar la posición):
     // así una recompra posterior no hereda una congelación antigua.
+    if(!(ledger.quantity>1e-8)){
+      try{await env.DB.prepare("DELETE FROM position_decisions WHERE user_id=? AND position_id=?").bind(userId,resolvedId).run()}catch(_){}
+    }
     const frozenNow=finiteNumber(existing.frozen_qty)??0;
     if(frozenNow>0&&ledger.quantity<frozenNow-1e-9){
       const keep=ledger.quantity>1e-8?Math.round(ledger.quantity*1e8)/1e8:0;
@@ -4006,7 +4009,7 @@ async function handlePositionDecisions(request,env,user,json,parts){
     const now=nowIso();
     const days=Math.max(1,Math.min(60,finiteNumber(body.days)??7));
     // Las esperas con fecha (catalizador o pausa) terminan al acabar ese día: después el Objetivo vuelve a decidir.
-    const reviewAt=holdUntil&&decision==="later"?new Date(Date.parse(holdUntil+"T23:59:59Z")+86400000).toISOString()
+    const reviewAt=holdUntil&&decision==="later"?new Date(Date.parse(holdUntil+"T23:59:59Z")).toISOString()
       :decision==="later"?new Date(Date.now()+days*24*3600e3).toISOString():decision==="sell"?new Date(Date.now()+3*24*3600e3).toISOString():null;
     const alertId=trimText(body.alertId,80)||null;
     await env.DB.prepare(
@@ -4069,6 +4072,8 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
     const frozen = serverFrozenQty(target);
     if (frozen > 0 && frozen >= (finiteNumber(target.quantity) ?? 0) - 1e-9) return null;
     const decision = await positionDecisionFor(env, target.user_id, target.subject_id);
+    // Decisiones del menú «Decidir» (con tipo): sus avisos (objetivo, emergencia, cambio mejor) los da el Objetivo.
+    if (decision && decision.hold_mode && decisionIsCurrent(decision)) return null;
     if (decision && decision.decision === "hold") {
       const hold = holdModeAlert(target, current, decision);
       if (!hold) return null;
@@ -5954,7 +5959,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const dec=decisionsById.get(p.id);
         const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
           targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
-        enginePositions.push({hold,key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
+        enginePositions.push({hold,positionId:p.id,key,ticker,marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
           quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});

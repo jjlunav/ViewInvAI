@@ -1498,7 +1498,7 @@ function goalEngineInput(metrics,positionRows){
     const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
-    return{hold:goalHoldFor(row.p,row.avgEur),key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
+    return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
@@ -1650,7 +1650,7 @@ function portfolioGoalViewHtml(){
   const visibleDecisions=[...plan.actions,...(plan.waits||[])];
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
-  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?ctx.positions.find(p=>p.key===h.key):null;
+  const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?(ctx.positions.find(p=>String(p.positionId)===String(h.positionId))||ctx.positions.find(p=>p.key===h.key)):null;
     return '<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+
       (pos?' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(pos.row.p.id)+'">Cambiar</button>':'')+'</li>'}).join('')+'</ul>':'';
   const frozenRows=positionRows.map(row=>({row,q:Math.min(num(row.qty)||0,positionFrozenQty(row.p))})).filter(x=>x.q>0);
@@ -2641,7 +2641,10 @@ function openGoalDecisionModal(positionId){
   const raw=state.positions.find(p=>String(p.id)===String(positionId));
   if(!pos||!raw)return toast("No se encuentra la posición en el plan del Objetivo.",true);
   const price=num(pos.bidEur)??num(pos.priceEur),avg=num(pos.avgEur),units=num(pos.units)||0,fee=num(pos.feeEur)||1;
-  const breakeven=avg!==null&&units>0?avg+(2*fee)/units:null;
+  // Punto sin pérdidas: coste neto que queda (compras con sus comisiones) más la comisión de venta.
+  const totalQty=num(raw.quantity)||units,cost=num(raw.cost_basis);
+  const costEur=cost!==null?portfolioConvertAmount(cost*(totalQty>0?units/totalQty:1),String(raw.currency||"EUR").toUpperCase(),"EUR",ctx.fx):null;
+  const breakeven=units>0?(costEur!==null?(costEur+fee)/units:avg!==null?avg+(2*fee)/units:null):null;
   const cat=goalNextCatalyst(pos.row.stock),current=goalDecisionFor(positionId);
   const in7=new Date(Date.now()+7*86400000).toLocaleDateString("sv-SE"),today=new Date().toLocaleDateString("sv-SE");
   const eur=v=>v===null?"—":formatMoney(v,"EUR");
@@ -2670,8 +2673,14 @@ async function saveGoalDecisionForm(form){
   if(!mode){if(status)status.textContent="Elige una opción.";return}
   if(mode==="sell"){
     closeModal();
-    const btn=document.querySelector('[data-register-goal-operation="SELL"][data-goal-position-id="'+CSS.escape(positionId)+'"]');
-    if(btn)btn.click();else toast("La venta se podrá registrar cuando haya cotización ejecutable.");
+    // La venta se prepara aquí (no depende de que haya una tarjeta de venta en pantalla).
+    const pos=lastGoalCtx&&lastGoalCtx.positions.find(p=>String(p.positionId)===String(positionId));
+    const row=pos&&pos.row;
+    const q=row?goalExecutionQuote(row.stock,row.preferTr,"SELL",lastGoalCtx.fx,row.p.broker,pos.units):null;
+    const html=row&&q?goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:pos.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason}):"";
+    const holder=document.createElement("div");holder.innerHTML=html;
+    const btn=holder.querySelector("[data-register-goal-operation]");
+    if(btn)openGoalOperationModal(btn);else toast("La venta se podrá registrar cuando haya cotización ejecutable.");
     if(goalDecisionFor(positionId)&&window.ViewInvAIDecisions)try{await window.ViewInvAIDecisions.clear(positionId)}catch(_){}
     return;
   }
@@ -2680,7 +2689,8 @@ async function saveGoalDecisionForm(form){
   if(mode==="recover")body.targetEur=num(c.breakeven);
   if(mode==="pct"){
     const pct=num(fd.get("pct"));if(!(pct>0)){if(status)status.textContent="Indica el porcentaje.";return}
-    body.holdPct=pct;body.targetEur=avg!==null?avg*(1+pct/100)+(units>0?2*fee/units:0):null;
+    const be=num(c.breakeven)??(avg!==null?avg+(units>0?2*fee/units:0):null);
+    body.holdPct=pct;body.targetEur=be!==null?be*(1+pct/100):null;
   }
   if(mode==="catalyst")body.holdUntil=c.catDate;
   if(mode==="date"){body.holdUntil=String(fd.get("until")||"");if(!body.holdUntil){if(status)status.textContent="Indica la fecha.";return}}

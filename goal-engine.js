@@ -255,7 +255,7 @@
             text:'Vender '+units+' × '+label(p)+': '+(h.mode==='recover'?'ya ha recuperado tu precio de compra con comisiones':'alcanza el objetivo que fijaste')+' ('+money(target)+').'});
           continue;
         }
-        holds.push({key:p.key,ticker:p.ticker,holdMode:h.mode,text:'Mantener '+label(p)+': '+holdLabel(p,h,price)+'.'});
+        holds.push({key:p.key,positionId:p.positionId||'',ticker:p.ticker,holdMode:h.mode,text:'Mantener '+label(p)+': '+holdLabel(p,h,price)+'.'});
         remaining.push({...row,holdActive:h});
         continue;
       }
@@ -334,7 +334,12 @@
         if(!alt)continue;
         const units=n(p.units)||0,price=n(p.bidEur)??n(p.priceEur)??0,avg=n(p.avgEur)??price;
         const proceeds=units*price-feeOf(p,'SELL'),loss=Math.max(0,(avg-price)*units);
-        const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL'),expectedGain=Math.max(0,proceeds)*alt.targetPct/100;
+        // La compra posterior está limitada por el peso máximo y las acciones enteras: la ganancia
+        // prevista se calcula con lo que de verdad se compraría.
+        const ask=n(alt.askEur)??n(alt.priceEur),ticketCap=Math.min(Math.max(0,proceeds),valueEur*b.maxWeight/100);
+        const altUnits=ask>0?Math.floor(ticketCap/ask):0;
+        if(altUnits<1)continue;
+        const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL'),expectedGain=altUnits*ask*alt.targetPct/100;
         if(expectedGain<loss+fees)continue;
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
         const hi=holds.findIndex(h=>h.key===p.key);if(hi>=0)holds.splice(hi,1);
