@@ -4103,6 +4103,8 @@ async function ensureProviderUsageSchema(db){
 }
 async function recordProviderUse(env,id,ok,error=""){
   if(ok)providerCooldown.delete(id);
+  // Mantiene al día la copia en memoria que usa el repartidor para ordenar.
+  if(typeof providerStatsMemo!=="undefined"&&providerStatsMemo.rows){const st=providerStatsMemo.rows.get(id)||{calls:0,errors:0};st.calls++;if(!ok)st.errors++;providerStatsMemo.rows.set(id,st)}
   const now=nowIso(),periods=["d:"+now.slice(0,10),"m:"+now.slice(0,7)];
   try{await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);
     return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,last_at=excluded.last_at,last_error=CASE WHEN excluded.errors>0 THEN excluded.last_error ELSE last_error END")
@@ -4172,7 +4174,7 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
   const attempts={
     gemini:async()=>{
       const key=providerKey(env,PROVIDERS.find(p=>p.id==="gemini")),chain=await aiGeminiModelChain(key,"");
-      let models=(chain.models||[]).slice(0,4);
+      let models=chain.models||[];
       if(t==="light")models=[...models.filter(m=>/lite/i.test(m)),...models.filter(m=>!/lite/i.test(m))];
       for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
@@ -4379,7 +4381,7 @@ async function handleAdmin(request,env,user,json,url){
   // El consumo (Cloudflare, Turso, GitHub, recuentos) es lento: se pide aparte para no bloquear el panel.
   if(url.searchParams.get("usage")==="1"){
     const withTimeout=(promise,ms,label)=>Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve({configured:true,ok:false,detail:label+": tiempo de espera agotado"}),ms))]);
-    const [cloudflare,tursoUse,github,app]=await Promise.all([withTimeout(cloudflareUsage(env),20000,"Cloudflare"),withTimeout(tursoUsage(env),15000,"Turso"),withTimeout(githubUsage(env),25000,"GitHub"),withTimeout(appStats(env),10000,"D1")]);
+    const [cloudflare,tursoUse,github,app]=await Promise.all([withTimeout(cloudflareUsage(env),20000,"Cloudflare"),withTimeout(tursoUsage(env),15000,"Turso"),withTimeout(githubUsage(env),25000,"GitHub"),withTimeout(appStats(env),10000,"D1").then(a=>a&&a.ok===false?{error:a.detail}:a)]);
     return json({cloudflare,turso:{active:cacheDbLabel(cacheDb(env)),usage:tursoUse},github,app});
   }
   const day="d:"+nowIso().slice(0,10),month="m:"+nowIso().slice(0,7);
@@ -4414,7 +4416,7 @@ async function handleAdmin(request,env,user,json,url){
     {id:"secrets",label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
   // Orden que usaría ahora el repartidor para cada tipo de tarea (sin el azar de reparto).
-  const stats=await providerStatsToday(env),readyIds=PROVIDERS.filter(p=>(p.id==="workersai"?!!(env.AI&&env.AI.run):!p.secret||!!providerKey(env,p))&&!p.unused).map(p=>p.id);
+  const stats=await providerStatsToday(env),readyIds=PROVIDERS.filter(p=>(p.id==="workersai"?!!(env.AI&&env.AI.run):providerReady(env,p.id))&&!p.unused).map(p=>p.id);
   const rank=task=>readyIds.filter(id=>PROVIDER_PROFILE[id]&&PROVIDER_PROFILE[id][task]!==undefined&&(task==="search"||id!=="workersai"))
     .map(id=>({id,score:Math.round(providerScore(id,task,stats,false))})).sort((a,b)=>b.score-a.score);
   const routing={decision:[...rank("decision"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],light:[...rank("light"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],search:rank("search")};

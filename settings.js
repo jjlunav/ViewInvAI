@@ -457,9 +457,9 @@ function initSettings(){
   const d1=!cf.configured?cfMissing:!dd.ok?err(dd.detail):metric('Filas escritas hoy',dd.rowsWritten,dd.writeLimit)+metric('Filas leídas hoy',dd.rowsRead,dd.readLimit);
   const kvb=!cf.configured?cfMissing:!kv.ok?err(kv.detail):metric('Lecturas hoy',kv.reads,kv.readLimit)+metric('Escrituras hoy',kv.writes,kv.writeLimit)+metric('Borrados hoy',kv.deletes,kv.writeLimit)+metric('Listados hoy',kv.lists,kv.writeLimit);
   const turso=(t.active==='turso'?'<b class="admin-st ok">✅ en uso</b>':'<b class="admin-st warn">⚠️ no activa: las cachés van a D1</b>')+
-   (d.usageLoading?note('Cargando consumo…'):!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
+   (d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
     metric('Filas leídas este mes',tu.rowsRead,tu.readLimit)+metric('Filas escritas este mes',tu.rowsWritten,tu.writeLimit)+metric('Almacenamiento',tu.storageBytes,tu.storageLimit,gb));
-  const actions=d.usageLoading?note('Cargando consumo…'):!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
+  const actions=d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
    metric('Minutos este mes ('+esc(gh.minutesSource)+')',gh.minutes,gh.limit)+note(fmt(gh.runs)+' ejecuciones · '+fmt(gh.failed)+' fallidas')+
    ((gh.workflows||[]).length?'<small>'+gh.workflows.map(x=>esc(x.name)+': '+fmt(x.runs)+(x.failed?' ('+fmt(x.failed)+' ✗)':'')).join(' · ')+'</small>':'')+
    (gh.lastApk?'<small>Última APK: '+(gh.lastApk.conclusion==='success'?'✅':gh.lastApk.status!=='completed'?'⏳':'❌')+' '+esc(new Date(gh.lastApk.at).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+' · <a href="'+esc(gh.lastApk.url)+'" target="_blank" rel="noopener noreferrer">descargar ↗</a></small>':'');
@@ -480,6 +480,7 @@ function initSettings(){
   const a=d.app||{},v=n=>d.usageLoading?'…':n===null||n===undefined?'—':fmt(n);
   const row=(label,val)=>'<div class="settings-status-row"><span>'+label+'</span><strong class="settings-status">'+val+'</strong></div>';
   return heading('DATOS DE LA APP','Uso interno','Solo recuentos: ningún dato personal sale de D1.')+
+   (d.usageError?'<p class="settings-note admin-err">No se pudieron leer los recuentos: '+esc(d.usageError)+'</p>':a.error?'<p class="settings-note admin-err">No se pudieron leer los recuentos: '+esc(a.error)+'</p>':'')+
    '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CUENTAS</span></div></div>'+
    row('Usuarios',v(a.users))+row('Dispositivos con avisos',v(a.devices))+'</article>'+
    '<article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">CARTERAS</span></div></div>'+
@@ -538,7 +539,7 @@ function initSettings(){
  async function loadUsage(){
   if(usageLoading)return;usageLoading=true;
   try{usage=await withTimeout(api('/api/admin?usage=1'),45000);if(last){last={...last,...usage,usageLoading:false,usageError:''};render(last)}}
-  catch(e){if(last){last={...last,usageLoading:false,usageError:e.message||'error'};render(last)}}
+  catch(e){usage=null;if(last){const {cloudflare,github,app,...rest}=last;last={...rest,turso:{active:(last.turso||{}).active},usageLoading:false,usageError:e.message||'error'};render(last)}}
   finally{usageLoading=false}
  }
  async function load(probe=false){
