@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.72">
+<html lang="es" data-app-version="0.6.73">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -15,21 +15,21 @@
       if (native) document.documentElement.dataset.nativeApp = '1';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261008l1">
+  <link rel="stylesheet" href="styles.css?v=20261008b1">
   <script>
     (() => {
       if (window.__VIEWINVAI_NATIVE__) return;
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'web-mobile.css?v=20261007n2';
+      link.href = 'web-mobile.css?v=20261008b1';
       link.media = '(max-width:820px)';
       document.head.appendChild(link);
     })();
   </script>
-  <link rel="stylesheet" href="mobile-app.css?v=20261007n2">
-  <link rel="stylesheet" href="ui-density.css?v=20261002u1">
-  <link rel="stylesheet" href="asset-card.css?v=20261007p2">
-  <link rel="stylesheet" href="theme-ai.css?v=20261008a1">
+  <link rel="stylesheet" href="mobile-app.css?v=20261008b1">
+  <link rel="stylesheet" href="ui-density.css?v=20261008b1">
+  <link rel="stylesheet" href="asset-card.css?v=20261008b1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261008b2">
   <script src="security.js?v=20261002f9"></script>
   <script src="sync-screen.js?v=20261002L1"></script>
 </head>
@@ -68,7 +68,7 @@
       </button>
       <div id="accountMenu" class="account-menu" aria-hidden="true">
         <div id="accountMenuUser" class="account-menu-user">Sin sesión iniciada</div>
-        <button type="button" id="accountAdmin" class="account-signout account-admin" hidden>⚙ Administración</button>
+        <button type="button" id="accountAdmin" class="account-signout account-admin" data-shell-view="admin" hidden>⚙ Administración</button>
         <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
       </div>
     </div>
@@ -463,6 +463,34 @@
       <div id="inboxResults" class="inbox-results"></div>
     </section>
 
+    <section class="view" id="view-admin">
+      <div class="page-heading compact-heading settings-page-heading">
+        <div>
+          <h1>Administración</h1>
+          <p class="lead">Solo para la cuenta de administración. Las claves están guardadas como secretos en Cloudflare y nunca se muestran.</p>
+        </div>
+      </div>
+      <div class="admin-toolbar"><button type="button" class="btn small" data-admin-probe>Probar conexiones</button><button type="button" class="btn small ghost" data-admin-refresh>Actualizar</button></div>
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="Secciones de administración">
+          <button type="button" class="settings-nav-item active" data-admin-section="summary" aria-current="page"><span>◎</span><b>Resumen</b><small>Estado general y secretos</small></button>
+          <button type="button" class="settings-nav-item" data-admin-section="ai"><span>✦</span><b>IA</b><small>Gemini, Groq, OpenRouter, Workers AI</small></button>
+          <button type="button" class="settings-nav-item" data-admin-section="search"><span>⌕</span><b>Búsqueda web</b><small>Tavily, Exa, LangSearch, Jina</small></button>
+          <button type="button" class="settings-nav-item" data-admin-section="market"><span>⌁</span><b>Datos de mercado</b><small>Finnhub</small></button>
+          <button type="button" class="settings-nav-item" data-admin-section="cloudflare"><span>☁</span><b>Consumo</b><small>Cloudflare y Turso</small></button>
+          <button type="button" class="settings-nav-item" data-admin-section="infra"><span>▣</span><b>Dónde está cada cosa</b><small>Enlaces a cada panel</small></button>
+        </nav>
+        <div class="settings-content" id="adminContent">
+          <section class="settings-section active" data-admin-panel="summary" aria-label="Resumen"><p class="settings-note">Cargando…</p></section>
+          <section class="settings-section" data-admin-panel="ai" aria-label="IA" hidden></section>
+          <section class="settings-section" data-admin-panel="search" aria-label="Búsqueda web" hidden></section>
+          <section class="settings-section" data-admin-panel="market" aria-label="Datos de mercado" hidden></section>
+          <section class="settings-section" data-admin-panel="cloudflare" aria-label="Cloudflare" hidden></section>
+          <section class="settings-section" data-admin-panel="infra" aria-label="Dónde está cada cosa" hidden></section>
+        </div>
+      </div>
+    </section>
+
     <section class="view" id="view-settings">
       <div class="page-heading compact-heading settings-page-heading">
         <div>
@@ -686,14 +714,14 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.72 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.73 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261005r1"></script>
 <script src="goal-engine.js?v=20261008d2"></script>
-<script src="app.js?v=20261002L1"></script>
-<script src="settings.js?v=20261008a1"></script>
+<script src="app.js?v=20261008b1"></script>
+<script src="settings.js?v=20261008b2"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261002w9"></script>
 <script src="stock-charts.js?v=20261002w9"></script>
@@ -709,8 +737,8 @@
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261008w1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
-<script src="navigation.js?v=20261007s1"></script>
-<script src="mobile-app.js?v=20261002L1"></script>
+<script src="navigation.js?v=20261008b1"></script>
+<script src="mobile-app.js?v=20261008b1"></script>
 <script src="ui-shell.js?v=20261008g2"></script>
 <script src="onboarding.js?v=20261002L1"></script>
 <script src="tasks.js?v=20261002d1"></script>
@@ -726,6 +754,6 @@
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>
 <script type="module" src="auth.js?v=20261008t2"></script>
-<script type="module" src="portfolio.js?v=20261008d2"></script>
+<script type="module" src="portfolio.js?v=20261008b1"></script>
 </body>
 </html>

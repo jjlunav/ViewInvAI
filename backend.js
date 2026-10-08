@@ -4218,24 +4218,49 @@ async function providerProbe(env,p){
     return{ok:r.ok,status:r.status,detail:r.ok?"conectado":r.status===401||r.status===403?"clave rechazada":"HTTP "+r.status};
   }catch(error){return{ok:false,status:0,detail:trimText(String(error&&error.message||error),120)}}
 }
+// Consumo del mes en Turso (API de la plataforma). Necesita TURSO_API_TOKEN, distinto del token de la base.
+async function tursoUsage(env){
+  const token=String(env.TURSO_API_TOKEN||"").trim();
+  if(!token)return{configured:false};
+  const get=async path=>{const r=await providerFetch("turso","https://api.turso.tech/v1"+path,{headers:{"Authorization":"Bearer "+token}},12000);
+    const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(r.status===401||r.status===403?"token rechazado":"HTTP "+r.status);throw e}return d};
+  try{
+    let org=String(env.TURSO_ORG||"").trim();
+    if(!org){const list=await get("/organizations");const orgs=Array.isArray(list)?list:(list.organizations||[]);
+      const pick=orgs.find(o=>o.type==="personal")||orgs[0];org=pick&&(pick.slug||pick.name)||""}
+    if(!org)return{configured:true,ok:false,detail:"no se encontró la organización"};
+    const d=await get("/organizations/"+encodeURIComponent(org)+"/usage");
+    const u=(d.organization&&d.organization.usage)||d.usage||{};
+    return{configured:true,ok:true,org,rowsRead:finiteNumber(u.rows_read)||0,rowsWritten:finiteNumber(u.rows_written)||0,storageBytes:finiteNumber(u.storage_bytes)||0,
+      databases:finiteNumber(u.databases),readLimit:500000000,writeLimit:10000000,storageLimit:5*1024**3};
+  }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
+}
 async function cloudflareUsage(env){
   const token=String(env.CF_ANALYTICS_TOKEN||"").trim(),account=String(env.CF_ACCOUNT_ID||"").trim();
   if(!token||!account)return{configured:false};
+  if(!/^[0-9a-f]{32}$/i.test(account))return{configured:true,ok:false,detail:"CF_ACCOUNT_ID no parece un Account ID (32 caracteres hexadecimales). Cópialo de Workers & Pages → Account ID."};
   const since=nowIso().slice(0,10),sinceTime=since+"T00:00:00Z";
-  const query="query($a:string!,$d:Date!,$t:Time!){viewer{accounts(filter:{accountTag:$a}){"+
-    "workers:workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$t}){sum{requests errors subrequests}dimensions{scriptName}}"+
-    "d1:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}";
-  try{
-    const r=await providerFetch("cloudflare","https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
-      body:JSON.stringify({query,variables:{a:account,d:since,t:sinceTime}})},15000);
-    const d=await r.json().catch(()=>({}));
-    if(!r.ok||d.errors&&d.errors.length)return{configured:true,ok:false,detail:trimText((d.errors&&d.errors[0]&&d.errors[0].message)||("HTTP "+r.status),200)};
-    const acc=(d.data&&d.data.viewer&&d.data.viewer.accounts&&d.data.viewer.accounts[0])||{};
-    const sum=(rows,k)=>(rows||[]).reduce((s,x)=>s+(finiteNumber(x.sum&&x.sum[k])||0),0);
-    return{configured:true,ok:true,day:since,
-      workers:{requests:sum(acc.workers,"requests"),errors:sum(acc.workers,"errors"),limit:100000},
-      d1:{rowsRead:sum(acc.d1,"rowsRead"),rowsWritten:sum(acc.d1,"rowsWritten"),readLimit:5000000,writeLimit:100000}};
-  }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
+  // Dos consultas separadas: si el token no puede leer una de ellas, la otra se sigue mostrando.
+  const ask=async(query,variables)=>{
+    try{
+      const r=await providerFetch("cloudflare","https://api.cloudflare.com/client/v4/graphql",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+        body:JSON.stringify({query,variables:{a:account,...variables}})},15000);
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||d.errors&&d.errors.length){
+        const msg=String((d.errors&&d.errors[0]&&d.errors[0].message)||("HTTP "+r.status));
+        return{ok:false,detail:/not authorized|authentication|permission/i.test(msg)?"el token no tiene permiso «Account Analytics: Read» sobre esta cuenta, o CF_ACCOUNT_ID es de otra cuenta":trimText(msg,200)};
+      }
+      return{ok:true,acc:(d.data&&d.data.viewer&&d.data.viewer.accounts&&d.data.viewer.accounts[0])||{}};
+    }catch(error){return{ok:false,detail:trimText(String(error&&error.message||error),160)}}
+  };
+  const sum=(rows,k)=>(rows||[]).reduce((s,x)=>s+(finiteNumber(x.sum&&x.sum[k])||0),0);
+  const [w,d]=await Promise.all([
+    ask("query($a:string!,$t:Time!){viewer{accounts(filter:{accountTag:$a}){rows:workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$t}){sum{requests errors subrequests}}}}}",{t:sinceTime}),
+    ask("query($a:string!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){rows:d1AnalyticsAdaptiveGroups(limit:100,filter:{date_geq:$d}){sum{readQueries writeQueries rowsRead rowsWritten}}}}}",{d:since})
+  ]);
+  return{configured:true,ok:w.ok||d.ok,day:since,detail:w.ok||d.ok?"":w.detail,
+    workers:w.ok?{ok:true,requests:sum(w.acc.rows,"requests"),errors:sum(w.acc.rows,"errors"),limit:100000}:{ok:false,detail:w.detail},
+    d1:d.ok?{ok:true,rowsRead:sum(d.acc.rows,"rowsRead"),rowsWritten:sum(d.acc.rows,"rowsWritten"),readLimit:5000000,writeLimit:100000}:{ok:false,detail:d.detail}};
 }
 async function handleAdmin(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
@@ -4270,8 +4295,8 @@ async function handleAdmin(request,env,user,json,url){
     {label:"Secretos (Variables and Secrets)",detail:"donde se guardan las claves",url:account?"https://dash.cloudflare.com/"+account+"/workers/services/view/viewinvai/production/settings":"https://dash.cloudflare.com/"}
   ];
   return json({generatedAt:nowIso(),providers,probedAt:probes.at||(needProbe?nowIso():null),infra,
-    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env))},
-    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim()}});
+    cloudflare:await cloudflareUsage(env),turso:{active:cacheDbLabel(cacheDb(env)),usage:await tursoUsage(env)},
+    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim()}});
 }
 
 let positionDecisionsSchemaReady=false;

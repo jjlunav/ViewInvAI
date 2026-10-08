@@ -1535,8 +1535,8 @@ html:root:root body .ai-int-row>.btn{width:auto!important;flex:0 0 auto;min-heig
  html:root:root body:not(#a11y-floor) #view-recommendation .radar-list-shell{max-width:none!important}
  html:root:root body:not(#a11y-floor) #view-recommendation .radar-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
  html:root:root body:not(#a11y-floor) #view-recommendation .radar-list>.radar-ai-empty{grid-column:1/-1}
- html:root:root body:not(#a11y-floor) #view-settings .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;max-width:none!important;align-items:start!important}
- html:root:root body:not(#a11y-floor) #view-settings .settings-grid>.settings-card{max-width:none!important;width:auto!important}
+ html:root:root body:not(#a11y-floor) :is(#view-settings,#view-admin) .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;max-width:none!important;align-items:start!important}
+ html:root:root body:not(#a11y-floor) :is(#view-settings,#view-admin) .settings-grid>.settings-card{max-width:none!important;width:auto!important}
 }
 /* ===== Objetivo «rápido»: Hoy toca + progreso ===== */
 .goal2{display:grid;gap:12px}
@@ -1572,7 +1572,10 @@ html[data-theme="light"] .goal2-action{background:#fff;border-color:#dfe3f3}
 .goal2-action .portfolio-goal-register,.goal2-action .portfolio-goal-execution-blocked{justify-self:start;margin-top:4px}
 .event-insight-list{margin:2px 0 6px;padding-left:18px;font-size:12.5px;line-height:1.4;display:grid;gap:2px}
 .event-insight-list a{color:var(--accent,#5cc8e8)}
-.goal2-action-buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.goal2-action-buttons{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.goal2-action-buttons .portfolio-goal-execution-blocked{font-size:12px;color:var(--muted,#8ea0bf)}
+.goal2-decide{display:inline-flex;align-items:center;height:28px;padding:0 12px;border:1px solid color-mix(in srgb,var(--accent,#5cc8e8) 55%,transparent);border-radius:999px;background:color-mix(in srgb,var(--accent,#5cc8e8) 10%,transparent);color:var(--accent,#5cc8e8);font:inherit;font-size:12px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap}
+.goal2-decide:hover{background:color-mix(in srgb,var(--accent,#5cc8e8) 18%,transparent)}
 .goal2-decide-change{margin-left:6px;padding:1px 8px;border:1px solid var(--line,#2a4552);border-radius:999px;background:none;color:var(--accent,#5cc8e8);font:inherit;font-size:12px;cursor:pointer}
 .goal-decide-form{display:grid;gap:8px}
 .goal-decide-head{margin:0 0 4px;font-size:12.5px;color:var(--muted,#8ea0bf)}
@@ -1584,6 +1587,16 @@ html[data-theme="light"] .goal2-action{background:#fff;border-color:#dfe3f3}
 .goal-decide-option input[type=number],.goal-decide-option input[type=date],.goal-decide-emergency input[type=number]{width:auto;max-width:150px;display:inline-block;margin-top:4px}
 .goal-decide-emergency{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
 .goal-decide-emergency input[type=number]{max-width:70px}
+/* El formulario hereda los estilos de .portfolio-form (etiquetas en rejilla, mayúsculas e inputs a todo el ancho): se anulan aquí. */
+.portfolio-form.goal-decide-form label.goal-decide-option{display:flex!important;flex-direction:row!important;gap:10px;align-items:flex-start}
+.portfolio-form.goal-decide-form label.goal-decide-option>span{font-size:inherit!important;font-weight:inherit!important;color:inherit!important;text-transform:none!important;letter-spacing:normal!important;display:grid;gap:3px;min-width:0}
+.portfolio-form.goal-decide-form label.goal-decide-option b{font-size:13px;font-weight:700;color:var(--text,#e6f0f2)}
+.portfolio-form.goal-decide-form label.goal-decide-option small{font-size:12px;font-weight:400;text-transform:none;letter-spacing:normal}
+.portfolio-form.goal-decide-form :is(input[type=radio],input[type=checkbox]){width:18px!important;height:18px!important;min-height:0!important;flex:0 0 18px;margin:2px 0 0!important;padding:0!important;border:0!important;background:none!important;accent-color:var(--accent,#5cc8e8)}
+.portfolio-form.goal-decide-form label.goal-decide-option input:is([type=number],[type=date]){width:auto!important;max-width:150px;min-height:34px!important;margin-top:4px}
+.goal-decide-inline{display:flex;align-items:center;gap:6px}
+.portfolio-form.goal-decide-form label.goal-decide-emergency{display:flex!important;flex-direction:row!important;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
+.portfolio-form.goal-decide-form label.goal-decide-emergency input[type=number]{width:72px!important;max-width:72px;min-height:34px!important}
 .position-freeze-status{margin:2px 0 8px;font-size:12.5px;line-height:1.4;color:var(--muted,#8ea0bf)}
 .position-freeze-status.active{color:#9fd3ff}
 .position-freeze-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -1742,7 +1755,11 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 }
 
 .account-admin{margin-bottom:6px}
-.admin-panel h4{margin:14px 0 6px;font-size:13px}
+.admin-toolbar{display:flex;gap:8px;max-width:1320px;margin:0 auto 12px}
+#view-admin .admin-grid+.settings-section-heading{margin-top:18px}
+.admin-toolbar>.btn{flex:0 1 auto;width:auto!important;min-width:0}
+@media(max-width:700px){.admin-toolbar>.btn{flex:1 1 0}}
+#view-admin .admin-err{color:#ff8a8a!important}
 .admin-note{font-size:12px;color:var(--muted,#8ea0bf);margin:4px 0}
 .admin-err{color:#ff8a8a}
 .admin-actions{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}

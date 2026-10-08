@@ -2573,12 +2573,12 @@ html[data-native-app="1"] .account-area.floating-account .account-button{
 html[data-native-app="1"] .view>.page-heading{
  padding-right:132px!important;
 }
-html[data-native-app="1"] #view-settings{
+html[data-native-app="1"] :is(#view-settings,#view-admin){
  padding-left:var(--native-page-x)!important;
  padding-right:var(--native-page-x)!important;
  overflow-x:hidden!important;
 }
-html[data-native-app="1"] #view-settings>.page-heading{padding-right:132px!important}
+html[data-native-app="1"] :is(#view-settings,#view-admin)>.page-heading{padding-right:132px!important}
 html[data-native-app="1"] .settings-layout{
  display:block!important;
  width:100%!important;
@@ -2628,7 +2628,7 @@ html[data-native-app="1"] .settings-nav-item small{display:none!important}
 html[data-native-app="1"] .settings-content,
 html[data-native-app="1"] .settings-section,
 html[data-native-app="1"] .settings-stack,
-html[data-native-app="1"] #view-settings .settings-card{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card{
  width:100%!important;
  max-width:100%!important;
  min-width:0!important;
@@ -2647,54 +2647,54 @@ html[data-native-app="1"] .settings-section-heading p{
  font-size:9px!important;
  line-height:1.4!important;
 }
-html[data-native-app="1"] #view-settings .settings-card{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card{
  margin:0!important;
  padding:12px!important;
  overflow:hidden!important;
 }
-html[data-native-app="1"] #view-settings .settings-card-head{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card-head{
  grid-template-columns:minmax(0,1fr) auto!important;
  gap:9px!important;
  align-items:start!important;
 }
-html[data-native-app="1"] #view-settings .settings-card-head>div{min-width:0!important}
-html[data-native-app="1"] #view-settings .settings-card-head h2{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card-head>div{min-width:0!important}
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card-head h2{
  font-size:14px!important;
  line-height:1.2!important;
  overflow-wrap:anywhere!important;
 }
-html[data-native-app="1"] #view-settings .settings-card-head p{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-card-head p{
  font-size:9px!important;
  line-height:1.4!important;
  overflow-wrap:anywhere!important;
 }
-html[data-native-app="1"] #view-settings .settings-status-row{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-status-row{
  display:grid!important;
  grid-template-columns:minmax(0,1fr) auto!important;
  gap:9px!important;
  align-items:center!important;
  min-width:0!important;
 }
-html[data-native-app="1"] #view-settings .settings-status-row>span:first-child{min-width:0!important}
-html[data-native-app="1"] #view-settings .settings-status-row small{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-status-row>span:first-child{min-width:0!important}
+html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-status-row small{
  display:block!important;
  min-width:0!important;
  font-size:8px!important;
  line-height:1.35!important;
  overflow-wrap:anywhere!important;
 }
-html[data-native-app="1"] #view-settings .radar-tier-group{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .radar-tier-group{
  width:100%!important;
  max-width:100%!important;
  min-width:0!important;
  overflow:hidden!important;
 }
-html[data-native-app="1"] #view-settings .backup-actions{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .backup-actions{
  display:grid!important;
  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
  gap:7px!important;
 }
-html[data-native-app="1"] #view-settings .backup-actions .btn{
+html[data-native-app="1"] :is(#view-settings,#view-admin) .backup-actions .btn{
  width:100%!important;
  min-width:0!important;
  text-align:center!important;
@@ -2707,8 +2707,8 @@ html[data-native-app="1"] #view-settings .backup-actions .btn{
   width:35px!important;min-width:35px!important;height:35px!important;min-height:35px!important;
  }
  html[data-native-app="1"] .view>.page-heading{padding-right:116px!important}
- html[data-native-app="1"] #view-settings .settings-status-row{grid-template-columns:minmax(0,1fr)!important}
- html[data-native-app="1"] #view-settings .backup-actions{grid-template-columns:minmax(0,1fr)!important}
+ html[data-native-app="1"] :is(#view-settings,#view-admin) .settings-status-row{grid-template-columns:minmax(0,1fr)!important}
+ html[data-native-app="1"] :is(#view-settings,#view-admin) .backup-actions{grid-template-columns:minmax(0,1fr)!important}
 }
 
 

@@ -387,54 +387,110 @@ function initSettings(){
 }
 
 
-/* Administración (solo la cuenta propietaria): inventario de servicios con enlaces, uso de hoy y
- * del mes, prueba de conexión de cada clave y consumo de Cloudflare. Las claves nunca se muestran. */
+/* Administración (solo la cuenta propietaria): pantalla integrada, con secciones como Configuración.
+ * Inventario de servicios con enlaces, uso de hoy y del mes, prueba de conexión de cada clave y
+ * consumo de Cloudflare. Las claves nunca se muestran. */
 (function(){
  const auth=()=>window.ViewInvAIAuth;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=n=>Number(n||0).toLocaleString('es-ES');
- let checked=false;
+ const SECTIONS=['summary','ai','search','market','cloudflare','infra'];
+ const SECTION_KEY='viewinvai:admin-section:v1';
+ let checked=false,isAdmin=false,loading=false,last=null;
  async function api(path){const a=auth();const r=await a.apiFetch(path);const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('Error '+r.status)),{status:r.status});return d}
  async function detectAdmin(){
-  const a=auth();if(checked||!a||typeof a.apiFetch!=='function'||(typeof a.getUser==='function'&&!a.getUser()))return;
+  const a=auth();
+  if(checked||!a||typeof a.apiFetch!=='function'||(typeof a.getUser==='function'&&!a.getUser()))return;
   checked=true;
-  try{await api('/api/admin');const b=document.getElementById('accountAdmin');if(b)b.hidden=false}catch(_){}
+  try{last=await api('/api/admin');isAdmin=true;const b=document.getElementById('accountAdmin');if(b)b.hidden=false;if(currentView()==='admin'){selectSection(savedSection(),false);render(last)}}catch(_){isAdmin=false;if(currentView()==='admin'){try{show('today')}catch(__){}}}
  }
- ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;setTimeout(detectAdmin,300)}));
+ // Solo se sale de la pantalla cuando la sesión ya se ha resuelto (evento de Firebase) y no hay usuario.
+ ['viewinvai:account-ready','viewinvai:auth-changed'].forEach(n=>window.addEventListener(n,()=>{checked=false;isAdmin=false;last=null;const b=document.getElementById('accountAdmin');if(b)b.hidden=true;
+  setTimeout(()=>{const a=auth();if(a&&typeof a.getUser==='function'&&!a.getUser()&&currentView()==='admin'){try{show('today')}catch(_){}}detectAdmin()},300)}));
  setTimeout(detectAdmin,1500);
+ function currentView(){try{return state.currentView}catch(_){return''}}
+ function selectSection(name,persist=true){
+  const next=SECTIONS.includes(name)?name:'summary';
+  document.querySelectorAll('[data-admin-section]').forEach(b=>{const on=b.dataset.adminSection===next;b.classList.toggle('active',on);b.setAttribute('aria-current',on?'page':'false')});
+  document.querySelectorAll('[data-admin-panel]').forEach(p=>{const on=p.dataset.adminPanel===next;p.classList.toggle('active',on);p.hidden=!on});
+  if(persist){try{localStorage.setItem(SECTION_KEY,next)}catch(_){}}
+  requestAnimationFrame(()=>window.ViewInvAIShell?.resetChrome?.());
+ }
+ function savedSection(){try{return localStorage.getItem(SECTION_KEY)||'summary'}catch(_){return'summary'}}
  function bar(used,limit){if(!limit)return'';const pct=Math.min(100,Math.round(used/limit*100));return '<div class="admin-bar" title="'+pct+' %"><i data-pct="'+pct+'" class="'+(pct>=85?'hot':pct>=60?'warm':'')+'"></i></div>'}
- function render(d,box){
-  const st=p=>!p.configured?'<b class="admin-st warn">⚠️ sin clave</b>':p.cooldownUntil?'<b class="admin-st warn">⏸ en pausa (cupo)</b>':p.test?(p.test.ok?'<b class="admin-st ok">✅ conectado</b>':'<b class="admin-st bad">❌ '+esc(p.test.detail||'error')+'</b>'):'<b class="admin-st">● con clave</b>';
-  const cf=d.cloudflare||{};
-  let html='<p class="admin-note">Las claves están guardadas como secretos en Cloudflare y nunca se muestran. '+(d.probedAt?'Última prueba: '+esc(new Date(d.probedAt).toLocaleString('es-ES',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'}))+'.':'')+'</p>'+
-   '<div class="admin-actions"><button type="button" class="btn compact" data-admin-probe>Probar conexiones</button> <button type="button" class="btn ghost compact" data-admin-refresh>Actualizar</button></div>';
-  html+='<h4>Servicios externos</h4><div class="admin-grid">'+(d.providers||[]).map(p=>{
-   const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
-   return '<div class="admin-card"><div class="admin-card-head"><strong>'+esc(p.label)+'</strong><small>'+esc(p.kind)+'</small></div>'+st(p)+
-    '<small>Gratis: '+esc(p.free)+'</small>'+
-    '<small>Hoy: '+fmt(p.today.calls)+' llamadas'+(p.today.errors?' · '+fmt(p.today.errors)+' errores':'')+' · Mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+bar(used,limit)+
-    (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
-    (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
-    (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+
-    '<a href="'+esc(p.dashboard)+'" target="_blank" rel="noopener noreferrer">Abrir panel ↗</a></div>'}).join('')+'</div>';
-  html+='<h4>Cloudflare hoy</h4>'+(!cf.configured?'<p class="admin-note">Añade los secretos <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.</p>'
-   :!cf.ok?'<p class="admin-note admin-err">No se pudo leer el consumo: '+esc(cf.detail||'')+'</p>'
-   :'<div class="admin-grid"><div class="admin-card"><strong>Worker</strong><small>'+fmt(cf.workers.requests)+' peticiones de '+fmt(cf.workers.limit)+' al día · '+fmt(cf.workers.errors)+' errores</small>'+bar(cf.workers.requests,cf.workers.limit)+'</div>'+
-    '<div class="admin-card"><strong>D1 (base de datos)</strong><small>Filas escritas: '+fmt(cf.d1.rowsWritten)+' de '+fmt(cf.d1.writeLimit)+'</small>'+bar(cf.d1.rowsWritten,cf.d1.writeLimit)+'<small>Filas leídas: '+fmt(cf.d1.rowsRead)+' de '+fmt(cf.d1.readLimit)+'</small>'+bar(cf.d1.rowsRead,cf.d1.readLimit)+'</div></div>');
-  html+='<h4>Dónde está cada cosa</h4><ul class="admin-list">'+(d.infra||[]).map(x=>'<li><a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.label)+' ↗</a>'+(x.detail?' <small>'+esc(x.detail)+'</small>':'')+'</li>').join('')+'</ul>';
-  box.innerHTML=html;
-  box.querySelectorAll('.admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});
+ const heading=(kicker,title,text)=>'<div class="settings-section-heading"><span>'+esc(kicker)+'</span><h2>'+esc(title)+'</h2>'+(text?'<p>'+text+'</p>':'')+'</div>';
+ const status=p=>!p.configured?'<b class="admin-st warn">⚠️ sin clave</b>':p.cooldownUntil?'<b class="admin-st warn">⏸ en pausa (cupo)</b>':p.test?(p.test.ok?'<b class="admin-st ok">✅ conectado</b>':'<b class="admin-st bad">❌ '+esc(p.test.detail||'error')+'</b>'):'<b class="admin-st">● con clave</b>';
+ function providerCard(p){
+  const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
+  return '<article class="settings-card admin-card"><div class="admin-card-head"><strong>'+esc(p.label)+'</strong>'+status(p)+'</div>'+
+   '<small>Gratis: '+esc(p.free)+'</small>'+
+   '<small>Hoy: '+fmt(p.today.calls)+' llamadas'+(p.today.errors?' · '+fmt(p.today.errors)+' errores':'')+' · Mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+bar(used,limit)+
+   (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
+   (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
+   (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+
+   '<a href="'+esc(p.dashboard)+'" target="_blank" rel="noopener noreferrer">Abrir panel ↗</a></article>';
  }
- async function open(probe=false){
-  const P=window.ViewInvAIPortfolios;
-  if(!P||typeof P.openModal!=='function')return;
-  P.openModal('Administración','<div class="admin-panel" data-admin-panel><p class="admin-note">'+(probe?'Probando cada servicio…':'Cargando…')+'</p></div>');
-  const box=document.querySelector('[data-admin-panel]');
-  try{render(await api('/api/admin'+(probe?'?probe=1':'')),box)}catch(e){if(box)box.innerHTML='<p class="admin-note admin-err">'+esc(e.message)+'</p>'}
+ function providerSection(d,kinds,kicker,title,text){
+  const list=(d.providers||[]).filter(p=>kinds.includes(p.kind));
+  return heading(kicker,title,text)+'<div class="admin-grid">'+(list.map(providerCard).join('')||'<p class="settings-note">Sin servicios.</p>')+'</div>';
  }
+ function tursoBlock(t){
+  const u=t.usage||{},gb=b=>(b/1024**3).toLocaleString('es-ES',{maximumFractionDigits:2})+' GB';
+  return heading('TURSO','Cachés de mercado · este mes','Plan gratuito: 500 M filas leídas, 10 M filas escritas y 5 GB al mes. '+(t.active==='turso'?'En uso.':'Ahora no se usa (las cachés van a D1).'))+
+   (!u.configured?'<p class="settings-note">Añade el secreto <code>TURSO_API_TOKEN</code> (token de la plataforma Turso, no el de la base) para ver el consumo.</p>'
+   :!u.ok?'<p class="settings-note admin-err">No se pudo leer el consumo de Turso: '+esc(u.detail||'')+'</p>'
+   :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Turso'+(u.org?' · '+esc(u.org):'')+'</strong>'+
+    '<small>Filas leídas: '+fmt(u.rowsRead)+' de '+fmt(u.readLimit)+'</small>'+bar(u.rowsRead,u.readLimit)+
+    '<small>Filas escritas: '+fmt(u.rowsWritten)+' de '+fmt(u.writeLimit)+'</small>'+bar(u.rowsWritten,u.writeLimit)+
+    '<small>Almacenamiento: '+gb(u.storageBytes)+' de '+gb(u.storageLimit)+'</small>'+bar(u.storageBytes,u.storageLimit)+'</article></div>');
+ }
+ function fill(name,html){const el=document.querySelector('[data-admin-panel="'+name+'"]');if(el)el.innerHTML=html}
+ function render(d){
+  const ps=d.providers||[],ok=ps.filter(p=>p.test&&p.test.ok).length,noKey=ps.filter(p=>!p.configured).length,paused=ps.filter(p=>p.cooldownUntil).length,failed=ps.filter(p=>p.test&&!p.test.ok).length;
+  const calls=ps.reduce((s,p)=>s+(p.today.calls||0),0);
+  const sec=d.secrets||{},cf=d.cloudflare||{};
+  const row=(label,val,cls='')=>'<div class="settings-status-row"><span>'+label+'</span><strong class="settings-status '+cls+'">'+val+'</strong></div>';
+  fill('summary',heading('RESUMEN','Estado general',d.probedAt?'Última prueba de conexiones: '+esc(new Date(d.probedAt).toLocaleString('es-ES',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'}))+'.':'Pulsa «Probar conexiones» para comprobar cada clave.')+
+   '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SERVICIOS</span></div></div>'+
+   row('Servicios externos',ps.length+' en total')+
+   (d.probedAt?row('Conectados',ok+' de '+ps.length,ok===ps.length?'admin-st ok':''):'')+
+   (failed?row('Con error',String(failed),'admin-st bad'):'')+
+   (noKey?row('Sin clave',String(noKey),'admin-st warn'):'')+
+   (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
+   row('Consultas hoy',fmt(calls))+
+   row('Caché de mercado',d.turso&&d.turso.active==='turso'?'Turso (activa)':'D1 (Turso no activa)',d.turso&&d.turso.active==='turso'?'admin-st ok':'admin-st warn')+
+   row('Cloudflare',!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
+   '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
+   Object.entries(sec).map(([k,v])=>row('<code>'+esc(k==='TURSO'?'TURSO_URL + TURSO_TOKEN':k)+'</code>',v?'configurado':'falta',v?'admin-st ok':'admin-st warn')).join('')+
+   '</article></div>');
+  fill('ai',providerSection(d,['IA'],'IA','Inteligencia artificial','Se prueban por orden: Gemini → Groq → OpenRouter → Workers AI. Si uno agota su cupo, pasa al siguiente.'));
+  fill('search',providerSection(d,['Búsqueda','Lectura web'],'BÚSQUEDA WEB','Búsqueda y lectura web','Orden: Tavily → Exa → LangSearch → Jina.'));
+  fill('market',providerSection(d,['Datos de mercado'],'DATOS DE MERCADO','Cotizaciones y datos',''));
+  const w=cf.workers||{},dd=cf.d1||{};
+  fill('cloudflare',heading('CLOUDFLARE','Consumo de hoy','Límites del plan gratuito. Se reinicia cada día a las 00:00 UTC.')+
+   (!cf.configured?'<p class="settings-note">Añade los secretos <code>CF_ANALYTICS_TOKEN</code> y <code>CF_ACCOUNT_ID</code> para ver el consumo.</p>'
+   :cf.detail&&!w.ok&&!dd.ok?'<p class="settings-note admin-err">No se pudo leer el consumo: '+esc(cf.detail)+'</p>'
+   :'<div class="admin-grid"><article class="settings-card admin-card"><strong>Worker (web y servidor)</strong>'+(w.ok?'<small>'+fmt(w.requests)+' peticiones de '+fmt(w.limit)+' al día · '+fmt(w.errors)+' errores</small>'+bar(w.requests,w.limit):'<small class="admin-err">'+esc(w.detail||'sin datos')+'</small>')+'</article>'+
+    '<article class="settings-card admin-card"><strong>D1 (base de datos personal)</strong>'+(dd.ok?'<small>Filas escritas: '+fmt(dd.rowsWritten)+' de '+fmt(dd.writeLimit)+'</small>'+bar(dd.rowsWritten,dd.writeLimit)+'<small>Filas leídas: '+fmt(dd.rowsRead)+' de '+fmt(dd.readLimit)+'</small>'+bar(dd.rowsRead,dd.readLimit):'<small class="admin-err">'+esc(dd.detail||'sin datos')+'</small>')+'</article></div>')+tursoBlock(d.turso||{}));
+  fill('infra',heading('INFRAESTRUCTURA','Dónde está cada cosa','Enlaces directos a cada panel.')+
+   '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">PANELES</span></div></div>'+(d.infra||[]).map(x=>'<div class="settings-status-row"><span><a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.label)+' ↗</a></span><strong class="settings-status">'+esc(x.detail||'')+'</strong></div>').join('')+'</article></div>');
+  document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});
+ }
+ async function load(probe=false){
+  if(loading)return;loading=true;
+  if(probe||!last)fill('summary','<p class="settings-note">'+(probe?'Probando cada servicio…':'Cargando…')+'</p>');
+  try{last=await api('/api/admin'+(probe?'?probe=1':''));isAdmin=true;render(last)}
+  catch(e){
+   if(e.status===403||e.status===401){isAdmin=false;try{show('today')}catch(_){}}
+   else{selectSection('summary',false);fill('summary','<p class="settings-note admin-err">No se pudo cargar: '+esc(e.message)+'</p>')}
+  }finally{loading=false}
+ }
+ window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='admin'){selectSection(savedSection(),false);if(last)render(last);load(false)}});
  document.addEventListener('click',e=>{
-  if(e.target.closest&&e.target.closest('#accountAdmin')){e.preventDefault();const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}open(false);return}
-  if(e.target.closest&&e.target.closest('[data-admin-probe]')){e.preventDefault();open(true);return}
-  if(e.target.closest&&e.target.closest('[data-admin-refresh]')){e.preventDefault();open(false)}
+  const t=e.target.closest?e.target:null;if(!t)return;
+  if(t.closest('#accountAdmin')){const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}return}
+  const sec=t.closest('[data-admin-section]');if(sec){e.preventDefault();selectSection(sec.dataset.adminSection);return}
+  if(t.closest('[data-admin-probe]')){e.preventDefault();load(true);return}
+  if(t.closest('[data-admin-refresh]')){e.preventDefault();load(false)}
  });
 })();

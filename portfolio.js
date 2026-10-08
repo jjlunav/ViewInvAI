@@ -1608,7 +1608,7 @@ function goalActionHtml(a,ctx){
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
-  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="btn ghost compact goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'">Decidir ▾</button></div>';
+  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir qué hacer</button></div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
   const extra=a.type==="BUY"
@@ -2654,7 +2654,7 @@ function openGoalDecisionModal(positionId){
       '<p class="goal-decide-head">Precio actual '+eur(price)+' · tu precio medio '+eur(avg)+(breakeven!==null?' · sin pérdidas desde '+eur(breakeven)+' (con comisiones)':'')+'</p>'+
       opt("sell","Vender ahora","Abre el registro de la venta con el precio ejecutable.")+
       opt("recover","Mantener hasta recuperar","El Objetivo propondrá vender cuando llegue a "+esc(eur(breakeven))+".")+
-      opt("pct","Mantener hasta +X %","Vender cuando gane este porcentaje sobre tu precio medio (con comisiones).",'<input name="pct" type="number" inputmode="decimal" step="any" min="0.1" value="5" aria-label="Porcentaje"> %')+
+      opt("pct","Mantener hasta +X %","Vender cuando gane este porcentaje sobre tu precio medio (con comisiones).",'<span class="goal-decide-inline"><input name="pct" type="number" inputmode="decimal" step="any" min="0.1" value="5" aria-label="Porcentaje"> %</span>')+
       opt("catalyst","Mantener hasta el catalizador",cat?esc(cat.label)+" · "+esc(new Date(cat.date+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"long"}))+". Al día siguiente el Objetivo la vuelve a evaluar.":"Sin catalizador con fecha conocido para esta acción.","",!cat)+
       opt("better","Mantener hasta un cambio mejor","Solo propone soltarla si aparece una alternativa con score ≥ 85/100 cuya ganancia prevista cubra la pérdida y las comisiones.")+
       opt("date","Revisar el día…","Pausa: el Objetivo no propone nada hasta esa fecha.",'<input name="until" type="date" min="'+today+'" value="'+in7+'" aria-label="Fecha">')+

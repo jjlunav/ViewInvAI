@@ -2040,7 +2040,7 @@ main{
   border-radius:50%!important;
  }
  .view>.page-heading{padding-right:132px!important}
- #view-settings>.page-heading{padding-right:132px!important}
+ :is(#view-settings,#view-admin)>.page-heading{padding-right:132px!important}
  .settings-layout{display:block!important;width:100%!important;max-width:none!important}
  .settings-nav{
   position:relative!important;
@@ -2076,18 +2076,18 @@ main{
  .settings-section-heading{margin-bottom:8px!important;padding-bottom:8px!important}
  .settings-section-heading h2{font-size:17px!important}
  .settings-section-heading p{font-size:9px!important}
- #view-settings .settings-card{padding:12px!important}
- #view-settings .settings-card-head{gap:10px!important}
- #view-settings .settings-card-head h2{font-size:14px!important}
- #view-settings .settings-card-head p{font-size:9px!important;line-height:1.4!important}
- #view-settings .settings-status-row{
+ :is(#view-settings,#view-admin) .settings-card{padding:12px!important}
+ :is(#view-settings,#view-admin) .settings-card-head{gap:10px!important}
+ :is(#view-settings,#view-admin) .settings-card-head h2{font-size:14px!important}
+ :is(#view-settings,#view-admin) .settings-card-head p{font-size:9px!important;line-height:1.4!important}
+ :is(#view-settings,#view-admin) .settings-status-row{
   grid-template-columns:minmax(0,1fr) auto!important;
   gap:10px!important;
   align-items:center!important;
  }
- #view-settings .settings-status-row>span:first-child{min-width:0!important}
- #view-settings .settings-status-row small{font-size:8px!important;line-height:1.35!important}
- #view-settings .settings-switch{flex:0 0 auto!important}
+ :is(#view-settings,#view-admin) .settings-status-row>span:first-child{min-width:0!important}
+ :is(#view-settings,#view-admin) .settings-status-row small{font-size:8px!important;line-height:1.35!important}
+ :is(#view-settings,#view-admin) .settings-switch{flex:0 0 auto!important}
 
 
  body.stock-detail-open #stockQuickDetail>.profile-sticky-shell{
@@ -2147,9 +2147,9 @@ main{
   width:35px!important;min-width:35px!important;height:35px!important;min-height:35px!important;
  }
  .view>.page-heading{padding-right:116px!important}
- #view-settings .settings-status-row{grid-template-columns:minmax(0,1fr)!important}
- #view-settings .settings-status-row>.settings-switch,
- #view-settings .settings-status-row>strong{justify-self:start!important}
+ :is(#view-settings,#view-admin) .settings-status-row{grid-template-columns:minmax(0,1fr)!important}
+ :is(#view-settings,#view-admin) .settings-status-row>.settings-switch,
+ :is(#view-settings,#view-admin) .settings-status-row>strong{justify-self:start!important}
 
 }
 
