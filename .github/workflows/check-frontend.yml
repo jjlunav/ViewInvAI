@@ -26,6 +26,7 @@ on:
       - "decisions.js"
       - "security.js"
       - "sync-screen.js"
+      - "i18n.js"
       - "onboarding.js"
       - "inbox.js"
       - "favlists.js"
@@ -78,6 +79,7 @@ jobs:
           persist-credentials: false
       - name: Validar sintaxis JavaScript
         run: |
+          node --check i18n.js
           node --check market-session.js
           node --check score-engine.js
           node --check goal-engine.js

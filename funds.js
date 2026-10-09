@@ -1028,6 +1028,7 @@
    if(!ps.ok)throw Error(sd.error||'No se pudieron cargar las posiciones de fondos.');
    if(!pl.ok)throw Error(ld.error||'No se pudieron cargar los planes de aportación.');
    account.error='';
+   try{window.ViewInvAII18n&&window.ViewInvAII18n.protect((pd.portfolios||[]).map(x=>x&&x.name))}catch(_){}
    account.portfolios=pd.portfolios||[];account.positions=sd.positions||[];account.plans=ld.plans||[];account.benefits=ld.benefits||[];
    if(!account.selectedPortfolioId&&account.portfolios.length)account.selectedPortfolioId=account.portfolios[0].id;
   }catch(e){console.warn('Fund portfolio loading failed',e);account.error=/expired|invalid|authentication/i.test(String(e&&e.message))?'Tu sesión ha caducado o no se pudo verificar. Pulsa «Reintentar»; si sigue fallando, cierra sesión y vuelve a entrar.':'El servidor no responde ahora mismo. Pulsa «Reintentar» en unos segundos.'}

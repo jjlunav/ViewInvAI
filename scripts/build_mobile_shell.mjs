@@ -16,6 +16,7 @@ const files = [
   'decisions.js',
   'security.js',
   'sync-screen.js',
+  'i18n.js',
   'broker-import.js',
   'tax.js',
   'search.js',

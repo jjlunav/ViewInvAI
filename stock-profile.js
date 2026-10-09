@@ -7,8 +7,8 @@
 function profileKpi(label,main,sub=''){
  return '<div class="profile-stat-row"><div><span>'+E(label)+'</span>'+(sub?'<small>'+sub+'</small>':'')+'</div><strong>'+main+'</strong></div>';
 }
-function profileIdentity(label,value,extra=''){
- return '<div class="profile-identity"><small>'+E(label)+'</small><strong>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
+function profileIdentity(label,value,extra='',content=false){
+ return '<div class="profile-identity"><small>'+E(label)+'</small><strong'+(content?' data-i18n-content':'')+'>'+E(value||'—')+'</strong>'+(extra?'<span>'+E(extra)+'</span>':'')+'</div>';
 }
 function profileTabs(){
  return '<nav class="profile-tabs" aria-label="Secciones de la ficha" role="tablist">'+
@@ -52,15 +52,20 @@ function profileAiPanel(s,mode='us'){
   '</div>'+
  '</aside>';
 }
-function profileCompanySummary(s){
+// Resumen de la empresa (HTML). Lo que viene de la fuente en otro idioma (descripción, industria)
+// va marcado con data-i18n-content para que i18n.js lo traduzca al idioma de la app.
+function profileCompanySummaryHtml(s){
  const explicit=String(s.businessSummary||s.companySummary||s.longBusinessSummary||"").trim();
- if(explicit)return explicit;
+ if(explicit)return '<span data-i18n-content>'+E(explicit)+'</span>';
  const name=String(s.secName||s.name||s.ticker||"La compañía").trim(),exchange=String(s.exchange||"").trim();
  const sector=String((s.sector&&typeof window.ViewInvAISectorEs==="function"?window.ViewInvAISectorEs(s.sector):s.sector)||"").trim(),industry=String(s.industry||"").trim();
- const classification=industry&&sector?industry+" · "+sector:industry||sector;
- if(classification)return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". Según la clasificación sectorial disponible, su actividad se encuadra en "+classification+".";
- return name+" es una compañía cotizada"+(exchange?" en "+exchange:"")+". No hay una descripción corporativa ampliada verificada en la fuente actual.";
+ const head='<span translate="no">'+E(name)+'</span>'+E(" es una compañía cotizada"+(exchange?" en "+exchange:"")+".");
+ if(industry||sector)return head+E(" Según la clasificación sectorial disponible, su actividad se encuadra en ")+
+  (industry?'<span data-i18n-content>'+E(industry)+'</span>'+(sector?" · ":""):"")+E(sector)+".";
+ return head+E(" No hay una descripción corporativa ampliada verificada en la fuente actual.");
 }
+const PROFILE_TYPE_ES={stock:"Acción",equity:"Acción","common stock":"Acción",etf:"ETF",etp:"ETP",fund:"Fondo",adr:"ADR",reit:"REIT",warrant:"Warrant",bond:"Bono",preferred:"Acción preferente"};
+const profileTypeLabel=t=>{const k=String(t||"").trim().toLowerCase();return k?(PROFILE_TYPE_ES[k]||t):"Acción"};
 function profileCompanyIdentityHtml(s,isTr){
  const isin=String((isTr?s.trIsin:null)||s.usIsin||s.isin||s.trIsin||"").trim()||"—";
  const ticker=String((isTr&&s.trTicker)||s.ticker||"").trim()||"—";
@@ -70,15 +75,15 @@ function profileCompanyIdentityHtml(s,isTr){
   profileIdentity("Ticker",ticker,exchange),
   profileIdentity("ISIN",isin),
   profileIdentity("WKN",s.trWkn||"—"),
-  profileIdentity("Tipo",s.instrumentType||"Acción"),
+  profileIdentity("Tipo",profileTypeLabel(s.instrumentType)),
   profileIdentity("Divisa",isTr?"EUR":(s.currency||"USD")),
   profileIdentity("Sector",s.sector?(typeof window.ViewInvAISectorEs==="function"?window.ViewInvAISectorEs(s.sector):s.sector):"—"),
-  profileIdentity("Industria",s.industry||"—"),
+  profileIdentity("Industria",s.industry||"—","",true),
   profileIdentity("CIK SEC",s.secCik||"—")
  ].join("");
  return '<section class="profile-section profile-company-overview" id="profile-company">'+
   '<div class="profile-section-head"><h3>Empresa</h3><span>Identificación y actividad</span></div>'+
-  '<p class="profile-company-summary">'+E(profileCompanySummary(s))+'</p>'+
+  '<p class="profile-company-summary">'+profileCompanySummaryHtml(s)+'</p>'+
   '<div class="profile-company-grid">'+rows+'</div>'+
  '</section>';
 }
@@ -488,7 +493,7 @@ function profileEventInsightHtml(s){
  const memo=eventInsightMemo.get(key);
  setTimeout(()=>{const box=document.querySelector('[data-event-insight="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');
   if(memo&&Date.now()-memo.at<15*60e3){if(box)eventInsightRender(box,memo.data)}else loadEventInsight(key,true)},0);
- return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"><summary><span><small>PRÓXIMO EVENTO</small><b data-event-head>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
+ return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"><summary><span><small>PRÓXIMO EVENTO</small><b data-event-head data-i18n-content>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
 }
 const eventInsightMemo=new Map();
 function eventInsightRender(box,data){

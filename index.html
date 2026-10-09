@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.78">
+<html lang="es" data-app-version="0.6.79">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -29,9 +29,10 @@
   <link rel="stylesheet" href="mobile-app.css?v=20261008b1">
   <link rel="stylesheet" href="ui-density.css?v=20261008b1">
   <link rel="stylesheet" href="asset-card.css?v=20261008b1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261008i1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261009i1">
   <script src="security.js?v=20261002f9"></script>
   <script src="sync-screen.js?v=20261002L1"></script>
+  <script src="i18n.js?v=20261009i1"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -64,10 +65,10 @@
       <button type="button" id="settingsButton" class="shell-icon-button settings-shell-button" data-shell-view="settings" aria-label="Configuración" title="Configuración"><span aria-hidden="true">⚙</span></button>
       <button type="button" id="accountButton" class="account-button" aria-haspopup="true" aria-expanded="false">
         <span id="accountAvatar" class="account-avatar">G</span>
-        <span class="account-copy"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
+        <span class="account-copy" translate="no"><strong id="accountName">Entrar</strong><small id="accountEmail">Google</small></span>
       </button>
       <div id="accountMenu" class="account-menu" aria-hidden="true">
-        <div id="accountMenuUser" class="account-menu-user">Sin sesión iniciada</div>
+        <div id="accountMenuUser" class="account-menu-user" translate="no">Sin sesión iniciada</div>
         <button type="button" id="accountAdmin" class="account-signout account-admin" data-shell-view="admin" hidden>⚙ Administración</button>
         <button type="button" id="accountSignOut" class="account-signout">Cerrar sesión</button>
       </div>
@@ -521,6 +522,13 @@
                 </div>
               </article>
 
+              <article class="settings-card language-settings-card" id="languageSettingsCard">
+                <div class="settings-card-head"><div><span class="settings-kicker">IDIOMA</span><h2>Idioma de la aplicación</h2><p>Toda la aplicación se muestra en este idioma. Las noticias y los textos de otras fuentes se traducen automáticamente.</p></div></div>
+                <label class="language-setting-field"><span>Idioma</span><select id="appLanguage" class="select" translate="no" aria-label="Idioma de la aplicación"></select></label>
+                <div class="settings-status-row language-auto-row"><span>Traducir automáticamente al idioma del dispositivo</span><label class="settings-switch" aria-label="Traducir automáticamente al idioma del dispositivo"><input id="appLanguageAuto" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                <p class="settings-note" id="appLanguageNote" translate="no"></p>
+              </article>
+
               <article class="settings-card" id="screenWakeSettingsCard" hidden>
                 <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA Y DISPOSITIVO</span><h2>Mantener pantalla activa</h2><p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p></div><label class="settings-switch" aria-label="Mantener pantalla activa"><input id="keepScreenAwake" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                 <div class="settings-status-row"><span>Estado</span><strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong></div>
@@ -714,7 +722,7 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.78 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.79 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
@@ -725,21 +733,21 @@
 <script src="ui-preferences.js?v=20260929r1"></script>
 <script src="market.js?v=20261002w9"></script>
 <script src="stock-charts.js?v=20261002w9"></script>
-<script src="events.js?v=20261002f2"></script>
+<script src="events.js?v=20261009i1"></script>
 <script src="asset-card.js?v=20261007p2"></script>
 <script src="stock-list.js?v=20261007s1"></script>
-<script src="recommendation.js?v=20261009a1"></script>
+<script src="recommendation.js?v=20261009i1"></script>
 <script src="today.js?v=20261003h1"></script>
 <script src="help.js?v=20261009a1"></script>
 <script src="ai-integrations.js?v=20261009a1"></script>
-<script src="stock-profile.js?v=20261008i2"></script>
+<script src="stock-profile.js?v=20261009i1"></script>
 <script src="catalog.js?v=20261007s1"></script>
 <script src="heatmap.js?v=20260930r5"></script>
 <script src="stock-interactions.js?v=20261008w1"></script>
 <script src="filter-sheet.js?v=20260928r1"></script>
 <script src="navigation.js?v=20261008b1"></script>
 <script src="mobile-app.js?v=20261008b1"></script>
-<script src="ui-shell.js?v=20261008g2"></script>
+<script src="ui-shell.js?v=20261009i1"></script>
 <script src="onboarding.js?v=20261002L1"></script>
 <script src="tasks.js?v=20261002d1"></script>
 <script src="decisions.js?v=20261002d1"></script>
@@ -749,11 +757,11 @@
 <script src="favlists.js?v=20261002v1"></script>
 <script src="backup.js?v=20261008z1"></script>
 <script src="search.js?v=20261008w1"></script>
-<script src="funds.js?v=20261005h1"></script>
+<script src="funds.js?v=20261009i1"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>
 <script type="module" src="auth.js?v=20261008t2"></script>
-<script type="module" src="portfolio.js?v=20261008e2"></script>
+<script type="module" src="portfolio.js?v=20261009i1"></script>
 </body>
 </html>

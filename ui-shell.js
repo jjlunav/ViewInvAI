@@ -153,3 +153,22 @@
  document.addEventListener('keydown',e=>{if(picker&&e.key==='Escape'){e.preventDefault();closePicker()}});
  window.addEventListener('viewinvai:view-changed',closePicker);
 })();
+/* Hueco para los botones flotantes de arriba a la derecha (buscar, ajustes, cuenta): se mide su
+ * ancho real para que el título de la ficha nunca quede debajo de ellos. */
+(function(){
+ 'use strict';
+ const root=document.documentElement;
+ function measure(){
+  const a=document.getElementById('accountArea');
+  const w=a&&getComputedStyle(a).display!=='none'?Math.ceil(a.getBoundingClientRect().width):0;
+  root.style.setProperty('--account-float-w',w+'px');
+ }
+ const start=()=>{
+  measure();
+  const a=document.getElementById('accountArea');
+  if(a&&'ResizeObserver' in window)new ResizeObserver(measure).observe(a);
+  window.addEventListener('resize',measure,{passive:true});
+  window.addEventListener('viewinvai:view-changed',()=>setTimeout(measure,0));
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+})();
