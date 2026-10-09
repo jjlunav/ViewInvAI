@@ -414,20 +414,33 @@
       let slots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       let specCount=remaining.filter(p=>p.speculative).length;
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
-      for(const c of cands){
+      for(let ci=0;ci<cands.length;ci++){
+        const c=cands[ci];
         if(slots<=0||pool<=0)break;
         if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
-        const share=Math.min(pool/slots*adj.size,valueEur*maxW,pool,specCapacity);
+        // El efectivo se reparte entre los huecos que de verdad se pueden llenar (no hay más candidatas que huecos).
+        const fillable=Math.max(1,Math.min(slots,cands.length-ci));
+        const hardCap=Math.min(valueEur*maxW,pool,specCapacity);
+        const share=Math.min(pool/fillable*adj.size,hardCap);
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
-        const units=Math.floor(budget/ask);
-        if(units<1){notes.push(label(c)+': no alcanza para una acción entera con el tamaño permitido.');continue}
+        let units=Math.floor(budget/ask);
+        // Cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso máximo y el
+        // efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo por operación del perfil.
+        if(units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
+        if(units<1){
+          const why=ask+feeB>pool?'el efectivo ('+money(pool)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
+          notes.push(label(c)+': una acción cuesta '+money(ask)+' y supera '+why+'.');continue
+        }
         const ticket=units*ask;
-        if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
+        // Comisiones: dentro del límite del perfil, o hasta el doble si se comen menos de una cuarta parte de lo previsto
+        // (con 1 € por orden, en carteras pequeñas casi ningún ticket bajaría del límite fijo).
+        const feePct=(feeB+feeS)/ticket*100,expected=ticket*n(c.targetPct)/100;
+        if(feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
@@ -435,6 +448,20 @@
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
           text:'Comprar '+units+' × '+label(c)+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
+    }
+    // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
+    const whyNoBuy=[];
+    if(!actions.some(a=>a.type==='BUY')){
+      const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
+      const cheapest=Math.min(Infinity,...mappedCands.map(c=>n(c.askEur)??n(c.priceEur)).filter(v=>v>0));
+      if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
+      else if(pool<=1||(Number.isFinite(cheapest)&&pool<cheapest))whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
+      else if(freeSlots<=0)whyNoBuy.push({code:'full',text:'Cartera completa: ya tienes '+maxPositions+' posiciones, el máximo que fijaste.'});
+      else if(!(input.candidates||[]).length)whyNoBuy.push({code:'nocands',text:'El Radar no tiene candidatas para este mercado en este momento.'});
+      else if(!mappedCands.length)whyNoBuy.push({code:'filtered',text:'Las '+(input.candidates||[]).length+' candidatas del Radar no pasan el primer filtro: ya las tienes, la IA las contradice o su puntuación o calidad no llega ('+minQuality+').'});
+      else if(!rankedCands.length||shortlist.every(c=>!(c.burstScore>=b.minBurst)))whyNoBuy.push({code:'weak',text:'Ninguna candidata tiene ahora una oportunidad suficiente (mínimo '+b.minBurst+'/100 con perfil '+b.label+').'});
+      else if(!cands.length)whyNoBuy.push({code:'timing',text:shortlist.some(stale)?'La mejor candidata no tiene cotización en vivo ahora mismo (mercado cerrado o antes de la apertura).':'La mejor candidata no tiene un buen punto de entrada ahora: queda en espera.'});
+      else whyNoBuy.push({code:'size',text:'El tamaño permitido o las comisiones no dan para una compra que compense.'});
     }
     // Cada propuesta lleva la etiqueta (ticker del mercado + nombre) de la acción a la que se refiere.
     const labels=new Map([...positions,...(input.candidates||[])].map(x=>[String(x.key),label(x)]));
@@ -444,7 +471,7 @@
       ...waits,
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
-    return{version:VERSION,actions,waits,holds,decisions,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
