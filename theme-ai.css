@@ -1851,3 +1851,17 @@ html[data-theme="light"] #view-admin .admin-progress[data-state="error"]{color:#
  html body #view-admin .admin-updated:empty{display:none}
  html body #view-admin .admin-progress{order:2}
 }
+/* Administración en móvil: las 6 secciones siempre visibles (cuadrícula 3×2, sin desplazamiento lateral)
+   y con forma de pestaña (icono encima del nombre), distinta de los botones de acción. */
+@media (max-width:820px){
+ html body #view-admin .settings-nav{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;overflow:visible!important;gap:6px!important;padding:6px!important;border-radius:16px!important}
+ html body #view-admin .settings-nav-item{flex-direction:column!important;justify-content:center!important;gap:4px!important;min-height:58px!important;padding:7px 4px!important;border-radius:12px!important;text-align:center!important;border:1px solid transparent!important}
+ html body #view-admin .settings-nav-item>span{width:24px!important;height:24px!important;border-radius:8px!important}
+ html body #view-admin .settings-nav-item b{font-size:11px!important;white-space:normal!important;line-height:1.15!important}
+ html body #view-admin .settings-nav-item.active{border-color:rgba(77,227,177,.45)!important;box-shadow:inset 0 -2px 0 #4de3b1}
+}
+/* Botones de acción: «Probar conexiones» es la acción principal (relleno de color); «Actualizar», secundaria (contorno). */
+html body #view-admin .admin-tool[data-admin-probe]{background:linear-gradient(135deg,#4de3b1,#5cc8e8)!important;color:#05202a!important;border:0!important;font-weight:700!important;box-shadow:0 6px 18px rgba(77,227,177,.22)}
+html body #view-admin .admin-tool[data-admin-refresh]{background:transparent!important;color:var(--accent,#5cc8e8)!important;border:1.5px solid rgba(92,200,232,.55)!important;font-weight:600!important}
+html body #view-admin .admin-tool[data-admin-probe]:disabled,html body #view-admin .admin-tool[data-admin-refresh]:disabled{box-shadow:none;filter:saturate(.5)}
+html[data-theme="light"] body #view-admin .admin-tool[data-admin-refresh]{color:#1f6f8a!important;border-color:#8ac6d8!important}
