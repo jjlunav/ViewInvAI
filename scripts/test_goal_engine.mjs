@@ -86,4 +86,21 @@ const input=candidates=>({
   assert.equal(p.actions.filter(x=>x.type==="BUY").length,1,"small account must still buy one share it can afford");
 }
 
+// Capital limitado, fracciones y valores sin fracciones.
+{
+  const pricey={...base,key:"LSX:56S1",ticker:"56S1",priceEur:200,askEur:200,technicalPrice:200,ema20:196,ema50:190};
+  const cfg={...input([]).config,target:500,startValue:250};
+  let p=G.plan({...input([pricey]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
+  let buy=p.actions.find(x=>x.type==="BUY");
+  assert.ok(buy&&buy.fractional&&buy.units>0&&buy.units<1,"expensive stock must be bought as a fraction");
+  assert.ok(/fraccionada/.test(buy.text),"fractional buy must say so");
+  p=G.plan({...input([{...pricey,noFractions:true}]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
+  assert.equal(p.actions.filter(x=>x.type==="BUY").length,0,"stock without fractions cannot be bought below one share");
+  p=G.plan({...input([pricey]),config:{...cfg,investCapEur:80},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  buy=p.actions.find(x=>x.type==="BUY");
+  assert.ok(buy&&buy.ticketEur+1<=80.01,"capital cap must limit the ticket");
+  p=G.plan({...input([pricey]),config:{...cfg,investCapPct:0},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","zero capital must be reported as the cap");
+}
+
 console.log("Goal engine tests: OK");
