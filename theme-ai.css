@@ -1628,8 +1628,10 @@ html[data-theme="light"] #goalWizard{background:radial-gradient(120% 70% at 85% 
 html[data-theme="light"] .goal-wizard-input{background:#fff;border-color:#d7dcec}
 .goal-wizard-input input{flex:1;min-width:0;border:0;background:transparent;color:inherit;font:inherit;font-size:24px;padding:8px 0;outline:none}
 .goal-wizard-input b{font-size:20px}
-.goal-wizard-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.goal-wizard-pair .goal-wizard-input input{font-size:20px}
+.goal-wizard-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.goal-wizard-pair .goal-wizard-input{min-width:0}
+.goal-wizard-pair .goal-wizard-input input{font-size:20px;width:100%;-moz-appearance:textfield;appearance:textfield}
+.goal-wizard-pair .goal-wizard-input input::-webkit-outer-spin-button,.goal-wizard-pair .goal-wizard-input input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .goal-wizard-body h3{margin:18px 0 8px;font-size:15px}
 .goal-wizard-chips{display:flex;flex-wrap:wrap;gap:8px}
 .goal-wizard-chip{padding:8px 12px;border-radius:999px;border:1px solid rgba(140,170,255,.3);background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}
