@@ -1111,7 +1111,7 @@
    return '<div class="transaction-row">'+
     '<span class="transaction-side '+(buy?'buy':'sell')+'">'+(buy?'COMPRA':'VENTA')+'</span>'+
     '<div class="transaction-main"><strong>'+esc((num(tx.units)||0).toLocaleString('es-ES',{maximumFractionDigits:6}))+' × '+money(tx.price,tx.currency||currency)+'</strong><small>'+esc(date)+(num(tx.fees)?' · comisión '+money(tx.fees,tx.currency||currency):'')+'</small></div>'+
-    '<div class="transaction-total"><strong>'+money(total,tx.currency||currency)+'</strong><small>'+esc(tx.notes||'')+'</small></div>'+
+    '<div class="transaction-total"><strong>'+money(total,tx.currency||currency)+'</strong><small translate="no">'+esc(tx.notes||'')+'</small></div>'+
     '<button type="button" class="transaction-delete" data-fund-transaction-delete="'+esc(tx.id)+'" aria-label="Eliminar operación">×</button>'+
    '</div>';
   }).join('');

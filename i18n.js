@@ -22,6 +22,9 @@
  const lang=autoOn()?deviceLang():chosen();
  const mode=lang==='es'?'content':'ui';
  document.documentElement.lang=lang;
+ // Idiomas que se escriben de derecha a izquierda.
+ const RTL=new Set(['ar','he','iw','fa','ur','ps','sd','ug','yi','dv','ckb']);
+ document.documentElement.dir=RTL.has(lang)?'rtl':'ltr';
 
  const SKIP_TAGS=new Set(['SCRIPT','STYLE','NOSCRIPT','TEXTAREA','INPUT','CODE','PRE','SVG','svg','CANVAS','IFRAME','TEMPLATE','KBD']);
  const NO='[translate="no"],.notranslate,[contenteditable="true"],[data-no-i18n]';
@@ -39,9 +42,10 @@
   return n>e?'en':e>n?'es':null;
  }
  function worth(core){
-  if(!core||core.length>700)return false;
+  if(!core||core.length>8000)return false;
   if(!/\p{L}[\s\S]*\p{L}/u.test(core))return false;
-  if(/^[A-Z0-9][A-Z0-9.\-:/]{0,15}$/.test(core))return false;   // ticker, ISIN o código sueltos
+  if(/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(core))return false;                          // ISIN
+  if(/^[A-Z0-9.\-:/]+$/.test(core)&&/[\d.:/-]/.test(core))return false;          // códigos (NASDAQ:CNTB, BRK.B, CIK)
   if(/@|https?:\/\/|www\./i.test(core))return false;              // correos y enlaces
   for(const p of protectedText)if(core===p||(p.length>=4&&core.includes(p)))return false;
   const d=detect(core);
@@ -62,15 +66,27 @@
 
  const recs=new WeakMap(),attrRecs=new WeakMap();
  const waiting=new Map(),failed=new Set(),inflight=new Set();
- let flushTimer=0,running=0,pausedUntil=0;
+ let flushTimer=0,running=0,pausedUntil=0,errors=0;
 
  function translated(v,cb){
   const m=v.match(/^(\s*)([\s\S]*?)(\s*)$/),core=m[2];
   if(!worth(core))return null;
-  const {t,nums}=template(core);
-  if(cache.has(t))return m[1]+fill(cache.get(t),nums)+m[3];
-  if(!failed.has(t))cb(t);
-  return null;
+  // Los textos largos (descripciones) se traducen por trozos de frases.
+  const parts=chunks(core).map(template);
+  let missing=false;
+  for(const p of parts)if(!cache.has(p.t)){missing=true;if(!failed.has(p.t))cb(p.t)}
+  if(missing)return null;
+  return m[1]+parts.map(p=>fill(cache.get(p.t),p.nums)).join(' ')+m[3];
+ }
+ const MAX_CHUNK=600;
+ function chunks(core){
+  if(core.length<=MAX_CHUNK)return [core];
+  const out=[];let cur='';
+  for(const p of core.split(/(?<=[.!?;])\s+/)){
+   if(cur&&(cur+' '+p).length>MAX_CHUNK){out.push(cur);cur=p}else cur=cur?cur+' '+p:p;
+  }
+  if(cur)out.push(cur);
+  return out.flatMap(c=>c.length<=MAX_CHUNK?[c]:c.match(/[\s\S]{1,600}/g));
  }
  function want(t,target){
   if(!waiting.has(t))waiting.set(t,new Set());
@@ -139,7 +155,9 @@
   try{
    const r=await fetch(apiUrl('/api/translate'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lang,t:batch})});
    if(r.status===429){pausedUntil=Date.now()+60000;return}
-   const d=await r.json().catch(()=>({}));
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   const d=await r.json();
+   errors=0;
    const out=Array.isArray(d.t)?d.t:[];
    batch.forEach((t,i)=>{
     const v=out[i];
@@ -148,12 +166,17 @@
     if(targets)for(const x of targets){if(!x.isConnected)continue;if(x.nodeType===3)applyText(x);else applyAttrs(x)}
    });
    saveSoon();
-  }catch(_){batch.forEach(t=>{failed.add(t);waiting.delete(t)})}
+  }catch(_){
+   // Sin conexión o servidor caído: se reintenta más tarde (espera creciente), sin dar nada por perdido.
+   errors++;pausedUntil=Date.now()+Math.min(300000,15000*2**Math.min(errors,5));
+  }
   finally{batch.forEach(t=>inflight.delete(t));running--;if(waiting.size&&!flushTimer)flushTimer=setTimeout(flush,Date.now()<pausedUntil?pausedUntil-Date.now():120)}
  }
 
  function start(){
   scan(document.body);
+  // Al recuperar la conexión se reintenta lo que no se pudo traducir.
+  window.addEventListener('online',()=>{failed.clear();errors=0;pausedUntil=0;clearTimeout(flushTimer);flushTimer=0;scan(document.body);if(waiting.size&&!flushTimer)flushTimer=setTimeout(flush,120)});
   new MutationObserver(list=>{
    for(const m of list){
     if(m.type==='childList')m.addedNodes.forEach(scan);

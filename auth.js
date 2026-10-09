@@ -352,6 +352,10 @@ function renderAccount() {
     avatar.textContent = initials(user);
   }
 
+  // Con sesión, el nombre y el correo no se traducen (i18n.js respeta translate="no").
+  for (const el of [button, menuUser]) {
+    if (user) el.setAttribute("translate", "no"); else el.removeAttribute("translate");
+  }
   if (user) {
     name.textContent = user.displayName || "Mi cuenta";
     email.textContent = user.email || "Google";
