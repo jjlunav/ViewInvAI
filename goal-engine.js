@@ -225,9 +225,15 @@
     const remaining=[];
     // Capital que el usuario deja invertir: cifra y/o % del efectivo (lo más restrictivo). El resto queda apartado.
     const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
+    // Lo apartado se fija al guardar el límite (investReserveEur), así las compras ya hechas consumen el capital
+    // permitido en vez de renovarlo; sin ese dato se calcula con el efectivo actual.
+    const reserveEur=n(cfg.investReserveEur);
     let usable=cash;
-    if(capEur!==null&&capEur>=0)usable=Math.min(usable,capEur);
-    if(capPct!==null&&capPct>=0&&capPct<100)usable=Math.min(usable,cash*capPct/100);
+    if(reserveEur!==null&&reserveEur>=0)usable=Math.max(0,cash-reserveEur);
+    else{
+      if(capEur!==null&&capEur>=0)usable=Math.min(usable,capEur);
+      if(capPct!==null&&capPct>=0&&capPct<100)usable=Math.min(usable,cash*capPct/100);
+    }
     const reserved=Math.max(0,cash-usable);
     const allowFractions=cfg.allowFractions!==false;
 
@@ -321,7 +327,16 @@
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
     const stale=c=>c.quoteFresh===false;
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase));
+    // Primero la candidata con más rendimiento esperado (recorrido previsto ponderado por la oportunidad); el mismo
+    // orden sirve para elegir a qué se cambia una posición y qué se compra con el efectivo.
+    const edge=c=>(n(c.targetPct)||0)*(n(c.burstScore)||0)/100;
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
+    // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
+    const buyUnits=(c,amount,ask)=>{
+      if(!(ask>0)||!(amount>0))return 0;
+      if(allowFractions&&!c.noFractions){const u=Math.floor(amount/ask*1e6)/1e6;return u*ask>=1?u:0}
+      return Math.floor(amount/ask);
+    };
     if(!defensive){
       for(const c of shortlist.filter(c=>!c.entryEligible||stale(c))){
         const isLimit=!stale(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
@@ -348,8 +363,8 @@
         // La compra posterior está limitada por el peso máximo y las acciones enteras: la ganancia
         // prevista se calcula con lo que de verdad se compraría.
         const ask=n(alt.askEur)??n(alt.priceEur),ticketCap=Math.min(Math.max(0,proceeds),valueEur*b.maxWeight/100);
-        const altUnits=ask>0?Math.floor(ticketCap/ask):0;
-        if(altUnits<1)continue;
+        const altUnits=buyUnits(alt,ticketCap-feeOf(alt,'BUY'),ask);
+        if(!(altUnits>0))continue;
         const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL'),expectedGain=altUnits*ask*alt.targetPct/100;
         if(expectedGain<loss+fees)continue;
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
@@ -424,9 +439,7 @@
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
       let spend=Math.max(0,pool-reserved);
-      // Primero la candidata con más rendimiento esperado (recorrido previsto ponderado por la oportunidad).
-      const edge=c=>(n(c.targetPct)||0)*(n(c.burstScore)||0)/100;
-      const ordered=[...cands].sort((x,y)=>edge(y)-edge(x));
+      const ordered=cands;
       for(let ci=0;ci<ordered.length;ci++){
         const c=ordered[ci];
         if(slots<=0||spend<=0)break;
@@ -443,8 +456,7 @@
         const budget=Math.min(share,riskCap)-feeB;
         // Fracciones: se invierte el importe, no un número entero de acciones (salvo que el valor no las admita).
         const fractional=allowFractions&&!c.noFractions;
-        let units=fractional?Math.floor(Math.max(0,budget)/ask*1e6)/1e6:Math.floor(budget/ask);
-        if(fractional&&units*ask<1)units=0;
+        let units=buyUnits(c,budget,ask);
         // Sin fracciones, cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso
         // máximo y el efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo del perfil.
         if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
@@ -473,9 +485,10 @@
     if(!actions.some(a=>a.type==='BUY')){
       const spendable=Math.max(0,pool-reserved);
       const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
-      const cheapest=Math.min(Infinity,...mappedCands.map(c=>n(c.askEur)??n(c.priceEur)).filter(v=>v>0));
+      // Lo mínimo que exige comprar alguna candidata: 1 € si admite fracciones, una acción entera si no.
+      const cheapest=Math.min(Infinity,...mappedCands.map(c=>{const a=n(c.askEur)??n(c.priceEur);return a>0?(allowFractions&&!c.noFractions?1:a):Infinity}));
       if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
-      else if(spendable<=1||(!allowFractions&&Number.isFinite(cheapest)&&spendable<cheapest)){
+      else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
         if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
         else whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
       }

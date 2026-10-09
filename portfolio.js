@@ -1546,7 +1546,7 @@ function goalEngineInput(metrics,positionRows){
   refreshGoalIdeas();
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
-      investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),allowFractions:Number(goal.allow_fractions)!==0},
+      investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
@@ -1658,7 +1658,7 @@ function goalPlanHistorySnapshot(metrics,plan){
   const waits=(plan.waits||[]).map((a,i)=>({rank:i+1,ticker:a.ticker,name:a.name,decision:a.decision||"ESPERAR",limitPrice:goalHistoryRound(a.limitPriceEur,4),currentPrice:goalHistoryRound(a.currentPriceEur,4),instruction:a.text}));
   const all=[...plan.actions,...(plan.waits||[])];
   const summary=all.length?all.map(a=>a.text).join(" "):"Sin cambios";
-  return{portfolioId:portfolio.id,signature:JSON.stringify(all.map(a=>[a.type,a.ticker,a.units||a.stopEur||a.limitPriceEur||a.decision])),summary,
+  return{portfolioId:portfolio.id,signature:JSON.stringify(all.map(a=>[a.type,a.ticker,a.fractional?"frac":(a.units||a.stopEur||a.limitPriceEur||a.decision)])),summary,
     plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.currentValue,2),
       targetEur:goalHistoryRound(metrics.target,2),cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),sells,buys,waits,residualEur:goalHistoryRound(plan.cashLeftEur,2)}};
 }
@@ -1736,8 +1736,9 @@ function openGoalWizard(){
   goalWizard={step:0,portfolioId:portfolio.id,name:portfolio.name,current:cur,
     v:{target:num(goal.target_value_eur)??num(goal.target_profit_eur)??(cur?Math.round(cur*1.5):null),date:goal.target_date||in6,risk:goal.risk_profile||"aggressive",
        positions:num(goal.max_positions)??4,specMode:goal.allow_spec===undefined?1:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),
-       capEur:num(goal.invest_cap_eur),capPct:num(goal.invest_cap_pct),fractions:goal.allow_fractions===undefined?1:(Number(goal.allow_fractions)===0?0:1)},
-    cash:num(metrics.cashEur),fromSummary:false};
+       capEur:num(goal.invest_cap_eur),capPct:num(goal.invest_cap_pct),fractions:goal.allow_fractions===undefined?1:(Number(goal.allow_fractions)===0?0:1),
+       noFrac:[...goalNoFractionSet(goal)],fracRestore:[]},
+    cash:num(metrics.cashEur),capInit:[num(goal.invest_cap_eur),num(goal.invest_cap_pct)],reserveInit:num(goal.invest_reserve_eur),fromSummary:false};
   let el=document.getElementById("goalWizard");
   if(!el){el=document.createElement("div");el.id="goalWizard";el.setAttribute("role","dialog");el.setAttribute("aria-modal","true");document.body.appendChild(el)}
   el.hidden=false;document.body.classList.add("goal-wizard-open");
@@ -1779,7 +1780,9 @@ function goalWizardStepHtml(id){
       '<p class="goal-wizard-hint" data-gw-usable>'+goalWizardUsableText(usable,cash)+'</p>'+
       '<h3>Compras fraccionadas</h3><div class="goal-wizard-choices">'+
       goalWizardChoice("fractions","1","Sí, invertir importes","Compra la parte de acción que permita el capital (en Trade Republic, orden a mercado).",v.fractions===1)+
-      goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>';
+      goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>'+
+      (v.noFrac.length?'<p class="goal-wizard-hint">Valores marcados como «no admite fracciones» (toca para quitar la marca):</p><div class="goal-wizard-chips">'+
+        v.noFrac.map(t=>'<button type="button" class="goal-wizard-chip" data-gw-unfrac="'+esc(t)+'" translate="no">'+esc(t)+' ×</button>').join('')+'</div>':'');
   }
   if(id==="spec")return '<h2>¿Acciones especulativas?</h2><p>Solo entran si el potencial temprano compensa claramente el riesgo. Siempre mantienen stop, control de liquidez, spread y dilución.</p><div class="goal-wizard-choices">'+
     goalWizardChoice("specMode","1","Solo una y pequeña","Máximo 1 posición · hasta 10 % de la cartera.",v.specMode===1)+
@@ -1796,15 +1799,22 @@ function goalWizardStepHtml(id){
     row(4,"Capital para invertir",goalWizardCapLabel(v)+(v.fractions?" · con fracciones":" · acciones enteras"))+row(5,"Especulativas",specLabel)+'</div>'+
     '<p class="goal-wizard-hint">Fondos y ETFs van aparte. El plan compra al momento con stop según volatilidad, sube el stop cuando gana y no cambia una acción en pérdidas salvo que la nueva prevea recuperar la pérdida y las comisiones.</p>';
 }
+function goalWizardCapChanged(v){
+  const w=goalWizard;if(!w)return true;
+  const pct=num(v.capPct)!==null&&num(v.capPct)<100?num(v.capPct):null,initPct=w.capInit[1]!==null&&w.capInit[1]<100?w.capInit[1]:null;
+  return num(v.capEur)!==w.capInit[0]||pct!==initPct;
+}
 function goalWizardUsable(v,cash){
   if(cash===null||cash===undefined)return null;
+  // Límite sin cambios: lo apartado al guardarlo sigue apartado (las compras ya hechas gastaron capital permitido).
+  if(goalWizard&&goalWizard.reserveInit!==null&&!goalWizardCapChanged(v))return Math.max(0,cash-goalWizard.reserveInit);
   let u=Math.max(0,cash);
   if(num(v.capEur)!==null&&num(v.capEur)>=0)u=Math.min(u,num(v.capEur));
   if(num(v.capPct)!==null&&num(v.capPct)>=0&&num(v.capPct)<100)u=Math.min(u,cash*num(v.capPct)/100);
   return u;
 }
 function goalWizardUsableText(usable,cash){
-  return usable===null?"":'Podrá invertir <b>'+esc(formatMoney(usable,"EUR"))+'</b>'+(cash>usable+.005?' y dejará apartados '+esc(formatMoney(cash-usable,"EUR")):'')+'. Lo que liberen las ventas del plan también se puede reinvertir.';
+  return usable===null?"":'Podrá invertir <b>'+esc(formatMoney(usable,"EUR"))+'</b>'+(cash>usable+.005?' y dejará apartados '+esc(formatMoney(cash-usable,"EUR"))+'. Lo apartado se fija al guardar: las compras que hagas gastan del capital permitido':'')+'. Lo que liberen las ventas del plan también se puede reinvertir.';
 }
 function goalWizardCapLabel(v){
   const bits=[];
@@ -1839,7 +1849,12 @@ async function saveGoalWizard(){
   const btn=document.querySelector("#goalWizard [data-gw-save]");if(btn)btn.disabled=true;
   try{
     const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,specMode:w.v.specMode,allowSpec:w.v.specMode>0,currentValueEur:w.current,
-      investCapEur:num(w.v.capEur),investCapPct:num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null,allowFractions:w.v.fractions!==0};
+      investCapEur:num(w.v.capEur),investCapPct:num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null,allowFractions:w.v.fractions!==0,
+      fractionTickers:w.v.fracRestore};
+    // Lo que queda apartado se fija al cambiar el límite: las compras que registres después gastan del capital
+    // permitido. Si el límite no cambia, se conserva lo apartado (guardar otra vez no renueva el capital).
+    const usable=goalWizardUsable(w.v,w.cash);
+    if(goalWizardCapChanged(w.v))payload.investReserveEur=usable===null||(payload.investCapEur===null&&payload.investCapPct===null)?null:Math.max(0,(num(w.cash)||0)-usable);
     const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
     if(data.goal)state.goals[String(w.portfolioId)]=data.goal;
@@ -1851,7 +1866,11 @@ document.addEventListener("click",event=>{
   const open=event.target.closest&&event.target.closest("[data-goal-wizard]");
   if(open){event.preventDefault();openGoalWizard();return}
   const root=event.target.closest&&event.target.closest("#goalWizard");if(!root||!goalWizard)return;
-  const t=event.target.closest("[data-gw-close],[data-gw-next],[data-gw-back],[data-gw-save],[data-gw-set],[data-gw-goto]");if(!t)return;
+  const t=event.target.closest("[data-gw-close],[data-gw-next],[data-gw-back],[data-gw-save],[data-gw-set],[data-gw-goto],[data-gw-unfrac]");if(!t)return;
+  if(t.hasAttribute("data-gw-unfrac")){
+    const tk=t.dataset.gwUnfrac;goalWizard.v.noFrac=goalWizard.v.noFrac.filter(x=>x!==tk);
+    if(!goalWizard.v.fracRestore.includes(tk))goalWizard.v.fracRestore.push(tk);paintGoalWizard();return;
+  }
   const steps=goalWizardSteps();
   if(t.hasAttribute("data-gw-close")){closeGoalWizard();return}
   if(t.hasAttribute("data-gw-set")){

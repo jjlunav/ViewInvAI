@@ -101,6 +101,13 @@ const input=candidates=>({
   assert.ok(buy&&buy.ticketEur+1<=80.01,"capital cap must limit the ticket");
   p=G.plan({...input([pricey]),config:{...cfg,investCapPct:0},cashEur:200,peakValueEur:250,lockedValueEur:50});
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","zero capital must be reported as the cap");
+  // Lo apartado al guardar el límite se respeta aunque baje el efectivo (las compras gastan del capital permitido).
+  p=G.plan({...input([pricey]),config:{...cfg,investCapEur:100,investReserveEur:150},cashEur:160,peakValueEur:250,lockedValueEur:90});
+  assert.equal(p.reservedEur,150,"saved reserve must stay apart");
+  assert.ok(p.investableEur<=10.01,"only cash above the reserve can be invested");
+  // Valor sin fracciones y capital que no llega a una acción entera: el motivo es el límite.
+  p=G.plan({...input([{...pricey,noFractions:true}]),config:{...cfg,investCapEur:80},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","whole-share candidate above the cap must report the cap");
 }
 
 console.log("Goal engine tests: OK");
