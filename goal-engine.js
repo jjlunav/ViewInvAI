@@ -197,7 +197,8 @@
   function feeOf(x,side){const f=n(side==='SELL'?x.sellFeeEur:x.buyFeeEur);return f===null?n(x.feeEur)||0:f}
 
   /* plan(input) → { actions, holds, pace, defensive, drawdownPct, notes, band }
-   * input.config: {target, deadline, startValue, startDate, risk, maxPositions(3–5), specMode(0–3), allowSpec}
+   * input.config: {target, deadline, startValue, startDate, risk, maxPositions(3–5), specMode(0–3), allowSpec,
+   *                investCapEur, investCapPct (capital del efectivo que se puede invertir), allowFractions}
    * input.positions: [{key,ticker,name,units,avgEur,priceEur,bidEur,score,quality,tier,
    *                    speculative,atrPct,peakEur,stopEur,feeEur,aiVerdict}]
    * input.candidates: [{key,ticker,name,priceEur,askEur,score,quality,tier,speculative,
@@ -222,6 +223,19 @@
     const actions=[],holds=[],notes=[],waits=[];
     let pool=cash;
     const remaining=[];
+    // Capital que el usuario deja invertir: cifra y/o % del efectivo (lo más restrictivo). El resto queda apartado.
+    const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
+    // Lo apartado se fija al guardar el límite (investReserveEur), así las compras ya hechas consumen el capital
+    // permitido en vez de renovarlo; sin ese dato se calcula con el efectivo actual.
+    const reserveEur=n(cfg.investReserveEur);
+    let usable=cash;
+    if(reserveEur!==null&&reserveEur>=0)usable=Math.max(0,cash-reserveEur);
+    else{
+      if(capEur!==null&&capEur>=0)usable=Math.min(usable,capEur);
+      if(capPct!==null&&capPct>=0&&capPct<100)usable=Math.min(usable,cash*capPct/100);
+    }
+    const reserved=Math.max(0,cash-usable);
+    const allowFractions=cfg.allowFractions!==false;
 
     // 0) Decisiones del usuario sobre una posición («Decidir»): mantener hasta recuperar, hasta +X %,
     //    hasta un catalizador, hasta un cambio mejor o en pausa hasta una fecha. Mientras dure, el plan no
@@ -313,7 +327,16 @@
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
     const stale=c=>c.quoteFresh===false;
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase));
+    // Primero la candidata con más rendimiento esperado (recorrido previsto ponderado por la oportunidad); el mismo
+    // orden sirve para elegir a qué se cambia una posición y qué se compra con el efectivo.
+    const edge=c=>(n(c.targetPct)||0)*(n(c.burstScore)||0)/100;
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
+    // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
+    const buyUnits=(c,amount,ask)=>{
+      if(!(ask>0)||!(amount>0))return 0;
+      if(allowFractions&&!c.noFractions){const u=Math.floor(amount/ask*1e6)/1e6;return u*ask>=1?u:0}
+      return Math.floor(amount/ask);
+    };
     if(!defensive){
       for(const c of shortlist.filter(c=>!c.entryEligible||stale(c))){
         const isLimit=!stale(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
@@ -340,8 +363,8 @@
         // La compra posterior está limitada por el peso máximo y las acciones enteras: la ganancia
         // prevista se calcula con lo que de verdad se compraría.
         const ask=n(alt.askEur)??n(alt.priceEur),ticketCap=Math.min(Math.max(0,proceeds),valueEur*b.maxWeight/100);
-        const altUnits=ask>0?Math.floor(ticketCap/ask):0;
-        if(altUnits<1)continue;
+        const altUnits=buyUnits(alt,ticketCap-feeOf(alt,'BUY'),ask);
+        if(!(altUnits>0))continue;
         const fees=feeOf(p,'SELL')+feeOf(alt,'BUY')+feeOf(alt,'SELL'),expectedGain=altUnits*ask*alt.targetPct/100;
         if(expectedGain<loss+fees)continue;
         used.add(alt.key);pool+=Math.max(0,proceeds);remaining.splice(remaining.indexOf(p),1);
@@ -414,26 +437,32 @@
       let slots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       let specCount=remaining.filter(p=>p.speculative).length;
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
-      for(let ci=0;ci<cands.length;ci++){
-        const c=cands[ci];
-        if(slots<=0||pool<=0)break;
+      // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
+      let spend=Math.max(0,pool-reserved);
+      const ordered=cands;
+      for(let ci=0;ci<ordered.length;ci++){
+        const c=ordered[ci];
+        if(slots<=0||spend<=0)break;
         if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
         // El efectivo se reparte entre los huecos que de verdad se pueden llenar (no hay más candidatas que huecos).
-        const fillable=Math.max(1,Math.min(slots,cands.length-ci));
-        const hardCap=Math.min(valueEur*maxW,pool,specCapacity);
-        const share=Math.min(pool/fillable*adj.size,hardCap);
+        const fillable=Math.max(1,Math.min(slots,ordered.length-ci));
+        const hardCap=Math.min(valueEur*maxW,spend,specCapacity);
+        const share=Math.min(spend/fillable*adj.size,hardCap);
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
-        let units=Math.floor(budget/ask);
-        // Cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso máximo y el
-        // efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo por operación del perfil.
-        if(units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
-        if(units<1){
-          const why=ask+feeB>pool?'el efectivo ('+money(pool)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
+        // Fracciones: se invierte el importe, no un número entero de acciones (salvo que el valor no las admita).
+        const fractional=allowFractions&&!c.noFractions;
+        let units=buyUnits(c,budget,ask);
+        // Sin fracciones, cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso
+        // máximo y el efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo del perfil.
+        if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
+        if(fractional&&units<=0){notes.push(label(c)+': no queda importe suficiente para invertir.');continue}
+        if(units<1&&!fractional){
+          const why=ask+feeB>spend?'el efectivo disponible ('+money(spend)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
           notes.push(label(c)+': una acción cuesta '+money(ask)+' y supera '+why+'.');continue
         }
         const ticket=units*ask;
@@ -441,21 +470,28 @@
         // (con 1 € por orden, en carteras pequeñas casi ningún ticket bajaría del límite fijo).
         const feePct=(feeB+feeS)/ticket*100,expected=ticket*n(c.targetPct)/100;
         if(feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
-        pool-=ticket+feeB;slots--;
+        spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
-        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
+        const isFraction=fractional&&Math.abs(units-Math.round(units))>1e-9;
+        const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:4}):String(units);
+        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
-          text:'Comprar '+units+' × '+label(c)+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' ('+unitsText+' acciones; fraccionada, orden a mercado)':'Comprar '+unitsText+' × '+label(c)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
     const whyNoBuy=[];
     if(!actions.some(a=>a.type==='BUY')){
+      const spendable=Math.max(0,pool-reserved);
       const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
-      const cheapest=Math.min(Infinity,...mappedCands.map(c=>n(c.askEur)??n(c.priceEur)).filter(v=>v>0));
+      // Lo mínimo que exige comprar alguna candidata: 1 € si admite fracciones, una acción entera si no.
+      const cheapest=Math.min(Infinity,...mappedCands.map(c=>{const a=n(c.askEur)??n(c.priceEur);return a>0?(allowFractions&&!c.noFractions?1:a):Infinity}));
       if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
-      else if(pool<=1||(Number.isFinite(cheapest)&&pool<cheapest))whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
+      else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
+        if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
+        else whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
+      }
       else if(freeSlots<=0)whyNoBuy.push({code:'full',text:'Cartera completa: ya tienes '+maxPositions+' posiciones, el máximo que fijaste.'});
       else if(!(input.candidates||[]).length)whyNoBuy.push({code:'nocands',text:'El Radar no tiene candidatas para este mercado en este momento.'});
       else if(!mappedCands.length)whyNoBuy.push({code:'filtered',text:'Las '+(input.candidates||[]).length+' candidatas del Radar no pasan el primer filtro: ya las tienes, la IA las contradice o su puntuación o calidad no llega ('+minQuality+').'});
@@ -472,7 +508,7 @@
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
     return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
-      cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
+      cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
   root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
