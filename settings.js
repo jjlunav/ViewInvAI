@@ -420,6 +420,10 @@ function initSettings(){
  function bar(used,limit){if(!limit)return'';const pct=Math.min(100,Math.round(used/limit*100));return '<div class="admin-bar" title="'+pct+' %"><i data-pct="'+pct+'" class="'+(pct>=85?'hot':pct>=60?'warm':'')+'"></i></div>'}
  const heading=(kicker,title,text)=>'<div class="settings-section-heading"><span>'+esc(kicker)+'</span><h2>'+esc(title)+'</h2>'+(text?'<p>'+text+'</p>':'')+'</div>';
  const status=p=>!p.configured?'<b class="admin-st warn">⚠️ sin clave</b>':p.cooldownUntil?'<b class="admin-st warn">⏸ en pausa (cupo)</b>':p.test?(p.test.ok?'<b class="admin-st ok">✅ conectado</b>':'<b class="admin-st bad">❌ '+esc(p.test.detail||'error')+'</b>'):'<b class="admin-st">● con clave</b>';
+ // «hoy 08:46», «ayer 21:10» o «3 oct 10:02»: así se ve si el error es anterior a un arreglo.
+ function errWhen(iso){const d=new Date(iso);if(isNaN(d))return'';const t=d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}),day=new Date();day.setHours(0,0,0,0);
+  const diff=Math.round((day-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/86400000);
+  return diff===0?'hoy '+t:diff===1?'ayer '+t:d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})+' '+t}
  function providerCard(p){
   const used=p.test&&p.test.used!=null?p.test.used:p.month.calls,limit=p.test&&p.test.limit!=null?p.test.limit:p.monthlyLimit;
   return '<article class="settings-card admin-card">'+cardHead(p.label,p.dashboard)+status(p)+
@@ -429,7 +433,7 @@ function initSettings(){
       '<small>Este mes: '+fmt(used)+(limit?' de '+fmt(limit):'')+'</small>'+(limit?bar(used,limit):'')+
       (pr.decision!=null||pr.search!=null?'<small>Nota del repartidor: '+(pr.search!=null?'búsqueda '+pr.search:'decidir '+pr.decision+' · cribar '+pr.light)+'/100</small>':'')})()+
    (p.test&&p.test.ok&&p.test.detail&&p.test.detail!=='conectado'?'<small>'+esc(p.test.detail)+'</small>':'')+
-   (p.month.lastError?'<small class="admin-err">Último error: '+esc(p.month.lastError)+'</small>':'')+
+   (p.month.lastError?'<small class="admin-err">Último error'+(p.month.lastErrorAt?' ('+esc(errWhen(p.month.lastErrorAt))+')':'')+': '+esc(p.month.lastError)+'</small>':'')+
    (p.secret?'<small>Secreto: <code>'+esc(p.secret)+'</code></small>':'')+'</article>';
  }
  function providerSection(d,kinds,kicker,title,text){

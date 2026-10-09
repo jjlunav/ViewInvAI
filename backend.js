@@ -4134,12 +4134,22 @@ async function ensureProviderUsageSchema(db){
 async function recordProviderUse(env,id,ok,error=""){
   if(ok)providerCooldown.delete(id);
   // Mantiene al día la copia en memoria que usa el repartidor para ordenar.
-  if(typeof providerStatsMemo!=="undefined"&&providerStatsMemo.rows){const st=providerStatsMemo.rows.get(id)||{calls:0,errors:0};st.calls++;if(!ok)st.errors++;providerStatsMemo.rows.set(id,st)}
+  if(typeof providerStatsMemo!=="undefined"&&providerStatsMemo.rows){const st=providerStatsMemo.rows.get(id)||{calls:0,errors:0};st.calls++;if(!ok)st.errors++;st.recovered=!!ok;providerStatsMemo.rows.set(id,st)}
   const now=nowIso(),periods=["d:"+now.slice(0,10),"m:"+now.slice(0,7)];
   try{await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);
-    return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,last_at=excluded.last_at,last_error=CASE WHEN excluded.errors>0 THEN excluded.last_error ELSE last_error END")
-      .bind(id,period,ok?0:1,now,ok?null:trimText(error,200))))})}catch(_){}
+    // last_at se queda con la hora más reciente aunque las escrituras lleguen desordenadas; el error solo se
+    // sustituye por uno más reciente. Un error antiguo sin hora (de versiones previas) se marca como
+    // anterior a todo al primer acierto, para que cuente como recuperado.
+    return db.batch(periods.map(period=>db.prepare("INSERT INTO provider_usage (provider,period,calls,errors,last_at,last_error) VALUES (?,?,1,?,?,?) ON CONFLICT(provider,period) DO UPDATE SET calls=calls+1,errors=errors+excluded.errors,"+
+      "last_at=CASE WHEN last_at IS NULL OR excluded.last_at>last_at THEN excluded.last_at ELSE last_at END,"+
+      "last_error=CASE WHEN excluded.errors>0 AND (last_at IS NULL OR excluded.last_at>=last_at) THEN excluded.last_error "+
+      "WHEN excluded.errors=0 AND last_error IS NOT NULL AND last_error NOT GLOB '[0-9][0-9][0-9][0-9]-*|*' THEN '1970-01-01T00:00:00.000Z|'||last_error ELSE last_error END")
+      .bind(id,period,ok?0:1,now,ok?null:now+"|"+trimText(error,200))))})}catch(_){}
 }
+// El último error se guarda como «fecha|mensaje» para poder decir cuándo ocurrió.
+function splitLastError(v){const t=String(v||""),m=t.match(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)\|([\s\S]*)$/);
+  if(!m)return{lastError:t||null,lastErrorAt:null,legacy:!!t};
+  return m[1].startsWith("1970-")?{lastError:m[2],lastErrorAt:null,legacy:true,recoveredLegacy:true}:{lastError:m[2],lastErrorAt:m[1]}}
 async function providerFetch(id,url,init,timeoutMs=20000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{return await fetch(url,{...init,signal:controller.signal})}finally{clearTimeout(timer)}
@@ -4183,13 +4193,15 @@ let providerStatsMemo={at:0,rows:new Map()};
 async function providerStatsToday(env){
   if(Date.now()-providerStatsMemo.at<5*60000)return providerStatsMemo.rows;
   const day="d:"+nowIso().slice(0,10),rows=new Map();
-  try{const r=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return db.prepare("SELECT provider,calls,errors FROM provider_usage WHERE period=?").bind(day).all()});
-    for(const x of (r&&r.results)||[])rows.set(x.provider,{calls:Number(x.calls)||0,errors:Number(x.errors)||0})}catch(_){}
+  try{const r=await withCacheDb(env,async db=>{await ensureProviderUsageSchema(db);return db.prepare("SELECT provider,calls,errors,last_at,last_error FROM provider_usage WHERE period=?").bind(day).all()});
+    for(const x of (r&&r.results)||[]){const e=splitLastError(x.last_error);
+      rows.set(x.provider,{calls:Number(x.calls)||0,errors:Number(x.errors)||0,recovered:!!(e.recoveredLegacy||(e.lastErrorAt&&x.last_at&&Date.parse(x.last_at)>Date.parse(e.lastErrorAt)))})}}catch(_){}
   providerStatsMemo={at:Date.now(),rows};return rows;
 }
 function providerScore(id,task,stats,noise=true){
   const prof=PROVIDER_PROFILE[id]||{},base=prof[task]??50,st=stats.get(id)||{calls:0,errors:0};
-  const health=1-Math.min(.8,st.errors/Math.max(5,st.calls));
+  // Si después del último fallo ya ha vuelto a responder bien, sus fallos de hoy pesan mucho menos.
+  const health=1-Math.min(.8,(st.recovered?.3:1)*st.errors/Math.max(5,st.calls));
   const used=st.calls/Math.max(1,prof.daily||100),quota=used>=1?.2:1-.5*used;
   return base*health*quota+(noise?Math.random()*12:0);
 }
@@ -4475,7 +4487,7 @@ async function handleAdmin(request,env,user,json,url){
     return{id:p.id,label:p.label,kind:p.kind,secret:p.secret,free:p.free,dashboard:p.dashboard,unused:!!p.unused,configured,
       profile:{decision:prof.decision??null,light:prof.light??null,search:prof.search??null,daily:prof.daily??null},
       cooldownUntil:(providerCooldown.get(p.id)||0)>Date.now()?new Date(providerCooldown.get(p.id)).toISOString():null,
-      today:d?{calls:d.calls,errors:d.errors}:{calls:0,errors:0},month:m?{calls:m.calls,errors:m.errors,lastAt:m.last_at,lastError:m.last_error}:{calls:0,errors:0},
+      today:d?{calls:d.calls,errors:d.errors}:{calls:0,errors:0},month:m?{calls:m.calls,errors:m.errors,lastAt:m.last_at,...splitLastError(m.last_error)}:{calls:0,errors:0},
       monthlyLimit:p.monthlyLimit||null,test};
   }));
   if(needProbe&&env.HOT_STATE_KV){const save={at:nowIso()};providers.forEach(p=>{if(p.test)save[p.id]=p.test});try{await env.HOT_STATE_KV.put("admin-probes:v1",JSON.stringify(save),{expirationTtl:3600})}catch(_){}}
