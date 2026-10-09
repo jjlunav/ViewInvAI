@@ -73,7 +73,9 @@ async function registerPushToken(token, platform = "android") {
     body: JSON.stringify({
       pushToken: token,
       platform: String(platform || "android").toLowerCase(),
-      appVersion: document.documentElement.dataset.appVersion || ""
+      appVersion: document.documentElement.dataset.appVersion || "",
+      // Idioma de la app en este dispositivo: el servidor traduce los avisos a este idioma.
+      lang: (window.ViewInvAII18n && window.ViewInvAII18n.lang) || document.documentElement.lang || "es"
     })
   });
   if (!response.ok) {

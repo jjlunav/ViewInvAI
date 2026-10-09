@@ -434,6 +434,13 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
   return true;
 }
 
+let deviceLangSchemaReady=false;
+async function ensureDeviceLangSchema(env){
+  if(deviceLangSchemaReady)return;
+  try{const cols=await env.DB.prepare("PRAGMA table_info(devices)").all();
+    if(!(cols.results||[]).some(r=>String(r.name)==="lang"))await env.DB.prepare("ALTER TABLE devices ADD COLUMN lang TEXT").run();
+    deviceLangSchemaReady=true}catch(error){console.warn("devices.lang schema",String(error&&error.message||error))}
+}
 async function dispatchPushAlert(env, alert, target) {
   if (!env.DB) return { configured: false, sent: 0 };
   const globalNotifications = await globalNotificationSettingsForUser(env, target.user_id);
@@ -446,13 +453,18 @@ async function dispatchPushAlert(env, alert, target) {
   }
   if (!auth) return { configured: false, sent: 0 };
 
+  await ensureDeviceLangSchema(env);
   const rows = await env.DB.prepare(
-    "SELECT id,push_token,platform FROM devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC LIMIT 20"
+    "SELECT id,push_token,platform,lang FROM devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC LIMIT 20"
   ).bind(target.user_id).all();
   const devices = rows.results || [];
   if (!devices.length) return { configured: true, sent: 0 };
 
-  const settled = await Promise.allSettled(devices.map(device => sendFcmToDevice(env, auth, device, alert, target)));
+  // Cada dispositivo recibe el aviso en su idioma (una traducción por idioma, con caché común).
+  const byLang = new Map();
+  for (const d of devices) { const l = String(d.lang || "es").toLowerCase(); if (!byLang.has(l)) byLang.set(l, null); }
+  for (const l of byLang.keys()) byLang.set(l, await translateAlertFor(env, l, alert));
+  const settled = await Promise.allSettled(devices.map(device => sendFcmToDevice(env, auth, device, byLang.get(String(device.lang || "es").toLowerCase()) || alert, target)));
   const sent = settled.filter(x => x.status === "fulfilled").length;
   if (sent > 0) {
     await env.DB.prepare("UPDATE alert_events SET pushed_at=? WHERE id=?").bind(nowIso(), alert.id).run();
@@ -3921,17 +3933,19 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
   for (const event of candidates) {
     const message = trimText(event.title || event.fact || "Noticia relacionada con el valor.", 500);
     if (!message) continue;
+    const source = trimText(event.source || event.verification || "", 120);
+    const body = source ? message + " · " + source : message;
+    // Se guarda «titular · fuente»: el duplicado se busca por el mensaje guardado y por el titular solo
+    // (antes solo por el titular, nunca coincidía y la misma noticia se avisaba en cada pasada).
     const duplicate = await env.DB.prepare(
-      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND message=? LIMIT 1"
-    ).bind(target.user_id, target.stock_key, message).first();
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND (message=? OR message=? OR message LIKE ?) LIMIT 1"
+    ).bind(target.user_id, target.stock_key, body, message, message.replace(/[%_]/g, "") + " · %").first();
     if (duplicate) continue;
 
     const impact = finiteNumber(event.impactScore) ?? 0;
     const severity = impact >= 85 ? "high" : impact >= 70 ? "warning" : "info";
     const id = uid("al_");
-    const source = trimText(event.source || event.verification || "", 120);
     const title = (event.official ? "Fuente oficial · " : "Noticia · ") + target.ticker;
-    const body = source ? message + " · " + source : message;
     const now = nowIso();
 
     await env.DB.prepare(
@@ -5494,14 +5508,15 @@ async function handleDevices(request, env, user, json, parts) {
     const token = trimText(body.pushToken, 2048);
     const platform = trimText(body.platform || "android", 32).toLowerCase();
     const appVersion = trimText(body.appVersion, 40);
+    const lang = /^[a-z]{2,3}$/.test(String(body.lang || "")) ? String(body.lang) : "es";
     if (!token) return json({ error: "pushToken is required" }, 400);
     const existing = await env.DB.prepare("SELECT id FROM devices WHERE push_token=?").bind(token).first();
     const deviceId = existing && existing.id ? existing.id : uid("dev_");
     const now = nowIso();
     await env.DB.prepare(
-      "INSERT INTO devices (id,user_id,platform,push_token,app_version,enabled,last_seen_at,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?,?) " +
-      "ON CONFLICT(push_token) DO UPDATE SET user_id=excluded.user_id,platform=excluded.platform,app_version=excluded.app_version,enabled=1,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at"
-    ).bind(deviceId, user.id, platform, token, appVersion, now, now, now).run();
+      "INSERT INTO devices (id,user_id,platform,push_token,app_version,enabled,last_seen_at,created_at,updated_at,lang) VALUES (?,?,?,?,?,1,?,?,?,?) " +
+      "ON CONFLICT(push_token) DO UPDATE SET user_id=excluded.user_id,platform=excluded.platform,app_version=excluded.app_version,enabled=1,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at,lang=excluded.lang"
+    ).bind(deviceId, user.id, platform, token, appVersion, now, now, now, lang).run();
     return json({ device: { id: deviceId, platform, appVersion, enabled: true, lastSeenAt: now } }, existing ? 200 : 201);
   }
 
@@ -6767,13 +6782,10 @@ async function translateBatch(env,lang,texts){
   if(!out||out.length!==texts.length)return texts.map(()=>null);
   return out.map((v,i)=>{const t=typeof v==="string"?v.trim():"";return t&&t.length<=TRANSLATE_MAX_CHARS*2&&placeholdersOf(t)===placeholdersOf(texts[i])?t:null});
 }
-async function handleTranslate(request,env,json){
-  if(request.method!=="POST")return json({error:"Method not allowed"},405);
-  const body=await readJson(request);
-  const lang=String(body&&body.to||"").toLowerCase();
-  if(!/^[a-z]{2,3}$/.test(lang))return json({error:"Idioma no válido"},400);
-  const texts=(Array.isArray(body.t)?body.t:[]).slice(0,TRANSLATE_MAX_ITEMS).map(x=>String(x==null?"":x).trim().slice(0,TRANSLATE_MAX_CHARS));
-  if(!texts.length)return json({t:[]});
+// Núcleo de la traducción con caché común. actor: clave del tope diario por usuario o IP (null = solo el global).
+async function translateTexts(env,lang,input,actor=null){
+  const texts=(input||[]).slice(0,TRANSLATE_MAX_ITEMS).map(x=>String(x==null?"":x).trim().slice(0,TRANSLATE_MAX_CHARS));
+  if(!texts.length)return[];
   const keys=await Promise.all(texts.map(t=>translateKey(lang,t)));
   const out=texts.map(()=>null);
   let rows=[];
@@ -6783,15 +6795,15 @@ async function handleTranslate(request,env,json){
   const missing=[];
   texts.forEach((t,i)=>{if(!t)out[i]="";else if(hit.has(keys[i]))out[i]=hit.get(keys[i]);else if(!missing.some(m=>m.key===keys[i]))missing.push({key:keys[i],text:t})});
   if(missing.length){
-    // Topes diarios de textos nuevos (lo ya traducido no cuenta): uno por IP, para que nadie agote
-    // el común, y otro global.
+    // Topes diarios de textos nuevos (lo ya traducido no cuenta): uno por usuario o IP, para que nadie
+    // agote el común, y otro global.
     let allowed=true;
-    if(env.HOT_STATE_KV){const day=nowIso().slice(0,10),ip=String(request.headers.get("CF-Connecting-IP")||"anon").slice(0,64);
-      const ka="tr-quota-ip:"+ip+":"+day,kg="tr-quota:"+day;
-      try{const [ua,ug]=await Promise.all([env.HOT_STATE_KV.get(ka),env.HOT_STATE_KV.get(kg)]);
+    if(env.HOT_STATE_KV){const day=nowIso().slice(0,10);
+      const ka=actor?"tr-quota-ip:"+actor+":"+day:"",kg="tr-quota:"+day;
+      try{const [ua,ug]=await Promise.all([ka?env.HOT_STATE_KV.get(ka):null,env.HOT_STATE_KV.get(kg)]);
         const usedA=Number(ua)||0,usedG=Number(ug)||0;
-        if(usedA>=TRANSLATE_ACTOR_DAILY_NEW||usedG>=TRANSLATE_DAILY_NEW)allowed=false;
-        else await Promise.all([env.HOT_STATE_KV.put(ka,String(usedA+missing.length),{expirationTtl:2*86400}),env.HOT_STATE_KV.put(kg,String(usedG+missing.length),{expirationTtl:2*86400})]);
+        if((ka&&usedA>=TRANSLATE_ACTOR_DAILY_NEW)||usedG>=TRANSLATE_DAILY_NEW)allowed=false;
+        else await Promise.all([ka?env.HOT_STATE_KV.put(ka,String(usedA+missing.length),{expirationTtl:2*86400}):null,env.HOT_STATE_KV.put(kg,String(usedG+missing.length),{expirationTtl:2*86400})]);
       }catch(_){}}
     if(allowed){
       const fresh=[],parts=[];
@@ -6809,7 +6821,35 @@ async function handleTranslate(request,env,json){
       texts.forEach((t,i)=>{if(out[i]===null&&hit.has(keys[i]))out[i]=hit.get(keys[i])});
     }
   }
+  return out;
+}
+async function handleTranslate(request,env,json){
+  if(request.method!=="POST")return json({error:"Method not allowed"},405);
+  const body=await readJson(request);
+  const lang=String(body&&body.to||"").toLowerCase();
+  if(!/^[a-z]{2,3}$/.test(lang))return json({error:"Idioma no válido"},400);
+  const out=await translateTexts(env,lang,Array.isArray(body.t)?body.t:[],String(request.headers.get("CF-Connecting-IP")||"anon").slice(0,64));
   return json({t:out},200,{"Cache-Control":"no-store"});
+}
+// Detección rápida español / inglés (para no traducir lo que ya está en el idioma de destino).
+function quickLang(s){
+  const t=String(s||"");
+  if(/[ñ¿¡]|ción\b|ciones\b/i.test(t))return"es";
+  const e=(t.match(/\b(el|la|los|las|del|que|por|para|con|una|un|se|es|al|su|sus|más|como|tras|sobre)\b/gi)||[]).length;
+  const n=(t.match(/\b(the|of|and|to|for|on|with|is|by|at|from|as|its|be|are|this|that|after|over|will|has)\b/gi)||[]).length;
+  return n>e?"en":e>n?"es":null;
+}
+// Aviso traducido al idioma del dispositivo (las noticias llegan en inglés u otros idiomas).
+async function translateAlertFor(env,lang,alert){
+  if(!lang||!/^[a-z]{2,3}$/.test(lang))return alert;
+  const parts=[alert.title||"",alert.message||""];
+  const need=parts.map(t=>!!t&&quickLang(t)!==lang&&!(lang==="es"&&/^[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ ]*\s·\s[A-Z0-9.\-]+$/.test(t)));
+  if(!need.some(Boolean))return alert;
+  try{
+    const tr=await translateTexts(env,lang,parts.filter((_,i)=>need[i]));
+    let k=0;const out=parts.map((t,i)=>need[i]?(tr[k++]||t):t);
+    return{...alert,title:out[0]||alert.title,message:out[1]||alert.message};
+  }catch(_){return alert}
 }
 // Contraste automático del Radar AI: las acciones que el Radar muestra se contrastan con sus noticias
 // de hoy (Finnhub / Google News / búsqueda web) y la IA externa. Resultado común a todos (no personal),

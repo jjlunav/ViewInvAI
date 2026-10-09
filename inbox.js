@@ -74,7 +74,7 @@
   const sev=String(r.severity||'info');
   return '<button type="button" class="inbox-row'+(r.read_at?'':' unread')+' sev-'+esc(sev)+'" data-inbox-id="'+esc(r.id)+'"'+(r.stock_key?' data-inbox-stock="'+esc(r.stock_key)+'"':'')+'>'+
    '<span class="inbox-icon cat-'+cat+'" aria-hidden="true">'+ICON[cat]+'</span>'+
-   '<span class="inbox-main"><b>'+esc(r.title||'Aviso')+'</b><small>'+esc(r.message||'')+'</small></span>'+
+   '<span class="inbox-main"><b>'+esc(r.title||'Aviso')+'</b><small data-i18n-content>'+esc(r.message||'')+'</small></span>'+
    '<span class="inbox-time">'+esc(time)+(r.read_at?'':'<i class="inbox-dot" aria-label="Sin leer"></i>')+'</span></button>';
  }
  function render(){
