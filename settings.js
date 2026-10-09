@@ -460,7 +460,7 @@ function initSettings(){
    (d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!tu.configured?note('Añade <code>TURSO_API_TOKEN</code> (token de la plataforma Turso) para ver el consumo.'):!tu.ok?err(tu.detail):
     metric('Filas leídas este mes',tu.rowsRead,tu.readLimit)+metric('Filas escritas este mes',tu.rowsWritten,tu.writeLimit)+metric('Almacenamiento',tu.storageBytes,tu.storageLimit,gb));
   const actions=d.usageLoading?note('Cargando consumo…'):d.usageError?err('No se pudo leer el consumo: '+d.usageError):!gh.configured?note('Añade <code>GH_ANALYTICS_TOKEN</code> para ver los minutos del mes.'):!gh.ok?err(gh.detail):
-   metric('Minutos este mes ('+esc(gh.minutesSource)+')',gh.minutes,gh.limit)+note(fmt(gh.runs)+' ejecuciones · '+fmt(gh.failed)+' fallidas')+
+   metric('Minutos este mes ('+esc(gh.minutesSource)+')',gh.minutes,gh.limit)+note(fmt(gh.runs)+(gh.more?'+':'')+' ejecuciones · '+fmt(gh.failed)+' fallidas')+
    ((gh.workflows||[]).length?'<small>'+gh.workflows.map(x=>esc(x.name)+': '+fmt(x.runs)+(x.failed?' ('+fmt(x.failed)+' ✗)':'')).join(' · ')+'</small>':'')+
    (gh.lastApk?'<small>Última APK: '+(gh.lastApk.conclusion==='success'?'✅':gh.lastApk.status!=='completed'?'⏳':'❌')+' '+esc(new Date(gh.lastApk.at).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+' · <a href="'+esc(gh.lastApk.url)+'" target="_blank" rel="noopener noreferrer">descargar ↗</a></small>':'');
   const info=id=>((d.infra||[]).find(x=>x.id===id)||{}).detail||'';
@@ -546,14 +546,16 @@ function initSettings(){
  let progressTimer=0,progressStart=0;
  function progress(text,state='busy'){
   const box=document.getElementById('adminProgress');if(!box)return;
-  const label=box.querySelector('span');clearInterval(progressTimer);
-  box.hidden=false;box.dataset.state=state;
+  // El texto del paso va en la región que leen los lectores de pantalla; los segundos, aparte y ocultos para ellos.
+  const label=box.querySelector('.admin-progress-text'),time=box.querySelector('.admin-progress-time');clearInterval(progressTimer);clearTimeout(progressTimer);
+  box.hidden=false;box.dataset.state=state;label.textContent=text;
   if(state==='busy'){
    if(!progressStart)progressStart=Date.now();
-   const tick=()=>{label.textContent=text+' · '+Math.round((Date.now()-progressStart)/1000)+' s'};tick();progressTimer=setInterval(tick,1000);
+   const tick=()=>{time.textContent=' · '+Math.round((Date.now()-progressStart)/1000)+' s'};tick();progressTimer=setInterval(tick,1000);
   }else{
-   label.textContent=text;progressStart=0;
+   time.textContent='';progressStart=0;
    if(state==='done')progressTimer=setTimeout(()=>{box.hidden=true},3500);
+   else if(state==='warn')progressTimer=setTimeout(()=>{box.hidden=true},9000);
   }
   document.querySelectorAll('[data-admin-refresh],[data-admin-probe]').forEach(b=>{b.disabled=state==='busy';b.setAttribute('aria-busy',String(state==='busy'))});
  }
@@ -570,8 +572,14 @@ function initSettings(){
    await loadUsage();
    stamp();
    const ps=last.providers||[],ok=ps.filter(p=>p.test&&p.test.ok).length,bad=ps.filter(p=>p.test&&!p.test.ok).length;
-   const msg=probe?'Conexiones comprobadas: '+ok+' de '+ps.length+' conectados'+(bad?' · '+bad+' con error':''):'Datos actualizados'+(last.usageError?' (sin consumo: '+last.usageError+')':'');
-   progress('✓ '+msg,'done');if(manual||probe)sayToast(msg,!!bad);
+   // Fallos dentro del consumo (cada lector devuelve su propio error aunque la petición vaya bien).
+   const cf=last.cloudflare||{},gh=last.github||{},app=last.app||{},tu=(last.turso||{}).usage||{};
+   const usageFails=[last.usageError?'consumo':'',cf.configured&&cf.ok===false?'Cloudflare':'',gh.configured&&gh.ok===false?'GitHub':'',tu.configured&&tu.ok===false?'Turso':'',app.error||app.ok===false?'recuentos de la app':''].filter(Boolean);
+   const when=last.probedAt?new Date(last.probedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'';
+   const msg=(probe?'Conexiones comprobadas'+(when?' a las '+when:'')+': '+ok+' de '+ps.length+' conectados'+(bad?' · '+bad+' con error':''):'Datos actualizados')+
+    (usageFails.length?' · sin datos de '+usageFails.join(', '):'');
+   const warn=!!bad||usageFails.length>0;
+   progress((warn?'⚠ ':'✓ ')+msg,warn?'warn':'done');if(manual||probe)sayToast(msg,warn);
   }
   catch(e){
    if(e.status===403||e.status===401){isAdmin=false;progress('','done');try{show('today')}catch(_){}}

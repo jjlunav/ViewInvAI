@@ -1865,3 +1865,6 @@ html body #view-admin .admin-tool[data-admin-probe]{background:linear-gradient(1
 html body #view-admin .admin-tool[data-admin-refresh]{background:transparent!important;color:var(--accent,#5cc8e8)!important;border:1.5px solid rgba(92,200,232,.55)!important;font-weight:600!important}
 html body #view-admin .admin-tool[data-admin-probe]:disabled,html body #view-admin .admin-tool[data-admin-refresh]:disabled{box-shadow:none;filter:saturate(.5)}
 html[data-theme="light"] body #view-admin .admin-tool[data-admin-refresh]{color:#1f6f8a!important;border-color:#8ac6d8!important}
+#view-admin .admin-progress p{margin:0}
+#view-admin .admin-progress[data-state="warn"]{border-color:rgba(255,196,87,.45);background:rgba(255,196,87,.09);color:#ffd27a}
+html[data-theme="light"] #view-admin .admin-progress[data-state="warn"]{color:#8a5a00}

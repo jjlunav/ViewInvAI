@@ -4421,7 +4421,8 @@ async function githubUsage(env){
     // Primera página para saber el total y el resto en paralelo (hasta 12 páginas, 1.200 ejecuciones).
     const first=await get(base+"1");runs.push(...(first.workflow_runs||[]));
     const pages=Math.min(12,Math.ceil((Number(first.total_count)||0)/100));
-    if(pages>1){const rest=await Promise.all(Array.from({length:pages-1},(_,i)=>get(base+(i+2)).catch(()=>({workflow_runs:[]}))));rest.forEach(d=>runs.push(...(d.workflow_runs||[])))}
+    // Si falla cualquier página, el resultado entero se da por fallido (nada parcial ni en caché).
+    if(pages>1){const rest=await Promise.all(Array.from({length:pages-1},(_,i)=>get(base+(i+2))));rest.forEach(d=>runs.push(...(d.workflow_runs||[])))}
     // Estimación por duración de cada ejecución (redondeo al minuto, como factura GitHub).
     const approx=runs.reduce((s,r)=>{const a=Date.parse(r.run_started_at||r.created_at),b=Date.parse(r.updated_at);return s+(Number.isFinite(a)&&Number.isFinite(b)&&b>a?Math.ceil((b-a)/60000):0)},0);
     let billed=null;
@@ -4429,7 +4430,7 @@ async function githubUsage(env){
       billed=(b.usageItems||[]).filter(i=>String(i.product||"").toLowerCase()==="actions"&&/minute/i.test(String(i.unitType||""))).reduce((s,i)=>s+(finiteNumber(i.quantity)||0),0)}catch(_){}
     const byName={};runs.forEach(r=>{const n=String(r.name||"?");const x=byName[n]||(byName[n]={name:n,runs:0,failed:0});x.runs++;if(r.conclusion==="failure")x.failed++});
     const apk=runs.find(r=>/android|apk/i.test(String(r.name||"")));
-    const out={configured:true,ok:true,at:nowIso(),month:monthStart.slice(0,7),runs:Math.max(runs.length,Number(first.total_count)||0),failed:runs.filter(r=>r.conclusion==="failure").length,
+    const out={configured:true,ok:true,at:nowIso(),month:monthStart.slice(0,7),runs:runs.length,more:(Number(first.total_count)||0)>runs.length,failed:runs.filter(r=>r.conclusion==="failure").length,
       minutes:billed!==null?billed:approx,minutesSource:billed!==null?"facturación":"estimado",limit:2000,
       workflows:Object.values(byName).sort((a,b)=>b.runs-a.runs).slice(0,6),
       lastApk:apk?{status:apk.status,conclusion:apk.conclusion,at:apk.updated_at,url:apk.html_url}:null};
@@ -4462,7 +4463,9 @@ async function handleAdmin(request,env,user,json,url){
   const probe=url.searchParams.get("probe")==="1";
   let probes={};
   if(probe&&env.HOT_STATE_KV){try{probes=await env.HOT_STATE_KV.get("admin-probes:v1","json")||{}}catch(_){}}
-  const needProbe=probe&&!probes.at;
+  // «Probar conexiones» prueba de verdad; solo reutiliza una prueba de hace menos de 2 min (doble pulsación).
+  const needProbe=probe&&(!probes.at||Date.now()-Date.parse(probes.at)>2*60000);
+  if(needProbe)probes={};
   const providers=await Promise.all(PROVIDERS.map(async p=>{
     const configured=!p.secret||!!providerKey(env,p);
     let test=probes[p.id]||null;
@@ -6518,7 +6521,8 @@ async function goalWebNews(env,c){
     const gn=await googleNewsRss(env,'"'+name.replace(/\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?)$/i,"")+'"',isin);
     const seen=new Set(results.map(r=>r.url));
     for(const r of gn){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
-    if(gn.length)provider=provider?provider+" + googlenews":"googlenews";
+    const gnSource=gn.length?gn[0].source||"googlenews":"";
+    if(gn.length)provider=provider?provider+" + "+gnSource:gnSource;
   }
   if(results.length<3){
     const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
