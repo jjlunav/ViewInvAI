@@ -1891,6 +1891,9 @@ export function computeSpanishTax(rows,fxFor,year){
     if(!hit){warnings.add("Sin tipo BCE para "+currency+" el "+day);return{eur:null,rate:null}}
     return{eur:amount/hit.rate,rate:hit.rate,rateDate:hit.date};
   };
+  // Cada compra es un lote con identidad; sus títulos se numeran 0..qty y las ventas (FIFO) los consumen
+  // en orden. Así se sabe qué títulos concretos de una recompra quedan en cartera y cuándo se venden.
+  const buysAll=[];
   const sales=[];
   for(const row of ordered){
     const qty=Number(row.quantity),price=Number(row.price),fees=Math.max(0,Number(row.fees)||0);
@@ -1903,14 +1906,16 @@ export function computeSpanishTax(rows,fxFor,year){
     const side=String(row.side||"").toUpperCase();
     if(origin==="position-adjustment"){
       const total=toEur(qty*price,row.currency,day);
-      sec.lots=[{day,qty,costEur:total.eur,broker:row.broker||"",adjusted:true}];
+      const buy={id:buysAll.length,day,qty,disposed:0,assigned:0,blocks:[],replacement:false};buysAll.push(buy);
+      sec.lots=[{day,qty,costEur:total.eur,broker:row.broker||"",adjusted:true,buy}];
       warnings.add(sec.ticker+": posición ajustada a mano; el coste fiscal parte de ese ajuste.");
       continue;
     }
     if(side==="BUY"){
       const gross=toEur(qty*price+fees,row.currency,day);
-      sec.lots.push({day,qty,costEur:gross.eur,broker:row.broker||""});
-      sec.buys.push({day,qty});
+      const buy={id:buysAll.length,day,qty,disposed:0,assigned:0,blocks:[],replacement:true};buysAll.push(buy);
+      sec.lots.push({day,qty,costEur:gross.eur,broker:row.broker||"",buy});
+      sec.buys.push(buy);
       continue;
     }
     if(side!=="SELL")continue;
@@ -1921,33 +1926,58 @@ export function computeSpanishTax(rows,fxFor,year){
       const lot=sec.lots[0],take=Math.min(lot.qty,remaining);
       const part=lot.costEur===null?null:lot.costEur*take/lot.qty;
       if(part===null)costKnown=false;else costEur+=part;
-      used.push({day:lot.day,qty:take,costEur:part,broker:lot.broker});
+      const from=lot.buy.disposed;lot.buy.disposed+=take;
+      used.push({day:lot.day,qty:take,costEur:part,broker:lot.broker,buy:lot.buy,from,to:lot.buy.disposed});
       lot.costEur=lot.costEur===null?null:lot.costEur-(part||0);lot.qty-=take;remaining-=take;
       if(lot.qty<=1e-9)sec.lots.shift();
     }
     if(remaining>1e-9){warnings.add(sec.ticker+": se venden más títulos de los registrados; falta historial de compras.");costKnown=false}
-    sales.push({sec,row,day,qty,proceedsEur:net.eur,costEur:costKnown?costEur:null,used,currency:String(row.currency||"EUR").toUpperCase(),fxRate:net.rate,price,fees});
+    // Títulos de cada compra ya vendidos al cerrar esta venta (incluida): no pueden ser la recompra.
+    const disposedAt=new Map();for(const b of sec.buys)disposedAt.set(b,b.disposed);
+    sales.push({sec,row,day,qty,proceedsEur:net.eur,costEur:costKnown?costEur:null,used,disposedAt,currency:String(row.currency||"EUR").toUpperCase(),fxRate:net.rate,price,fees,blockedQty:0,blockedLoss:0,released:0});
   }
-  // Two-month rule: loss with homogeneous securities bought within ±2 months that are
-  // not the ones being sold.
-  const out=[];
+  // Regla de los dos meses (art. 33.5.f LIRPF): una pérdida no se computa si se compraron valores
+  // homogéneos en los dos meses anteriores o posteriores y esos títulos siguen en cartera; se integra
+  // cuando se venden. Cada título recomprado bloquea como mucho un título vendido con pérdida, y la
+  // parte bloqueada se libera en la venta que transmite esos títulos recomprados.
   for(const sale of sales){
-    if(!sale.day.startsWith(String(year)))continue;
     const gain=sale.proceedsEur!==null&&sale.costEur!==null?sale.proceedsEur-sale.costEur:null;
-    let blockedQty=0;
-    if(gain!==null&&gain<0){
-      const from=addMonths(sale.day,-2),to=addMonths(sale.day,2);
-      const inWindow=d=>d>=from&&d<=to;
-      const bought=sale.sec.buys.filter(b=>inWindow(b.day)).reduce((a,b)=>a+b.qty,0);
-      const soldFromWindow=sale.used.filter(u=>inWindow(u.day)).reduce((a,u)=>a+u.qty,0);
-      blockedQty=Math.max(0,Math.min(sale.qty,bought-soldFromWindow));
+    sale.gain=gain;
+    if(gain===null||gain>=0)continue;
+    const from=addMonths(sale.day,-2),to=addMonths(sale.day,2),perUnit=gain/sale.qty;
+    let need=sale.qty;
+    for(const b of sale.sec.buys){
+      if(need<=1e-9)break;
+      if(b.day<from||b.day>to)continue;
+      const start=Math.max(sale.disposedAt.has(b)?sale.disposedAt.get(b):0,b.assigned);
+      const n=Math.min(need,b.qty-start);
+      if(n<=1e-9)continue;
+      b.blocks.push({from:start,to:start+n,perUnit,sale});b.assigned=start+n;need-=n;
     }
-    const blockedLoss=gain!==null&&gain<0?gain*blockedQty/sale.qty:0;
+    sale.blockedQty=sale.qty-need;sale.blockedLoss=perUnit*sale.blockedQty;
+  }
+  for(const sale of sales){
+    for(const u of sale.used){
+      for(const blk of u.buy.blocks){
+        if(blk.sale===sale)continue;
+        const overlap=Math.min(u.to,blk.to)-Math.max(u.from,blk.from);
+        if(overlap>1e-9)sale.released+=overlap*blk.perUnit;
+      }
+    }
+  }
+  const out=[];
+  const yearEnd=String(year)+"-12-31";
+  let pendingDeferred=0;
+  for(const sale of sales){
+    if(sale.day<=yearEnd)pendingDeferred+=sale.blockedLoss-sale.released;
+    if(!sale.day.startsWith(String(year)))continue;
+    const gain=sale.gain;
+    const computable=gain===null?null:gain-sale.blockedLoss+sale.released;
     out.push({
       ticker:sale.sec.ticker,name:sale.sec.name,isin:sale.sec.isin,date:sale.day,quantity:sale.qty,
       currency:sale.currency,price:sale.price,fees:sale.fees,fxRate:sale.fxRate,
       proceedsEur:sale.proceedsEur,costEur:sale.costEur,gainEur:gain,
-      blockedLossEur:blockedLoss,blockedQty,computableEur:gain===null?null:gain-blockedLoss,
+      blockedLossEur:sale.blockedLoss,blockedQty:sale.blockedQty,releasedLossEur:sale.released,computableEur:computable,
       lots:sale.used.map(u=>({date:u.day,quantity:u.qty,costEur:u.costEur,broker:u.broker})),
       broker:sale.row.broker||""
     });
@@ -1959,6 +1989,10 @@ export function computeSpanishTax(rows,fxFor,year){
     gainsEur:sum(x=>x.computableEur>0?x.computableEur:0),
     lossesEur:sum(x=>x.computableEur<0?x.computableEur:0),
     blockedLossEur:sum(x=>x.blockedLossEur),
+    releasedLossEur:sum(x=>x.releasedLossEur),
+    // Pérdidas aún diferidas al cierre del año: sus títulos recomprados siguen en cartera.
+    pendingDeferredEur:Math.min(0,pendingDeferred),
+    realEur:sum(x=>x.gainEur),
     netEur:sum(x=>x.computableEur),
     sales:out.length,incomplete:out.filter(x=>x.gainEur===null).length
   };

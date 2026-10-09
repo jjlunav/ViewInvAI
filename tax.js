@@ -43,9 +43,10 @@
    '<div class="tax-chips">'+
     '<span class="positive">Ganancias '+eur(t.gainsEur)+'</span>'+
     '<span class="negative">Pérdidas '+eur(t.lossesEur)+'</span>'+
-    (t.blockedLossEur?'<span class="warn" title="Pérdidas que no puedes compensar este año por recompra en dos meses">Diferidas '+eur(t.blockedLossEur)+'</span>':'')+
+    (t.pendingDeferredEur?'<span class="warn" title="Pérdidas por recompra en dos meses cuyos títulos recomprados sigues teniendo: se integrarán cuando los vendas">Diferidas pendientes '+eur(t.pendingDeferredEur)+'</span>':'')+
    '</div>'+
-   '<p>'+t.sales+(t.sales===1?' venta':' ventas')+' · transmisión '+eur(t.proceedsEur,0)+' · adquisición '+eur(t.costEur,0)+'</p>'+
+   '<p>'+t.sales+(t.sales===1?' venta':' ventas')+' · transmisión '+eur(t.proceedsEur,0)+' · adquisición '+eur(t.costEur,0)+(t.realEur!=null?' · resultado real '+signed(t.realEur):'')+'</p>'+
+   (t.blockedLossEur?'<p class="tax-hint">Regla de los dos meses: '+eur(t.blockedLossEur)+' de pérdidas se aplazaron por recomprar en ±2 meses'+(t.releasedLossEur?' y '+eur(t.releasedLossEur)+' se han integrado al vender después esos títulos recomprados':'')+'.'+(t.pendingDeferredEur?' Siguen pendientes '+eur(t.pendingDeferredEur)+' porque aún tienes esos títulos.':' No queda nada pendiente.')+'</p>':'')+
    '<p class="tax-hint">Va en la declaración como ganancias y pérdidas por transmisión de acciones admitidas a negociación. Se compensan con otras del ahorro; un saldo negativo se arrastra cuatro años.</p>'+
    (t.incomplete?'<p class="tax-warn">'+t.incomplete+' venta(s) sin coste completo: importa el historial de compras de ese valor.</p>':'')+
   '</section>';
@@ -88,7 +89,7 @@
   const sales=(r.sales||[]).slice().reverse();
   if(!sales.length)return '<section class="tax-card"><header><small>VENTAS</small><h2>Sin ventas en '+r.year+'</h2></header><p class="tax-hint">Cuando vendas (o importes ventas desde tu bróker) aparecerán aquí con su cálculo FIFO.</p></section>';
   const row=s=>{
-   const blocked=s.blockedLossEur?'<em class="tax-badge">2 meses: '+eur(s.blockedLossEur)+' diferidos</em>':'';
+   const blocked=(s.blockedLossEur?'<em class="tax-badge">2 meses: '+eur(s.blockedLossEur)+' diferidos</em>':'')+(s.releasedLossEur?'<em class="tax-badge">integra '+eur(s.releasedLossEur)+' diferidos</em>':'');
    const lots=(s.lots||[]).map(l=>'<li><span>'+day(l.date)+'</span><span>'+qty(l.quantity)+' uds</span><span>'+eur(l.costEur)+'</span><span>'+esc(l.broker||'')+'</span></li>').join('');
    return '<details class="tax-sale"><summary>'+
      '<div class="tax-sale-main"><b>'+esc(s.ticker)+'</b><small>'+day(s.date)+' · '+qty(s.quantity)+' uds'+(s.broker?' · '+esc(s.broker):'')+'</small>'+blocked+'</div>'+
@@ -98,6 +99,7 @@
      '<p>Transmisión: '+qty(s.quantity)+' × '+Number(s.price).toLocaleString('es-ES',{maximumFractionDigits:4})+' '+esc(s.currency)+' − comisión '+Number(s.fees||0).toLocaleString('es-ES',{maximumFractionDigits:2})+' '+esc(s.currency)+(s.currency!=='EUR'&&s.fxRate?' · BCE 1 € = '+Number(s.fxRate).toLocaleString('es-ES',{maximumFractionDigits:4})+' '+esc(s.currency):'')+'</p>'+
      '<p>Lotes consumidos (FIFO):</p><ul class="tax-lots">'+lots+'</ul>'+
      (s.blockedQty?'<p class="tax-warn">'+qty(s.blockedQty)+' uds recompradas en ±2 meses: la parte proporcional de la pérdida se integrará cuando vendas esos títulos.</p>':'')+
+     (s.releasedLossEur?'<p class="tax-hint">En esta venta se transmiten títulos recomprados: se integran '+eur(s.releasedLossEur)+' de pérdidas que estaban diferidas.</p>':'')+
     '</div></details>';
   };
   return '<section class="tax-card"><header><small>VENTAS '+r.year+'</small><h2>Detalle FIFO</h2><button type="button" class="today-link" data-tax-export>CSV ⇩</button></header>'+sales.map(row).join('')+'</section>';
@@ -175,10 +177,10 @@
  }
 
  function exportCsv(r){
-  const head=['Fecha','Valor','ISIN','Cantidad','Divisa','Precio','Comisión','Tipo BCE','Transmisión EUR','Adquisición EUR','Resultado EUR','Pérdida diferida EUR','Computable EUR','Bróker'];
+  const head=['Fecha','Valor','ISIN','Cantidad','Divisa','Precio','Comisión','Tipo BCE','Transmisión EUR','Adquisición EUR','Resultado EUR','Pérdida diferida EUR','Diferida integrada EUR','Computable EUR','Bróker'];
   const n=v=>v===null||v===undefined?'':String(Math.round(Number(v)*100)/100).replace('.',',');
   const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.computableEur),s.broker].map(q).join(';')));
+  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.releasedLossEur),n(s.computableEur),s.broker].map(q).join(';')));
   const divs=(r.dividends&&r.dividends.items)||[];
   if(divs.length){
    lines.push('','Dividendos','Fecha;Valor;ISIN;País;Divisa;Tipo BCE;Bruto EUR;Retención origen EUR;Deducible EUR;Retención España EUR;Neto EUR');
