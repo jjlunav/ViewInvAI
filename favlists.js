@@ -12,7 +12,10 @@
  let loaded=false;
  function lists(){
   const v=prefs()?prefs().get(SCOPE,{lists:[]}):{lists:[]};
-  return (Array.isArray(v.lists)?v.lists:[]).filter(l=>l&&l.id&&l.name).map(l=>({id:String(l.id),name:String(l.name).slice(0,40),keys:Array.isArray(l.keys)?l.keys.map(String):[]}));
+  const out=(Array.isArray(v.lists)?v.lists:[]).filter(l=>l&&l.id&&l.name).map(l=>({id:String(l.id),name:String(l.name).slice(0,40),keys:Array.isArray(l.keys)?l.keys.map(String):[]}));
+  // Nombres puestos por el usuario: nunca se envían a traducir.
+  try{window.ViewInvAII18n&&window.ViewInvAII18n.protect(out.map(l=>l.name))}catch(_){}
+  return out;
  }
  function save(next){
   if(prefs())prefs().save(SCOPE,{lists:next});

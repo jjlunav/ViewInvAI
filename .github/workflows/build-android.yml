@@ -91,6 +91,7 @@ jobs:
           test -s mobile-shell/decisions.js
           test -s mobile-shell/security.js
           test -s mobile-shell/sync-screen.js
+          test -s mobile-shell/i18n.js
           test -s mobile-shell/favicon-light.svg
           test -s mobile-shell/onboarding.js
           test -s mobile-shell/inbox.js

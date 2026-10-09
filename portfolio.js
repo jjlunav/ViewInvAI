@@ -2271,7 +2271,7 @@ async function loadAll({ syncFavorites = false } = {}) {
       fetchJson("/api/portfolio-goal").then(data=>({goals:data.goals||[],error:"",ok:true})).catch(error=>({goals:null,error:error.message||"No se pudieron cargar los objetivos.",ok:false}))
     ]);
     state.loadError="";
-    state.portfolios=portfolios.portfolios||[];state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];state.brokers=brokerData.brokers||[];
+    state.portfolios=portfolios.portfolios||[];try{window.ViewInvAII18n&&window.ViewInvAII18n.protect(state.portfolios.map(x=>x&&x.name))}catch(_){}state.positions=positions.positions||[];state.watchlist=watchlist.watchlist||[];state.brokers=brokerData.brokers||[];
     if(Array.isArray(goalData.goals))state.goals=Object.fromEntries(goalData.goals.map(goal=>[String(goal.portfolio_id),goal]));
     const goalErrorText=String(goalData.error||"");
     state.goalError=/too many requests/i.test(goalErrorText)?"":goalErrorText;
@@ -2465,7 +2465,7 @@ function transactionRowsHtml(rows, currency) {
         ? formatNumber(tx.quantity, 4) + ' uds. · media ' + formatMoney(tx.price, txCurrency)
         : formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, txCurrency)) +
       '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, txCurrency)) : '') + '</small></div>' +
-      '<div class="transaction-total"><strong>' + (isAdjustment ? 'Saldo corregido' : formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency)) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · ' + esc(tx.notes) : '') + '</small></div>' +
+      '<div class="transaction-total"><strong>' + (isAdjustment ? 'Saldo corregido' : formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency)) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · <span translate="no">' + esc(tx.notes) + '</span>' : '') + '</small></div>' +
       (['manual','position-adjustment'].includes(origin) ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
     '</div>';
   }).join('');
