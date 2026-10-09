@@ -436,6 +436,21 @@
           text:'Comprar '+units+' × '+label(c)+' (≈ '+money(ticket)+') · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
+    // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
+    const whyNoBuy=[];
+    if(!actions.some(a=>a.type==='BUY')){
+      const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
+      const cheapest=Math.min(Infinity,...mappedCands.map(c=>n(c.askEur)??n(c.priceEur)).filter(v=>v>0));
+      if(pc.status==='reached')whyNoBuy.push({code:'reached',text:'Objetivo alcanzado: el plan no fuerza compras.'});
+      else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
+      else if(pool<=1||(Number.isFinite(cheapest)&&pool<cheapest))whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(Math.max(0,pool))+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
+      else if(freeSlots<=0)whyNoBuy.push({code:'full',text:'Cartera completa: ya tienes '+maxPositions+' posiciones, el máximo que fijaste.'});
+      else if(!(input.candidates||[]).length)whyNoBuy.push({code:'nocands',text:'El Radar no tiene candidatas para este mercado en este momento.'});
+      else if(!mappedCands.length)whyNoBuy.push({code:'filtered',text:'Las '+(input.candidates||[]).length+' candidatas del Radar no pasan el primer filtro: ya las tienes, la IA las contradice o su puntuación o calidad no llega ('+minQuality+').'});
+      else if(!rankedCands.length)whyNoBuy.push({code:'weak',text:'Ninguna candidata tiene ahora una oportunidad suficiente (mínimo '+b.minBurst+'/100 con perfil '+b.label+').'});
+      else if(!cands.length)whyNoBuy.push({code:'timing',text:shortlist.some(stale)?'La mejor candidata no tiene cotización en vivo ahora mismo (mercado cerrado o antes de la apertura).':'La mejor candidata no tiene un buen punto de entrada ahora: queda en espera.'});
+      else whyNoBuy.push({code:'size',text:'El tamaño permitido o las comisiones no dan para una compra que compense.'});
+    }
     // Cada propuesta lleva la etiqueta (ticker del mercado + nombre) de la acción a la que se refiere.
     const labels=new Map([...positions,...(input.candidates||[])].map(x=>[String(x.key),label(x)]));
     for(const x of [...actions,...waits,...holds])x.label=labels.get(String(x.key))||label(x);
@@ -444,7 +459,7 @@
       ...waits,
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
-    return{version:VERSION,actions,waits,holds,decisions,notes,pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 

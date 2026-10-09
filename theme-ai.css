@@ -1868,3 +1868,8 @@ html[data-theme="light"] body #view-admin .admin-tool[data-admin-refresh]{color:
 #view-admin .admin-progress p{margin:0}
 #view-admin .admin-progress[data-state="warn"]{border-color:rgba(255,196,87,.45);background:rgba(255,196,87,.09);color:#ffd27a}
 html[data-theme="light"] #view-admin .admin-progress[data-state="warn"]{color:#8a5a00}
+/* Objetivo · por qué no hay compras */
+.goal2-why{margin:8px 0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,196,87,.4);background:rgba(255,196,87,.08);font-size:13px;line-height:1.4}
+.goal2-why b{color:#ffd27a;margin-right:4px}
+.goal2-why .btn{margin-left:6px;vertical-align:middle}
+html[data-theme="light"] .goal2-why b{color:#8a5a00}

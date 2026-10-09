@@ -70,4 +70,13 @@ const input=candidates=>({
   assert.ok(idea>plain,"AI analyst idea with news must raise the early score");
 }
 
+// Sin compras: el plan explica el motivo (efectivo a cero, sin candidatas).
+{
+  const cfg={target:20000,deadline:"2027-06-01",startValue:10000,startDate:"2026-01-01",risk:"aggressive",maxPositions:5};
+  let p=G.plan({config:cfg,positions:[],candidates:[{key:"X",ticker:"X",tier:"high",score:80,quality:80,askEur:10,priceEur:10}],cashEur:0,nowMs:Date.now()});
+  assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cash","no cash must be reported");
+  p=G.plan({config:cfg,positions:[],candidates:[],cashEur:5000,nowMs:Date.now()});
+  assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"nocands","no candidates must be reported");
+}
+
 console.log("Goal engine tests: OK");
