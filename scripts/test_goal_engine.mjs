@@ -79,4 +79,11 @@ const input=candidates=>({
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"nocands","no candidates must be reported");
 }
 
+// Cartera pequeña con efectivo: el dinero no se reserva para huecos que ninguna candidata va a llenar.
+{
+  const pricey={...base,key:"LSX:FJE",ticker:"FJE",priceEur:58,askEur:58,technicalPrice:58,ema20:56.8,ema50:55};
+  const p=G.plan({...input([pricey]),config:{...input([]).config,target:500,startValue:197},cashEur:197,peakValueEur:197});
+  assert.equal(p.actions.filter(x=>x.type==="BUY").length,1,"small account must still buy one share it can afford");
+}
+
 console.log("Goal engine tests: OK");

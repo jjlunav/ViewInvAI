@@ -414,20 +414,33 @@
       let slots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       let specCount=remaining.filter(p=>p.speculative).length;
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
-      for(const c of cands){
+      for(let ci=0;ci<cands.length;ci++){
+        const c=cands[ci];
         if(slots<=0||pool<=0)break;
         if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
-        const share=Math.min(pool/slots*adj.size,valueEur*maxW,pool,specCapacity);
+        // El efectivo se reparte entre los huecos que de verdad se pueden llenar (no hay más candidatas que huecos).
+        const fillable=Math.max(1,Math.min(slots,cands.length-ci));
+        const hardCap=Math.min(valueEur*maxW,pool,specCapacity);
+        const share=Math.min(pool/fillable*adj.size,hardCap);
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
-        const units=Math.floor(budget/ask);
-        if(units<1){notes.push(label(c)+': no alcanza para una acción entera con el tamaño permitido.');continue}
+        let units=Math.floor(budget/ask);
+        // Cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso máximo y el
+        // efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo por operación del perfil.
+        if(units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
+        if(units<1){
+          const why=ask+feeB>pool?'el efectivo ('+money(pool)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
+          notes.push(label(c)+': una acción cuesta '+money(ask)+' y supera '+why+'.');continue
+        }
         const ticket=units*ask;
-        if((feeB+feeS)/ticket*100>b.maxRoundTripFeePct){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
+        // Comisiones: dentro del límite del perfil, o hasta el doble si se comen menos de una cuarta parte de lo previsto
+        // (con 1 € por orden, en carteras pequeñas casi ningún ticket bajaría del límite fijo).
+        const feePct=(feeB+feeS)/ticket*100,expected=ticket*n(c.targetPct)/100;
+        if(feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,priceEur:ask,ticketEur:r2(ticket),
