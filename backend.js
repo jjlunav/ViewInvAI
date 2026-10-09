@@ -434,6 +434,7 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
   return true;
 }
 
+const TRANSLATABLE_ALERTS=new Set(["stock-news","stock-event","catalyst-eve"]);
 let deviceLangSchemaReady=false;
 async function ensureDeviceLangSchema(env){
   if(deviceLangSchemaReady)return;
@@ -460,10 +461,15 @@ async function dispatchPushAlert(env, alert, target) {
   const devices = rows.results || [];
   if (!devices.length) return { configured: true, sent: 0 };
 
-  // Cada dispositivo recibe el aviso en su idioma (una traducción por idioma, con caché común).
+  // Cada dispositivo recibe el aviso en su idioma (una traducción por idioma, con caché común). Solo se
+  // traducen los avisos de noticias y eventos (texto público); los de carteras u objetivos llevan nombres
+  // que escribe el usuario y no salen hacia ninguna IA. Tope de 5 s: si tarda, sale el texto original.
   const byLang = new Map();
-  for (const d of devices) { const l = String(d.lang || "es").toLowerCase(); if (!byLang.has(l)) byLang.set(l, null); }
-  for (const l of byLang.keys()) byLang.set(l, await translateAlertFor(env, l, alert));
+  const translatable = TRANSLATABLE_ALERTS.has(String(alert.alert_type || ""));
+  for (const d of devices) { const l = String(d.lang || "es").toLowerCase(); if (!byLang.has(l)) byLang.set(l, alert); }
+  if (translatable) await Promise.all([...byLang.keys()].map(async l => {
+    byLang.set(l, await Promise.race([translateAlertFor(env, l, alert), new Promise(r => setTimeout(() => r(alert), 5000))]));
+  }));
   const settled = await Promise.allSettled(devices.map(device => sendFcmToDevice(env, auth, device, byLang.get(String(device.lang || "es").toLowerCase()) || alert, target)));
   const sent = settled.filter(x => x.status === "fulfilled").length;
   if (sent > 0) {
@@ -3938,8 +3944,8 @@ async function maybeCreateNewsAlerts(env, target, stock, events, snapshotId) {
     // Se guarda «titular · fuente»: el duplicado se busca por el mensaje guardado y por el titular solo
     // (antes solo por el titular, nunca coincidía y la misma noticia se avisaba en cada pasada).
     const duplicate = await env.DB.prepare(
-      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND (message=? OR message=? OR message LIKE ?) LIMIT 1"
-    ).bind(target.user_id, target.stock_key, body, message, message.replace(/[%_]/g, "") + " · %").first();
+      "SELECT id FROM alert_events WHERE user_id=? AND stock_key=? AND alert_type='stock-news' AND (message=? OR message=? OR message LIKE ? ESCAPE '\\') LIMIT 1"
+    ).bind(target.user_id, target.stock_key, body, message, message.replace(/[\\%_]/g, c => "\\" + c) + " · %").first();
     if (duplicate) continue;
 
     const impact = finiteNumber(event.impactScore) ?? 0;
@@ -5510,6 +5516,7 @@ async function handleDevices(request, env, user, json, parts) {
     const appVersion = trimText(body.appVersion, 40);
     const lang = /^[a-z]{2,3}$/.test(String(body.lang || "")) ? String(body.lang) : "es";
     if (!token) return json({ error: "pushToken is required" }, 400);
+    await ensureDeviceLangSchema(env);
     const existing = await env.DB.prepare("SELECT id FROM devices WHERE push_token=?").bind(token).first();
     const deviceId = existing && existing.id ? existing.id : uid("dev_");
     const now = nowIso();
