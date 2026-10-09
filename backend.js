@@ -4119,6 +4119,7 @@ const PROVIDERS=[
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
   {id:"googlenews",label:"Google News (RSS)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; noticias de cualquier país e idioma",dashboard:"https://news.google.com/"},
+  {id:"bingnews",label:"Bing News (RSS, respaldo)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; entra si Google News falla",dashboard:"https://www.bing.com/news"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
   {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
@@ -4154,9 +4155,15 @@ async function openRouterFreeModels(key){
     openRouterFreeMemo={at:Date.now(),models:ids.sort((a,b)=>rank(a)-rank(b)).slice(0,4)}}catch(_){}
   return openRouterFreeMemo.models;
 }
+// Modelos que «piensan» antes de contestar (gpt-oss, qwen3, deepseek-r1…): con poco margen de tokens
+// gastan todo en razonar y devuelven la respuesta vacía. Se les pide razonar poco y se da más margen.
+const REASONING_MODEL=/gpt-oss|qwen3|deepseek-r1|reason|thinking|magistral/i;
 async function openAiCompatible(id,url,key,model,prompt,maxTokens){
+  const reasoning=REASONING_MODEL.test(model),body={model,messages:[{role:"user",content:prompt}],max_tokens:reasoning?maxTokens+1200:maxTokens,temperature:0.2};
+  if(reasoning&&(id==="groq"||id==="ollama"||id==="sambanova"))body.reasoning_effort="low";
+  if(id==="openrouter")body.reasoning={effort:"low",exclude:true};
   const r=await providerFetch(id,url,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
-    body:JSON.stringify({model,messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2})},45000);
+    body:JSON.stringify(body)},45000);
   if(!r.ok){const e=new Error(id+" HTTP "+r.status);e.status=r.status;throw e}
   const d=await r.json();const text=String(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"");
   if(!text)throw new Error(id+": respuesta vacía");
@@ -4191,6 +4198,29 @@ async function orderProviders(env,ids,task){
   return ids.map(id=>({id,score:providerScore(id,task,stats)})).sort((a,b)=>b.score-a.score).map(x=>x.id);
 }
 // Modelos de cada servicio según la tarea: los grandes para decidir, los rápidos para cribar.
+// Catálogo real de modelos de cada servicio (se consulta cada 12 h): si retiran un modelo (HTTP 404/410)
+// se descarta y se usa otro que siga existiendo, sin tener que tocar el código.
+const MODEL_CATALOG_URL={groq:"https://api.groq.com/openai/v1/models",nvidia:"https://integrate.api.nvidia.com/v1/models",
+  sambanova:"https://api.sambanova.ai/v1/models",ollama:"https://ollama.com/v1/models",cohere:"https://api.cohere.ai/compatibility/v1/models"};
+const providerModelMemo=new Map(),goneModels=new Map();
+const NON_CHAT_MODEL=/embed|whisper|guard|tts|vision|rerank|audio|ocr|safety|moderation|retriev|parse|reward|clip|speech|transcri|image|vl\b|-vl-|nemotron-.*-(?:nano|mini)-.*instruct-v|playai|prompt-guard|compound/i;
+const MODEL_RANK=m=>/gpt-oss-120b|llama-3\.3-70b|deepseek-v3|llama-4-maverick|kimi-k2|qwen3-235b|glm-4/i.test(m)?0:/qwen3|llama-4|gpt-oss|mistral-large|command-a/i.test(m)?1:2;
+async function providerModels(id,key){
+  const url=MODEL_CATALOG_URL[id];if(!url||!key)return null;
+  const memo=providerModelMemo.get(id);if(memo&&Date.now()-memo.at<12*3600e3)return memo.ids;
+  try{const r=await providerFetch(id,url,{headers:{"Authorization":"Bearer "+key}},10000);if(!r.ok)throw new Error("HTTP "+r.status);
+    const d=await r.json();const ids=new Set((d.data||d.models||[]).map(m=>String(m.id||m.name||"")).filter(Boolean));
+    providerModelMemo.set(id,{at:Date.now(),ids});return ids}
+  catch(_){providerModelMemo.set(id,{at:Date.now()-11*3600e3,ids:null});return null}
+}
+async function pickModels(id,key,preferred){
+  const now=Date.now(),alive=m=>!((goneModels.get(id+":"+m)||0)>now);
+  const list=(preferred||[]).filter(alive),cat=await providerModels(id,key);
+  if(!cat||!cat.size)return list;
+  const ok=list.filter(m=>cat.has(m));
+  if(ok.length)return ok;
+  return [...cat].filter(m=>alive(m)&&!NON_CHAT_MODEL.test(m)).sort((a,b)=>MODEL_RANK(a)-MODEL_RANK(b)).slice(0,3);
+}
 const TASK_MODELS={
   groq:{decision:["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"],light:["openai/gpt-oss-20b","qwen/qwen3-32b","openai/gpt-oss-120b"]},
   nvidia:{decision:["deepseek-ai/deepseek-v3.1","openai/gpt-oss-120b","meta/llama-3.3-70b-instruct"],light:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b"]},
@@ -4205,15 +4235,19 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
       const key=providerKey(env,PROVIDERS.find(p=>p.id==="gemini")),chain=await aiGeminiModelChain(key,"");
       let models=chain.models||[];
       if(t==="light")models=[...models.filter(m=>/lite/i.test(m)),...models.filter(m=>!/lite/i.test(m))];
+      let lastErr="";
       for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
           body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
-        if(!r.ok){tried.push("gemini:"+model+":"+r.status);providerFail("gemini",r.status);await recordProviderUse(env,"gemini",false,"HTTP "+r.status);if(r.status===429||r.status>=500)continue;break}
+        // Un 503 de Google es saturación pasajera de ese modelo: se prueba el siguiente sin penalizar todavía.
+        if(!r.ok){tried.push("gemini:"+model+":"+r.status);lastErr="HTTP "+r.status+" ("+model+")";if(r.status!==503)providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
         const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
         if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
-        await recordProviderUse(env,"gemini",false,"respuesta vacía");
+        lastErr="respuesta vacía ("+model+")";
       }
+      // Un solo fallo por consulta (no uno por cada modelo probado).
+      if(lastErr){if(/^HTTP 503/.test(lastErr))providerFail("gemini",503);await recordProviderUse(env,"gemini",false,lastErr)}
       return null;
     },
     workersai:async()=>{
@@ -4225,13 +4259,16 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
   const compatible=async(id,url,key,models)=>{
     for(const model of models){
       try{const text=await openAiCompatible(id,url,key,model,prompt,maxTokens);await recordProviderUse(env,id,true);return{text,provider:id,model}}
-      catch(error){tried.push(id+":"+model+":"+(error.status||error.message));providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
+      catch(error){tried.push(id+":"+model+":"+(error.status||error.message));
+        // Modelo retirado o inexistente: fuera durante un día (se elige otro del catálogo) y sin penalizar al servicio.
+        if(error.status===404||error.status===410){goneModels.set(id+":"+model,Date.now()+24*3600e3);providerModelMemo.delete(id);continue}
+        providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
     }
     return null;
   };
-  attempts.groq=()=>compatible("groq","https://api.groq.com/openai/v1/chat/completions",providerKey(env,PROVIDERS.find(p=>p.id==="groq")),fromList(TASK_MODELS.groq[t]));
+  attempts.groq=async()=>{const key=providerKey(env,PROVIDERS.find(p=>p.id==="groq"));return compatible("groq","https://api.groq.com/openai/v1/chat/completions",key,await pickModels("groq",key,TASK_MODELS.groq[t]))};
   attempts.openrouter=async()=>{const key=providerKey(env,PROVIDERS.find(p=>p.id==="openrouter"));return compatible("openrouter","https://openrouter.ai/api/v1/chat/completions",key,await openRouterFreeModels(key))};
-  for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA"))attempts[p.id]=()=>compatible(p.id,p.base+"/chat/completions",providerKey(env,p),(TASK_MODELS[p.id]&&TASK_MODELS[p.id][t])||p.models);
+  for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA"))attempts[p.id]=async()=>{const key=providerKey(env,p);return compatible(p.id,p.base+"/chat/completions",key,await pickModels(p.id,key,(TASK_MODELS[p.id]&&TASK_MODELS[p.id][t])||p.models))};
   const ready=Object.keys(attempts).filter(id=>id==="workersai"?!!(env.AI&&typeof env.AI.run==="function"):providerReady(env,id));
   const order=await orderProviders(env,ready.filter(id=>id!=="workersai"),t);
   // Workers AI queda siempre como último recurso: no tiene clave ni cupo que repartir, pero es el más flojo.
@@ -4304,7 +4341,8 @@ async function providerProbe(env,p){
       if(r.ok){const d=await r.json().catch(()=>({}));const k=d.key||d.account||d;const used=finiteNumber(k.usage??k.plan_usage),limit=finiteNumber(k.limit??k.plan_limit);
         return{ok:true,status:200,detail:used!==null?"créditos usados "+used+(limit!==null?" de "+limit:""):"conectado",used,limit}}}
     else if(p.id==="exa"){r=await res("https://api.exa.ai/search",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":key},body:JSON.stringify({query:"FDA",numResults:1})})}
-    else if(p.id==="googlenews"){r=await res("https://news.google.com/rss/search?q=FDA&hl=en-US&gl=US&ceid=US:en")}
+    else if(p.id==="googlenews"){r=await res("https://news.google.com/rss/search?q=FDA&hl=en-US&gl=US&ceid=US:en",{headers:{...RSS_HEADERS,"Accept-Language":"en-US,en;q=0.9"}})}
+    else if(p.id==="bingnews"){r=await res("https://www.bing.com/news/search?format=rss&q=FDA&setlang=en",{headers:RSS_HEADERS})}
     else if(p.id==="serper"){r=await res("https://google.serper.dev/search",{method:"POST",headers:{"Content-Type":"application/json","X-API-KEY":key},body:JSON.stringify({q:"FDA",num:1})})}
     else if(p.id==="firecrawl"){r=await res("https://api.firecrawl.dev/v1/team/credit-usage",{headers:{"Authorization":"Bearer "+key}})}
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
@@ -4375,13 +4413,15 @@ async function githubUsage(env){
   const get=async path=>{const r=await providerFetch("github","https://api.github.com"+path,{headers},12000);const d=await r.json().catch(()=>({}));
     if(!r.ok){const e=new Error(r.status===401?"token rechazado":r.status===403||r.status===404?"sin permiso":"HTTP "+r.status);e.status=r.status;throw e}return d};
   const now=new Date(),y=now.getUTCFullYear(),m=now.getUTCMonth()+1,monthStart=y+"-"+String(m).padStart(2,"0")+"-01";
+  // Se guarda 30 min: GitHub tarda en devolver cientos de ejecuciones y el panel debe abrir rápido.
+  const cacheKey="gh-usage:"+monthStart;
+  if(env.HOT_STATE_KV){try{const c=JSON.parse(await env.HOT_STATE_KV.get(cacheKey)||"null");if(c&&c.ok&&Date.now()-Date.parse(c.at)<30*60000)return c}catch(_){}}
   try{
-    const runs=[];
-    // Hasta 12 páginas (1.200 ejecuciones): por encima del volumen mensual esperado y dentro del límite de subpeticiones.
-    for(let page=1;page<=12;page++){
-      const d=await get("/repos/"+GH_REPO+"/actions/runs?per_page=100&page="+page+"&created=%3E%3D"+monthStart);
-      runs.push(...(d.workflow_runs||[]));if(!d.workflow_runs||d.workflow_runs.length<100)break;
-    }
+    const runs=[],base="/repos/"+GH_REPO+"/actions/runs?per_page=100&exclude_pull_requests=true&created=%3E%3D"+monthStart+"&page=";
+    // Primera página para saber el total y el resto en paralelo (hasta 12 páginas, 1.200 ejecuciones).
+    const first=await get(base+"1");runs.push(...(first.workflow_runs||[]));
+    const pages=Math.min(12,Math.ceil((Number(first.total_count)||0)/100));
+    if(pages>1){const rest=await Promise.all(Array.from({length:pages-1},(_,i)=>get(base+(i+2)).catch(()=>({workflow_runs:[]}))));rest.forEach(d=>runs.push(...(d.workflow_runs||[])))}
     // Estimación por duración de cada ejecución (redondeo al minuto, como factura GitHub).
     const approx=runs.reduce((s,r)=>{const a=Date.parse(r.run_started_at||r.created_at),b=Date.parse(r.updated_at);return s+(Number.isFinite(a)&&Number.isFinite(b)&&b>a?Math.ceil((b-a)/60000):0)},0);
     let billed=null;
@@ -4389,10 +4429,12 @@ async function githubUsage(env){
       billed=(b.usageItems||[]).filter(i=>String(i.product||"").toLowerCase()==="actions"&&/minute/i.test(String(i.unitType||""))).reduce((s,i)=>s+(finiteNumber(i.quantity)||0),0)}catch(_){}
     const byName={};runs.forEach(r=>{const n=String(r.name||"?");const x=byName[n]||(byName[n]={name:n,runs:0,failed:0});x.runs++;if(r.conclusion==="failure")x.failed++});
     const apk=runs.find(r=>/android|apk/i.test(String(r.name||"")));
-    return{configured:true,ok:true,month:monthStart.slice(0,7),runs:runs.length,failed:runs.filter(r=>r.conclusion==="failure").length,
+    const out={configured:true,ok:true,at:nowIso(),month:monthStart.slice(0,7),runs:Math.max(runs.length,Number(first.total_count)||0),failed:runs.filter(r=>r.conclusion==="failure").length,
       minutes:billed!==null?billed:approx,minutesSource:billed!==null?"facturación":"estimado",limit:2000,
       workflows:Object.values(byName).sort((a,b)=>b.runs-a.runs).slice(0,6),
       lastApk:apk?{status:apk.status,conclusion:apk.conclusion,at:apk.updated_at,url:apk.html_url}:null};
+    if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.put(cacheKey,JSON.stringify(out),{expirationTtl:3600})}catch(_){}}
+    return out;
   }catch(error){return{configured:true,ok:false,detail:trimText(String(error&&error.message||error),160)}}
 }
 // Datos internos de la app (solo recuentos, nada personal sale del servidor).
@@ -6421,20 +6463,40 @@ async function finnhubCompanyNews(env,ticker){
 // Google News por RSS: sin clave, cualquier empresa y país. El idioma sale del país del ISIN.
 const ISIN_LANG={DE:["de","DE"],AT:["de","AT"],CH:["de","CH"],ES:["es","ES"],FR:["fr","FR"],BE:["fr","BE"],IT:["it","IT"],NL:["nl","NL"],
   NO:["no","NO"],SE:["sv","SE"],DK:["da","DK"],FI:["fi","FI"],PT:["pt-PT","PT"],GB:["en-GB","GB"],IE:["en-GB","IE"],CA:["en-CA","CA"],AU:["en-AU","AU"],JP:["ja","JP"]};
+// Noticias por RSS, gratis y sin clave: Google News y, si falla o no trae nada, Bing News.
+const RSS_HEADERS={"Accept":"application/rss+xml, application/xml;q=0.9, */*;q=0.8","User-Agent":"Mozilla/5.0 (compatible; ViewInvAI/1.0; +https://viewinvai.sonarlab.workers.dev)"};
+function rssTag(item,name){const m=item.match(new RegExp("<"+name+"[^>]*>([\\s\\S]*?)</"+name+">"));if(!m)return"";
+  // Primero se decodifican las entidades (la descripción trae HTML escapado) y después se quitan las etiquetas.
+  return m[1].replace(/<!\[CDATA\[|\]\]>/g,"").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,"&").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
+function rssItems(xml,source,linkOf){
+  return (String(xml||"").match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,6).map(item=>{
+    const pub=Date.parse(rssTag(item,"pubDate")),src=rssTag(item,"source")||rssTag(item,"News:Source");
+    const desc=rssTag(item,"description");
+    return{title:trimText(rssTag(item,"title"),160),url:linkOf(rssTag(item,"link")),content:trimText((desc&&source==="bingnews"?desc+" ":"")+(src?"Fuente: "+src:""),420),
+      date:Number.isFinite(pub)?new Date(pub).toISOString().slice(0,10):"",source};
+  }).filter(x=>x.title&&/^https:\/\//.test(x.url));
+}
+// Bing envuelve el enlace en una redirección: se saca la URL real del parámetro «url».
+function bingRealUrl(link){try{const u=new URL(link);const real=u.searchParams.get("url");return real&&/^https:\/\//.test(real)?real:link}catch(_){return link}}
+async function bingNewsRss(env,query,lang){
+  const url="https://www.bing.com/news/search?format=rss&q="+encodeURIComponent(query)+"&setlang="+encodeURIComponent(lang||"en")+"&qft=interval%3d%228%22";
+  try{
+    const r=await providerFetch("bingnews",url,{headers:RSS_HEADERS},10000);
+    if(!r.ok){await recordProviderUse(env,"bingnews",false,"HTTP "+r.status);return[]}
+    const items=rssItems(await r.text(),"bingnews",bingRealUrl);await recordProviderUse(env,"bingnews",true);return items;
+  }catch(error){await recordProviderUse(env,"bingnews",false,String(error&&error.message||error));return[]}
+}
 async function googleNewsRss(env,query,isin){
   const [hl,gl]=ISIN_LANG[String(isin||"").slice(0,2).toUpperCase()]||["en-US","US"];
   const lang=hl.split("-")[0];
   const url="https://news.google.com/rss/search?q="+encodeURIComponent(query+" when:7d")+"&hl="+hl+"&gl="+gl+"&ceid="+gl+":"+lang;
+  let items=[];
   try{
-    const r=await providerFetch("googlenews",url,{headers:{"Accept":"application/rss+xml"}},10000);
-    if(!r.ok){await recordProviderUse(env,"googlenews",false,"HTTP "+r.status);return[]}
-    const xml=await r.text();await recordProviderUse(env,"googlenews",true);
-    const tag=(item,name)=>{const m=item.match(new RegExp("<"+name+"[^>]*>([\\s\\S]*?)</"+name+">"));return m?m[1].replace(/<!\[CDATA\[|\]\]>/g,"").replace(/<[^>]+>/g," ").replace(/&amp;/g,"&").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim():""};
-    return (xml.match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,6).map(item=>{
-      const pub=Date.parse(tag(item,"pubDate"));
-      return{title:trimText(tag(item,"title"),160),url:tag(item,"link"),content:trimText(tag(item,"source")?"Fuente: "+tag(item,"source"):"",420),date:Number.isFinite(pub)?new Date(pub).toISOString().slice(0,10):"",source:"googlenews"};
-    }).filter(x=>x.title&&/^https:\/\//.test(x.url));
-  }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error));return[]}
+    const r=await providerFetch("googlenews",url,{headers:{...RSS_HEADERS,"Accept-Language":hl+","+lang+";q=0.9"}},10000);
+    if(!r.ok)await recordProviderUse(env,"googlenews",false,"HTTP "+r.status);
+    else{items=rssItems(await r.text(),"googlenews",x=>x);await recordProviderUse(env,"googlenews",true)}
+  }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error))}
+  return items.length?items:bingNewsRss(env,query,lang);
 }
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);

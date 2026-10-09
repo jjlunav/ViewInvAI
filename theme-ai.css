@@ -1763,8 +1763,36 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 #view-admin .admin-route b{font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line,#24404b);background:rgba(127,127,127,.08)}
 #view-admin .admin-route b:first-of-type{border-color:color-mix(in srgb,var(--accent,#5cc8e8) 55%,transparent);color:var(--accent,#5cc8e8)}
 #view-admin .admin-route small{opacity:.7;font-weight:400}
-#view-admin .settings-nav-item{align-items:center}
-#view-admin .settings-nav-item b{grid-row:1/3;align-self:center}
+/* Administración · menú de secciones: icono + nombre en línea (sin solapes). En móvil, fila de pastillas. */
+html body #view-admin .settings-nav-item{display:flex!important;align-items:center!important;gap:9px!important;grid-template-columns:none!important;grid-template-rows:none!important}
+html body #view-admin .settings-nav-item>span{grid-row:auto!important;flex:0 0 auto;margin:0!important}
+html body #view-admin .settings-nav-item b{grid-row:auto!important;white-space:nowrap;line-height:1.2}
+@media (max-width:820px){
+ html body #view-admin .settings-nav{display:flex!important;flex-wrap:nowrap!important;gap:6px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;padding:4px!important;border-radius:999px!important;margin:0 0 10px!important}
+ html body #view-admin .settings-nav::-webkit-scrollbar{display:none}
+ html body #view-admin .settings-nav-item{flex:0 0 auto!important;min-width:0!important;min-height:36px!important;padding:5px 14px 5px 5px!important;border-radius:999px!important;gap:7px!important}
+ html body #view-admin .settings-nav-item>span{width:26px!important;height:26px!important;border-radius:50%!important;font-size:13px!important}
+ html body #view-admin .settings-nav-item b{font-size:12px!important}
+}
+/* Barra de acciones: hora de la última lectura a la izquierda, botones compactos a la derecha. */
+html body #view-admin .admin-toolbar{display:flex!important;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 10px}
+html body #view-admin .admin-updated{flex:1 1 auto;min-width:0;font-size:12px;color:var(--muted,#8ea0ab);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #view-admin .admin-tool{flex:0 0 auto!important;width:auto!important;min-height:34px!important;padding:0 13px!important;border-radius:999px!important;display:inline-flex!important;align-items:center;gap:6px;font-size:12px!important}
+html body #view-admin .admin-tool>span{font-size:14px;line-height:1}
+html body #view-admin .admin-tool:disabled{opacity:.55;cursor:progress}
+/* Globo de progreso */
+#view-admin .admin-progress{flex:1 1 100%;display:grid;gap:6px;padding:9px 12px;border-radius:12px;border:1px solid rgba(92,200,232,.28);background:rgba(92,200,232,.08);font-size:12.5px;color:var(--text,#dbe7eb)}
+#view-admin .admin-progress[hidden]{display:none}
+#view-admin .admin-progress-bar{height:3px;border-radius:3px;background:rgba(127,127,127,.18);overflow:hidden}
+#view-admin .admin-progress-bar i{display:block;height:100%;width:35%;border-radius:3px;background:var(--accent,#5cc8e8);animation:admin-progress 1.2s ease-in-out infinite}
+#view-admin .admin-progress[data-state="done"]{border-color:rgba(77,227,177,.35);background:rgba(77,227,177,.09);color:#8af0cf}
+#view-admin .admin-progress[data-state="error"]{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.09);color:#ff9b9b}
+#view-admin .admin-progress:not([data-state="busy"]) .admin-progress-bar{display:none}
+@keyframes admin-progress{0%{transform:translateX(-110%)}100%{transform:translateX(310%)}}
+@media (prefers-reduced-motion:reduce){#view-admin .admin-progress-bar i{animation:none;width:100%;opacity:.5}}
+html[data-theme="light"] #view-admin .admin-progress{color:#17303b}
+html[data-theme="light"] #view-admin .admin-progress[data-state="done"]{color:#1d7a5c}
+html[data-theme="light"] #view-admin .admin-progress[data-state="error"]{color:#b23b3b}
 #view-admin a,#view-admin a:visited{color:var(--accent,#5cc8e8);text-decoration:none}
 #view-admin a:hover{text-decoration:underline}
 #view-admin .admin-card-head{align-items:center}
@@ -1817,3 +1845,9 @@ html:root:root body.stock-detail-open:not(#tb-x) #accountArea>#globalHelpButton{
 .language-setting-field .select:disabled{opacity:.6}
 .language-auto-row{align-items:center;gap:12px}
 .language-auto-row>span{min-width:0}
+@media (max-width:820px){
+ html body #view-admin .admin-tool{flex:1 1 0!important;justify-content:center}
+ html body #view-admin .admin-updated{order:3;flex:1 1 100%;font-size:11px;text-align:center}
+ html body #view-admin .admin-updated:empty{display:none}
+ html body #view-admin .admin-progress{order:2}
+}
