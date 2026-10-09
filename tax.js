@@ -100,6 +100,7 @@
      '<p>Lotes consumidos (FIFO):</p><ul class="tax-lots">'+lots+'</ul>'+
      (s.blockedQty?'<p class="tax-warn">'+qty(s.blockedQty)+' uds recompradas en ±2 meses: la parte proporcional de la pérdida se integrará cuando vendas esos títulos.</p>':'')+
      (s.releasedLossEur?'<p class="tax-hint">En esta venta se transmiten títulos recomprados: se integran '+eur(s.releasedLossEur)+' de pérdidas que estaban diferidas.</p>':'')+
+     (s.carriedLossEur?'<p class="tax-warn">'+eur(s.carriedLossEur)+' de pérdidas diferidas siguen aplazadas: volviste a comprar este valor en ±2 meses de esta venta.</p>':'')+
     '</div></details>';
   };
   return '<section class="tax-card"><header><small>VENTAS '+r.year+'</small><h2>Detalle FIFO</h2><button type="button" class="today-link" data-tax-export>CSV ⇩</button></header>'+sales.map(row).join('')+'</section>';
