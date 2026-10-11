@@ -351,7 +351,8 @@ function parseMarketTimestamp(value,tz='America/New_York'){
 }
 function quoteTimestampMs(s,preferTr=false){
  if(preferTr&&trTradable(s)){
-  return parseMarketTimestamp(s&&s.trLiveLastAt,'Europe/Berlin')||
+  return parseMarketTimestamp(s&&s.trLiveMidAt,'Europe/Berlin')||
+   parseMarketTimestamp(s&&s.trLiveLastAt,'Europe/Berlin')||
    parseMarketTimestamp(s&&s.trLiveUpdatedAt,'Europe/Berlin')||
    parseMarketTimestamp(s&&s.trLiveReceivedAt,'Europe/Berlin')||null;
  }
@@ -609,14 +610,18 @@ function trApplyTickerPayload(s,payload){
   if(oldAsk!==null&&ask!==oldAsk)s.trLiveAskDirection=ask>oldAsk?'up':'down';
   s.trLiveAsk=ask;s.trLiveAskAt=N(payload.ask&&payload.ask.time)??Date.now();
  }
- if(pre!==null)s.trLivePre=pre;
+ if(pre!==null)s.trLivePreRaw=pre;
  if(open!==null)s.trLiveOpen=open;
  {
   const b=N(s.trLiveBid),a=N(s.trLiveAsk),l=N(s.trLiveLast);
   const spreadOk=b!==null&&a!==null&&b>0&&a>=b&&(a-b)/b<.25;
   const price=spreadOk?Math.round((b+a)/2*1e6)/1e6:l;
   // El cierre anterior del feed es de venta: se lleva al medio con el diferencial actual, como hace LS-X.
-  const prevBase=N(s.trLivePre),prevMid=prevBase>0?(spreadOk?prevBase+(a-b)/2:prevBase):null;
+  // trLivePre queda en esa misma base para que variación absoluta y porcentaje cuadren.
+  const prevBase=N(s.trLivePreRaw),prevMid=prevBase>0?(spreadOk?prevBase+(a-b)/2:prevBase):null;
+  if(prevMid>0)s.trLivePre=Math.round(prevMid*1e6)/1e6;
+  // La hora del precio medio es la del lado más antiguo: solo es reciente si venta y compra lo son.
+  s.trLiveMidAt=spreadOk?Math.min(N(s.trLiveBidAt)||0,N(s.trLiveAskAt)||0)||null:null;
   if(price!==null){
    if(old!==null&&price!==old){s.trLiveDirection=price>old?'up':'down';s.trLiveDirectionAt=Date.now()}
    s.trLivePrice=price;
