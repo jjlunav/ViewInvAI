@@ -351,7 +351,8 @@ function parseMarketTimestamp(value,tz='America/New_York'){
 }
 function quoteTimestampMs(s,preferTr=false){
  if(preferTr&&trTradable(s)){
-  return parseMarketTimestamp(s&&s.trLiveLastAt,'Europe/Berlin')||
+  return parseMarketTimestamp(s&&s.trLiveMidAt,'Europe/Berlin')||
+   parseMarketTimestamp(s&&s.trLiveLastAt,'Europe/Berlin')||
    parseMarketTimestamp(s&&s.trLiveUpdatedAt,'Europe/Berlin')||
    parseMarketTimestamp(s&&s.trLiveReceivedAt,'Europe/Berlin')||null;
  }
@@ -594,11 +595,11 @@ function trApplyTickerPayload(s,payload){
  let open=N(payload.open&&payload.open.price);
  let old=N(s.trLivePrice),oldBid=N(s.trLiveBid),oldAsk=N(s.trLiveAsk);
 
- // "last" is the Trade Republic/LSX last traded price. Bid and ask are
- // separate order-book quotes and must never be substituted for the last price.
+ // "last" del feed de TR/LSX es en la práctica el precio de venta (Geld). LS-X publica como cotización el precio
+ // medio entre Geld y Brief, así que el precio que se muestra es ese medio; venta y compra siguen aparte y el
+ // Objetivo usa la compra para comprar y la venta para vender y para los stops.
  if(last!==null){
-  if(old!==null&&last!==old){s.trLiveDirection=last>old?'up':'down';s.trLiveDirectionAt=Date.now()}
-  s.trLivePrice=last;
+  s.trLiveLast=last;
   s.trLiveLastAt=N(payload.last&&payload.last.time)??Date.now();
  }
  if(bid!==null){
@@ -609,9 +610,24 @@ function trApplyTickerPayload(s,payload){
   if(oldAsk!==null&&ask!==oldAsk)s.trLiveAskDirection=ask>oldAsk?'up':'down';
   s.trLiveAsk=ask;s.trLiveAskAt=N(payload.ask&&payload.ask.time)??Date.now();
  }
- if(pre!==null)s.trLivePre=pre;
+ if(pre!==null)s.trLivePreRaw=pre;
  if(open!==null)s.trLiveOpen=open;
- if(N(s.trLivePrice)!==null&&N(s.trLivePre)>0)s.trLiveChangePct=(N(s.trLivePrice)/N(s.trLivePre)-1)*100;
+ {
+  const b=N(s.trLiveBid),a=N(s.trLiveAsk),l=N(s.trLiveLast);
+  const spreadOk=b!==null&&a!==null&&b>0&&a>=b&&(a-b)/b<.25;
+  const price=spreadOk?Math.round((b+a)/2*1e6)/1e6:l;
+  // El cierre anterior del feed es de venta: se lleva al medio con el diferencial actual, como hace LS-X.
+  // trLivePre queda en esa misma base para que variación absoluta y porcentaje cuadren.
+  const prevBase=N(s.trLivePreRaw),prevMid=prevBase>0?(spreadOk?prevBase+(a-b)/2:prevBase):null;
+  if(prevMid>0)s.trLivePre=Math.round(prevMid*1e6)/1e6;
+  // La hora del precio medio es la del lado más antiguo: solo es reciente si venta y compra lo son.
+  s.trLiveMidAt=spreadOk?Math.min(N(s.trLiveBidAt)||0,N(s.trLiveAskAt)||0)||null:null;
+  if(price!==null){
+   if(old!==null&&price!==old){s.trLiveDirection=price>old?'up':'down';s.trLiveDirectionAt=Date.now()}
+   s.trLivePrice=price;
+   if(prevMid>0)s.trLiveChangePct=(price/prevMid-1)*100;
+  }
+ }
  s.trLiveQuality=payload.qualityId||s.trLiveQuality||'';
  if(N(s.trLivePrice)!==null)rememberTrCloseQuote(s);
  let times=[s.trLiveLastAt,s.trLiveBidAt,s.trLiveAskAt].map(N).filter(x=>x!==null);

@@ -425,16 +425,22 @@ async function fetchTradeRepublicTicker(isin, exchange = "LSX") {
       const pre = parseMarketNumber(data && data.pre && data.pre.price);
       const open = parseMarketNumber(data && data.open && data.open.price);
       const timestamp = Number(data && data.last && data.last.time) || Number(data && data.bid && data.bid.time) || Number(data && data.ask && data.ask.time) || Date.now();
+      // Igual que LS-X y la app: cotización = medio entre venta (Geld) y compra (Brief); el cierre anterior del
+      // feed es de venta y se lleva al medio con el diferencial actual.
+      const spreadOk = bid !== null && ask !== null && bid > 0 && ask >= bid && (ask - bid) / bid < 0.25;
+      const price = spreadOk ? Math.round((bid + ask) / 2 * 1e6) / 1e6 : last;
+      const prevMid = pre > 0 ? (spreadOk ? pre + (ask - bid) / 2 : pre) : null;
       return {
         market: "tr",
         isin: safeIsin,
         exchange: safeExchange,
-        price: last,
+        price,
+        last,
         bid,
         ask,
         open,
-        previousClose: pre,
-        changePct: last !== null && pre > 0 ? (last / pre - 1) * 100 : null,
+        previousClose: prevMid,
+        changePct: price !== null && prevMid > 0 ? (price / prevMid - 1) * 100 : null,
         timestamp,
         isRealTime: true,
         source: "Trade Republic / LSX"
