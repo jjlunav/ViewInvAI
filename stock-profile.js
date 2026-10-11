@@ -377,7 +377,10 @@ function profileNotificationActionHtml(s,isTr=false){
 function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
  if(isTr){
   const q=canonicalQuote(s,true),price=N(q.price),change=N(q.change),text=quoteMoney(price,'€',quotePrecision(s,true,price));
-  return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx">'+quoteFreshnessDotHtml(s,true,'profile-price-freshness')+'<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div></div>';
+  // Precio medio entre venta y compra (como LS-X); debajo, lo que pagas al comprar y lo que recibes al vender.
+  const bid=N(s.trLiveBid),ask=N(s.trLiveAsk),dec=quotePrecision(s,true,price);
+  const sides=bid!==null&&ask!==null?'<small class="profile-quote-sides">Venta <span data-tr-live-bid-key="'+E(stockKey(s))+'">'+E(quoteMoney(bid,'€',dec))+'</span> · Compra <span data-tr-live-ask-key="'+E(stockKey(s))+'">'+E(quoteMoney(ask,'€',dec))+'</span></small>':'';
+  return '<div class="profile-quote-stack profile-quote-stack-lsx"><div class="profile-quote-lsx">'+quoteFreshnessDotHtml(s,true,'profile-price-freshness')+'<strong>'+E(text)+'</strong><b class="'+C(change)+'">'+PC(change)+'</b></div>'+sides+'</div>';
  }
  return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current" data-us-current-hero-key="'+E(stockKey(s))+'">'+currentUsPrimaryHtml(s,se)+'</div></div>';
 }

@@ -4995,6 +4995,9 @@ html[data-theme="light"] .tr-native-axis{
 
 .profile-quote-lsx>strong{font-size:22px;line-height:1;font-weight:820;color:#eef5f7;white-space:nowrap}
 .profile-quote-lsx>b{font-size:12px;font-weight:850;white-space:nowrap}
+.profile-quote-stack-lsx{flex-wrap:wrap;row-gap:2px}
+.profile-quote-sides{display:block;flex-basis:100%;margin-top:2px;font-size:11px;color:#9fb2bd;white-space:nowrap}
+html[data-theme="light"] .profile-quote-sides{color:#5b6b78}
 .profile-quote-extended{gap:5px;font-size:11px}
 .profile-quote-extended>strong{font-size:13px;font-weight:820;white-space:nowrap}
 .profile-quote-extended>b{font-size:11px;font-weight:820;white-space:nowrap}
