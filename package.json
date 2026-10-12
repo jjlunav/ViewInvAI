@@ -22,7 +22,7 @@
     "firebase": "12.19.0",
     "@capacitor-firebase/messaging": "8.5.2",
     "@capacitor/local-notifications": "8.3.1",
-    "@capgo/capacitor-native-biometric": "8.7.0"
+    "@capgo/capacitor-native-biometric": "8.8.1"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2"
