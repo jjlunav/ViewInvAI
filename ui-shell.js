@@ -57,7 +57,19 @@
   try{localStorage.setItem(SIZE_KEY,v)}catch(_){}
   applyDeskSize(v);setTimeout(reset,50);
  });
- function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();apply()}
+ // Móvil: si el título de la sección no cabe en una línea, pasa a dos con letra más pequeña (15 px y,
+ // si aún no cabe, 13 px) en lugar de cortarse con «…».
+ function fitTitle(){
+  document.querySelectorAll('.page-heading h1.title-fit').forEach(h=>{h.classList.remove('title-fit');h.style.removeProperty('--title-fit')});
+  if(!mq.matches)return;
+  const h=document.querySelector('.view.active>.page-heading h1');if(!h||!h.clientWidth)return;
+  // Cuando cambia el hueco (botones que aparecen, giro de pantalla) se vuelve a medir.
+  if(window.ResizeObserver&&!h.__fitWatch){h.__fitWatch=new ResizeObserver(()=>{clearTimeout(fitTitle.t);fitTitle.t=setTimeout(fitTitle,60)});h.__fitWatch.observe(h.parentElement)}
+  if(h.scrollWidth<=h.clientWidth+2)return;
+  h.classList.add('title-fit');
+  for(const px of [15,13.5,12]){h.style.setProperty('--title-fit',px+'px');if(h.scrollHeight<=h.clientHeight+2&&h.scrollWidth<=h.clientWidth+2)break}
+ }
+ function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();fitTitle();apply()}
  window.addEventListener('scroll',onScroll,{passive:true});
  window.addEventListener('resize',reset,{passive:true});
  window.addEventListener('viewinvai:view-changed',reset);
@@ -239,6 +251,8 @@
   const t=box.querySelector('[data-list-view-toggle]');if(t){t.setAttribute('aria-expanded',String(open));t.innerHTML=open?CLOSE:ICON[mode]}
   // Los demás botones de la barra se apartan lo que ocupan las opciones (theme-ai.css, --lv-extra).
   document.documentElement.classList.toggle('list-view-open',open);
+  // El título se reajusta al hueco que deja el selector abierto o cerrado.
+  clearTimeout(setOpen.t);setOpen.t=setTimeout(()=>{if(window.ViewInvAIShell&&window.ViewInvAIShell.resetChrome)window.ViewInvAIShell.resetChrome()},360);
   // Plegadas, las opciones no se alcanzan con el teclado ni con el lector de pantalla.
   const sw=box.querySelector('.list-view-switch');if(sw){sw.inert=!open;sw.setAttribute('aria-hidden',String(!open))}
  }

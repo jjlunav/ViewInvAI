@@ -2063,3 +2063,12 @@ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund
  html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a):not(#lv-b) .view .fund-mobile-rows{grid-template-columns:minmax(0,1fr)!important}
 }
 html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund-mobile-rows,.catalog-mobile-rows) .asset-card-cell>.asset-card-label{display:block!important;font-size:9px!important;letter-spacing:.3px;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+@media (max-width:820px){
+ /* Títulos largos (p. ej. «Catálogo Fondos y ETFs»): en dos líneas y con letra más pequeña, nunca cortados. */
+ html:root:root body:not(#tb-x):not(#lv-a):not(.stock-detail-open) .view.active>.page-heading h1.title-fit{
+  white-space:normal!important;overflow:hidden!important;text-overflow:clip!important;
+  display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;
+  font-size:var(--title-fit,15px)!important;line-height:1.08!important;overflow-wrap:normal!important;word-break:normal!important;hyphens:none!important;
+ }
+ html:root:root body:not(#tb-x):not(#lv-a):not(.stock-detail-open) .view.active>.page-heading h1.title-fit~*{align-self:center}
+}
