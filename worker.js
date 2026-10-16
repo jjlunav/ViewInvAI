@@ -2017,6 +2017,7 @@ export default {
     else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/goal-ideas")limited=await enforcedRateLimit(request,env,"goal-ideas",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
+    else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");

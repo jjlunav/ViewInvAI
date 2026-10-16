@@ -193,9 +193,105 @@
   const items=(c.items||[]).map(i=>'<li>'+verdictChip(i.verdict)+' <b>'+esc(i.ticker)+'</b>'+(i.reason?' · '+esc(i.reason):'')+'</li>').join('');
   const sources=(c.sources||[]).slice(0,6).map(s=>{let host='';try{host=new URL(s.url).hostname.replace(/^www\./,'')}catch(_){}return '<a href="'+esc(s.url)+'" target="_blank" rel="noopener noreferrer">'+esc(s.title||host||'Fuente')+'</a>'}).join('');
   const when=c.createdAt?new Date(c.createdAt).toLocaleString('es-ES',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-  return '<div class="ai-contrast-result"><div class="ai-contrast-result-head"><strong>'+esc(LABEL[c.provider]||c.provider)+(when?' <small>'+esc(when)+'</small>':'')+'</strong>'+verdictChip(c.verdict)+'</div>'+
+  return '<div class="ai-contrast-result"><div class="ai-contrast-result-head"><strong>'+esc(providerLabel(c.provider))+(when?' <small>'+esc(when)+'</small>':'')+'</strong>'+verdictChip(c.verdict)+'</div>'+
    (c.summary?'<p>'+esc(c.summary)+'</p>':'')+(items?'<ul class="ai-contrast-items">'+items+'</ul>':'')+
    (sources?'<div class="ai-contrast-sources"><small>Fuentes:</small>'+sources+'</div>':'')+'</div>';
+ }
+ function providerLabel(id){
+  if(LABEL[id])return LABEL[id];
+  if(/^app-/.test(id)){const e=(engines.data&&engines.data.app||[]).find(x=>x.provider===id.slice(4));return 'IA de la app · '+(e?e.label:id.slice(4))}
+  return id;
+ }
+ // ---------- Elegir IA y modelo a mano (sin gastar usos a lo tonto) ----------
+ // Lista de IA disponibles con lo que les queda hoy. Se pide al abrir el selector y se guarda 5 min.
+ let engines={at:0,loading:false,data:null};
+ async function loadEngines(force){
+  if(engines.loading||(!force&&engines.data&&Date.now()-engines.at<5*60000)||!signedIn())return;
+  const cur=engines;cur.loading=true;cur.error='';
+  // Si cambia la cuenta mientras se carga, la respuesta de la cuenta anterior se descarta.
+  try{const d=await api('/api/ai/engines');if(engines!==cur)return;cur.data=d;cur.at=Date.now()}catch(e){if(engines!==cur)return;cur.error=e.message||'No se pudo cargar la lista de IA.'}
+  cur.loading=false;refreshPanels();
+ }
+ function engineList(){const d=engines.data||{};return[...(d.own||[]),...(d.app||[])]}
+ function engineLeft(e){
+  const d=engines.data||{};
+  if(e.id.startsWith('user:'))return d.ownLeft;
+  if(e.paused)return 0;
+  return Math.min(d.appLeft??0,e.remaining==null?Infinity:e.remaining);
+ }
+ // Recomendada: la de mejor nota para decisiones entre las que aún tienen margen hoy (sin pausa).
+ function recommendedEngine(){
+  const app=(engines.data&&engines.data.app||[]).filter(e=>engineLeft(e)>0);
+  return app.sort((a,b)=>b.quality*Math.min(1,(b.remaining??1000)/50)-a.quality*Math.min(1,(a.remaining??1000)/50))[0]||null;
+ }
+ function enginePickerHtml(subject,st){
+  if(!st.pickOpen)return '';
+  if(!engines.data&&engines.error&&!engines.loading)return '<div class="ai-engine"><p class="ai-contrast-error">'+esc(engines.error)+'</p><button type="button" class="btn small ghost" data-ai-engine-retry>Reintentar</button></div>';
+  if(!engines.data)return '<div class="ai-engine"><p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Cargando las IA disponibles…</p></div>';
+  const d=engines.data,list=engineList(),rec=recommendedEngine(),why=deepReason(subject,st);
+  // La primera vez se marca la búsqueda exhaustiva solo si la situación lo aconseja.
+  if(st.deep===undefined)st.deep=!!why;
+  if(!st.engine||!list.some(e=>e.id===st.engine))st.engine=(rec||list[0]||{}).id||'';
+  const sel=list.find(e=>e.id===st.engine);
+  if(sel&&st.model&&!(sel.models||[]).includes(st.model))st.model='';
+  // Un solo desplegable: cada opción dice lo que le queda hoy; las agotadas o en pausa no se pueden elegir.
+  const opt=e=>{const left=engineLeft(e),off=left<=0;
+   const note=e.id.startsWith('user:')?'te quedan '+(d.ownLeft??0)+' hoy'+(e.active?'':' · desactivada'):e.paused?'en pausa por fallos':(e.remaining==null?'sin cupo fijo':'quedan ~'+e.remaining+' hoy');
+   return '<option value="'+esc(e.id)+'"'+(e.id===st.engine?' selected':'')+(off?' disabled':'')+'>'+esc(e.label+(rec&&e.id===rec.id?' (recomendada)':'')+' · '+note)+'</option>'};
+  const models=sel&&sel.models&&sel.models.length>1?'<label class="ai-engine-model"><span>Modelo</span><select data-ai-engine-model><option value="">Automático (el mejor disponible)</option>'+
+   sel.models.map(m=>'<option value="'+esc(m)+'"'+(m===st.model?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></label>':'';
+  const own=(d.own||[]),app=(d.app||[]);
+  const left=sel?engineLeft(sel):0,isOwn=sel&&sel.id.startsWith('user:');
+  const cost=sel?'Gasta 1 uso · te quedan '+(isOwn?d.ownLeft+' de '+d.ownLimit+' con tus claves':d.appLeft+' de '+d.appLimit+' con las IA de la app')+' hoy.':'';
+  return '<div class="ai-engine" role="group" aria-label="Elegir IA">'+
+   '<label class="ai-engine-model"><span>IA</span><select data-ai-engine-select>'+
+   (own.length?'<optgroup label="Tus IA">'+own.map(opt).join('')+'</optgroup>':'')+
+   (app.length?'<optgroup label="IA gratuitas de la app">'+app.map(opt).join('')+'</optgroup>':'')+'</select></label>'+
+   models+
+   '<label class="ai-engine-deep"><input type="checkbox" data-ai-engine-deep'+(st.deep?' checked':'')+'> <span><b>Búsqueda exhaustiva</b><small>Añade las noticias de esta semana de cada valor. Más lenta.'+(why?' <b class="ai-engine-why">Recomendada ahora: '+esc(why)+'.</b>':'')+'</small></span></label>'+
+   '<p class="ai-engine-cost">'+esc(cost)+' Lo mismo en menos de 6 h no gasta.</p>'+
+   '<div class="ai-int-actions"><button type="button" class="btn small" data-ai-engine-run'+(st.loading||!sel||left<=0?' disabled':'')+'>Analizar con '+esc(sel?sel.label:'IA')+'</button>'+
+   (st.reusedAt?'<button type="button" class="btn small ghost" data-ai-engine-run data-force="1">Repetir igualmente</button>':'')+'</div>'+
+   (st.reusedAt?'<p class="ai-engine-cost">Reutilizado el análisis de las '+esc(new Date(st.reusedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+': no ha gastado usos.</p>':'')+
+  '</div>';
+ }
+ // ¿Merece la pena gastar en búsqueda exhaustiva? Solo si la situación lo pide: alguna IA ya contradice o
+ // duda, un valor se mueve mucho hoy, o el plan propone vender por stop o por noticia.
+ function deepReason(subject,st){
+  const bad=(st.list||[]).find(c=>c.verdict==='contradice'||c.verdict==='dudas'||(c.items||[]).some(i=>i.verdict==='contradice'));
+  if(bad)return 'una IA ya '+(bad.verdict==='dudas'?'tiene dudas':'contradice')+' el análisis';
+  const all=(window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==='function'&&window.ViewInvAI.getAllStocks())||[];
+  const tickers=(subject.choices||[]).length?[...st.selected]:(subject.tickers||[]);
+  for(const t of tickers.slice(0,10)){
+   const u=String(t||'').toUpperCase(),x=all.find(v=>String(v.trTicker||'').toUpperCase()===u)||all.find(v=>String(v.ticker||'').toUpperCase()===u);
+   const ch=x?Number(x.trLiveChangePct??x.usLiveChangePct??x.changePct):NaN;
+   if(Number.isFinite(ch)&&Math.abs(ch)>=8)return u+' se mueve '+(ch>0?'+':'')+ch.toFixed(1).replace('.',',')+' % hoy';
+  }
+  const text=String(P(subject.prompt,null)||'');
+  if(/stop alcanzado|stop de emergencia|vender .*(stop|noticia)|noticia que invalida/i.test(text))return 'el plan propone una venta por stop o por noticia';
+  return '';
+ }
+ // Valores a buscar en la búsqueda exhaustiva: los elegidos (Radar) o los del plan/ficha, con nombre e ISIN.
+ function deepTargets(subject,st){
+  const tickers=(subject.choices||[]).length?[...st.selected]:(subject.tickers||[]);
+  const all=(window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==='function'&&window.ViewInvAI.getAllStocks())||[];
+  return tickers.slice(0,6).map(t=>{const u=String(t||'').toUpperCase(),s=all.find(x=>String(x.trTicker||'').toUpperCase()===u)||all.find(x=>String(x.ticker||'').toUpperCase()===u)||{};
+   return{ticker:u,name:s.name||'',isin:s.trIsin||s.isin||'',usTicker:/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS|OTC)/i.test(String(s.exchange||''))?String(s.ticker||''):''}});
+ }
+ async function runEngine(subject,force){
+  const st=state(subject),sel=engineList().find(e=>e.id===st.engine);if(!sel||st.loading)return;
+  const sel2=(subject.choices||[]).length?[...st.selected]:null;
+  if(sel2&&!sel2.length){say('Elige primero las acciones que quieres analizar.',true);return}
+  st.loading=true;st.errors=[];st.reusedAt=null;st.open=true;refreshPanels();
+  try{
+   const d=await api('/api/ai/contrast',{method:'POST',body:JSON.stringify({subjectType:subject.type,subjectKey:subject.key,prompt:P(subject.prompt,sel2),
+    engine:sel.id,model:st.model||'',deep:!!st.deep,targets:st.deep?deepTargets(subject,st):[],force:!!force})});
+   st.list=latestPerProvider([...(d.contrasts||[]),...(st.list||[])]);st.errors=d.errors||[];
+   if(d.reused)st.reusedAt=d.reusedAt;
+   remember(d.contrasts);
+   if(!d.reused)loadEngines(true);
+  }catch(e){st.errors=[{provider:'',error:e.message}]}
+  st.loading=false;refreshPanels();announce(subject);
  }
  function consensus(list){
   const auto=(list||[]).filter(c=>c.verdict!=='nota');if(!auto.length)return'';
@@ -234,11 +330,14 @@
  function panelInner(subject){
   const st=state(subject),act=activeProviders(),auto=subject.auto!==false;
   let body='';
-  if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA')+'…</p>';
+  const running=st.pickOpen&&st.engine?(engineList().find(e=>e.id===st.engine)||{}).label:'';
+  if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> '+(running?'Analizando con '+esc(running)+(st.deep?' · búsqueda exhaustiva':''):'Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA'))+'…</p>';
   (st.list||[]).forEach(c=>{body+=contrastHtml(c)});
-  (st.errors||[]).forEach(e=>{body+='<p class="ai-contrast-error">'+(e.provider?'<b>'+esc(LABEL[e.provider]||e.provider)+':</b> ':'')+esc(e.error)+'</p>'});
-  const tools=act.length?'<button type="button" class="btn small ghost ai-run-btn" data-ai-contrast-run'+(st.loading?' disabled':'')+'>'+((st.list||[]).some(c=>!/-web$/.test(c.provider)&&c.provider!=='viewinvai-ai')?'Repetir con mis IA':(auto?'Contrastar ahora':'Contrastar con mis IA'))+'</button>'
-   :(subject.inline?'':'<p class="settings-note ai-setup-note">Para que tus IA lo contrasten solas, conéctalas en <button type="button" class="link-btn" data-ai-open-settings>Configuración › Integrar la IA</button>.</p>');
+  (st.errors||[]).forEach(e=>{body+='<p class="ai-contrast-error">'+(e.provider?'<b>'+esc(providerLabel(e.provider))+':</b> ':'')+esc(e.error)+'</p>'});
+  const pickBtn=signedIn()?'<button type="button" class="btn small ghost ai-run-btn" data-ai-engine-toggle aria-expanded="'+(st.pickOpen?'true':'false')+'">'+(st.pickOpen?'Cerrar selección de IA':'Elegir IA y modelo')+'</button>':'';
+  const tools='<div class="ai-run-row">'+(act.length?'<button type="button" class="btn small ghost ai-run-btn" data-ai-contrast-run'+(st.loading?' disabled':'')+'>'+((st.list||[]).some(c=>!/-web$/.test(c.provider)&&c.provider!=='viewinvai-ai'&&!/^app-/.test(c.provider))?'Repetir con mis IA':(auto?'Contrastar ahora':'Contrastar con mis IA'))+'</button>':'')+pickBtn+'</div>'+
+   enginePickerHtml(subject,st)+
+   (act.length||subject.inline?'':'<p class="settings-note ai-setup-note">Para que tus IA lo contrasten solas, conéctalas en <button type="button" class="link-btn" data-ai-open-settings>Configuración › Integrar la IA</button>.</p>');
   const inner=askBoxHtml(subject,st)+body+tools+
    '<p class="ai-contrast-disclaimer">'+(subject.type==='stock'?'La respuesta pegada refuerza o rebaja esta acción en el Radar AI y en el Objetivo durante 3 días.':'Si la IA respalda una acción se marca como reforzada; si la contradice, baja un nivel. El cálculo de ViewInvAI no cambia; decide siempre tú.')+'</p>';
   if(subject.inline)return '<div class="ai-contrast-body">'+inner+'</div>';
@@ -440,7 +539,7 @@
   const st=results.get(el.dataset.aiContrastPanel);if(st)st.open=el.open;
  },true);
  document.addEventListener('click',e=>{
-  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear]');
+  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear],[data-ai-engine-toggle],[data-ai-engine-run],[data-ai-engine-retry]');
   if(!t){if(e.target.matches&&e.target.matches('[data-ai-manual-backdrop]'))closeManual();return}
   if(t.closest('[data-ai-contrast-panel]')){e.stopPropagation();e.preventDefault()}
   if(t.hasAttribute('data-ai-manual')){openManual(t.dataset.aiManual);return}
@@ -453,14 +552,25 @@
   const panel=t.closest('[data-ai-contrast-panel]'),subject=panel&&subjects.get(panel.dataset.aiContrastPanel);if(!subject)return;
   const st=state(subject);
   if(t.hasAttribute('data-ai-contrast-run'))start(subject,true);
+  else if(t.hasAttribute('data-ai-engine-toggle')){st.pickOpen=!st.pickOpen;st.open=true;st.reusedAt=null;if(st.pickOpen)loadEngines(false);refreshPanels()}
+  else if(t.hasAttribute('data-ai-engine-run'))runEngine(subject,t.dataset.force==='1');
+  else if(t.hasAttribute('data-ai-engine-retry')){engines.error='';loadEngines(true);refreshPanels()}
   else if(t.hasAttribute('data-ai-ask'))askExternal(subject,t.dataset.aiAsk);
   else if(t.hasAttribute('data-ai-paste-toggle')){st.manualOpen=!st.manualOpen;st.open=true;refreshPanels();if(st.manualOpen)setTimeout(()=>{const ta=document.querySelector('[data-ai-contrast-panel="'+CSS.escape(panel.dataset.aiContrastPanel)+'"] textarea[name=answer]');if(ta)ta.focus()},30)}
   else if(t.hasAttribute('data-ai-pick')){const k=t.dataset.aiPick;if(st.selected.has(k))st.selected.delete(k);else if(st.selected.size>=20)say('Máximo 20 acciones por pregunta.',true);else st.selected.add(k);refreshPanels()}
   else if(t.hasAttribute('data-ai-pick-clear')){st.selected.clear();refreshPanels()}
  },true);
+ document.addEventListener('change',e=>{
+  const t=e.target;if(!t||!t.closest)return;
+  const panel=t.closest('[data-ai-contrast-panel]'),subject=panel&&subjects.get(panel.dataset.aiContrastPanel);if(!subject)return;
+  const st=state(subject);
+  if(t.matches('[data-ai-engine-select]')){st.engine=t.value;st.model='';st.reusedAt=null;refreshPanels()}
+  else if(t.matches('[data-ai-engine-model]')){st.model=t.value;st.reusedAt=null;refreshPanels()}
+  else if(t.matches('[data-ai-engine-deep]')){st.deep=t.checked;st.reusedAt=null;refreshPanels()}
+ });
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('[data-ai-manual-backdrop]'))closeManual()});
- window.addEventListener('viewinvai:account-ready',()=>{config.loaded=false;results.clear();recent={loaded:false,loading:false,list:[]};loadConfig(true);loadRecent()});
- window.addEventListener('viewinvai:auth-changed',()=>{config={loaded:false,loading:false,serverReady:true,providers:{},defaults:{}};results.clear();recent={loaded:false,loading:false,list:[]};renderSettings();refreshPanels();announce({type:'all',key:''})});
+ window.addEventListener('viewinvai:account-ready',()=>{engines={at:0,loading:false,data:null};config.loaded=false;results.clear();recent={loaded:false,loading:false,list:[]};loadConfig(true);loadRecent()});
+ window.addEventListener('viewinvai:auth-changed',()=>{engines={at:0,loading:false,data:null};config={loaded:false,loading:false,serverReady:true,providers:{},defaults:{}};results.clear();recent={loaded:false,loading:false,list:[]};renderSettings();refreshPanels();announce({type:'all',key:''})});
  document.addEventListener('DOMContentLoaded',renderSettings);
  if(document.readyState!=='loading')renderSettings();
 
