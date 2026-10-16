@@ -39,7 +39,7 @@
   if(mq.matches)return;
   const v=document.querySelector('.view.active'),head=v&&v.querySelector(':scope>.page-heading');if(!head)return;
   const stack=[head];let el=head.nextElementSibling;
-  while(el&&isTabs(el)&&stack.length<4){if(el.offsetParent!==null)stack.push(el);el=el.nextElementSibling}
+  while(el&&(isTabs(el)||el.classList.contains('list-view-bar'))&&stack.length<4){if(isTabs(el)&&el.offsetParent!==null)stack.push(el);el=el.nextElementSibling}
   let top=0;
   for(const x of stack){x.setAttribute('data-desk-sticky','');x.style.top=top+'px';top+=x.offsetHeight}
  }
@@ -196,5 +196,67 @@
   window.addEventListener('resize',measure,{passive:true});
   window.addEventListener('viewinvai:view-changed',()=>setTimeout(measure,0));
  };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+})();
+/* Formato de las listas: compacta, detallada o cuadrícula. Un único ajuste para toda la app
+ * (se guarda en este navegador) y el mismo selector en la cabecera de cada pantalla con listas. */
+(function(){
+ 'use strict';
+ const KEY='viewinvai.listView',MODES=['compact','detailed','grid'];
+ const VIEWS=['today','home','entry','recommendation','future','portfolios','favorites','inbox'];
+ const LISTS='.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.inbox-list';
+ const ICON={
+  compact:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>',
+  detailed:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/></svg>',
+  grid:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>'
+ };
+ const LABEL={compact:'Lista compacta',detailed:'Lista detallada',grid:'Cuadrícula'};
+ const read=()=>{try{const v=localStorage.getItem(KEY);return MODES.includes(v)?v:'compact'}catch(_){return 'compact'}};
+ let mode=read();
+ function switchHtml(){
+  return MODES.map(m=>'<button type="button" data-list-view-set="'+m+'" title="'+LABEL[m]+'" aria-label="'+LABEL[m]+'" aria-pressed="'+(m===mode)+'"'+(m===mode?' class="active"':'')+'>'+ICON[m]+'</button>').join('');
+ }
+ function mount(){
+  VIEWS.forEach(id=>{
+   const head=document.querySelector('#view-'+id+'>.page-heading');if(!head||head.querySelector('.list-view-switch'))return;
+   let actions=head.querySelector('.heading-actions');
+   if(!actions){actions=document.createElement('div');actions.className='heading-actions';head.appendChild(actions)}
+   const box=document.createElement('div');
+   box.className='list-view-switch';box.setAttribute('role','group');box.setAttribute('aria-label','Formato de la lista');
+   box.innerHTML=switchHtml();
+   actions.insertBefore(box,actions.firstChild);
+   // En el móvil la cabecera no tiene sitio: el mismo selector va en una fila propia debajo.
+   const bar=document.createElement('div');
+   bar.className='list-view-bar';
+   bar.innerHTML='<span>Vista</span><div class="list-view-switch" role="group" aria-label="Formato de la lista">'+switchHtml()+'</div>';
+   head.after(bar);
+  });
+ }
+ // En «detallada» se abren los «Más datos» de cada tarjeta; al salir se cierran solo los que abrió este ajuste.
+ function syncDetails(){
+  document.querySelectorAll(':is('+LISTS+') .asset-card-details').forEach(d=>{
+   if(mode==='detailed'){if(!d.open&&!d.dataset.lvSeen){d.dataset.lvSeen='1';d.dataset.lvAuto='1';d.open=true}}
+   else if(d.dataset.lvAuto){delete d.dataset.lvAuto;delete d.dataset.lvSeen;d.open=false}
+  });
+ }
+ function apply(){
+  document.documentElement.dataset.listView=mode;
+  document.querySelectorAll('[data-list-view-set]').forEach(b=>{const on=b.dataset.listViewSet===mode;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on))});
+  syncDetails();
+ }
+ document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-list-view-set]');if(!b)return;
+  const v=b.dataset.listViewSet;if(!MODES.includes(v)||v===mode)return;
+  mode=v;try{localStorage.setItem(KEY,v)}catch(_){}
+  apply();
+  if(window.ViewInvAIShell&&window.ViewInvAIShell.resetChrome)window.ViewInvAIShell.resetChrome();
+ });
+ let queued=false;
+ const later=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;if(mode==='detailed')syncDetails()})};
+ function start(){
+  mount();apply();
+  if(window.MutationObserver)new MutationObserver(later).observe(document.querySelector('.main')||document.body,{childList:true,subtree:true});
+ }
+ document.documentElement.dataset.listView=mode;
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
