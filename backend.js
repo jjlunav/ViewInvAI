@@ -3469,13 +3469,23 @@ async function handleAnalysisList(request, env, user, json, url) {
   return json({ analysis: rows.results || [] });
 }
 
+// «Borrar avisos» los oculta de la lista (hidden_at) sin eliminarlos: el servidor los sigue usando para no
+// volver a enviar la misma noticia o evento. La limpieza de 6 meses los elimina después (quedan como leídos).
+let alertHiddenColumnReady=false;
+async function ensureAlertHiddenColumn(env){
+  if(alertHiddenColumnReady)return;
+  const cols=await env.DB.prepare("PRAGMA table_info(alert_events)").all();
+  if(!(cols.results||[]).some(c=>c.name==="hidden_at"))await env.DB.prepare("ALTER TABLE alert_events ADD COLUMN hidden_at TEXT").run();
+  alertHiddenColumnReady=true;
+}
 async function handleAlerts(request, env, user, json, parts) {
   const action = parts[1] || "";
+  await ensureAlertHiddenColumn(env);
   if (request.method === "GET" && !action) {
     const rows = await env.DB.prepare(
-      "SELECT id,stock_key,ticker,name,alert_type,severity,title,message,created_at,read_at FROM alert_events WHERE user_id=? ORDER BY created_at DESC LIMIT 150"
+      "SELECT id,stock_key,ticker,name,alert_type,severity,title,message,created_at,read_at FROM alert_events WHERE user_id=? AND hidden_at IS NULL ORDER BY created_at DESC LIMIT 150"
     ).bind(user.id).all();
-    const unread = await env.DB.prepare("SELECT COUNT(*) AS n FROM alert_events WHERE user_id=? AND read_at IS NULL").bind(user.id).first();
+    const unread = await env.DB.prepare("SELECT COUNT(*) AS n FROM alert_events WHERE user_id=? AND read_at IS NULL AND hidden_at IS NULL").bind(user.id).first();
     return json({ alerts: rows.results || [], unread: Number(unread && unread.n) || 0 });
   }
 
@@ -3490,6 +3500,18 @@ async function handleAlerts(request, env, user, json, parts) {
     const stamp = nowIso();
     await env.DB.batch(ids.map(id => env.DB.prepare("UPDATE alert_events SET read_at=? WHERE id=? AND user_id=?").bind(stamp, id, user.id)));
     return json({ updated: ids.length });
+  }
+
+  if (request.method === "POST" && action === "hide") {
+    const body = await readJson(request), stamp = nowIso();
+    if (body.all === true) {
+      const r = await env.DB.prepare("UPDATE alert_events SET hidden_at=?,read_at=COALESCE(read_at,?) WHERE user_id=? AND hidden_at IS NULL").bind(stamp, stamp, user.id).run();
+      return json({ hidden: Number(r && r.meta && r.meta.changes) || 0 });
+    }
+    const ids = Array.isArray(body.ids) ? body.ids.map(x => trimText(x, 80)).filter(Boolean).slice(0, 200) : [];
+    if (!ids.length) return json({ hidden: 0 });
+    await env.DB.batch(ids.map(id => env.DB.prepare("UPDATE alert_events SET hidden_at=?,read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?").bind(stamp, stamp, id, user.id)));
+    return json({ hidden: ids.length });
   }
 
   return json({ error: "Method not allowed" }, 405);

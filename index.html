@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.88">
+<html lang="es" data-app-version="0.6.89">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -212,7 +212,7 @@
           </label>
         </div>
         <div class="filter-actions">
-          <button class="btn ghost" id="resetFilters">Restablecer</button>
+          <button class="btn ghost" id="resetFilters">↺ Restablecer</button>
           <button class="btn secondary" id="saveCustomFilters">Guardar personalizado</button>
         </div>
       </details>
@@ -376,7 +376,7 @@
           <label class="future-date-filter"><span>Desde</span><input id="futureDateFrom" class="input" type="date"></label>
           <label class="future-date-filter"><span>Hasta</span><input id="futureDateTo" class="input" type="date"></label>
           <label class="check-inline"><input id="futureTrOnly" type="checkbox" checked> Solo TR verificada</label>
-          <div class="filter-actions"><button type="button" class="btn ghost compact" id="futureResetFilters">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Listo</button></div>
+          <div class="filter-actions"><button type="button" class="btn ghost compact" id="futureResetFilters">↺ Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Listo</button></div>
         </div>
       </div>
       <div id="futureResults" class="future-list"></div>
@@ -459,7 +459,7 @@
           <h1>Avisos</h1>
           <p class="lead">Todo lo que te ha llegado al móvil: precio, niveles, Radar AI, noticias y carteras.</p>
         </div>
-        <div class="heading-actions"><button type="button" class="btn icon-btn" data-inbox-read-all title="Marcar todo como leído" aria-label="Marcar todo como leído">✓</button><button type="button" class="section-help" data-help-section="inbox" aria-label="Ayuda sobre Avisos">?</button></div>
+        <div class="heading-actions"><button type="button" class="section-help" data-help-section="inbox" aria-label="Ayuda sobre Avisos">?</button></div>
       </div>
       <div id="inboxResults" class="inbox-results"></div>
     </section>
@@ -534,6 +534,15 @@
                 <p class="settings-note" id="appLanguageNote" translate="no"></p>
               </article>
 
+              <article class="settings-card desk-size-settings-card" id="deskSizeSettingsCard">
+                <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA</span><h2>Tamaño en escritorio</h2><p>Solo en el ordenador: cuanto más compacto, más información cabe a la vista. En el móvil no cambia nada.</p></div></div>
+                <div class="theme-setting-options" role="group" aria-label="Tamaño en escritorio">
+                  <button type="button" class="theme-setting-option active" data-desk-size-setting="compact" aria-pressed="true"><span class="theme-setting-icon">▣</span><span><strong>Compacto</strong><small>Recomendado</small></span></button>
+                  <button type="button" class="theme-setting-option" data-desk-size-setting="xcompact" aria-pressed="false"><span class="theme-setting-icon">▪</span><span><strong>Muy compacto</strong><small>Máxima información</small></span></button>
+                  <button type="button" class="theme-setting-option" data-desk-size-setting="normal" aria-pressed="false"><span class="theme-setting-icon">□</span><span><strong>Normal</strong><small>Tamaño anterior</small></span></button>
+                </div>
+              </article>
+
               <article class="settings-card" id="screenWakeSettingsCard" hidden>
                 <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA Y DISPOSITIVO</span><h2>Mantener pantalla activa</h2><p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p></div><label class="settings-switch" aria-label="Mantener pantalla activa"><input id="keepScreenAwake" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                 <div class="settings-status-row"><span>Estado</span><strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong></div>
@@ -560,7 +569,7 @@
                 <div class="settings-card-head"><div><span class="settings-kicker">ACTIVACIÓN GENERAL</span><h2>Activar notificaciones</h2><p>Activa los avisos de tu cuenta en cualquier dispositivo. En la APK Android, al activarlas se habilitarán también las notificaciones push del dispositivo.</p></div><label class="settings-switch" aria-label="Activar todas las notificaciones"><input id="globalNotificationsEnabled" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                 <div class="settings-status-row"><span>Cuenta</span><strong id="globalNotificationSettingsStatus" class="settings-status">Inicia sesión</strong></div>
                 <div class="settings-status-row" id="pushDeviceStatusRow"><span id="pushDeviceStatusLabel">Notificaciones en este dispositivo</span><strong id="pushNotificationStatus" class="settings-status">Comprobando…</strong></div>
-                <div class="settings-save-row push-settings-actions" id="pushDeviceActionsRow"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">Enviar prueba</button></div></div>
+                <div class="settings-save-row push-settings-actions" id="pushDeviceActionsRow"><span></span><div class="push-settings-button-group"><button type="button" class="btn small ghost" id="testPushNotification">➤ Enviar prueba</button></div></div>
               </article>
 
               <article class="settings-card notification-categories-card compact-settings-card">
@@ -727,7 +736,7 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.88 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.89 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>

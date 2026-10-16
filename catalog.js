@@ -262,7 +262,7 @@ function renderCatalogFilterPanel(mode,cols){
    '<label><span>Ordenar por</span><select class="select catalog-mobile-sort-select" data-mode="'+mode+'">'+sortOpts+'</select></label>'+
   '</div>'+
   '<p class="catalog-filter-hint">Los filtros específicos de cada dato están ahora en el embudo de su columna.</p>'+
-  '<div class="filter-actions"><button type="button" class="btn ghost catalog-reset-filter" data-catalog-mode="'+mode+'">Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Aplicar filtro</button></div>';
+  '<div class="filter-actions"><button type="button" class="btn ghost catalog-reset-filter" data-catalog-mode="'+mode+'">↺ Rehacer filtro</button><button type="button" class="btn secondary" data-filter-sheet-apply>Aplicar filtro</button></div>';
 }
 
 function catalogColumnUniqueValues(mode,col,se){

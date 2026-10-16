@@ -1014,6 +1014,12 @@ html:root:root body .inbox-filters{display:flex;gap:6px;overflow-x:auto;scrollba
 html:root:root body .inbox-filters .tab{flex:0 0 auto;white-space:nowrap}
 .inbox-filters .tab em{font-style:normal;opacity:.65;font-size:.9em}
 .inbox-list{display:grid;gap:6px}
+.inbox-toolbar{display:flex;align-items:center;gap:10px;min-width:0}
+.inbox-toolbar .inbox-filters{flex:1;min-width:0}
+.inbox-actions{display:flex;gap:6px;flex:0 0 auto}
+.inbox-actions .btn{white-space:nowrap}
+.inbox-actions .inbox-delete:not(:disabled):hover{border-color:rgba(255,123,130,.6);color:#ff7b82}
+@media(max-width:820px){.inbox-toolbar{flex-wrap:wrap}.inbox-actions{width:100%;justify-content:flex-end}}
 .inbox-day{margin:8px 2px 0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:800;color:#9d8cff}
 html[data-theme="light"] .inbox-day{color:#4f46e5}
 .inbox-day:first-child{margin-top:0}
@@ -1471,6 +1477,9 @@ html[data-theme="light"] .ai-engine-model select{background:#fff;border-color:#d
 .ai-engine-deep span{display:grid;gap:2px}
 .ai-engine-deep small{font-size:11px;color:var(--muted,#8ea0bf)}
 .ai-engine-why{display:block;margin-top:2px;color:#43e4b2;font-weight:700}
+.ai-engine-reused{margin:6px 0;font-size:12px;color:var(--muted,#8ea0bf)}
+.ai-engine-go{background:linear-gradient(135deg,#43e4b2,#9d8cff);color:#061018;font-weight:800;border-color:transparent}
+.ai-engine-go:disabled{background:rgba(140,170,255,.12);color:var(--muted,#8ea0bf);cursor:not-allowed}
 .ai-engine .ai-engine-cost{margin:0;line-height:1.4;font-size:11.5px;color:var(--muted,#8ea0bf)}
 .ai-contrast-inline{margin:0 0 12px}
 .ai-contrast-inline>.ai-contrast-body{padding:12px}
@@ -1890,3 +1899,176 @@ html[data-theme="light"] #view-admin .admin-progress[data-state="warn"]{color:#8
 .goal2-why b{color:#ffd27a;margin-right:4px}
 .goal2-why .btn{margin-left:6px;vertical-align:middle}
 html[data-theme="light"] .goal2-why b{color:#8a5a00}
+
+.ai-progress{min-width:0;max-width:100%;box-sizing:border-box;margin:8px 0;padding:12px 14px;border-radius:14px;border:1px solid rgba(157,140,255,.35);background:linear-gradient(135deg,rgba(67,228,178,.08),rgba(157,140,255,.12));box-shadow:0 0 24px rgba(157,140,255,.12) inset}
+html[data-theme="light"] .ai-progress{background:linear-gradient(135deg,#eefbf6,#f2efff);border-color:#cfc6ff}
+.ai-progress-head{display:flex;align-items:center;gap:10px;min-width:0}
+.ai-progress-head b{flex:1;min-width:0;font-size:13px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.ai-progress-head small{font-size:11px;color:var(--muted,#8ea0bf);font-variant-numeric:tabular-nums}
+.ai-progress-orb{width:14px;height:14px;flex:0 0 14px;border-radius:50%;background:conic-gradient(from 0deg,#43e4b2,#9d8cff,#5ab8ff,#43e4b2);animation:aiOrb 1.2s linear infinite;box-shadow:0 0 12px rgba(157,140,255,.7)}
+.ai-progress-track{position:relative;height:6px;margin-top:10px;border-radius:999px;background:rgba(140,170,255,.15);overflow:hidden}
+.ai-progress-track i{position:absolute;inset:0 auto 0 0;width:2%;border-radius:inherit;background:linear-gradient(90deg,#43e4b2,#5ab8ff,#9d8cff,#43e4b2);background-size:200% 100%;animation:aiFlow 1.6s linear infinite;transition:width .3s ease}
+.ai-progress-track i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:aiShine 1.4s ease-in-out infinite}
+@keyframes aiOrb{to{transform:rotate(360deg)}}
+@keyframes aiFlow{to{background-position:-200% 0}}
+@keyframes aiShine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.ai-progress-orb,.ai-progress-track i,.ai-progress-track i::after{animation:none}.ai-progress-track i{transition:none}}
+
+/* Formato de las listas (compacta · detallada · cuadrícula): el mismo en todas las pantallas.
+   Selectores con ids para ganar a los ajustes de cada sección (ui-density, asset-card). */
+html[data-list-view]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){display:grid!important;align-content:start!important}
+html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){grid-template-columns:minmax(0,1fr)!important}
+
+/* Cuadrícula: tarjetas sueltas en columnas que llenan el ancho. */
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))!important;gap:10px!important;border:0!important;background:transparent!important;overflow:visible!important;border-radius:0!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list)>:not(.asset-card,.inbox-row){grid-column:1/-1}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list)>.asset-card{border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;height:100%;margin:0!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row{height:100%}
+
+
+/* Compacta: los mismos datos que las otras vistas (nada se oculta), más juntos y como una tabla:
+   un panel con separadores, menos relleno y lo secundario en línea en vez de en filas propias. */
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows){gap:0!important;border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;overflow:hidden!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows)>.asset-card{border:0!important;border-bottom:1px solid var(--line,rgba(140,190,210,.12))!important;border-radius:0!important;margin:0!important;box-shadow:none!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows)>.asset-card:last-child{border-bottom:0!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row{min-height:0!important;padding-top:4px!important;padding-bottom:4px!important;row-gap:2px!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy{display:flex!important;flex-wrap:wrap!important;align-items:baseline!important;column-gap:7px!important;row-gap:0!important;min-width:0}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>strong{flex:0 1 auto;min-width:0;line-height:1.2!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>:is(.list-copy-isin,small){flex:0 0 auto;line-height:1.2!important;opacity:.75}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>.asset-card-spark{flex:0 0 auto;margin-left:auto}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-meta{min-height:0!important;padding-top:0!important;padding-bottom:4px!important;margin:0!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-details>summary{min-height:22px!important;height:22px!important;padding:0 12px!important;font-size:10.5px!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-actions{padding:0 10px 5px!important;gap:6px!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-actions :is(button,.btn){min-height:26px!important;padding:3px 10px!important;font-size:11.5px!important}
+@container compact-card (max-width:500px){
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row[data-card-template="compact-slots"]{grid-template-columns:22px minmax(0,1fr) auto!important;grid-template-areas:"marker identity quote" ". context context"!important;column-gap:8px!important;align-items:center!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-marker{grid-area:marker!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-identity{grid-area:identity!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-quote-slot{grid-area:quote!important;justify-self:end!important;text-align:right}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-context-slot{grid-area:context!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-context-slot:not(:has(.asset-card-cell:not(.asset-card-cell-empty))){display:none!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-end-actions{grid-area:quote!important;display:none!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row>.asset-card-end-actions:has(.asset-card-row-actions){display:flex!important;grid-area:auto!important;grid-column:1/-1!important;justify-content:flex-end}
+ /* Móvil: nombre, ISIN y datos en líneas cortas a la izquierda y el mini gráfico a su derecha. */
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;column-gap:6px!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>:not(.asset-card-spark){grid-column:1!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>.asset-card-spark{grid-column:2!important;grid-row:1/span 3!important;align-self:center;margin:0!important;width:54px!important;height:22px!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>:is(.list-copy-isin,small){font-size:10px!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-investing-main{display:grid!important;grid-template-columns:auto auto!important;justify-content:end!important;justify-items:end!important;align-items:center!important;column-gap:5px!important;row-gap:0!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-investing-main>.asset-quote-state{grid-column:1;grid-row:1}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-investing-main>strong{grid-column:2;grid-row:1;font-size:14px!important}
+ html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-investing-main>span:not(.asset-quote-state){grid-column:1/-1;font-size:11px!important;white-space:nowrap}
+}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row{padding:6px 10px!important;align-items:center;grid-template-columns:26px minmax(0,1fr) auto!important;gap:8px!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row .inbox-icon{width:24px!important;height:24px!important;font-size:12px!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row .inbox-main{display:block!important;min-width:0}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row .inbox-main>b{display:inline;margin-right:8px}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row .inbox-main>small{display:inline}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row .inbox-time{display:flex;align-items:center;gap:6px}
+
+/* Detallada: todo a la vista, con los «Más datos» abiertos. */
+html[data-list-view="detailed"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){gap:8px!important;border:0!important;background:transparent!important;overflow:visible!important}
+html[data-list-view="detailed"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.future-list,#futureResults)>.asset-card{border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important}
+@container compact-card (min-width:501px){
+ html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row[data-card-template="compact-slots"]{grid-template-columns:28px minmax(0,1.6fr) minmax(150px,1fr) minmax(0,1fr) auto!important;grid-template-areas:none!important;align-items:center!important}
+ html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row[data-card-template="compact-slots"]>*{grid-area:auto!important;grid-row:1!important}
+ html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-quote-slot{justify-self:start!important}
+}
+@media(max-width:820px){
+ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row{grid-template-columns:auto minmax(0,1fr)!important;grid-template-areas:"icon time" "main main"!important;align-content:start;row-gap:6px!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-icon{grid-area:icon}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-time{grid-area:time;justify-self:end;display:flex;align-items:center;gap:6px}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-main{grid-area:main}
+#importWizard .import-wizard-cash{display:flex;align-items:center;gap:8px;margin:-2px 0 4px 28px;font-weight:700}
+#importWizard .import-wizard-cash input{width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--line,rgba(140,190,210,.25));background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums}
+
+/* Selector de formato en la barra de arriba: un botón con el formato actual; al pulsarlo se
+   despliegan a su izquierda las tres opciones (deslizando y apareciendo una tras otra). */
+#accountArea .list-view-top{order:-4;position:relative;display:flex;align-items:center;flex-direction:row-reverse;gap:0;height:var(--lv-btn,42px);border-radius:999px;transition:background .25s ease,box-shadow .25s ease}
+#accountArea .list-view-top[hidden]{display:none!important}
+#accountArea .list-view-top.open{background:rgb(11,26,35);box-shadow:0 0 0 1px rgb(41,66,78),0 8px 22px rgba(0,0,0,.35)}
+html[data-theme="light"] #accountArea .list-view-top.open{background:#fff;box-shadow:0 0 0 1px #cbdce3,0 8px 22px rgba(20,40,60,.15)}
+#accountArea .list-view-top>.list-view-toggle{display:grid!important;place-items:center;flex:0 0 auto;width:var(--lv-btn,42px)!important;height:var(--lv-btn,42px)!important;min-width:0!important;padding:0!important;margin:0!important;border-radius:50%!important;border:1px solid rgb(41,66,78)!important;background:rgb(11,26,35)!important;color:#2fd39a!important;cursor:pointer;box-shadow:none!important;transition:transform .25s ease,border-color .25s ease}
+html[data-theme="light"] #accountArea .list-view-top>.list-view-toggle{background:#fff!important;border-color:#cbdce3!important;color:#0f7a55!important}
+#accountArea .list-view-top.open>.list-view-toggle{border-color:rgba(47,211,154,.6)!important;color:#dce8ec!important}
+#accountArea .list-view-top svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#accountArea .list-view-top .list-view-switch{display:flex;align-items:center;gap:2px;max-width:0;overflow:hidden;opacity:0;padding:0;transition:max-width .32s cubic-bezier(.2,.8,.2,1),opacity .2s ease,padding .32s ease}
+#accountArea .list-view-top.open .list-view-switch{max-width:160px;opacity:1;padding:0 4px 0 6px}
+#accountArea .list-view-top .list-view-switch button{display:grid;place-items:center;flex:0 0 auto;width:calc(var(--lv-btn,42px) - 8px);height:calc(var(--lv-btn,42px) - 8px);min-width:0;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:#8ea0bf;cursor:pointer;box-shadow:none;transform:translateX(14px) scale(.6);opacity:0;transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s ease,background .15s,color .15s}
+#accountArea .list-view-top.open .list-view-switch button{transform:none;opacity:1}
+#accountArea .list-view-top.open .list-view-switch button:nth-child(3){transition-delay:.03s}
+#accountArea .list-view-top.open .list-view-switch button:nth-child(2){transition-delay:.08s}
+#accountArea .list-view-top.open .list-view-switch button:nth-child(1){transition-delay:.13s}
+#accountArea .list-view-top .list-view-switch button span{display:none}
+#accountArea .list-view-top .list-view-switch button:hover{color:#dce8ec;background:rgba(140,190,210,.1)}
+#accountArea .list-view-top .list-view-switch button.active{background:rgba(32,201,151,.18);color:#2fd39a;box-shadow:inset 0 0 0 1px rgba(47,211,154,.4)}
+html[data-theme="light"] #accountArea .list-view-top .list-view-switch button.active{background:#e3f7ef;color:#0f7a55}
+#accountArea .list-view-top button:focus-visible{outline:2px solid #2fd39a;outline-offset:1px}
+@media (prefers-reduced-motion:reduce){#accountArea .list-view-top,#accountArea .list-view-top *{transition:none!important}}
+@media(max-width:820px){#accountArea .list-view-top{--lv-btn:var(--tb-btn,34px)}}
+/* Al desplegarse, el resto de botones de la cabecera se desplaza con la misma animación. */
+@property --lv-extra{syntax:'<length>';inherits:true;initial-value:0px}
+html{--lv-extra:0px;transition:--lv-extra .32s cubic-bezier(.2,.8,.2,1)}
+html.list-view-open{--lv-extra:116px}
+@media(max-width:820px){html.list-view-open{--lv-extra:92px}}
+@media (prefers-reduced-motion:reduce){html{transition:none}}
+@media (max-width:820px){
+ /* Con el selector de formato visible el grupo de la derecha tiene 5 botones: las acciones de la página se apartan. */
+ html:has(#listViewSwitch:not([hidden])){--tb-account:calc(8px + 5*var(--tb-btn) + 4*var(--tb-gap) + var(--lv-extra))}
+}
+@media (min-width:821px){
+ /* Escritorio: la cabecera reserva también el ancho del selector de formato cuando se ve. */
+ html:has(#listViewSwitch:not([hidden])){--ph-reserve:calc(322px + var(--lv-extra))}
+}
+@media (max-width:820px){
+ /* Radar AI: un margen negativo propio subía «?» y «↻» por encima del resto de botones de la barra. */
+ html:root:root body:not(#tb-x):not(#lv-a):not(.stock-detail-open) .view.active>.page-heading>.heading-actions{margin:0!important}
+}
+
+/* Catálogos y fondos en escritorio: compacta = la tabla de siempre; detallada y cuadrícula = una
+   tarjeta por fila con todos sus datos (cada uno con el nombre de su columna). La cabecera queda
+   como fila de botones para ordenar y filtrar. */
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table-wrap,.fund-table-scroll){overflow:visible!important;max-height:none!important;border:0!important;background:transparent!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table){display:block!important;width:100%!important;min-width:0!important;border:0!important;table-layout:auto!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>colgroup{display:none!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead{display:block!important;position:static!important;margin:0 0 8px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead>tr{display:flex!important;flex-wrap:wrap!important;gap:4px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead th{display:inline-flex!important;align-items:center;width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;padding:3px 8px!important;border:1px solid var(--line,rgba(140,190,210,.18))!important;border-radius:999px!important;position:relative!important;top:auto!important;font-size:11px!important;white-space:nowrap!important;background:transparent!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead :is(.catalog-column-resizer,.fund-column-resizer){display:none!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody{display:grid!important;grid-template-columns:minmax(0,1fr);gap:8px!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))!important;gap:10px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px 14px!important;position:relative;padding:9px 12px!important;border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;background:rgba(12,28,42,.55)!important;height:auto!important}
+html[data-theme="light"]:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr{background:#fff!important;border-color:#dde3ee!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))!important;gap:5px 10px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td{display:block!important;width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;padding:0!important;border:0!important;background:transparent!important;white-space:normal!important;overflow:visible!important;text-align:left!important;position:static!important;font-size:12.5px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td[data-lv-label]::before{content:attr(data-lv-label);display:block;margin-bottom:1px;font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted,#8ea0bf);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Identidad arriba a todo lo ancho y acciones abajo; la estrella en la esquina. */
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td:is([data-col="name"],.fund-table-fund){grid-column:1/-1!important;order:-1;font-size:14px!important;font-weight:700;padding-right:30px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td:is([data-col="name"],.fund-table-fund)::before{display:none!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td:is([data-col="name"],.fund-table-fund) :is(.catalog-name-cell,strong){white-space:normal!important;overflow:visible!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td[data-col="fav"]{position:absolute!important;top:6px;right:8px}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td[data-col="fav"]::before{display:none!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td.fund-table-actions{grid-column:1/-1!important;order:99;display:flex!important;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>tbody>tr>td.fund-table-actions::before{display:none!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead th>*{padding:0!important;margin:0!important;min-height:0!important;height:auto!important;gap:4px!important}
+html:is([data-list-view="detailed"],[data-list-view="grid"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.catalog-table,.fund-table)>thead th :is(button,.fund-header-filter,.catalog-header-filter){width:auto!important;height:auto!important;min-width:0!important;padding:0 0 0 4px!important}
+/* Cuadrícula: la cabecera de columnas de las listas no sirve para tarjetas sueltas; cada dato lleva su nombre. */
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .view.active .asset-list-head-shell{display:none!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund-mobile-rows,.catalog-mobile-rows) .asset-card-context-cell>.asset-card-label{display:block!important;font-size:9px!important;letter-spacing:.3px;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund-mobile-rows,.catalog-mobile-rows) .asset-card-context-cell .asset-card-cell-value{white-space:nowrap!important;font-size:11.5px!important}
+@media(max-width:820px){
+ /* Fondos en el móvil: cada tarjeta necesita el ancho entero para sus tres columnas de datos. */
+ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a):not(#lv-b) .view .fund-mobile-rows{grid-template-columns:minmax(0,1fr)!important}
+}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund-mobile-rows,.catalog-mobile-rows) .asset-card-cell>.asset-card-label{display:block!important;font-size:9px!important;letter-spacing:.3px;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+@media (max-width:820px){
+ /* Títulos largos (p. ej. «Catálogo Fondos y ETFs»): en dos líneas y con letra más pequeña, nunca cortados. */
+ html:root:root body:not(#tb-x):not(#lv-a):not(.stock-detail-open) .view.active>.page-heading h1.title-fit{
+  white-space:normal!important;overflow:hidden!important;text-overflow:clip!important;
+  display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;
+  font-size:var(--title-fit,15px)!important;line-height:1.08!important;overflow-wrap:normal!important;word-break:normal!important;hyphens:none!important;
+ }
+ html:root:root body:not(#tb-x):not(#lv-a):not(.stock-detail-open) .view.active>.page-heading h1.title-fit~*{align-self:center}
+}

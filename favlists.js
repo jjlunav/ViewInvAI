@@ -54,7 +54,7 @@
    '<form class="fav-list-form" data-fav-list-form="'+esc(list?list.id:'')+'">'+
     '<label class="broker-import-field"><span>Nombre</span><input name="name" required maxlength="40" value="'+esc(list?list.name:'')+'" placeholder="Biotech, Dividendos, Para vigilar…"></label>'+
     '<div class="fav-list-items">'+rows+'</div>'+
-    '<div class="fav-list-actions">'+(list?'<button type="button" class="btn ghost" data-fav-list-delete="'+esc(list.id)+'">Borrar lista</button>':'<span></span>')+'<button type="submit" class="btn">Guardar</button></div>'+
+    '<div class="fav-list-actions">'+(list?'<button type="button" class="btn ghost" data-fav-list-delete="'+esc(list.id)+'">🗑 Borrar lista</button>':'<span></span>')+'<button type="submit" class="btn">Guardar</button></div>'+
    '</form>');
  }
  document.addEventListener('click',e=>{

@@ -143,7 +143,7 @@ function setChartMarketUi(block,s,usAvailable,trAvailable,active){
  }
 }
 function chartRetryHtml(message){
- return '<div class="chart-placeholder chart-placeholder-error"><div><span>'+E(message||'No se pudo cargar el gráfico.')+'</span><button type="button" class="chart-retry" data-chart-retry="1">Reintentar</button></div></div>';
+ return '<div class="chart-placeholder chart-placeholder-error"><div><span>'+E(message||'No se pudo cargar el gráfico.')+'</span><button type="button" class="chart-retry" data-chart-retry="1">↻ Reintentar</button></div></div>';
 }
 function miniChart(s,preferTr=false){
  return '<div class="mini-chart-block tv-chart-block" data-stock-key="'+E(stockKey(s))+'" data-chart-prefer-tr="'+(preferTr?'1':'0')+'">'+

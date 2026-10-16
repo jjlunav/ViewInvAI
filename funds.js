@@ -280,7 +280,7 @@
   return '<section class="fund-remote"><h3>Más fondos registrados en España · '+rows.length+'</h3><p class="fund-note">Universo de Morningstar España: incluye los fondos que vende MyInvestor. Comprueba en tu bróker que el fondo está disponible antes de invertir.</p>'+
    '<div class="fund-remote-list">'+rows.map(r=>'<article class="fund-remote-row"><div><strong>'+esc(r.name)+'</strong><small>'+esc([r.isin,r.provider,r.category].filter(Boolean).join(' · '))+'</small></div>'+
     '<span>TER <b>'+(num(r.ter)===null?'—':pct(num(r.ter)).replace('+',''))+'</b></span><span>1 año <b class="'+((num(r.perf1Y)||0)>=0?'positive':'negative')+'">'+pct(r.perf1Y)+'</b></span>'+
-    '<div class="fund-remote-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(r.isin)+'">Ficha</button><button type="button" class="btn small" data-fund-position="'+esc(r.isin)+'">＋ Cartera</button></div></article>').join('')+'</div></section>';
+    '<div class="fund-remote-actions"><button type="button" class="btn small ghost" data-fund-detail="'+esc(r.isin)+'">▤ Ficha</button><button type="button" class="btn small" data-fund-position="'+esc(r.isin)+'">＋ Cartera</button></div></article>').join('')+'</div></section>';
  }
  function norm(p){
   const platforms=p&&p.platforms&&typeof p.platforms==='object'?p.platforms:{};
@@ -496,7 +496,7 @@
   if(key==='provider')return '<td class="fund-table-text" title="'+esc(p.provider||'')+'">'+esc(p.provider||'—')+'</td>';
   if(key==='distribution')return '<td class="fund-table-text">'+esc(p.distribution||'—')+'</td>';
   if(key==='region')return '<td class="fund-table-text">'+esc(p.region||'—')+'</td>';
-  if(key==='actions')return '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td>';
+  if(key==='actions')return '<td class="fund-table-actions">'+fundFavoriteButton(p)+'<button type="button" class="btn small ghost" data-fund-detail="'+esc(p.isin)+'">▤ Ver ficha</button><button type="button" class="btn small" data-fund-position="'+esc(p.isin)+'">＋ Cartera</button></td>';
   return '<td>—</td>';
  }
  function fundTableRow(p,columns){
@@ -804,7 +804,7 @@
    openAttrs:' data-fund-detail="'+esc(p.isin)+'" role="button" tabindex="0"',
    cells:[{label:'Valor actual',value:'',html:valueCell},{label:'P&L',value:v.pnl===null?'—':amount(v.pnl,cur)+(v.pnlPct===null?'':' · '+pct(v.pnlPct)),tone:v.pnl===null?'muted':v.pnl>=0?'positive':'negative'}],
    detailsLabel:'Posición · datos del fondo',detailsHtml:freshnessHtml(p)+'<div class="asset-card-metrics"><span>Participaciones <b>'+esc(v.units===null?'—':v.units.toLocaleString('es-ES',{maximumFractionDigits:6}))+'</b></span><span>Precio medio <b>'+money(v.avg,cur)+'</b></span>'+(v.price!==null?'<span>'+(v.source==='last'?'Último precio ('+esc(shortDate(v.at))+')':'Precio actual')+' <b>'+money(v.price,cur)+'</b></span>':'')+'</div>'+(v.source==='last'?'<p class="fund-note">Este fondo no tiene valor liquidativo en el catálogo: se valora con el precio de tu última operación importada.</p>':'')+compactFacts(p)+perfStrip(p),
-   actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">Eliminar</button>'
+   actionsHtml:'<button type="button" class="btn small" data-fund-transactions="'+esc(position.id)+'">⇄ Operaciones</button><button type="button" class="btn small ghost" data-fund-position-edit="'+esc(position.id)+'">✎ Editar</button><button type="button" class="btn small ghost" data-fund-position-delete="'+esc(position.id)+'">🗑 Eliminar</button>'
   });
  }
 
@@ -980,7 +980,7 @@
   if(account.loading){box.innerHTML='<div class="portfolio-loading"><span></span><p>Cargando fondos…</p></div>';return}
   const selected=selectedFundPortfolio();
   if(!selected&&account.error){
-   box.innerHTML='<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus fondos</h2><p>'+esc(account.error)+'</p><button type="button" class="btn" data-fund-retry>Reintentar</button></div>';
+   box.innerHTML='<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus fondos</h2><p>'+esc(account.error)+'</p><button type="button" class="btn" data-fund-retry>↻ Reintentar</button></div>';
    return;
   }
   if(!selected){

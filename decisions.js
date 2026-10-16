@@ -110,7 +110,7 @@
    text:(ALERT_LABEL[alert.alert_type]||alert.title||'Aviso de cartera')+(alert.message?': '+alert.message:''),
    detailHtml:planHtml(pos,alert.alert_type)+
     '<small class="decision-note">'+(recovered?'Si sigues manteniendo, te avisaré si vuelve a caer con fuerza.':'Con «Mantener» dejo de insistir en vender esta posición y te aviso cuando recupere tu precio de compra, si mejora lo bastante para promediar o si cae otro 15 %.')+
-    ' <button type="button" class="decision-link" data-decision-open="pd:'+esc(pos.id)+'">Ver ficha</button></small>',
+    ' <button type="button" class="decision-link" data-decision-open="pd:'+esc(pos.id)+'">▤ Ver ficha</button></small>',
    options,
    onOpen:()=>{const s=typeof window.stockByKey==='function'?window.stockByKey(pos.stock_key):null;if(s&&typeof window.openStock==='function')window.openStock(s,'decision',Number(pos.prefer_tr)===1)},
    onAnswer:async choice=>{

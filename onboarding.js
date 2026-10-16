@@ -19,7 +19,7 @@
    '<div class="onb-icon" aria-hidden="true">'+s.icon+'</div>'+
    '<h2 id="onbTitle">'+esc(s.title)+'</h2><p>'+esc(s.text)+'</p>'+
    '<div class="onb-dots" aria-label="Paso '+(step+1)+' de '+STEPS.length+'">'+STEPS.map((_,i)=>'<i class="'+(i===step?'on':'')+'"></i>').join('')+'</div>'+
-   '<div class="onb-actions">'+(step?'<button type="button" class="btn ghost" data-onb-prev>Atrás</button>':'<span></span>')+
+   '<div class="onb-actions">'+(step?'<button type="button" class="btn ghost" data-onb-prev>‹ Atrás</button>':'<span></span>')+
    '<button type="button" class="btn" data-onb-next>'+(last?'Empezar':'Siguiente')+'</button></div></div>';
   box.querySelector('[data-onb-next]').focus({preventScroll:true});
  }

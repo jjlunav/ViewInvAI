@@ -31,7 +31,45 @@
   v.style.setProperty('--shell-x',(parseFloat(cs.paddingLeft)||0)+'px');
   v.style.setProperty('--shell-top',(parseFloat(cs.paddingTop)||0)+'px');
  }
- function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();apply()}
+ // Escritorio: la cabecera de la sección (título y las pestañas que van justo debajo) se queda fija
+ // arriba al bajar por la página. En el móvil hay otra cabecera propia y esto no se aplica.
+ const isTabs=el=>el&&(el.tagName==='NAV'||el.getAttribute('role')==='tablist'||/(^|\s|-)(tabs|switch)(\s|$|-)/.test(el.className||''));
+ function syncDesktopSticky(){
+  document.querySelectorAll('[data-desk-sticky]').forEach(el=>{el.removeAttribute('data-desk-sticky');el.style.removeProperty('top')});
+  if(mq.matches)return;
+  const v=document.querySelector('.view.active'),head=v&&v.querySelector(':scope>.page-heading');if(!head)return;
+  const stack=[head];let el=head.nextElementSibling;
+  while(el&&isTabs(el)&&stack.length<4){if(el.offsetParent!==null)stack.push(el);el=el.nextElementSibling}
+  let top=0;
+  for(const x of stack){x.setAttribute('data-desk-sticky','');x.style.top=top+'px';top+=x.offsetHeight}
+ }
+ // Tamaño en escritorio (compacto por defecto): se guarda en este navegador y se aplica a todo con zoom.
+ const SIZE_KEY='viewinvai.deskSize',SIZES=['compact','xcompact','normal'];
+ function deskSize(){try{const v=localStorage.getItem(SIZE_KEY);return SIZES.includes(v)?v:'compact'}catch(_){return 'compact'}}
+ function applyDeskSize(v){
+  document.documentElement.dataset.deskSize=v;
+  document.querySelectorAll('[data-desk-size-setting]').forEach(b=>{const on=b.dataset.deskSizeSetting===v;b.setAttribute('aria-pressed',String(on));b.classList.toggle('active',on)});
+ }
+ applyDeskSize(deskSize());
+ document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-desk-size-setting]');if(!b)return;
+  const v=b.dataset.deskSizeSetting;if(!SIZES.includes(v))return;
+  try{localStorage.setItem(SIZE_KEY,v)}catch(_){}
+  applyDeskSize(v);setTimeout(reset,50);
+ });
+ // Móvil: si el título de la sección no cabe en una línea, pasa a dos con letra más pequeña (15 px y,
+ // si aún no cabe, 13 px) en lugar de cortarse con «…».
+ function fitTitle(){
+  document.querySelectorAll('.page-heading h1.title-fit').forEach(h=>{h.classList.remove('title-fit');h.style.removeProperty('--title-fit')});
+  if(!mq.matches)return;
+  const h=document.querySelector('.view.active>.page-heading h1');if(!h||!h.clientWidth)return;
+  // Cuando cambia el hueco (botones que aparecen, giro de pantalla) se vuelve a medir.
+  if(window.ResizeObserver&&!h.__fitWatch){h.__fitWatch=new ResizeObserver(()=>{clearTimeout(fitTitle.t);fitTitle.t=setTimeout(fitTitle,60)});h.__fitWatch.observe(h.parentElement)}
+  if(h.scrollWidth<=h.clientWidth+2)return;
+  h.classList.add('title-fit');
+  for(const px of [15,13.5,12]){h.style.setProperty('--title-fit',px+'px');if(h.scrollHeight<=h.clientHeight+2&&h.scrollWidth<=h.clientWidth+2)break}
+ }
+ function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();fitTitle();apply()}
  window.addEventListener('scroll',onScroll,{passive:true});
  window.addEventListener('resize',reset,{passive:true});
  window.addEventListener('viewinvai:view-changed',reset);
@@ -170,5 +208,111 @@
   window.addEventListener('resize',measure,{passive:true});
   window.addEventListener('viewinvai:view-changed',()=>setTimeout(measure,0));
  };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+})();
+/* Formato de las listas: compacta, detallada o cuadrícula. Un único ajuste para toda la app
+ * (se guarda en este navegador) y un único selector en la barra de arriba, junto a ? y la campana;
+ * solo aparece en las pantallas con listas. Es un botón con el formato actual: al pulsarlo se despliegan las tres opciones. */
+(function(){
+ 'use strict';
+ const KEY='viewinvai.listView',MODES=['compact','detailed','grid'];
+ const VIEWS=['today','home','entry','recommendation','future','portfolios','favorites','inbox','catalog','catalogUS','funds'];
+ const LISTS='.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.inbox-list,.catalog-mobile-rows,.fund-mobile-rows';
+ const TABLES='.catalog-table,.fund-table';
+ const ICON={
+  compact:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>',
+  detailed:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/></svg>',
+  grid:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>'
+ };
+ const CLOSE='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+ const LABEL={compact:'Lista compacta',detailed:'Lista detallada',grid:'Cuadrícula'};
+ const read=()=>{try{const v=localStorage.getItem(KEY);return MODES.includes(v)?v:'compact'}catch(_){return 'compact'}};
+ let mode=read(),box=null;
+ function mount(){
+  const area=document.getElementById('accountArea');if(!area)return null;
+  if(box&&box.isConnected)return box;
+  box=document.createElement('div');
+  box.className='list-view-top';box.id='listViewSwitch';box.setAttribute('role','group');box.setAttribute('aria-label','Formato de las listas');
+  box.innerHTML='<button type="button" class="list-view-toggle" data-list-view-toggle aria-haspopup="true" aria-expanded="false" title="Formato de las listas"></button>'+
+   '<div class="list-view-switch">'+MODES.map(m=>'<button type="button" data-list-view-set="'+m+'" title="'+LABEL[m]+'" aria-label="'+LABEL[m]+'">'+ICON[m]+'<span>'+LABEL[m]+'</span></button>').join('')+'</div>';
+  area.insertBefore(box,area.firstChild);
+  setOpen(false);
+  return box;
+ }
+ function syncVisible(){
+  const b=mount();if(!b)return;
+  const v=document.querySelector('.view.active'),id=v&&v.id.replace(/^view-/,'');
+  b.hidden=!VIEWS.includes(id)||document.body.classList.contains('stock-detail-open');
+  if(b.hidden)close();
+ }
+ function setOpen(open){
+  if(!box)return;
+  box.classList.toggle('open',open);
+  const t=box.querySelector('[data-list-view-toggle]');if(t){t.setAttribute('aria-expanded',String(open));t.innerHTML=open?CLOSE:ICON[mode]}
+  // Los demás botones de la barra se apartan lo que ocupan las opciones (theme-ai.css, --lv-extra).
+  document.documentElement.classList.toggle('list-view-open',open);
+  // El título se reajusta al hueco que deja el selector abierto o cerrado.
+  clearTimeout(setOpen.t);setOpen.t=setTimeout(()=>{if(window.ViewInvAIShell&&window.ViewInvAIShell.resetChrome)window.ViewInvAIShell.resetChrome()},360);
+  // Plegadas, las opciones no se alcanzan con el teclado ni con el lector de pantalla.
+  const sw=box.querySelector('.list-view-switch');if(sw){sw.inert=!open;sw.setAttribute('aria-hidden',String(!open))}
+ }
+ function close(){setOpen(false)}
+ // En «detallada» se abren los «Más datos» de cada tarjeta; al salir se cierran solo los que abrió este ajuste.
+ function syncDetails(){
+  document.querySelectorAll(':is('+LISTS+') .asset-card-details').forEach(d=>{
+   if(mode==='detailed'){if(!d.open&&!d.dataset.lvSeen){d.dataset.lvSeen='1';d.dataset.lvAuto='1';d.open=true}}
+   else if(d.dataset.lvAuto){delete d.dataset.lvAuto;delete d.dataset.lvSeen;d.open=false}
+  });
+ }
+ // Catálogos y fondos (tablas en escritorio): en detallada y cuadrícula cada fila es una tarjeta;
+ // cada dato lleva el nombre de su columna y la tabla deja su ancho fijo para llenar la pantalla.
+ function syncTables(){
+  document.querySelectorAll(TABLES).forEach(t=>{
+   const cards=mode!=='compact';
+   if(cards){
+    if(t.dataset.lvWidth===undefined){t.dataset.lvWidth=t.style.getPropertyValue('width')||'';t.style.setProperty('width','100%','important')}
+    if(!t.dataset.lvLabeled||t.dataset.lvLabeled!==String(t.tBodies[0]&&t.tBodies[0].rows.length)){
+     const heads=[...(t.tHead&&t.tHead.rows[0]?t.tHead.rows[0].cells:[])].map(th=>{const sp=th.querySelector('span');return (sp||th).textContent.replace(/[↑↓▲▼]/g,'').trim()});
+     [...(t.tBodies[0]?t.tBodies[0].rows:[])].forEach(tr=>[...tr.cells].forEach((td,i)=>{if(heads[i]&&!td.dataset.lvLabel)td.dataset.lvLabel=heads[i]}));
+     t.dataset.lvLabeled=String(t.tBodies[0]&&t.tBodies[0].rows.length);
+    }
+   }else if(t.dataset.lvWidth!==undefined){
+    if(t.dataset.lvWidth)t.style.setProperty('width',t.dataset.lvWidth,'important');else t.style.removeProperty('width');
+    delete t.dataset.lvWidth;
+   }
+  });
+ }
+ function apply(){
+  document.documentElement.dataset.listView=mode;
+  const b=mount();
+  if(b){
+   const t=b.querySelector('[data-list-view-toggle]');t.innerHTML=b.classList.contains('open')?CLOSE:ICON[mode];t.setAttribute('aria-label','Formato de las listas: '+LABEL[mode]);
+   b.querySelectorAll('[data-list-view-set]').forEach(x=>{const on=x.dataset.listViewSet===mode;x.classList.toggle('active',on);x.setAttribute('aria-pressed',String(on))});
+  }
+  syncDetails();syncTables();
+ }
+ document.addEventListener('click',e=>{
+  const t=e.target.closest&&e.target.closest('[data-list-view-toggle]');
+  if(t){setOpen(!box.classList.contains('open'));if(box.classList.contains('open')){const a=box.querySelector('[data-list-view-set].active');if(a&&e.detail===0)a.focus()}return}
+  const b=e.target.closest&&e.target.closest('[data-list-view-set]');
+  if(!b){if(box&&box.classList.contains('open')&&!box.contains(e.target))close();return}
+  close();
+  const v=b.dataset.listViewSet;if(!MODES.includes(v)||v===mode)return;
+  mode=v;try{localStorage.setItem(KEY,v)}catch(_){}
+  apply();
+  if(window.ViewInvAIShell&&window.ViewInvAIShell.resetChrome)window.ViewInvAIShell.resetChrome();
+ });
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+ let queued=false;
+ const later=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;if(mode==='detailed')syncDetails();if(mode!=='compact')syncTables()})};
+ function start(){
+  apply();syncVisible();
+  window.addEventListener('viewinvai:view-changed',()=>setTimeout(syncVisible,0));
+  if(window.MutationObserver){
+   new MutationObserver(later).observe(document.querySelector('.main')||document.body,{childList:true,subtree:true});
+   new MutationObserver(syncVisible).observe(document.body,{attributes:true,attributeFilter:['class']});
+  }
+ }
+ document.documentElement.dataset.listView=mode;
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
