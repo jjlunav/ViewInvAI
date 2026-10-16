@@ -207,9 +207,10 @@
  let engines={at:0,loading:false,data:null};
  async function loadEngines(force){
   if(engines.loading||(!force&&engines.data&&Date.now()-engines.at<5*60000)||!signedIn())return;
-  engines.loading=true;
-  try{engines.data=await api('/api/ai/engines');engines.at=Date.now()}catch(e){engines.error=e.message}
-  engines.loading=false;refreshPanels();
+  const cur=engines;cur.loading=true;cur.error='';
+  // Si cambia la cuenta mientras se carga, la respuesta de la cuenta anterior se descarta.
+  try{const d=await api('/api/ai/engines');if(engines!==cur)return;cur.data=d;cur.at=Date.now()}catch(e){if(engines!==cur)return;cur.error=e.message||'No se pudo cargar la lista de IA.'}
+  cur.loading=false;refreshPanels();
  }
  function engineList(){const d=engines.data||{};return[...(d.own||[]),...(d.app||[])]}
  function engineLeft(e){
@@ -225,6 +226,7 @@
  }
  function enginePickerHtml(subject,st){
   if(!st.pickOpen)return '';
+  if(!engines.data&&engines.error&&!engines.loading)return '<div class="ai-engine"><p class="ai-contrast-error">'+esc(engines.error)+'</p><button type="button" class="btn small ghost" data-ai-engine-retry>Reintentar</button></div>';
   if(!engines.data)return '<div class="ai-engine"><p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Cargando las IA disponibles…</p></div>';
   const d=engines.data,list=engineList(),rec=recommendedEngine(),why=deepReason(subject,st);
   // La primera vez se marca la búsqueda exhaustiva solo si la situación lo aconseja.
@@ -537,7 +539,7 @@
   const st=results.get(el.dataset.aiContrastPanel);if(st)st.open=el.open;
  },true);
  document.addEventListener('click',e=>{
-  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear],[data-ai-engine-toggle],[data-ai-engine-run]');
+  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear],[data-ai-engine-toggle],[data-ai-engine-run],[data-ai-engine-retry]');
   if(!t){if(e.target.matches&&e.target.matches('[data-ai-manual-backdrop]'))closeManual();return}
   if(t.closest('[data-ai-contrast-panel]')){e.stopPropagation();e.preventDefault()}
   if(t.hasAttribute('data-ai-manual')){openManual(t.dataset.aiManual);return}
@@ -552,6 +554,7 @@
   if(t.hasAttribute('data-ai-contrast-run'))start(subject,true);
   else if(t.hasAttribute('data-ai-engine-toggle')){st.pickOpen=!st.pickOpen;st.open=true;st.reusedAt=null;if(st.pickOpen)loadEngines(false);refreshPanels()}
   else if(t.hasAttribute('data-ai-engine-run'))runEngine(subject,t.dataset.force==='1');
+  else if(t.hasAttribute('data-ai-engine-retry')){engines.error='';loadEngines(true);refreshPanels()}
   else if(t.hasAttribute('data-ai-ask'))askExternal(subject,t.dataset.aiAsk);
   else if(t.hasAttribute('data-ai-paste-toggle')){st.manualOpen=!st.manualOpen;st.open=true;refreshPanels();if(st.manualOpen)setTimeout(()=>{const ta=document.querySelector('[data-ai-contrast-panel="'+CSS.escape(panel.dataset.aiContrastPanel)+'"] textarea[name=answer]');if(ta)ta.focus()},30)}
   else if(t.hasAttribute('data-ai-pick')){const k=t.dataset.aiPick;if(st.selected.has(k))st.selected.delete(k);else if(st.selected.size>=20)say('Máximo 20 acciones por pregunta.',true);else st.selected.add(k);refreshPanels()}
@@ -566,8 +569,8 @@
   else if(t.matches('[data-ai-engine-deep]')){st.deep=t.checked;st.reusedAt=null;refreshPanels()}
  });
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('[data-ai-manual-backdrop]'))closeManual()});
- window.addEventListener('viewinvai:account-ready',()=>{config.loaded=false;results.clear();recent={loaded:false,loading:false,list:[]};loadConfig(true);loadRecent()});
- window.addEventListener('viewinvai:auth-changed',()=>{config={loaded:false,loading:false,serverReady:true,providers:{},defaults:{}};results.clear();recent={loaded:false,loading:false,list:[]};renderSettings();refreshPanels();announce({type:'all',key:''})});
+ window.addEventListener('viewinvai:account-ready',()=>{engines={at:0,loading:false,data:null};config.loaded=false;results.clear();recent={loaded:false,loading:false,list:[]};loadConfig(true);loadRecent()});
+ window.addEventListener('viewinvai:auth-changed',()=>{engines={at:0,loading:false,data:null};config={loaded:false,loading:false,serverReady:true,providers:{},defaults:{}};results.clear();recent={loaded:false,loading:false,list:[]};renderSettings();refreshPanels();announce({type:'all',key:''})});
  document.addEventListener('DOMContentLoaded',renderSettings);
  if(document.readyState!=='loading')renderSettings();
 

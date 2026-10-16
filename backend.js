@@ -5874,7 +5874,10 @@ async function ensureAiIntegrationSchema(env){
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS user_ai_keys (user_id TEXT NOT NULL,provider TEXT NOT NULL,key_enc TEXT NOT NULL,iv TEXT NOT NULL,last4 TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,provider),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_contrasts (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,subject_type TEXT NOT NULL,subject_key TEXT NOT NULL,day TEXT NOT NULL,provider TEXT NOT NULL,verdict TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',items_json TEXT NOT NULL DEFAULT '[]',sources_json TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ai_contrasts_user_subject ON ai_contrasts(user_id,subject_type,subject_key,day)")
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ai_contrasts_user_subject ON ai_contrasts(user_id,subject_type,subject_key,day)"),
+    // Usos de «Elegir IA»: reserva atómica del cupo diario y firma de la consulta para reutilizarla sin gastar.
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_pick_uses (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,day TEXT NOT NULL,kind TEXT NOT NULL,sig TEXT NOT NULL,contrast_id TEXT,created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ai_pick_uses_user ON ai_pick_uses(user_id,day,kind)")
   ]);
   aiIntegrationSchemaReady=true;
 }
@@ -6221,7 +6224,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     const today=nowIso().slice(0,10);
     const {results:keyRows}=await env.DB.prepare("SELECT provider,model,active FROM user_ai_keys WHERE user_id=?").bind(user.id).all();
     const usedOwn=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(user.id,today).first();
-    const usedApp=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider LIKE 'app-%'").bind(user.id,today).first();
+    const usedApp=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_pick_uses WHERE user_id=? AND day=? AND kind='app'").bind(user.id,today).first();
     const ownLeft=Math.max(0,AI_CONTRAST_DAILY_LIMIT-(Number(usedOwn&&usedOwn.n)||0)),appLeft=Math.max(0,AI_APP_PICK_DAILY_LIMIT-(Number(usedApp&&usedApp.n)||0));
     const own=[];
     for(const r of keyRows||[]){
@@ -6268,47 +6271,63 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     if(!prompt)return json({error:"Falta el contenido a contrastar"},400);
     const engine=String(body.engine||"");
     if(engine){
-      // IA elegida a mano (tuya o de la app), con búsqueda exhaustiva opcional.
+      // IA elegida a mano (tuya o de la app), con búsqueda exhaustiva opcional. Orden: validar la IA,
+      // reutilizar si es la misma consulta, reservar el cupo y solo entonces buscar noticias y preguntar.
       const today=nowIso().slice(0,10),deep=body.deep===true,model=aiValidModel(body.model);
       const m=engine.match(/^(user|app):([a-z]+)$/);
       if(!m)return json({error:"IA no válida"},400);
-      // Ahorro: si en las últimas 6 h ya se hizo lo mismo (misma IA, modelo y tipo de búsqueda), se reutiliza
-      // sin gastar usos. Solo se repite si el usuario lo pide expresamente.
-      const savedAs=m[1]==="user"?aiProviderOf(m[2]):"app-"+m[2];
-      if(savedAs&&body.force!==true){
+      const isUser=m[1]==="user",kind=isUser?"own":"app";
+      let p="",prov=null,keyRow=null;
+      if(isUser){
+        p=aiProviderOf(m[2]);if(!p)return json({error:"IA no válida"},400);
+        keyRow=await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,p).first();
+        if(!keyRow)return json({error:"Primero conecta esa IA en Configuración › Integrar la IA."},409);
+      }else{
+        prov=PROVIDERS.find(x=>x.id===m[2]&&x.kind==="IA");if(!prov)return json({error:"IA no válida"},400);
+        const offered=(await aiAppEngines(env)).find(x=>x.provider===prov.id);
+        if(!offered)return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no está disponible ahora."}]},200,noStore);
+        if(model&&!(offered.models||[]).includes(model))return json({error:"Modelo no disponible para "+prov.label},400);
+      }
+      const savedAs=isUser?p:"app-"+prov.id;
+      // Firma de la consulta: misma IA, modelo, tipo de búsqueda, contenido y valores elegidos.
+      const targets=(Array.isArray(body.targets)?body.targets:[]).slice(0,6);
+      const sigSrc=[savedAs,model,deep?"deep":"",type,key,prompt,targets.map(t=>String(t&&t.ticker||"").toUpperCase()).sort().join(",")].join("|");
+      const sig=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(sigSrc)))].slice(0,16).map(x=>x.toString(16).padStart(2,"0")).join("");
+      if(body.force!==true){
         const since=new Date(Date.now()-6*3600e3).toISOString();
-        const {results:prev}=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type=? AND subject_key=? AND provider=? AND created_at>=? ORDER BY created_at DESC LIMIT 5").bind(user.id,type,key,savedAs,since).all();
-        const hit=(prev||[]).find(r=>(!model||String(r.summary||"").includes(model))&&/búsqueda exhaustiva/.test(String(r.summary||""))===deep);
+        const hit=await env.DB.prepare("SELECT c.* FROM ai_pick_uses u JOIN ai_contrasts c ON c.id=u.contrast_id WHERE u.user_id=? AND u.sig=? AND u.created_at>=? ORDER BY u.created_at DESC LIMIT 1").bind(user.id,sig,since).first();
         if(hit)return json({contrasts:[aiContrastRow(hit)],errors:[],reused:true,reusedAt:hit.created_at},200,noStore);
       }
-      const evidence=deep?await aiDeepEvidence(env,body.targets):{text:"",sources:[]};
+      // Reserva atómica: solo entra si aún queda cupo hoy (varias pestañas a la vez no lo superan).
+      const limit=isUser?AI_CONTRAST_DAILY_LIMIT:AI_APP_PICK_DAILY_LIMIT,useId=uid("aiu_");
+      let reserved;
+      if(isUser){
+        reserved=await env.DB.prepare("INSERT INTO ai_pick_uses (id,user_id,day,kind,sig,created_at) SELECT ?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM ai_pick_uses WHERE user_id=? AND day=? AND kind='own')+(SELECT COUNT(*) FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai') AND id NOT IN (SELECT contrast_id FROM ai_pick_uses WHERE user_id=? AND day=? AND contrast_id IS NOT NULL))<?")
+          .bind(useId,user.id,today,kind,sig,nowIso(),user.id,today,user.id,today,user.id,today,limit).run();
+      }else{
+        reserved=await env.DB.prepare("INSERT INTO ai_pick_uses (id,user_id,day,kind,sig,created_at) SELECT ?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM ai_pick_uses WHERE user_id=? AND day=? AND kind='app')<?")
+          .bind(useId,user.id,today,kind,sig,nowIso(),user.id,today,limit).run();
+      }
+      if(!(reserved&&reserved.meta&&reserved.meta.changes>0))return json({contrasts:[],errors:[{provider:savedAs,error:"Has llegado al máximo de "+limit+" análisis "+(isUser?"con tus IA":"a mano con las IA de la app")+" por hoy."}]},200,noStore);
+      const refund=async()=>{try{await env.DB.prepare("DELETE FROM ai_pick_uses WHERE id=?").bind(useId).run()}catch(_){}};
+      const done=async row=>{try{await env.DB.prepare("UPDATE ai_pick_uses SET contrast_id=? WHERE id=?").bind(row.id,useId).run();
+        await env.DB.prepare("DELETE FROM ai_pick_uses WHERE user_id=? AND day<?").bind(user.id,new Date(Date.now()-3*86400000).toISOString().slice(0,10)).run()}catch(_){}return row};
+      const evidence=deep?await aiDeepEvidence(env,targets):{text:"",sources:[]};
       const fullPrompt=prompt+(deep?"\n\nBÚSQUEDA EXHAUSTIVA · NOTICIAS Y RESULTADOS REALES DE ESTA SEMANA (úsalos como fuente principal, cita el dato y la fecha):\n"+(evidence.text||"sin resultados")+
         "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":"");
-      if(m[1]==="user"){
-        const p=aiProviderOf(m[2]);if(!p)return json({error:"IA no válida"},400);
-        const row=await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,p).first();
-        if(!row)return json({error:"Primero conecta esa IA en Configuración › Integrar la IA."},409);
-        const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(user.id,today).first();
-        if((Number(used&&used.n)||0)>=AI_CONTRAST_DAILY_LIMIT)return json({contrasts:[],errors:[{provider:p,error:"Has llegado al máximo de "+AI_CONTRAST_DAILY_LIMIT+" análisis con tus IA por hoy."}]},200,noStore);
-        const label=AI_PROVIDERS[p].label,apiKey=await aiDecrypt(env,user.id,p,row);
-        if(!apiKey)return json({contrasts:[],errors:[{provider:p,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla."}]},200,noStore);
+      if(isUser){
+        const label=AI_PROVIDERS[p].label,apiKey=await aiDecrypt(env,user.id,p,keyRow);
+        if(!apiKey){await refund();return json({contrasts:[],errors:[{provider:p,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla."}]},200,noStore)}
         let a;
-        try{a=p==="gemini"?await aiAskGemini(apiKey,row.model||AI_PROVIDERS[p].model,fullPrompt,model):p==="anthropic"?await aiAskClaude(apiKey,model||row.model||AI_PROVIDERS[p].model,fullPrompt):await aiAskOpenAi(apiKey,model||row.model||AI_PROVIDERS[p].model,fullPrompt)}
+        try{a=p==="gemini"?await aiAskGemini(apiKey,keyRow.model||AI_PROVIDERS[p].model,fullPrompt,model):p==="anthropic"?await aiAskClaude(apiKey,model||keyRow.model||AI_PROVIDERS[p].model,fullPrompt):await aiAskOpenAi(apiKey,model||keyRow.model||AI_PROVIDERS[p].model,fullPrompt)}
         catch(error){a={error:String(error&&error.name)==="AbortError"?label+" ha tardado demasiado. Inténtalo de nuevo.":"No se pudo contactar con "+label+"."}}
         if(!a.error&&!String(a.text||"").trim())a.error=label+" no ha devuelto respuesta.";
-        if(a.error)return json({contrasts:[],errors:[{provider:p,error:a.error}]},200,noStore);
+        if(a.error){await refund();return json({contrasts:[],errors:[{provider:p,error:a.error}]},200,noStore)}
         const parsed=aiParseAnswer(a.text);
         const tag=p==="gemini"?"Tu Gemini · "+(a.effectiveModel||model||"Flash"):label+(model?" · "+model:"");
         parsed.summary=trimText(tag+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":p==="gemini"?" · sin búsqueda web":"")+". "+(parsed.summary||""),800);
-        return json({contrasts:[await aiSaveContrast(env,user,type,key,p,parsed,[...(a.sources||[]),...evidence.sources])],errors:[]},200,noStore);
+        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,p,parsed,[...(a.sources||[]),...evidence.sources]))],errors:[]},200,noStore);
       }
-      const prov=PROVIDERS.find(x=>x.id===m[2]&&x.kind==="IA");if(!prov)return json({error:"IA no válida"},400);
-      // Solo modelos de la lista que se ofrece para ese servicio.
-      const offered=(await aiAppEngines(env)).find(x=>x.provider===prov.id);
-      if(!offered)return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no está disponible ahora."}]},200,noStore);
-      if(model&&!(offered.models||[]).includes(model))return json({error:"Modelo no disponible para "+prov.label},400);
-      const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider LIKE 'app-%'").bind(user.id,today).first();
-      if((Number(used&&used.n)||0)>=AI_APP_PICK_DAILY_LIMIT)return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:"Has llegado al máximo de "+AI_APP_PICK_DAILY_LIMIT+" análisis a mano con las IA de la app por hoy."}]},200,noStore);
       try{
         const system=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.",deep
           ?"Tienes abajo resultados REALES de búsqueda de esta semana: úsalos como fuente principal y sé concreto y prudente."
@@ -6317,9 +6336,9 @@ async function handleAiIntegration(request,env,user,json,parts,url){
         aiEnginesMemo.at=0;
         const parsed=aiParseAnswer(run.text);
         parsed.summary=trimText(prov.label+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
-        return json({contrasts:[await aiSaveContrast(env,user,type,key,"app-"+prov.id,parsed,evidence.sources)],errors:[]},200,noStore);
+        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+prov.id,parsed,evidence.sources))],errors:[]},200,noStore);
       }catch(error){
-        aiEnginesMemo.at=0;
+        aiEnginesMemo.at=0;await refund();
         return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no ha podido responder ahora"+(model?" con "+model:"")+". Prueba con otra IA o con otro modelo."}]},200,noStore);
       }
     }
