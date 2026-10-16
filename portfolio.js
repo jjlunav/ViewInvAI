@@ -1639,7 +1639,7 @@ function goalActionHtml(a,ctx){
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
-  if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Si tu bróker no deja comprar fracciones de este valor, el plan propondrá acciones enteras">No admite fracciones</button></div>';
+  if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Pulsa solo si tu bróker no deja comprar una parte de acción de este valor: el plan propondrá acciones enteras">Mi bróker no la fracciona</button></div>';
   if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir qué hacer</button></div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
@@ -1781,7 +1781,7 @@ function goalWizardStepHtml(id){
       '<h3>Compras fraccionadas</h3><div class="goal-wizard-choices">'+
       goalWizardChoice("fractions","1","Sí, invertir importes","Compra la parte de acción que permita el capital (en Trade Republic, orden a mercado).",v.fractions===1)+
       goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>'+
-      (v.noFrac.length?'<p class="goal-wizard-hint">Valores marcados como «no admite fracciones» (toca para quitar la marca):</p><div class="goal-wizard-chips">'+
+      (v.noFrac.length?'<p class="goal-wizard-hint">Valores en los que tu bróker no deja comprar fracciones (toca para quitar la marca):</p><div class="goal-wizard-chips">'+
         v.noFrac.map(t=>'<button type="button" class="goal-wizard-chip" data-gw-unfrac="'+esc(t)+'" translate="no">'+esc(t)+' ×</button>').join('')+'</div>':'');
   }
   if(id==="spec")return '<h2>¿Acciones especulativas?</h2><p>Solo entran si el potencial temprano compensa claramente el riesgo. Siempre mantienen stop, control de liquidez, spread y dilución.</p><div class="goal-wizard-choices">'+

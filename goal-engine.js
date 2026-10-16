@@ -473,11 +473,11 @@
         spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         const isFraction=fractional&&Math.abs(units-Math.round(units))>1e-9;
-        const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:4}):String(units);
+        const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:2}):String(units);
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
-          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' ('+unitsText+' acciones; fraccionada, orden a mercado)':'Comprar '+unitsText+' × '+label(c)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones: compra fraccionada, solo a precio de mercado)':'Comprar '+unitsText+' × '+label(c)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
