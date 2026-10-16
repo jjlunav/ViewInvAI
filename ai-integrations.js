@@ -226,30 +226,48 @@
  function enginePickerHtml(subject,st){
   if(!st.pickOpen)return '';
   if(!engines.data)return '<div class="ai-engine"><p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Cargando las IA disponibles…</p></div>';
-  const d=engines.data,list=engineList(),rec=recommendedEngine();
+  const d=engines.data,list=engineList(),rec=recommendedEngine(),why=deepReason(subject,st);
+  // La primera vez se marca la búsqueda exhaustiva solo si la situación lo aconseja.
+  if(st.deep===undefined)st.deep=!!why;
   if(!st.engine||!list.some(e=>e.id===st.engine))st.engine=(rec||list[0]||{}).id||'';
   const sel=list.find(e=>e.id===st.engine);
   if(sel&&st.model&&!(sel.models||[]).includes(st.model))st.model='';
-  const chip=e=>{const left=engineLeft(e),off=left<=0;
-   const note=e.id.startsWith('user:')?'tu clave · te quedan '+(engines.data.ownLeft??0)+' hoy'+(e.active?'':' · desactivada'):e.paused?'en pausa por fallos':(e.remaining==null?'sin cupo fijo':'quedan ~'+e.remaining+' hoy');
-   return '<button type="button" class="ai-engine-chip'+(e.id===st.engine?' on':'')+(off?' off':'')+'" data-ai-engine-pick="'+esc(e.id)+'"'+(off?' disabled':'')+' aria-pressed="'+(e.id===st.engine)+'">'+
-    '<b>'+esc(e.label)+(rec&&e.id===rec.id?' <em>Recomendada</em>':'')+'</b><small>'+esc(note)+'</small></button>'};
+  // Un solo desplegable: cada opción dice lo que le queda hoy; las agotadas o en pausa no se pueden elegir.
+  const opt=e=>{const left=engineLeft(e),off=left<=0;
+   const note=e.id.startsWith('user:')?'te quedan '+(d.ownLeft??0)+' hoy'+(e.active?'':' · desactivada'):e.paused?'en pausa por fallos':(e.remaining==null?'sin cupo fijo':'quedan ~'+e.remaining+' hoy');
+   return '<option value="'+esc(e.id)+'"'+(e.id===st.engine?' selected':'')+(off?' disabled':'')+'>'+esc(e.label+(rec&&e.id===rec.id?' (recomendada)':'')+' · '+note)+'</option>'};
   const models=sel&&sel.models&&sel.models.length>1?'<label class="ai-engine-model"><span>Modelo</span><select data-ai-engine-model><option value="">Automático (el mejor disponible)</option>'+
    sel.models.map(m=>'<option value="'+esc(m)+'"'+(m===st.model?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></label>':'';
   const own=(d.own||[]),app=(d.app||[]);
   const left=sel?engineLeft(sel):0,isOwn=sel&&sel.id.startsWith('user:');
-  const cost=sel?(isOwn?'Gasta 1 de tus '+d.ownLimit+' análisis diarios con tus claves (te quedan '+d.ownLeft+').'+(sel.provider==='gemini'?'':' Cuesta según el saldo de tu cuenta.')
-   :'Gasta 1 uso de '+sel.label+(sel.remaining!=null?' (quedan ~'+sel.remaining+' hoy en total)':'')+' y 1 de tus '+d.appLimit+' análisis diarios con las IA de la app (te quedan '+d.appLeft+').'):'';
+  const cost=sel?'Gasta 1 uso · te quedan '+(isOwn?d.ownLeft+' de '+d.ownLimit+' con tus claves':d.appLeft+' de '+d.appLimit+' con las IA de la app')+' hoy.':'';
   return '<div class="ai-engine" role="group" aria-label="Elegir IA">'+
-   (own.length?'<div class="ai-engine-group"><small>Tus IA</small><div class="ai-engine-list">'+own.map(chip).join('')+'</div></div>':'')+
-   (app.length?'<div class="ai-engine-group"><small>IA gratuitas de la app</small><div class="ai-engine-list">'+app.map(chip).join('')+'</div></div>':'')+
+   '<label class="ai-engine-model"><span>IA</span><select data-ai-engine-select>'+
+   (own.length?'<optgroup label="Tus IA">'+own.map(opt).join('')+'</optgroup>':'')+
+   (app.length?'<optgroup label="IA gratuitas de la app">'+app.map(opt).join('')+'</optgroup>':'')+'</select></label>'+
    models+
-   '<label class="ai-engine-deep"><input type="checkbox" data-ai-engine-deep'+(st.deep?' checked':'')+'> <span><b>Búsqueda exhaustiva</b><small>Añade las noticias de esta semana de cada valor (primero fuentes sin cupo: Finnhub y Google News). Más lenta y más completa.</small></span></label>'+
-   '<p class="ai-engine-cost">'+esc(cost)+' Si ya hiciste lo mismo hace menos de 6 h, se reutiliza sin gastar.</p>'+
+   '<label class="ai-engine-deep"><input type="checkbox" data-ai-engine-deep'+(st.deep?' checked':'')+'> <span><b>Búsqueda exhaustiva</b><small>Añade las noticias de esta semana de cada valor. Más lenta.'+(why?' <b class="ai-engine-why">Recomendada ahora: '+esc(why)+'.</b>':'')+'</small></span></label>'+
+   '<p class="ai-engine-cost">'+esc(cost)+' Lo mismo en menos de 6 h no gasta.</p>'+
    '<div class="ai-int-actions"><button type="button" class="btn small" data-ai-engine-run'+(st.loading||!sel||left<=0?' disabled':'')+'>Analizar con '+esc(sel?sel.label:'IA')+'</button>'+
    (st.reusedAt?'<button type="button" class="btn small ghost" data-ai-engine-run data-force="1">Repetir igualmente</button>':'')+'</div>'+
    (st.reusedAt?'<p class="ai-engine-cost">Reutilizado el análisis de las '+esc(new Date(st.reusedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+': no ha gastado usos.</p>':'')+
   '</div>';
+ }
+ // ¿Merece la pena gastar en búsqueda exhaustiva? Solo si la situación lo pide: alguna IA ya contradice o
+ // duda, un valor se mueve mucho hoy, o el plan propone vender por stop o por noticia.
+ function deepReason(subject,st){
+  const bad=(st.list||[]).find(c=>c.verdict==='contradice'||c.verdict==='dudas'||(c.items||[]).some(i=>i.verdict==='contradice'));
+  if(bad)return 'una IA ya '+(bad.verdict==='dudas'?'tiene dudas':'contradice')+' el análisis';
+  const all=(window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==='function'&&window.ViewInvAI.getAllStocks())||[];
+  const tickers=(subject.choices||[]).length?[...st.selected]:(subject.tickers||[]);
+  for(const t of tickers.slice(0,10)){
+   const u=String(t||'').toUpperCase(),x=all.find(v=>String(v.trTicker||'').toUpperCase()===u)||all.find(v=>String(v.ticker||'').toUpperCase()===u);
+   const ch=x?Number(x.trLiveChangePct??x.usLiveChangePct??x.changePct):NaN;
+   if(Number.isFinite(ch)&&Math.abs(ch)>=8)return u+' se mueve '+(ch>0?'+':'')+ch.toFixed(1).replace('.',',')+' % hoy';
+  }
+  const text=String(P(subject.prompt,null)||'');
+  if(/stop alcanzado|stop de emergencia|vender .*(stop|noticia)|noticia que invalida/i.test(text))return 'el plan propone una venta por stop o por noticia';
+  return '';
  }
  // Valores a buscar en la búsqueda exhaustiva: los elegidos (Radar) o los del plan/ficha, con nombre e ISIN.
  function deepTargets(subject,st){
@@ -519,7 +537,7 @@
   const st=results.get(el.dataset.aiContrastPanel);if(st)st.open=el.open;
  },true);
  document.addEventListener('click',e=>{
-  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear],[data-ai-engine-toggle],[data-ai-engine-pick],[data-ai-engine-run]');
+  const t=e.target.closest&&e.target.closest('[data-ai-manual],[data-ai-manual-close],[data-ai-remove],[data-ai-contrast-run],[data-ai-ask],[data-ai-paste-toggle],[data-ai-open-settings],[data-ai-pick],[data-ai-pick-clear],[data-ai-engine-toggle],[data-ai-engine-run]');
   if(!t){if(e.target.matches&&e.target.matches('[data-ai-manual-backdrop]'))closeManual();return}
   if(t.closest('[data-ai-contrast-panel]')){e.stopPropagation();e.preventDefault()}
   if(t.hasAttribute('data-ai-manual')){openManual(t.dataset.aiManual);return}
@@ -533,7 +551,6 @@
   const st=state(subject);
   if(t.hasAttribute('data-ai-contrast-run'))start(subject,true);
   else if(t.hasAttribute('data-ai-engine-toggle')){st.pickOpen=!st.pickOpen;st.open=true;st.reusedAt=null;if(st.pickOpen)loadEngines(false);refreshPanels()}
-  else if(t.hasAttribute('data-ai-engine-pick')){st.engine=t.dataset.aiEnginePick;st.model='';st.reusedAt=null;refreshPanels()}
   else if(t.hasAttribute('data-ai-engine-run'))runEngine(subject,t.dataset.force==='1');
   else if(t.hasAttribute('data-ai-ask'))askExternal(subject,t.dataset.aiAsk);
   else if(t.hasAttribute('data-ai-paste-toggle')){st.manualOpen=!st.manualOpen;st.open=true;refreshPanels();if(st.manualOpen)setTimeout(()=>{const ta=document.querySelector('[data-ai-contrast-panel="'+CSS.escape(panel.dataset.aiContrastPanel)+'"] textarea[name=answer]');if(ta)ta.focus()},30)}
@@ -544,7 +561,8 @@
   const t=e.target;if(!t||!t.closest)return;
   const panel=t.closest('[data-ai-contrast-panel]'),subject=panel&&subjects.get(panel.dataset.aiContrastPanel);if(!subject)return;
   const st=state(subject);
-  if(t.matches('[data-ai-engine-model]')){st.model=t.value;st.reusedAt=null;refreshPanels()}
+  if(t.matches('[data-ai-engine-select]')){st.engine=t.value;st.model='';st.reusedAt=null;refreshPanels()}
+  else if(t.matches('[data-ai-engine-model]')){st.model=t.value;st.reusedAt=null;refreshPanels()}
   else if(t.matches('[data-ai-engine-deep]')){st.deep=t.checked;st.reusedAt=null;refreshPanels()}
  });
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('[data-ai-manual-backdrop]'))closeManual()});
