@@ -216,12 +216,11 @@
  function engineLeft(e){
   const d=engines.data||{};
   if(e.id.startsWith('user:'))return d.ownLeft;
-  if(e.paused)return 0;
   return Math.min(d.appLeft??0,e.remaining==null?Infinity:e.remaining);
  }
  // Recomendada: la de mejor nota para decisiones entre las que aún tienen margen hoy (sin pausa).
  function recommendedEngine(){
-  const app=(engines.data&&engines.data.app||[]).filter(e=>engineLeft(e)>0);
+  const app=(engines.data&&engines.data.app||[]).filter(e=>engineLeft(e)>0&&!e.paused);
   return app.sort((a,b)=>b.quality*Math.min(1,(b.remaining??1000)/50)-a.quality*Math.min(1,(a.remaining??1000)/50))[0]||null;
  }
  function enginePickerHtml(subject,st){
@@ -231,12 +230,14 @@
   const d=engines.data,list=engineList(),rec=recommendedEngine(),why=deepReason(subject,st);
   // La primera vez se marca la búsqueda exhaustiva solo si la situación lo aconseja.
   if(st.deep===undefined)st.deep=!!why;
-  if(!st.engine||!list.some(e=>e.id===st.engine))st.engine=(rec||list[0]||{}).id||'';
+  // Sin elegir, o la elegida ya sin cupo: pasa a la recomendada.
+  const cur=list.find(e=>e.id===st.engine);
+  if(!cur||engineLeft(cur)<=0)st.engine=(rec||list.find(e=>engineLeft(e)>0)||list[0]||{}).id||'';
   const sel=list.find(e=>e.id===st.engine);
   if(sel&&st.model&&!(sel.models||[]).includes(st.model))st.model='';
   // Un solo desplegable: cada opción dice lo que le queda hoy; las agotadas o en pausa no se pueden elegir.
   const opt=e=>{const left=engineLeft(e),off=left<=0;
-   const note=e.id.startsWith('user:')?'te quedan '+(d.ownLeft??0)+' hoy'+(e.active?'':' · desactivada'):e.paused?'en pausa por fallos':(e.remaining==null?'sin cupo fijo':'quedan ~'+e.remaining+' hoy');
+   const note=e.id.startsWith('user:')?'te quedan '+(d.ownLeft??0)+' hoy'+(e.active?'':' · desactivada'):e.paused?'fallos recientes, puede fallar':(e.remaining==null?'sin cupo fijo':'quedan ~'+e.remaining+' hoy');
    return '<option value="'+esc(e.id)+'"'+(e.id===st.engine?' selected':'')+(off?' disabled':'')+'>'+esc(e.label+(rec&&e.id===rec.id?' (recomendada)':'')+' · '+note)+'</option>'};
   const models=sel&&sel.models&&sel.models.length>1?'<label class="ai-engine-model"><span>Modelo</span><select data-ai-engine-model><option value="">Automático (el mejor disponible)</option>'+
    sel.models.map(m=>'<option value="'+esc(m)+'"'+(m===st.model?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></label>':'';
@@ -249,10 +250,8 @@
    (app.length?'<optgroup label="IA gratuitas de la app">'+app.map(opt).join('')+'</optgroup>':'')+'</select></label>'+
    models+
    '<label class="ai-engine-deep"><input type="checkbox" data-ai-engine-deep'+(st.deep?' checked':'')+'> <span><b>Búsqueda exhaustiva</b><small>Añade las noticias de esta semana de cada valor. Más lenta.'+(why?' <b class="ai-engine-why">Recomendada ahora: '+esc(why)+'.</b>':'')+'</small></span></label>'+
-   '<p class="ai-engine-cost">'+esc(cost)+' Lo mismo en menos de 6 h no gasta.</p>'+
-   '<div class="ai-int-actions"><button type="button" class="btn small" data-ai-engine-run'+(st.loading||!sel||left<=0?' disabled':'')+'>Analizar con '+esc(sel?sel.label:'IA')+'</button>'+
-   (st.reusedAt?'<button type="button" class="btn small ghost" data-ai-engine-run data-force="1">Repetir igualmente</button>':'')+'</div>'+
-   (st.reusedAt?'<p class="ai-engine-cost">Reutilizado el análisis de las '+esc(new Date(st.reusedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+': no ha gastado usos.</p>':'')+
+   '<p class="ai-engine-cost">'+esc(cost)+' Lo mismo en menos de 6 h no gasta.'+(sel&&sel.paused?' '+esc(sel.label)+' ha fallado hace poco: si vuelve a fallar no gasta uso.':'')+'</p>'+
+   '<div class="ai-int-actions"><button type="button" class="btn small ai-engine-go" data-ai-engine-run'+(st.loading||!sel||left<=0?' disabled':'')+'>'+(left<=0?'Sin usos hoy':'Analizar con '+esc(sel?sel.label:'IA'))+'</button></div>'+
   '</div>';
  }
  // ¿Merece la pena gastar en búsqueda exhaustiva? Solo si la situación lo pide: alguna IA ya contradice o
@@ -282,7 +281,15 @@
   const st=state(subject),sel=engineList().find(e=>e.id===st.engine);if(!sel||st.loading)return;
   const sel2=(subject.choices||[]).length?[...st.selected]:null;
   if(sel2&&!sel2.length){say('Elige primero las acciones que quieres analizar.',true);return}
-  st.loading=true;st.errors=[];st.reusedAt=null;st.open=true;refreshPanels();
+  st.loading=true;st.errors=[];st.reusedAt=null;st.open=true;st.pickOpen=false;
+  st.runLabel=sel.label+(st.model?' · '+st.model:'')+(st.deep?' · búsqueda exhaustiva':'');
+  // Progreso: fases según el tipo de análisis y el tiempo que suele tardar.
+  const tk=st.deep?deepTargets(subject,st).map(t=>t.ticker).filter(Boolean):[];
+  st.run={start:Date.now(),est:st.deep?28000:12000,stages:[
+   ...(st.deep?[{at:0,text:'Buscando noticias de esta semana'+(tk.length?' de '+tk.slice(0,4).join(', ')+(tk.length>4?'…':''):'')}]:[]),
+   {at:st.deep?.35:0,text:'Analizando con '+sel.label+(st.model?' · '+st.model:'')},
+   {at:.8,text:'Leyendo la respuesta y los veredictos'}]};
+  refreshPanels();startProgressTicker();
   try{
    const d=await api('/api/ai/contrast',{method:'POST',body:JSON.stringify({subjectType:subject.type,subjectKey:subject.key,prompt:P(subject.prompt,sel2),
     engine:sel.id,model:st.model||'',deep:!!st.deep,targets:st.deep?deepTargets(subject,st):[],force:!!force})});
@@ -291,8 +298,31 @@
    remember(d.contrasts);
    if(!d.reused)loadEngines(true);
   }catch(e){st.errors=[{provider:'',error:e.message}]}
+  if(st.run)st.run.done=true;
   st.loading=false;refreshPanels();announce(subject);
  }
+ // Tarjeta de progreso del análisis (la barra avanza con el tiempo estimado y se completa al terminar).
+ function progressHtml(st){
+  const r=st.run;if(!r)return '';
+  return '<div class="ai-progress" data-ai-progress role="status" aria-live="polite"><div class="ai-progress-head"><span class="ai-progress-orb" aria-hidden="true"></span>'+
+   '<b data-ai-progress-stage></b><small data-ai-progress-time></small></div><div class="ai-progress-track"><i data-ai-progress-bar></i></div></div>';
+ }
+ let progressTimer=null;
+ function tickProgress(){
+  let any=false;
+  document.querySelectorAll('[data-ai-progress]').forEach(el=>{
+   const panel=el.closest('[data-ai-contrast-panel]'),st=panel&&results.get(panel.dataset.aiContrastPanel),r=st&&st.run;
+   if(!r||r.done)return;any=true;
+   const t=Date.now()-r.start,f=Math.min(1,t/r.est),pct=Math.min(94,95*(1-Math.exp(-2.2*t/r.est)));
+   let stage=r.stages[0];for(const x of r.stages)if(f>=x.at)stage=x;
+   const bar=el.querySelector('[data-ai-progress-bar]'),txt=el.querySelector('[data-ai-progress-stage]'),tm=el.querySelector('[data-ai-progress-time]');
+   if(bar)bar.style.width=pct.toFixed(1)+'%';
+   if(txt&&txt.textContent!==stage.text+'…')txt.textContent=stage.text+'…';
+   if(tm)tm.textContent=Math.round(t/1000)+' s';
+  });
+  if(!any){clearInterval(progressTimer);progressTimer=null}
+ }
+ function startProgressTicker(){if(!progressTimer)progressTimer=setInterval(tickProgress,300);setTimeout(tickProgress,0)}
  function consensus(list){
   const auto=(list||[]).filter(c=>c.verdict!=='nota');if(!auto.length)return'';
   if(auto.some(c=>c.verdict==='contradice'))return 'contradice';
@@ -330,11 +360,12 @@
  function panelInner(subject){
   const st=state(subject),act=activeProviders(),auto=subject.auto!==false;
   let body='';
-  const running=st.pickOpen&&st.engine?(engineList().find(e=>e.id===st.engine)||{}).label:'';
-  if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> '+(running?'Analizando con '+esc(running)+(st.deep?' · búsqueda exhaustiva':''):'Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA'))+'…</p>';
+  if(st.loading&&st.run&&!st.run.done){body+=progressHtml(st);setTimeout(tickProgress,0)}
+  else if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA')+'…</p>';
+  if(!st.loading&&st.reusedAt)body+='<p class="ai-engine-reused">Mismo análisis que el de las '+esc(new Date(st.reusedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+': se ha reutilizado sin gastar usos. <button type="button" class="link-btn" data-ai-engine-run data-force="1">Repetir igualmente</button></p>';
   (st.list||[]).forEach(c=>{body+=contrastHtml(c)});
   (st.errors||[]).forEach(e=>{body+='<p class="ai-contrast-error">'+(e.provider?'<b>'+esc(providerLabel(e.provider))+':</b> ':'')+esc(e.error)+'</p>'});
-  const pickBtn=signedIn()?'<button type="button" class="btn small ghost ai-run-btn" data-ai-engine-toggle aria-expanded="'+(st.pickOpen?'true':'false')+'">'+(st.pickOpen?'Cerrar selección de IA':'Elegir IA y modelo')+'</button>':'';
+  const pickBtn=signedIn()?'<button type="button" class="btn small ghost ai-run-btn" data-ai-engine-toggle'+(st.loading?' disabled':'')+' aria-expanded="'+(st.pickOpen?'true':'false')+'">'+(st.pickOpen?'Cerrar selección de IA':'Elegir IA y modelo')+'</button>':'';
   const tools='<div class="ai-run-row">'+(act.length?'<button type="button" class="btn small ghost ai-run-btn" data-ai-contrast-run'+(st.loading?' disabled':'')+'>'+((st.list||[]).some(c=>!/-web$/.test(c.provider)&&c.provider!=='viewinvai-ai'&&!/^app-/.test(c.provider))?'Repetir con mis IA':(auto?'Contrastar ahora':'Contrastar con mis IA'))+'</button>':'')+pickBtn+'</div>'+
    enginePickerHtml(subject,st)+
    (act.length||subject.inline?'':'<p class="settings-note ai-setup-note">Para que tus IA lo contrasten solas, conéctalas en <button type="button" class="link-btn" data-ai-open-settings>Configuración › Integrar la IA</button>.</p>');
@@ -392,7 +423,7 @@
  async function start(subject,force){
   const st=state(subject);
   if(st.loading||(st.started&&!force))return;
-  st.started=true;st.errors=[];
+  st.started=true;st.errors=[];st.runLabel='';st.reusedAt=null;st.run=null;
   if(!signedIn())return;
   await loadSaved(subject,st);
   if(!activeProviders().length||(subject.auto===false&&!force)){refreshPanels();return}
