@@ -86,8 +86,11 @@
   if(!loadedAt&&!error){box.innerHTML='<div class="today-loading">Cargando avisos…</div>';load();return}
   const counts={all:rows.length,unread:rows.filter(r=>!r.read_at).length};
   rows.forEach(r=>{const c=category(r.alert_type);counts[c]=(counts[c]||0)+1});
-  const chips='<nav class="inbox-filters" aria-label="Filtrar avisos">'+CATS.filter(([k])=>k==='all'||k==='unread'||counts[k]).map(([k,l])=>'<button type="button" class="tab'+(k===filter?' active':'')+'" data-inbox-filter="'+k+'" aria-pressed="'+(k===filter)+'">'+l+(counts[k]?' <em>'+counts[k]+'</em>':'')+'</button>').join('')+'</nav>';
   const list=visible();
+  // Filtros y acciones en la misma fila: marcar como leídos y borrar (lo que se ve en el filtro actual).
+  const chips='<div class="inbox-toolbar"><nav class="inbox-filters" aria-label="Filtrar avisos">'+CATS.filter(([k])=>k==='all'||k==='unread'||counts[k]).map(([k,l])=>'<button type="button" class="tab'+(k===filter?' active':'')+'" data-inbox-filter="'+k+'" aria-pressed="'+(k===filter)+'">'+l+(counts[k]?' <em>'+counts[k]+'</em>':'')+'</button>').join('')+'</nav>'+
+   '<div class="inbox-actions"><button type="button" class="btn small ghost" data-inbox-read-all'+(counts.unread?'':' disabled')+' title="Marcar todo como leído">✓ Marcar leídos</button>'+
+   '<button type="button" class="btn small ghost inbox-delete" data-inbox-delete'+(list.length?'':' disabled')+' title="'+(filter==='all'?'Borrar todos los avisos':'Borrar los avisos de este filtro')+'">🗑 Borrar'+(filter==='all'?' todos':' ('+list.length+')')+'</button></div></div>';
   let html='',last='';
   for(const r of list){
    const lbl=dayLabel(r.created_at);
@@ -99,7 +102,24 @@
    :'<div class="today-empty">Todavía no has recibido avisos. Actívalos con la 🔔 de cada valor o en Configuración.</div>';
   box.innerHTML=(error?'<p class="tax-warn">'+esc(error)+'</p>':'')+chips+(list.length?'<div class="inbox-list">'+html+'</div>':empty)+
    '<p class="tax-hint inbox-foot">Se guardan los últimos 150 avisos; los leídos se borran a los 6 meses.</p>';
-  const mark=document.querySelector('[data-inbox-read-all]');if(mark)mark.disabled=!counts.unread;
+
+ }
+ // Borrar: los avisos desaparecen de la lista (el servidor los guarda solo para no volver a enviarlos).
+ async function hideAlerts(){
+  const list=visible(),all=filter==='all';
+  if(!list.length)return;
+  const what=all?'todos los avisos ('+list.length+')':list.length+' avisos de este filtro';
+  if(!window.confirm('¿Borrar '+what+'? No se pueden recuperar.'))return;
+  const ids=new Set(list.map(r=>r.id));
+  rows=rows.filter(r=>!ids.has(r.id));
+  unread=rows.filter(r=>!r.read_at).length;
+  paintBadges();if(isActive())render();
+  try{
+   const res=await auth().apiFetch('/api/alerts/hide',{method:'POST',body:JSON.stringify(all?{all:true}:{ids:[...ids]})});
+   if(!res.ok)throw new Error('HTTP '+res.status);
+   if(typeof toast==='function')toast('Avisos borrados.');
+  }catch(_){if(typeof toast==='function')toast('No se pudieron borrar los avisos. Inténtalo de nuevo.',true);load(true)}
+  window.dispatchEvent(new CustomEvent('viewinvai:inbox-updated'));
  }
  async function markRead(ids,all=false){
   const now=new Date().toISOString();
@@ -113,6 +133,7 @@
   const f=e.target.closest&&e.target.closest('[data-inbox-filter]');
   if(f){filter=f.dataset.inboxFilter;render();return}
   if(e.target.closest&&e.target.closest('[data-inbox-read-all]')){markRead([],true);return}
+  if(e.target.closest&&e.target.closest('[data-inbox-delete]')){hideAlerts();return}
   if(e.target.closest&&e.target.closest('[data-inbox-refresh]')){load(true);return}
   const r=e.target.closest&&e.target.closest('[data-inbox-id]');
   if(r){
