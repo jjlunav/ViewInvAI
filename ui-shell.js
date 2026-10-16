@@ -200,7 +200,7 @@
 })();
 /* Formato de las listas: compacta, detallada o cuadrícula. Un único ajuste para toda la app
  * (se guarda en este navegador) y un único selector en la barra de arriba, junto a ? y la campana;
- * solo aparece en las pantallas con listas. En el móvil es un botón que abre las tres opciones. */
+ * solo aparece en las pantallas con listas. Es un botón con el formato actual: al pulsarlo se despliegan las tres opciones. */
 (function(){
  'use strict';
  const KEY='viewinvai.listView',MODES=['compact','detailed','grid'];
@@ -211,6 +211,7 @@
   detailed:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/></svg>',
   grid:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>'
  };
+ const CLOSE='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
  const LABEL={compact:'Lista compacta',detailed:'Lista detallada',grid:'Cuadrícula'};
  const read=()=>{try{const v=localStorage.getItem(KEY);return MODES.includes(v)?v:'compact'}catch(_){return 'compact'}};
  let mode=read(),box=null;
@@ -222,6 +223,7 @@
   box.innerHTML='<button type="button" class="list-view-toggle" data-list-view-toggle aria-haspopup="true" aria-expanded="false" title="Formato de las listas"></button>'+
    '<div class="list-view-switch">'+MODES.map(m=>'<button type="button" data-list-view-set="'+m+'" title="'+LABEL[m]+'" aria-label="'+LABEL[m]+'">'+ICON[m]+'<span>'+LABEL[m]+'</span></button>').join('')+'</div>';
   area.insertBefore(box,area.firstChild);
+  setOpen(false);
   return box;
  }
  function syncVisible(){
@@ -230,7 +232,16 @@
   b.hidden=!VIEWS.includes(id)||document.body.classList.contains('stock-detail-open');
   if(b.hidden)close();
  }
- function close(){if(box){box.classList.remove('open');const t=box.querySelector('[data-list-view-toggle]');if(t)t.setAttribute('aria-expanded','false')}}
+ function setOpen(open){
+  if(!box)return;
+  box.classList.toggle('open',open);
+  const t=box.querySelector('[data-list-view-toggle]');if(t){t.setAttribute('aria-expanded',String(open));t.innerHTML=open?CLOSE:ICON[mode]}
+  // Los demás botones de la barra se apartan lo que ocupan las opciones (theme-ai.css, --lv-extra).
+  document.documentElement.classList.toggle('list-view-open',open);
+  // Plegadas, las opciones no se alcanzan con el teclado ni con el lector de pantalla.
+  const sw=box.querySelector('.list-view-switch');if(sw){sw.inert=!open;sw.setAttribute('aria-hidden',String(!open))}
+ }
+ function close(){setOpen(false)}
  // En «detallada» se abren los «Más datos» de cada tarjeta; al salir se cierran solo los que abrió este ajuste.
  function syncDetails(){
   document.querySelectorAll(':is('+LISTS+') .asset-card-details').forEach(d=>{
@@ -242,14 +253,14 @@
   document.documentElement.dataset.listView=mode;
   const b=mount();
   if(b){
-   const t=b.querySelector('[data-list-view-toggle]');t.innerHTML=ICON[mode];t.setAttribute('aria-label','Formato de las listas: '+LABEL[mode]);
+   const t=b.querySelector('[data-list-view-toggle]');t.innerHTML=b.classList.contains('open')?CLOSE:ICON[mode];t.setAttribute('aria-label','Formato de las listas: '+LABEL[mode]);
    b.querySelectorAll('[data-list-view-set]').forEach(x=>{const on=x.dataset.listViewSet===mode;x.classList.toggle('active',on);x.setAttribute('aria-pressed',String(on))});
   }
   syncDetails();
  }
  document.addEventListener('click',e=>{
   const t=e.target.closest&&e.target.closest('[data-list-view-toggle]');
-  if(t){const open=!box.classList.contains('open');box.classList.toggle('open',open);t.setAttribute('aria-expanded',String(open));return}
+  if(t){setOpen(!box.classList.contains('open'));if(box.classList.contains('open')){const a=box.querySelector('[data-list-view-set].active');if(a&&e.detail===0)a.focus()}return}
   const b=e.target.closest&&e.target.closest('[data-list-view-set]');
   if(!b){if(box&&box.classList.contains('open')&&!box.contains(e.target))close();return}
   close();
