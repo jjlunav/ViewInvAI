@@ -20,7 +20,7 @@
     '<div class="notification-price-card"><label class="notification-price-switch"><span><b>Bajada por tramos</b><small>Activar avisos</small></span><span class="settings-switch"><input type="checkbox" name="priceDown"><span class="settings-switch-track" aria-hidden="true"><span></span></span></span></label><label class="notification-price-step"><input name="priceDownStep" type="number" min="0.5" max="50" step="0.5" value="3"><small>% por aviso</small></label></div>'+
    '</div>'+
    '<p class="notification-pref-note">Los tramos se miden desde el precio al activar el aviso. Si eliges 3%, recibirás un nuevo aviso al cruzar 3%, 6%, 9%… en cada dirección.</p>'+
-   '<div class="notification-pref-actions"><button type="button" class="btn ghost" data-notification-disable>Desactivar todas</button><button type="submit" class="btn" data-filter-sheet-apply>Guardar</button></div>'+
+   '<div class="notification-pref-actions"><button type="button" class="btn ghost" data-notification-disable>⏻ Desactivar todas</button><button type="submit" class="btn" data-filter-sheet-apply>Guardar</button></div>'+
    '<div class="notification-pref-status" aria-live="polite"></div>';
   document.body.appendChild(source);
   source.addEventListener('submit',save);

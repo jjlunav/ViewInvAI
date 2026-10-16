@@ -485,7 +485,7 @@
   }catch(err){
    paint({kicker:'Importar '+brokerName(),title:'No se pudo analizar',pct:0,
     body:'<div class="import-wizard-analyze failed"><p>'+esc(err&&err.message||'No se pudo leer el archivo.')+'</p><small>Comprueba que es la exportación de transacciones en CSV y vuelve a intentarlo.</small></div>',
-    foot:'<button type="button" class="btn ghost" data-wiz-close>Cerrar</button><button type="button" class="btn secondary" data-wiz-retry>Elegir otro archivo</button>'});
+    foot:'<button type="button" class="btn ghost" data-wiz-close>✕ Cerrar</button><button type="button" class="btn secondary" data-wiz-retry>Elegir otro archivo</button>'});
   }
  }
  function currentGroup(){
@@ -514,7 +514,7 @@
     '<p class="import-wizard-why">'+esc(g.why)+'</p>'+
     '<ul class="import-wizard-recent" aria-label="Últimas compras">'+recent+'</ul>'+
     '<p class="import-wizard-ask">¿Qué son estas compras?</p><div class="import-wizard-opts" role="radiogroup" aria-label="Tipo de aportación">'+opts+'</div>'+plan+'</div>',
-   foot:'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>'+
+   foot:'<button type="button" class="btn ghost" data-wiz-back>‹ Atrás</button>'+
     '<button type="button" class="btn secondary" data-wiz-next'+(g.answered?'':' disabled')+'>'+(wiz.i===n?'Ver resumen':'Siguiente')+'</button>'});
  }
  function paintSummary(){
@@ -534,7 +534,7 @@
     (flow.extra?'<details class="import-wizard-ignored"><summary>Movimientos que no se importan</summary>'+flow.extra+'</details>':'')+
     cashHtml()+
     '<p class="broker-import-help">La importación sigue en segundo plano: puedes seguir usando la app y el progreso aparece arriba. Reimportar el mismo archivo no duplica nada.</p></div>',
-   foot:'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>'+
+   foot:'<button type="button" class="btn ghost" data-wiz-back>‹ Atrás</button>'+
     '<button type="button" class="btn secondary" data-wiz-finish'+(total?'':' disabled')+'>Finalizar e importar</button>'});
  }
  // Trade Republic: el efectivo se pone con el saldo que sale del CSV (editable). Otros: se ajusta con cada operación nueva.
@@ -555,13 +555,13 @@
   const card=(p,i)=>'<article class="import-plan-card'+(p.on?' on':'')+'"><label class="import-plan-toggle"><input type="checkbox" data-plan-on="'+i+'"'+(p.on?' checked':'')+'><span><b>'+esc(p.name)+'</b><small>'+esc(p.seen||'')+(p.isFund?'':' · acción')+'</small></span></label>'+
    (p.on?'<div class="import-wizard-plan"><label><span>Cantidad actual</span><input type="number" inputmode="decimal" min="0" step="0.01" data-plan-amount="'+i+'" value="'+p.amount+'"></label>'+
     '<label><span>Periodicidad</span><select data-plan-freq="'+i+'">'+Object.entries(FREQ_LABEL).map(([k,l])=>'<option value="'+k+'"'+(p.frequency===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label></div>':'')+
-   (p.manual?'<button type="button" class="import-plan-remove" data-plan-remove="'+i+'">Quitar</button>':'')+'</article>';
+   (p.manual?'<button type="button" class="import-plan-remove" data-plan-remove="'+i+'">✕ Quitar</button>':'')+'</article>';
   paint({kicker:'Paso 1 · Planes automáticos',title:'¿Tienes planes automáticos?',pct:6,
    body:'<div class="import-wizard-q"><p class="import-wizard-why">Si compras de forma programada (DCA) un fondo, ETF o acción, márcalo con su cantidad actual. Así separo el plan del Saveback y del Redondeo aunque vayan al mismo destino.</p>'+
     (c.length?'<p class="import-wizard-ask">Esto parece un plan</p>'+c.map(card).join(''):'<p class="import-wizard-meta">No he visto compras periódicas de cantidad redonda. Si tienes un plan, añádelo abajo.</p>')+
-    (insts.length?'<div class="import-plan-add"><label><span>Añadir otro plan</span><select data-plan-add-key><option value="">Elige el fondo, ETF o acción…</option>'+insts.map(i=>'<option value="'+esc(i.key)+'">'+esc(i.name)+'</option>').join('')+'</select></label><button type="button" class="btn ghost" data-plan-add>Añadir</button></div>':'')+
+    (insts.length?'<div class="import-plan-add"><label><span>Añadir otro plan</span><select data-plan-add-key><option value="">Elige el fondo, ETF o acción…</option>'+insts.map(i=>'<option value="'+esc(i.key)+'">'+esc(i.name)+'</option>').join('')+'</select></label><button type="button" class="btn ghost" data-plan-add>＋ Añadir</button></div>':'')+
     '</div>',
-   foot:'<button type="button" class="btn ghost" data-wiz-close>Cancelar</button><button type="button" class="btn secondary" data-plans-next>Siguiente</button>'});
+   foot:'<button type="button" class="btn ghost" data-wiz-close>✕ Cancelar</button><button type="button" class="btn secondary" data-plans-next>Siguiente</button>'});
  }
  // Con los planes decididos se clasifica el resto y se preparan las preguntas.
  function plansNext(){

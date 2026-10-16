@@ -102,9 +102,9 @@
        ?'<p class="settings-note"><b>Modelo automático.</b> Se detectan los Flash estables disponibles y se prueban de más nuevo a más antiguo; después, Flash-Lite.</p>'
        :'<label><span>Modelo</span><input name="model" type="text" spellcheck="false" value="'+esc(model)+'" placeholder="'+esc(config.defaults[p.id]||'')+'"></label>')+
      '</details>'+
-     '<div class="ai-int-actions"><button type="submit" class="btn small">Guardar y probar</button>'+
-     '<button type="button" class="btn small ghost" data-ai-manual="'+p.id+'">Cómo conseguirla</button>'+
-     (c?'<button type="button" class="btn small ghost danger" data-ai-remove="'+p.id+'">Quitar</button>':'')+'</div>'+
+     '<div class="ai-int-actions"><button type="submit" class="btn small">✓ Guardar y probar</button>'+
+     '<button type="button" class="btn small ghost" data-ai-manual="'+p.id+'">ⓘ Cómo conseguirla</button>'+
+     (c?'<button type="button" class="btn small ghost danger" data-ai-remove="'+p.id+'">✕ Quitar</button>':'')+'</div>'+
      '<div class="ai-int-msg" data-ai-msg aria-live="polite"></div>'+
     '</form></div></details>';
  }
@@ -120,7 +120,7 @@
    '<div class="ai-int-list">'+PROVIDERS.map(providerHtml).join('')+
    '<div class="ai-int-provider ai-int-subscription"><div class="ai-int-row"><span class="ai-int-logo ai-int-logo-multi" aria-hidden="true">'+logoSvg('chatgpt')+'</span>'+
     '<span class="ai-int-name"><strong>Preguntar a AI</strong><span class="ai-int-badge free">Gratis · con tu cuenta</span></span>'+
-    '<button type="button" class="btn small ghost" data-ai-manual="subscription">Cómo</button></div></div>'+
+    '<button type="button" class="btn small ghost" data-ai-manual="subscription">ⓘ Cómo</button></div></div>'+
    '</div>';
  }
  function setMsg(form,text,bad){const m=form&&form.querySelector('[data-ai-msg]');if(m){m.textContent=text||'';m.classList.toggle('bad',!!bad)}}
@@ -225,7 +225,7 @@
  }
  function enginePickerHtml(subject,st){
   if(!st.pickOpen)return '';
-  if(!engines.data&&engines.error&&!engines.loading)return '<div class="ai-engine"><p class="ai-contrast-error">'+esc(engines.error)+'</p><button type="button" class="btn small ghost" data-ai-engine-retry>Reintentar</button></div>';
+  if(!engines.data&&engines.error&&!engines.loading)return '<div class="ai-engine"><p class="ai-contrast-error">'+esc(engines.error)+'</p><button type="button" class="btn small ghost" data-ai-engine-retry>↻ Reintentar</button></div>';
   if(!engines.data)return '<div class="ai-engine"><p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Cargando las IA disponibles…</p></div>';
   const d=engines.data,list=engineList(),rec=recommendedEngine(),why=deepReason(subject,st);
   // La primera vez se marca la búsqueda exhaustiva solo si la situación lo aconseja.
@@ -360,7 +360,7 @@
   const logos=Object.entries(ASK).map(([id,a])=>'<button type="button" class="ai-ask-logo ai-ask-'+id+'" data-ai-ask="'+id+'" title="Preguntar a '+a.name+'" aria-label="Preguntar a '+a.name+'"'+(needsPick?' disabled':'')+'>'+logoSvg(id)+'</button>').join('');
   const paste=st.manualOpen
    ?'<form class="ai-contrast-paste" data-ai-paste-form><textarea name="answer" rows="5" placeholder="Pega aquí la respuesta completa de la IA"></textarea>'+
-     '<div class="ai-int-actions"><select name="source" aria-label="De qué IA es la respuesta">'+Object.entries(ASK).map(([id,a])=>'<option value="'+id+'"'+(st.lastAsk===id?' selected':'')+'>'+a.name+'</option>').join('')+'</select><button type="submit" class="btn small">Analizar respuesta</button></div></form>':'';
+     '<div class="ai-int-actions"><select name="source" aria-label="De qué IA es la respuesta">'+Object.entries(ASK).map(([id,a])=>'<option value="'+id+'"'+(st.lastAsk===id?' selected':'')+'>'+a.name+'</option>').join('')+'</select><button type="submit" class="btn small">✦ Analizar respuesta</button></div></form>':'';
   return '<div class="ai-ask-box">'+pickerHtml(subject,st)+
    '<div class="ai-ask-row"><div class="ai-ask-label"><b>Preguntar a AI</b><small>'+(needsPick?'Elige primero una o varias acciones':'Gratis con tu cuenta · se abre fuera de la app')+'</small></div><div class="ai-ask-logos">'+logos+'</div></div>'+
    '<button type="button" class="btn small ghost ai-paste-btn" data-ai-paste-toggle'+(st.manualOpen?' aria-expanded="true"':'')+'>'+(st.manualOpen?'Cerrar':'Pegar respuesta')+'</button>'+paste+

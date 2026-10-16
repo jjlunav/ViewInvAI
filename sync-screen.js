@@ -31,7 +31,7 @@
    '<div class="first-sync-bar" aria-hidden="true"><i></i></div>'+
    '<div class="first-sync-meta"><span data-sync-label>'+STAGES.connect.label+'</span><b data-sync-pct>0%</b></div>'+
    '<small data-sync-detail>Solo la primera vez: después la app abre al instante con los datos guardados.</small>'+
-   '<button type="button" class="btn" data-sync-retry hidden>Reintentar</button>'+
+   '<button type="button" class="btn" data-sync-retry hidden>↻ Reintentar</button>'+
   '</div>';
   el.addEventListener('click',e=>{if(e.target.closest('[data-sync-retry]'))location.reload()});
   document.body.appendChild(el);

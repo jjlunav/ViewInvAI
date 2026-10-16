@@ -209,7 +209,7 @@
    paintMeters(box);
    box._report=r;
   }catch(e){
-   box.innerHTML=yearTabs()+'<section class="tax-card"><p class="tax-warn">'+esc(e.message)+'</p><button type="button" class="btn" data-tax-retry>Reintentar</button></section>';
+   box.innerHTML=yearTabs()+'<section class="tax-card"><p class="tax-warn">'+esc(e.message)+'</p><button type="button" class="btn" data-tax-retry>↻ Reintentar</button></section>';
   }
  }
 

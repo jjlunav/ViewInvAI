@@ -521,7 +521,7 @@ function portfolioCashRowHtml(portfolio){
   return '<button type="button" class="portfolio-cash-row" data-portfolio-cash-edit="'+esc(portfolio.id)+'" aria-label="Editar capital líquido">'+
     '<span class="portfolio-cash-icon" aria-hidden="true">'+esc(portfolioCurrencySymbol(currency))+'</span>'+
     '<span class="portfolio-cash-copy"><strong>Capital líquido</strong><small>Disponible para la siguiente decisión de Objetivo IA</small></span>'+
-    '<b>'+formatMoney(cash,currency)+'</b><em>Editar</em></button>';
+    '<b>'+formatMoney(cash,currency)+'</b><em>✎ Editar</em></button>';
 }
 
 function renderLoggedOut(box) {
@@ -552,7 +552,7 @@ function renderUnavailablePosition(p = {}, message = "El valor no está disponib
     context: "portfolio", title: p.name || "Posición guardada", subtitle: p.ticker || p.stock_key || "—",
     cells: [{label: "Cantidad", value: formatNumber(p.quantity, 4)}, {label: "Media", value: formatMoney(p.avg_price, currency)}],
     detailsLabel: "Posición sin cotización", detailsHtml: "<p>" + esc(message) + "</p>",
-    actionsHtml: '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">Operaciones</button>' +
+    actionsHtml: '<button type="button" class="portfolio-transactions-open" data-position-transactions="' + esc(p.id) + '">⇄ Operaciones</button>' +
       '<button type="button" class="portfolio-analyze" data-edit-portfolio-position="' + esc(p.id) + '">Editar posición</button>'
   });
 }
@@ -833,7 +833,7 @@ function portfolioPerformanceHtml(portfolio){
     const d=entry.data,pct=d.total?Math.round(d.done/d.total*100):0;
     return shell('<b>Calculando… '+pct+'%</b>','<p class="perf-note">Descargando los cierres diarios de tus valores: '+esc(String(d.done))+' de '+esc(String(d.total))+'. La primera vez tarda un poco; después queda guardado.</p>');
   }
-  if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">'+(entry.error&&!/^Error de backend$/.test(entry.error)?esc(entry.error)+' ':'No se pudo calcular ahora mismo. ')+'<button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">Reintentar</button></p>');
+  if(!entry.data)return shell('<b class="warn">No disponible</b>','<p class="perf-note">'+(entry.error&&!/^Error de backend$/.test(entry.error)?esc(entry.error)+' ':'No se pudo calcular ahora mismo. ')+'<button type="button" class="perf-retry" data-pf-perf-retry="'+esc(id)+'">↻ Reintentar</button></p>');
   const p=entry.data;
   if(p.empty||!p.days||p.days.length<2)return'';
   const m=perfMetrics(p,range);
@@ -924,7 +924,7 @@ function portfolioDuplicatesHtml(selected, positions) {
 function portfolioContextHtml(selected, positions) {
   if (!selected) {
     // Si la carga falló, no se invita a crear una cartera: puede que el usuario ya tenga varias.
-    if (state.loadError) return '<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus carteras</h2><p>' + esc(state.loadError) + '</p><button type="button" class="btn" data-portfolio-retry>Reintentar</button></div>';
+    if (state.loadError) return '<div class="portfolio-empty-state portfolio-load-error" role="alert"><h2>No se pudieron cargar tus carteras</h2><p>' + esc(state.loadError) + '</p><button type="button" class="btn" data-portfolio-retry>↻ Reintentar</button></div>';
     return '<div class="portfolio-empty-state"><h2>Crea tu primera cartera</h2><button type="button" class="btn" data-new-portfolio="1">＋ Crear cartera</button></div>';
   }
   try {
@@ -960,7 +960,7 @@ function renderWatchRow(w) {
     index:0, preferTr, context:"watchlist", hint:"Seguimiento", rankLabel:"",
     openAttrs:' data-open-stock="' + esc(w.stock_key) + '" role="button" tabindex="0"',
     detailsHtml:"",
-    actionsHtml:'<button type="button" class="portfolio-analyze compact" data-analyze-type="watchlist" data-analyze-id="' + esc(w.id) + '">IA</button>'
+    actionsHtml:'<button type="button" class="portfolio-analyze compact" data-analyze-type="watchlist" data-analyze-id="' + esc(w.id) + '">✦ IA</button>'
   });
 }
 
@@ -1299,7 +1299,7 @@ function goalOperationUnits(side,value){
 function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
   if(!(num(units)>0)||num(price)===null)return"";
   if(!executable)return '<span class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Esperar cotización ejecutable</span>';
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">Registrar estrategia</button>';
+  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">＋ Registrar estrategia</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1681,7 +1681,7 @@ document.addEventListener("click",event=>{
 // Por qué el plan no propone comprar (efectivo, modo defensivo, cartera llena, filtros o momento de entrada).
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
-  const w=why[0],cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>Cambiar capital</button>':'';
+  const w=why[0],cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':'';
   return '<div class="goal2-why" role="note"><b>¿Por qué no hay compras?</b> '+esc(w.text)+cashBtn+'</div>';
 }
 function portfolioGoalViewHtml(){
@@ -1829,7 +1829,7 @@ function paintGoalWizard(){
   el.innerHTML='<div class="goal-wizard-card"><div class="goal-wizard-head"><div><small>OBJETIVO DE LA CARTERA</small><b>Paso '+(goalWizard.step+1)+' de '+steps.length+'</b></div><button type="button" class="goal-wizard-x" data-gw-close aria-label="Cerrar">×</button></div>'+
     '<div class="goal-wizard-bar"><i data-goal-progress="'+pct+'"></i></div>'+
     '<div class="goal-wizard-body">'+goalWizardStepHtml(id)+'<div class="goal-wizard-msg" data-gw-msg aria-live="polite"></div></div>'+
-    '<div class="goal-wizard-foot">'+(goalWizard.step>0&&!goalWizard.fromSummary?'<button type="button" class="btn ghost" data-gw-back>Atrás</button>':'<span></span>')+
+    '<div class="goal-wizard-foot">'+(goalWizard.step>0&&!goalWizard.fromSummary?'<button type="button" class="btn ghost" data-gw-back>‹ Atrás</button>':'<span></span>')+
       (last?'<button type="button" class="btn" data-gw-save>Guardar objetivo</button>':'<button type="button" class="btn" data-gw-next>'+(goalWizard.fromSummary?'Volver al resumen':'Siguiente')+'</button>')+'</div></div>';
   el.querySelectorAll('[data-goal-progress]').forEach(x=>x.style.setProperty("width",x.dataset.goalProgress+"%"));
   const input=el.querySelector("[data-gw-input]");if(input)setTimeout(()=>input.focus(),30);
@@ -2217,7 +2217,7 @@ function openPortfolioDeleteConfirm(id) {
       '<strong>' + esc(p.name) + '</strong>' +
       '<p>Se borrará la cartera con ' + (count === 1 ? '1 posición' : count + ' posiciones') + ', su historial de operaciones y su objetivo. No se puede deshacer.</p>' +
       '<div class="portfolio-remove-confirm-actions">' +
-        '<button type="button" class="btn ghost" data-portfolio-delete-cancel>Cancelar</button>' +
+        '<button type="button" class="btn ghost" data-portfolio-delete-cancel>✕ Cancelar</button>' +
         '<button type="button" class="btn danger" data-portfolio-delete-confirm="' + esc(p.id) + '">Borrar cartera</button>' +
       '</div>' +
     '</div>'
@@ -2712,7 +2712,7 @@ function positionFreezeFormHtml(position){
     '</div>'+
     '<div class="portfolio-form-status" data-freeze-status aria-live="polite"></div>'+
     '<div class="position-freeze-actions"><button type="submit" class="btn">Guardar congelación</button>'+
-    (active>0?'<button type="button" class="btn ghost" data-freeze-clear>Descongelar</button>':'')+'</div>'+
+    (active>0?'<button type="button" class="btn ghost" data-freeze-clear>❄ Descongelar</button>':'')+'</div>'+
   '</form>';
 }
 async function savePositionFreeze(form,clear=false){
@@ -2768,7 +2768,7 @@ function openGoalDecisionModal(positionId){
       '<label class="goal-decide-emergency"><input type="checkbox" name="emergency" checked> Stop de emergencia si cae otro <input name="emergencyPct" type="number" inputmode="decimal" step="any" min="1" max="90" value="15" aria-label="Caída"> % desde ahora</label>'+
       '<div class="portfolio-form-status" data-goal-decide-status aria-live="polite"></div>'+
       '<div class="position-freeze-actions"><button type="submit" class="btn">Guardar decisión</button>'+
-      (current?'<button type="button" class="btn ghost" data-goal-decide-clear="'+esc(positionId)+'">Quitar decisión</button>':'')+'</div>'+
+      (current?'<button type="button" class="btn ghost" data-goal-decide-clear="'+esc(positionId)+'">✕ Quitar decisión</button>':'')+'</div>'+
     '</form>');
   const form=$("#goalDecisionForm");
   if(form)form.dataset.ctx=JSON.stringify({price,avg,breakeven,catDate:cat?cat.date:"",units,fee});
@@ -2917,7 +2917,7 @@ function openGoalOperationModal(button){
       '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
       '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si difiere del límite recomendado; la comisión y el efectivo se recalculan automáticamente.</p>'+
       '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
-      '<button type="submit" class="btn"'+(fee===null?' disabled':'')+'>Registrar estrategia</button>'+
+      '<button type="submit" class="btn"'+(fee===null?' disabled':'')+'>＋ Registrar estrategia</button>'+
     '</form>'
   );
   const form=$("#goalOperationForm");
@@ -3339,7 +3339,7 @@ function openAddPositionModal(stockKey, preferTrOverride = null, portfolioIdOver
       '<div class="portfolio-broker-field"><label><span>Broker</span><div class="portfolio-broker-select-row"><select name="broker" data-broker-select'+(brokerDisabled?' disabled':'')+'>'+brokerSelectOptions(defaultBroker)+'</select>'+
         (!brokerDisabled?'<button type="button" class="portfolio-broker-add" data-toggle-broker-create aria-label="Añadir broker" title="Añadir broker">＋</button>':'')+
       '</div></label>'+
-      (!brokerDisabled?'<div class="broker-create-inline" data-broker-create-inline hidden><input type="text" data-new-broker-name maxlength="80" placeholder="Nombre del broker, p. ej. DEGIRO"><button type="button" data-create-broker>Añadir</button></div>':'')+
+      (!brokerDisabled?'<div class="broker-create-inline" data-broker-create-inline hidden><input type="text" data-new-broker-name maxlength="80" placeholder="Nombre del broker, p. ej. DEGIRO"><button type="button" data-create-broker>＋ Añadir</button></div>':'')+
       '<small class="broker-fee-hint" data-broker-fee-hint></small></div>'+
       '<div class="portfolio-form-grid"><label><span>'+(editPosition?'Cantidad':'Cantidad de esta compra')+'</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0" placeholder="0"></label>'+
       '<label><span>'+(editPosition?'Precio medio':'Precio de compra')+'</span><input name="avgPrice" type="number" inputmode="decimal" step="any" min="0" placeholder="'+esc(current.price||"")+'"></label></div>'+
@@ -3438,7 +3438,7 @@ function confirmRemoveExposure(positionId) {
       '<p>Esto elimina completamente esta posición de la cartera. No se interpreta como una venta parcial ni modifica otras carteras.</p>' +
       '<div class="portfolio-remove-confirm-data"><span>' + esc(formatNumber(position.quantity,4)) + ' uds.</span><span>Media ' + esc(formatMoney(position.avg_price,currency)) + '</span></div>' +
       '<div class="portfolio-remove-confirm-actions">' +
-        '<button type="button" class="btn ghost" data-cancel-remove-exposure>Cancelar</button>' +
+        '<button type="button" class="btn ghost" data-cancel-remove-exposure>✕ Cancelar</button>' +
         '<button type="button" class="btn danger" data-confirm-remove-exposure="' + esc(position.id) + '">Eliminar exposición completa</button>' +
       '</div>' +
     '</div>'
@@ -3508,8 +3508,8 @@ function openStarMenu(stockKey, preferTr = null) {
       '<div class="exposure-manager-copy"><strong>'+esc(p.name)+'</strong><small>'+esc(detail)+'</small></div>'+
       '<div class="exposure-manager-actions exposure-manager-trade-actions">'+
         '<button type="button" class="btn exposure-buy" data-position-operation="'+esc(existing.id)+'" data-operation-side="BUY">Comprar</button>'+
-        '<button type="button" class="btn ghost exposure-sell" data-position-operation="'+esc(existing.id)+'" data-operation-side="SELL">Vender</button>'+
-        '<button type="button" class="btn ghost" data-edit-portfolio-position="'+esc(existing.id)+'">Modificar exposición</button>'+
+        '<button type="button" class="btn ghost exposure-sell" data-position-operation="'+esc(existing.id)+'" data-operation-side="SELL">↘ Vender</button>'+
+        '<button type="button" class="btn ghost" data-edit-portfolio-position="'+esc(existing.id)+'">✎ Modificar exposición</button>'+
         '<button type="button" class="btn danger" data-remove-exposure-position="'+esc(existing.id)+'">Eliminar exposición</button>'+
       '</div>'+
     '</div>';

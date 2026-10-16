@@ -726,7 +726,7 @@ function recommendationCard(mode,s,group=null,pulseResult=null){
  if(bucket.armed!==wasArmed)saveRecommendationState();
  let factors=a.parts.map(x=>'<div class="reco-factor"><div><span>'+E(x.label)+'</span><small>'+E(x.note||'')+'</small></div><b class="'+(x.delta>0?'positive':x.delta<0?'negative':'')+'">'+(x.delta>0?'+':'')+F(x.delta,1)+'</b></div>').join('');
  let events=a.catalyst.events.length?a.catalyst.events.map(x=>'<div class="reco-event"><strong>'+E(EL(x.e))+'</strong><span data-i18n-content>'+E(x.e.title||x.e.fact||'Catalizador')+'</span><small>'+E(eventWhen(x.e))+'</small></div>').join(''):'<p>Sin noticia o evento direccional fuerte en las últimas 72 h / próximos 14 días.</p>';
- let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">He vendido · buscar siguiente</button>':'';
+ let sold=signal.key==='sell'?'<button type="button" class="btn small reco-sold" data-reco-sold="'+mode+'">✓ He vendido · buscar siguiente</button>':'';
  let aiSummary=ai?'<div class="pulse-ai-result"><strong>Motor híbrido IA + cuantitativo</strong><p>'+E(ai.summary||ai.answer||'Evaluación completada.')+'</p><small>Confianza IA '+F(ai.confidence,0)+'/100 · score cuantitativo '+F(pulseResult&&pulseResult.score,1)+'/100</small></div>':'';
  let details=aiSummary+'<strong>'+E(signal.text)+'</strong><p>'+E(recommendationNarrative(a))+'</p>'+quoteFreshnessHtml(s,preferTr)+
   '<details class="reco-disclosure"><summary>Factores del análisis</summary><div class="reco-factors">'+factors+'</div></details>'+
