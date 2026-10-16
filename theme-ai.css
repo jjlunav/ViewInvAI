@@ -1906,4 +1906,4 @@ html[data-theme="light"] .ai-progress{background:linear-gradient(135deg,#eefbf6,
 @keyframes aiOrb{to{transform:rotate(360deg)}}
 @keyframes aiFlow{to{background-position:-200% 0}}
 @keyframes aiShine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
-@media (prefers-reduced-motion:reduce){.ai-progress-orb,.ai-progress-track i,.ai-progress-track i::after{animation:none}}
+@media (prefers-reduced-motion:reduce){.ai-progress-orb,.ai-progress-track i,.ai-progress-track i::after{animation:none}.ai-progress-track i{transition:none}}

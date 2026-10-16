@@ -298,14 +298,23 @@
    remember(d.contrasts);
    if(!d.reused)loadEngines(true);
   }catch(e){st.errors=[{provider:'',error:e.message}]}
-  if(st.run)st.run.done=true;
+  // La barra se completa y se ve terminada un momento antes de mostrar el resultado.
+  if(st.run){
+   st.run.done=true;
+   const panel=document.querySelector('[data-ai-contrast-panel="'+CSS.escape(sid(subject.type,subject.key))+'"]');
+   const el=panel&&panel.querySelector('[data-ai-progress]');
+   if(el){const bar=el.querySelector('[data-ai-progress-bar]'),txt=el.querySelector('[data-ai-progress-stage]');
+    if(bar)bar.style.width='100%';if(txt)txt.textContent=st.errors&&st.errors.length&&!(st.list||[]).length?'Sin respuesta':'Listo';
+    await new Promise(r=>setTimeout(r,500))}
+  }
   st.loading=false;refreshPanels();announce(subject);
  }
  // Tarjeta de progreso del análisis (la barra avanza con el tiempo estimado y se completa al terminar).
  function progressHtml(st){
   const r=st.run;if(!r)return '';
-  return '<div class="ai-progress" data-ai-progress role="status" aria-live="polite"><div class="ai-progress-head"><span class="ai-progress-orb" aria-hidden="true"></span>'+
-   '<b data-ai-progress-stage></b><small data-ai-progress-time></small></div><div class="ai-progress-track"><i data-ai-progress-bar></i></div></div>';
+  // Solo la fase se anuncia a los lectores de pantalla; el contador y la barra cambian sin anunciarse.
+  return '<div class="ai-progress" data-ai-progress><div class="ai-progress-head"><span class="ai-progress-orb" aria-hidden="true"></span>'+
+   '<b data-ai-progress-stage role="status" aria-live="polite"></b><small data-ai-progress-time aria-hidden="true"></small></div><div class="ai-progress-track" aria-hidden="true"><i data-ai-progress-bar></i></div></div>';
  }
  let progressTimer=null;
  function tickProgress(){
@@ -360,7 +369,7 @@
  function panelInner(subject){
   const st=state(subject),act=activeProviders(),auto=subject.auto!==false;
   let body='';
-  if(st.loading&&st.run&&!st.run.done){body+=progressHtml(st);setTimeout(tickProgress,0)}
+  if(st.loading&&st.run&&!st.run.done){body+=progressHtml(st);setTimeout(startProgressTicker,0)}
   else if(st.loading)body+='<p class="ai-contrast-loading"><i class="ai-live-dot thinking" aria-hidden="true"></i> Contrastando con '+esc(act.map(id=>LABEL[id]).join(', ')||'IA')+'…</p>';
   if(!st.loading&&st.reusedAt)body+='<p class="ai-engine-reused">Mismo análisis que el de las '+esc(new Date(st.reusedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+': se ha reutilizado sin gastar usos. <button type="button" class="link-btn" data-ai-engine-run data-force="1">Repetir igualmente</button></p>';
   (st.list||[]).forEach(c=>{body+=contrastHtml(c)});
