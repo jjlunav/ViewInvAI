@@ -4314,14 +4314,17 @@ const TASK_MODELS={
   sambanova:{decision:["DeepSeek-V3-0324","Meta-Llama-3.3-70B-Instruct"],light:["Meta-Llama-3.3-70B-Instruct"]},
   ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]}
 };
-async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
+async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null}){
   const tried=[],t=task==="light"?"light":"decision";
+  // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
+  const pinModels=list=>pin&&pin.model?[pin.model]:list;
   const fromList=(list)=>list;
   const attempts={
     gemini:async()=>{
       const key=providerKey(env,PROVIDERS.find(p=>p.id==="gemini")),chain=await aiGeminiModelChain(key,"");
       let models=chain.models||[];
       if(t==="light")models=[...models.filter(m=>/lite/i.test(m)),...models.filter(m=>!/lite/i.test(m))];
+      models=pinModels(models);
       let lastErr="";
       for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
@@ -4338,13 +4341,13 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
       return null;
     },
     workersai:async()=>{
-      const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+      const run=await runWorkersAi(env,{messages:[{role:"user",content:prompt}],max_tokens:maxTokens,temperature:0.2},pin&&pin.model||"@cf/meta/llama-3.3-70b-instruct-fp8-fast");
       const r=run.result,text=typeof r==="string"?r:r&&typeof r.response==="string"?r.response:r&&r.response?JSON.stringify(r.response):r&&r.choices?String(r.choices[0].message&&r.choices[0].message.content||""):"";
       return text?{text,provider:"workersai",model:run.model}:null;
     }
   };
   const compatible=async(id,url,key,models)=>{
-    for(const model of models){
+    for(const model of pinModels(models)){
       try{const text=await openAiCompatible(id,url,key,model,prompt,maxTokens);await recordProviderUse(env,id,true);return{text,provider:id,model}}
       catch(error){tried.push(id+":"+model+":"+(error.status||error.message));
         // Modelo retirado o inexistente: fuera durante un día (se elige otro del catálogo) y sin penalizar al servicio.
@@ -4357,9 +4360,14 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision"}){
   attempts.openrouter=async()=>{const key=providerKey(env,PROVIDERS.find(p=>p.id==="openrouter"));return compatible("openrouter","https://openrouter.ai/api/v1/chat/completions",key,await openRouterFreeModels(key))};
   for(const p of PROVIDERS.filter(x=>x.base&&x.kind==="IA"))attempts[p.id]=async()=>{const key=providerKey(env,p);return compatible(p.id,p.base+"/chat/completions",key,await pickModels(p.id,key,(TASK_MODELS[p.id]&&TASK_MODELS[p.id][t])||p.models))};
   const ready=Object.keys(attempts).filter(id=>id==="workersai"?!!(env.AI&&typeof env.AI.run==="function"):providerReady(env,id));
-  const order=await orderProviders(env,ready.filter(id=>id!=="workersai"),t);
+  let order=await orderProviders(env,ready.filter(id=>id!=="workersai"),t);
   // Workers AI queda siempre como último recurso: no tiene clave ni cupo que repartir, pero es el más flojo.
   if(ready.includes("workersai"))order.push("workersai");
+  if(pin&&pin.provider){
+    // El elegido se prueba aunque esté en pausa por fallos recientes: lo ha pedido el usuario.
+    const p=PROVIDERS.find(x=>x.id===pin.provider);
+    order=attempts[pin.provider]&&(pin.provider==="workersai"?!!(env.AI&&typeof env.AI.run==="function"):!!p&&(!p.secret||!!providerKey(env,p)))?[pin.provider]:[];
+  }
   for(const id of order){
     try{const out=await attempts[id]();if(out&&String(out.text||"").trim())return{...out,task:t}}
     catch(error){tried.push(id+":"+String(error&&error.message||error));if(id==="gemini")await recordProviderUse(env,"gemini",false,String(error&&error.message||error))}
@@ -5823,7 +5831,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
-    if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast")) return handleAiIntegration(request, env, user, json, parts, url);
+    if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
     if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
@@ -6027,11 +6035,14 @@ async function aiGeminiModelChain(apiKey,configuredModel=""){
     return{models:emergency,source:"emergency",catalogError:String(error&&error.message||error)};
   }
 }
-async function aiAskGemini(apiKey,model,prompt){
+async function aiAskGemini(apiKey,model,prompt,pinModel=""){
   // ViewInvAI ya adjunta cotización, técnica y noticias/eventos conocidos. El backend
   // descubre automáticamente todos los Flash estables disponibles para esta API key,
   // prueba primero los normales del más nuevo al más antiguo y después los Flash-Lite.
-  const chain=await aiGeminiModelChain(apiKey,model),models=chain.models;
+  const chain=await aiGeminiModelChain(apiKey,model);
+  // Modelo elegido por el usuario: va primero; si falla, sigue la cadena normal.
+  const pinned=aiGeminiStableFlashMeta(pinModel)?String(pinModel).toLowerCase():"";
+  const models=pinned?[pinned,...chain.models.filter(m=>m!==pinned)]:chain.models;
   const system=AI_CONTRAST_SYSTEM+
     "\nIMPORTANTE: no tienes búsqueda web en esta consulta. Usa los datos actuales aportados por ViewInvAI en el prompt. No afirmes haber verificado fuera de ellos; si falta un dato reciente, indícalo y usa «dudas».";
   const body=JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}]});
@@ -6049,7 +6060,7 @@ async function aiAskGemini(apiKey,model,prompt){
         const text=(cand.content&&cand.content.parts||[]).map(p=>p&&p.text||"").join("");
         const chunks=cand.groundingMetadata&&cand.groundingMetadata.groundingChunks||[];
         return{text,sources:chunks.map(c=>c&&c.web?{url:c.web.uri,title:c.web.title}:null).filter(Boolean),
-          freeFallback:true,modelFallback:i>0?candidate:"",effectiveModel:candidate,modelCatalogSource:chain.source};
+          freeFallback:true,modelFallback:i>0&&candidate!==pinned?candidate:"",effectiveModel:candidate,modelCatalogSource:chain.source};
       }
       last={res,data};
       const transient=[429,500,502,503,504].includes(res.status);
@@ -6124,6 +6135,46 @@ async function aiSaveContrast(env,user,subjectType,subjectKey,provider,parsed,so
   else await env.DB.prepare("DELETE FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' AND id NOT IN (SELECT id FROM ai_contrasts WHERE user_id=? AND provider<>'viewinvai-ai' ORDER BY created_at DESC LIMIT 60)").bind(user.id,user.id).run();
   return aiContrastRow(row);
 }
+// ----- Elegir IA a mano: las del usuario y las gratuitas de la app, con lo que les queda hoy -----
+// Cada usuario puede lanzar a mano unos pocos análisis al día con las IA de la app (cupo compartido).
+const AI_APP_PICK_DAILY_LIMIT=15;
+let aiEnginesMemo={at:0,list:null};
+async function aiAppEngines(env){
+  if(aiEnginesMemo.list&&Date.now()-aiEnginesMemo.at<10*60000)return aiEnginesMemo.list;
+  const stats=await providerStatsToday(env),out=[];
+  await Promise.all(PROVIDERS.filter(p=>p.kind==="IA").map(async p=>{
+    const hasAi=p.id==="workersai"?!!(env.AI&&typeof env.AI.run==="function"):(!p.secret||!!providerKey(env,p));
+    if(!hasAi)return;
+    const key=providerKey(env,p);let models=[];
+    try{
+      if(p.id==="gemini")models=(await aiGeminiModelChain(key,"")).models||[];
+      else if(p.id==="openrouter")models=await openRouterFreeModels(key);
+      else if(p.id==="workersai")models=["@cf/meta/llama-3.3-70b-instruct-fp8-fast"];
+      else models=await pickModels(p.id,key,(TASK_MODELS[p.id]&&TASK_MODELS[p.id].decision)||p.models||[]);
+    }catch(_){}
+    const daily=(PROVIDER_PROFILE[p.id]||{}).daily||0,st=stats.get(p.id)||{calls:0,errors:0};
+    out.push({id:"app:"+p.id,provider:p.id,label:p.label,models:(models||[]).slice(0,8),quota:p.free||"",
+      dailyEstimate:daily,usedToday:st.calls,remaining:daily&&p.id!=="workersai"?Math.max(0,daily-st.calls):null,paused:(providerCooldown.get(p.id)||0)>Date.now(),
+      quality:(PROVIDER_PROFILE[p.id]||{}).decision||50});
+  }));
+  out.sort((a,b)=>b.quality-a.quality);
+  aiEnginesMemo={at:Date.now(),list:out};
+  return out;
+}
+// Búsqueda exhaustiva: noticias recientes (Finnhub, Google News, buscadores) de cada valor citado.
+async function aiDeepEvidence(env,targets){
+  const parts=[],sources=[];
+  for(const t of (Array.isArray(targets)?targets:[]).slice(0,6)){
+    const ticker=trimText(t&&t.ticker,16).toUpperCase().replace(/[^A-Z0-9.\-]/g,"");if(!ticker)continue;
+    const c={ticker,name:trimText(t.name,80),isin:trimText(t.isin,12).toUpperCase().replace(/[^A-Z0-9]/g,""),usTicker:trimText(t.usTicker,12).toUpperCase().replace(/[^A-Z0-9.\-]/g,"")};
+    let web={results:[],provider:""};
+    try{web=await goalWebNews(env,c)}catch(_){}
+    if(!web.results.length){parts.push(ticker+": la búsqueda no ha devuelto noticias recientes.");continue}
+    parts.push(ticker+" (fuentes: "+web.provider+"):\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"));
+    web.results.forEach(r=>sources.push({url:r.url,title:r.title}));
+  }
+  return{text:parts.join("\n"),sources};
+}
 async function handleAiIntegration(request,env,user,json,parts,url){
   await ensureAiIntegrationSchema(env);
   const section=parts[1]||"",noStore={"Cache-Control":"no-store"};
@@ -6165,6 +6216,24 @@ async function handleAiIntegration(request,env,user,json,parts,url){
     ).bind(user.id,p,sealed.enc,sealed.iv,apiKey.slice(-4),model,1,now,now).run();
     return json({ok:true,provider:p,last4:apiKey.slice(-4),model},200,noStore);
   }
+  if(section==="engines"){
+    if(request.method!=="GET")return json({error:"Method not allowed"},405);
+    const today=nowIso().slice(0,10);
+    const {results:keyRows}=await env.DB.prepare("SELECT provider,model,active FROM user_ai_keys WHERE user_id=?").bind(user.id).all();
+    const usedOwn=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(user.id,today).first();
+    const usedApp=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider LIKE 'app-%'").bind(user.id,today).first();
+    const ownLeft=Math.max(0,AI_CONTRAST_DAILY_LIMIT-(Number(usedOwn&&usedOwn.n)||0)),appLeft=Math.max(0,AI_APP_PICK_DAILY_LIMIT-(Number(usedApp&&usedApp.n)||0));
+    const own=[];
+    for(const r of keyRows||[]){
+      const p=aiProviderOf(r.provider);if(!p)continue;
+      let models=[r.model||AI_PROVIDERS[p].model];
+      if(p==="gemini"){try{const row=await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider='gemini'").bind(user.id).first();
+        const k=row&&await aiDecrypt(env,user.id,"gemini",row);if(k)models=(await aiGeminiModelChain(k,r.model||"")).models.slice(0,8)}catch(_){}}
+      own.push({id:"user:"+p,provider:p,label:"Tu "+AI_PROVIDERS[p].label,models,active:!!r.active,webSearch:p!=="gemini",
+        quota:p==="gemini"?"Según el plan gratuito de tu clave de Google":"Según el saldo de tu cuenta"});
+    }
+    return json({own,ownLeft,ownLimit:AI_CONTRAST_DAILY_LIMIT,app:await aiAppEngines(env),appLeft,appLimit:AI_APP_PICK_DAILY_LIMIT},200,noStore);
+  }
   if(section==="contrast"){
     if(request.method==="GET"){
       // Opiniones de los últimos 3 días (todas): la app las usa para reforzar o rebajar cada acción.
@@ -6197,6 +6266,63 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       return json({contrast:saved},200,noStore);
     }
     if(!prompt)return json({error:"Falta el contenido a contrastar"},400);
+    const engine=String(body.engine||"");
+    if(engine){
+      // IA elegida a mano (tuya o de la app), con búsqueda exhaustiva opcional.
+      const today=nowIso().slice(0,10),deep=body.deep===true,model=aiValidModel(body.model);
+      const m=engine.match(/^(user|app):([a-z]+)$/);
+      if(!m)return json({error:"IA no válida"},400);
+      // Ahorro: si en las últimas 6 h ya se hizo lo mismo (misma IA, modelo y tipo de búsqueda), se reutiliza
+      // sin gastar usos. Solo se repite si el usuario lo pide expresamente.
+      const savedAs=m[1]==="user"?aiProviderOf(m[2]):"app-"+m[2];
+      if(savedAs&&body.force!==true){
+        const since=new Date(Date.now()-6*3600e3).toISOString();
+        const {results:prev}=await env.DB.prepare("SELECT * FROM ai_contrasts WHERE user_id=? AND subject_type=? AND subject_key=? AND provider=? AND created_at>=? ORDER BY created_at DESC LIMIT 5").bind(user.id,type,key,savedAs,since).all();
+        const hit=(prev||[]).find(r=>(!model||String(r.summary||"").includes(model))&&/búsqueda exhaustiva/.test(String(r.summary||""))===deep);
+        if(hit)return json({contrasts:[aiContrastRow(hit)],errors:[],reused:true,reusedAt:hit.created_at},200,noStore);
+      }
+      const evidence=deep?await aiDeepEvidence(env,body.targets):{text:"",sources:[]};
+      const fullPrompt=prompt+(deep?"\n\nBÚSQUEDA EXHAUSTIVA · NOTICIAS Y RESULTADOS REALES DE ESTA SEMANA (úsalos como fuente principal, cita el dato y la fecha):\n"+(evidence.text||"sin resultados")+
+        "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":"");
+      if(m[1]==="user"){
+        const p=aiProviderOf(m[2]);if(!p)return json({error:"IA no válida"},400);
+        const row=await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,p).first();
+        if(!row)return json({error:"Primero conecta esa IA en Configuración › Integrar la IA."},409);
+        const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider IN ('gemini','anthropic','openai')").bind(user.id,today).first();
+        if((Number(used&&used.n)||0)>=AI_CONTRAST_DAILY_LIMIT)return json({contrasts:[],errors:[{provider:p,error:"Has llegado al máximo de "+AI_CONTRAST_DAILY_LIMIT+" análisis con tus IA por hoy."}]},200,noStore);
+        const label=AI_PROVIDERS[p].label,apiKey=await aiDecrypt(env,user.id,p,row);
+        if(!apiKey)return json({contrasts:[],errors:[{provider:p,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla."}]},200,noStore);
+        let a;
+        try{a=p==="gemini"?await aiAskGemini(apiKey,row.model||AI_PROVIDERS[p].model,fullPrompt,model):p==="anthropic"?await aiAskClaude(apiKey,model||row.model||AI_PROVIDERS[p].model,fullPrompt):await aiAskOpenAi(apiKey,model||row.model||AI_PROVIDERS[p].model,fullPrompt)}
+        catch(error){a={error:String(error&&error.name)==="AbortError"?label+" ha tardado demasiado. Inténtalo de nuevo.":"No se pudo contactar con "+label+"."}}
+        if(!a.error&&!String(a.text||"").trim())a.error=label+" no ha devuelto respuesta.";
+        if(a.error)return json({contrasts:[],errors:[{provider:p,error:a.error}]},200,noStore);
+        const parsed=aiParseAnswer(a.text);
+        const tag=p==="gemini"?"Tu Gemini · "+(a.effectiveModel||model||"Flash"):label+(model?" · "+model:"");
+        parsed.summary=trimText(tag+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":p==="gemini"?" · sin búsqueda web":"")+". "+(parsed.summary||""),800);
+        return json({contrasts:[await aiSaveContrast(env,user,type,key,p,parsed,[...(a.sources||[]),...evidence.sources])],errors:[]},200,noStore);
+      }
+      const prov=PROVIDERS.find(x=>x.id===m[2]&&x.kind==="IA");if(!prov)return json({error:"IA no válida"},400);
+      // Solo modelos de la lista que se ofrece para ese servicio.
+      const offered=(await aiAppEngines(env)).find(x=>x.provider===prov.id);
+      if(!offered)return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no está disponible ahora."}]},200,noStore);
+      if(model&&!(offered.models||[]).includes(model))return json({error:"Modelo no disponible para "+prov.label},400);
+      const used=await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_contrasts WHERE user_id=? AND day=? AND provider LIKE 'app-%'").bind(user.id,today).first();
+      if((Number(used&&used.n)||0)>=AI_APP_PICK_DAILY_LIMIT)return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:"Has llegado al máximo de "+AI_APP_PICK_DAILY_LIMIT+" análisis a mano con las IA de la app por hoy."}]},200,noStore);
+      try{
+        const system=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.",deep
+          ?"Tienes abajo resultados REALES de búsqueda de esta semana: úsalos como fuente principal y sé concreto y prudente."
+          :"No tienes búsqueda web: usa los datos actuales que aporta ViewInvAI y no afirmes haber verificado nada fuera de ellos; sé concreto y prudente.");
+        const run=await aiRoute(env,{prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false,pin:{provider:prov.id,model}});
+        aiEnginesMemo.at=0;
+        const parsed=aiParseAnswer(run.text);
+        parsed.summary=trimText(prov.label+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
+        return json({contrasts:[await aiSaveContrast(env,user,type,key,"app-"+prov.id,parsed,evidence.sources)],errors:[]},200,noStore);
+      }catch(error){
+        aiEnginesMemo.at=0;
+        return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no ha podido responder ahora"+(model?" con "+model:"")+". Prueba con otra IA o con otro modelo."}]},200,noStore);
+      }
+    }
     const today=nowIso().slice(0,10),wanted=aiProviderOf(body.provider);
     const {results:keyRows}=wanted
       ?await env.DB.prepare("SELECT * FROM user_ai_keys WHERE user_id=? AND provider=?").bind(user.id,wanted).all()
