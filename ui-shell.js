@@ -31,7 +31,33 @@
   v.style.setProperty('--shell-x',(parseFloat(cs.paddingLeft)||0)+'px');
   v.style.setProperty('--shell-top',(parseFloat(cs.paddingTop)||0)+'px');
  }
- function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();apply()}
+ // Escritorio: la cabecera de la sección (título y las pestañas que van justo debajo) se queda fija
+ // arriba al bajar por la página. En el móvil hay otra cabecera propia y esto no se aplica.
+ const isTabs=el=>el&&(el.tagName==='NAV'||el.getAttribute('role')==='tablist'||/(^|\s|-)(tabs|switch)(\s|$|-)/.test(el.className||''));
+ function syncDesktopSticky(){
+  document.querySelectorAll('[data-desk-sticky]').forEach(el=>{el.removeAttribute('data-desk-sticky');el.style.removeProperty('top')});
+  if(mq.matches)return;
+  const v=document.querySelector('.view.active'),head=v&&v.querySelector(':scope>.page-heading');if(!head)return;
+  const stack=[head];let el=head.nextElementSibling;
+  while(el&&isTabs(el)&&stack.length<4){if(el.offsetParent!==null)stack.push(el);el=el.nextElementSibling}
+  let top=0;
+  for(const x of stack){x.setAttribute('data-desk-sticky','');x.style.top=top+'px';top+=x.offsetHeight}
+ }
+ // Tamaño en escritorio (compacto por defecto): se guarda en este navegador y se aplica a todo con zoom.
+ const SIZE_KEY='viewinvai.deskSize',SIZES=['compact','xcompact','normal'];
+ function deskSize(){try{const v=localStorage.getItem(SIZE_KEY);return SIZES.includes(v)?v:'compact'}catch(_){return 'compact'}}
+ function applyDeskSize(v){
+  document.documentElement.dataset.deskSize=v;
+  document.querySelectorAll('[data-desk-size-setting]').forEach(b=>{const on=b.dataset.deskSizeSetting===v;b.setAttribute('aria-pressed',String(on));b.classList.toggle('active',on)});
+ }
+ applyDeskSize(deskSize());
+ document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-desk-size-setting]');if(!b)return;
+  const v=b.dataset.deskSizeSetting;if(!SIZES.includes(v))return;
+  try{localStorage.setItem(SIZE_KEY,v)}catch(_){}
+  applyDeskSize(v);setTimeout(reset,50);
+ });
+ function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();apply()}
  window.addEventListener('scroll',onScroll,{passive:true});
  window.addEventListener('resize',reset,{passive:true});
  window.addEventListener('viewinvai:view-changed',reset);

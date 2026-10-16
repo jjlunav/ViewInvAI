@@ -534,6 +534,15 @@
                 <p class="settings-note" id="appLanguageNote" translate="no"></p>
               </article>
 
+              <article class="settings-card desk-size-settings-card" id="deskSizeSettingsCard">
+                <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA</span><h2>Tamaño en escritorio</h2><p>Solo en el ordenador: cuanto más compacto, más información cabe a la vista. En el móvil no cambia nada.</p></div></div>
+                <div class="theme-setting-options" role="group" aria-label="Tamaño en escritorio">
+                  <button type="button" class="theme-setting-option active" data-desk-size-setting="compact" aria-pressed="true"><span class="theme-setting-icon">▣</span><span><strong>Compacto</strong><small>Recomendado</small></span></button>
+                  <button type="button" class="theme-setting-option" data-desk-size-setting="xcompact" aria-pressed="false"><span class="theme-setting-icon">▪</span><span><strong>Muy compacto</strong><small>Máxima información</small></span></button>
+                  <button type="button" class="theme-setting-option" data-desk-size-setting="normal" aria-pressed="false"><span class="theme-setting-icon">□</span><span><strong>Normal</strong><small>Tamaño anterior</small></span></button>
+                </div>
+              </article>
+
               <article class="settings-card" id="screenWakeSettingsCard" hidden>
                 <div class="settings-card-head"><div><span class="settings-kicker">PANTALLA Y DISPOSITIVO</span><h2>Mantener pantalla activa</h2><p>Evita que el móvil apague la pantalla automáticamente mientras ViewInvAI está abierta y visible.</p></div><label class="settings-switch" aria-label="Mantener pantalla activa"><input id="keepScreenAwake" type="checkbox"><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                 <div class="settings-status-row"><span>Estado</span><strong id="keepScreenAwakeStatus" class="settings-status">Desactivado</strong></div>
