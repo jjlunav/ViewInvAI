@@ -111,8 +111,21 @@
   let hi=table.findIndex(r=>{const m=mapHeader(r);return m.qty!==undefined&&(m.isin!==undefined||m.symbol!==undefined)});
   if(hi<0)throw new Error('No encuentro las columnas de cantidad e ISIN/símbolo. Columnas leídas: '+table[0].join(', '));
   const map=mapHeader(table[hi]),out=[],skipped={},dividends=[],benefits=[],cards=[];
+  // Trade Republic exporta todos los movimientos de la cuenta (ingresos, tarjeta, intereses,
+  // compras, ventas…): su suma es el efectivo. Si la cifra de la fila ya es el precio × acciones,
+  // la comisión y el impuesto van aparte y se descuentan.
+  const ledger={eur:0,rows:0,first:'',last:''};
   for(const r of table.slice(hi+1)){
    const get=k=>map[k]===undefined?'':r[map[k]];
+   if(source==='tr'&&map.amount!==undefined){
+    const a=num(get('amount')),cur=String(get('currency')||'EUR').trim().toUpperCase()||'EUR',d=dateIso(get('date'));
+    if(a!==null&&cur==='EUR'){
+     const q=Math.abs(num(get('qty'))||0),pr=Math.abs(num(get('price'))||0),gross=q*pr,extra=Math.abs(num(get('fee'))||0)+Math.abs(num(get('tax'))||0);
+     ledger.eur+=a-(extra&&gross>0&&Math.abs(Math.abs(a)-gross)<=Math.max(0.02,gross*0.001)?extra:0);
+     ledger.rows++;
+     if(d){if(!ledger.first||d<ledger.first)ledger.first=d;if(!ledger.last||d>ledger.last)ledger.last=d}
+    }
+   }
    // Trade Republic: Saveback y Redondeo llegan como abono en efectivo (BENEFITS_SAVEBACK…) seguido
    // de la compra del mismo importe. El abono no es una operación: sirve para etiquetar esa compra.
    const rawKind=String(get('side')||'')+' '+String(map.desc!==undefined&&map.desc!==map.name?get('desc'):'');
@@ -163,7 +176,8 @@
   }
   tagBenefits(out,benefits);
   cardBenefits(out,cards);
-  return{rows:out,skipped,dividends,benefits,cards};
+  ledger.eur=Math.round(ledger.eur*100)/100;
+  return{rows:out,skipped,dividends,benefits,cards,ledger:source==='tr'&&ledger.rows?ledger:null};
  }
  /* Saveback y Redondeo calculados con los pagos con tarjeta del propio CSV (Trade Republic):
   * · Saveback: el 1 % de lo gastado con tarjeta en un mes (tope 15 €), invertido hacia el día 2
@@ -430,6 +444,7 @@
    if(t.matches('[data-plan-freq],[data-plan-on]')){onPlanInput(t);return}
    if(t.matches('[data-wiz-freq]')){const g=currentGroup();if(g){g.frequency=t.value;g.active=isActive(g);paintStep()}}
    if(t.matches('[data-wiz-cash]'))flow.adjustCash=t.checked;
+   if(t.matches('[data-wiz-cash-value]')){const v=Number(String(t.value).replace(',','.'));flow.cashSet=t.value!==''&&v>=0?Math.round(v*100)/100:null;if(flow.cashSet!==null)flow.adjustCash=true;const c=wizEl.querySelector('[data-wiz-cash]');if(c)c.checked=flow.adjustCash}
   });
   document.body.appendChild(wizEl);
   return wizEl;
@@ -459,7 +474,8 @@
    paintAnalyze(30,'Reconociendo '+data.rows.length+(data.rows.length===1?' operación…':' operaciones…'));await pause(350);
    const m=matchRows(data.rows,flow.source);
    flow.matched=m.matched;flow.unmatched=m.unmatched;flow.funds=m.funds;flow.uncatalogued=m.uncatalogued;
-   flow.dividends=enrichDividends(flow.dividends);flow.extra=data.extra||'';flow.adjustCash=false;
+   flow.dividends=enrichDividends(flow.dividends);flow.extra=data.extra||'';flow.adjustCash=true;
+   flow.cashSet=flow.cashLedger&&flow.cashLedger.eur>=0?flow.cashLedger.eur:null;
    paintAnalyze(65,'Buscando planes, Saveback y Redondeo…');await pause(350);
    flow.planCands=buildPlanCandidates(m.matched,m.funds);
    paintAnalyze(100,'Análisis terminado');await pause(300);
@@ -516,10 +532,22 @@
   paint({kicker:'Resumen',title:total?'Todo listo para importar':'No hay nada que importar',pct:100,
    body:'<div class="import-wizard-summary">'+previewHtml()+contrib+
     (flow.extra?'<details class="import-wizard-ignored"><summary>Movimientos que no se importan</summary>'+flow.extra+'</details>':'')+
-    '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+(flow.adjustCash?' checked':'')+'> Ajustar también el efectivo de la cartera</label>'+
+    cashHtml()+
     '<p class="broker-import-help">La importación sigue en segundo plano: puedes seguir usando la app y el progreso aparece arriba. Reimportar el mismo archivo no duplica nada.</p></div>',
    foot:'<button type="button" class="btn ghost" data-wiz-back>Atrás</button>'+
     '<button type="button" class="btn secondary" data-wiz-finish'+(total?'':' disabled')+'>Finalizar e importar</button>'});
+ }
+ // Trade Republic: el efectivo se pone con el saldo que sale del CSV (editable). Otros: se ajusta con cada operación nueva.
+ function cashHtml(){
+  const L=flow.cashLedger,on=flow.adjustCash?' checked':'';
+  if(!L)return '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+on+'> Ajustar también el efectivo de la cartera con cada operación nueva</label>';
+  const since=L.first?new Date(L.first).toLocaleDateString('es-ES'):'';
+  if(L.eur<0)return '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+on+'> Poner el efectivo de la cartera en</label>'+
+   '<label class="import-wizard-cash"><input type="number" inputmode="decimal" min="0" step="0.01" data-wiz-cash-value value="'+(flow.cashSet??'')+'" placeholder="Saldo en Trade Republic"> €</label>'+
+   '<p class="broker-import-warn">Con los movimientos del archivo (desde el '+esc(since)+') el saldo sale negativo: la exportación no empieza en la apertura de la cuenta. Escribe el efectivo que ves en Trade Republic o exporta el historial completo.</p>';
+  return '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+on+'> Poner el efectivo de la cartera en</label>'+
+   '<label class="import-wizard-cash"><input type="number" inputmode="decimal" min="0" step="0.01" data-wiz-cash-value value="'+(flow.cashSet??'')+'"> €</label>'+
+   '<p class="broker-import-help">Saldo calculado con '+L.rows+' movimientos del archivo (ingresos, tarjeta, intereses, compras y ventas) desde el '+esc(since)+'. Si no coincide con el efectivo de Trade Republic (la exportación no empieza en la apertura de la cuenta), corrígelo aquí.</p>';
  }
  function paintPlans(){
   const c=flow.planCands||[];
@@ -828,7 +856,7 @@
   if(pendingQuestions())return;
   const review=applyReview();
   const job={portfolioId:flow.portfolioId,source:flow.source,rows:(flow.matched||[]).slice(),divs:(flow.dividends||[]).slice(),funds:(flow.funds||[]).slice(),
-   adjustCash:!!flow.adjustCash};
+   adjustCash:!!flow.adjustCash&&!flow.cashLedger,setCash:flow.adjustCash&&flow.cashLedger&&flow.cashSet!=null?flow.cashSet:null};
   if(!job.portfolioId||!(job.rows.length||job.divs.length||job.funds.length))return;
   if(typeof P().closeModal==='function')P().closeModal();
   const broker=job.source==='ibkr'?'Interactive Brokers':job.source==='tr'?'Trade Republic':'';
@@ -872,6 +900,10 @@
     divImported+=data.imported||0;divSkipped+=data.skipped||0;logErrors(data.errors);
     step(chunk.length,'Dividendos');
    }
+   if(job.setCash!==null){
+    const res=await window.ViewInvAIAuth.apiFetch('/api/portfolios/'+encodeURIComponent(job.portfolioId),{method:'PATCH',body:JSON.stringify({cashBalance:job.setCash})});
+    if(res.ok)task.log('Efectivo de la cartera: '+eur(job.setCash,'EUR')+'.');else{errors++;task.log('No se pudo poner el efectivo de la cartera.','error')}
+   }
    const parts=[imported+(imported===1?' operación':' operaciones')];
    if(job.funds.length)parts.push(fundImported+' de fondos');
    if(job.divs.length)parts.push(divImported+' dividendos');
@@ -905,7 +937,7 @@
    if(!token||!queryId){status('Indica el token y el Query ID.',true);return}
    if(document.querySelector('[data-ibkr-remember]')?.checked){try{await rememberIbkr(typed,{queryId,portfolioId:flow.portfolioId})}catch(err){status(esc(err.message),true)}}else await forgetIbkr();
    go.disabled=true;go.textContent='Consultando IBKR…';status('');
-   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.dividends=data.dividends||[];runAnalysis(async()=>({rows:data.trades||[]}))}
+   try{const data=await fetchIbkr({token,queryId});flow.positions=data.positions||[];flow.cashLedger=null;flow.dividends=data.dividends||[];runAnalysis(async()=>({rows:data.trades||[]}))}
    catch(err){status(esc(err.message),true)}
    finally{if(go.isConnected){go.disabled=false;go.textContent='Leer operaciones de IBKR'}}
   }
@@ -918,8 +950,8 @@
    if(file.size>5e6){status('El archivo es demasiado grande (máx. 5 MB).',true);return}
    runAnalysis(async()=>{
     const text=await file.text();
-    const {rows,skipped,dividends}=rowsFromCsv(text,flow.source==='tr'?'tr':'csv');
-    flow.dividends=dividends||[];
+    const {rows,skipped,dividends,ledger}=rowsFromCsv(text,flow.source==='tr'?'tr':'csv');
+    flow.dividends=dividends||[];flow.cashLedger=ledger||null;
     const ign=Object.entries(skipped);
     return{rows,extra:ign.length?'<p class="broker-import-help">No son compras, ventas ni dividendos: '+esc(ign.slice(0,8).map(([k,v])=>k+' ×'+v).join(', '))+'</p>':''};
    });

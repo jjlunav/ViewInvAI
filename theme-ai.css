@@ -1987,3 +1987,5 @@ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-li
 html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-icon{grid-area:icon}
 html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-time{grid-area:time;justify-self:end;display:flex;align-items:center;gap:6px}
 html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row>.inbox-main{grid-area:main}
+#importWizard .import-wizard-cash{display:flex;align-items:center;gap:8px;margin:-2px 0 4px 28px;font-weight:700}
+#importWizard .import-wizard-cash input{width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--line,rgba(140,190,210,.25));background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums}
