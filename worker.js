@@ -2029,7 +2029,7 @@ function shouldDispatchMarketUpdate(ms,base=10){
   return every(180);
 }
 async function dispatchMarketUpdate(env){
-  const res=await fetch(MARKET_WORKFLOW_URL,{method:"POST",headers:{
+  const res=await fetch(MARKET_WORKFLOW_URL,{method:"POST",signal:AbortSignal.timeout(8000),headers:{
     "Authorization":"Bearer "+env.GITHUB_DISPATCH_TOKEN,"Accept":"application/vnd.github+json",
     "X-GitHub-Api-Version":"2022-11-28","User-Agent":"ViewInvAI-worker","Content-Type":"application/json"
   },body:JSON.stringify({ref:"main"})});
@@ -2090,6 +2090,12 @@ export default {
     if (url.pathname === "/api/radar-scoreboard") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await radarScoreboardResponse(env));
+    }
+    if (url.pathname === "/api/market-dispatch-status") {
+      const guard = requestGuard(request); if (guard) return guard;
+      let last = null;
+      try { last = env.HOT_STATE_KV ? await env.HOT_STATE_KV.get("market:dispatch:last", "json") : null; } catch {}
+      return jsonResponse({ configured: !!env.GITHUB_DISPATCH_TOKEN, last }, 200, { "Cache-Control": "no-store" });
     }
     if (url.pathname === "/api/market-live") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -2155,7 +2161,14 @@ export default {
     // the Worker triggers the market-data workflow itself, following the US session
     // (see shouldDispatchMarketUpdate; MARKET_DISPATCH_MINUTES in wrangler.jsonc).
     const dispatchAt=Number(controller&&controller.scheduledTime)||Date.now();
-    if(env.GITHUB_DISPATCH_TOKEN&&shouldDispatchMarketUpdate(dispatchAt,Number(env.MARKET_DISPATCH_MINUTES)||10))ctx.waitUntil(dispatchMarketUpdate(env).catch(error=>console.warn("Market update dispatch failed",String(error&&error.message||error))));
+    // Awaited before the heavy tasks: if they hit the CPU limit the whole invocation is
+    // cancelled, and a request still pending in waitUntil would never reach GitHub.
+    if(env.GITHUB_DISPATCH_TOKEN&&shouldDispatchMarketUpdate(dispatchAt,Number(env.MARKET_DISPATCH_MINUTES)||10)){
+      let status="ok";
+      try{await dispatchMarketUpdate(env)}
+      catch(error){status=String(error&&error.message||error);console.warn("Market update dispatch failed",status)}
+      if(env.HOT_STATE_KV)ctx.waitUntil(env.HOT_STATE_KV.put("market:dispatch:last",JSON.stringify({at:new Date().toISOString(),status})).catch(()=>{}));
+    }
     const scheduledAt=Number(controller&&controller.scheduledTime)||Date.now();
     const minute=new Date(scheduledAt).getUTCMinutes();
     const tasks=[
