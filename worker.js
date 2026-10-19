@@ -1240,7 +1240,7 @@ async function loadMarketSnapshotForBackend(env) {
   const data = await response.json();
   if (!data || !Array.isArray(data.stocks)) throw new Error("Invalid market snapshot");
   // Alerts and Radar on the server use live price/volume, not the 30-min photo.
-  try { overlayMarketLive(data, await marketLivePayload()); }
+  try { overlayMarketLive(data, await marketLivePayload(env)); }
   catch (error) { console.warn("Market live overlay unavailable", String(error && error.message || error)); }
   return data;
 }
@@ -1691,7 +1691,6 @@ async function indicesLiveResponse(){
 const MARKET_LIVE_FIELDS=["price","changePct","dayHigh","dayLow","volume","relVolume","avgVolume","premarketPrice","premarketChangePct","premarketVolume","premarketTime","postmarketPrice","postmarketChangePct","postmarketVolume","postmarketTime"];
 const MARKET_LIVE_COLUMNS=["close","change","high","low","volume","relative_volume_10d_calc","average_volume_10d_calc","premarket_close","premarket_change","premarket_volume","premarket_time","postmarket_close","postmarket_change","postmarket_volume","postmarket_time"];
 const MARKET_LIVE_TTL=55000;
-let marketLiveMemo={at:0,value:null,pending:null};
 function marketLiveRound(field,value){
   const n=Number(value);
   if(value===null||value===undefined||!Number.isFinite(n))return null;
@@ -1720,28 +1719,64 @@ async function fetchMarketLiveFromSource(){
   if(rows.length<1000)throw new Error("TradingView devolvió "+rows.length+" filas");
   return{fields:MARKET_LIVE_FIELDS,rows,updatedAt:new Date().toISOString(),source:"TradingView"};
 }
-async function marketLivePayload(){
-  if(marketLiveMemo.value&&Date.now()-marketLiveMemo.at<MARKET_LIVE_TTL)return marketLiveMemo.value;
-  if(marketLiveMemo.pending)return marketLiveMemo.pending;
-  marketLiveMemo.pending=(async()=>{
-    const cacheKey=new Request("https://viewinvai.internal/market-live/v1");
+// The payload is kept as text: /api/market-live returns those bytes untouched and only the
+// scheduled backend parses it (lazily, once per isolate and minute). If MARKET_LIVE_URL is
+// set (Netlify function), the TradingView scan and compaction run there instead of here.
+let marketLiveText={at:0,text:null,pending:null};
+// Outside 04:00-20:00 New York on weekdays prices barely move: refresh every 15 min.
+function marketLiveTtl(ms=Date.now()){
+  const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
+  const minuteOfDay=(Number(p.hour)%24)*60+Number(p.minute);
+  return !["Sat","Sun"].includes(p.weekday)&&minuteOfDay>=240&&minuteOfDay<1200?MARKET_LIVE_TTL:15*60000;
+}
+async function fetchMarketLiveText(env){
+  const url=env&&env.MARKET_LIVE_URL;
+  if(url){
+    try{
+      const headers={"Accept":"application/json"};
+      if(env.MARKET_LIVE_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_LIVE_KEY;
+      const r=await fetch(url,{headers});
+      const at=Date.parse(r.headers.get("X-Updated-At")||"");
+      if(r.ok&&Number.isFinite(at))return{at,text:await r.text()};
+      console.warn("Market live remote",r.status);
+    }catch(error){console.warn("Market live remote failed",String(error&&error.message||error))}
+  }
+  const value=await fetchMarketLiveFromSource();
+  return{at:Date.parse(value.updatedAt),text:JSON.stringify(value)};
+}
+async function marketLiveRaw(env){
+  const ttl=marketLiveTtl();
+  if(marketLiveText.text&&Date.now()-marketLiveText.at<ttl)return marketLiveText;
+  if(marketLiveText.pending)return marketLiveText.pending;
+  marketLiveText.pending=(async()=>{
+    const cacheKey=new Request("https://viewinvai.internal/market-live/v2");
     try{
       const cache=caches.default,hit=await cache.match(cacheKey);
       if(hit){
-        const value=await hit.json();
-        if(value&&Date.now()-Date.parse(value.updatedAt)<MARKET_LIVE_TTL){marketLiveMemo={at:Date.parse(value.updatedAt),value,pending:null};return value}
+        const at=Date.parse(hit.headers.get("X-Updated-At")||"");
+        if(Number.isFinite(at)&&Date.now()-at<ttl){
+          marketLiveText={at,text:await hit.text(),pending:null};
+          return marketLiveText;
+        }
       }
-      const value=await fetchMarketLiveFromSource();
-      await cache.put(cacheKey,new Response(JSON.stringify(value),{headers:{"Content-Type":"application/json","Cache-Control":"max-age=60"}}));
-      marketLiveMemo={at:Date.now(),value,pending:null};
-      return value;
+      const fresh=await fetchMarketLiveText(env);
+      await cache.put(cacheKey,new Response(fresh.text,{headers:{"Content-Type":"application/json","Cache-Control":"max-age="+Math.ceil(ttl/1000+5),"X-Updated-At":new Date(fresh.at).toISOString()}}));
+      marketLiveText={...fresh,pending:null};
+      return marketLiveText;
     }catch(error){
-      marketLiveMemo.pending=null;
-      if(marketLiveMemo.value)return marketLiveMemo.value;
+      marketLiveText.pending=null;
+      if(marketLiveText.text)return marketLiveText;
       throw error;
     }
   })();
-  return marketLiveMemo.pending;
+  return marketLiveText.pending;
+}
+let marketLiveMemo={at:0,value:null};
+async function marketLivePayload(env){
+  const raw=await marketLiveRaw(env);
+  if(marketLiveMemo.value&&marketLiveMemo.at===raw.at)return marketLiveMemo.value;
+  marketLiveMemo={at:raw.at,value:JSON.parse(raw.text)};
+  return marketLiveMemo.value;
 }
 function overlayMarketLive(snapshot,live){
   if(!snapshot||!Array.isArray(snapshot.stocks)||!live||!Array.isArray(live.rows))return snapshot;
@@ -1779,10 +1814,11 @@ async function radarScoreboardResponse(env){
     return jsonResponse({error:"Marcador no disponible"},503,{"Cache-Control":"no-store"});
   }
 }
-async function marketLiveResponse(){
+async function marketLiveResponse(env){
   try{
-    const value=await marketLivePayload();
-    return jsonResponse(value,200,{"Cache-Control":"public, max-age=20"});
+    const raw=await marketLiveRaw(env);
+    const headers=applySecurityHeaders(new Headers({"Content-Type":"application/json; charset=utf-8","Cache-Control":"public, max-age=20"}));
+    return new Response(raw.text,{status:200,headers});
   }catch(error){
     return jsonResponse({error:"Mercado en vivo no disponible",fields:MARKET_LIVE_FIELDS,rows:[],updatedAt:null},503,{"Cache-Control":"no-store"});
   }
@@ -2057,7 +2093,7 @@ export default {
     }
     if (url.pathname === "/api/market-live") {
       const guard = requestGuard(request); if (guard) return guard;
-      return nativeCorsResponse(request, await marketLiveResponse());
+      return nativeCorsResponse(request, await marketLiveResponse(env));
     }
     if (url.pathname === "/api/indices-live") {
       const guard = requestGuard(request); if (guard) return guard;
