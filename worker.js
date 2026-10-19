@@ -1974,7 +1974,8 @@ function isBackendApiPath(pathname) {
   return parts[1] === "api" && BACKEND_API_ROOTS.has(parts[2] || "");
 }
 
-const MARKET_WORKFLOW_URL="https://api.github.com/repos/jjlunav/ViewInvAI/actions/workflows/update-market-data.yml/dispatches";
+// Los datos de mercado se generan en el repositorio privado viewinvai/data (minutos de Actions propios).
+const MARKET_WORKFLOW_URL="https://api.github.com/repos/viewinvai/data/actions/workflows/market.yml/dispatches";
 // Session-aware schedule (New York time, so daylight saving is handled):
 //   regular session 09:30-16:00 ET  -> every `base` minutes (MARKET_DISPATCH_MINUTES)
 //   pre/post-market 04:00-09:30 and 16:00-20:00 ET -> every max(30, 3×base)

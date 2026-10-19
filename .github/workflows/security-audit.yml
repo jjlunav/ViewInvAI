@@ -1,50 +1,11 @@
 name: Auditoria de seguridad
 
 on:
-  push:
-    branches: [main, fix/android-ui-0.6.7]
-    paths:
-      - "app.js"
-      - "settings.js"
-      - "market.js"
-      - "navigation.js"
-      - "stock-charts.js"
-      - "stock-profile.js"
-      - "stock-interactions.js"
-      - "catalog.js"
-      - "heatmap.js"
-      - "events.js"
-      - "stock-list.js"
-      - "recommendation.js"
-      - "help.js"
-      - "bootstrap.js"
-      - "mobile-app.js"
-      - "mobile-app.css"
-      - "web-mobile.css"
-      - "market-session.js"
-      - "score-engine.js"
-      - "goal-engine.js"
-      - "auth.js"
-      - "portfolio.js"
-      - "funds.js"
-      - "worker.js"
-      - "backend.js"
-      - "package.json"
-      - "migrations/**"
-      - "scripts/**"
-      - "requirements*.txt"
-      - ".github/workflows/**"
-      - ".github/dependabot.yml"
-      - ".gitignore"
-      - ".assetsignore"
-      - "firebase/google-services.json"
-      - "wrangler.jsonc"
-      - "SECURITY.md"
-      - ".github/CODEOWNERS"
   pull_request:
     branches: [main]
+  # Semanal (lunes): los cambios ya se auditan en cada pull request.
   schedule:
-    - cron: "17 5 * * *"
+    - cron: "17 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -220,8 +181,6 @@ jobs:
               Path("market-session.js"), Path("score-engine.js"), Path("app.js"), Path("auth.js"), Path("portfolio.js"), Path("funds.js"), Path("backend.js"), Path("worker.js"), Path("index.html"),
               Path("scripts/update_market.py"), Path("scripts/update_funds.py"),
               Path(".github/workflows/check-frontend.yml"),
-              Path(".github/workflows/update-market-data.yml"),
-              Path(".github/workflows/update-funds-data.yml"),
               Path(".github/workflows/security-audit.yml"),
           ]
           texts = {str(p): p.read_text(encoding="utf-8") for p in files}
