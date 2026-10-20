@@ -7402,7 +7402,10 @@ async function scanPortfolioGoalNotifications(env,services){
       }
       // Compras y destinos de cambio: solo con una cotización en vivo verificada ahora y sin estar
       // devolviendo la subida de la apertura. Lo no verificado queda como «Esperar».
-      const targets=new Set([...buys.map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey)]);
+      // También las 1-2 ideas principales que esperan solo por falta de cotización o de spread:
+      // sin consultar su precio ahora nunca podrían pasar a «Comprar».
+      const quoteWaits=(plan.waits||[]).filter(w=>w.decision!=="COMPRA LÍMITE"&&(w.reasons||[]).every(r=>r==="spread sin verificar")).map(w=>w.key);
+      const targets=new Set([...buys.map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey),...quoteWaits]);
       if(targets.size){
         const reviewMeta={aiScoutReviewed:plan.aiScoutReviewed,aiScoutModel:plan.aiScoutModel,aiReviewed:plan.aiReviewed,aiProvider:plan.aiProvider};
         for(const c of candidates){
@@ -7412,6 +7415,9 @@ async function scanPortfolioGoalNotifications(env,services){
           if(ask===null)continue;
           const raw=(quoteCache.get((preferTr?"tr:":"us:")+goalServerKey(c.stock))||{}).quote||{};
           c.askEur=ask;c.quoteFresh=true;
+          // Spread real de la cotización verificada (el snapshot no trae horquilla).
+          const qb=finiteNumber(raw.bid),qa=finiteNumber(raw.ask);
+          if(qb>0&&qa>0&&qa>=qb)c.spreadPct=(qa-qb)/((qa+qb)/2)*100;
           // La variación del día del mercado donde se opera (LSX en Trade Republic) sale de la cotización verificada.
           if(finiteNumber(raw.changePct)!==null)c.dayChangePct=finiteNumber(raw.changePct);
           c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:preferTr?(raw.last??raw.price):raw.price,open:raw.open});
