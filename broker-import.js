@@ -114,14 +114,15 @@
   // Trade Republic exporta todos los movimientos de la cuenta (ingresos, tarjeta, intereses,
   // compras, ventas…): su suma es el efectivo. Si la cifra de la fila ya es el precio × acciones,
   // la comisión y el impuesto van aparte y se descuentan.
-  const ledger={eur:0,rows:0,first:'',last:''};
+  const ledger={eur:0,rows:0,first:'',last:'',byType:{},feesSeparate:null};
+  const cashRows=[];
   for(const r of table.slice(hi+1)){
    const get=k=>map[k]===undefined?'':r[map[k]];
    if(source==='tr'&&map.amount!==undefined){
     const a=num(get('amount')),cur=String(get('currency')||'EUR').trim().toUpperCase()||'EUR',d=dateIso(get('date'));
     if(a!==null&&cur==='EUR'){
-     const q=Math.abs(num(get('qty'))||0),pr=Math.abs(num(get('price'))||0),gross=q*pr,extra=Math.abs(num(get('fee'))||0)+Math.abs(num(get('tax'))||0);
-     ledger.eur+=a-(extra&&gross>0&&Math.abs(Math.abs(a)-gross)<=Math.max(0.02,gross*0.001)?extra:0);
+     const q=Math.abs(num(get('qty'))||0),pr=Math.abs(num(get('price'))||0);
+     cashRows.push({a,gross:q*pr,extra:Math.abs(num(get('fee'))||0)+Math.abs(num(get('tax'))||0),type:String(get('side')||'').trim().toUpperCase()||'OTRO'});
      ledger.rows++;
      if(d){if(!ledger.first||d<ledger.first)ledger.first=d;if(!ledger.last||d>ledger.last)ledger.last=d}
     }
@@ -176,6 +177,22 @@
   }
   tagBenefits(out,benefits);
   cardBenefits(out,cards);
+  // ¿El importe de compras y ventas ya incluye la comisión y el impuesto, o van aparte? Se decide
+  // una vez para todo el archivo (mirando las filas con comisión) en vez de fila a fila, porque el
+  // precio redondeado del CSV hace que precio × acciones no cuadre exacto con el importe.
+  const withExtra=cashRows.filter(x=>x.extra>0&&x.gross>0);
+  let apart=0,inside=0;
+  for(const x of withExtra){
+   const dA=Math.abs(Math.abs(x.a)-x.gross),dI=Math.abs(Math.abs(x.a)-(x.gross+(x.a<0?x.extra:-x.extra)));
+   if(dA<dI)apart++;else if(dI<dA)inside++;
+  }
+  ledger.feesSeparate=withExtra.length?apart>=inside:null;
+  for(const x of cashRows){
+   const v=x.a-(ledger.feesSeparate&&x.extra&&x.gross>0?x.extra:0);
+   ledger.eur+=v;
+   const t=ledger.byType[x.type]||(ledger.byType[x.type]={count:0,eur:0});t.count++;t.eur+=v;
+  }
+  for(const t of Object.values(ledger.byType))t.eur=Math.round(t.eur*100)/100;
   ledger.eur=Math.round(ledger.eur*100)/100;
   return{rows:out,skipped,dividends,benefits,cards,ledger:source==='tr'&&ledger.rows?ledger:null};
  }
@@ -538,6 +555,16 @@
     '<button type="button" class="btn secondary" data-wiz-finish'+(total?'':' disabled')+'>Finalizar e importar</button>'});
  }
  // Trade Republic: el efectivo se pone con el saldo que sale del CSV (editable). Otros: se ajusta con cada operación nueva.
+ // Desglose del saldo calculado por tipo de movimiento, para ver de dónde sale cada euro.
+ function cashBreakdownHtml(L){
+  const rows=Object.entries(L&&L.byType||{}).sort((a,b)=>Math.abs(b[1].eur)-Math.abs(a[1].eur));
+  if(!rows.length)return'';
+  const fmt=v=>(v>0?'+':'')+v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  return '<details class="import-cash-breakdown"><summary>Ver de dónde sale el saldo</summary><table>'+
+   rows.map(([t,x])=>'<tr><td>'+esc(t)+'</td><td>'+x.count+'</td><td class="'+(x.eur<0?'negative':'positive')+'">'+fmt(x.eur)+'</td></tr>').join('')+
+   '<tr class="total"><td>Total</td><td>'+L.rows+'</td><td>'+fmt(L.eur)+'</td></tr></table>'+
+   '<small>'+(L.feesSeparate===null?'Sin comisiones en el archivo.':L.feesSeparate?'Las comisiones e impuestos vienen aparte del importe y se descuentan.':'Las comisiones e impuestos ya vienen dentro del importe.')+'</small></details>';
+ }
  function cashHtml(){
   const L=flow.cashLedger,on=flow.adjustCash?' checked':'';
   if(!L)return '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+on+'> Ajustar también el efectivo de la cartera con cada operación nueva</label>';
@@ -547,7 +574,7 @@
    '<p class="broker-import-warn">Con los movimientos del archivo (desde el '+esc(since)+') el saldo sale negativo: la exportación no empieza en la apertura de la cuenta. Escribe el efectivo que ves en Trade Republic o exporta el historial completo.</p>';
   return '<label class="broker-import-check"><input type="checkbox" data-wiz-cash'+on+'> Poner el efectivo de la cartera en</label>'+
    '<label class="import-wizard-cash"><input type="number" inputmode="decimal" min="0" step="0.01" data-wiz-cash-value value="'+(flow.cashSet??'')+'"> €</label>'+
-   '<p class="broker-import-help">Saldo calculado con '+L.rows+' movimientos del archivo (ingresos, tarjeta, intereses, compras y ventas) desde el '+esc(since)+'. Si no coincide con el efectivo de Trade Republic (la exportación no empieza en la apertura de la cuenta), corrígelo aquí.</p>';
+   '<p class="broker-import-help">Saldo calculado con '+L.rows+' movimientos del archivo (ingresos, tarjeta, intereses, compras y ventas) desde el '+esc(since)+'. Si no coincide con el efectivo de Trade Republic (la exportación no empieza en la apertura de la cuenta), corrígelo aquí.</p>'+cashBreakdownHtml(L);
  }
  function paintPlans(){
   const c=flow.planCands||[];

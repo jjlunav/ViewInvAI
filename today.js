@@ -29,7 +29,7 @@
   const rows=sum.portfolios.map(p=>'<button type="button" class="today-portfolio-row" data-today-go="portfolios"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span>'+E(p.name)+(p.kind==='funds'?' · Fondos':'')+' <em>'+p.count+'</em></span><b>'+eur(p.value)+'</b><i class="'+tone(p.day)+'">'+signed(p.day)+'</i></button>').join('');
   return '<section class="today-card today-portfolios">'+
    '<div class="today-total"><small>TUS CARTERAS · EUR</small><strong>'+eur(t.value)+'</strong>'+
-    '<div class="today-total-chips"><span class="'+tone(t.day)+'">Hoy '+signed(t.day)+'</span><span class="'+tone(t.pnl)+'">P&L neto '+signed(t.pnl)+'</span></div>'+
+    '<div class="today-total-chips"><span class="'+tone(t.day)+'">Hoy '+signed(t.day)+'</span><span class="'+tone(t.pnl)+'">P&L neto '+signed(t.pnl)+'</span>'+(t.cash>0?'<span title="Efectivo disponible, aparte del valor de las carteras">Efectivo '+eur(t.cash)+'</span>':'')+'</div>'+
    '</div>'+
    '<div class="today-portfolio-list">'+rows+'</div>'+
    (incomplete?'<p class="today-note">Alguna posición aún no tiene cotización; el total puede estar incompleto.</p>':'')+

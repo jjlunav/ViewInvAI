@@ -2168,3 +2168,9 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 .profile-name-switch .profile-name-toggle>span:first-child{font:inherit;color:inherit;font-size:inherit;text-transform:none;white-space:nowrap}
 .profile-name-switch .profile-name-toggle{border:0!important;box-shadow:none!important;background:none!important;min-height:0;width:auto;height:auto;border-radius:0}
 .profile-name-switch .profile-ticker-line .profile-market-flag{margin-right:6px;vertical-align:-1px}
+.import-cash-breakdown{margin-top:6px;font-size:12px}
+.import-cash-breakdown summary{cursor:pointer;opacity:.85}
+.import-cash-breakdown table{width:100%;border-collapse:collapse;margin:6px 0}
+.import-cash-breakdown td{padding:3px 4px;border-bottom:1px solid color-mix(in srgb,currentColor 12%,transparent)}
+.import-cash-breakdown td:nth-child(2),.import-cash-breakdown td:nth-child(3){text-align:right;white-space:nowrap}
+.import-cash-breakdown tr.total td{font-weight:700;border-bottom:0}
