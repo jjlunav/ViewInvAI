@@ -112,13 +112,14 @@ jobs:
           grep -q 'html\[data-native-app="1"\] .notification-bell' mobile-shell/mobile-app.css
           grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
-          grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
+          grep -q "data-app-version=\"${VERSION}\"" mobile-shell/app.html
+          grep -q "viewinvai:liveShell:v1" mobile-shell/index.html
           # Los catálogos se descargan del servidor: no deben ir dentro de la APK.
           if [ -e mobile-shell/data/market.json ] || [ -e mobile-shell/data/funds.json ]; then
             echo "::error::La APK no debe empaquetar los catálogos de datos."
             exit 1
           fi
-          grep -q 'const native = true' mobile-shell/index.html
+          grep -q 'const native = true' mobile-shell/app.html
           if grep -q '"url"[[:space:]]*:[[:space:]]*"https://viewinvai' capacitor.config.json; then
             echo "::error::Android config still points at the remote web shell."
             exit 1
@@ -144,7 +145,7 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-          p=Path(os.environ["QA_SHELL"])/"index.html"
+          p=Path(os.environ["QA_SHELL"])/"app.html"
           html=p.read_text(encoding="utf-8")
           inject=r"""
           <script>
@@ -218,7 +219,7 @@ jobs:
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=412,915 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=12000 --dump-dom http://127.0.0.1:4182/ > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=412,915 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=12000 --dump-dom http://127.0.0.1:4182/app.html > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
           if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
             echo "::error::El frontend empaquetado no supera el recorrido funcional nativo"
             grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true

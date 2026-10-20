@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>ViewInvAI</title>
+  <style>html,body{margin:0;min-height:100%;background:#071018}@media (prefers-color-scheme:light){html,body{background:#f4f7fb}}</style>
+  <script>
+  // Cargador de la APK: abre la versión publicada de la app (la misma que la web) dentro de la
+  // propia APK, sin cambiar de origen, así que el puente nativo, los ajustes guardados y el inicio
+  // de sesión siguen igual. Sin conexión, o si la versión publicada no arranca, abre la copia que
+  // lleva la APK (app.html). Dos arranques fallidos seguidos → copia local durante 6 horas.
+  (function () {
+    'use strict';
+    var ORIGIN = 'https://viewinvai.sonarlab.workers.dev', KEY = 'viewinvai:liveShell:v1', LOCAL = 'app.html';
+    function read() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) { return {}; } }
+    function save(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) {} }
+    function local(reason) {
+      var s = read(); s.lastLocal = reason; s.lastLocalAt = Date.now(); save(s);
+      location.replace(LOCAL + location.search + location.hash);
+    }
+    var s = read();
+    if (/[?&]shell=local\b/.test(location.search) || s.off) return local('manual');
+    if (s.pending) { s.fails = (s.fails || 0) + 1; s.pending = 0; }
+    if ((s.fails || 0) >= 2) { s.fails = 0; s.skipUntil = Date.now() + 6 * 3600e3; save(s); return local('fails'); }
+    save(s);
+    if (s.skipUntil && Date.now() < s.skipUntil) return local('cooldown');
+    var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 5000);
+    fetch(ORIGIN + '/?shell=' + Date.now(), { cache: 'no-store', credentials: 'omit', signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (html) {
+        clearTimeout(timer);
+        if (!/data-app-version="/.test(html) || !/src="app\.js/.test(html)) throw new Error('página no reconocida');
+        var version = (html.match(/data-app-version="([^"]+)"/) || [])[1] || '';
+        html = html.replace("const native = params.get('native') === '1';", 'const native = true;');
+        // Recursos relativos → servidor (los datos y la API ya los redirige native-runtime.js).
+        html = html.replace(/(\s(?:src|href)=")(?![a-z][a-z0-9+.-]*:|\/\/|#)\/?([^"]+)"/gi, function (m, a, u) { return a + ORIGIN + '/' + u + '"'; });
+        html = html.replace('<link rel="stylesheet"', '<script src="' + ORIGIN + '/native-runtime.js?v=live"><\/script>\n  <link rel="stylesheet"');
+        var guard = '<scr' + 'ipt>(function(){var K=' + JSON.stringify(KEY) + ',v=' + JSON.stringify(version) + ',t0=Date.now();' +
+          'function rd(){try{return JSON.parse(localStorage.getItem(K)||"{}")||{}}catch(_){return{}}}' +
+          'function sv(x){try{localStorage.setItem(K,JSON.stringify(x))}catch(_){}}' +
+          'function ok(){return !!(window.ViewInvAI&&document.querySelector("#mobileBottomNav"))}' +
+          '(function w(){if(ok()){var s=rd();s.pending=0;s.fails=0;s.version=v;s.okAt=Date.now();sv(s);document.documentElement.dataset.liveShell=v;return}' +
+          'if(Date.now()-t0>15000){location.replace(' + JSON.stringify(LOCAL) + '+location.search+location.hash);return}setTimeout(w,250)})()})();<\/script>';
+        html = html.replace('</body>', guard + '\n</body>');
+        var st = read(); st.pending = Date.now(); save(st);
+        document.open(); document.write(html); document.close();
+      })
+      .catch(function (e) { clearTimeout(timer); local('offline: ' + (e && e.message || e)); });
+  })();
+  </script>
+</head>
+<body></body>
+</html>
