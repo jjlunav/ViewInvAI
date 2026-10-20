@@ -28,9 +28,12 @@ function saveTrCloseQuotes(){
  try{localStorage.setItem(TR_CLOSE_CACHE_KEY,JSON.stringify(trCloseQuotes))}catch(_){}
 }
 function trClosedQuote(s){
- if(!s||trMarketOpen())return null;
+ if(!s)return null;
  const row=trCloseQuotes[stockKey(s)];
  if(!row||N(row.price)===null)return null;
+ // Con LSX abierta, el último precio guardado solo sirve de provisional mientras llega el
+ // feed en vivo (p. ej. al volver a la app): si es de hace poco. Se muestra como retrasado.
+ if(trMarketOpen()&&!(Date.now()-(N(row.updatedAt)||0)<6*3600000))return null;
  return row;
 }
 function rememberTrCloseQuote(s){
@@ -649,8 +652,24 @@ function trSendSubscriptions(){
 }
 function trScheduleReconnect(){
  if(trLive.reconnectTimer)return;
- let wait=Math.min(30000,1000*Math.pow(2,Math.min(trLive.reconnectAttempt++,5)));
+ // Con la app a la vista no se espera más de 5 s entre reintentos; en segundo plano, hasta 30 s.
+ let wait=Math.min(document.hidden?30000:5000,1000*Math.pow(2,Math.min(trLive.reconnectAttempt++,5)));
  trLive.reconnectTimer=setTimeout(()=>{trLive.reconnectTimer=null;connectTrLive()},wait);
+}
+function trWakeLive(){
+ trLive.reconnectAttempt=0;
+ if(trLive.reconnectTimer){clearTimeout(trLive.reconnectTimer);trLive.reconnectTimer=null}
+ if(!trCheckSilentSocket(20000))connectTrLive();
+}
+function trCheckSilentSocket(limit=60000){
+ if(!trLive.connected||!trLive.ws||!trLive.wanted.size||!trMarketOpen())return false;
+ if(Date.now()-(trLive.lastMessageAt||0)<limit)return false;
+ // Un socket muerto puede tardar minutos en avisar de su cierre: se suelta y se abre otro ya.
+ const old=trLive.ws;old.onclose=null;old.onmessage=null;old.onerror=null;
+ try{old.close()}catch(_){}
+ trLive.ws=null;trLive.connected=false;trLive.connecting=false;trLive.subByKey.clear();trLive.keyBySub.clear();trLive.payloadBySub.clear();
+ connectTrLive();
+ return true;
 }
 function connectTrLive(){
  if(trLive.connected||trLive.connecting)return;
@@ -661,6 +680,7 @@ function connectTrLive(){
  trLive.ws=ws;
  ws.onopen=()=>{try{ws.send('connect 30')}catch(_){}};
  ws.onmessage=e=>{
+  trLive.lastMessageAt=Date.now();
   let msg=String(e.data||'');
   if(msg==='connected'||msg.startsWith('connected')){
    opened=true;
@@ -763,7 +783,10 @@ function initTrLive(){
  connectTrLive();
  setInterval(()=>{if(!document.hidden)refreshTrLiveDom()},1800);
  setInterval(pruneTrLiveSubscriptions,15000);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden){connectTrLive();requestAnimationFrame(()=>observeActiveTrLivePrices());pruneTrLiveSubscriptions()}});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){trWakeLive();requestAnimationFrame(()=>observeActiveTrLivePrices());pruneTrLiveSubscriptions()}});
+ // Al volver a la app (o si el socket se queda mudo) Android puede dejar una conexión muerta
+ // que el navegador aún da por abierta: se cierra y se abre otra en vez de esperar.
+ setInterval(()=>{if(!document.hidden)trCheckSilentSocket()},10000);
 }
 
 function activeLiveRoots(){

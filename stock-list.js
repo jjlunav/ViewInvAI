@@ -160,12 +160,18 @@ function compactRegularMove(price,pct,previousClose=null){
 }
 function compactInvestingQuoteData(s,preferTr=false){
  if(preferTr&&trTradable(s)){
-  const q=canonicalQuote(s,true),price=N(q&&q.price),pct=N(q&&q.change),prev=trLivePre(s);
+  const q=canonicalQuote(s,true);let price=N(q&&q.price),pct=N(q&&q.change),prev=trLivePre(s),reference=false;
+  // Mientras llega el primer precio de LSX: la referencia de EE. UU. en euros (la misma con la
+  // que se calcula el valor de la posición), en vez de dejar la ficha en blanco.
+  if(price===null&&typeof verifiedDisplayQuote==='function'){
+   const ref=verifiedDisplayQuote(s,true);
+   if(ref&&ref.fallback&&N(ref.eur)!==null){const e=N(ref.eur);price=e>=1?Math.round(e*100)/100:Math.round(e*1e4)/1e4;pct=N(ref.change);prev=null;reference=true}
+  }
   // Same compact format everywhere: an LSX card still shows the US pre/post-market line
   // (in $) when the company also trades in the US.
   const x=market(s,'us')?usSessionDisplayData(s,currentMarketSession()).extended:null;
   return{
-   symbol:'€',regularPrice:price,regularPct:pct,regularAbs:compactRegularMove(price,pct,prev),
+   symbol:'€',regularPrice:price,regularPct:pct,regularAbs:compactRegularMove(price,pct,prev),reference,
    session:x&&x.kind||null,sessionLabel:x?(x.label||'')+' EEUU':'',sessionPrice:x?x.price:null,sessionPct:x?x.pct:null,sessionAbs:x?x.abs:null,sessionAt:x?x.at:null,usExtended:!!x
   };
  }
@@ -200,7 +206,7 @@ function compactQuoteStatusHtml(s,preferTr=false){
 }
 function compactInvestingQuoteHtml(s,preferTr=false){
  const q=compactInvestingQuoteData(s,preferTr);
- const dec=quotePrecision(s,preferTr,q.regularPrice),tone=C(q.regularPct);
+ const dec=quotePrecision(s,preferTr&&!q.reference,q.regularPrice),tone=C(q.regularPct);
  const main='<div class="asset-investing-main">'+compactQuoteStatusHtml(s,preferTr)+'<strong>'+quoteMoney(q.regularPrice,q.symbol,dec)+'</strong><span class="'+tone+'">'+compactSignedMoney(q.regularAbs,q.symbol,dec)+' <b>('+PC(q.regularPct)+')</b></span></div>';
  let extended='';
  if(q.session&&q.sessionPrice!==null){
