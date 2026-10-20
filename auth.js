@@ -141,7 +141,8 @@ async function showForegroundPush(title, body, data) {
     localNotificationSeq = (localNotificationSeq + 1) % 100000;
     await local.schedule({ notifications: [{
       id: Math.floor(Date.now() / 1000) % 1000000000 + localNotificationSeq,
-      title, body, largeBody: body, channelId: "viewinvai_market_alerts", extra: data || {}
+      title, body, largeBody: body, channelId: "viewinvai_market_alerts",
+      smallIcon: "ic_stat_viewinvai", iconColor: "#43E4B2", extra: data || {}
     }] });
     return true;
   } catch (error) {

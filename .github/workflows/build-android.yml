@@ -262,9 +262,21 @@ jobs:
               raise SystemExit("Android application node missing")
           app.set(f"{{{android}}}usesCleartextTraffic", "false")
           app.set(f"{{{android}}}allowBackup", "false")
+          # Icono y color de las notificaciones push (barra de estado y relojes que las
+          # reflejan); los recursos los crea scripts/apply_android_branding.py.
+          for name, attr, value in [
+              ("com.google.firebase.messaging.default_notification_icon", "resource", "@drawable/ic_stat_viewinvai"),
+              ("com.google.firebase.messaging.default_notification_color", "resource", "@color/viewinvai_notification_accent"),
+              ("com.google.firebase.messaging.default_notification_channel_id", "value", "viewinvai_market_alerts"),
+          ]:
+              for old in [m for m in app.findall("meta-data") if m.get(f"{{{android}}}name") == name]:
+                  app.remove(old)
+              meta = ET.SubElement(app, "meta-data")
+              meta.set(f"{{{android}}}name", name)
+              meta.set(f"{{{android}}}{attr}", value)
           tree.write(path, encoding="utf-8", xml_declaration=True)
           check = path.read_text(encoding="utf-8")
-          if 'android:usesCleartextTraffic="false"' not in check or 'android:allowBackup="false"' not in check:
+          if 'android:usesCleartextTraffic="false"' not in check or 'android:allowBackup="false"' not in check or "ic_stat_viewinvai" not in check:
               raise SystemExit("Android manifest hardening was not applied")
           print("Android manifest hardened.")
           PY

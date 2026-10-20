@@ -2130,3 +2130,19 @@ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund
  html:root:root body:not(#a11y-floor):not(#mx-a) .view :is(.ai-paste-btn,.ai-run-btn){min-height:34px!important;height:auto!important;padding-top:6px!important;padding-bottom:6px!important}
  html:root:root body:not(#a11y-floor):not(#mx-a) #view-today .today-total>strong{font-size:24px!important}
 }
+
+/* Administración › Documentación: bloques plegables compactos */
+#view-admin details.admin-doc{padding:0}
+#view-admin details.admin-doc>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px}
+#view-admin details.admin-doc>summary::-webkit-details-marker{display:none}
+#view-admin details.admin-doc>summary::after{content:"▾";opacity:.6;transition:transform .2s}
+#view-admin details.admin-doc:not([open])>summary::after{transform:rotate(-90deg)}
+#view-admin details.admin-doc>:not(summary){margin:0 14px 12px}
+#view-admin .admin-doc-flow{margin:0 14px 12px;padding-left:18px;display:grid;gap:8px}
+#view-admin .admin-doc-flow li b{display:block;font-size:13px}
+#view-admin .admin-doc-flow li span{display:block;font-size:12px;opacity:.82;line-height:1.45}
+#view-admin .admin-doc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:8px}
+#view-admin .admin-doc-row{display:flex;flex-direction:column;gap:4px;padding:9px 11px;border:1px solid color-mix(in srgb,var(--border,#2a3a48) 80%,transparent);border-radius:10px;min-width:0}
+#view-admin .admin-doc-row small{line-height:1.45;overflow-wrap:anywhere}
+#view-admin .admin-doc-row code{font-size:12px;overflow-wrap:anywhere}
+#view-admin .admin-doc-h{font-size:12px;letter-spacing:.02em;margin:12px 0 6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;opacity:.9}
