@@ -683,6 +683,8 @@ function profileHeroHtml(s,isTr=false,opts={}){
  if(opts.backKind==='portfolio')back='<button type="button" class="profile-back-inline" data-portfolio-detail-close>← Atrás</button>';
  else if(opts.backKind==='profile')back='<button type="button" class="profile-back-inline" data-profile-back="'+E(opts.backView||state.currentView)+'">← Atrás</button>';
  else if(opts.backKind==='quick')back='<button type="button" class="profile-back-inline" data-stock-detail-back="1">← Atrás</button>';
+ // En la APK el gesto o el botón «atrás» del sistema ya cierran la ficha: sin botón propio, más sitio.
+ if(nativeProfileChrome())back='';
  return '<header class="profile-hero investing-profile-header unified-stock-header">'+
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+

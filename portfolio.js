@@ -471,7 +471,8 @@ function portfolioTotals(portfolio, positions) {
   return {
     baseCurrency, cashBalance, positionsValue, invested, day, analyzed, pricingSessions, fxUsdEur,
     complete: currentComplete,
-    totalValue: currentComplete ? positionsValue + cashBalance : null,
+    // Valor de la cartera de valores: solo posiciones. El efectivo es aparte (como en el bróker).
+    totalValue: currentComplete ? positionsValue : null,
     openPnl: currentComplete && costComplete ? positionsValue - invested : null
   };
 }
@@ -504,7 +505,7 @@ function portfolioSummaryHtml(portfolio, positions) {
   const pricingSessionLabel = pricingSessions.has('premarket') ? ' · preapertura' : pricingSessions.has('postmarket') ? ' · posmercado' : '';
   return '<div class="portfolio-summary-bar" title="Valorado con la cotización actual disponible'+pricingSessionLabel+'">' +
     '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
-    '<div><small>VALOR TOTAL</small><strong>' + (totalValue!==null ? formatMoney(totalValue, baseCurrency) : '—') + '</strong></div>' +
+    '<div><small>VALOR</small><strong>' + (totalValue!==null ? formatMoney(totalValue, baseCurrency) : '—') + '</strong></div>' +
     pnlHtml('ABIERTO', openPnl, openPnlPct === null ? '' : ' · ' + (openPnlPct >= 0 ? '+' : '') + formatNumber(openPnlPct, 2) + '%') +
     pnlHtml('REALIZADO', realizedPnl) +
     pnlHtml('TOTAL', totalPnl) +
@@ -4228,17 +4229,18 @@ function openPositionEditorForStock(stockKey,portfolioId=null){
 function portfolioDaySummary(){
   if(!state.user)return{signedIn:false};
   const open=state.positions.filter(p=>Number(p.active)!==0);
-  // Cada cartera aporta exactamente lo que muestra su resumen (valor total con efectivo, P&L abierto).
+  // Cada cartera aporta lo que muestra su resumen: valor de las posiciones (sin efectivo) y P&L abierto;
+  // el efectivo se suma aparte.
   const rows=state.portfolios.map(pf=>{
     const positions=portfolioPositions(pf.id),T=portfolioTotals(pf,positions),cur=T.baseCurrency;
     const eur=v=>portfolioConvertAmount(v,cur,'EUR',T.fxUsdEur);
-    const value=T.complete?eur(T.totalValue):eur(T.positionsValue+T.cashBalance);
-    return{id:pf.id,name:pf.name,value:value??0,day:eur(T.day)??0,pnl:eur(T.openPnl)??0,count:positions.length,complete:T.complete&&value!==null,kind:'stocks'};
+    const value=T.complete?eur(T.totalValue):eur(T.positionsValue);
+    return{id:pf.id,name:pf.name,value:value??0,cash:eur(T.cashBalance)??0,day:eur(T.day)??0,pnl:eur(T.openPnl)??0,count:positions.length,complete:T.complete&&value!==null,kind:'stocks'};
   });
   // Carteras de fondos (Fondos): mismo valor que sus tarjetas.
   const F=window.ViewInvAIFunds;
   if(F&&typeof F.getPortfolioTotals==='function')rows.push(...F.getPortfolioTotals().map(r=>({...r,kind:'funds'})));
-  const total=rows.reduce((t,r)=>({value:t.value+r.value,day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,day:0,pnl:0});
+  const total=rows.reduce((t,r)=>({value:t.value+r.value,cash:t.cash+(r.cash||0),day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,cash:0,day:0,pnl:0});
   const keys=[...new Set([...open.map(p=>p.stock_key),...state.watchlist.map(w=>w.stock_key)].filter(Boolean))];
   return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};
 }
