@@ -397,11 +397,14 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
     body:String(alert.message||"")
   };
   const isWeb=String(device&&device.platform||"").toLowerCase()==="web";
+  // En el móvil (y en los relojes que lo reflejan, p. ej. Garmin, que no muestran el icono
+  // de la app) el título empieza por «VIA ·» para reconocer el origen de un vistazo.
+  if(!isWeb&&!/^VIA ·/.test(data.title))data.title="VIA · "+data.title;
   const message=isWeb
     ?{token:device.push_token,data,webpush:{headers:{Urgency:alert.severity==="critical"||alert.severity==="high"?"high":"normal"}}}
     :{
       token:device.push_token,
-      notification:{title:alert.title,body:alert.message},
+      notification:{title:data.title,body:alert.message},
       data,
       android:{
         priority:alert.severity==="critical"||alert.severity==="high"?"high":"normal",
