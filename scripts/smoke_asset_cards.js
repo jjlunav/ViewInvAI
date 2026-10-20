@@ -192,8 +192,14 @@ window.checkAssetCards = async function () {
   chartTab.click();
   assert(document.querySelector('#stockQuickDetail [data-profile-panel="chart"]')?.hidden===false,'profile chart tab did not activate');
   const profileBack=document.querySelector('#stockQuickDetail [data-stock-detail-back]');
-  assert(profileBack,'profile back control is missing after tab navigation');
-  profileBack.click();
+  if(document.documentElement.dataset.nativeApp==='1'){
+   // La APK no pinta «Atrás»: lo hace el gesto o el botón del sistema (mismo cierre).
+   assert(!profileBack,'native profile should rely on the system back gesture');
+   returnFromProfileToOrigin();
+  }else{
+   assert(profileBack,'profile back control is missing after tab navigation');
+   profileBack.click();
+  }
   assert(document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'profile back failed after navigating inside the profile');
   assert(document.querySelector('#view-portfolios').classList.contains('active'),'profile back did not return to portfolios after internal tab navigation');
  }finally{
