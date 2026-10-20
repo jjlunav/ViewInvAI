@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 
 
 function parseMarketNumber(value) {
@@ -1233,7 +1233,79 @@ async function r2MarketAssetResponse(env, pathname) {
   }
 }
 
-async function loadMarketSnapshotForBackend(env) {
+// Market server (Netlify, MARKET_SERVER_URL): holds the full snapshot with the live overlay
+// and returns only what each task needs: the requested stocks with their events, and the
+// universe scans (Radar, Objetivo discovery, «lo más comentado») already computed. Parsing
+// the 19 MB snapshot here costs ~100 ms of CPU, ten times the Workers Free limit.
+// need = {targets:[{stock_key,ticker}], exact, universe:["radar","goal:us","goal:tr","attention"],
+//         universeStocks, prices:[stock keys]}. Without `need` (or if the server fails) the
+// full snapshot is loaded here as before, so nothing is lost.
+const MARKET_SERVER_MEMO_MS=45000;
+const marketServerMemo=new Map();
+function marketServerBody(need){
+  const targets=[];const seen=new Set();
+  for(const t of Array.isArray(need.targets)?need.targets:[]){
+    const stock_key=String(t&&t.stock_key||"").toUpperCase().slice(0,120),ticker=String(t&&t.ticker||"").toUpperCase().slice(0,24);
+    const k=stock_key+"|"+ticker;if((!stock_key&&!ticker)||seen.has(k))continue;seen.add(k);targets.push({stock_key,ticker});
+  }
+  return{targets:targets.slice(0,400),exact:!!need.exact,universe:(Array.isArray(need.universe)?need.universe:[]).map(String).sort(),
+    universeStocks:!!need.universeStocks,prices:[...new Set((Array.isArray(need.prices)?need.prices:[]).map(k=>String(k).toUpperCase()))].sort().slice(0,5000)};
+}
+// Stocks (with their events) received in the last 45 s, so the tasks of one cron minute
+// ask the server once for the same stocks instead of once per task or per target.
+const marketServerStocks={key:new Map(),ticker:new Map()};
+function rememberServerStocks(data){
+  const at=Date.now(),byTicker=new Map();
+  for(const e of data.events||[]){const t=String(e&&e.ticker||"").toUpperCase();if(!t)continue;if(!byTicker.has(t))byTicker.set(t,[]);byTicker.get(t).push(e)}
+  for(const s of data.stocks||[]){
+    const entry={at,stock:s,events:byTicker.get(String(s.ticker||"").toUpperCase())||[],meta:data.meta};
+    marketServerStocks.key.set(String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),entry);
+  }
+  if(marketServerStocks.key.size>3000)for(const [k,v] of marketServerStocks.key)if(at-v.at>MARKET_SERVER_MEMO_MS)marketServerStocks.key.delete(k);
+}
+function cachedServerSnapshot(req){
+  if(req.universe.length||req.prices.length||!req.targets.length)return null;
+  const stocks=[],events=[],seen=new Set();let meta=null;
+  for(const t of req.targets){
+    const hit=t.stock_key&&marketServerStocks.key.get(t.stock_key);
+    if(!hit||Date.now()-hit.at>=MARKET_SERVER_MEMO_MS)return null;
+    const k=t.stock_key;if(seen.has(k))continue;seen.add(k);
+    stocks.push(hit.stock);for(const e of hit.events)events.push(e);meta=hit.meta;
+  }
+  return{meta,stocks,events,universe:{},partial:true};
+}
+async function marketServerSnapshot(env,need){
+  const req=marketServerBody(need);
+  const cached=cachedServerSnapshot(req);
+  if(cached)return cached;
+  const body=JSON.stringify(req);
+  let hit=marketServerMemo.get(body);
+  if(!hit||Date.now()-hit.at>=MARKET_SERVER_MEMO_MS){
+    hit={at:Date.now(),pending:fetchMarketServer(env,body)};
+    marketServerMemo.set(body,hit);
+    if(marketServerMemo.size>60)for(const [k,v] of marketServerMemo)if(Date.now()-v.at>MARKET_SERVER_MEMO_MS)marketServerMemo.delete(k);
+  }
+  try{
+    // Each caller gets its own copy: tasks add stocks to their snapshot (mergeSnapshotInto).
+    const data=await hit.pending;
+    return Object.assign({},data,{stocks:data.stocks.slice(),events:Array.isArray(data.events)?data.events.slice():[]});
+  }catch(error){marketServerMemo.delete(body);throw error}
+}
+async function fetchMarketServer(env,body){
+  const headers={"Content-Type":"application/json","Accept":"application/json"};
+  if(env.MARKET_SERVER_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_SERVER_KEY;
+  const r=await fetch(env.MARKET_SERVER_URL,{method:"POST",headers,body,signal:AbortSignal.timeout(20000)});
+  if(!r.ok)throw new Error("Market server "+r.status);
+  const data=await r.json();
+  if(!data||!Array.isArray(data.stocks))throw new Error("Market server: respuesta no válida");
+  rememberServerStocks(data);
+  return Object.assign(data,{partial:true});
+}
+async function loadMarketSnapshotForBackend(env, need = null) {
+  if (need && env.MARKET_SERVER_URL) {
+    try { return await marketServerSnapshot(env, need); }
+    catch (error) { console.warn("Market server unavailable, loading the full snapshot", String(error && error.message || error)); }
+  }
   let response = await r2MarketAssetResponse(env, "/data/market.json");
   if (!response) response = await env.ASSETS.fetch(new Request("https://viewinvai.local/data/market.json"));
   if (!response.ok) throw new Error("Market snapshot unavailable");
@@ -1609,7 +1681,7 @@ async function loadAllOfficialEventsForBackend(stock,target,env){
 async function stockEventsLiveResponse(env,request){
   const url=new URL(request.url),ticker=safeStockSymbol(url.searchParams.get("ticker")||""),exchange=String(url.searchParams.get("exchange")||"").trim().toUpperCase();
   if(!ticker)return jsonResponse({error:"ticker is required"},400,{"Cache-Control":"no-store"});
-  const snapshot=await loadMarketSnapshotForBackend(env);
+  const snapshot=await loadMarketSnapshotForBackend(env,{targets:[{ticker}]});
   const stock=(snapshot.stocks||[]).find(row=>{
     const rowTicker=String(row&&row.ticker||"").trim().toUpperCase(),trTicker=String(row&&row.trTicker||"").trim().toUpperCase(),rowExchange=String(row&&row.exchange||"").trim().toUpperCase();
     if(ticker!==rowTicker&&ticker!==trTicker)return false;
@@ -1734,7 +1806,7 @@ async function fetchMarketLiveText(env){
   if(url){
     try{
       const headers={"Accept":"application/json"};
-      if(env.MARKET_LIVE_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_LIVE_KEY;
+      if(env.MARKET_SERVER_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_SERVER_KEY;
       const r=await fetch(url,{headers});
       const at=Date.parse(r.headers.get("X-Updated-At")||"");
       if(r.ok&&Number.isFinite(at))return{at,text:await r.text()};
@@ -1920,46 +1992,23 @@ async function fetchYahooTrending(){
     return (Array.isArray(quotes)?quotes:[]).map((x,i)=>({symbol:String(x&&x.symbol||"").toUpperCase(),rank:i+1})).filter(x=>x.symbol);
   }catch(_){return[]}
 }
-function recentCompanyNewsScore(snapshot,stock){
-  const now=Date.now(),ticker=String(stock.ticker||"").toUpperCase(),isin=String(stock.isin||stock.usIsin||"").toUpperCase();
-  let count=0;
-  for(const e of snapshot.events||[]){
-    if(e.eventKind!=="news")continue;
-    const t=new Date(e.date||0).getTime();if(!Number.isFinite(t)||now-t>48*3600000)continue;
-    if((ticker&&String(e.ticker||"").toUpperCase()===ticker)||(isin&&String(e.isin||"").toUpperCase()===isin))count++;
-  }
-  return Math.min(10,count);
-}
 async function buildStockAttentionRanking(env){
-  const snapshot=await loadMarketSnapshotForBackend(env);
-  const [st,yh]=await Promise.all([fetchStocktwitsTrend(),fetchYahooTrending()]);
-  const stScore=new Map(st.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
-  const yhScore=new Map(yh.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
-  const rows=(snapshot.stocks||[]).map(s=>{
-    const symbol=String(s.ticker||"").toUpperCase();
-    const social=(stScore.get(symbol)||0)*2.2+(yhScore.get(symbol)||0)*1.7;
-    const news=recentCompanyNewsScore(snapshot,s)*5;
-    const rv=Number(s.relVolume);const volume=Number(s.volume||s.avgVolume||0);
-    const activity=(Number.isFinite(rv)?Math.min(5,rv)*4:0)+(volume>0?Math.min(18,Math.log10(volume+1)*2):0);
-    return{stockKey:String(s.tvSymbol||((s.exchange||"")+":"+symbol)).toUpperCase(),symbol,name:s.name||symbol,score:Math.round((social+news+activity)*100)/100,
-      signals:{stocktwits:stScore.has(symbol),yahooTrending:yhScore.has(symbol),news48h:recentCompanyNewsScore(snapshot,s),relativeVolume:Number.isFinite(rv)?rv:null}};
-  }).filter(x=>x.symbol).sort((a,b)=>b.score-a.score).slice(0,30);
-  return writeAttentionRanking(env,"stocks",{items:rows,sources:["Stocktwits Trending","Yahoo Finance Trending","ViewInvAI verified news","TradingView market activity"]});
-}
-function fundBaseScore(p){
-  const name=String(p.name||"").toLowerCase();
-  if(p.type==="etp"||/\b(?:2x|3x|leveraged|short|crude oil|natural gas|commodity)\b/i.test(name))return-Infinity;
-  const aum=Number(p.assetsUnderManagement)||0;
-  let score=aum>0?Math.min(55,Math.log10(aum+1)*7):0;
-  const tr=p.platforms&&p.platforms.tradeRepublic,mi=p.platforms&&p.platforms.myInvestor;
-  if(tr===true||tr==="verified"||tr==="yes")score+=9;
-  if(mi===true||mi==="verified"||mi==="yes")score+=9;
-  if(/msci world|ftse all.world|s&p 500|sp 500|msci emerging|stoxx europe|euro stoxx|nasdaq 100|global/i.test(name))score+=12;
-  return score;
+  const snapshot=await loadMarketSnapshotForBackend(env,{universe:["attention"]});
+  let items=snapshot.universe&&Array.isArray(snapshot.universe.attention)?snapshot.universe.attention:null;
+  if(!items){
+    const [st,yh]=await Promise.all([fetchStocktwitsTrend(),fetchYahooTrending()]);
+    items=stockAttentionRows(snapshot,st,yh);
+  }
+  return writeAttentionRanking(env,"stocks",{items,sources:["Stocktwits Trending","Yahoo Finance Trending","ViewInvAI verified news","TradingView market activity"]});
 }
 async function buildFundAttentionRanking(env){
-  const data=await loadFundsSnapshotForRanking(env);
-  const candidates=(data.products||[]).map(p=>({p,base:fundBaseScore(p)})).filter(x=>Number.isFinite(x.base)).sort((a,b)=>b.base-a.base).slice(0,24);
+  // The market server ranks the 4,9 MB funds file; locally only as a fallback.
+  let candidates=null;
+  if(env.MARKET_SERVER_URL){
+    try{const snap=await loadMarketSnapshotForBackend(env,{universe:["funds"]});candidates=snap.universe&&Array.isArray(snap.universe.funds)?snap.universe.funds:null}
+    catch(_){candidates=null}
+  }
+  if(!candidates)candidates=fundAttentionCandidates(await loadFundsSnapshotForRanking(env));
   const counts=await Promise.all(candidates.map(x=>googleNewsCount('"'+String(x.p.name||"").slice(0,90)+'" ETF fund')));
   const rows=candidates.map((x,i)=>({isin:String(x.p.isin||"").toUpperCase(),name:x.p.name||x.p.isin,
     score:Math.round((x.base+Math.min(30,counts[i]*1.5))*100)/100,signals:{news24h:counts[i],aum:Number(x.p.assetsUnderManagement)||null}}))
