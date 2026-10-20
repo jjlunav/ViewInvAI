@@ -322,7 +322,8 @@ function currentMarket(stock, preferTr = false) {
     let quote = typeof window.ViewInvAI.getCanonicalQuote === "function"
       ? window.ViewInvAI.getCanonicalQuote(stock, !!preferTr)
       : null;
-    if ((!quote || num(quote.price) === null) && typeof window.ViewInvAI.getDisplayQuote === "function") {
+    // Posiciones de LSX: solo precio de LSX (en vivo o el último guardado), nunca el de EE. UU. convertido.
+    if (!preferTr && (!quote || num(quote.price) === null) && typeof window.ViewInvAI.getDisplayQuote === "function") {
       quote = window.ViewInvAI.getDisplayQuote(stock, !!preferTr);
     }
     quote = quote || {};

@@ -31,9 +31,9 @@ function trClosedQuote(s){
  if(!s)return null;
  const row=trCloseQuotes[stockKey(s)];
  if(!row||N(row.price)===null)return null;
- // Con LSX abierta, el último precio guardado solo sirve de provisional mientras llega el
- // feed en vivo (p. ej. al volver a la app): si es de hace poco. Se muestra como retrasado.
- if(trMarketOpen()&&!(Date.now()-(N(row.updatedAt)||0)<6*3600000))return null;
+ // Con LSX abierta, el último precio de LSX guardado sirve de provisional mientras llega el
+ // feed en vivo (p. ej. al volver a la app); la ficha lo marca como retrasado o de la jornada
+ // anterior según su hora. Nunca se usa un precio de EE. UU. convertido.
  return row;
 }
 function rememberTrCloseQuote(s){
