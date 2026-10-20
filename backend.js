@@ -2514,7 +2514,7 @@ async function handlePortfolioPerformance(request,env,user,json,url,services){
   const live=new Map();
   if(services.loadMarketSnapshot){
     try{
-      const snapshot=await services.loadMarketSnapshot(env);
+      const snapshot=await services.loadMarketSnapshot(env,{targets:[...insts.values()].filter(i=>!i.benchmark).map(i=>({stock_key:i.stockKey,ticker:i.ticker}))});
       const eurUsd=finiteNumber(snapshot&&snapshot.meta&&snapshot.meta.eurUsd);
       for(const inst of insts.values()){
         if(inst.benchmark)continue;
@@ -2602,6 +2602,8 @@ async function fetchBenchmarkPrice(){
   return price;
 }
 export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
+  // Partial snapshots from the market server carry the universe scan already computed.
+  if(snapshot&&snapshot.universe&&Array.isArray(snapshot.universe.radar))return snapshot.universe.radar;
   const engine=globalThis.ViewInvAIScore;
   if(!engine||!snapshot||!Array.isArray(snapshot.stocks))return[];
   const byTicker=new Map();
@@ -2633,6 +2635,50 @@ export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
   const opp=rows.filter(r=>r.tier==="opportunity"&&!r.speculative).slice(0,24),watch=rows.filter(r=>r.tier==="watch").slice(0,30),spec=rows.filter(r=>r.speculative).slice(0,20);
   return[...opp,...watch,...spec];
 }
+// «Lo más comentado»: trending on Stocktwits/Yahoo + verified news in 48 h + market activity.
+// st/yh are [{symbol,rank}] lists. News are counted once per ticker/ISIN (same result as
+// scanning every event for every stock, without the 12.000 × 8.500 loop).
+export function stockAttentionRows(snapshot,st=[],yh=[],now=Date.now()){
+  const stScore=new Map(st.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
+  const yhScore=new Map(yh.map(x=>[x.symbol,Math.max(0,41-x.rank)]));
+  const recent=(snapshot.events||[]).filter(e=>{
+    if(!e||e.eventKind!=="news")return false;
+    const t=new Date(e.date||0).getTime();return Number.isFinite(t)&&now-t<=48*3600000;
+  });
+  const newsCount=stock=>{
+    const ticker=String(stock.ticker||"").toUpperCase(),isin=String(stock.isin||stock.usIsin||"").toUpperCase();
+    let count=0;
+    for(const e of recent)if((ticker&&String(e.ticker||"").toUpperCase()===ticker)||(isin&&String(e.isin||"").toUpperCase()===isin))count++;
+    return Math.min(10,count);
+  };
+  const tickers=new Set(),isins=new Set();
+  for(const e of recent){tickers.add(String(e.ticker||"").toUpperCase());isins.add(String(e.isin||"").toUpperCase())}
+  return(snapshot.stocks||[]).map(s=>{
+    const symbol=String(s.ticker||"").toUpperCase(),isin=String(s.isin||s.usIsin||"").toUpperCase();
+    const news48h=(symbol&&tickers.has(symbol))||(isin&&isins.has(isin))?newsCount(s):0;
+    const social=(stScore.get(symbol)||0)*2.2+(yhScore.get(symbol)||0)*1.7;
+    const rv=Number(s.relVolume);const volume=Number(s.volume||s.avgVolume||0);
+    const activity=(Number.isFinite(rv)?Math.min(5,rv)*4:0)+(volume>0?Math.min(18,Math.log10(volume+1)*2):0);
+    return{stockKey:String(s.tvSymbol||((s.exchange||"")+":"+symbol)).toUpperCase(),symbol,name:s.name||symbol,score:Math.round((social+news48h*5+activity)*100)/100,
+      signals:{stocktwits:stScore.has(symbol),yahooTrending:yhScore.has(symbol),news48h,relativeVolume:Number.isFinite(rv)?rv:null}};
+  }).filter(x=>x.symbol).sort((a,b)=>b.score-a.score).slice(0,30);
+}
+function fundBaseScore(p){
+  const name=String(p.name||"").toLowerCase();
+  if(p.type==="etp"||/\b(?:2x|3x|leveraged|short|crude oil|natural gas|commodity)\b/i.test(name))return-Infinity;
+  const aum=Number(p.assetsUnderManagement)||0;
+  let score=aum>0?Math.min(55,Math.log10(aum+1)*7):0;
+  const tr=p.platforms&&p.platforms.tradeRepublic,mi=p.platforms&&p.platforms.myInvestor;
+  if(tr===true||tr==="verified"||tr==="yes")score+=9;
+  if(mi===true||mi==="verified"||mi==="yes")score+=9;
+  if(/msci world|ftse all.world|s&p 500|sp 500|msci emerging|stoxx europe|euro stoxx|nasdaq 100|global/i.test(name))score+=12;
+  return score;
+}
+// Top funds/ETFs by size, platform availability and broad index (news are added by the Worker).
+export function fundAttentionCandidates(data){
+  return(data&&Array.isArray(data.products)?data.products:[]).map(p=>({p:{isin:p.isin,name:p.name,assetsUnderManagement:p.assetsUnderManagement},base:fundBaseScore(p)}))
+    .filter(x=>Number.isFinite(x.base)).sort((a,b)=>b.base-a.base).slice(0,24);
+}
 export async function runRadarScoreboard(env,...args){return onCacheDb(env,e=>runRadarScoreboardOn(e,...args))}
 async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
@@ -2641,13 +2687,15 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   await ensureRadarScoreboardSchema(env);
   const done=await env.DB.prepare("SELECT day FROM radar_bench WHERE day=?").bind(win.day).first();
   if(done)return{skipped:"already-marked"};
-  const snapshot=await services.loadMarketSnapshot(env);
+  const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
+  const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["radar"],prices:[...new Set(pending.map(r=>String(r.stock_key).toUpperCase()))]});
   const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
   const now=nowIso();
   // 1) Evaluate earlier signals with today's live prices.
-  const priceByKey=new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),finiteNumber(s.price)]));
-  const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
-  const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
+  const priceByKey=snapshot.prices&&typeof snapshot.prices==="object"
+    ?new Map(Object.entries(snapshot.prices).map(([k,v])=>[k,finiteNumber(v)]))
+    :new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),finiteNumber(s.price)]));
   const updates=[];
   for(const sig of pending){
     const sessions=benchDays.filter(d=>d>sig.day).length+1; // today is one more session after the signal
@@ -3517,7 +3565,18 @@ async function handleAlerts(request, env, user, json, parts) {
   return json({ error: "Method not allowed" }, 405);
 }
 
-function findStock(snapshot, target) {
+// Adds the stocks and events of another partial snapshot that are not there yet.
+export function mergeSnapshotInto(into,extra){
+  if(!into||!extra)return into;
+  const keyOf=s=>String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase();
+  into.stocks=Array.isArray(into.stocks)?into.stocks:[];into.events=Array.isArray(into.events)?into.events:[];
+  const have=new Set(into.stocks.map(keyOf)),seen=new Set(into.events.map(e=>e&&e.id).filter(Boolean));
+  for(const s of extra.stocks||[])if(!have.has(keyOf(s))){have.add(keyOf(s));into.stocks.push(s)}
+  const fresh=(extra.events||[]).filter(e=>e&&(!e.id||!seen.has(e.id)));
+  if(fresh.length)into.events=into.events.concat(fresh);
+  return into;
+}
+export function findStock(snapshot, target) {
   const stocks = snapshot && Array.isArray(snapshot.stocks) ? snapshot.stocks : [];
   const wanted = String(target.stock_key || "").toUpperCase();
   if (wanted) {
@@ -3528,10 +3587,22 @@ function findStock(snapshot, target) {
   return stocks.find(s => String(s.ticker || "").toUpperCase() === ticker) || null;
 }
 
-function recentEvents(snapshot, stock, limit = 12) {
+// Events grouped by ticker once per events array (the full snapshot has ~8.500 events and
+// the universe scans call this for thousands of stocks); same rows and order as a filter.
+const eventsByTickerIndex=new WeakMap();
+function eventsForTicker(events,ticker){
+  let index=eventsByTickerIndex.get(events);
+  if(!index){
+    index=new Map();
+    for(const e of events){const t=String(e&&e.ticker||"").toUpperCase();if(!index.has(t))index.set(t,[]);index.get(t).push(e)}
+    eventsByTickerIndex.set(events,index);
+  }
+  return index.get(ticker)||[];
+}
+export function recentEvents(snapshot, stock, limit = 12) {
   const ticker = String(stock && stock.ticker || "").toUpperCase();
   const events = snapshot && Array.isArray(snapshot.events) ? snapshot.events : [];
-  return events.filter(e => String(e.ticker || "").toUpperCase() === ticker)
+  return eventsForTicker(events,ticker).slice()
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
     .slice(0, limit)
     .map(e => ({
@@ -4162,14 +4233,14 @@ async function handleEventInsight(request,env,user,json,url,services){
   if(cacheOnly){
     const hit=usable(await readCache({q:"SELECT payload,created_at FROM event_insights WHERE stock_key=? ORDER BY created_at DESC LIMIT 1",b:[stockKey]}));
     if(hit)return json({insight:hit});
-    const snapshot=await services.loadMarketSnapshot(env),stock=findStock(snapshot,{stock_key:stockKey});
+    const snapshot=await services.loadMarketSnapshot(env,{targets:[{stock_key:stockKey}]}),stock=findStock(snapshot,{stock_key:stockKey});
     if(!stock)return json({insight:null});
     const{next}=await nextStockEvent(snapshot,stock,services,false);
     if(!next)return json({insight:null,reason:"Sin evento con fecha en los próximos 60 días."});
     const kind=eventInsightKind(next);
     return json({insight:null,event:{date:next.date,datePrecision:next.datePrecision||"day",title:next.title,kind},baseRate:EVENT_BASE_RATES[kind]||null});
   }
-  const snapshot=await services.loadMarketSnapshot(env),stock=findStock(snapshot,{stock_key:stockKey});
+  const snapshot=await services.loadMarketSnapshot(env,{targets:[{stock_key:stockKey}]}),stock=findStock(snapshot,{stock_key:stockKey});
   if(!stock)return json({error:"Acción no encontrada."},404);
   const{next,related}=await nextStockEvent(snapshot,stock,services,true);
   if(!next)return json({insight:null,reason:"Sin evento con fecha en los próximos 60 días."});
@@ -4842,7 +4913,7 @@ async function maybeCreateAlert(env, target, stock, current, previous, notificat
 }
 
 async function analyzeTarget(env, target, services, {useAi=true}={}) {
-  const snapshot = await services.loadMarketSnapshot(env);
+  const snapshot = await services.loadMarketSnapshot(env, { targets: [target] });
   const stock = findStock(snapshot, target);
   if (!stock) throw new Error("Stock not found in market snapshot: " + target.stock_key);
 
@@ -5404,7 +5475,7 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
     "ORDER BY p.user_id,p.id"
   ).all();
   if(!(rows.results||[]).length)return{processed:0};
-  const snapshot=await services.loadMarketSnapshot(env),results=[],globalByUser=new Map();let writes=0;
+  const snapshot=await services.loadMarketSnapshot(env,{targets:rows.results||[]}),results=[],globalByUser=new Map();let writes=0;
   for(const pref of rows.results||[]){
     try{
       let global=globalByUser.get(pref.user_id);
@@ -5637,13 +5708,13 @@ async function handleAiChat(request, env, user, json, services) {
   if (!stockKey && !ticker) return json({ error: "Stock is required" }, 400);
   if (!question) return json({ error: "Question is required" }, 400);
 
-  const snapshot = await services.loadMarketSnapshot(env);
   const target = {
     stock_key: stockKey,
     ticker,
     prefer_tr: preferTr ? 1 : 0,
     isin: trimText(body.isin, 32)
   };
+  const snapshot = await services.loadMarketSnapshot(env, { targets: [target] });
   const stock = findStock(snapshot, target);
   if (!stock) return json({ error: "Stock not found" }, 404);
 
@@ -6437,7 +6508,7 @@ async function scanCatalystEve(env,services,positionRows=[],watchRows=[]){
   const nowMs=Date.now();
   if(madridHour(nowMs)<17||!services.loadMarketSnapshot)return{processed:0,alerts:0};
   const tomorrow=madridDay(nowMs+864e5);
-  const snapshot=await services.loadMarketSnapshot(env);
+  const snapshot=await services.loadMarketSnapshot(env,{targets:[...(positionRows||[]),...(watchRows||[])]});
   const events=(snapshot&&Array.isArray(snapshot.events)?snapshot.events:[]).filter(e=>
     e&&e.eventKind!=="news"&&CATALYST_EVE_TYPES.has(String(e.type||""))&&e.date&&madridDay(new Date(e.date).getTime())===tomorrow
   );
@@ -6485,7 +6556,7 @@ async function scanTrackedNewsAndEvents(env,services,positionRows=[],watchRows=[
     if(!row||!row.user_id||!row.stock_key||seen.has(key))continue;
     seen.add(key);tracked.push(row);
   }
-  const snapshot=await services.loadMarketSnapshot(env),globalByUser=new Map();
+  const snapshot=await services.loadMarketSnapshot(env,{targets:tracked.slice(0,60)}),globalByUser=new Map();
   let processed=0,alerts=0;
   for(const target of tracked.slice(0,60)){
     try{
@@ -6576,7 +6647,9 @@ function goalRadarRows(snapshot){
   return rows;
 }
 let goalDiscoveryCache={stamp:"",scope:"",at:0,rows:[]};
-function goalDiscoveryRows(snapshot,scope){
+export function goalDiscoveryRows(snapshot,scope){
+  const pre=snapshot&&snapshot.universe&&snapshot.universe.goal&&snapshot.universe.goal[scope];
+  if(Array.isArray(pre))return pre;
   const stamp=String(snapshot&&snapshot.meta&&(snapshot.meta.liveUpdatedAt||snapshot.meta.updatedAt)||"");
   if(goalDiscoveryCache.stamp===stamp&&goalDiscoveryCache.scope===scope&&Date.now()-goalDiscoveryCache.at<10*60000)return goalDiscoveryCache.rows;
   const engine=globalThis.ViewInvAIScore,goalEngine=globalThis.ViewInvAIGoal;
@@ -7062,7 +7135,8 @@ async function handleRadarCheck(request,env,user,json,services){
   const body=await readJson(request);
   // La identidad de cada acción sale del snapshot del servidor (no del cliente): el resultado es común
   // a todos, así que nunca se guarda un veredicto bajo una clave que no corresponde a esa empresa.
-  let snapshot=null;try{snapshot=services&&services.loadMarketSnapshot?await services.loadMarketSnapshot(env):null}catch(_){}
+  const asked=(Array.isArray(body.items)?body.items:[]).slice(0,12).map(raw=>({stock_key:trimText(raw&&raw.key,120).toUpperCase()})).filter(t=>t.stock_key);
+  let snapshot=null;try{snapshot=services&&services.loadMarketSnapshot?await services.loadMarketSnapshot(env,{targets:asked,exact:true}):null}catch(_){}
   const stocks=snapshot&&Array.isArray(snapshot.stocks)?snapshot.stocks:[];
   if(!stocks.length)return json({verdicts:{},pending:0});
   const byKey=new Map(stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),s]));
@@ -7188,7 +7262,7 @@ async function scanPortfolioGoalNotifications(env,services){
   ).all();
   if(!(goals.results||[]).length)return{processed:0,alerts:0};
   const clock=goalServerReviewClock();
-  const snapshot=await services.loadMarketSnapshot(env),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["goal:us","goal:tr"],universeStocks:true}),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
   const byKey=new Map(stocks.map(s=>[goalServerKey(s),s]));
   const radarCacheByScope=new Map();
   const quoteCache=new Map();
@@ -7224,6 +7298,12 @@ async function scanPortfolioGoalNotifications(env,services){
         "(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=p.id AND t.user_id=p.user_id AND t.side='BUY') AS last_buy_at "+
         "FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 ORDER BY p.created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all()).results||[];
+      // A partial snapshot only holds the discovery candidates: add this portfolio's holdings.
+      if(snapshot.partial&&positions.length){
+        const extra=await services.loadMarketSnapshot(env,{targets:positions});
+        mergeSnapshotInto(snapshot,extra);
+        for(const s of extra.stocks||[])if(!byKey.has(goalServerKey(s)))byKey.set(goalServerKey(s),s);
+      }
       let scope=String(goal.market_scope||"auto").toLowerCase();
       if(scope==="auto"&&positions.length){const mk=new Set(positions.map(p=>Number(p.prefer_tr)===1?"tr":"us"));if(mk.size===1)scope=[...mk][0]}
       if(!["tr","us"].includes(scope)){processed++;continue}
@@ -7452,6 +7532,9 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   const queue = [...positions, ...watchlist]
     .sort((a,b) => String(a.last_analysis_at || "").localeCompare(String(b.last_analysis_at || "")))
     .slice(0, 8);
+  // One market-server request for every stock this minute's tasks look at.
+  if (env.MARKET_SERVER_URL) try { await services.loadMarketSnapshot(env, { targets: [...(positionRows.results || []), ...(watchRows.results || [])] }); }
+  catch (error) { console.warn("Market prefetch failed", String(error && error.message || error)); }
   const results = [];let automaticWrites=0;
 
   for (const target of queue) {
