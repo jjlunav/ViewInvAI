@@ -263,6 +263,36 @@ def write_adaptive_icon() -> None:
     (adaptive / "ic_launcher_round.xml").write_text(adaptive_xml, encoding="utf-8")
 
 
+def notification_icon_xml() -> str:
+    """Status bar / smartwatch icon: the same «V» and AI dot, white on transparent.
+
+    Android (and the watches that mirror phone notifications) only use the alpha channel
+    of the small icon; without one they show a blank square or a generic bell.
+    """
+    cx, cy, r = DOT
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="24dp" android:height="24dp"\n'
+        '    android:viewportWidth="64" android:viewportHeight="64">\n'
+        f'    <path android:fillColor="#FFFFFFFF" android:pathData="{poly_path()}" />\n'
+        f'    <path android:fillColor="#FFFFFFFF" android:pathData="{circle_path(cx, cy, r)}" />\n'
+        '</vector>\n'
+    )
+
+
+def write_notification_icon() -> None:
+    drawable = RES / "drawable"
+    values = RES / "values"
+    drawable.mkdir(parents=True, exist_ok=True)
+    values.mkdir(parents=True, exist_ok=True)
+    (drawable / "ic_stat_viewinvai.xml").write_text(notification_icon_xml(), encoding="utf-8")
+    (values / "viewinvai_notification.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+        f'    <color name="viewinvai_notification_accent">{hexrgb(AI_TO)}</color>\n'
+        '</resources>\n', encoding="utf-8")
+
+
 def favicon_svg(light: bool) -> str:
     cx, cy, r = DOT
     if light:
@@ -295,7 +325,8 @@ def main() -> None:
         raise SystemExit(f"Android resources not found: {RES}. Run 'npx cap add android' first.")
     write_legacy_icons()
     write_adaptive_icon()
-    print("ViewInvAI Android launcher icons applied.")
+    write_notification_icon()
+    print("ViewInvAI Android launcher and notification icons applied.")
 
 
 if __name__ == "__main__":

@@ -394,7 +394,7 @@ function initSettings(){
  const auth=()=>window.ViewInvAIAuth;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=n=>Number(n||0).toLocaleString('es-ES');
- const SECTIONS=['summary','ai','search','market','infra','app'];
+ const SECTIONS=['summary','ai','search','market','infra','app','docs'];
  const SECTION_KEY='viewinvai:admin-section:v1';
  let checked=false,isAdmin=false,loading=false,last=null;
  async function api(path){const a=auth();const r=await a.apiFetch(path);const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('Error '+r.status)),{status:r.status});return d}
@@ -413,6 +413,7 @@ function initSettings(){
   const next=SECTIONS.includes(name)?name:'summary';
   document.querySelectorAll('[data-admin-section]').forEach(b=>{const on=b.dataset.adminSection===next;b.classList.toggle('active',on);b.setAttribute('aria-current',on?'page':'false')});
   document.querySelectorAll('[data-admin-panel]').forEach(p=>{const on=p.dataset.adminPanel===next;p.classList.toggle('active',on);p.hidden=!on});
+  if(next==='docs'){const el=document.querySelector('[data-admin-panel="docs"]');if(el&&!el.innerHTML.trim())el.innerHTML=docsHtml(last||{})}
   if(persist){try{localStorage.setItem(SECTION_KEY,next)}catch(_){}}
   requestAnimationFrame(()=>window.ViewInvAIShell?.resetChrome?.());
  }
@@ -491,6 +492,94 @@ function initSettings(){
    row('Carteras de acciones',v(a.portfolios))+row('Posiciones de acciones',v(a.positions))+row('Carteras de fondos',v(a.fund_portfolios))+row('Posiciones de fondos',v(a.fund_positions))+
    row('Objetivos activos',v(a.portfolio_goals))+row('Decisiones «Decidir qué hacer»',v(a.position_decisions))+'</article></div>';
  }
+ // Documentación de la infraestructura: qué hace cada plataforma, cómo fluyen los datos y
+ // dónde está cada clave (nunca su valor). El estado en vivo solo existe para los secretos
+ // del Worker; los de GitHub y Netlify no se pueden leer desde aquí.
+ const DOC_LINKS={
+  cfWorker:'https://dash.cloudflare.com/?to=/:account/workers/services/view/viewinvai/production/settings',
+  cfTokens:'https://dash.cloudflare.com/profile/api-tokens',
+  ghTokens:'https://github.com/settings/personal-access-tokens',
+  ghOrgTokens:'https://github.com/organizations/viewinvai/settings/personal-access-token-requests',
+  dataSecrets:'https://github.com/viewinvai/data/settings/secrets/actions',
+  dataActions:'https://github.com/viewinvai/data/actions',
+  appSecrets:'https://github.com/jjlunav/ViewInvAI/settings/secrets/actions',
+  appActions:'https://github.com/jjlunav/ViewInvAI/actions',
+  netlify:'https://app.netlify.com/projects/viewinvai-data',
+  netlifyTokens:'https://app.netlify.com/user/applications#personal-access-tokens',
+  firebase:'https://console.firebase.google.com/project/viewinvai/settings/serviceaccounts/adminsdk',
+  turso:'https://app.turso.tech/'
+ };
+ const DOC_PLATFORMS=[
+  ['Cloudflare','La web, la API y el cerebro: Worker «viewinvai» (web, API y tareas de cada minuto: análisis, avisos, Radar, Objetivo), D1 (datos personales: carteras, avisos, ajustes), KV (estado rápido), Workers AI (IA de reserva) y Workers Builds (publica la web en cada cambio de la rama main). Gratis: 100.000 peticiones/día y 10 ms de CPU por ejecución.','https://dash.cloudflare.com/'],
+  ['GitHub · jjlunav/ViewInvAI','El código de la app (privado). Cada cambio en main se publica solo en Cloudflare. Compila la APK a mano (Actions › Build ViewInvAI Android APK). Los datos de mercado llegan aquí como commits del proceso de datos.','https://github.com/jjlunav/ViewInvAI'],
+  ['GitHub · organización viewinvai (repo data)','Los procesos de datos (privado, con sus propios 2.000 minutos/mes): «Datos de mercado» (lo lanza el Worker según la sesión de Nueva York, más un respaldo diario a las 06:41 UTC), «Fondos y ETFs» (diario 04:17 UTC) y el despliegue de Netlify.','https://github.com/viewinvai/data'],
+  ['Netlify · viewinvai-data','Cálculo pesado fuera del Worker. «market-live»: precios en vivo de ~6.100 valores de EE. UU. (TradingView). «market-server»: guarda el snapshot completo con precios en vivo y devuelve al Worker solo los valores que pide, con el Radar, los candidatos del Objetivo y «lo más comentado» ya calculados con el mismo backend.js. Protegido con MARKET_SERVER_KEY. Gratis: 300 créditos/mes; si se agotan, el Worker lo hace él mismo (más CPU, sin perder avisos).','https://app.netlify.com/projects/viewinvai-data'],
+  ['Firebase · viewinvai','Inicio de sesión con Google (web y APK) y envío de notificaciones push al móvil y al reloj (Cloud Messaging).','https://console.firebase.google.com/project/viewinvai/overview'],
+  ['Turso','Base de datos de cachés de mercado no personales (tipos de cambio, marcador del Radar, análisis compartidos). Si falla, se usa D1.','https://app.turso.tech/'],
+  ['Proveedores de IA y búsqueda','Gemini, Groq, OpenRouter, Tavily, Serper… El repartidor elige el mejor libre en cada consulta. Estado, cupos y claves en las pestañas IA y Búsqueda web.','']
+ ];
+ const DOC_FLOW=[
+  ['Datos de mercado','Worker (cada minuto comprueba la hora) → avisa a GitHub viewinvai/data cada 30 min en sesión, 90 min en pre/post y 3 h el resto → «Datos de mercado» descarga las fuentes públicas y publica market.json en jjlunav/ViewInvAI → Cloudflare publica la web con los datos nuevos (≈2 min).'],
+  ['Precios en vivo','App → Worker /api/market-live → Netlify market-live (TradingView) cada minuto en horario 04:00-20:00 NY y cada 15 min fuera. Si Netlify falla, el Worker consulta TradingView directamente.'],
+  ['Avisos y análisis','Worker cada minuto → pide a Netlify market-server los valores de carteras y seguimiento + Radar y Objetivo ya calculados → decide → guarda en D1 → Firebase Cloud Messaging → móvil/reloj.'],
+  ['Fondos y ETFs','«Fondos y ETFs» (viewinvai/data, diario) → funds.json en jjlunav/ViewInvAI → web.'],
+  ['APK','Manual: GitHub jjlunav/ViewInvAI › Actions › Build ViewInvAI Android APK › Run workflow (rama main) → artefacto ViewInvAI-Android-debug.']
+ ];
+ // [nombre, dónde, para qué, caducidad / cómo renovar, clave de estado en vivo]
+ const DOC_KEYS=[
+  ['Secretos del Worker (Cloudflare › Workers › viewinvai › Settings › Variables and Secrets, tipo Secret)',DOC_LINKS.cfWorker,[
+   ['GITHUB_DISPATCH_TOKEN','Lanzar «Datos de mercado» en viewinvai/data.','Token fine-grained de GitHub (propietario: viewinvai, repo: data, permiso Actions: Read and write). Caduca el 21 oct 2027: en GitHub › Fine-grained tokens › Regenerate, y pegar el nuevo aquí. Comprobar en /api/market-dispatch-status («ok»).','GITHUB_DISPATCH_TOKEN',DOC_LINKS.ghTokens],
+   ['MARKET_SERVER_KEY','Clave compartida con Netlify: solo el Worker puede usar market-server y market-live.','No caduca. Para cambiarla: mismo valor nuevo aquí y en el secreto MARKET_SERVER_KEY de viewinvai/data, y relanzar «Desplegar funciones en Netlify».','MARKET_SERVER_KEY',DOC_LINKS.dataSecrets],
+   ['FCM_SERVICE_ACCOUNT_JSON','Enviar notificaciones push (cuenta de servicio de Firebase).','No caduca salvo que se revoque. Nueva: Firebase › Configuración › Cuentas de servicio › Generar nueva clave privada; pegar el JSON entero aquí.','FCM_SERVICE_ACCOUNT_JSON',DOC_LINKS.firebase],
+   ['AI_KEYS_SECRET','Cifra las claves de IA que guarda cada usuario en la app.','No caduca. No cambiarla: si cambia, las claves de IA guardadas dejan de poder leerse y habría que volver a introducirlas.','AI_KEYS_SECRET',''],
+   ['ADMIN_EMAILS','Correos con acceso a Administración.','No caduca.','ADMIN_EMAILS',''],
+   ['CF_ACCOUNT_ID + CF_ANALYTICS_TOKEN','Leer el consumo de Cloudflare en Infraestructura.','Token de API de Cloudflare (Account Analytics: Read). Ver su caducidad en My Profile › API Tokens.','CF_ANALYTICS_TOKEN',DOC_LINKS.cfTokens],
+   ['GH_ANALYTICS_TOKEN','Leer los minutos de Actions y el estado de la APK.','Token de GitHub de solo lectura. Ver su caducidad en GitHub › tokens.','GH_ANALYTICS_TOKEN',DOC_LINKS.ghTokens],
+   ['TURSO_URL + TURSO_TOKEN','Base de datos de cachés (Turso).','Token de la base en Turso › Databases › Create token. Si falta, todo va a D1.','TURSO',DOC_LINKS.turso],
+   ['TURSO_API_TOKEN + TURSO_ORG','Leer el consumo de Turso.','Token de plataforma en Turso › Settings › API Tokens.','TURSO_API_TOKEN',DOC_LINKS.turso],
+   ['MARKET_PUBLISH_TOKEN','Permite al proceso de datos actualizar el catálogo en D1.','No caduca. Si se cambia, poner el mismo valor en el secreto MARKET_PUBLISH_TOKEN de viewinvai/data.','MARKET_PUBLISH_TOKEN',DOC_LINKS.dataSecrets],
+   ['OPENFDA_API_KEY, FINNHUB_API_KEY y claves de IA/búsqueda','Fuentes de datos y proveedores de IA.','Cada una en su panel (enlaces en las pestañas IA y Búsqueda web, donde se ve si funciona).','OPENFDA_API_KEY','']
+  ]],
+  ['Secretos de GitHub · viewinvai/data (Settings › Secrets and variables › Actions)',DOC_LINKS.dataSecrets,[
+   ['APP_REPO_TOKEN','Publicar market.json y funds.json en jjlunav/ViewInvAI y copiar el motor de cálculo a Netlify.','Token de GitHub con acceso a jjlunav/ViewInvAI (Contents: Read and write). Mira su fecha en GitHub › tokens; si caduca, los datos dejan de publicarse (los procesos fallan en «Publicar en la app»).','',DOC_LINKS.ghTokens],
+   ['NETLIFY_AUTH_TOKEN','Desplegar las funciones en Netlify y configurar su clave.','Token personal de Netlify (User settings › Applications › Personal access tokens). Mira su caducidad allí.','',DOC_LINKS.netlifyTokens],
+   ['MARKET_SERVER_KEY','El despliegue la copia a Netlify.','Igual que el secreto del Worker con el mismo nombre (deben coincidir).','',''],
+   ['MARKET_PUBLISH_TOKEN (+ variable MARKET_PUBLISH_URL)','Sincronizar el catálogo con D1.','Igual que el secreto del Worker con el mismo nombre.','','']
+  ]],
+  ['Secretos de GitHub · jjlunav/ViewInvAI',DOC_LINKS.appSecrets,[
+   ['ANDROID_DEBUG_KEYSTORE_BASE64','Firma de la APK. Mantiene la misma huella SHA-1 registrada en Firebase.','No caduca. No perderla: con otra firma la APK nueva no se instala encima de la anterior y el inicio de sesión con Google falla hasta registrar la nueva SHA-1 en Firebase.','',''],
+   ['firebase/google-services.json (archivo del repo)','Configuración pública de Firebase para Android.','No es secreta ni caduca; se descarga de Firebase › Configuración del proyecto si cambia la app.','','']
+  ]],
+  ['Netlify · viewinvai-data (Project configuration › Environment variables)',DOC_LINKS.netlify,[
+   ['MARKET_SERVER_KEY','Las funciones rechazan (403) cualquier petición sin ella.','La escribe el despliegue desde GitHub; no hace falta tocarla a mano. Visibilidad del proyecto: Public (la protección es la clave).','','']
+  ]]
+ ];
+ const DOC_PROBLEMS=[
+  ['Los datos no se actualizan','Mira /api/market-dispatch-status: «GitHub dispatch 401/403» = token GITHUB_DISPATCH_TOKEN caducado o sin permiso Actions. Si dice «ok», revisa las ejecuciones de «Datos de mercado» en viewinvai/data.'],
+  ['Avisos que no llegan o Radar/«lo más comentado» parados','Netlify sin créditos o sin clave: el Worker vuelve a calcularlo él (más CPU). Revisa el proyecto en Netlify y que MARKET_SERVER_KEY coincida en Cloudflare y en GitHub viewinvai/data.'],
+  ['Correo de Cloudflare por CPU','Alguna tarea volvió a leer el snapshot completo: suele ser Netlify caído o la clave cambiada en un solo sitio.'],
+  ['Los procesos de datos fallan al publicar','APP_REPO_TOKEN caducado: crea uno nuevo con acceso a jjlunav/ViewInvAI y sustitúyelo en viewinvai/data.'],
+  ['Sin minutos de GitHub Actions','Cada cuenta tiene 2.000 min/mes; los datos van con los de la organización viewinvai. Se reinician el día 1.']
+ ];
+ function docsHtml(d){
+  const sec=(d&&d.secrets)||{};
+  const live=k=>!k||!(k in sec)?'':sec[k]?'<b class="admin-st ok">✅ configurado</b>':'<b class="admin-st warn">⚠️ falta</b>';
+  const link=(u,t='Abrir ↗')=>u?'<a class="admin-open" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+t+'</a>':'';
+  const block=(title,body,open)=>'<details class="settings-card admin-doc"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong></summary>'+body+'</details>';
+  const flow='<ol class="admin-doc-flow">'+DOC_FLOW.map(([t,x])=>'<li><b>'+esc(t)+'</b><span>'+esc(x)+'</span></li>').join('')+'</ol>';
+  const platforms='<div class="admin-doc-list">'+DOC_PLATFORMS.map(([t,x,u])=>'<div class="admin-doc-row"><div class="admin-card-head"><strong>'+esc(t)+'</strong>'+link(u,'Abrir panel ↗')+'</div><small>'+esc(x)+'</small></div>').join('')+'</div>';
+  const keys=DOC_KEYS.map(([group,url,rows])=>'<h3 class="admin-doc-h">'+esc(group)+' '+link(url)+'</h3><div class="admin-doc-list">'+
+   rows.map(([name,what,renew,k,u])=>'<div class="admin-doc-row"><div class="admin-card-head"><code>'+esc(name)+'</code>'+live(k)+'</div><small><b>Para qué:</b> '+esc(what)+'</small><small><b>Caducidad y cambio:</b> '+esc(renew)+'</small>'+(u?'<small>'+link(u,'Dónde renovarla ↗')+'</small>':'')+'</div>').join('')+'</div>').join('');
+  const vars='<small>Variables no secretas (en <code>wrangler.jsonc</code>, se publican con el código): <code>MARKET_LIVE_URL</code>, <code>MARKET_SERVER_URL</code>, <code>MARKET_DISPATCH_MINUTES</code> (30), <code>FIREBASE_PROJECT_ID</code>, <code>AI_MODEL</code>, <code>SEC_USER_AGENT</code>. Reglas: las claves nunca van en el código ni en el chat, solo como secretos en Cloudflare, GitHub o Netlify.</small>';
+  const problems='<div class="admin-doc-list">'+DOC_PROBLEMS.map(([t,x])=>'<div class="admin-doc-row"><strong>'+esc(t)+'</strong><small>'+esc(x)+'</small></div>').join('')+'</div>';
+  return heading('DOCUMENTACIÓN','Infraestructura de ViewInvAI','Cómo funciona todo, qué hace cada plataforma y dónde está cada clave (nunca su valor). El estado ✅/⚠️ es en vivo para los secretos del Worker.')+
+   '<div class="settings-stack">'+
+   block('Cómo fluyen los datos',flow,true)+
+   block('Plataformas y qué hace cada una',platforms,false)+
+   block('Claves, tokens y secretos',keys+vars,false)+
+   block('Si algo deja de funcionar',problems,false)+
+   '</div>';
+ }
  // Fuentes públicas (sin clave): el mismo estado que Configuración › Datos y servicios.
  let publicSources=null;
  async function loadPublicSources(){
@@ -535,6 +624,7 @@ function initSettings(){
   fill('market',marketHtml(d));if(!publicSources)loadPublicSources();
   fill('infra',infraHtml(d));
   fill('app',appHtml(d));
+  fill('docs',docsHtml(d));
   document.querySelectorAll('#view-admin .admin-bar i[data-pct]').forEach(i=>{i.style.width=i.dataset.pct+'%'});
  }
  // El consumo (Cloudflare, Turso, GitHub y recuentos) llega aparte porque tarda más.

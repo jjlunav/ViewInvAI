@@ -405,7 +405,7 @@ async function sendFcmToDevice(env, auth, device, alert, target) {
       data,
       android:{
         priority:alert.severity==="critical"||alert.severity==="high"?"high":"normal",
-        notification:{channel_id:"viewinvai_market_alerts",sound:"default"}
+        notification:{channel_id:"viewinvai_market_alerts",sound:"default",icon:"ic_stat_viewinvai",color:"#43E4B2"}
       }
     };
   const response = await fetch(
@@ -4685,7 +4685,7 @@ async function handleAdmin(request,env,user,json,url){
   const routing={decision:[...rank("decision"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],light:[...rank("light"),...(readyIds.includes("workersai")?[{id:"workersai",score:null}]:[])],search:rank("search")};
   return json({generatedAt:nowIso(),providers,routing,probedAt:probes.at||(needProbe?nowIso():null),infra,
     turso:{active:cacheDbLabel(cacheDb(env))},
-    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim(),GH_ANALYTICS_TOKEN:!!String(env.GH_ANALYTICS_TOKEN||"").trim()}});
+    secrets:{ADMIN_EMAILS:!!String(env.ADMIN_EMAILS||"").trim(),CF_ANALYTICS_TOKEN:!!String(env.CF_ANALYTICS_TOKEN||"").trim(),CF_ACCOUNT_ID:!!String(env.CF_ACCOUNT_ID||"").trim(),TURSO:!!(tursoHttpUrl(env.TURSO_URL)&&String(env.TURSO_TOKEN||"").trim()),TURSO_API_TOKEN:!!String(env.TURSO_API_TOKEN||"").trim(),GH_ANALYTICS_TOKEN:!!String(env.GH_ANALYTICS_TOKEN||"").trim(),GITHUB_DISPATCH_TOKEN:!!String(env.GITHUB_DISPATCH_TOKEN||"").trim(),MARKET_SERVER_KEY:!!String(env.MARKET_SERVER_KEY||"").trim(),FCM_SERVICE_ACCOUNT_JSON:!!String(env.FCM_SERVICE_ACCOUNT_JSON||"").trim(),AI_KEYS_SECRET:!!String(env.AI_KEYS_SECRET||"").trim(),MARKET_PUBLISH_TOKEN:!!String(env.MARKET_PUBLISH_TOKEN||"").trim(),OPENFDA_API_KEY:!!String(env.OPENFDA_API_KEY||"").trim(),TURSO_ORG:!!String(env.TURSO_ORG||"").trim()}});
 }
 
 let positionDecisionsSchemaReady=false;
