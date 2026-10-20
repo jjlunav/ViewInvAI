@@ -611,6 +611,69 @@ window.addEventListener('viewinvai:portfolios-loaded',()=>{
  const wrap=document.createElement('div');wrap.innerHTML=profileTradePlanHtml(s,ctx.isTr);
  const next=wrap.firstElementChild;if(next)d.replaceWith(next);
 });
+// Selector de mercado de la ficha (LSX en € / bolsa de EE. UU. en $) cuando la acción cotiza
+// en los dos: cada uno con su propio precio, sin convertir uno en otro.
+// Banderas en SVG: los emojis de bandera no se ven en Windows.
+function profileFlagSvg(code){
+ if(code==='de')return '<svg viewBox="0 0 18 12" width="18" height="12"><rect width="18" height="4" fill="#000"/><rect y="4" width="18" height="4" fill="#dd0000"/><rect y="8" width="18" height="4" fill="#ffce00"/></svg>';
+ let stripes='';for(let i=0;i<7;i++)stripes+='<rect y="'+(i*12/6.5).toFixed(2)+'" width="18" height="'+(12/13).toFixed(2)+'" fill="#b22234"/>';
+ return '<svg viewBox="0 0 18 12" width="18" height="12"><rect width="18" height="12" fill="#fff"/>'+stripes+'<rect width="8" height="6.46" fill="#3c3b6e"/></svg>';
+}
+// Nombre de la ficha. Si la acción cotiza en LSX y en EE. UU., el propio nombre (con ▾) abre
+// «Seleccionar mercado»: cada mercado con su precio, sin convertir uno en otro.
+function profileIdentityHtml(s,isTr,marketTitle,company,ticker){
+ const both=trTradable(s)&&market(s,'us')&&!(typeof intlListing==='function'&&intlListing(s));
+ const plain='<div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p>';
+ if(!both)return plain;
+ const us=String(s.exchange||'EEUU').toUpperCase(),trEx=String(s.trExchange||'LSX');
+ const opt=(tr,flag,code,venue,cur)=>'<button type="button" role="menuitemradio" aria-checked="'+(tr===isTr)+'" class="profile-market-option'+(tr===isTr?' active':'')+'" data-profile-market-set="'+(tr?'tr':'us')+'">'+
+  '<span class="profile-market-flag" aria-hidden="true">'+flag+'</span><b>'+E(code)+'</b><span>'+E(venue)+'</span><em>'+cur+'</em>'+(tr===isTr?'<i aria-hidden="true">✓</i>':'')+'</button>';
+ return '<div class="profile-name-switch">'+
+  '<div class="profile-market">'+E(marketTitle)+'</div>'+
+  '<h2 class="profile-company-name"><button type="button" class="profile-name-toggle" data-profile-market-toggle aria-haspopup="menu" aria-expanded="false" title="Cambiar de mercado">'+
+   '<span>'+E(company)+'</span><span class="profile-market-caret" aria-hidden="true">▾</span></button></h2>'+
+  '<p class="profile-ticker-line"><span class="profile-market-flag" aria-hidden="true">'+profileFlagSvg(isTr?'de':'us')+'</span>'+E((ticker||'—')+' · '+(isTr?'EUR':'USD'))+'</p>'+
+  '<div class="profile-market-menu" role="menu" hidden><strong>Seleccionar mercado</strong>'+
+   opt(true,profileFlagSvg('de'),s.trTicker||s.ticker||'—',trEx+' (Trade Republic)','EUR')+
+   opt(false,profileFlagSvg('us'),s.ticker||'—',us,'USD')+
+  '</div></div>';
+}
+function closeProfileMarketMenus(){
+ document.querySelectorAll('.profile-market-menu.is-portal').forEach(m=>m.remove());
+ document.querySelectorAll('[data-profile-market-toggle][aria-expanded="true"]').forEach(b=>b.setAttribute('aria-expanded','false'));
+}
+let profileMarketMenuY=0;
+window.addEventListener('scroll',()=>{if(Math.abs((window.scrollY||0)-profileMarketMenuY)>24)closeProfileMarketMenus()},{passive:true});
+document.addEventListener('click',e=>{
+ const t=e.target&&e.target.closest?e.target:null;if(!t)return;
+ const toggle=t.closest('[data-profile-market-toggle]');
+ const menus=document.querySelectorAll('.profile-market-menu.is-portal');
+ if(toggle){
+  e.preventDefault();
+  const host=toggle.closest('.profile-name-switch')||toggle.parentElement,tpl=host&&host.querySelector('.profile-market-menu');
+  const wasOpen=toggle.getAttribute('aria-expanded')==='true';
+  closeProfileMarketMenus();
+  if(tpl&&!wasOpen){
+   // Se abre una copia colgada de <body>: la cabecera fija de la ficha recorta lo que sobresale.
+   const menu=tpl.cloneNode(true);menu.classList.add('is-portal');document.body.appendChild(menu);profileMarketMenuY=window.scrollY||0;
+   // Fijo en pantalla: la cabecera de la ficha recorta lo que sobresale.
+   const r=toggle.getBoundingClientRect(),w=Math.min(320,window.innerWidth-24);
+   menu.style.position='fixed';menu.style.width=w+'px';menu.style.top=Math.round(r.bottom+6)+'px';
+   menu.style.left=Math.round(Math.max(12,Math.min(r.left,window.innerWidth-w-12)))+'px';
+   menu.hidden=false;toggle.setAttribute('aria-expanded','true');
+  }
+  return;
+ }
+ const set=t.closest('[data-profile-market-set]');
+ if(set){
+  e.preventDefault();
+  const next=set.dataset.profileMarketSet==='tr';
+  closeProfileMarketMenus();
+  if(state.profilePreferTr!==next){state.profilePreferTr=next;try{saveUiState()}catch(_){}renderQuickProfile()}
+  return;
+ }
+ if(menus.length&&!t.closest('.profile-market-menu'))closeProfileMarketMenus();
+});
 function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
@@ -623,7 +686,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
  return '<header class="profile-hero investing-profile-header unified-stock-header">'+
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
-    '<div class="profile-title">'+favButton(s,isTr)+'<div><div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
+    '<div class="profile-title">'+favButton(s,isTr)+'<div>'+profileIdentityHtml(s,isTr,marketTitle,company,ticker)+'</div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
