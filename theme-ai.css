@@ -2147,13 +2147,16 @@ html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.fund
 #view-admin .admin-doc-row code{font-size:12px;overflow-wrap:anywhere}
 #view-admin .admin-doc-h{font-size:12px;letter-spacing:.02em;margin:12px 0 6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;opacity:.9}
 
-/* Ficha: selector de mercado (LSX / EE. UU.) */
-.profile-market-switch{position:relative;display:inline-block}
-.profile-market-toggle{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;border-radius:999px;border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:transparent;color:inherit;font:inherit;cursor:pointer;line-height:1.5}
-.profile-market-toggle:hover{background:color-mix(in srgb,currentColor 8%,transparent)}
-.profile-market-flag{font-size:1.15em;line-height:1;text-transform:none}
-.profile-market-caret{font-size:.9em;opacity:.7}
-.profile-market-menu{position:absolute;z-index:2147483000;top:calc(100% + 6px);left:0;min-width:250px;padding:6px;border-radius:14px;background:var(--surface,#0f1c26);border:1px solid color-mix(in srgb,var(--border,#2a3a48) 90%,transparent);box-shadow:0 14px 40px rgba(0,0,0,.35);display:grid;gap:2px;text-transform:none;letter-spacing:0}
+/* Ficha: el nombre abre el selector de mercado (LSX / EE. UU.) */
+.profile-name-toggle{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:0;margin:0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;text-align:left;cursor:pointer}
+.profile-name-toggle>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.profile-name-toggle .profile-market-caret{flex:0 0 auto;font-size:.62em;opacity:.65;transition:transform .2s}
+.profile-name-toggle[aria-expanded="true"] .profile-market-caret{transform:rotate(180deg)}
+.profile-name-toggle:focus-visible{outline:2px solid var(--accent,#5cc8e8);outline-offset:3px;border-radius:6px}
+.profile-name-switch .profile-ticker-line{display:flex;align-items:center;gap:6px}
+.profile-market-flag{display:inline-flex;line-height:1}
+.profile-market-flag svg{display:block;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.profile-market-menu{position:absolute;z-index:2147483000;min-width:250px;padding:6px;border-radius:14px;background:var(--surface,#0f1c26);border:1px solid color-mix(in srgb,var(--border,#2a3a48) 90%,transparent);box-shadow:0 14px 40px rgba(0,0,0,.35);display:grid;gap:2px;text-transform:none;letter-spacing:0}
 html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 40px rgba(15,30,58,.18)}
 .profile-market-menu[hidden]{display:none}
 .profile-market-menu>strong{font-size:13px;padding:6px 8px 8px}
@@ -2162,5 +2165,6 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 .profile-market-option span:not(.profile-market-flag){opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-market-option em{font-style:normal;opacity:.7}
 .profile-market-option i{font-style:normal;color:var(--accent,#5cc8e8)}
-.profile-market-flag{display:inline-flex}
-.profile-market-flag svg{display:block;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.profile-name-switch .profile-name-toggle>span:first-child{font:inherit;color:inherit;font-size:inherit;text-transform:none;white-space:nowrap}
+.profile-name-switch .profile-name-toggle{border:0!important;box-shadow:none!important;background:none!important;min-height:0;width:auto;height:auto;border-radius:0}
+.profile-name-switch .profile-ticker-line .profile-market-flag{margin-right:6px;vertical-align:-1px}

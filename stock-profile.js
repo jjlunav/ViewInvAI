@@ -619,15 +619,20 @@ function profileFlagSvg(code){
  let stripes='';for(let i=0;i<7;i++)stripes+='<rect y="'+(i*12/6.5).toFixed(2)+'" width="18" height="'+(12/13).toFixed(2)+'" fill="#b22234"/>';
  return '<svg viewBox="0 0 18 12" width="18" height="12"><rect width="18" height="12" fill="#fff"/>'+stripes+'<rect width="8" height="6.46" fill="#3c3b6e"/></svg>';
 }
-function profileMarketSwitchHtml(s,isTr,marketTitle){
+// Nombre de la ficha. Si la acción cotiza en LSX y en EE. UU., el propio nombre (con ▾) abre
+// «Seleccionar mercado»: cada mercado con su precio, sin convertir uno en otro.
+function profileIdentityHtml(s,isTr,marketTitle,company,ticker){
  const both=trTradable(s)&&market(s,'us')&&!(typeof intlListing==='function'&&intlListing(s));
- if(!both)return '<div class="profile-market">'+E(marketTitle)+'</div>';
+ const plain='<div class="profile-market">'+E(marketTitle)+'</div><h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p>';
+ if(!both)return plain;
  const us=String(s.exchange||'EEUU').toUpperCase(),trEx=String(s.trExchange||'LSX');
  const opt=(tr,flag,code,venue,cur)=>'<button type="button" role="menuitemradio" aria-checked="'+(tr===isTr)+'" class="profile-market-option'+(tr===isTr?' active':'')+'" data-profile-market-set="'+(tr?'tr':'us')+'">'+
   '<span class="profile-market-flag" aria-hidden="true">'+flag+'</span><b>'+E(code)+'</b><span>'+E(venue)+'</span><em>'+cur+'</em>'+(tr===isTr?'<i aria-hidden="true">✓</i>':'')+'</button>';
- return '<div class="profile-market-switch">'+
-  '<button type="button" class="profile-market profile-market-toggle" data-profile-market-toggle aria-haspopup="menu" aria-expanded="false" title="Cambiar de mercado">'+
-   '<span class="profile-market-flag" aria-hidden="true">'+profileFlagSvg(isTr?'de':'us')+'</span>'+E(isTr?trEx+' · EUR':us+' · USD')+'<span class="profile-market-caret" aria-hidden="true">▾</span></button>'+
+ return '<div class="profile-name-switch">'+
+  '<div class="profile-market">'+E(marketTitle)+'</div>'+
+  '<h2 class="profile-company-name"><button type="button" class="profile-name-toggle" data-profile-market-toggle aria-haspopup="menu" aria-expanded="false" title="Cambiar de mercado">'+
+   '<span>'+E(company)+'</span><span class="profile-market-caret" aria-hidden="true">▾</span></button></h2>'+
+  '<p class="profile-ticker-line"><span class="profile-market-flag" aria-hidden="true">'+profileFlagSvg(isTr?'de':'us')+'</span>'+E((ticker||'—')+' · '+(isTr?'EUR':'USD'))+'</p>'+
   '<div class="profile-market-menu" role="menu" hidden><strong>Seleccionar mercado</strong>'+
    opt(true,profileFlagSvg('de'),s.trTicker||s.ticker||'—',trEx+' (Trade Republic)','EUR')+
    opt(false,profileFlagSvg('us'),s.ticker||'—',us,'USD')+
@@ -645,7 +650,7 @@ document.addEventListener('click',e=>{
  const menus=document.querySelectorAll('.profile-market-menu.is-portal');
  if(toggle){
   e.preventDefault();
-  const tpl=toggle.parentElement.querySelector('.profile-market-menu');
+  const host=toggle.closest('.profile-name-switch')||toggle.parentElement,tpl=host&&host.querySelector('.profile-market-menu');
   const wasOpen=toggle.getAttribute('aria-expanded')==='true';
   closeProfileMarketMenus();
   if(tpl&&!wasOpen){
@@ -681,7 +686,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
  return '<header class="profile-hero investing-profile-header unified-stock-header">'+
    '<div class="unified-stock-header-inner">'+
     (back?'<div class="profile-back-cell">'+back+'</div>':'')+
-    '<div class="profile-title">'+favButton(s,isTr)+'<div>'+profileMarketSwitchHtml(s,isTr,marketTitle)+'<h2 class="profile-company-name">'+E(company)+'</h2><p class="profile-ticker-line">'+E(ticker||'—')+'</p></div></div>'+
+    '<div class="profile-title">'+favButton(s,isTr)+'<div>'+profileIdentityHtml(s,isTr,marketTitle,company,ticker)+'</div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
    '</div>'+
