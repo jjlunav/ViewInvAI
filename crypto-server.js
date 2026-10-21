@@ -494,12 +494,30 @@ export async function alphaChart(id,days=7,env=null){
   if(!ALPHA_ID_RE.test(String(id||"")))throw new Error("Token desconocido");
   const d=[1,7,30,90].includes(days)?days:7;
   const data=await alphaTokens({env,ids:[id],euroSymbols:new Set()});
-  const t=data.tokens[0];if(!t||!t.pool)throw new Error("Sin pool con liquidez");
+  const t=data.tokens[0];if(!t)throw new Error("Token no encontrado");
   const net=GT_NETWORK[t.dexChain];if(!net)throw new Error("Cadena sin histórico");
+  // En las cadenas EVM las direcciones no distinguen mayúsculas; GeckoTerminal las usa en minúsculas.
+  const addr=a=>t.dexChain==="solana"?a:String(a||"").toLowerCase();
   const [tf,agg,limit]=d<=1?["minute",15,96]:d<=7?["hour",1,168]:d<=30?["hour",4,180]:["day",1,90];
-  const res=await cached("gtohlcv:"+net+":"+t.pool+":"+tf+agg,async()=>{const [r]=await fetchMany(env,["https://api.geckoterminal.com/api/v2/networks/"+net+"/pools/"+t.pool+"/ohlcv/"+tf+"?aggregate="+agg+"&limit="+limit+"&currency=usd"]);if(!r||!r.ok)throw new Error("GeckoTerminal "+failText(r||{}));return r.body},5*60000);
-  const o=res;
-  const list=o&&o.data&&o.data.attributes&&Array.isArray(o.data.attributes.ohlcv_list)?o.data.attributes.ohlcv_list:[];
+  const ohlcv=pool=>cached("gtohlcv:"+net+":"+pool+":"+tf+agg,async()=>{
+    const [r]=await fetchMany(env,["https://api.geckoterminal.com/api/v2/networks/"+net+"/pools/"+pool+"/ohlcv/"+tf+"?aggregate="+agg+"&limit="+limit+"&currency=usd"]);
+    if(!r||!r.ok)throw new Error("GeckoTerminal "+failText(r||{}));
+    const list=r.body&&r.body.data&&r.body.data.attributes&&Array.isArray(r.body.data.attributes.ohlcv_list)?r.body.data.attributes.ohlcv_list:[];
+    if(list.length<2)throw new Error("GeckoTerminal sin velas");
+    return list;
+  },5*60000);
+  let list=null,lastError=null;
+  // 1) El pool de más liquidez según DexScreener; 2) si no tiene velas, el principal según GeckoTerminal.
+  if(t.pool)try{list=await ohlcv(addr(t.pool))}catch(e){lastError=e}
+  if(!list&&/^[A-Za-z0-9]{20,64}$/.test(t.contract||"")){
+    try{
+      const [r]=await fetchMany(env,["https://api.geckoterminal.com/api/v2/networks/"+net+"/tokens/"+addr(t.contract)+"/pools?page=1"]);
+      const pool=r&&r.ok&&Array.isArray(r.body&&r.body.data)&&r.body.data[0]&&r.body.data[0].attributes&&r.body.data[0].attributes.address;
+      if(pool&&/^[A-Za-z0-9]{20,90}$/.test(pool)&&addr(pool)!==addr(t.pool))list=await ohlcv(addr(pool));
+      else if(!lastError)lastError=new Error("Sin pool con liquidez"+(r&&!r.ok?" ("+failText(r)+")":""));
+    }catch(e){lastError=e}
+  }
+  if(!list)throw lastError||new Error("Sin histórico");
   const points=list.map(r=>[Number(r[0])*1000,Number(r[4])*data.eurPerUsd]).filter(p=>p[0]>0&&p[1]>0).sort((a,b)=>a[0]-b[0]);
   return{id,days:d,source:"GeckoTerminal",points};
 }

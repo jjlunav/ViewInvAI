@@ -2277,7 +2277,7 @@ export default {
     if (url.pathname === "/api/crypto/alpha/chart") {
       const guard = requestGuard(request); if (guard) return guard;
       try { return nativeCorsResponse(request, jsonResponse(await alphaChart(url.searchParams.get("id"), Number(url.searchParams.get("days")) || 7, env), 200, { "Cache-Control": "public, max-age=300" })); }
-      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible" }, 502, { "Cache-Control": "no-store" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible: " + String(error && error.message || error).slice(0, 80) }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
