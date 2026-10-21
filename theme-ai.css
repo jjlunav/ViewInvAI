@@ -2285,3 +2285,27 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 #stockQuickDetail .profile-price-check-row:has(details[open]){display:block!important}
 #stockQuickDetail .profile-price-check-row:has(details[open])>strong{display:block;width:100%;margin-top:6px;text-align:left}
 #stockQuickDetail .profile-price-check-row:has(details[open]) .price-check summary{text-align:left}
+
+/* Detector de operaciones incoherentes */
+.transaction-issues{margin:8px 0;padding:8px 10px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+.transaction-issues.ok{color:var(--positive)}
+.transaction-issues.warn{border-color:color-mix(in srgb,var(--amber,#f5b544) 45%,transparent);background:color-mix(in srgb,var(--amber,#f5b544) 8%,transparent)}
+.transaction-issues summary{cursor:pointer;font-weight:700;color:var(--amber,#f5b544)}
+.transaction-issues ul{margin:6px 0;padding-left:16px;display:grid;gap:4px;color:var(--text)}
+.transaction-issues p{margin:4px 0 0;color:var(--muted)}
+.realized-check{border:0;background:color-mix(in srgb,var(--amber,#f5b544) 16%,transparent);color:var(--amber,#f5b544);font:inherit;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;cursor:pointer;margin-left:4px}
+
+/* Escritorio ancho (≥1600 px): las secciones aprovechan más ancho sin perder legibilidad. */
+@media(min-width:1600px){
+ html body .view:not(#view-heatmap):not(#view-recommendation){max-width:1640px!important;width:min(100%,1640px)!important}
+ html body #view-portfolios .portfolio-goal-view,
+ html body #view-portfolios .portfolio-workbar,
+ html body #view-portfolios .portfolio-context{max-width:1360px!important}
+ html body #view-portfolios .portfolio-goal-decision{max-width:1180px!important}
+ html body #view-portfolios .portfolio-goal-decision-head,
+ html body #view-portfolios .portfolio-goal-trades,
+ html body #view-portfolios .portfolio-goal-summary{max-width:1140px!important}
+ html:root:root body #view-recommendation .radar-list-shell{max-width:1240px}
+ #view-crypto .crypto-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #view-crypto .crypto-summary{max-width:900px}
+}
