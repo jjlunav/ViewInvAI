@@ -1,5 +1,5 @@
 import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
-import { cryptoQuotes, cryptoChart, CRYPTO_ASSETS } from "./crypto-server.js";
+import { cryptoQuotes, cryptoChart, cryptoCatalog } from "./crypto-server.js";
 
 
 function parseMarketNumber(value) {
@@ -2253,17 +2253,18 @@ export default {
     }
     if (url.pathname === "/api/crypto/catalog") {
       const guard = requestGuard(request); if (guard) return guard;
-      return nativeCorsResponse(request, jsonResponse({ assets: CRYPTO_ASSETS.map(a => ({ symbol: a.symbol, name: a.name })) }, 200, { "Cache-Control": "public, max-age=3600" }));
+      try { return nativeCorsResponse(request, jsonResponse({ assets: await cryptoCatalog(env) }, 200, { "Cache-Control": "public, max-age=900" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Catálogo cripto no disponible" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/crypto/quotes") {
       const guard = requestGuard(request); if (guard) return guard;
-      const symbols = String(url.searchParams.get("symbols") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 60);
+      const symbols = String(url.searchParams.get("symbols") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 80);
       try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { env, detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Cotizaciones cripto no disponibles" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/crypto/chart") {
       const guard = requestGuard(request); if (guard) return guard;
-      try { return nativeCorsResponse(request, jsonResponse(await cryptoChart(url.searchParams.get("symbol"), Number(url.searchParams.get("days")) || 30), 200, { "Cache-Control": "public, max-age=300" })); }
+      try { return nativeCorsResponse(request, jsonResponse(await cryptoChart(url.searchParams.get("symbol"), Number(url.searchParams.get("days")) || 30, env), 200, { "Cache-Control": "public, max-age=300" })); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/us-live") {
