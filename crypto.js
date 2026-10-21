@@ -405,7 +405,7 @@
   catch(error){if(err){err.hidden=false;err.textContent=error.message}}
  }
 
- // ---------- Importación de Bit2Me (CSV) ----------
+ // ---------- Importación de extractos (CSV y Excel) ----------
  // El historial de Bit2Me se exporta en CSV; las columnas cambian según el tipo de informe,
  // así que se detectan por su nombre. Se calcula el saldo y el coste medio de cada moneda y se
  // enseña un resumen antes de guardar nada.
@@ -420,16 +420,73 @@
   if(cell||row.length){row.push(cell);rows.push(row)}
   return rows.filter(r=>r.some(x=>String(x).trim()));
  }
+ // ---------- Excel (.xlsx) ----------
+ // Bit2Me descarga los movimientos en Excel. Un .xlsx es un ZIP con XML: se descomprime en el
+ // propio dispositivo (DecompressionStream) y se lee la primera hoja. Sin librerías externas.
+ async function unzipEntries(buf,wanted){
+  const v=new DataView(buf),u8=new Uint8Array(buf),dec=new TextDecoder();
+  let eocd=-1;for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65557);i--)if(v.getUint32(i,true)===0x06054b50){eocd=i;break}
+  if(eocd<0)throw Error('El fichero no es un Excel (.xlsx) válido.');
+  const count=v.getUint16(eocd+10,true);let p=v.getUint32(eocd+16,true);const out=new Map();
+  for(let k=0;k<count&&v.getUint32(p,true)===0x02014b50;k++){
+   const method=v.getUint16(p+10,true),size=v.getUint32(p+20,true),nameLen=v.getUint16(p+28,true),extra=v.getUint16(p+30,true),comment=v.getUint16(p+32,true),local=v.getUint32(p+42,true);
+   const name=dec.decode(u8.subarray(p+46,p+46+nameLen));p+=46+nameLen+extra+comment;
+   if(!wanted(name))continue;
+   const start=local+30+v.getUint16(local+26,true)+v.getUint16(local+28,true),data=u8.subarray(start,start+size);
+   if(method===0){out.set(name,dec.decode(data));continue}
+   if(method!==8)continue;
+   if(typeof DecompressionStream!=='function')throw Error('Este navegador no puede abrir Excel: exporta el extracto en CSV.');
+   const stream=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+   out.set(name,await new Response(stream).text());
+  }
+  return out;
+ }
+ async function xlsxRows(buf){
+  const files=await unzipEntries(buf,n=>/^xl\/(sharedStrings\.xml|workbook\.xml|_rels\/workbook\.xml\.rels|worksheets\/[^/]+\.xml)$/.test(n));
+  const xml=t=>new DOMParser().parseFromString(t,'application/xml');
+  const shared=files.has('xl/sharedStrings.xml')?[...xml(files.get('xl/sharedStrings.xml')).getElementsByTagName('si')].map(si=>[...si.getElementsByTagName('t')].map(t=>t.textContent).join('')):[];
+  // Primera hoja según el libro (si no, la primera que haya).
+  let sheet='';
+  try{
+   const wb=xml(files.get('xl/workbook.xml')),first=wb.getElementsByTagName('sheet')[0];
+   const rid=first&&(first.getAttribute('r:id')||first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'));
+   const rel=[...xml(files.get('xl/_rels/workbook.xml.rels')).getElementsByTagName('Relationship')].find(r=>r.getAttribute('Id')===rid);
+   if(rel)sheet='xl/'+rel.getAttribute('Target').replace(/^\/?xl\//,'').replace(/^\//,'');
+  }catch(_){}
+  if(!files.has(sheet))sheet=[...files.keys()].filter(n=>/^xl\/worksheets\//.test(n)).sort()[0];
+  if(!sheet)throw Error('El Excel no tiene ninguna hoja.');
+  const colIndex=ref=>{const m=String(ref||'').match(/^([A-Z]+)/);let n=0;if(m)for(const ch of m[1])n=n*26+ch.charCodeAt(0)-64;return n-1};
+  const rows=[];
+  for(const r of xml(files.get(sheet)).getElementsByTagName('row')){
+   const row=[];
+   for(const c of r.getElementsByTagName('c')){
+    const t=c.getAttribute('t'),vEl=c.getElementsByTagName('v')[0],raw=vEl?vEl.textContent:'';
+    const val=t==='s'?(shared[Number(raw)]??''):t==='inlineStr'?[...c.getElementsByTagName('t')].map(x=>x.textContent).join(''):raw;
+    let i=colIndex(c.getAttribute('r'));if(i<0)i=row.length;
+    while(row.length<i)row.push('');row[i]=val;
+   }
+   if(row.some(x=>String(x).trim()))rows.push(row);
+  }
+  return rows;
+ }
+ // Fecha de una fila: texto (dd/mm/aaaa hh:mm, ISO…) o número de serie de Excel.
+ function rowTime(v){
+  const s=String(v??'').trim();if(!s)return null;
+  if(/^\d{4,5}(\.\d+)?$/.test(s)){const n=Number(s);if(n>20000&&n<80000)return(n-25569)*86400000}
+  let m=s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){const y=Number(m[3].length===2?'20'+m[3]:m[3]);return Date.UTC(y,Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0))}
+  const t=Date.parse(s);return Number.isFinite(t)?t:null;
+ }
  const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
  function findCol(head,patterns,exclude){return head.findIndex(h=>patterns.some(p=>p.test(h))&&!(exclude&&exclude.test(h)))}
  // Plataformas del extracto: dónde se descarga y cómo se lee. El fichero se procesa en el
  // dispositivo; solo se guardan el saldo y el precio medio de cada moneda.
  const IMPORT_PLATFORMS=[
-  {id:'bit2me',name:'Bit2Me',help:'En Bit2Me: <b>Perfil › Historial › Descargar</b> (CSV).'},
+  {id:'bit2me',name:'Bit2Me',help:'En Bit2Me: <b>Perfil › Historial › Descargar</b> (Excel .xlsx o CSV).'},
   {id:'coinbase',name:'Coinbase',help:'En Coinbase: <b>Perfil › Extractos › Generar informe › Historial de transacciones</b> (CSV).'},
   {id:'kraken',name:'Kraken',help:'En Kraken: <b>Historial › Exportar › Libro mayor (Ledgers)</b> (CSV).'},
   {id:'binance',name:'Binance',help:'En Binance: <b>Órdenes › Historial de operaciones › Exportar</b> (CSV).'},
-  {id:'otra',name:'Otra plataforma',help:'Cualquier CSV con columnas de moneda, cantidad y, si puede ser, importe en euros.'}
+  {id:'otra',name:'Otra plataforma',help:'Cualquier Excel (.xlsx) o CSV con columnas de moneda, cantidad y, si puede ser, importe en euros.'}
  ];
  // Códigos de Kraken (XXBT, XETH, XXDG, ZEUR, ETH2.S…) a símbolos normales.
  function krakenAsset(code){
@@ -448,8 +505,14 @@
  const REWARD_RE=/recompensa|reward|staking|earn|interes|interest|airdrop|regalo|bono|cashback|income|learning/;
  const OUT_RE=/venta|sell|retirad|withdraw|envio|send|salida|cargo|convert/;
  function parseStatement(text,platform='otra'){
-  const rows=splitCsv(text);if(rows.length<2)throw Error('El fichero está vacío o no es un CSV.');
+  let rows=Array.isArray(text)?text:splitCsv(text);if(rows.length<2)throw Error('El fichero está vacío o no tiene movimientos.');
+  // Algunos informes llevan líneas de título antes de la cabecera: se toma la primera fila con
+  // al menos tres columnas con nombre.
+  const headAt=rows.findIndex(r=>r.filter(x=>String(x).trim()).length>=3);if(headAt>0)rows=rows.slice(headAt);
   const head=rows[0].map(norm),known=new Set(state.assets.map(a=>a.symbol));
+  // El coste medio depende del orden: los movimientos se procesan del más antiguo al más reciente.
+  const dateCol=findCol(head,[/^(fecha|date|time|timestamp|hora|fecha y hora|fecha de la operacion|created at|date utc|date\(utc\))/]);
+  if(dateCol>=0){const body=rows.slice(1).map((r,i)=>({r,i,t:rowTime(r[dateCol])}));if(body.filter(x=>x.t!==null).length>=body.length*0.8){body.sort((a,b)=>(a.t??0)-(b.t??0)||a.i-b.i);rows=[rows[0],...body.map(x=>x.r)]}}
   const B=newBook();let used=0,skipped=0;
   // Kraken · libro mayor: cada operación son dos filas con el mismo refid (cripto y euros).
   const refid=findCol(head,[/^refid$/]),kAsset=findCol(head,[/^asset$/]),kAmount=findCol(head,[/^amount$/]),kType=findCol(head,[/^type$/]);
@@ -522,13 +585,14 @@
   if(!auth()){openModal('Importar extracto','<p class="crypto-empty">Inicia sesión para importar.</p>');return}
   pendingImport=null;
   openModal('Importar extracto','<div class="crypto-import">'+importPlatformHtml()+
-   '<input type="file" id="cryptoImportFile" accept=".csv,text/csv,text/plain"><div id="cryptoImportPreview"></div></div>');
+   '<input type="file" id="cryptoImportFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"><div id="cryptoImportPreview"></div></div>');
  }
  async function previewImport(file){
   const box=q('#cryptoImportPreview');if(!box)return;
   const platform=IMPORT_PLATFORMS.find(x=>x.id===importPlatform)||IMPORT_PLATFORMS[0];
   try{
-   const text=await file.text(),r=parseStatement(text,platform.id);pendingImport=r.positions;
+   const isXlsx=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
+   const input=isXlsx?await xlsxRows(await file.arrayBuffer()):await file.text(),r=parseStatement(input,platform.id);pendingImport=r.positions;
    if(!r.positions.length){box.innerHTML='<p class="crypto-form-error">No se reconoció ningún saldo de criptoactivos ('+r.skipped+' filas sin reconocer). Mándame una captura de los nombres de las columnas para adaptarlo.</p>';return}
    box.innerHTML='<p class="crypto-note">Formato detectado: <b>'+esc(r.format)+'</b></p><table class="crypto-sources"><thead><tr><th>Moneda</th><th>Unidades</th><th>Precio medio</th><th>Valor ahora</th></tr></thead><tbody>'+r.positions.map(p=>{const qt=state.quotes[p.symbol];return'<tr><td>'+esc(p.symbol)+'</td><td>'+esc(units(p.units))+'</td><td>'+esc(p.avgPriceEur===null?'—':eur(p.avgPriceEur))+'</td><td>'+esc(qt&&qt.price?eur(p.units*qt.price,{decimals:2}):'—')+'</td></tr>'}).join('')+'</tbody></table>'+
     '<p class="crypto-note">'+r.used+' movimientos leídos'+(r.skipped?', '+r.skipped+' sin reconocer (depósitos o retiradas en euros, por ejemplo)':'')+'. Compara las unidades con tu saldo en '+esc(platform.name)+' antes de guardar: las monedas de '+esc(platform.name)+' que ya no aparezcan quedarán a 0.</p>'+
@@ -591,6 +655,6 @@
   new MutationObserver(()=>{if(q('#view-crypto')?.classList.contains('active')&&!state.detail)render()}).observe(document.documentElement,{attributes:true,attributeFilter:['data-list-view']});
   if(q('#view-crypto')?.classList.contains('active'))loadQuotes();
  }
- root.ViewInvAICrypto={showPortfolio,openDetail,closeDetail,isProfileOpen:()=>!!state.detail,totals,refresh:loadQuotes,positions:()=>state.positions.slice(),parseBit2me,parseStatement,radarSignals};
+ root.ViewInvAICrypto={showPortfolio,openDetail,closeDetail,isProfileOpen:()=>!!state.detail,totals,refresh:loadQuotes,positions:()=>state.positions.slice(),parseBit2me,parseStatement,xlsxRows,radarSignals};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(window);
