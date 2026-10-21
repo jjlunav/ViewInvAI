@@ -2311,3 +2311,42 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 }
 .crypto-import-platform{display:grid;gap:4px;margin:0 0 6px;font-size:12px;color:var(--muted)}
 .crypto-import-platform select{min-height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font:inherit;padding:0 8px}
+
+/* ===== Pestañas homogéneas (2026-10) =====
+ * Un solo control segmentado para toda fila que cambia de vista: selector de secciones,
+ * pestañas de Mercados/Radar/Fiscal, Carteras (Acciones · Fondos · Objetivo · Favoritos) y
+ * Cripto. Partes iguales a todo el ancho, 30 px, la activa rellena. Los filtros son chips.
+ * Las pestañas de la ficha de un valor (General, Gráfico…) siguen subrayadas: son secciones
+ * de una página, no vistas. */
+:root{--seg-bg:rgba(255,255,255,.045);--seg-line:rgba(255,255,255,.09);--seg-active:rgba(67,228,178,.17);--seg-active-text:var(--text,#eaf2f5);--seg-text:var(--muted,#9aa4b2)}
+html[data-theme="light"]{--seg-bg:rgba(15,35,70,.055);--seg-line:rgba(15,35,70,.10);--seg-active:#ffffff;--seg-active-text:#0d1f3c;--seg-text:#5b6b80}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch){
+ display:grid!important;grid-auto-flow:column!important;grid-auto-columns:minmax(0,1fr)!important;gap:2px!important;
+ width:100%!important;max-width:100%!important;padding:3px!important;margin-left:0!important;margin-right:0!important;
+ border-radius:12px!important;border:1px solid var(--seg-line)!important;background:var(--seg-bg)!important;
+ overflow:hidden!important;box-shadow:none!important;min-height:0!important;height:auto!important
+}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button{
+ display:block!important;text-align:center!important;line-height:30px!important;
+ height:30px!important;min-height:30px!important;min-width:0!important;width:auto!important;margin:0!important;padding:0 6px!important;
+ border:0!important;border-radius:9px!important;background:transparent!important;box-shadow:none!important;
+ color:var(--seg-text)!important;font-size:12.5px!important;font-weight:600!important;letter-spacing:0!important;
+ white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;text-transform:none!important
+}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button::after{display:none!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button:is(.active,[aria-selected="true"],[aria-current="page"]){
+ background:var(--seg-active)!important;color:var(--seg-active-text)!important;font-weight:700!important
+}
+html[data-theme="light"]:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button:is(.active,[aria-selected="true"],[aria-current="page"]){box-shadow:0 1px 3px rgba(13,31,60,.14)!important}
+html:root:root body .section-switcher{margin-top:4px!important;margin-bottom:10px!important}
+/* Filtros: chips redondos de 30 px. */
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.fund-mobile-groups,.stock-mobile-groups,.catalog-mobile-groups,.reco-mobile-groups,.event-mobile-groups)>button{
+ height:30px!important;min-height:30px!important;padding:0 12px!important;border-radius:999px!important;font-size:12px!important;line-height:1!important
+}
+/* Título de sección en móvil: una línea, tamaño fijo y nombre corto cuando hace falta. */
+@media(max-width:820px){
+ html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1{font-size:20px!important;line-height:1.15!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-height:none!important;-webkit-line-clamp:unset!important;display:block!important}
+ html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1[data-short]{font-size:0!important}
+ html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1[data-short]::before{content:attr(data-short);font-size:20px!important}
+ html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1[data-short]>*{display:none!important}
+}
