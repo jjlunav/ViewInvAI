@@ -47,7 +47,7 @@
  // Binance Alpha: solo consulta (ver alphaTokens en crypto-server.js).
  async function loadAlpha(){
   const A=state.alpha;if(A.loading)return;A.loading=true;if(state.tab==='alpha')render();
-  try{const d=await fetchJson('/api/crypto/alpha');A.tokens=Array.isArray(d.tokens)?d.tokens:[];A.updatedAt=d.updatedAt||new Date().toISOString();A.stale=!!d.stale;A.threshold=num(d.divergenceThresholdPct)||2;A.error=''}
+  try{const d=await fetchJson('/api/crypto/alpha');A.tokens=Array.isArray(d.tokens)?d.tokens:[];A.updatedAt=d.updatedAt||new Date().toISOString();A.stale=!!d.stale;A.sources=d.sources||{};A.threshold=num(d.divergenceThresholdPct)||2;A.error=''}
   catch(error){A.error=error&&error.message||'Sin conexión'}
   finally{A.loading=false;render()}
  }
@@ -197,10 +197,11 @@
   const intro='<p class="crypto-note crypto-alpha-note"><b>Solo consulta.</b> Tokens que Binance destaca antes de listarlos. Binance no tiene licencia MiCA y no admite compras desde España: «€ · MiCA» indica que ya cotiza en euros en Kraken, Bitstamp, Bit2Me o Coinbase.</p>';
   if(!A.tokens.length)return intro+(A.error?'<p class="crypto-empty">Binance Alpha no responde ahora: '+esc(A.error)+'</p>':'<p class="crypto-empty">Cargando tokens Alpha…</p>');
   const rows=alphaFiltered(),shown=state.search.trim()?rows:rows.slice(0,A.limit);
-  return intro+(A.stale?'<p class="crypto-note">Binance Alpha no responde: lista guardada, precios contrastados ahora con DexScreener.</p>':'')+
+  const health=Object.values(A.sources||{}).length?'<div class="crypto-health" aria-label="Estado de las fuentes"><span class="'+(A.stale?'off':'ok')+'">'+(A.stale?'○':'●')+' Binance Alpha</span>'+Object.values(A.sources).map(h=>{const ok=h.ok>0;return'<span class="'+(ok?'ok':'off')+'" title="'+esc(ok?h.ok+' consultas correctas':h.error||'Sin respuesta')+'">'+(ok?'●':'○')+' '+esc(h.label)+'</span>'}).join('')+'</div>':'';
+  return intro+health+(A.stale?'<p class="crypto-note">Binance Alpha no responde: lista guardada, precios contrastados ahora con DexScreener.</p>':'')+
    (rows.length?'<div class="crypto-list">'+shown.map(alphaCard).join('')+'</div>'+
    (shown.length<rows.length?'<div class="crypto-actions crypto-more"><button type="button" class="btn small ghost" data-alpha-more>Ver más ('+(rows.length-shown.length)+')</button></div>':''):'<p class="crypto-empty">Ningún token coincide con la búsqueda.</p>')+
-   '<p class="crypto-note">'+A.tokens.length+' tokens por volumen. Precio de Binance Alpha contrastado con el par de más liquidez de DexScreener (las 60 primeras; en la ficha, también con GeckoTerminal). Pasado a € con el precio de USDT en los mercados en euros.</p>';
+   '<p class="crypto-note">'+A.tokens.length+' tokens por volumen. Precio de Binance Alpha contrastado con DexScreener (par de más liquidez) y GeckoTerminal en las 60 de más volumen; el resto, al abrir su ficha. Pasado a € con el precio de USDT en los mercados en euros.</p>';
  }
  // Carteras › Cripto: la misma vista «Mi cripto», dentro de Carteras.
  function renderPortfolioPanel(){

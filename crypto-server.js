@@ -348,7 +348,7 @@ export async function cryptoChart(symbol,days=30,env=null){
 // vender a residentes en España (sin licencia MiCA): aquí solo se consultan como radar temprano y se
 // indica si la moneda se puede comprar en euros en un exchange autorizado del catálogo.
 // Precio: el de Binance Alpha (USD) contrastado con el par de más liquidez en DexScreener y, en la
-// ficha, también con GeckoTerminal. Todo se pasa a € con el precio de USDT en los mercados en euros.
+// con GeckoTerminal. Todo se pasa a € con el precio de USDT en los mercados en euros.
 const ALPHA_LIST_URL="https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list";
 const ALPHA_KV="crypto:alpha:v1";
 const ALPHA_DIVERGENCE_PCT=2.0,ALPHA_MIN_DEX_LIQ_USD=20000,ALPHA_CONTRAST_TOP=60;
@@ -384,7 +384,7 @@ async function alphaListRaw(env){
   }
 }
 // DexScreener: hasta 30 contratos por cadena y petición. Se queda con el par de más liquidez.
-async function dexPrices(tokens){
+async function dexPrices(tokens,health){
   const out=new Map(),byChain=new Map();
   for(const t of tokens){if(!t.dexChain||!t.contract)continue;if(!byChain.has(t.dexChain))byChain.set(t.dexChain,[]);byChain.get(t.dexChain).push(t.contract)}
   const jobs=[];
@@ -396,17 +396,27 @@ async function dexPrices(tokens){
         if(!base||!(price>0)||!(liq>=ALPHA_MIN_DEX_LIQ_USD))continue;
         const k=addrKey(chain,base.address),old=out.get(k);
         if(!old||liq>old.liquidityUsd)out.set(k,{priceUsd:price,liquidityUsd:liq,volumeUsd:num(p.volume&&p.volume.h24),dex:String(p.dexId||"").slice(0,30),pair:String(p.pairAddress||"").slice(0,120),url:/^https:\/\/dexscreener\.com\//.test(p.url||"")?p.url:""});
-      }}).catch(()=>{}));
+      }
+      if(health)health.ok++;}).catch(e=>{if(health){health.failed++;health.error=String(e&&e.message||e).slice(0,120)}}));
   }
   await Promise.all(jobs);
   return out;
 }
-async function geckoTerminalPrice(t){
-  const net=GT_NETWORK[t.dexChain];if(!net||!t.contract)return null;
-  const d=await cached("gt:"+net+":"+t.contract,()=>getJson("https://api.geckoterminal.com/api/v2/simple/networks/"+net+"/token_price/"+encodeURIComponent(t.contract),8000),60000);
-  const prices=d&&d.data&&d.data.attributes&&d.data.attributes.token_prices||{};
-  const v=Object.entries(prices).find(([k])=>k.toLowerCase()===String(t.contract).toLowerCase());
-  const p=num(v&&v[1]);return p>0?p:null;
+// GeckoTerminal en lote: hasta 30 contratos por red y petición.
+async function geckoTerminalBatch(tokens,health){
+  const out=new Map(),byNet=new Map();
+  for(const t of tokens){const net=GT_NETWORK[t.dexChain];if(!net||!t.contract)continue;if(!byNet.has(net))byNet.set(net,{chain:t.dexChain,addrs:[]});byNet.get(net).addrs.push(t.contract)}
+  const jobs=[];
+  for(const [net,{chain,addrs}] of byNet)for(let i=0;i<addrs.length;i+=30){
+    const part=addrs.slice(i,i+30);
+    jobs.push(cached("gtb:"+net+":"+part.join(","),()=>getJson("https://api.geckoterminal.com/api/v2/simple/networks/"+net+"/token_price/"+part.map(encodeURIComponent).join(","),10000),60000)
+      .then(d=>{const prices=d&&d.data&&d.data.attributes&&d.data.attributes.token_prices||{};
+        for(const [k,v] of Object.entries(prices)){const p=num(v);if(p>0)out.set(addrKey(chain,k),p)}
+        if(health)health.ok++;})
+      .catch(e=>{if(health){health.failed++;health.error=String(e&&e.message||e).slice(0,120)}}));
+  }
+  await Promise.all(jobs);
+  return out;
 }
 function alphaContrast(rows){
   const c=consensus("ALPHA",rows.map(r=>({source:r.source,kind:r.kind,price:r.price})));
@@ -439,22 +449,22 @@ export async function alphaTokens({env=null,ids=null,euroSymbols=null}={}){
   if(wanted)tokens=tokens.filter(t=>wanted.has(t.id));
   tokens.sort((a,b)=>(b.volume24h||0)-(a.volume24h||0));
   const contrastSet=wanted?tokens:tokens.slice(0,ALPHA_CONTRAST_TOP);
-  const dex=await dexPrices(contrastSet);
-  const gt=wanted?await Promise.all(contrastSet.map(t=>geckoTerminalPrice(t).catch(()=>null))):[];
+  const health={dexscreener:{label:"DexScreener",ok:0,failed:0,error:""},geckoterminal:{label:"GeckoTerminal",ok:0,failed:0,error:""}};
+  const [dex,gtMap]=await Promise.all([dexPrices(contrastSet,health.dexscreener),geckoTerminalBatch(contrastSet,health.geckoterminal)]);
   const contrasted=new Set(contrastSet.map(t=>t.id));
   tokens.forEach(t=>{
     const rowsP=[{source:"Binance Alpha",kind:"agregador",price:t.priceUsd*fx}];
     if(contrasted.has(t.id)){
       const d=dex.get(addrKey(t.dexChain,t.contract));
       if(d){rowsP.push({source:"DexScreener",kind:"mercado",price:d.priceUsd*fx,liquidity:d.liquidityUsd*fx,dex:d.dex});t.dexUrl=d.url;t.pool=d.pair}
-      const g=wanted?gt[contrastSet.indexOf(t)]:null;
+      const g=gtMap.get(addrKey(t.dexChain,t.contract));
       if(g)rowsP.push({source:"GeckoTerminal",kind:"agregador",price:g*fx});
     }
     Object.assign(t,alphaContrast(rowsP),{contrasted:contrasted.has(t.id)});
     if(!contrasted.has(t.id))t.status="unchecked";
   });
   return{updatedAt:new Date().toISOString(),currency:"EUR",eurPerUsd:fx,stale,savedAt:savedAt?new Date(savedAt).toISOString():null,
-    divergenceThresholdPct:ALPHA_DIVERGENCE_PCT,count:tokens.length,tokens};
+    divergenceThresholdPct:ALPHA_DIVERGENCE_PCT,sources:health,count:tokens.length,tokens};
 }
 // Gráfico: velas del pool de más liquidez (GeckoTerminal), pasadas a € con el cambio actual.
 export async function alphaChart(id,days=7,env=null){
