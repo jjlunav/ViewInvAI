@@ -383,40 +383,64 @@ async function alphaListRaw(env){
     throw error;
   }
 }
-// DexScreener: hasta 30 contratos por cadena y petición. Se queda con el par de más liquidez.
-async function dexPrices(tokens,health){
-  const out=new Map(),byChain=new Map();
-  for(const t of tokens){if(!t.dexChain||!t.contract)continue;if(!byChain.has(t.dexChain))byChain.set(t.dexChain,[]);byChain.get(t.dexChain).push(t.contract)}
+// DexScreener y GeckoTerminal responden 429 a las IP compartidas de Cloudflare: si hay servidor de
+// mercado (Netlify), se les pregunta a través de su función /dex-prices (otras IP). Si no, directo.
+function dexProxyUrl(env){
+  const base=env&&env.MARKET_SERVER_URL;if(!base)return"";
+  try{const u=new URL(base);u.pathname="/dex-prices";u.search="";return u.toString()}catch(_){return""}
+}
+async function fetchMany(env,urls){
+  if(!urls.length)return[];
+  const proxy=dexProxyUrl(env);
+  if(proxy){
+    const results=[];
+    for(let i=0;i<urls.length;i+=12){
+      const part=urls.slice(i,i+12);
+      try{
+        const headers={"Content-Type":"application/json","Accept":"application/json"};
+        if(env.MARKET_SERVER_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_SERVER_KEY;
+        const r=await fetch(proxy,{method:"POST",headers,body:JSON.stringify({urls:part}),signal:AbortSignal.timeout(15000)});
+        if(!r.ok)throw new Error("proxy "+r.status);
+        const d=await r.json();results.push(...part.map((_,k)=>d&&d.results&&d.results[k]||{ok:false,status:0}));
+      }catch(error){results.push(...part.map(()=>({ok:false,status:0,error:String(error&&error.message||error).slice(0,100)})))}
+    }
+    return results;
+  }
+  return Promise.all(urls.map(u=>getJson(u,10000).then(body=>({ok:true,body})).catch(e=>({ok:false,error:String(e&&e.message||e).slice(0,100)}))));
+}
+const failText=r=>r.error||(r.status?String(r.status):"sin respuesta");
+// El contraste se guarda en KV 2 min: todas las instancias del Worker comparten una sola consulta.
+const ALPHA_CONTRAST_TTL=120000;
+async function contrastMaps(env,tokens,cacheKey){
+  const kv=env&&env.HOT_STATE_KV;
+  if(kv&&cacheKey)try{const s=await kv.get(cacheKey,"json");if(s&&Date.now()-s.at<ALPHA_CONTRAST_TTL)return{dex:new Map(s.dex),gt:new Map(s.gt),health:s.health}}catch(_){}
+  const health={dexscreener:{label:"DexScreener",ok:0,failed:0,error:""},geckoterminal:{label:"GeckoTerminal",ok:0,failed:0,error:""}};
   const jobs=[];
-  for(const [chain,addrs] of byChain)for(let i=0;i<addrs.length;i+=30){
-    const part=addrs.slice(i,i+30);
-    jobs.push(cached("dex:"+chain+":"+part.join(","),()=>getJson("https://api.dexscreener.com/tokens/v1/"+chain+"/"+part.map(encodeURIComponent).join(","),10000),60000)
-      .then(pairs=>{for(const p of Array.isArray(pairs)?pairs:[]){
+  const group=(keyOf)=>{const m=new Map();for(const t of tokens){const k=keyOf(t);if(!k||!/^[A-Za-z0-9]{20,64}$/.test(t.contract||""))continue;if(!m.has(k))m.set(k,{chain:t.dexChain,addrs:[]});m.get(k).addrs.push(t.contract)}return m};
+  for(const [chain,{addrs}] of group(t=>t.dexChain))for(let i=0;i<addrs.length;i+=30)
+    jobs.push({kind:"dex",chain,url:"https://api.dexscreener.com/tokens/v1/"+chain+"/"+addrs.slice(i,i+30).join(",")});
+  for(const [net,{chain,addrs}] of group(t=>GT_NETWORK[t.dexChain]))for(let i=0;i<addrs.length;i+=30)
+    jobs.push({kind:"gt",chain,url:"https://api.geckoterminal.com/api/v2/simple/networks/"+net+"/token_price/"+addrs.slice(i,i+30).join(",")});
+  const results=await fetchMany(env,jobs.map(j=>j.url));
+  const dex=new Map(),gt=new Map();
+  jobs.forEach((j,k)=>{
+    const r=results[k]||{},h=health[j.kind==="dex"?"dexscreener":"geckoterminal"];
+    if(!r.ok){h.failed++;h.error=failText(r);return}
+    h.ok++;
+    if(j.kind==="dex"){
+      for(const p of Array.isArray(r.body)?r.body:[]){
         const base=p&&p.baseToken,liq=num(p&&p.liquidity&&p.liquidity.usd),price=num(p&&p.priceUsd);
         if(!base||!(price>0)||!(liq>=ALPHA_MIN_DEX_LIQ_USD))continue;
-        const k=addrKey(chain,base.address),old=out.get(k);
-        if(!old||liq>old.liquidityUsd)out.set(k,{priceUsd:price,liquidityUsd:liq,volumeUsd:num(p.volume&&p.volume.h24),dex:String(p.dexId||"").slice(0,30),pair:String(p.pairAddress||"").slice(0,120),url:/^https:\/\/dexscreener\.com\//.test(p.url||"")?p.url:""});
+        const key=addrKey(j.chain,base.address),old=dex.get(key);
+        if(!old||liq>old.liquidityUsd)dex.set(key,{priceUsd:price,liquidityUsd:liq,volumeUsd:num(p.volume&&p.volume.h24),dex:String(p.dexId||"").slice(0,30),pair:/^[A-Za-z0-9]{20,90}$/.test(p.pairAddress||"")?p.pairAddress:"",url:/^https:\/\/dexscreener\.com\//.test(p.url||"")?p.url:""});
       }
-      if(health)health.ok++;}).catch(e=>{if(health){health.failed++;health.error=String(e&&e.message||e).slice(0,120)}}));
-  }
-  await Promise.all(jobs);
-  return out;
-}
-// GeckoTerminal en lote: hasta 30 contratos por red y petición.
-async function geckoTerminalBatch(tokens,health){
-  const out=new Map(),byNet=new Map();
-  for(const t of tokens){const net=GT_NETWORK[t.dexChain];if(!net||!t.contract)continue;if(!byNet.has(net))byNet.set(net,{chain:t.dexChain,addrs:[]});byNet.get(net).addrs.push(t.contract)}
-  const jobs=[];
-  for(const [net,{chain,addrs}] of byNet)for(let i=0;i<addrs.length;i+=30){
-    const part=addrs.slice(i,i+30);
-    jobs.push(cached("gtb:"+net+":"+part.join(","),()=>getJson("https://api.geckoterminal.com/api/v2/simple/networks/"+net+"/token_price/"+part.map(encodeURIComponent).join(","),10000),60000)
-      .then(d=>{const prices=d&&d.data&&d.data.attributes&&d.data.attributes.token_prices||{};
-        for(const [k,v] of Object.entries(prices)){const p=num(v);if(p>0)out.set(addrKey(chain,k),p)}
-        if(health)health.ok++;})
-      .catch(e=>{if(health){health.failed++;health.error=String(e&&e.message||e).slice(0,120)}}));
-  }
-  await Promise.all(jobs);
-  return out;
+    }else{
+      const prices=r.body&&r.body.data&&r.body.data.attributes&&r.body.data.attributes.token_prices||{};
+      for(const [a,v] of Object.entries(prices)){const p=num(v);if(p>0)gt.set(addrKey(j.chain,a),p)}
+    }
+  });
+  if(kv&&cacheKey&&(health.dexscreener.ok||health.geckoterminal.ok))try{await kv.put(cacheKey,JSON.stringify({at:Date.now(),dex:[...dex],gt:[...gt],health}),{expirationTtl:600})}catch(_){}
+  return{dex,gt,health};
 }
 function alphaContrast(rows){
   const c=consensus("ALPHA",rows.map(r=>({source:r.source,kind:r.kind,price:r.price})));
@@ -449,8 +473,7 @@ export async function alphaTokens({env=null,ids=null,euroSymbols=null}={}){
   if(wanted)tokens=tokens.filter(t=>wanted.has(t.id));
   tokens.sort((a,b)=>(b.volume24h||0)-(a.volume24h||0));
   const contrastSet=wanted?tokens:tokens.slice(0,ALPHA_CONTRAST_TOP);
-  const health={dexscreener:{label:"DexScreener",ok:0,failed:0,error:""},geckoterminal:{label:"GeckoTerminal",ok:0,failed:0,error:""}};
-  const [dex,gtMap]=await Promise.all([dexPrices(contrastSet,health.dexscreener),geckoTerminalBatch(contrastSet,health.geckoterminal)]);
+  const {dex,gt:gtMap,health}=await contrastMaps(env,contrastSet,wanted?"crypto:alpha:contrast:"+[...wanted].sort().join(","):"crypto:alpha:contrast:list");
   const contrasted=new Set(contrastSet.map(t=>t.id));
   tokens.forEach(t=>{
     const rowsP=[{source:"Binance Alpha",kind:"agregador",price:t.priceUsd*fx}];
@@ -474,7 +497,8 @@ export async function alphaChart(id,days=7,env=null){
   const t=data.tokens[0];if(!t||!t.pool)throw new Error("Sin pool con liquidez");
   const net=GT_NETWORK[t.dexChain];if(!net)throw new Error("Cadena sin histórico");
   const [tf,agg,limit]=d<=1?["minute",15,96]:d<=7?["hour",1,168]:d<=30?["hour",4,180]:["day",1,90];
-  const o=await cached("gtohlcv:"+net+":"+t.pool+":"+tf+agg,()=>getJson("https://api.geckoterminal.com/api/v2/networks/"+net+"/pools/"+encodeURIComponent(t.pool)+"/ohlcv/"+tf+"?aggregate="+agg+"&limit="+limit+"&currency=usd",10000),5*60000);
+  const res=await cached("gtohlcv:"+net+":"+t.pool+":"+tf+agg,async()=>{const [r]=await fetchMany(env,["https://api.geckoterminal.com/api/v2/networks/"+net+"/pools/"+t.pool+"/ohlcv/"+tf+"?aggregate="+agg+"&limit="+limit+"&currency=usd"]);if(!r||!r.ok)throw new Error("GeckoTerminal "+failText(r||{}));return r.body},5*60000);
+  const o=res;
   const list=o&&o.data&&o.data.attributes&&Array.isArray(o.data.attributes.ohlcv_list)?o.data.attributes.ohlcv_list:[];
   const points=list.map(r=>[Number(r[0])*1000,Number(r[4])*data.eurPerUsd]).filter(p=>p[0]>0&&p[1]>0).sort((a,b)=>a[0]-b[0]);
   return{id,days:d,source:"GeckoTerminal",points};
