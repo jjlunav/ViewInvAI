@@ -1332,7 +1332,10 @@ async function handleMe(request, env, user, json) {
     notify_radar_watch: notifications.radarWatch ? 1 : 0,
     notify_price: notifications.price ? 1 : 0,
     notify_portfolio: notifications.portfolio ? 1 : 0,
-    notify_portfolio_goal: notifications.portfolioGoal ? 1 : 0
+    notify_portfolio_goal: notifications.portfolioGoal ? 1 : 0,
+    daily_digest_enabled: notifications.dailyDigest ? 1 : 0,
+    digest_morning: notifications.digestMorning,
+    digest_evening: notifications.digestEvening
   });
   return json({ user, settings }, 200, { "Cache-Control": "no-store" });
 }
@@ -3964,6 +3967,13 @@ async function ensureGlobalNotificationSettingsSchema(env){
       if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
     }
   }
+  // Resumen diario de carteras y objetivos (2026-10): activado por defecto a las 08:00 y 22:00
+  // (hora de España). Una franja vacía no se envía.
+  for(const [column,type] of [["daily_digest_enabled","INTEGER NOT NULL DEFAULT 1"],["digest_morning","TEXT NOT NULL DEFAULT '08:00'"],["digest_evening","TEXT NOT NULL DEFAULT '22:00'"]]){
+    if(names.has(column))continue;
+    try{await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN "+column+" "+type).run()}
+    catch(error){if(!/duplicate column/i.test(String(error&&error.message||error)))throw error}
+  }
   if(addedTierColumns){
     await env.DB.prepare("UPDATE user_notification_settings SET radar_high_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END,radar_opportunity_enabled=CASE WHEN radar_enabled=1 OR pulse_ai_enabled=1 THEN 1 ELSE 0 END").run();
   }
@@ -3973,7 +3983,7 @@ async function ensureGlobalNotificationSettingsSchema(env){
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,daily_digest_enabled,digest_morning,digest_evening FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
   const radarHigh=optedIn&&Number(row.radar_high_enabled)===1;
@@ -3989,8 +3999,18 @@ async function globalNotificationSettingsForUser(env,userId){
     radar,radarHigh,radarOpportunity,radarWatch,
     price: optedIn&&Number(row.price_enabled)===1,
     portfolio: optedIn&&Number(row.portfolio_enabled)===1,
-    portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1
+    portfolioGoal: optedIn&&Number(row.portfolio_goal_enabled)===1,
+    dailyDigest: !row||Number(row.daily_digest_enabled)!==0,
+    digestMorning: row?digestTime(row.digest_morning):"08:00",
+    digestEvening: row?digestTime(row.digest_evening):"22:00"
   };
+}
+// «HH:MM» válido o vacío (franja apagada).
+function digestTime(value){
+  const m=String(value??"").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if(!m)return"";
+  const h=Number(m[1]),min=Number(m[2]);
+  return h<24&&min<60?String(h).padStart(2,"0")+":"+m[2]:"";
 }
 
 async function notificationPreferenceForTarget(env,target){
@@ -5295,7 +5315,10 @@ async function handleSettings(request, env, user, json) {
     notify_radar_watch:notifications.radarWatch?1:0,
     notify_price:notifications.price?1:0,
     notify_portfolio:notifications.portfolio?1:0,
-    notify_portfolio_goal:notifications.portfolioGoal?1:0
+    notify_portfolio_goal:notifications.portfolioGoal?1:0,
+    daily_digest_enabled:notifications.dailyDigest?1:0,
+    digest_morning:notifications.digestMorning,
+    digest_evening:notifications.digestEvening
   });
 
   if (request.method === "GET") return json({ settings: current });
@@ -5316,7 +5339,10 @@ async function handleSettings(request, env, user, json) {
     radarWatch: body.notifyRadarWatch === undefined ? Number(current.notify_radar_watch)!==0 : booleanInt(body.notifyRadarWatch)===1,
     price: body.notifyPrice === undefined ? Number(current.notify_price)!==0 : booleanInt(body.notifyPrice)===1,
     portfolio: body.notifyPortfolio === undefined ? Number(current.notify_portfolio)!==0 : booleanInt(body.notifyPortfolio)===1,
-    portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1
+    portfolioGoal: body.notifyPortfolioGoal === undefined ? Number(current.notify_portfolio_goal)!==0 : booleanInt(body.notifyPortfolioGoal)===1,
+    dailyDigest: body.dailyDigest === undefined ? Number(current.daily_digest_enabled)!==0 : booleanInt(body.dailyDigest)===1,
+    digestMorning: body.digestMorning === undefined ? digestTime(current.digest_morning) : digestTime(body.digestMorning),
+    digestEvening: body.digestEvening === undefined ? digestTime(current.digest_evening) : digestTime(body.digestEvening)
   };
   next.radar=next.radarHigh||next.radarOpportunity||next.radarWatch;
   const now = nowIso();
@@ -5328,7 +5354,9 @@ async function handleSettings(request, env, user, json) {
     env.DB.prepare(
       "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,pulse_ai_enabled,radar_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
       "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,catalyst_eve_enabled=excluded.catalyst_eve_enabled,pulse_ai_enabled=0,radar_enabled=excluded.radar_enabled,radar_high_enabled=excluded.radar_high_enabled,radar_opportunity_enabled=excluded.radar_opportunity_enabled,radar_watch_enabled=excluded.radar_watch_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
-    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.catalystEve?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now)
+    ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.catalystEve?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now),
+    env.DB.prepare("UPDATE user_notification_settings SET daily_digest_enabled=?,digest_morning=?,digest_evening=? WHERE user_id=?")
+      .bind(next.dailyDigest?1:0,next.digestMorning,next.digestEvening,user.id)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -5343,7 +5371,10 @@ async function handleSettings(request, env, user, json) {
     notify_radar_watch:next.radarWatch?1:0,
     notify_price:next.price?1:0,
     notify_portfolio:next.portfolio?1:0,
-    notify_portfolio_goal:next.portfolioGoal?1:0
+    notify_portfolio_goal:next.portfolioGoal?1:0,
+    daily_digest_enabled:next.dailyDigest?1:0,
+    digest_morning:next.digestMorning,
+    digest_evening:next.digestEvening
   })});
 }
 
@@ -5618,8 +5649,17 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
   return{processed:results.length,writes};
 }
 
-async function handleDevices(request, env, user, json, parts) {
+async function handleDevices(request, env, user, json, parts, services = {}) {
   const id = parts[1] || "";
+  // «Enviar resumen ahora»: el mismo resumen diario, al momento (no cuenta como franja enviada).
+  if (request.method === "POST" && id === "digest") {
+    const settings=await globalNotificationSettingsForUser(env,user.id);
+    if(!settings.enabled)return json({error:"Las notificaciones globales están desactivadas.",code:"notifications-disabled"},409);
+    if(!services.loadMarketSnapshot)return json({error:"Servicio de mercado no disponible."},503);
+    const result=await sendDailyDigest(env,services,user.id,digestMadridSlot(Date.now()).time);
+    if(result.empty)return json({error:"Aún no hay carteras, fondos ni objetivos que resumir.",code:"digest-empty"},409);
+    return json({ok:!!result.sent,sent:result.sent||0,title:result.title,message:result.message});
+  }
   if (request.method === "POST" && id === "test") {
     const settings=await globalNotificationSettingsForUser(env,user.id);
     if(!settings.enabled)return json({error:"Las notificaciones globales están desactivadas.",code:"notifications-disabled"},409);
@@ -5939,7 +5979,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
-    if (root === "devices") return handleDevices(request, env, user, json, parts);
+    if (root === "devices") return handleDevices(request, env, user, json, parts, services);
     return json({ error: "Unknown backend endpoint" }, 404);
   } catch (error) {
     console.error("Backend API error", String(error && error.stack || error));
@@ -7499,6 +7539,167 @@ async function scanPortfolioGoalNotifications(env,services){
     }
   }
   return{processed,alerts,writes};
+}
+
+// ----- Resumen diario de carteras y objetivos (08:00 y 22:00, hora de España, por defecto) -----
+// Una sola vez por franja y usuario (daily_digest_log). Precios verificados: LSX para lo que se
+// opera en Trade Republic (nunca convertido desde EE. UU.) y Nasdaq para EE. UU.; fondos con su
+// cotización LSX o su valor liquidativo oficial. El efectivo va aparte, no suma a la cartera.
+const DIGEST_WINDOW_MINUTES=15;
+const DIGEST_MADRID_PARTS=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Madrid",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+function digestMadridSlot(ms){
+  const p=Object.fromEntries(DIGEST_MADRID_PARTS.formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
+  return{day:p.year+"-"+p.month+"-"+p.day,time:p.hour+":"+p.minute};
+}
+let dailyDigestSchemaReady=false;
+async function ensureDailyDigestSchema(env){
+  if(dailyDigestSchemaReady)return;
+  await ensureGlobalNotificationSettingsSchema(env);
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS daily_digest_log (user_id TEXT NOT NULL,slot_key TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,slot_key))").run();
+  dailyDigestSchemaReady=true;
+}
+const digestNumber=(v,d)=>new Intl.NumberFormat("es-ES",{minimumFractionDigits:d,maximumFractionDigits:d,useGrouping:"always"}).format(v);
+function digestEur(v){const a=Math.abs(v);return digestNumber(v,a>=1000?0:2)+" €"}
+function digestSignedEur(v){return(v>0?"+":v<0?"−":"")+digestEur(Math.abs(v))}
+function digestPct(v){return(v>0?"+":v<0?"−":"")+digestNumber(Math.abs(v),Math.abs(v)>=10?1:2)+" %"}
+function digestChange(day,value){
+  if(!(Math.abs(day)>=0.005))return"sin cambios";
+  const base=value-day;
+  return digestSignedEur(day)+(base>0?" ("+digestPct(day/base*100)+")":"");
+}
+async function digestMapLimit(items,limit,fn){
+  const out=new Array(items.length);let next=0;
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{
+    while(next<items.length){const i=next++;try{out[i]=await fn(items[i])}catch(_){out[i]=null}}
+  }));
+  return out;
+}
+// Valor actual y variación del día de un usuario: acciones por cartera, fondos, efectivo y objetivos.
+async function buildDailyDigest(env,services,userId){
+  await ensurePortfolioMarketSchema(env);
+  await ensurePositionBrokerSchema(env);
+  await ensureFundSchema(env);
+  await ensureFundCatalogExtra(env);
+  await ensurePortfolioGoalSchema(env);
+  await ensurePortfolioGoalNotificationStateSchema(env);
+  const [portfolios,positions,fundRows,goalRows]=await Promise.all([
+    env.DB.prepare("SELECT p.id,p.name,COALESCE(m.cash_balance,0) AS cash_balance FROM portfolios p LEFT JOIN portfolio_market_settings m ON m.portfolio_id=p.id AND m.user_id=p.user_id WHERE p.user_id=? ORDER BY p.sort_order,p.created_at").bind(userId).all(),
+    env.DB.prepare("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity FROM positions WHERE user_id=? AND active=1 AND quantity>0 LIMIT 40").bind(userId).all(),
+    env.DB.prepare(
+      "SELECT p.fund_portfolio_id,f.name AS portfolio_name,p.isin,p.product_type,p.units,p.currency,x.nav AS extra_nav,"+
+      "(SELECT t.price FROM fund_transactions t WHERE t.fund_position_id=p.id AND t.user_id=p.user_id AND t.price>0 ORDER BY t.executed_at DESC,t.created_at DESC LIMIT 1) AS last_price "+
+      "FROM fund_positions p JOIN fund_portfolios f ON f.id=p.fund_portfolio_id AND f.user_id=p.user_id LEFT JOIN fund_catalog_extra x ON x.isin=p.isin "+
+      "WHERE p.user_id=? AND p.active=1 AND p.units>0 LIMIT 30"
+    ).bind(userId).all(),
+    env.DB.prepare(
+      "SELECT g.portfolio_id,p.name,s.plan_json,s.summary FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
+      "LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id WHERE g.user_id=? ORDER BY p.sort_order,p.created_at"
+    ).bind(userId).all()
+  ]);
+  const stockRows=positions.results||[],funds=fundRows.results||[],goals=goalRows.results||[];
+  if(!stockRows.length&&!funds.length&&!goals.length)return null;
+  let snapshot=null;
+  try{snapshot=await services.loadMarketSnapshot(env,{targets:stockRows,funds:funds.map(f=>f.isin)})}
+  catch(error){console.warn("Digest snapshot unavailable",String(error&&error.message||error))}
+  const usdToEur=goalServerUsdToEur(snapshot),navs=snapshot&&snapshot.funds&&typeof snapshot.funds==="object"?snapshot.funds:{};
+  let missing=0;
+  // Acciones: cotización verificada al momento; si falla, el precio en vivo del snapshot solo en EE. UU.
+  const valued=await digestMapLimit(stockRows,4,async p=>{
+    const qty=finiteNumber(p.quantity)||0,tr=Number(p.prefer_tr)===1,stock=snapshot?findStock(snapshot,p):null;
+    let quote=null;
+    if(services.loadQuote){try{quote=await services.loadQuote(stock||{ticker:p.ticker,isin:p.isin},p)}catch(_){quote=null}}
+    let price=finiteNumber(quote&&quote.price),chg=finiteNumber(quote&&quote.changePct);
+    if(!tr&&price===null&&stock){price=finiteNumber(stock.usLivePrice)??finiteNumber(stock.price);chg=finiteNumber(stock.changePct)}
+    const fx=tr?1:usdToEur;
+    if(price===null||!(price>0)||fx===null)return null;
+    const value=qty*price*fx,day=chg!==null&&chg>-100?value-value/(1+chg/100):0;
+    return{portfolio_id:p.portfolio_id,value,day};
+  });
+  const byPortfolio=new Map();
+  stockRows.forEach((p,i)=>{
+    const v=valued[i];if(!v){missing++;return}
+    const t=byPortfolio.get(p.portfolio_id)||{value:0,day:0};t.value+=v.value;t.day+=v.day;byPortfolio.set(p.portfolio_id,t);
+  });
+  // Fondos: ETF con cotización LSX; si no, valor liquidativo oficial o el último precio importado.
+  const fundValued=await digestMapLimit(funds,4,async f=>{
+    const units=finiteNumber(f.units)||0,currency=String(f.currency||"EUR").toUpperCase(),type=String(f.product_type||"fund").toLowerCase();
+    const nav=navs[String(f.isin||"").toUpperCase()]||null;
+    if(currency!=="EUR"||(nav&&nav.currency&&String(nav.currency).toUpperCase()!=="EUR"))return null;
+    let price=null,day=0;
+    if(type==="etf"&&services.loadQuote){
+      try{
+        const q=await services.loadQuote({isin:f.isin},{prefer_tr:1,isin:f.isin});
+        price=finiteNumber(q&&q.price);
+        const prev=finiteNumber(q&&q.previousClose);
+        if(price!==null&&prev>0)day=units*(price-prev);
+      }catch(_){price=null}
+    }
+    if(price===null)price=finiteNumber(nav&&nav.nav)??finiteNumber(f.extra_nav)??finiteNumber(f.last_price);
+    return price!==null&&price>0?{value:units*price,day}:null;
+  });
+  let fundsValue=0,fundsDay=0;
+  fundValued.forEach(v=>{if(!v){missing++;return}fundsValue+=v.value;fundsDay+=v.day});
+  const lines=[];let stocksValue=0,stocksDay=0,cash=0;
+  const named=(portfolios.results||[]).filter(p=>byPortfolio.has(p.id));
+  for(const p of portfolios.results||[])cash+=Math.max(0,finiteNumber(p.cash_balance)||0);
+  for(const p of named){const t=byPortfolio.get(p.id);stocksValue+=t.value;stocksDay+=t.day}
+  if(named.length===1){const t=byPortfolio.get(named[0].id);lines.push(trimText(named[0].name,24)+": "+digestEur(t.value)+" · "+digestChange(t.day,t.value))}
+  else if(named.length>1){
+    lines.push("Acciones: "+digestEur(stocksValue)+" · "+digestChange(stocksDay,stocksValue));
+    for(const p of named.slice(0,4)){const t=byPortfolio.get(p.id);lines.push("· "+trimText(p.name,20)+" "+digestEur(t.value)+" ("+(t.value-t.day>0?digestPct(t.day/(t.value-t.day)*100):"—")+")")}
+  }
+  if(fundValued.some(Boolean))lines.push("Fondos: "+digestEur(fundsValue)+(Math.abs(fundsDay)>=0.005?" · "+digestChange(fundsDay,fundsValue):""));
+  if(cash>=0.01)lines.push("Efectivo (aparte): "+digestEur(cash));
+  for(const g of goals.slice(0,3)){
+    let plan={};try{plan=JSON.parse(g.plan_json||"{}")||{}}catch(_){plan={}}
+    const pc=plan.pace||{},parts=[];
+    if(finiteNumber(pc.progressPct)!==null)parts.push(Math.round(pc.progressPct)+" % del camino");
+    const pace=pc.status==="reached"?"alcanzado":pc.status==="behind"?"con retraso":pc.status==="ahead"?"adelantado":pc.status==="overdue"?"fecha pasada":pc.status==="on"?"en plazo":"";
+    if(pace)parts.push(pace);
+    const todo=(plan.actions||[]).length?trimText((plan.actions||[]).map(a=>a.text).join(" "),90):"nada que hacer";
+    lines.push("🎯 "+trimText(g.name,22)+": "+(parts.length?parts.join(", ")+" · ":"")+"Hoy: "+todo);
+  }
+  if(missing)lines.push(missing===1?"1 posición sin precio ahora.":missing+" posiciones sin precio ahora.");
+  const total=stocksValue+fundsValue;
+  return{total,stocksValue,stocksDay,fundsValue,fundsDay,cash,missing,lines,hasValue:total>0};
+}
+async function sendDailyDigest(env,services,userId,slotTime){
+  const digest=await buildDailyDigest(env,services,userId);
+  if(!digest||!digest.lines.length)return{sent:0,empty:true};
+  const hour=Number(String(slotTime||"").slice(0,2));
+  const label=Number.isFinite(hour)?(hour<13?"Resumen de la mañana":hour<20?"Resumen de la tarde":"Resumen de la noche"):"Resumen";
+  const title=label+(digest.hasValue?" · "+digestEur(digest.total):"");
+  const message=trimText(digest.lines.join("\n"),700);
+  const id=uid("al_"),now=nowIso();
+  await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .bind(id,userId,"","","","daily-digest","info",title,message,now).run();
+  const result=await dispatchPushAlert(env,{id,alert_type:"daily-digest",severity:"info",title,message},{user_id:userId,route:"today",stock_key:"",ticker:"",prefer_tr:0});
+  return Object.assign({title,message},result);
+}
+export async function runDailyPortfolioDigest(env,services={},nowMs=Date.now()){
+  if(!env.DB||!services.loadMarketSnapshot)return{skipped:true};
+  await ensureDailyDigestSchema(env);
+  // Franjas de los últimos 15 minutos (si el cron se salta un minuto, se envía en el siguiente).
+  const slots=[];
+  for(let i=0;i<DIGEST_WINDOW_MINUTES;i++)slots.push(digestMadridSlot(nowMs-i*60000));
+  const times=[...new Set(slots.map(s=>s.time))],marks=times.map(()=>"?").join(",");
+  const rows=(await env.DB.prepare(
+    "SELECT user_id,digest_morning,digest_evening FROM user_notification_settings WHERE opted_in_explicitly=1 AND notifications_enabled=1 AND daily_digest_enabled=1 "+
+    "AND (digest_morning IN ("+marks+") OR digest_evening IN ("+marks+")) LIMIT 50"
+  ).bind(...times,...times).all()).results||[];
+  let sent=0,processed=0;
+  for(const row of rows){
+    const wanted=new Set([digestTime(row.digest_morning),digestTime(row.digest_evening)].filter(Boolean));
+    const slot=slots.find(s=>wanted.has(s.time));if(!slot)continue;
+    // Se reserva la franja antes de enviar: dos ejecuciones solapadas nunca mandan dos avisos.
+    const claim=await env.DB.prepare("INSERT OR IGNORE INTO daily_digest_log (user_id,slot_key,created_at) VALUES (?,?,?)").bind(row.user_id,slot.day+" "+slot.time,nowIso()).run();
+    if(!(Number(claim&&claim.meta&&claim.meta.changes)>0))continue;
+    processed++;
+    try{const r=await sendDailyDigest(env,services,row.user_id,slot.time);sent+=Number(r&&r.sent)||0}
+    catch(error){console.warn("Daily digest failed",row.user_id,String(error&&error.message||error))}
+  }
+  if(processed)await env.DB.prepare("DELETE FROM daily_digest_log WHERE created_at<?").bind(new Date(nowMs-40*86400000).toISOString()).run().catch(()=>{});
+  return{processed,sent};
 }
 
 export async function runScheduledPortfolioAnalysis(env, services = {}) {

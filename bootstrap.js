@@ -6,7 +6,9 @@ function openPushTargetFromUrl(){
  let tries=0;
  const attempt=()=>{
   tries++;
-  if(route==='portfolio-goal'||portfolioId){
+  if(route==='today'){
+   if(window.ViewInvAINavigation?.go){window.ViewInvAINavigation.go('today');clean();return}
+  }else if(route==='portfolio-goal'||portfolioId){
    window.ViewInvAINavigation?.go?.('portfolios');
    if(window.ViewInvAIPortfolios?.openGoal?.(portfolioId)){clean();return}
   }else if(stockKey&&window.ViewInvAI?.openStockByKey?.(stockKey,'Aviso web',preferTr)){

@@ -90,6 +90,11 @@ async function registerPushToken(token, platform = "android") {
 function openPushTarget(notification) {
   const data = notification && notification.data || {};
   const route=String(data.route||""),portfolioId=String(data.portfolioId||data.portfolio_id||"");
+  if(route==="today"){
+    const openToday=()=>{const nav=document.querySelector('.nav-item[data-view="today"]');if(nav)nav.click();return !!nav};
+    if(!openToday())setTimeout(openToday,900);
+    return;
+  }
   if(route==="portfolio-goal"||portfolioId){
     const openGoal=()=>{
       document.querySelector('.nav-item[data-view="portfolios"]')?.click();
