@@ -2268,3 +2268,20 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 #view-crypto .crypto-actions .btn{flex:1 1 0;width:auto!important;min-width:0}
 .crypto-card .asset-card-row-actions{display:flex;gap:4px}
 .crypto-card .crypto-icon-btn{width:30px!important;min-width:30px!important;height:30px!important;min-height:30px!important;padding:0!important;display:inline-grid;place-items:center;flex:0 0 30px}
+
+/* Contraste de precio en la ficha */
+.profile-price-check-row strong{font-weight:600;text-align:right}
+.price-check summary{cursor:pointer;list-style:none;font-size:12px;font-weight:700;white-space:nowrap}
+.price-check summary::-webkit-details-marker{display:none}
+.price-check.is-ok summary{color:var(--positive)}
+.price-check.is-warn summary{color:var(--amber,#f5b544)}
+.price-check ul{list-style:none;margin:6px 0 0;padding:0;font-size:11px;font-weight:500;text-align:left}
+.price-check li{display:grid;grid-template-columns:minmax(0,1fr) auto 70px;gap:8px;padding:2px 0;color:var(--muted)}
+.price-check li b{color:var(--text)}
+.price-check li i{font-style:normal;text-align:right}
+.price-check li.is-off,.price-check li.is-off b{color:var(--amber,#f5b544)}
+.price-check p{font-size:11px;font-weight:400;color:var(--muted);margin:4px 0 0;text-align:left;white-space:normal}
+.price-check-pending,.price-check-none{font-size:12px;font-weight:500;color:var(--muted)}
+#stockQuickDetail .profile-price-check-row:has(details[open]){display:block!important}
+#stockQuickDetail .profile-price-check-row:has(details[open])>strong{display:block;width:100%;margin-top:6px;text-align:left}
+#stockQuickDetail .profile-price-check-row:has(details[open]) .price-check summary{text-align:left}
