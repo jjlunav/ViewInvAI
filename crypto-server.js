@@ -77,6 +77,12 @@ function cached(key,loader,ttl=SOURCE_TTL){
   return pending;
 }
 
+// Precio actual = punto medio entre la mejor compra y la mejor venta. La «última operación» puede
+// ser de hace horas en pares con poco volumen; solo se usa si no hay horquilla razonable (<5 %).
+function midPrice(bid,ask,last){
+  if(bid>0&&ask>0&&ask>=bid&&(ask-bid)/bid<0.05)return(bid+ask)/2;
+  return last>0?last:null;
+}
 // Cada cargador devuelve Map(symbol -> {price, change24h?, open24h?}) en EUR.
 const SOURCES = {
   kraken:{label:"Kraken",kind:"mercado",load:()=>cached("kraken",async()=>{
@@ -87,7 +93,7 @@ const SOURCES = {
       let base=m[1];if(base.length===4&&/^X/.test(base))base=base.slice(1);
       base=KRAKEN_ALIAS[base]||base;
       if(!BY_SYMBOL.has(base)||out.has(base))continue;
-      const price=num(t&&t.c&&t.c[0]);if(price>0)out.set(base,{price});
+      const price=midPrice(num(t&&t.b&&t.b[0]),num(t&&t.a&&t.a[0]),num(t&&t.c&&t.c[0]));if(price>0)out.set(base,{price});
     }
     return out;
   })},
@@ -96,7 +102,7 @@ const SOURCES = {
     const out=new Map();
     for(const t of Array.isArray(d)?d:[]){
       const m=String(t&&t.pair||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!BY_SYMBOL.has(m[1]))continue;
-      const price=num(t.last),open=num(t.open_24);
+      const price=midPrice(num(t.bid),num(t.ask),num(t.last)),open=num(t.open_24);
       if(price>0)out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null});
     }
     return out;
@@ -124,9 +130,12 @@ const SOURCES = {
   coinlore:{label:"CoinLore",kind:"agregador",meta:true,load:()=>cached("coinlore",async()=>{
     // Agregador de respaldo para capitalización y variaciones (cotiza en USD: su precio no entra
     // en la mediana, solo sus porcentajes y su capitalización convertida con el precio en €).
-    const d=await getJson("https://api.coinlore.net/api/tickers/?start=0&limit=100");
+    // Las 200 primeras por capitalización (dos páginas de 100).
+    const pages=await Promise.allSettled([0,100].map(start=>getJson("https://api.coinlore.net/api/tickers/?start="+start+"&limit=100")));
+    const rows=pages.flatMap(p=>p.status==="fulfilled"&&Array.isArray(p.value&&p.value.data)?p.value.data:[]);
+    if(!rows.length)throw new Error("CoinLore sin datos");
     const out=new Map();
-    for(const c of Array.isArray(d&&d.data)?d.data:[]){
+    for(const c of rows){
       const sym=String(c&&c.symbol||"").toUpperCase();if(!BY_SYMBOL.has(sym)||out.has(sym))continue;
       const usd=num(c.price_usd);if(!(usd>0))continue;
       out.set(sym,{usd,change24h:num(c.percent_change_24h),change7d:num(c.percent_change_7d),marketCapUsd:num(c.market_cap_usd),volumeUsd:num(c.volume24),rank:num(c.rank)});
