@@ -116,6 +116,7 @@ const TRUSTED_NATIVE_ORIGINS = new Set([
   "ionic://localhost"
 ]);
 
+const NATIVE_LIVE_SHELL_PATHS = new Set(["/", "/auth.js", "/portfolio.js"]);
 function trustedNativeOrigin(request) {
   const origin = String(request.headers.get("Origin") || "").toLowerCase();
   return origin && TRUSTED_NATIVE_ORIGINS.has(origin) ? origin : "";
@@ -2161,6 +2162,14 @@ async function dispatchMarketUpdate(env){
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // La página principal y los dos módulos (auth.js, portfolio.js) pasan por el Worker
+    // (run_worker_first) solo para que la APK (origen https://localhost) pueda cargarlos desde
+    // aquí: fetch y <script type="module"> exigen CORS. Sin ese origen se sirven tal cual.
+    if (NATIVE_LIVE_SHELL_PATHS.has(url.pathname) && request.method === "GET") {
+      const page = await env.ASSETS.fetch(request);
+      return trustedNativeOrigin(request) ? nativeCorsResponse(request, page) : page;
+    }
 
     if (request.method === "OPTIONS") {
       const preflight = nativePreflightResponse(request);

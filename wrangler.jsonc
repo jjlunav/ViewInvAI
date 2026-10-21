@@ -8,7 +8,8 @@
     "binding": "ASSETS",
     // Los catálogos pasan por el Worker: así llevan las cabeceras CORS que necesita la APK
     // (origen https://localhost). Servidos como estáticos puros, Android bloquea la descarga.
-    "run_worker_first": ["/data/*"]
+    // «/», auth.js y portfolio.js también: la APK carga la versión publicada (fetch y módulos) y necesita CORS.
+    "run_worker_first": ["/data/*", "/", "/auth.js", "/portfolio.js"]
   },
   "ai": {
     "binding": "AI"
