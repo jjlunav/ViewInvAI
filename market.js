@@ -235,7 +235,7 @@ function canonicalQuote(s,preferTr=false){
   const eur=direct??N(closed&&closed.price)??N(snap&&snap.price);
   return{
    market:'tr',
-   source:direct!==null?'Trade Republic / '+String(s&&s.trExchange||'LSX'):snap?'Último cierre · '+String(s.exchange||'bolsa europea'):'Último cierre · Trade Republic / '+String(s&&s.trExchange||'LSX'),
+   source:direct!==null?'LS Exchange (vía Trade Republic)':snap?'Último cierre · '+String(s.exchange||'bolsa europea'):'Último cierre · LS Exchange (vía Trade Republic)',
    nativeCurrency:'EUR',
    price:eur,
    eur,
@@ -422,8 +422,15 @@ function quoteFreshnessInfo(s,preferTr=false){
  }else{
   state='stale';label='Sin actualizar';
  }
+ // LSX solo envía cambios: un valor con poca negociación puede tener la misma compra y venta
+ // durante mucho rato. Si está suscrito y la conexión en directo sigue recibiendo datos, esa
+ // cotización es la vigente ahora mismo aunque su hora sea antigua.
+ let unchangedSince=false;
+ if(market==='tr'&&open&&direct&&state!=='live'&&trLive.connected&&trLive.subByKey.has(stockKey(s))&&Date.now()-(trLive.lastMessageAt||0)<90000){
+  state='live';label='En directo';unchangedSince=true;
+ }
  let exact=ms?new Date(ms).toLocaleString('es-ES',{timeZone:'Europe/Madrid'}):'sin hora disponible';
- let title=(source?source+' · ':'')+exact+(delay!==null?' · retraso declarado '+delay+' min':'');
+ let title=(source?source+' · ':'')+(unchangedSince?'en directo, sin cambios desde '+exact:exact)+(delay!==null?' · retraso declarado '+delay+' min':'');
  return{state,label,title,updatedAt:ms,ageMs:age,delayMinutes:delay,source,live:state==='live'};
 }
 function quoteFreshnessDotState(info){
