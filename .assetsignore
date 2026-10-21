@@ -8,6 +8,7 @@ worker.js
 requirements.txt
 requirements-security.txt
 backend.js
+crypto-server.js
 migrations/
 docs/
 package.json
