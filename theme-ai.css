@@ -2350,3 +2350,37 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) :is(.fund-mobile-groups,
  html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1[data-short]::before{content:attr(data-short);font-size:20px!important}
  html:root:root body:not(#t1):not(#t2):not(#t3):not(#t4) .view.active>.page-heading h1[data-short]>*{display:none!important}
 }
+
+/* ===== Botones minimalistas (2026-10) =====
+ * Botones de icono: 32 px, esquina 10 px, fondo de cristal casi transparente y línea fina; al
+ * pulsar o con el ratón encima, borde con el degradado de la IA (índigo → turquesa).
+ * Principal: degradado suave; secundario («ghost»): solo contorno. */
+:root{--ai-grad:linear-gradient(135deg,#7c6cff 0%,#43e4b2 100%);--ib-bg:rgba(255,255,255,.045);--ib-line:rgba(255,255,255,.10);--ib-fg:#d7e3ea;--ib-hover-bg:#0e1a24}
+html[data-theme="light"]{--ib-bg:rgba(255,255,255,.75);--ib-line:rgba(15,35,70,.12);--ib-fg:#24364f;--ib-hover-bg:#ffffff}
+html:root:root body:not(#b1):not(#b2):not(#b3):not(#b4) :is(.shell-icon-button,.section-help,.icon-btn,.notification-bell,.global-search-button,.list-view-toggle,.profile-add-portfolio,.profile-notification-bell,.profile-edit-position,.crypto-icon-btn,.catalog-toolbar-mini,.fund-reset-columns,.vi-icon-button){
+ width:32px!important;min-width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;
+ align-items:center!important;justify-content:center!important;place-items:center!important;border-radius:10px!important;
+ border:1px solid var(--ib-line)!important;background:var(--ib-bg)!important;color:var(--ib-fg)!important;
+ box-shadow:none!important;font-size:15px!important;line-height:1!important;
+ -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:border-color .15s,background .15s,color .15s,transform .1s
+}
+html:root:root body:not(#b1):not(#b2):not(#b3):not(#b4) :is(.shell-icon-button,.section-help,.icon-btn,.notification-bell,.global-search-button,.list-view-toggle,.profile-add-portfolio,.profile-notification-bell,.profile-edit-position,.crypto-icon-btn,.catalog-toolbar-mini,.fund-reset-columns,.vi-icon-button):is(:hover,:focus-visible,[aria-expanded="true"],.is-managed){
+ border-color:transparent!important;background:linear-gradient(var(--ib-hover-bg),var(--ib-hover-bg)) padding-box,var(--ai-grad) border-box!important;color:var(--text)!important
+}
+html:root:root body:not(#b1):not(#b2):not(#b3):not(#b4) :is(.shell-icon-button,.section-help,.icon-btn,.notification-bell,.global-search-button,.list-view-toggle,.profile-add-portfolio,.profile-notification-bell,.profile-edit-position,.crypto-icon-btn,.catalog-toolbar-mini,.fund-reset-columns,.vi-icon-button):active{transform:scale(.94)}
+html:root:root body :is(.vi-icon,.notification-bell-icon .vi-icon){width:18px;height:18px;display:block}
+html:root:root body :is(.catalog-toolbar-mini,.global-search-button,.list-view-toggle) svg{width:17px!important;height:17px!important}
+/* Avatar de la cuenta: mismo tamaño que los iconos, con anillo degradado. */
+html:root:root body:not(#b1):not(#b2):not(#b3):not(#b4) #accountArea .account-avatar{width:32px!important;height:32px!important;border-radius:10px!important;border:1px solid transparent!important;background:linear-gradient(var(--ib-hover-bg),var(--ib-hover-bg)) padding-box,var(--ai-grad) border-box!important;color:var(--text)!important;font-size:13px!important}
+/* Botones de texto. Principal: degradado suave de la IA; «ghost»: contorno fino. */
+html:root:root body:not(#b1):not(#b2):not(#b3) main .btn:not(.ghost):not(.icon-btn):not(.vi-icon-button):not(.profile-edit-position):not(.portfolio-google-login){
+ border:1px solid transparent!important;border-radius:10px!important;color:var(--text)!important;font-weight:650!important;
+ background:linear-gradient(color-mix(in srgb,var(--ib-hover-bg) 82%,transparent),color-mix(in srgb,var(--ib-hover-bg) 82%,transparent)) padding-box,var(--ai-grad) border-box!important;
+ box-shadow:0 1px 10px rgba(67,228,178,.07)!important
+}
+html:root:root body:not(#b1):not(#b2):not(#b3) main .btn.ghost:not(.icon-btn):not(.vi-icon-button){
+ border:1px solid var(--ib-line)!important;border-radius:10px!important;background:transparent!important;color:var(--ib-fg)!important;font-weight:600!important;box-shadow:none!important
+}
+html:root:root body:not(#b1):not(#b2):not(#b3) main .btn:is(:hover,:focus-visible):not(.icon-btn):not(.vi-icon-button){filter:brightness(1.08)}
+/* El badge de avisos se mantiene en la esquina del nuevo botón. */
+html:root:root body #notificationBell{position:relative!important}
