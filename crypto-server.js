@@ -69,9 +69,9 @@ async function getJson(url, timeout=8000){
   return r.json();
 }
 // Memoriza cada fuente SOURCE_TTL ms (una petición compartida por todas las visitas del isolate).
-function cached(key,loader){
+function cached(key,loader,ttl=SOURCE_TTL){
   const hit=memo.get(key);
-  if(hit&&Date.now()-hit.at<SOURCE_TTL)return hit.pending;
+  if(hit&&Date.now()-hit.at<ttl)return hit.pending;
   const pending=loader().catch(error=>{memo.delete(key);throw error});
   memo.set(key,{at:Date.now(),pending});
   return pending;
@@ -120,7 +120,35 @@ const SOURCES = {
     }
     return out;
   })},
-  coingecko:{label:"CoinGecko",kind:"agregador",load:()=>cached("coingecko",async()=>{
+  coingecko:{label:"CoinGecko",kind:"agregador",load:env=>cached("coingecko",()=>geckoWithKv(env),GECKO_TTL)},
+  coinlore:{label:"CoinLore",kind:"agregador",meta:true,load:()=>cached("coinlore",async()=>{
+    // Agregador de respaldo para capitalización y variaciones (cotiza en USD: su precio no entra
+    // en la mediana, solo sus porcentajes y su capitalización convertida con el precio en €).
+    const d=await getJson("https://api.coinlore.net/api/tickers/?start=0&limit=100");
+    const out=new Map();
+    for(const c of Array.isArray(d&&d.data)?d.data:[]){
+      const sym=String(c&&c.symbol||"").toUpperCase();if(!BY_SYMBOL.has(sym)||out.has(sym))continue;
+      const usd=num(c.price_usd);if(!(usd>0))continue;
+      out.set(sym,{usd,change24h:num(c.percent_change_24h),change7d:num(c.percent_change_7d),marketCapUsd:num(c.market_cap_usd),volumeUsd:num(c.volume24),rank:num(c.rank)});
+    }
+    return out;
+  },5*60000)}
+};
+const GECKO_TTL=5*60000,GECKO_KV="crypto:coingecko:v1";
+// CoinGecko limita mucho a las IP compartidas de Cloudflare: su último dato válido se guarda en KV
+// (6 h) y se usa mientras responda 429, para no perder capitalización, variaciones ni logos.
+async function geckoWithKv(env){
+  const kv=env&&env.HOT_STATE_KV;
+  try{
+    const map=await geckoFetch();
+    if(kv&&map.size)try{await kv.put(GECKO_KV,JSON.stringify({at:Date.now(),rows:[...map.entries()]}),{expirationTtl:21600})}catch(_){}
+    return map;
+  }catch(error){
+    if(kv)try{const saved=await kv.get(GECKO_KV,"json");if(saved&&Array.isArray(saved.rows)&&saved.rows.length){const m=new Map(saved.rows);m.stale=true;m.savedAt=saved.at;return m}}catch(_){}
+    throw error;
+  }
+}
+async function geckoFetch(){
     const ids=CRYPTO_ASSETS.map(a=>a.gecko).join(",");
     const d=await getJson("https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&ids="+encodeURIComponent(ids)+"&per_page=250&price_change_percentage=24h,7d,30d");
     const bySlug=new Map(CRYPTO_ASSETS.map(a=>[a.gecko,a.symbol])),out=new Map();
@@ -132,8 +160,7 @@ const SOURCES = {
         high24h:num(c.high_24h),low24h:num(c.low_24h),ath:num(c.ath)});
     }
     return out;
-  })}
-};
+}
 // CoinPaprika (otro agregador) solo para una moneda concreta: su lista completa es muy grande.
 async function paprikaOne(asset){
   const d=await cached("paprika:"+asset.symbol,()=>getJson("https://api.coinpaprika.com/v1/tickers/"+encodeURIComponent(asset.paprika)+"?quotes=EUR"));
@@ -160,32 +187,45 @@ function consensus(symbol,rows){
 }
 
 // Cotizaciones de consenso. detail=true añade CoinPaprika (una petición por moneda).
-export async function cryptoQuotes(symbols,{detail=false}={}){
+// env (opcional) da acceso a KV para guardar el último dato de CoinGecko.
+export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
   const wanted=[...new Set((symbols&&symbols.length?symbols:CRYPTO_ASSETS.map(a=>a.symbol)).map(s=>String(s).toUpperCase()).filter(s=>BY_SYMBOL.has(s)))];
   const names=Object.keys(SOURCES);
-  const settled=await Promise.allSettled(names.map(n=>SOURCES[n].load()));
+  const settled=await Promise.allSettled(names.map(n=>SOURCES[n].load(env)));
+  const value=n=>{const i=names.indexOf(n);return i>=0&&settled[i].status==="fulfilled"?settled[i].value:null};
   const health={};
-  names.forEach((n,i)=>{health[n]={label:SOURCES[n].label,kind:SOURCES[n].kind,ok:settled[i].status==="fulfilled",count:settled[i].status==="fulfilled"?settled[i].value.size:0,error:settled[i].status==="rejected"?String(settled[i].reason&&settled[i].reason.message||settled[i].reason).slice(0,120):""}});
+  names.forEach((n,i)=>{
+    const ok=settled[i].status==="fulfilled",v=ok?settled[i].value:null;
+    health[n]={label:SOURCES[n].label,kind:SOURCES[n].kind,ok,count:v?v.size:0,
+      stale:!!(v&&v.stale),savedAt:v&&v.savedAt?new Date(v.savedAt).toISOString():null,role:SOURCES[n].meta?"datos":"precio",
+      error:ok?"":String(settled[i].reason&&settled[i].reason.message||settled[i].reason).slice(0,120)};
+  });
   const paprika=detail?await Promise.allSettled(wanted.map(s=>paprikaOne(BY_SYMBOL.get(s)))):[];
-  if(detail)health.coinpaprika={label:"CoinPaprika",kind:"agregador",ok:paprika.some(p=>p.status==="fulfilled"&&p.value),count:paprika.filter(p=>p.status==="fulfilled"&&p.value).length,error:""};
+  if(detail)health.coinpaprika={label:"CoinPaprika",kind:"agregador",role:"precio",ok:paprika.some(p=>p.status==="fulfilled"&&p.value),count:paprika.filter(p=>p.status==="fulfilled"&&p.value).length,error:""};
+  const gecko=value("coingecko"),lore=value("coinlore");
   const quotes={};
   wanted.forEach((sym,idx)=>{
-    const rows=[];let meta={};const changes=[];
+    const rows=[],changes=[];
     names.forEach((n,i)=>{
-      if(settled[i].status!=="fulfilled")return;
-      const v=settled[i].value.get(sym);if(!v)return;
-      rows.push({source:SOURCES[n].label,kind:SOURCES[n].kind,price:v.price});
-      if(v.change24h!==null&&v.change24h!==undefined)changes.push(v.change24h);
-      if(n==="coingecko")meta=v;
+      if(SOURCES[n].meta||settled[i].status!=="fulfilled")return;
+      const map=settled[i].value,v=map.get(sym);if(!v)return;
+      // Un dato guardado (CoinGecko en 429) no es un precio actual: no entra en la mediana.
+      if(!map.stale)rows.push({source:SOURCES[n].label,kind:SOURCES[n].kind,price:v.price});
+      if(!map.stale&&v.change24h!==null&&v.change24h!==undefined)changes.push(v.change24h);
     });
     if(detail&&paprika[idx]&&paprika[idx].status==="fulfilled"&&paprika[idx].value){
       const v=paprika[idx].value;rows.push({source:"CoinPaprika",kind:"agregador",price:v.price});
       if(v.change24h!==null)changes.push(v.change24h);
     }
-    const asset=BY_SYMBOL.get(sym),c=consensus(sym,rows);
+    const asset=BY_SYMBOL.get(sym),c=consensus(sym,rows),g=gecko&&gecko.get(sym)||{},l=lore&&lore.get(sym)||null;
+    if(!changes.length&&l&&l.change24h!==null)changes.push(l.change24h);
+    // Capitalización y volumen en €: de CoinGecko; si no, los de CoinLore (USD) pasados a € con
+    // la relación entre el precio de consenso y su precio en USD.
+    const usdRatio=l&&c.price>0&&l.usd>0?c.price/l.usd:null;
     quotes[sym]=Object.assign(c,{name:asset.name,change24h:changes.length?median(changes):null,
-      change7d:meta.change7d??null,change30d:meta.change30d??null,marketCap:meta.marketCap??null,volume24h:meta.volume24h??null,
-      rank:meta.rank??null,image:meta.image||"",high24h:meta.high24h??null,low24h:meta.low24h??null,ath:meta.ath??null});
+      change7d:g.change7d??(l?l.change7d:null)??null,change30d:g.change30d??null,
+      marketCap:g.marketCap??(usdRatio&&l.marketCapUsd?l.marketCapUsd*usdRatio:null),volume24h:g.volume24h??(usdRatio&&l.volumeUsd?l.volumeUsd*usdRatio:null),
+      rank:g.rank??(l?l.rank:null)??null,image:g.image||"",high24h:g.high24h??null,low24h:g.low24h??null,ath:g.ath??null});
   });
   return{updatedAt:new Date().toISOString(),currency:"EUR",divergenceThresholdPct:DIVERGENCE_PCT,sources:health,quotes};
 }

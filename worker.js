@@ -159,7 +159,7 @@ function nativePreflightResponse(request) {
 }
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -2056,7 +2056,7 @@ const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "fund-catalog-extra", "watchlist",
   "analysis", "ai", "alerts", "position-decisions", "event-insight", "admin", "goal-ideas", "radar-check", "translate", "notification-preferences", "portfolio-goal",
-  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
+  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices", "crypto-positions"
 ]);
 function isBackendApiPath(pathname) {
   if (pathname === "/api/backend/status") return true;
@@ -2131,7 +2131,8 @@ export default {
         loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
-        loadDailyHistory: loadDailyHistoryForBackend
+        loadDailyHistory: loadDailyHistoryForBackend,
+        loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -2174,7 +2175,7 @@ export default {
     if (url.pathname === "/api/crypto/quotes") {
       const guard = requestGuard(request); if (guard) return guard;
       const symbols = String(url.searchParams.get("symbols") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 60);
-      try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
+      try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { env, detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Cotizaciones cripto no disponibles" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/crypto/chart") {
@@ -2229,7 +2230,7 @@ export default {
     // Resumen diario de carteras y objetivos (08:00 y 22:00 en España por defecto): su propia
     // ejecución cada 5 min, con su propio margen de CPU y de peticiones.
     if(controller&&controller.cron===DIGEST_CRON){
-      ctx.waitUntil(runDailyPortfolioDigest(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuote:loadQuoteForBackend},Number(controller.scheduledTime)||Date.now())
+      ctx.waitUntil(runDailyPortfolioDigest(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuote:loadQuoteForBackend,loadCryptoQuotes:symbols=>cryptoQuotes(symbols,{env})},Number(controller.scheduledTime)||Date.now())
         .catch(error=>console.error("Daily digest task failed",String(error&&error.stack||error))));
       return;
     }

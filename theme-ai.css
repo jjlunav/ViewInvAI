@@ -2204,3 +2204,67 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 #view-settings .notification-category-list .digest-times .btn{width:auto;flex:0 0 auto}
 #view-settings .notification-category-list .digest-times .digest-status{font-style:normal;font-size:11px!important;color:var(--muted,#9aa4b2)}
 #view-settings .notification-category-list .digest-times .digest-status.error{color:var(--danger,#ff6b6b)}
+
+/* ===== Criptoactivos ===== */
+#view-crypto .heading-actions{display:flex;align-items:center;gap:8px}
+#view-crypto .crypto-updated{font-size:11px;color:var(--muted)}
+#view-crypto .crypto-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+#view-crypto .crypto-tabs{display:inline-flex;gap:2px;padding:2px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+#view-crypto .crypto-tabs button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer}
+#view-crypto .crypto-tabs button.active{background:var(--panel-2);color:var(--text)}
+#view-crypto .crypto-search{flex:1 1 160px;min-width:0;max-width:320px}
+#view-crypto .crypto-list{display:grid;gap:6px}
+#view-crypto .crypto-subhead,#cryptoModal .crypto-subhead{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.crypto-icon{width:26px;height:26px;border-radius:50%;flex:0 0 26px;object-fit:cover;background:var(--panel-2)}
+.crypto-icon-text{display:inline-grid;place-items:center;font-size:9px;font-weight:800;color:var(--text)}
+.crypto-card .crypto-price{font-weight:700;margin-right:6px}
+.crypto-card b.positive,.crypto-detail-head b.positive{color:var(--positive)}
+.crypto-card b.negative,.crypto-detail-head b.negative{color:var(--negative)}
+.crypto-src{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.crypto-src-ok{color:var(--positive);background:color-mix(in srgb,var(--positive) 14%,transparent)}
+.crypto-src-warn{color:var(--amber,#f5b544);background:color-mix(in srgb,var(--amber,#f5b544) 16%,transparent)}
+.crypto-src-single,.crypto-src-none{color:var(--muted);background:var(--panel-2)}
+.crypto-health{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--muted);margin:0 0 8px}
+.crypto-health .ok{color:var(--positive)}
+.crypto-health .off{opacity:.6}
+.crypto-empty{color:var(--muted);font-size:13px;padding:12px 2px}
+.crypto-note{color:var(--muted);font-size:12px;line-height:1.45;margin:6px 0}
+.crypto-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0 0 8px}
+.crypto-summary>div{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:8px 10px;min-width:0}
+.crypto-summary small{display:block;font-size:11px;color:var(--muted)}
+.crypto-summary strong{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crypto-summary .positive{color:var(--positive)}.crypto-summary .negative{color:var(--negative)}
+.crypto-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.crypto-signals{display:flex;flex-wrap:wrap;gap:4px}
+.crypto-signal{font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--panel-2);color:var(--text)}
+.crypto-signal.positive{color:var(--positive);background:color-mix(in srgb,var(--positive) 14%,transparent)}
+.crypto-signal.negative{color:var(--negative);background:color-mix(in srgb,var(--negative) 14%,transparent)}
+.crypto-signal.warn{color:var(--amber,#f5b544);background:color-mix(in srgb,var(--amber,#f5b544) 16%,transparent)}
+.crypto-why{font-size:11px;color:var(--muted)}
+#cryptoModal .crypto-detail-head{display:flex;align-items:center;gap:10px;margin:0 0 8px}
+#cryptoModal .crypto-detail-head>div{flex:1;min-width:0}
+#cryptoModal .crypto-detail-head strong{display:block;font-size:22px}
+#cryptoModal .crypto-detail-head b{font-size:12px}
+#cryptoModal .crypto-chart{display:block;width:100%;height:110px}
+#cryptoModal .crypto-chart path{fill:none;stroke-width:1.8;vector-effect:non-scaling-stroke}
+#cryptoModal .crypto-chart.positive path{stroke:var(--positive)}
+#cryptoModal .crypto-chart.negative path{stroke:var(--negative)}
+#cryptoModal .crypto-chart-range{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+#cryptoModal .crypto-chart-tabs{display:flex;gap:4px;margin:0 0 6px}
+#cryptoModal .crypto-chart-tabs button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;font:inherit;font-size:11px;padding:3px 8px;cursor:pointer}
+#cryptoModal .crypto-chart-tabs button.active{color:var(--text);background:var(--panel-2)}
+.crypto-sources{width:100%;border-collapse:collapse;font-size:12px}
+.crypto-sources th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--line)}
+.crypto-sources td{padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.crypto-sources th:nth-child(n+3),.crypto-sources td:nth-child(n+3){text-align:right}
+.crypto-sources tr.is-outlier td{color:var(--amber,#f5b544)}
+#cryptoModal .crypto-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:12px;color:var(--muted);margin:10px 0}
+#cryptoModal .crypto-metrics b{display:block;color:var(--text)}
+#cryptoModal .crypto-metrics b.positive{color:var(--positive)}#cryptoModal .crypto-metrics b.negative{color:var(--negative)}
+.crypto-form-error{color:var(--negative);font-size:12px}
+.crypto-import input[type=file]{margin:6px 0 10px;max-width:100%}
+#view-crypto .crypto-updated{flex:0 0 auto;margin-left:auto;white-space:nowrap}
+#view-crypto .crypto-actions{flex-wrap:nowrap}
+#view-crypto .crypto-actions .btn{flex:1 1 0;width:auto!important;min-width:0}
+.crypto-card .asset-card-row-actions{display:flex;gap:4px}
+.crypto-card .crypto-icon-btn{width:30px!important;min-width:30px!important;height:30px!important;min-height:30px!important;padding:0!important;display:inline-grid;place-items:center;flex:0 0 30px}

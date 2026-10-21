@@ -52,6 +52,7 @@ const files = [
   'alerts.js',
   'stock-notifications.js',
   'funds.js',
+  'crypto.js',
   'auth.js',
   'portfolio.js'
 ];

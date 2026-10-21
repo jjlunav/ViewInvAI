@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.92">
+<html lang="es" data-app-version="0.6.93">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -52,6 +52,7 @@
       <button class="nav-item" data-view="catalog"><span>▤</span>Catálogo Trade Republic</button>
       <button class="nav-item" data-view="catalogUS"><span>▥</span>Catálogo EEUU</button>
       <button class="nav-item" data-view="funds"><span>◇</span>Catálogo Fondos y ETFs</button>
+      <button class="nav-item" data-view="crypto"><span>₿</span>Criptoactivos</button>
       <button class="nav-item" data-view="heatmap"><span>▦</span>Mapa de calor</button>
       <button class="nav-item" data-view="inbox"><span>◔</span>Avisos</button>
       <button class="nav-item" data-view="tax"><span>§</span>Fiscal (IRPF)</button>
@@ -293,6 +294,22 @@
         <div class="heading-actions"><button type="button" class="section-help" data-help-section="favorites" aria-label="Ayuda sobre Favoritos">?</button></div>
       </div>
       <p class="lead">Tus favoritos están ahora en Carteras · ★ Favoritos.</p>
+    </section>
+
+    <section class="view" id="view-crypto">
+      <div class="page-heading compact-heading">
+        <div>
+          <h1>Criptoactivos <span class="heading-badge ai-badge">CONSENSO</span></h1>
+          <p class="lead">Precio contrastado en varias fuentes públicas (mercados y agregadores), tus criptoactivos y señales del Radar cripto.</p>
+        </div>
+        <div class="heading-actions"><button class="btn icon-btn" id="cryptoRefresh" title="Actualizar" aria-label="Actualizar">↻</button></div>
+      </div>
+      <div class="crypto-toolbar">
+        <div class="crypto-tabs" role="tablist"><button type="button" role="tab" class="active" data-crypto-tab="market">Mercado</button><button type="button" role="tab" data-crypto-tab="mine">Mi cripto</button><button type="button" role="tab" data-crypto-tab="radar">Radar cripto</button></div>
+        <input id="cryptoSearch" class="fund-search crypto-search" type="search" placeholder="Buscar moneda" autocomplete="off">
+        <small id="cryptoUpdated" class="crypto-updated" aria-live="polite"></small>
+      </div>
+      <div id="cryptoBody" class="crypto-body"></div>
     </section>
 
     <section class="view" id="view-funds">
@@ -740,7 +757,7 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.92 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.93 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
@@ -776,6 +793,7 @@
 <script src="backup.js?v=20261008z1"></script>
 <script src="search.js?v=20261008w1"></script>
 <script src="funds.js?v=20261009i2"></script>
+<script src="crypto.js?v=20261021c1"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>

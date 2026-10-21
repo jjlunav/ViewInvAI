@@ -4240,6 +4240,9 @@ function portfolioDaySummary(){
   // Carteras de fondos (Fondos): mismo valor que sus tarjetas.
   const F=window.ViewInvAIFunds;
   if(F&&typeof F.getPortfolioTotals==='function')rows.push(...F.getPortfolioTotals().map(r=>({...r,kind:'funds'})));
+  // Criptoactivos (Mi cripto): precio de consenso; sin efectivo.
+  const X=window.ViewInvAICrypto,ct=X&&typeof X.totals==='function'?X.totals():null;
+  if(ct&&ct.count>0)rows.push({id:'crypto',name:'Criptoactivos',value:ct.value,cash:0,day:ct.day,pnl:ct.pnl,count:ct.count,complete:ct.complete&&!!ct.updatedAt,kind:'crypto'});
   const total=rows.reduce((t,r)=>({value:t.value+r.value,cash:t.cash+(r.cash||0),day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,cash:0,day:0,pnl:0});
   const keys=[...new Set([...open.map(p=>p.stock_key),...state.watchlist.map(w=>w.stock_key)].filter(Boolean))];
   return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};

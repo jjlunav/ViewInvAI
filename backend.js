@@ -2135,18 +2135,20 @@ async function handleBackup(request,env,user,json){
   await ensureUiPreferencesSchema(env);
   await ensurePositionBrokerSchema(env);
   const all=async(sql)=>{try{return(await env.DB.prepare(sql).bind(user.id).all()).results||[]}catch(_){return[]}};
-  const [portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences]=await Promise.all([
+  await ensureCryptoSchema(env);
+  const [portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences,cryptoPositions]=await Promise.all([
     all("SELECT id,name,broker,base_currency,cash_balance,sort_order,created_at FROM portfolios WHERE user_id=? ORDER BY sort_order,created_at"),
     all("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,active,frozen_qty,frozen_until FROM positions WHERE user_id=?"),
     all("SELECT id,portfolio_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id FROM transactions WHERE user_id=? ORDER BY executed_at,created_at"),
     all("SELECT id,portfolio_id,external_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? ORDER BY paid_at"),
     all("SELECT stock_key,ticker,name,exchange,isin,prefer_tr,notes FROM watchlist WHERE user_id=?"),
     all("SELECT stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,price_above,price_below FROM notification_preferences WHERE user_id=?"),
-    all("SELECT scope,preferences_json FROM user_ui_preferences WHERE user_id=?")
+    all("SELECT scope,preferences_json FROM user_ui_preferences WHERE user_id=?"),
+    all("SELECT symbol,platform,units,avg_price_eur,notes,origin FROM crypto_positions WHERE user_id=? ORDER BY symbol")
   ]);
   const prefs={};
   for(const r of uiPreferences){try{prefs[r.scope]=JSON.parse(r.preferences_json||"{}")}catch(_){}}
-  return json({app:"ViewInvAI",kind:"backup",version:1,exportedAt:nowIso(),portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences:prefs},200,{"Cache-Control":"no-store"});
+  return json({app:"ViewInvAI",kind:"backup",version:1,exportedAt:nowIso(),portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences:prefs,cryptoPositions},200,{"Cache-Control":"no-store"});
 }
 
 /* ---------------- Dividendos y retenciones ----------------
@@ -5649,6 +5651,65 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
   return{processed:results.length,writes};
 }
 
+// ----- Criptoactivos: posiciones del usuario (solo en D1) -----
+// Una fila por moneda y plataforma. Las unidades a 0 dejan la moneda «en seguimiento».
+let cryptoSchemaReady=false;
+async function ensureCryptoSchema(env){
+  if(cryptoSchemaReady)return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS crypto_positions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,symbol TEXT NOT NULL,platform TEXT NOT NULL DEFAULT 'Bit2Me',units REAL NOT NULL DEFAULT 0 CHECK(units>=0),avg_price_eur REAL CHECK(avg_price_eur IS NULL OR avg_price_eur>=0),notes TEXT NOT NULL DEFAULT '',origin TEXT NOT NULL DEFAULT 'manual',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_crypto_positions_user_symbol ON crypto_positions(user_id,symbol,platform)")
+  ]);
+  cryptoSchemaReady=true;
+}
+const CRYPTO_SYMBOL_RE=/^[A-Z0-9]{2,10}$/;
+function cryptoPositionFromBody(body){
+  const symbol=trimText(body.symbol,10).toUpperCase();
+  if(!CRYPTO_SYMBOL_RE.test(symbol))return{error:"Moneda no válida."};
+  const units=finiteNumber(body.units);
+  if(units===null||units<0||units>1e15)return{error:"Las unidades deben ser 0 o más."};
+  let avg=body.avgPriceEur===null||body.avgPriceEur===undefined||body.avgPriceEur===""?null:finiteNumber(body.avgPriceEur);
+  if(avg!==null&&(avg<0||avg>1e9))return{error:"Precio medio no válido."};
+  const platform=trimText(body.platform||"Bit2Me",40)||"Bit2Me";
+  return{symbol,units,avg,platform,notes:trimText(body.notes||"",300),origin:body.origin==="import"?"import":"manual"};
+}
+async function handleCryptoPositions(request,env,user,json,parts){
+  await ensureCryptoSchema(env);
+  const id=parts[1]||"";
+  const list=async()=>(await env.DB.prepare("SELECT id,symbol,platform,units,avg_price_eur,notes,origin,created_at,updated_at FROM crypto_positions WHERE user_id=? ORDER BY symbol,platform").bind(user.id).all()).results||[];
+  if(request.method==="GET"&&!id)return json({positions:await list()},200,{"Cache-Control":"no-store"});
+  const upsert=(p,now)=>env.DB.prepare(
+    "INSERT INTO crypto_positions (id,user_id,symbol,platform,units,avg_price_eur,notes,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "+
+    "ON CONFLICT(user_id,symbol,platform) DO UPDATE SET units=excluded.units,avg_price_eur=excluded.avg_price_eur,notes=CASE WHEN excluded.notes<>'' THEN excluded.notes ELSE crypto_positions.notes END,origin=excluded.origin,updated_at=excluded.updated_at"
+  ).bind(uid("cp_"),user.id,p.symbol,p.platform,p.units,p.avg,p.notes,p.origin,now,now);
+  // Importación: sustituye las posiciones de una plataforma por las calculadas del fichero.
+  if(request.method==="POST"&&id==="import"){
+    const body=await readJson(request);
+    const rows=Array.isArray(body.positions)?body.positions.slice(0,300):[];
+    const platform=trimText(body.platform||"Bit2Me",40)||"Bit2Me";
+    const parsed=[];
+    for(const r of rows){const p=cryptoPositionFromBody(Object.assign({},r,{platform,origin:"import"}));if(p.error)return json({error:p.error+" ("+String(r&&r.symbol||"")+")"},400);parsed.push(p)}
+    const now=nowIso(),keep=new Set(parsed.map(p=>p.symbol));
+    const stmts=parsed.map(p=>upsert(p,now));
+    // Lo que ya no aparece en el fichero queda a 0 (en seguimiento), no se borra.
+    const existing=(await list()).filter(p=>p.platform===platform&&!keep.has(p.symbol)&&Number(p.units)>0);
+    for(const p of existing)stmts.push(env.DB.prepare("UPDATE crypto_positions SET units=0,updated_at=? WHERE id=? AND user_id=?").bind(now,p.id,user.id));
+    if(stmts.length)await env.DB.batch(stmts);
+    return json({ok:true,imported:parsed.length,zeroed:existing.length,positions:await list()});
+  }
+  if(request.method==="POST"&&!id){
+    const p=cryptoPositionFromBody(await readJson(request));
+    if(p.error)return json({error:p.error},400);
+    await upsert(p,nowIso()).run();
+    return json({ok:true,positions:await list()});
+  }
+  if(request.method==="DELETE"&&id){
+    await env.DB.prepare("DELETE FROM crypto_positions WHERE id=? AND user_id=?").bind(id,user.id).run();
+    return json({ok:true,positions:await list()});
+  }
+  return json({error:"Method not allowed"},405);
+}
+
 async function handleDevices(request, env, user, json, parts, services = {}) {
   const id = parts[1] || "";
   // «Enviar resumen ahora»: el mismo resumen diario, al momento (no cuenta como franja enviada).
@@ -5980,6 +6041,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "settings") return handleSettings(request, env, user, json);
     if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
     if (root === "devices") return handleDevices(request, env, user, json, parts, services);
+    if (root === "crypto-positions") return handleCryptoPositions(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);
   } catch (error) {
     console.error("Backend API error", String(error && error.stack || error));
@@ -7597,7 +7659,9 @@ async function buildDailyDigest(env,services,userId){
     ).bind(userId).all()
   ]);
   const stockRows=positions.results||[],funds=fundRows.results||[],goals=goalRows.results||[];
-  if(!stockRows.length&&!funds.length&&!goals.length)return null;
+  await ensureCryptoSchema(env);
+  const cryptoRows=(await env.DB.prepare("SELECT symbol,units FROM crypto_positions WHERE user_id=? AND units>0 LIMIT 60").bind(userId).all()).results||[];
+  if(!stockRows.length&&!funds.length&&!goals.length&&!cryptoRows.length)return null;
   let snapshot=null;
   try{snapshot=await services.loadMarketSnapshot(env,{targets:stockRows,funds:funds.map(f=>f.isin)})}
   catch(error){console.warn("Digest snapshot unavailable",String(error&&error.message||error))}
@@ -7639,6 +7703,20 @@ async function buildDailyDigest(env,services,userId){
   });
   let fundsValue=0,fundsDay=0;
   fundValued.forEach(v=>{if(!v){missing++;return}fundsValue+=v.value;fundsDay+=v.day});
+  // Criptoactivos: precio de consenso de varias fuentes (variación de 24 h: el mercado no cierra).
+  let cryptoValue=0,cryptoDay=0,cryptoValued=false;
+  if(cryptoRows.length&&services.loadCryptoQuotes){
+    let quotes={};
+    try{quotes=(await services.loadCryptoQuotes([...new Set(cryptoRows.map(r=>r.symbol))])).quotes||{}}
+    catch(error){console.warn("Digest crypto quotes unavailable",String(error&&error.message||error))}
+    for(const r of cryptoRows){
+      const q=quotes[r.symbol],price=finiteNumber(q&&q.price),units=finiteNumber(r.units)||0;
+      if(!(price>0)){missing++;continue}
+      const value=units*price,chg=finiteNumber(q.change24h);
+      cryptoValue+=value;cryptoValued=true;
+      if(chg!==null&&chg>-100)cryptoDay+=value-value/(1+chg/100);
+    }
+  }else missing+=cryptoRows.length;
   const lines=[];let stocksValue=0,stocksDay=0,cash=0;
   const named=(portfolios.results||[]).filter(p=>byPortfolio.has(p.id));
   for(const p of portfolios.results||[])cash+=Math.max(0,finiteNumber(p.cash_balance)||0);
@@ -7649,6 +7727,7 @@ async function buildDailyDigest(env,services,userId){
     for(const p of named.slice(0,4)){const t=byPortfolio.get(p.id);lines.push("· "+trimText(p.name,20)+" "+digestEur(t.value)+" ("+(t.value-t.day>0?digestPct(t.day/(t.value-t.day)*100):"—")+")")}
   }
   if(fundValued.some(Boolean))lines.push("Fondos: "+digestEur(fundsValue)+(Math.abs(fundsDay)>=0.005?" · "+digestChange(fundsDay,fundsValue):""));
+  if(cryptoValued)lines.push("Cripto: "+digestEur(cryptoValue)+" · 24 h "+digestChange(cryptoDay,cryptoValue));
   if(cash>=0.01)lines.push("Efectivo (aparte): "+digestEur(cash));
   for(const g of goals.slice(0,3)){
     let plan={};try{plan=JSON.parse(g.plan_json||"{}")||{}}catch(_){plan={}}
@@ -7660,8 +7739,8 @@ async function buildDailyDigest(env,services,userId){
     lines.push("🎯 "+trimText(g.name,22)+": "+(parts.length?parts.join(", ")+" · ":"")+"Hoy: "+todo);
   }
   if(missing)lines.push(missing===1?"1 posición sin precio ahora.":missing+" posiciones sin precio ahora.");
-  const total=stocksValue+fundsValue;
-  return{total,stocksValue,stocksDay,fundsValue,fundsDay,cash,missing,lines,hasValue:total>0};
+  const total=stocksValue+fundsValue+cryptoValue;
+  return{total,stocksValue,stocksDay,fundsValue,fundsDay,cryptoValue,cryptoDay,cash,missing,lines,hasValue:total>0};
 }
 async function sendDailyDigest(env,services,userId,slotTime){
   const digest=await buildDailyDigest(env,services,userId);
