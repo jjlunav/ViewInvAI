@@ -40,7 +40,7 @@ const NAV_GROUPS={
  admin:['admin']
 };
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
-const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'TR',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
