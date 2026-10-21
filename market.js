@@ -162,9 +162,13 @@ function usSessionDisplayData(s,se=currentMarketSession()){
  const current=N(q&&q.price);
  const liveRegular=kind==='regular'&&current!==null?current:null;
  const regularPrice=liveRegular??N(s&&s.usRegularFrozenPrice)??N(s&&s.price);
- let regularBase=N(s&&s.usLiveOpen);
+ // Variación del día = frente al cierre anterior, la cifra oficial de la cotización (Nasdaq en
+ // vivo; fuera de sesión, la del cierre regular). No se usa la apertura ni el «PreviousClose» del
+ // resumen de Nasdaq tras el cierre, que a veces ya es el de hoy y dejaba la cabecera en +0 %.
+ const officialPct=liveRegular!==null?(N(s&&s.usLiveChangePct)??N(s&&s.changePct)):N(s&&s.changePct);
+ let regularBase=regularPrice!==null&&officialPct!==null&&officialPct>-99.999?regularPrice/(1+officialPct/100):null;
+ if(regularBase===null)regularBase=N(s&&s.previousClose)??N(s&&s.usLivePreviousClose)??N(s&&s.usLiveOpen);
  if(regularBase===null&&kind==='regular'&&liveRegular!==null)regularBase=usRememberSessionBaseline(s,'regular',liveRegular,N(q&&q.at)||Date.now());
- if(regularBase===null)regularBase=N(s&&s.previousClose)??N(s&&s.usLivePreviousClose);
  const regularAbs=regularPrice!==null&&regularBase!==null?regularPrice-regularBase:null;
  const regularPct=regularPrice!==null&&regularBase!==null&&regularBase>0?(regularPrice/regularBase-1)*100:N(s&&s.changePct);
 
@@ -919,14 +923,16 @@ function refreshUsLiveDom(){
  visibleLiveNodes('[data-us-spread-key]').forEach(el=>{let s=usStockByKey(el.dataset.usSpreadKey);if(s){setHtmlIfChanged(el,bidAskInner(s,false));el.classList.toggle('realtime',!!s.usLiveIsRealTime);el.classList.toggle('delayed',!s.usLiveIsRealTime)}});
  visibleLiveNodes('[data-profile-regular-session-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.profileRegularSessionKey);if(!s)return;
-  let se=currentMarketSession(),live=se==='regular'&&N(s.usLivePrice)!==null;
-  let price=live?N(s.usLivePrice):N(s.price),change=live?(N(s.usLiveChangePct)??N(s.changePct)):N(s.changePct);
+  let se=currentMarketSession(),live=se==='regular'&&N(s.usLivePrice)!==null,r=usSessionDisplayData(s,se).regular;
+  let price=r.price,change=r.pct;
   let volume=live?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
-  let label=el.querySelector('span'),strong=el.querySelector('strong'),tone=el.querySelector('b'),note=el.querySelector('small');
-  if(label)label.textContent=live?'EEUU · Regular · actual':'EEUU · Regular · referencia';
+  // Solo los hijos directos: el precio lleva dentro su propio <small> (el importe en €) y,
+  // con querySelector a secas, la nota lo pisaba y el precio lo volvía a pintar (parpadeo).
+  let label=el.querySelector(':scope>span'),strong=el.querySelector(':scope>strong'),tone=el.querySelector(':scope>b'),note=el.querySelector(':scope>small');
+  if(label){const t=live?'EEUU · Regular · actual':'EEUU · Regular · cierre';if(label.textContent!==t)label.textContent=t}
   if(strong)setHtmlIfChanged(strong,snapshotPricePair(s,price,false));
-  if(tone){tone.textContent=PC(change);tone.className=C(change)}
-  if(note)note.textContent=(live?'Nasdaq actual':'Último cierre/snapshot regular')+' · Vol '+compactVol(volume);
+  if(tone){const t=PC(change),c=C(change);if(tone.textContent!==t)tone.textContent=t;if(tone.className!==c)tone.className=c}
+  if(note){const t=(live?'Nasdaq en vivo':'Último cierre regular')+' · Vol '+compactVol(volume);if(note.textContent!==t)note.textContent=t}
  });
  visibleLiveNodes('[data-profile-live-range-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.profileLiveRangeKey);if(!s)return;
