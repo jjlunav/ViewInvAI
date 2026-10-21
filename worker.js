@@ -2074,14 +2074,21 @@ async function yahooRegular(symbol){
     return{price,currency:String(m.currency||"").toUpperCase(),exchange:String(m.fullExchangeName||m.exchangeName||""),time:Number(m.regularMarketTime)?new Date(Number(m.regularMarketTime)*1000).toISOString():null,state:String(m.marketState||"")};
   });
 }
-async function yahooEuropeanListings(isin){
+// Bolsas alemanas en euros que publica Yahoo (Xetra, Fráncfort, Stuttgart, Múnich, Berlín, Düsseldorf).
+const YAHOO_DE_RANK={".DE":1,".F":2,".SG":3,".MU":4,".BE":5,".DU":6};
+async function yahooSearchSymbols(q){
+  const r=await fetch("https://query2.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=20&newsCount=0&enableFuzzyQuery=false",{headers:YAHOO_HEADERS,signal:AbortSignal.timeout(8000)});
+  if(!r.ok)throw new Error("Yahoo search "+r.status);
+  return ((await r.json())?.quotes||[]).map(x=>String(x&&x.symbol||"")).filter(Boolean);
+}
+async function yahooEuropeanListings(isin,name=""){
   return memoPriceCheck("ys:"+isin,6*3600000,async()=>{
-    const r=await fetch("https://query2.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(isin)+"&quotesCount=10&newsCount=0",{headers:YAHOO_HEADERS,signal:AbortSignal.timeout(8000)});
-    if(!r.ok)throw new Error("Yahoo search "+r.status);
-    const quotes=(await r.json())?.quotes||[];
-    const rank={".DE":1,".F":2,".SG":3,".MU":4,".BE":5,".DU":6};
-    return quotes.map(q=>String(q&&q.symbol||"")).filter(sym=>Object.keys(rank).some(sfx=>sym.endsWith(sfx)))
-      .sort((a,b)=>rank[a.slice(a.lastIndexOf("."))]-rank[b.slice(b.lastIndexOf("."))]).slice(0,2);
+    // Por ISIN y, si Yahoo no devuelve bolsas alemanas, por nombre de la empresa.
+    let all=await yahooSearchSymbols(isin);
+    const german=list=>list.filter(sym=>Object.keys(YAHOO_DE_RANK).some(sfx=>sym.endsWith(sfx)));
+    if(!german(all).length&&name)all=all.concat(await yahooSearchSymbols(name).catch(()=>[]));
+    const picked=[...new Set(german(all))].sort((a,b)=>YAHOO_DE_RANK[a.slice(a.lastIndexOf("."))]-YAHOO_DE_RANK[b.slice(b.lastIndexOf("."))]).slice(0,2);
+    return{picked,seen:[...new Set(all)].slice(0,12)};
   });
 }
 async function stockPriceCheck(request){
@@ -2102,12 +2109,13 @@ async function stockPriceCheck(request){
   }
   const isin=String(url.searchParams.get("isin")||"").trim().toUpperCase();
   if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return jsonResponse({error:"ISIN no válido"},400);
-  const [lsx,listings]=await Promise.allSettled([fetchTradeRepublicTicker(isin,"LSX"),yahooEuropeanListings(isin)]);
+  const name=String(url.searchParams.get("name")||"").replace(/[^\p{L}\p{N} .&-]/gu,"").trim().slice(0,60);
+  const [lsx,listings]=await Promise.allSettled([fetchTradeRepublicTicker(isin,"LSX"),yahooEuropeanListings(isin,name)]);
   if(lsx.status==="fulfilled"&&lsx.value&&lsx.value.price>0)rows.push({source:"Trade Republic",venue:"LS Exchange (LSX)",price:lsx.value.price,currency:"EUR",primary:true});
-  const syms=listings.status==="fulfilled"?listings.value:[];
+  const syms=listings.status==="fulfilled"?listings.value.picked:[];
   const venues=await Promise.allSettled(syms.map(sym=>yahooRegular(sym)));
   venues.forEach((v,i)=>{if(v.status==="fulfilled"&&v.value.currency==="EUR")rows.push({source:"Yahoo Finance",venue:v.value.exchange||syms[i],price:v.value.price,currency:"EUR",time:v.value.time,reference:true})});
-  return jsonResponse({market,isin,rows,errors:[lsx,listings,...venues].filter(x=>x.status==="rejected").map(x=>String(x.reason&&x.reason.message||x.reason).slice(0,80)),checkedAt:new Date().toISOString()},200,{"Cache-Control":"no-store"});
+  return jsonResponse({market,isin,rows,searched:listings.status==="fulfilled"?listings.value.seen:[],errors:[lsx,listings,...venues].filter(x=>x.status==="rejected").map(x=>String(x.reason&&x.reason.message||x.reason).slice(0,80)),checkedAt:new Date().toISOString()},200,{"Cache-Control":"no-store"});
 }
 
 // Every root routed by handleBackendApi (backend.js). Keep both lists in sync: a root
