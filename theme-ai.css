@@ -2181,3 +2181,17 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
  #stockQuickDetail .unified-stock-header-inner:not(:has(.profile-back-cell))>.profile-live{min-width:0!important;width:auto!important}
  #stockQuickDetail .unified-stock-header .profile-quote-sides{white-space:normal!important;flex-wrap:wrap!important;row-gap:2px!important}
 }
+/* Móvil: botones más pequeños en toda la app (30 px los de icono, 28 px los de texto). */
+@media(max-width:820px){
+ html:root:root:root body:not(#sz-a):not(#sz-b) :is(.global-search-button,.shell-icon-button,.notification-bell,.section-help,.list-view-toggle,.market-sheet-close,.account-button,.btn.icon-btn,.portfolio-icon-action,.profile-wallet-action,.profile-notification-bell,.profile-edit-position,.ai-ask-logo,.filter-icon-button,.catalog-toolbar-mini,.portfolio-refresh,.field-lock){
+  width:30px!important;height:30px!important;min-width:30px!important;min-height:30px!important;max-height:30px!important;padding:0!important;font-size:14px!important;flex:0 0 30px!important;
+ }
+ html:root:root:root body:not(#sz-a):not(#sz-b) :is(.global-search-button,.shell-icon-button,.notification-bell,.account-button,.list-view-toggle,.ai-ask-logo) :is(svg,img){width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important}
+ html:root:root:root body:not(#sz-a):not(#sz-b) .account-button img{width:26px!important;height:26px!important;max-width:26px!important;max-height:26px!important}
+ html:root:root:root body:not(#sz-a):not(#sz-b) :is(.tab,.section-switch,.radar-tier-chip,.ai-pick-chip,.btn.small:not(.profile-edit-position),.btn.portfolio-google-login,.today-event){
+  min-height:28px!important;padding-top:3px!important;padding-bottom:3px!important;font-size:12px!important;
+ }
+ html:root:root:root body:not(#sz-a):not(#sz-b) .settings-nav-item{min-height:34px!important;padding-top:4px!important;padding-bottom:4px!important}
+ html:root:root:root body:not(#sz-a):not(#sz-b) .theme-setting-option{min-height:42px!important}
+ html:root:root:root body:not(#sz-a):not(#sz-b) .profile-primary-actions{gap:6px!important}
+}

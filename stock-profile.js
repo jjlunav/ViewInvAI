@@ -355,7 +355,7 @@ function profilePositionEditActionHtml(s,isTr=false){
  const key=stockKey(s),api=window.ViewInvAIPortfolios;
  const memberships=api&&typeof api.getPortfolioMemberships==='function'?api.getPortfolioMemberships(key,isTr):[];
  if(!memberships||!memberships.length)return'';
- return '<button type="button" class="btn small profile-edit-position" data-profile-edit-position="'+E(key)+'">✎ Posición</button>';
+ return '<button type="button" class="btn small profile-edit-position" data-profile-edit-position="'+E(key)+'" aria-label="Editar posición" title="Editar posición"><span aria-hidden="true">✏️</span></button>';
 }
 function refreshProfilePortfolioActions(s){
  if(!s)return;
