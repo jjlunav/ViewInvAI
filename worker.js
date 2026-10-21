@@ -1,4 +1,5 @@
 import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { cryptoQuotes, cryptoChart, CRYPTO_ASSETS } from "./crypto-server.js";
 
 
 function parseMarketNumber(value) {
@@ -2110,6 +2111,7 @@ export default {
     else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
@@ -2164,6 +2166,21 @@ export default {
     if (url.pathname === "/api/tr-health") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await tradeRepublicHealthResponse());
+    }
+    if (url.pathname === "/api/crypto/catalog") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, jsonResponse({ assets: CRYPTO_ASSETS.map(a => ({ symbol: a.symbol, name: a.name })) }, 200, { "Cache-Control": "public, max-age=3600" }));
+    }
+    if (url.pathname === "/api/crypto/quotes") {
+      const guard = requestGuard(request); if (guard) return guard;
+      const symbols = String(url.searchParams.get("symbols") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 60);
+      try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Cotizaciones cripto no disponibles" }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/crypto/chart") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, jsonResponse(await cryptoChart(url.searchParams.get("symbol"), Number(url.searchParams.get("days")) || 30), 200, { "Cache-Control": "public, max-age=300" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
