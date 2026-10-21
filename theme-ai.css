@@ -1917,20 +1917,20 @@ html[data-theme="light"] .ai-progress{background:linear-gradient(135deg,#eefbf6,
 /* Formato de las listas (compacta · detallada · cuadrícula): el mismo en todas las pantallas.
    Selectores con ids para ganar a los ajustes de cada sección (ui-density, asset-card). */
 html[data-list-view]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){display:grid!important;align-content:start!important}
-html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){grid-template-columns:minmax(0,1fr)!important}
+html:is([data-list-view="compact"],[data-list-view="detailed"]):root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list,.crypto-list){grid-template-columns:minmax(0,1fr)!important}
 
 /* Cuadrícula: tarjetas sueltas en columnas que llenan el ancho. */
-html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list){grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))!important;gap:10px!important;border:0!important;background:transparent!important;overflow:visible!important;border-radius:0!important}
-html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list)>:not(.asset-card,.inbox-row){grid-column:1/-1}
-html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list)>.asset-card{border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;height:100%;margin:0!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list,.crypto-list){grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))!important;gap:10px!important;border:0!important;background:transparent!important;overflow:visible!important;border-radius:0!important}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list,.crypto-list)>:not(.asset-card,.inbox-row){grid-column:1/-1}
+html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.inbox-list,.crypto-list)>.asset-card{border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;height:100%;margin:0!important}
 html[data-list-view="grid"]:root:root body:not(#a11y-floor):not(#lv-a) .inbox-list>.inbox-row{height:100%}
 
 
 /* Compacta: los mismos datos que las otras vistas (nada se oculta), más juntos y como una tabla:
    un panel con separadores, menos relleno y lo secundario en línea en vez de en filas propias. */
-html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows){gap:0!important;border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;overflow:hidden!important}
-html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows)>.asset-card{border:0!important;border-bottom:1px solid var(--line,rgba(140,190,210,.12))!important;border-radius:0!important;margin:0!important;box-shadow:none!important}
-html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows)>.asset-card:last-child{border-bottom:0!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.crypto-list){gap:0!important;border:1px solid var(--line,rgba(140,190,210,.16))!important;border-radius:12px!important;overflow:hidden!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.crypto-list)>.asset-card{border:0!important;border-bottom:1px solid var(--line,rgba(140,190,210,.12))!important;border-radius:0!important;margin:0!important;box-shadow:none!important}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows,.crypto-list)>.asset-card:last-child{border-bottom:0!important}
 html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-row{min-height:0!important;padding-top:4px!important;padding-bottom:4px!important;row-gap:2px!important}
 html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy{display:flex!important;flex-wrap:wrap!important;align-items:baseline!important;column-gap:7px!important;row-gap:0!important;min-width:0}
 html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a) :is(.market-board-list,.radar-list,.future-list,#futureResults,.today-list,.portfolio-position-list,.fund-position-grid,.stock-card-grid,.catalog-mobile-rows,.fund-mobile-rows) .asset-card-copy>strong{flex:0 1 auto;min-width:0;line-height:1.2!important}
@@ -2224,6 +2224,11 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 .crypto-src-ok{color:var(--positive);background:color-mix(in srgb,var(--positive) 14%,transparent)}
 .crypto-src-warn{color:var(--amber,#f5b544);background:color-mix(in srgb,var(--amber,#f5b544) 16%,transparent)}
 .crypto-src-single,.crypto-src-none{color:var(--muted);background:var(--panel-2)}
+/* Alpha: dónde se puede comprar en España. */
+.crypto-where{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.crypto-where.ok{color:var(--positive);background:color-mix(in srgb,var(--positive) 14%,transparent)}
+.crypto-where.dex{color:var(--amber,#f5b544);background:color-mix(in srgb,var(--amber,#f5b544) 16%,transparent)}
+.crypto-alpha-note{border:1px solid color-mix(in srgb,var(--amber,#f5b544) 40%,var(--line));border-radius:12px;padding:8px 10px;background:color-mix(in srgb,var(--amber,#f5b544) 7%,transparent)}
 .crypto-health{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--muted);margin:0 0 8px}
 .crypto-health .ok{color:var(--positive)}
 .crypto-health .off{opacity:.6}
@@ -2384,3 +2389,61 @@ html:root:root body:not(#b1):not(#b2):not(#b3) main .btn.ghost:not(.icon-btn):no
 html:root:root body:not(#b1):not(#b2):not(#b3) main .btn:is(:hover,:focus-visible):not(.icon-btn):not(.vi-icon-button){filter:brightness(1.08)}
 /* El badge de avisos se mantiene en la esquina del nuevo botón. */
 html:root:root body #notificationBell{position:relative!important}
+
+/* Ficha de criptoactivo a pantalla completa (mismo lenguaje que la ficha de una acción). */
+html:root:root body.crypto-detail-open .view.active:not(.crypto-profile){display:none!important}
+html:root:root body.crypto-detail-open .crypto-profile{display:grid!important}
+.crypto-profile{display:grid;gap:12px}
+.crypto-profile-head{position:sticky;top:var(--profile-sticky-top,0);z-index:5;display:grid;grid-template-columns:minmax(0,1fr);gap:8px 10px;padding:10px 0 8px;background:var(--bg);border-bottom:1px solid var(--line)}
+.crypto-profile-back{grid-column:1/-1;justify-self:start}
+.crypto-profile-id{display:flex;align-items:center;gap:10px;min-width:0}
+.crypto-profile-id .crypto-icon{width:36px;height:36px;flex-basis:36px}
+.crypto-profile-id small{display:block;font-size:10px;letter-spacing:.08em;color:var(--muted)}
+.crypto-profile-id strong{display:block;font-size:20px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crypto-profile-id span{font-size:12px;color:var(--muted);font-weight:600}
+.crypto-profile-quote{grid-column:1/-1;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px}
+.crypto-profile-quote strong{font-size:28px;line-height:1.1;letter-spacing:-.01em}
+.crypto-profile-quote b{font-size:13px}
+.crypto-profile-quote b.positive{color:var(--positive)}.crypto-profile-quote b.negative{color:var(--negative)}
+.crypto-profile-quote .crypto-src{margin-left:auto}
+.crypto-profile-quote .crypto-profile-wallet{flex:0 0 auto;align-self:center}
+@media (max-width:820px){
+ /* Como en la ficha de una acción: el nombre deja libre el hueco de los botones flotantes. */
+ html:root:root body.crypto-detail-open .crypto-profile-id{padding-right:calc(var(--account-float-w,0px) + 4px);box-sizing:border-box}
+ html:root:root body.crypto-detail-open:not(#tb-x) #accountArea>.notification-bell,
+ html:root:root body.crypto-detail-open:not(#tb-x) #accountArea>#globalHelpButton{display:none!important}
+ html:root:root body.crypto-detail-open .crypto-profile-head{padding-top:calc(var(--tb-head-top,0px) + 8px)}
+}
+.crypto-profile-tabs{grid-column:1/-1}
+.crypto-profile-body{display:grid;gap:12px}
+html:root:root body .crypto-profile-section .profile-stat-row strong.positive{color:var(--positive)!important}
+html:root:root body .crypto-profile-section .profile-stat-row strong.negative{color:var(--negative)!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) #view-crypto.crypto-profile-open .section-switcher{display:none!important}
+.crypto-profile .crypto-chart-wrap{padding:6px 2px 2px}
+.crypto-profile .crypto-chart{display:block;width:100%;height:auto}
+.crypto-profile .crypto-chart .line{fill:none;stroke-width:1.8;vector-effect:non-scaling-stroke}
+.crypto-profile .crypto-chart .area{stroke:none;opacity:.12}
+.crypto-profile .crypto-chart.positive .line{stroke:var(--positive)}.crypto-profile .crypto-chart.positive .area{fill:var(--positive)}
+.crypto-profile .crypto-chart.negative .line{stroke:var(--negative)}.crypto-profile .crypto-chart.negative .area{fill:var(--negative)}
+.crypto-profile .crypto-chart-range{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-top:4px}
+.crypto-profile .crypto-chart-range b.positive{color:var(--positive)}.crypto-profile .crypto-chart-range b.negative{color:var(--negative)}
+.crypto-profile .crypto-range-tabs{margin:2px 0 6px}
+.crypto-profile-cta{justify-content:center}
+.crypto-card .crypto-quote{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.crypto-card .crypto-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--muted)}
+.crypto-card .crypto-dot.ok{background:var(--positive)}.crypto-card .crypto-dot.warn{background:var(--amber,#f5b544)}
+html:root:root body .crypto-card .asset-card-context-slot:has(.asset-card-context-grid[data-context-items="0"]){display:none!important}
+html[data-list-view="compact"] .crypto-card .crypto-quote{flex-direction:column;align-items:flex-end;gap:0}
+html[data-list-view="compact"] .crypto-card .crypto-quote .crypto-price{font-size:15px;margin:0}
+html[data-list-view="compact"] .crypto-card .crypto-quote b{display:inline-flex;align-items:center;gap:5px}
+html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a):not(#cx) .crypto-card .asset-card-row[data-card-template="compact-slots"]{grid-template-areas:"marker identity quote"!important;grid-template-rows:auto!important;min-height:0!important}
+
+/* Alpha va en su propia columna, separada de los mercados autorizados (Mercado, Mi cripto, Radar). */
+#view-crypto .crypto-tabs-row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1.25fr);gap:8px;width:100%}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha{border-style:dashed!important;border-color:color-mix(in srgb,var(--amber,#f5b544) 55%,transparent)!important;background:color-mix(in srgb,var(--amber,#f5b544) 6%,transparent)!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button{line-height:1!important;gap:1px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;color:var(--amber,#c98a12)!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button small{display:block;font-size:8.5px;line-height:1;margin-top:1px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button.active{background:color-mix(in srgb,var(--amber,#f5b544) 20%,transparent)!important;color:var(--text)!important}
+html[data-theme="light"]:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button:not(.active){color:#9a6a06!important}
+/* Tarjetas Alpha: borde lateral ámbar para no confundirlas con las monedas de mercados autorizados. */
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.crypto-card-alpha{border-color:color-mix(in srgb,var(--amber,#f5b544) 38%,var(--line))!important;box-shadow:inset 3px 0 0 color-mix(in srgb,var(--amber,#f5b544) 75%,transparent)!important}

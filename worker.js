@@ -1,5 +1,5 @@
 import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
-import { cryptoQuotes, cryptoChart, cryptoCatalog } from "./crypto-server.js";
+import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
 function parseMarketNumber(value) {
@@ -160,7 +160,7 @@ function nativePreflightResponse(request) {
 }
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com https://bin.bnbstatic.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -2267,6 +2267,18 @@ export default {
       try { return nativeCorsResponse(request, jsonResponse(await cryptoChart(url.searchParams.get("symbol"), Number(url.searchParams.get("days")) || 30, env), 200, { "Cache-Control": "public, max-age=300" })); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible" }, 502, { "Cache-Control": "no-store" })); }
     }
+    // Binance Alpha: solo consulta (Binance no opera con residentes en España desde julio de 2026).
+    if (url.pathname === "/api/crypto/alpha") {
+      const guard = requestGuard(request); if (guard) return guard;
+      const ids = String(url.searchParams.get("ids") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
+      try { return nativeCorsResponse(request, jsonResponse(await alphaTokens({ env, ids: ids.length ? ids : null }), 200, { "Cache-Control": "no-store" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Binance Alpha no disponible: " + String(error && error.message || error).slice(0, 80) }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/crypto/alpha/chart") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, jsonResponse(await alphaChart(url.searchParams.get("id"), Number(url.searchParams.get("days")) || 7, env), 200, { "Cache-Control": "public, max-age=300" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Gráfico no disponible" }, 502, { "Cache-Control": "no-store" })); }
+    }
     if (url.pathname === "/api/us-live") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await nasdaqQuotes(request));
@@ -2340,7 +2352,8 @@ export default {
         loadChart: loadChartForBackend,
         loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
-        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env)
+        loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
+        loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));

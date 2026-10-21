@@ -2,7 +2,8 @@
  * ViewInvAI · Criptoactivos
  * -------------------------
  * Mercado (precio de consenso de varias fuentes públicas), Mi cripto (posiciones en D1,
- * importación de Bit2Me) y Radar cripto (señales con reglas a la vista).
+ * importación de Bit2Me), Radar cripto (señales con reglas a la vista) y Alpha (tokens de Binance
+ * Alpha, solo consulta: Binance no opera en España sin licencia MiCA).
  * El precio es la mediana de las fuentes; si alguna se separa más del umbral se avisa.
  */
 (root=>{
@@ -10,7 +11,7 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
  const q=s=>document.querySelector(s);
- const state={assets:[],quotes:{},sources:{},threshold:1,updatedAt:null,loading:false,error:'',tab:'market',search:'',limit:60,positions:[],positionsLoaded:false,timer:null,detail:null,chartDays:30};
+ const state={assets:[],quotes:{},sources:{},threshold:1,updatedAt:null,loading:false,error:'',tab:'market',search:'',limit:60,alpha:{tokens:[],updatedAt:null,loading:false,error:'',stale:false,limit:40},positions:[],positionsLoaded:false,timer:null,detail:null,chartDays:30};
 
  // ---------- Formato ----------
  function eur(v,opts={}){
@@ -42,6 +43,13 @@
    root.dispatchEvent(new CustomEvent('viewinvai:crypto-quotes',{detail:{quotes:state.quotes,updatedAt:state.updatedAt}}));
   }catch(error){state.error=error&&error.message||'Sin conexión con las fuentes'}
   finally{state.loading=false;render()}
+ }
+ // Binance Alpha: solo consulta (ver alphaTokens en crypto-server.js).
+ async function loadAlpha(){
+  const A=state.alpha;if(A.loading)return;A.loading=true;if(state.tab==='alpha')render();
+  try{const d=await fetchJson('/api/crypto/alpha');A.tokens=Array.isArray(d.tokens)?d.tokens:[];A.updatedAt=d.updatedAt||new Date().toISOString();A.stale=!!d.stale;A.threshold=num(d.divergenceThresholdPct)||2;A.error=''}
+  catch(error){A.error=error&&error.message||'Sin conexión'}
+  finally{A.loading=false;render()}
  }
  function auth(){return root.ViewInvAIAuth&&root.ViewInvAIAuth.getUser&&root.ViewInvAIAuth.getUser()?root.ViewInvAIAuth:null}
  async function api(path,options={}){
@@ -90,20 +98,28 @@
  function sourceBadge(qt){
   if(!qt||qt.status==='none')return'<span class="crypto-src crypto-src-none" title="Ninguna fuente respondió">Sin precio</span>';
   if(qt.status==='single')return'<span class="crypto-src crypto-src-single" title="Solo una fuente: sin contraste">1 fuente</span>';
+  if(qt.status==='unchecked')return'<span class="crypto-src crypto-src-single" title="Fuera de las 60 de más volumen: se contrasta al abrir la ficha">Sin contrastar</span>';
   if(qt.status==='divergent')return'<span class="crypto-src crypto-src-warn" title="'+esc((qt.outliers||[]).join(', '))+' se separan de la mediana">⚠ '+esc((num(qt.maxDeviationPct)||0).toLocaleString('es-ES',{maximumFractionDigits:2}))+' %</span>';
   return'<span class="crypto-src crypto-src-ok" title="'+esc(qt.count)+' fuentes coinciden (±'+esc(state.threshold)+' %)">✓ '+esc(qt.count)+' fuentes</span>';
  }
  function icon(sym,qt){
   const img=qt&&qt.image;
   // Solo logos de CoinGecko (permitidos por la CSP); si no cargan, se ven las siglas.
-  return img&&/^https:\/\/(coin-images|assets)\.coingecko\.com\//.test(img)?'<img class="crypto-icon" src="'+esc(img)+'" alt="" loading="lazy" referrerpolicy="no-referrer" data-crypto-sym="'+esc(sym.slice(0,3))+'">':'<span class="crypto-icon crypto-icon-text">'+esc(sym.slice(0,3))+'</span>';
+  return img&&/^https:\/\/((coin-images|assets)\.coingecko\.com|bin\.bnbstatic\.com)\//.test(img)?'<img class="crypto-icon" src="'+esc(img)+'" alt="" loading="lazy" referrerpolicy="no-referrer" data-crypto-sym="'+esc(sym.slice(0,3))+'">':'<span class="crypto-icon crypto-icon-text">'+esc(sym.slice(0,3))+'</span>';
+ }
+ // Formato de las listas (el mismo selector que acciones y fondos): compacto = nombre y precio;
+ // detallado y cuadrícula = además contraste, 7 días y capitalización.
+ const listMode=()=>document.documentElement.dataset.listView||'detailed';
+ function quoteCellHtml(qt,withDot){
+  const dot=withDot?'<i class="crypto-dot '+(qt.status==='ok'?'ok':qt.status==='divergent'?'warn':'off')+'" title="'+esc(qt.status==='ok'?(qt.count||0)+' fuentes coinciden':qt.status==='divergent'?'Alguna fuente se separa':'Sin contraste')+'"></i>':'';
+  return '<span class="crypto-quote"><span class="crypto-price">'+esc(eur(qt.price))+'</span><b class="'+tone(qt.change24h)+'">'+dot+esc(pct(qt.change24h))+'</b></span>';
  }
  function marketCard(a){
-  const qt=state.quotes[a.symbol]||{},held=state.positions.some(p=>p.symbol===a.symbol&&num(p.units)>0);
+  const qt=state.quotes[a.symbol]||{},held=state.positions.some(p=>p.symbol===a.symbol&&num(p.units)>0),compactMode=listMode()==='compact';
   return root.ViewInvAICards.render({context:'crypto',className:'crypto-card',title:a.symbol,subtitle:a.name+(held?' · en Mi cripto':''),
    rank:qt.rank?String(qt.rank):'',leadingHtml:icon(a.symbol,qt),
    openAttrs:' data-crypto-detail="'+esc(a.symbol)+'" role="button" tabindex="0"',
-   cells:[{label:'Precio · 24 h',html:'<span class="crypto-price">'+esc(eur(qt.price))+'</span><b class="'+tone(qt.change24h)+'">'+esc(pct(qt.change24h))+'</b>'},
+   cells:compactMode?[{label:'',html:quoteCellHtml(qt,true)}]:[{label:'Precio · 24 h',html:quoteCellHtml(qt,false)},
     {label:'Contraste',html:sourceBadge(qt)},{label:'7 días',value:pct(qt.change7d),tone:tone(qt.change7d)},{label:'Capitalización',value:compact(qt.marketCap)}]});
  }
  function filtered(){
@@ -132,6 +148,10 @@
    '<div class="crypto-actions"><button type="button" class="btn small" data-crypto-add>＋ Añadir</button><button type="button" class="btn small ghost" data-crypto-import>⇪ Importar extracto</button></div>';
   const card=p=>{
    const v=valuation(p);
+   // Compacta: valor y P&L en una línea; editar y borrar quedan en la ficha (botón 💼) y en la detallada.
+   if(listMode()==='compact')return root.ViewInvAICards.render({context:'crypto-portfolio',className:'crypto-card',title:p.symbol,subtitle:units(p.units)+' · '+(p.platform||'Bit2Me'),leadingHtml:icon(p.symbol,v.quote),
+    openAttrs:' data-crypto-detail="'+esc(p.symbol)+'" role="button" tabindex="0"',
+    cells:[{label:'',html:'<span class="crypto-quote"><span class="crypto-price">'+esc(eur(v.value,{decimals:2}))+'</span><b class="'+tone(v.pnl)+'">'+esc(v.pnl===null?(v.quote?pct(v.quote.change24h)+' · 24 h':'—'):(v.pnl>=0?'+':'')+eur(v.pnl,{decimals:2})+(v.pnlPct===null?'':' · '+pct(v.pnlPct)))+'</b></span>'}]});
    return root.ViewInvAICards.render({context:'crypto-portfolio',className:'crypto-card',title:p.symbol,subtitle:units(p.units)+' · '+(p.platform||'Bit2Me'),leadingHtml:icon(p.symbol,v.quote),
     openAttrs:' data-crypto-detail="'+esc(p.symbol)+'" role="button" tabindex="0"',
     cells:[{label:'Valor',html:'<span class="crypto-price">'+esc(eur(v.value,{decimals:2}))+'</span>'+(v.quote?'<b class="'+tone(v.quote.change24h)+'">'+esc(pct(v.quote.change24h))+'</b>':'')},
@@ -150,18 +170,57 @@
   if(!rows.length)return intro+'<p class="crypto-empty">Ninguna moneda muestra ahora una señal destacada.</p>';
   return intro+'<div class="crypto-list">'+rows.map(({a,qt,signals})=>root.ViewInvAICards.render({context:'crypto-radar',className:'crypto-card',title:a.symbol,subtitle:a.name,leadingHtml:icon(a.symbol,qt),
    openAttrs:' data-crypto-detail="'+esc(a.symbol)+'" role="button" tabindex="0"',
-   cells:[{label:'Precio · 24 h',html:'<span class="crypto-price">'+esc(eur(qt.price))+'</span><b class="'+tone(qt.change24h)+'">'+esc(pct(qt.change24h))+'</b>'},
+   cells:listMode()==='compact'?[{label:'',html:quoteCellHtml(qt,false)}]:[{label:'Precio · 24 h',html:'<span class="crypto-price">'+esc(eur(qt.price))+'</span><b class="'+tone(qt.change24h)+'">'+esc(pct(qt.change24h))+'</b>'},
     {label:'Señales',html:'<span class="crypto-signals">'+signals.map(s=>'<em class="crypto-signal '+esc(s.tone)+'" title="'+esc(s.why)+'">'+esc(s.label)+'</em>').join('')+'</span>'}],
    metaHtml:'<span class="crypto-why">'+signals.map(s=>esc(s.why)).join(' · ')+'</span>'})).join('')+'</div>';
  }
+ // Alpha: tokens en cadena que destaca Binance antes de listarlos. Binance no opera con residentes
+ // en España desde julio de 2026 (sin licencia MiCA): se muestran como radar temprano, sin enlaces
+ // de compra, y se indica si la moneda ya se puede comprar en euros en un exchange autorizado.
+ function whereBadge(t){
+  return t.euroMarket?'<span class="crypto-where ok" title="Cotiza en euros en Kraken, Bitstamp, Bit2Me o Coinbase (con licencia MiCA)">€ · MiCA</span>'
+   :'<span class="crypto-where dex" title="Solo en cadena (DEX): no está en un exchange autorizado en España">Solo en cadena</span>';
+ }
+ function alphaFiltered(){
+  const s=state.search.trim().toLowerCase(),A=state.alpha;
+  return A.tokens.filter(t=>!s||t.symbol.toLowerCase().includes(s)||String(t.name).toLowerCase().includes(s)||String(t.chain).toLowerCase().includes(s));
+ }
+ function alphaCard(t){
+  const qt=Object.assign({image:t.icon},t);
+  return root.ViewInvAICards.render({context:'crypto-alpha',className:'crypto-card crypto-card-alpha',title:t.symbol,subtitle:t.name+' · '+t.chain,leadingHtml:icon(t.symbol,qt),
+   openAttrs:' data-crypto-detail="'+esc(t.id)+'" role="button" tabindex="0"',
+   cells:listMode()==='compact'?[{label:'',html:quoteCellHtml(qt,true)}]:[{label:'Precio · 24 h',html:quoteCellHtml(qt,false)},
+    {label:'Contraste',html:sourceBadge(qt)},{label:'Volumen 24 h',value:compact(t.volume24h)},{label:'Dónde',html:whereBadge(t)}]});
+ }
+ function alphaHtml(){
+  const A=state.alpha;
+  const intro='<p class="crypto-note crypto-alpha-note"><b>Solo consulta.</b> Tokens que Binance destaca antes de listarlos. Binance no tiene licencia MiCA y no admite compras desde España: «€ · MiCA» indica que ya cotiza en euros en Kraken, Bitstamp, Bit2Me o Coinbase.</p>';
+  if(!A.tokens.length)return intro+(A.error?'<p class="crypto-empty">Binance Alpha no responde ahora: '+esc(A.error)+'</p>':'<p class="crypto-empty">Cargando tokens Alpha…</p>');
+  const rows=alphaFiltered(),shown=state.search.trim()?rows:rows.slice(0,A.limit);
+  return intro+(A.stale?'<p class="crypto-note">Binance Alpha no responde: lista guardada, precios contrastados ahora con DexScreener.</p>':'')+
+   (rows.length?'<div class="crypto-list">'+shown.map(alphaCard).join('')+'</div>'+
+   (shown.length<rows.length?'<div class="crypto-actions crypto-more"><button type="button" class="btn small ghost" data-alpha-more>Ver más ('+(rows.length-shown.length)+')</button></div>':''):'<p class="crypto-empty">Ningún token coincide con la búsqueda.</p>')+
+   '<p class="crypto-note">'+A.tokens.length+' tokens por volumen. Precio de Binance Alpha contrastado con el par de más liquidez de DexScreener (las 60 primeras; en la ficha, también con GeckoTerminal). Pasado a € con el precio de USDT en los mercados en euros.</p>';
+ }
+ // Carteras › Cripto: la misma vista «Mi cripto», dentro de Carteras.
+ function renderPortfolioPanel(){
+  const el=q('#portfolioCryptoApp');if(!el||el.hidden)return;
+  el.innerHTML='<div class="crypto-portfolio">'+myHtml()+'</div>';
+ }
+ async function showPortfolio(){
+  renderPortfolioPanel();
+  await Promise.all([loadPositions(),state.updatedAt&&Date.now()-Date.parse(state.updatedAt)<30000?null:loadQuotes()]);
+  renderPortfolioPanel();
+ }
  function render(){
+  renderPortfolioPanel();
   const body=q('#cryptoBody');if(!body)return;
   document.querySelectorAll('[data-crypto-tab]').forEach(b=>{const on=b.dataset.cryptoTab===state.tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false')});
-  const stamp=q('#cryptoUpdated');
-  if(stamp)stamp.textContent=state.updatedAt?'Actualizado '+ageText(state.updatedAt):state.loading?'Actualizando…':'';
-  const search=q('#cryptoSearch');if(search)search.hidden=state.tab!=='market';
-  body.innerHTML=state.tab==='mine'?myHtml():state.tab==='radar'?radarHtml():marketHtml();
-  if(state.detail)renderDetail();
+  const stamp=q('#cryptoUpdated'),at=state.tab==='alpha'?state.alpha.updatedAt:state.updatedAt,busy=state.tab==='alpha'?state.alpha.loading:state.loading;
+  if(stamp)stamp.textContent=at?'Actualizado '+ageText(at):busy?'Actualizando…':'';
+  const search=q('#cryptoSearch');if(search)search.hidden=state.tab!=='market'&&state.tab!=='alpha';
+  body.innerHTML=state.tab==='mine'?myHtml():state.tab==='radar'?radarHtml():state.tab==='alpha'?alphaHtml():marketHtml();
+  if(state.detail&&!state.detail.alpha){const fresh=state.quotes[state.detail.symbol];if(fresh&&!(state.detail.quote&&state.detail.quote.sources&&state.detail.quote.sources.length>(fresh.sources||[]).length))state.detail.quote=Object.assign({},state.detail.quote||{},fresh);renderDetail()}
  }
 
  // ---------- Ficha (modal) ----------
@@ -177,44 +236,149 @@
   modal.classList.add('open');modal.setAttribute('aria-hidden','false');q('#cryptoModalBackdrop').classList.add('open');q('#cryptoModalBackdrop').setAttribute('aria-hidden','false');document.body.classList.add('app-modal-open');
  }
  function closeModal(){
-  state.detail=null;
   q('#cryptoModal')?.classList.remove('open');q('#cryptoModal')?.setAttribute('aria-hidden','true');
   q('#cryptoModalBackdrop')?.classList.remove('open');q('#cryptoModalBackdrop')?.setAttribute('aria-hidden','true');
   document.body.classList.remove('app-modal-open');
  }
- function chartSvg(points){
+ function chartSvg(points,h=170){
   if(!points||points.length<2)return'<p class="crypto-empty">Gráfico no disponible.</p>';
-  const w=320,h=110,xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),dy=(y1-y0)||1;
-  const d=points.map((p,i)=>(i?'L':'M')+((p[0]-x0)/((x1-x0)||1)*w).toFixed(1)+' '+(h-(p[1]-y0)/dy*(h-8)-4).toFixed(1)).join(' ');
-  const up=ys[ys.length-1]>=ys[0];
-  return'<svg class="crypto-chart '+(up?'positive':'negative')+'" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" role="img" aria-label="Evolución del precio"><path d="'+d+'"/></svg><div class="crypto-chart-range"><span>Mín. '+esc(eur(y0))+'</span><span>Máx. '+esc(eur(y1))+'</span></div>';
+  const w=360,xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),dy=(y1-y0)||1;
+  const pts=points.map(p=>[((p[0]-x0)/((x1-x0)||1)*w),(h-(p[1]-y0)/dy*(h-12)-6)]);
+  const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const up=ys[ys.length-1]>=ys[0],first=ys[0],last=ys[ys.length-1];
+  return'<svg class="crypto-chart '+(up?'positive':'negative')+'" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" role="img" aria-label="Evolución del precio"><path class="area" d="'+d+' L'+w+' '+h+' L0 '+h+' Z"/><path class="line" d="'+d+'"/></svg>'+
+   '<div class="crypto-chart-range"><span>Mín. '+esc(eur(y0))+'</span><b class="'+tone(last-first)+'">'+esc(pct((last/first-1)*100))+' en el periodo</b><span>Máx. '+esc(eur(y1))+'</span></div>';
  }
+ // ---------- Ficha a pantalla completa (como la de una acción) ----------
+ // Se abre dentro de la vista Cripto, con su propia entrada de historial: el gesto o botón
+ // «atrás» de Android (y el del navegador) vuelve a la lista donde estabas.
+ function profileBox(){
+  let box=q('#cryptoProfile');
+  if(!box){box=document.createElement('section');box.id='cryptoProfile';box.className='crypto-profile view';box.hidden=true;(q('main.main')||q('main')||document.body).appendChild(box)}
+  return box;
+ }
+ const isAlphaId=s=>/^ALPHA_\d{1,6}$/.test(String(s||''));
+ function nativeApp(){return document.documentElement.dataset.nativeApp==='1'}
  async function openDetail(sym){
-  state.detail={symbol:sym,quote:state.quotes[sym]||null,chart:null};
-  openModal(sym,'<p class="crypto-empty">Contrastando fuentes…</p>');renderDetail();
+  const scrollY=window.scrollY||0;
+  const alpha=isAlphaId(sym);
+  state.detail={symbol:sym,alpha,quote:alpha?state.alpha.tokens.find(t=>t.id===sym)||null:state.quotes[sym]||null,chart:null,tab:'general',scrollY};
+  // Como la ficha de una acción: una página encima de la vista actual (Cripto, Carteras, Mi día…);
+  // «atrás» vuelve exactamente a donde estabas.
+  document.body.classList.add('crypto-detail-open');
+  const box=profileBox();box.hidden=false;
+  try{const st=history.state||{};history.pushState(Object.assign({},st,{cryptoProfile:sym,__viewinvaiDepth:(Number(st.__viewinvaiDepth)||0)+1}),'',location.href)}catch(_){}
+  renderDetail();window.scrollTo({top:0,behavior:'auto'});
+  if(alpha){
+   try{const d=await fetchJson('/api/crypto/alpha?ids='+encodeURIComponent(sym));const t=(d.tokens||[])[0];if(t&&state.detail&&state.detail.symbol===sym){state.detail.quote=t;renderDetail()}}catch(_){}
+   loadChart(sym,state.alphaDays||7);return;
+  }
   try{const d=await fetchJson('/api/crypto/quotes?symbols='+encodeURIComponent(sym)+'&detail=1');if(state.detail&&state.detail.symbol===sym){state.detail.quote=(d.quotes||{})[sym]||state.detail.quote;renderDetail()}}catch(_){}
   loadChart(sym,state.chartDays);
  }
+ // Cierra la ficha sin tocar el historial (lo usan «atrás» y el cambio de vista).
+ function closeDetail(){
+  if(!state.detail)return false;
+  const y=state.detail.scrollY||0;state.detail=null;
+  document.body.classList.remove('crypto-detail-open');
+  const box=q('#cryptoProfile');if(box){box.hidden=true;box.innerHTML=''}
+  render();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));
+  return true;
+ }
+ function backFromDetail(){if(history.state&&history.state.cryptoProfile)history.back();else closeDetail()}
  async function loadChart(sym,days){
-  state.chartDays=days;if(state.detail)state.detail.chart=null;renderDetail();
-  try{const d=await fetchJson('/api/crypto/chart?symbol='+encodeURIComponent(sym)+'&days='+days);if(state.detail&&state.detail.symbol===sym){state.detail.chart=d.points||[];renderDetail()}}
+  const alpha=isAlphaId(sym);
+  if(alpha)state.alphaDays=days;else state.chartDays=days;if(state.detail)state.detail.chart=null;renderDetail();
+  try{const d=await fetchJson(alpha?'/api/crypto/alpha/chart?id='+encodeURIComponent(sym)+'&days='+days:'/api/crypto/chart?symbol='+encodeURIComponent(sym)+'&days='+days);if(state.detail&&state.detail.symbol===sym){state.detail.chart=d.points||[];state.detail.chartSource=d.source||'';renderDetail()}}
   catch(_){if(state.detail){state.detail.chart=[];renderDetail()}}
  }
+ const row=(label,value,sub='',cls='')=>'<div class="profile-stat-row"><div><span>'+esc(label)+'</span>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</div><strong class="'+esc(cls)+'">'+value+'</strong></div>';
+ const section=(title,meta,body)=>'<section class="profile-section profile-stats-section crypto-profile-section"><div class="profile-section-head"><h3>'+esc(title)+'</h3>'+(meta?'<span>'+esc(meta)+'</span>':'')+'</div><div class="profile-stat-list">'+body+'</div></section>';
+ function shortAddr(a){a=String(a||'');return a.length>14?a.slice(0,6)+'…'+a.slice(-4):a}
+ function renderAlphaDetail(d,box){
+  const t=d.quote||{symbol:d.symbol,name:d.symbol},thr=state.alpha.threshold||2;
+  const sources=(t.sources||[]);
+  const tabs=[['general','General'],['chart','Gráfico'],['sources','Fuentes']];
+  const head='<header class="crypto-profile-head">'+
+   (nativeApp()?'':'<button type="button" class="btn ghost small crypto-profile-back" data-crypto-back>← Volver</button>')+
+   '<div class="crypto-profile-id">'+icon(t.symbol||'?',{image:t.icon})+'<div><small>BINANCE ALPHA · '+esc(String(t.chain||'').toUpperCase())+'</small><strong>'+esc(t.name||t.symbol)+'</strong><span>'+esc(t.symbol||'')+'</span></div></div>'+
+   '<div class="crypto-profile-quote"><strong>'+esc(eur(t.price))+'</strong><b class="'+tone(t.change24h)+'">'+esc(pct(t.change24h))+' · 24 h</b>'+sourceBadge(t)+'</div>'+
+   '<nav class="compact-tabs crypto-profile-tabs" aria-label="Secciones de la ficha">'+tabs.map(([k,l])=>'<button type="button" class="tab'+(d.tab===k?' active':'')+'" data-crypto-profile-tab="'+k+'">'+l+'</button>').join('')+'</nav>'+
+   '</header>';
+  let body;
+  const days=state.alphaDays||7;
+  if(d.tab==='chart'){
+   body='<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Evolución del precio</h3><span>'+esc(d.chartSource||'GeckoTerminal')+'</span></div>'+
+    '<nav class="compact-tabs crypto-range-tabs">'+[1,7,30,90].map(n=>'<button type="button" class="tab'+(days===n?' active':'')+'" data-crypto-days="'+n+'">'+(n===1?'24 h':n+' d')+'</button>').join('')+'</nav>'+
+    '<div class="crypto-chart-wrap">'+(d.chart===null?'<p class="crypto-empty">Cargando gráfico…</p>':chartSvg(d.chart,200))+'</div>'+
+    '<p class="crypto-note">Velas del pool con más liquidez, en USD pasadas a € con el cambio actual.</p></section>';
+  }else if(d.tab==='sources'){
+   body='<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Contraste de fuentes</h3><span>Desviación sobre Binance Alpha</span></div>'+
+    (sources.length?'<table class="crypto-sources"><thead><tr><th>Fuente</th><th>Tipo</th><th>Precio</th><th>Desv.</th></tr></thead><tbody>'+sources.map(s=>{const dev=num(s.deviationPct),bad=dev!==null&&Math.abs(dev)>thr;return'<tr class="'+(bad?'is-outlier':'')+'"><td>'+esc(s.source)+(s.dex?' <small>'+esc(s.dex)+'</small>':'')+'</td><td>'+esc(s.kind)+'</td><td>'+esc(eur(s.price))+'</td><td>'+(s.source==='Binance Alpha'?'ref.':dev===null?'—':(bad?'⚠ ':'')+esc(pct(dev)))+'</td></tr>'}).join('')+'</tbody></table>':'<p class="crypto-empty">Contrastando fuentes…</p>')+
+    '<p class="crypto-note">Se contrasta con el par de DexScreener con más liquidez (mínimo 20.000 $) y con GeckoTerminal. Se avisa si alguna se separa más de un '+esc(thr)+' %: en tokens poco líquidos el precio puede moverse mucho entre mercados.</p></section>';
+  }else{
+   const range=num(t.low24h)!==null&&num(t.high24h)!==null?esc(eur(t.low24h))+' – '+esc(eur(t.high24h)):'—';
+   const listed=num(t.listingTime)?new Date(t.listingTime).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}):'—';
+   body='<p class="crypto-note crypto-alpha-note"><b>Solo consulta.</b> Binance no opera con residentes en España desde julio de 2026 (sin licencia MiCA). '+(t.euroMarket?'Esta moneda ya cotiza en euros en un exchange autorizado del catálogo: búscala en la pestaña Mercado.':'Esta moneda solo existe en cadena (DEX): no la ofrece ningún exchange autorizado del catálogo. Comprar en un DEX conlleva riesgo de liquidez, de contrato falso y de pérdida total.')+'</p>'+
+    section('Resumen de mercado','Lo esencial primero',
+     row('Precio',esc(eur(t.price)),t.count?t.count+' fuentes':'')+
+     row('Variación 24 h',esc(pct(t.change24h)),'',tone(t.change24h))+
+     row('Rango 24 h',range,'Mínimo – máximo')+
+     row('Volumen 24 h',esc(compact(t.volume24h)),num(t.trades24h)?Math.round(t.trades24h).toLocaleString('es-ES')+' operaciones':'')+
+     row('Capitalización',esc(compact(t.marketCap)),num(t.fdv)?'Totalmente diluida '+compact(t.fdv):'')+
+     row('Liquidez en cadena',esc(compact(t.liquidity)),'Binance Alpha'))+
+    section('Token','Datos en cadena',
+     row('Dónde comprar en España',whereBadge(t),t.euroMarket?'Kraken, Bitstamp, Bit2Me o Coinbase':'No disponible en exchanges MiCA')+
+     row('Red',esc(t.chain||'—'))+
+     row('Contrato','<span translate="no" title="'+esc(t.contract)+'">'+esc(shortAddr(t.contract))+'</span>','Compruébalo siempre: hay copias falsas')+
+     row('Titulares',num(t.holders)?esc(Math.round(t.holders).toLocaleString('es-ES')):'—')+
+     row('En Alpha desde',esc(listed)))+
+    (d.chart&&d.chart.length>1?'<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Últimos '+esc(days===1?'24 h':days+' días')+'</h3><span>'+esc(d.chartSource||'')+'</span></div><div class="crypto-chart-wrap">'+chartSvg(d.chart,120)+'</div></section>':'');
+  }
+  box.innerHTML=head+'<div class="crypto-profile-body">'+body+'</div>';
+ }
  function renderDetail(){
-  const d=state.detail,body=q('#cryptoModalBody');if(!d||!body)return;
-  const a=state.assets.find(x=>x.symbol===d.symbol)||{symbol:d.symbol,name:d.symbol},qt=d.quote||{};
-  q('#cryptoModalTitle').textContent=a.symbol+' · '+a.name;
-  const pos=state.positions.filter(p=>p.symbol===a.symbol);
+  const d=state.detail,box=q('#cryptoProfile');if(!d||!box)return;
+  if(d.alpha)return renderAlphaDetail(d,box);
+  const a=state.assets.find(x=>x.symbol===d.symbol)||{symbol:d.symbol,name:(d.quote&&d.quote.name)||d.symbol},qt=d.quote||{};
+  const pos=state.positions.filter(p=>p.symbol===a.symbol),held=pos.filter(p=>num(p.units)>0);
   const sources=(qt.sources||[]).slice().sort((x,y)=>(num(y.price)||0)-(num(x.price)||0));
-  body.innerHTML='<div class="crypto-detail-head">'+icon(a.symbol,qt)+'<div><strong>'+esc(eur(qt.price))+'</strong><b class="'+tone(qt.change24h)+'">'+esc(pct(qt.change24h))+' · 24 h</b></div>'+sourceBadge(qt)+'</div>'+
-   '<div class="crypto-chart-tabs" role="tablist">'+[7,30,90,365].map(n=>'<button type="button" class="'+(state.chartDays===n?'active':'')+'" data-crypto-days="'+n+'">'+(n===365?'1 año':n+' d')+'</button>').join('')+'</div>'+
-   (d.chart===null?'<p class="crypto-empty">Cargando gráfico…</p>':chartSvg(d.chart))+
-   '<h3 class="crypto-subhead">Contraste de fuentes</h3>'+
-   (sources.length?'<table class="crypto-sources"><thead><tr><th>Fuente</th><th>Tipo</th><th>Precio</th><th>Desv.</th></tr></thead><tbody>'+sources.map(s=>{const dev=num(s.deviationPct),bad=dev!==null&&Math.abs(dev)>state.threshold;return'<tr class="'+(bad?'is-outlier':'')+'"><td>'+esc(s.source)+'</td><td>'+esc(s.kind)+'</td><td>'+esc(eur(s.price))+'</td><td>'+(dev===null?'—':(bad?'⚠ ':'')+esc(pct(dev)))+'</td></tr>'}).join('')+'</tbody></table>':'<p class="crypto-empty">Sin fuentes disponibles ahora.</p>')+
-   '<p class="crypto-note">Precio mostrado: mediana de las fuentes'+(qt.status==='divergent'&&qt.agreeing>=3?', sin las que se separan más de un '+esc(state.threshold)+' %':'')+'. Ningún organismo público publica precios de criptoactivos en tiempo real; por eso se contrastan mercados (Kraken, Bitstamp, Coinbase, Bit2Me) y agregadores (CoinGecko, CoinPaprika).</p>'+
-   '<div class="crypto-metrics"><span>Capitalización <b>'+esc(compact(qt.marketCap))+'</b></span><span>Volumen 24 h <b>'+esc(compact(qt.volume24h))+'</b></span><span>7 días <b class="'+tone(qt.change7d)+'">'+esc(pct(qt.change7d))+'</b></span><span>30 días <b class="'+tone(qt.change30d)+'">'+esc(pct(qt.change30d))+'</b></span><span>Rango 24 h <b>'+esc(eur(qt.low24h))+' – '+esc(eur(qt.high24h))+'</b></span><span>Máximo histórico <b>'+esc(eur(qt.ath))+'</b></span></div>'+
-   (pos.length?'<h3 class="crypto-subhead">En Mi cripto</h3>'+pos.map(p=>{const v=valuation(p);return'<p class="crypto-note">'+esc(units(p.units))+' '+esc(p.symbol)+' en '+esc(p.platform)+' · '+esc(eur(v.value,{decimals:2}))+(v.pnl!==null?' · <span class="'+tone(v.pnl)+'">'+esc((v.pnl>=0?'+':'')+eur(v.pnl,{decimals:2}))+'</span>':'')+'</p>'}).join(''):'')+
-   '<div class="crypto-actions"><button type="button" class="btn small" data-crypto-add="'+esc(a.symbol)+'">'+(pos.length?'✏️ Editar posición':'＋ Añadir a Mi cripto')+'</button></div>';
+  const tabs=[['general','General'],['chart','Gráfico'],['sources','Fuentes']];
+  const head='<header class="crypto-profile-head">'+
+   (nativeApp()?'':'<button type="button" class="btn ghost small crypto-profile-back" data-crypto-back>← Volver</button>')+
+   '<div class="crypto-profile-id">'+icon(a.symbol,qt)+'<div><small>CRIPTOACTIVO · EUR</small><strong>'+esc(a.name)+'</strong><span>'+esc(a.symbol)+(qt.rank?' · #'+esc(qt.rank):'')+'</span></div></div>'+
+   '<div class="crypto-profile-quote"><strong>'+esc(eur(qt.price))+'</strong><b class="'+tone(qt.change24h)+'">'+esc(pct(qt.change24h))+' · 24 h</b>'+sourceBadge(qt)+
+   '<button type="button" class="profile-add-portfolio crypto-profile-wallet'+(held.length?' is-managed':'')+'" data-crypto-add="'+esc(a.symbol)+'" title="'+(pos.length?'Editar en Mi cripto':'Añadir a Mi cripto')+'" aria-label="'+(pos.length?'Editar en Mi cripto':'Añadir a Mi cripto')+'"><span aria-hidden="true">💼</span></button></div>'+
+   '<nav class="compact-tabs crypto-profile-tabs" aria-label="Secciones de la ficha">'+tabs.map(([k,l])=>'<button type="button" class="tab'+(d.tab===k?' active':'')+'" data-crypto-profile-tab="'+k+'">'+l+'</button>').join('')+'</nav>'+
+  '</header>';
+  let body='';
+  if(d.tab==='chart'){
+   body='<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Evolución del precio</h3><span>'+esc(d.chartSource||'Kraken')+'</span></div>'+
+    '<nav class="compact-tabs crypto-range-tabs">'+[7,30,90,365].map(n=>'<button type="button" class="tab'+(state.chartDays===n?' active':'')+'" data-crypto-days="'+n+'">'+(n===365?'1 año':n+' d')+'</button>').join('')+'</nav>'+
+    '<div class="crypto-chart-wrap">'+(d.chart===null?'<p class="crypto-empty">Cargando gráfico…</p>':chartSvg(d.chart,200))+'</div></section>';
+  }else if(d.tab==='sources'){
+   body='<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Contraste de fuentes</h3><span>Desviación sobre la mediana</span></div>'+
+    (sources.length?'<table class="crypto-sources"><thead><tr><th>Fuente</th><th>Tipo</th><th>Precio</th><th>Desv.</th></tr></thead><tbody>'+sources.map(s=>{const dev=num(s.deviationPct),bad=dev!==null&&Math.abs(dev)>state.threshold;return'<tr class="'+(bad?'is-outlier':'')+'"><td>'+esc(s.source)+'</td><td>'+esc(s.kind)+'</td><td>'+esc(eur(s.price))+'</td><td>'+(dev===null?'—':(bad?'⚠ ':'')+esc(pct(dev)))+'</td></tr>'}).join('')+'</tbody></table>':'<p class="crypto-empty">Contrastando fuentes…</p>')+
+    '<p class="crypto-note">Precio mostrado: mediana de las fuentes'+(qt.status==='divergent'&&qt.agreeing>=3?', sin las que se separan más de un '+esc(state.threshold)+' %':'')+'. Se usa el punto medio entre compra y venta y no entran mercados sin volumen. Ningún organismo público publica precios de criptoactivos en tiempo real: por eso se contrastan mercados (Kraken, Bitstamp, Coinbase, Bit2Me) y agregadores (CoinGecko, CoinPaprika).</p></section>';
+  }else{
+   const range=num(qt.low24h)!==null&&num(qt.high24h)!==null?esc(eur(qt.low24h))+' – '+esc(eur(qt.high24h)):'—';
+   const top=num(qt.ath)!==null?['Máximo histórico',esc(eur(qt.ath)),'CoinGecko']:num(qt.high2y)!==null?['Máximo 2 años',esc(eur(qt.high2y)),'Velas diarias de Kraken']:['Máximo histórico','—',''];
+   body=section('Resumen de mercado','Lo esencial primero',
+     row('Precio de consenso',esc(eur(qt.price)),qt.count?qt.count+' fuentes':'')+
+     row('Variación 24 h',esc(pct(qt.change24h)),'',tone(qt.change24h))+
+     row('Rango 24 h',range,'Mínimo – máximo')+
+     row('Capitalización',esc(compact(qt.marketCap)),qt.rank?'Puesto #'+qt.rank:'')+
+     row('Volumen 24 h',esc(compact(qt.volume24h)),'Negociado en 24 h')+
+     row('Contraste',sourceBadge(qt),qt.status==='divergent'?'Alguna fuente se separa':'Fuentes independientes'))+
+    section('Rendimiento','Frente al precio actual',
+     row('7 días',esc(pct(qt.change7d)),'',tone(qt.change7d))+
+     row('30 días',esc(pct(qt.change30d)),'',tone(qt.change30d))+
+     row(top[0],top[1],top[2]))+
+    (d.chart&&d.chart.length>1?'<section class="profile-section crypto-profile-section"><div class="profile-section-head"><h3>Últimos '+esc(state.chartDays===365?'12 meses':state.chartDays+' días')+'</h3><span>'+esc(d.chartSource||'')+'</span></div><div class="crypto-chart-wrap">'+chartSvg(d.chart,120)+'</div></section>':'')+
+    (pos.length?section('En Mi cripto',pos.length+' '+(pos.length===1?'posición':'posiciones'),pos.map(p=>{const v=valuation(p);return row(p.platform||'—',esc(eur(v.value,{decimals:2})),units(p.units)+' '+p.symbol+(num(p.avg_price_eur)!==null?' · medio '+eur(p.avg_price_eur):''))+(v.pnl!==null?row('Ganancia',esc((v.pnl>=0?'+':'')+eur(v.pnl,{decimals:2})+(v.pnlPct!==null?' · '+pct(v.pnlPct):'')),'',tone(v.pnl)):'')}).join('')):'')+
+    '<div class="crypto-actions crypto-profile-cta"><button type="button" class="btn small" data-crypto-add="'+esc(a.symbol)+'">'+(pos.length?'Editar en Mi cripto':'＋ Añadir a Mi cripto')+'</button></div>';
+  }
+  box.innerHTML=head+'<div class="crypto-profile-body">'+body+'</div>';
  }
 
  // ---------- Formularios ----------
@@ -379,19 +543,22 @@
 
  // ---------- Eventos ----------
  // Se refresca con la vista abierta, con una ficha abierta o en Mi día si tienes criptoactivos.
- function visible(){return document.visibilityState==='visible'&&(q('#view-crypto')?.classList.contains('active')||!!state.detail||(q('#view-today')?.classList.contains('active')&&state.positions.some(p=>num(p.units)>0)))}
+ function visible(){return document.visibilityState==='visible'&&(q('#view-crypto')?.classList.contains('active')||!!state.detail||(q('#view-portfolios')?.classList.contains('active')&&q('#portfolioCryptoApp')&&!q('#portfolioCryptoApp').hidden)||((q('#view-today')?.classList.contains('active')||(q('#view-portfolios')?.classList.contains('active')&&q('#view-portfolios').dataset.portfolioAssetMode==='goal'))&&state.positions.some(p=>num(p.units)>0)))}
  function schedule(){
   clearInterval(state.timer);
-  state.timer=setInterval(()=>{if(visible())loadQuotes()},30000);
+  state.timer=setInterval(()=>{if(visible()){loadQuotes();if(state.tab==='alpha'&&q('#view-crypto')?.classList.contains('active'))loadAlpha()}},30000);
  }
  function init(){
   document.addEventListener('click',async e=>{
-   const t=e.target.closest('[data-crypto-more],[data-crypto-tab],[data-crypto-detail],[data-crypto-close],[data-crypto-add],[data-crypto-import],[data-crypto-import-save],[data-crypto-edit],[data-crypto-delete],[data-crypto-days],#cryptoRefresh');
+   const t=e.target.closest('[data-crypto-back],[data-crypto-profile-tab],[data-crypto-more],[data-crypto-tab],[data-crypto-detail],[data-crypto-close],[data-crypto-add],[data-crypto-import],[data-crypto-import-save],[data-crypto-edit],[data-crypto-delete],[data-crypto-days],#cryptoRefresh');
    if(!t)return;
-   if(t.id==='cryptoRefresh'){loadQuotes();return}
+   if(t.id==='cryptoRefresh'){if(state.tab==='alpha')loadAlpha();else loadQuotes();return}
    if(t.hasAttribute('data-crypto-more')){state.limit+=60;render();return}
-   if(t.dataset.cryptoTab){state.tab=t.dataset.cryptoTab;if(state.tab==='mine')loadPositions();render();return}
+   if(t.hasAttribute('data-alpha-more')){state.alpha.limit+=40;render();return}
+   if(t.dataset.cryptoTab){state.tab=t.dataset.cryptoTab;if(state.tab==='mine')loadPositions();if(state.tab==='alpha'&&(!state.alpha.updatedAt||Date.now()-Date.parse(state.alpha.updatedAt)>60000))loadAlpha();render();return}
    if(t.dataset.cryptoDays){if(state.detail)loadChart(state.detail.symbol,Number(t.dataset.cryptoDays));return}
+   if(t.dataset.cryptoProfileTab){if(state.detail){state.detail.tab=t.dataset.cryptoProfileTab;renderDetail()}return}
+   if(t.hasAttribute('data-crypto-back')){backFromDetail();return}
    if(t.hasAttribute('data-crypto-close')){closeModal();return}
    if(t.hasAttribute('data-crypto-import-save')){saveImport();return}
    if(t.hasAttribute('data-crypto-import')){openImport();return}
@@ -406,20 +573,23 @@
    if(t.dataset.cryptoDetail&&!e.target.closest('button:not([data-crypto-detail])'))openDetail(t.dataset.cryptoDetail);
   });
   document.addEventListener('error',e=>{const img=e.target;if(img&&img.classList&&img.classList.contains('crypto-icon')&&img.dataset.cryptoSym){const span=document.createElement('span');span.className='crypto-icon crypto-icon-text';span.textContent=img.dataset.cryptoSym;img.replaceWith(span)}},true);
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.detail)closeModal();const t=e.target.closest&&e.target.closest('[data-crypto-detail][role=button]');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openDetail(t.dataset.cryptoDetail)}});
+  root.addEventListener('popstate',e=>{if(state.detail&&!(e.state&&e.state.cryptoProfile===state.detail.symbol))closeDetail()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&q('#cryptoModal.open'))closeModal();const t=e.target.closest&&e.target.closest('[data-crypto-detail][role=button]');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openDetail(t.dataset.cryptoDetail)}});
   document.addEventListener('submit',e=>{if(e.target&&e.target.id==='cryptoPositionForm'){e.preventDefault();submitForm(e.target)}});
   document.addEventListener('change',e=>{
    if(e.target&&e.target.id==='cryptoImportFile'&&e.target.files[0])previewImport(e.target.files[0]);
    if(e.target&&e.target.id==='cryptoImportPlatform'){importPlatform=e.target.value;const p=IMPORT_PLATFORMS.find(x=>x.id===importPlatform);const h=q('#cryptoImportHelp');if(h&&p)h.innerHTML=p.help+' El fichero se lee en tu dispositivo; solo se guardan el saldo y el precio medio de cada moneda.';const f=q('#cryptoImportFile');if(f&&f.files[0])previewImport(f.files[0])}
   });
   document.addEventListener('input',e=>{if(e.target&&e.target.id==='cryptoSearch'){state.search=e.target.value;render()}});
-  root.addEventListener('viewinvai:view-changed',ev=>{if(ev.detail&&ev.detail.view==='crypto'){loadQuotes();loadPositions()}else if(ev.detail&&ev.detail.view==='today'&&visible()&&(!state.updatedAt||Date.now()-Date.parse(state.updatedAt)>30000))loadQuotes()});
+  root.addEventListener('viewinvai:view-changed',ev=>{if(state.detail)closeDetail();if(ev.detail&&ev.detail.view==='crypto'){loadQuotes();loadPositions()}else if(ev.detail&&ev.detail.view==='today'&&visible()&&(!state.updatedAt||Date.now()-Date.parse(state.updatedAt)>30000))loadQuotes()});
   root.addEventListener('viewinvai:auth-changed',()=>{state.positionsLoaded=false;loadPositions(true)});
   root.addEventListener('viewinvai:account-ready',()=>{loadPositions(true).then(()=>{if(state.positions.length&&!state.updatedAt)loadQuotes()})});
   document.addEventListener('visibilitychange',()=>{if(visible()&&(!state.updatedAt||Date.now()-Date.parse(state.updatedAt)>30000))loadQuotes()});
   schedule();
+  // Al cambiar el formato de las listas se vuelven a pintar las tarjetas.
+  new MutationObserver(()=>{if(q('#view-crypto')?.classList.contains('active')&&!state.detail)render()}).observe(document.documentElement,{attributes:true,attributeFilter:['data-list-view']});
   if(q('#view-crypto')?.classList.contains('active'))loadQuotes();
  }
- root.ViewInvAICrypto={totals,refresh:loadQuotes,positions:()=>state.positions.slice(),parseBit2me,parseStatement,radarSignals};
+ root.ViewInvAICrypto={showPortfolio,openDetail,closeDetail,isProfileOpen:()=>!!state.detail,totals,refresh:loadQuotes,positions:()=>state.positions.slice(),parseBit2me,parseStatement,radarSignals};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(window);

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.94">
+<html lang="es" data-app-version="0.6.95">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -29,7 +29,7 @@
   <link rel="stylesheet" href="mobile-app.css?v=20261008b1">
   <link rel="stylesheet" href="ui-density.css?v=20261008b1">
   <link rel="stylesheet" href="asset-card.css?v=20261008b1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261009g1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261021e1">
   <script src="security.js?v=20261002f9"></script>
   <script src="sync-screen.js?v=20261002L1"></script>
   <script src="i18n.js?v=20261009i2"></script>
@@ -268,6 +268,7 @@
       <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
         <button type="button" class="tab active" role="tab" id="portfolioStocksTab" aria-selected="true" aria-controls="portfolioApp" tabindex="0" data-portfolio-asset="stocks">Acciones</button>
         <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds" title="Fondos y ETFs">Fondos</button>
+        <button type="button" class="tab" role="tab" id="portfolioCryptoTab" aria-selected="false" aria-controls="portfolioCryptoApp" tabindex="-1" data-portfolio-asset="crypto" title="Criptoactivos">Cripto</button>
         <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo</button>
         <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span> Favoritos</button>
       </div>
@@ -277,6 +278,7 @@
       <div id="fundPortfolioApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFundsTab" data-portfolio-asset-panel="funds" hidden>
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tu cartera de fondos.</div>
       </div>
+      <div id="portfolioCryptoApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioCryptoTab" data-portfolio-asset-panel="crypto" hidden></div>
       <div id="portfolioFavoritesApp" class="portfolio-app is-hidden" role="tabpanel" aria-labelledby="portfolioFavoritesTab" data-portfolio-asset-panel="favorites" hidden>
         <div id="favoritesDashboard" class="favorites-dashboard"></div>
       </div>
@@ -305,7 +307,7 @@
         <div class="heading-actions"><button class="btn icon-btn" id="cryptoRefresh" title="Actualizar" aria-label="Actualizar">↻</button></div>
       </div>
       <div class="crypto-toolbar">
-        <div class="crypto-tabs" role="tablist"><button type="button" role="tab" class="active" data-crypto-tab="market">Mercado</button><button type="button" role="tab" data-crypto-tab="mine">Mi cripto</button><button type="button" role="tab" data-crypto-tab="radar">Radar cripto</button></div>
+        <div class="crypto-tabs-row"><div class="crypto-tabs" role="tablist" aria-label="Mercados autorizados"><button type="button" role="tab" class="active" data-crypto-tab="market">Mercado</button><button type="button" role="tab" data-crypto-tab="mine">Mi cripto</button><button type="button" role="tab" data-crypto-tab="radar">Radar</button></div><div class="crypto-tabs crypto-tabs-alpha" role="tablist" aria-label="No oficial: solo consulta"><button type="button" role="tab" data-crypto-tab="alpha" title="Binance Alpha · no oficial, solo consulta">Alpha <small>no oficial</small></button></div></div>
         <input id="cryptoSearch" class="fund-search crypto-search" type="search" placeholder="Buscar moneda" autocomplete="off">
         <small id="cryptoUpdated" class="crypto-updated" aria-live="polite"></small>
       </div>
@@ -757,12 +759,12 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.94 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.95 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261005r1"></script>
-<script src="goal-engine.js?v=20261009g1"></script>
+<script src="goal-engine.js?v=20261021d1"></script>
 <script src="app.js?v=20261008b1"></script>
 <script src="settings.js?v=20261009a5"></script>
 <script src="ui-preferences.js?v=20260929r1"></script>
@@ -782,7 +784,7 @@
 <script src="filter-sheet.js?v=20260928r1"></script>
 <script src="navigation.js?v=20261008b1"></script>
 <script src="mobile-app.js?v=20261008b1"></script>
-<script src="ui-shell.js?v=20261009i1"></script>
+<script src="ui-shell.js?v=20261021d1"></script>
 <script src="onboarding.js?v=20261002L1"></script>
 <script src="tasks.js?v=20261002d1"></script>
 <script src="decisions.js?v=20261002d1"></script>
@@ -792,13 +794,13 @@
 <script src="favlists.js?v=20261009i2"></script>
 <script src="backup.js?v=20261008z1"></script>
 <script src="search.js?v=20261008w1"></script>
-<script src="funds.js?v=20261009i2"></script>
-<script src="crypto.js?v=20261021c1"></script>
+<script src="funds.js?v=20261021d1"></script>
+<script src="crypto.js?v=20261021e1"></script>
 <script src="icons.js?v=20261021i1"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>
 <script type="module" src="auth.js?v=20261009n1"></script>
-<script type="module" src="portfolio.js?v=20261009g1"></script>
+<script type="module" src="portfolio.js?v=20261021d1"></script>
 </body>
 </html>

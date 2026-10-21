@@ -134,7 +134,7 @@ const SOURCES = {
       if(!isCryptoSymbol(base)||out.has(base))continue;
       krakenPairs.set(base,pair);
       const price=midPrice(num(t&&t.b&&t.b[0]),num(t&&t.a&&t.a[0]),num(t&&t.c&&t.c[0]));
-      if(price>0&&liquid(price,num(t&&t.v&&t.v[1])))out.set(base,{price});
+      if(price>0&&liquid(price,num(t&&t.v&&t.v[1])))out.set(base,{price,high24h:num(t&&t.h&&t.h[1]),low24h:num(t&&t.l&&t.l[1]),open24h:num(t&&t.o)});
     }
     return out;
   })},
@@ -144,7 +144,7 @@ const SOURCES = {
     for(const t of Array.isArray(d)?d:[]){
       const m=String(t&&t.pair||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!isCryptoSymbol(m[1]))continue;
       const price=midPrice(num(t.bid),num(t.ask),num(t.last)),open=num(t.open_24);
-      if(price>0&&liquid(price,num(t.volume)))out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null});
+      if(price>0&&liquid(price,num(t.volume)))out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null,high24h:num(t.high),low24h:num(t.low)});
     }
     return out;
   })},
@@ -286,6 +286,9 @@ export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
       if(v.change24h!==null)changes.push(v.change24h);
     }
     const c=consensus(sym,rows),g=gecko&&gecko.get(sym)||{},l=lore&&lore.get(sym)||null;
+    // Rango de 24 h de los mercados (Kraken, Bitstamp) si CoinGecko no lo da.
+    const highs=[],lows=[];
+    names.forEach((n,i)=>{if(SOURCES[n].meta||settled[i].status!=="fulfilled")return;const v=settled[i].value.get(sym);if(v&&v.high24h>0)highs.push(v.high24h);if(v&&v.low24h>0)lows.push(v.low24h)});
     if(!changes.length&&l&&l.change24h!==null)changes.push(l.change24h);
     // Capitalización y volumen en €: de CoinGecko; si no, los de CoinLore (USD) pasados a € con
     // la relación entre el precio de consenso y su precio en USD.
@@ -293,11 +296,31 @@ export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
     quotes[sym]=Object.assign(c,{name:nameOf(sym,lore),change24h:changes.length?median(changes):null,
       change7d:g.change7d??(l?l.change7d:null)??null,change30d:g.change30d??null,
       marketCap:g.marketCap??(usdRatio&&l.marketCapUsd?l.marketCapUsd*usdRatio:null),volume24h:g.volume24h??(usdRatio&&l.volumeUsd?l.volumeUsd*usdRatio:null),
-      rank:g.rank??(l?l.rank:null)??null,image:g.image||"",high24h:g.high24h??null,low24h:g.low24h??null,ath:g.ath??null});
+      rank:g.rank??(l?l.rank:null)??null,image:g.image||"",high24h:g.high24h??(highs.length?median(highs):null),low24h:g.low24h??(lows.length?median(lows):null),ath:g.ath??null});
   });
+  // En la ficha: variación a 7 y 30 días y máximo de 2 años con las velas diarias de Kraken.
+  if(detail)await Promise.all(wanted.map(async sym=>{
+    const q=quotes[sym];if(!q)return;
+    try{
+      const st=await krakenDailyStats(sym,env);if(!st)return;
+      if(q.change7d===null&&st.close7>0&&q.price>0)q.change7d=(q.price/st.close7-1)*100;
+      if(q.change30d===null&&st.close30>0&&q.price>0)q.change30d=(q.price/st.close30-1)*100;
+      if(q.ath===null&&st.max>0){q.high2y=st.max;q.high2ySource="Kraken"}
+    }catch(_){}
+  }));
   return{updatedAt:new Date().toISOString(),currency:"EUR",divergenceThresholdPct:DIVERGENCE_PCT,sources:health,quotes};
 }
 
+async function krakenDailyStats(sym,env){
+  if(!krakenPairs.size)try{await SOURCES.kraken.load(env)}catch(_){}
+  const pair=krakenPairs.get(sym);if(!pair)return null;
+  const data=await cached("kchart:"+pair+":1440",()=>getJson("https://api.kraken.com/0/public/OHLC?pair="+encodeURIComponent(pair)+"&interval=1440",10000),5*60000);
+  const rows=data&&data.result?Object.entries(data.result).find(([k])=>k!=="last"):null;
+  const days=(rows?rows[1]:[]).map(r=>({t:Number(r[0])*1000,c:Number(r[4]),h:Number(r[2])})).filter(d=>d.c>0);
+  if(days.length<2)return null;
+  const at=ms=>{const target=Date.now()-ms;let best=null;for(const d of days)if(d.t<=target)best=d;return best?best.c:null};
+  return{close7:at(7*86400000),close30:at(30*86400000),max:Math.max(...days.map(d=>d.h))};
+}
 // Gráfico de la ficha: velas de Kraken (un mercado real, sin los límites de CoinGecko) y, si la
 // moneda no cotiza en Kraken, el histórico de CoinGecko.
 export async function cryptoChart(symbol,days=30,env=null){
@@ -319,3 +342,130 @@ export async function cryptoChart(symbol,days=30,env=null){
   return{symbol:sym,days:d,source:"CoinGecko",points};
 }
 
+
+// ---------- Binance Alpha (solo consulta) ----------
+// Tokens en cadena que Binance destaca antes de listarlos. Desde julio de 2026 Binance no puede
+// vender a residentes en España (sin licencia MiCA): aquí solo se consultan como radar temprano y se
+// indica si la moneda se puede comprar en euros en un exchange autorizado del catálogo.
+// Precio: el de Binance Alpha (USD) contrastado con el par de más liquidez en DexScreener y, en la
+// ficha, también con GeckoTerminal. Todo se pasa a € con el precio de USDT en los mercados en euros.
+const ALPHA_LIST_URL="https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list";
+const ALPHA_KV="crypto:alpha:v1";
+const ALPHA_DIVERGENCE_PCT=2.0,ALPHA_MIN_DEX_LIQ_USD=20000,ALPHA_CONTRAST_TOP=60;
+const DEX_CHAIN={"56":"bsc","CT_501":"solana","1":"ethereum","8453":"base","42161":"arbitrum","137":"polygon","43114":"avalanche","10":"optimism","204":"opbnb","59144":"linea","5000":"mantle","146":"sonic","80094":"berachain","324":"zksync"};
+const GT_NETWORK={bsc:"bsc",solana:"solana",ethereum:"eth",base:"base",arbitrum:"arbitrum",polygon:"polygon_pos",avalanche:"avax",optimism:"optimism",opbnb:"opbnb",linea:"linea",mantle:"mantle",sonic:"sonic",berachain:"berachain",zksync:"zksync"};
+const ALPHA_ID_RE=/^ALPHA_\d{1,6}$/;
+const addrKey=(chain,addr)=>chain+":"+String(addr||"").toLowerCase();
+function safeIcon(u){
+  const s=String(u||"");
+  if(/^https:\/\/[a-z0-9.-]*bnbstatic\.com\//i.test(s))return s.slice(0,300);
+  if(/^\/images\//.test(s))return"https://bin.bnbstatic.com"+s.slice(0,280);
+  return"";
+}
+// € por cada dólar: precio de USDT (o USDC) en los mercados en euros.
+async function eurPerUsd(env){
+  const vals=[];
+  for(const n of ["kraken","bitstamp","bit2me","coinbase"]){
+    try{const m=await SOURCES[n].load(env);const v=m.get("USDT")||m.get("USDC");if(v&&v.price>0.5&&v.price<1.5)vals.push(v.price)}catch(_){}
+  }
+  return vals.length?median(vals):null;
+}
+async function alphaListRaw(env){
+  const kv=env&&env.HOT_STATE_KV;
+  try{
+    const d=await cached("alpha:list",()=>getJson(ALPHA_LIST_URL,10000),60000);
+    const rows=Array.isArray(d&&d.data)?d.data:Array.isArray(d)?d:[];
+    if(!rows.length)throw new Error("Binance Alpha sin datos");
+    if(kv)try{await kv.put(ALPHA_KV,JSON.stringify({at:Date.now(),rows}),{expirationTtl:21600})}catch(_){}
+    return{rows,stale:false,savedAt:null};
+  }catch(error){
+    if(kv)try{const s=await kv.get(ALPHA_KV,"json");if(s&&Array.isArray(s.rows)&&s.rows.length)return{rows:s.rows,stale:true,savedAt:s.at}}catch(_){}
+    throw error;
+  }
+}
+// DexScreener: hasta 30 contratos por cadena y petición. Se queda con el par de más liquidez.
+async function dexPrices(tokens){
+  const out=new Map(),byChain=new Map();
+  for(const t of tokens){if(!t.dexChain||!t.contract)continue;if(!byChain.has(t.dexChain))byChain.set(t.dexChain,[]);byChain.get(t.dexChain).push(t.contract)}
+  const jobs=[];
+  for(const [chain,addrs] of byChain)for(let i=0;i<addrs.length;i+=30){
+    const part=addrs.slice(i,i+30);
+    jobs.push(cached("dex:"+chain+":"+part.join(","),()=>getJson("https://api.dexscreener.com/tokens/v1/"+chain+"/"+part.map(encodeURIComponent).join(","),10000),60000)
+      .then(pairs=>{for(const p of Array.isArray(pairs)?pairs:[]){
+        const base=p&&p.baseToken,liq=num(p&&p.liquidity&&p.liquidity.usd),price=num(p&&p.priceUsd);
+        if(!base||!(price>0)||!(liq>=ALPHA_MIN_DEX_LIQ_USD))continue;
+        const k=addrKey(chain,base.address),old=out.get(k);
+        if(!old||liq>old.liquidityUsd)out.set(k,{priceUsd:price,liquidityUsd:liq,volumeUsd:num(p.volume&&p.volume.h24),dex:String(p.dexId||"").slice(0,30),pair:String(p.pairAddress||"").slice(0,120),url:/^https:\/\/dexscreener\.com\//.test(p.url||"")?p.url:""});
+      }}).catch(()=>{}));
+  }
+  await Promise.all(jobs);
+  return out;
+}
+async function geckoTerminalPrice(t){
+  const net=GT_NETWORK[t.dexChain];if(!net||!t.contract)return null;
+  const d=await cached("gt:"+net+":"+t.contract,()=>getJson("https://api.geckoterminal.com/api/v2/simple/networks/"+net+"/token_price/"+encodeURIComponent(t.contract),8000),60000);
+  const prices=d&&d.data&&d.data.attributes&&d.data.attributes.token_prices||{};
+  const v=Object.entries(prices).find(([k])=>k.toLowerCase()===String(t.contract).toLowerCase());
+  const p=num(v&&v[1]);return p>0?p:null;
+}
+function alphaContrast(rows){
+  const c=consensus("ALPHA",rows.map(r=>({source:r.source,kind:r.kind,price:r.price})));
+  // Con dos fuentes la mediana es el punto medio: se mantiene la referencia de Binance Alpha y
+  // se avisa si la otra se separa más de ALPHA_DIVERGENCE_PCT.
+  const ref=rows[0]&&rows[0].price;
+  const dev=rows.slice(1).map(r=>Math.abs(r.price/ref-1)*100);
+  const maxDev=dev.length?Math.max(...dev):null;
+  return{price:rows.length>=3?c.price:ref,count:rows.length,maxDeviationPct:maxDev,
+    status:rows.length<2?"single":maxDev<=ALPHA_DIVERGENCE_PCT?"ok":"divergent",
+    sources:rows.map(r=>Object.assign({},r,{deviationPct:ref>0?(r.price/ref-1)*100:null}))};
+}
+// opts.ids: ficha (contraste con las tres fuentes); si no, las ALPHA_CONTRAST_TOP de más volumen.
+export async function alphaTokens({env=null,ids=null,euroSymbols=null}={}){
+  const [{rows,stale,savedAt},fx]=await Promise.all([alphaListRaw(env),eurPerUsd(env)]);
+  if(!(fx>0))throw new Error("Sin tipo de cambio USD/EUR");
+  let euro=euroSymbols;
+  if(!euro){try{euro=new Set((await cryptoCatalog(env)).map(a=>a.symbol))}catch(_){euro=new Set()}}
+  const wanted=ids&&ids.length?new Set(ids.filter(i=>ALPHA_ID_RE.test(i))):null;
+  let tokens=rows.filter(r=>r&&!r.offline&&ALPHA_ID_RE.test(String(r.alphaId||""))&&num(r.price)>0).map(r=>{
+    const chainId=String(r.chainId||""),sym=String(r.symbol||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,16);
+    const usd=k=>{const v=num(r[k]);return v===null?null:v*fx};
+    return{id:String(r.alphaId),symbol:sym,name:String(r.name||sym).slice(0,60),chain:String(r.chainName||DEX_CHAIN[chainId]||chainId).slice(0,30),chainId,dexChain:DEX_CHAIN[chainId]||"",
+      contract:String(r.contractAddress||"").slice(0,80),icon:safeIcon(r.iconUrl),priceUsd:num(r.price),change24h:num(r.percentChange24h),
+      volume24h:usd("volume24h"),marketCap:usd("marketCap"),fdv:usd("fdv"),liquidity:usd("liquidity"),high24h:usd("priceHigh24h"),low24h:usd("priceLow24h"),
+      holders:num(r.holders),trades24h:num(r.count24h),listingTime:num(r.listingTime),
+      // ¿Se puede comprar en € en un exchange autorizado del catálogo (Kraken, Bitstamp, Bit2Me, Coinbase)?
+      euroMarket:!!(sym&&euro.has(sym))};
+  });
+  if(wanted)tokens=tokens.filter(t=>wanted.has(t.id));
+  tokens.sort((a,b)=>(b.volume24h||0)-(a.volume24h||0));
+  const contrastSet=wanted?tokens:tokens.slice(0,ALPHA_CONTRAST_TOP);
+  const dex=await dexPrices(contrastSet);
+  const gt=wanted?await Promise.all(contrastSet.map(t=>geckoTerminalPrice(t).catch(()=>null))):[];
+  const contrasted=new Set(contrastSet.map(t=>t.id));
+  tokens.forEach(t=>{
+    const rowsP=[{source:"Binance Alpha",kind:"agregador",price:t.priceUsd*fx}];
+    if(contrasted.has(t.id)){
+      const d=dex.get(addrKey(t.dexChain,t.contract));
+      if(d){rowsP.push({source:"DexScreener",kind:"mercado",price:d.priceUsd*fx,liquidity:d.liquidityUsd*fx,dex:d.dex});t.dexUrl=d.url;t.pool=d.pair}
+      const g=wanted?gt[contrastSet.indexOf(t)]:null;
+      if(g)rowsP.push({source:"GeckoTerminal",kind:"agregador",price:g*fx});
+    }
+    Object.assign(t,alphaContrast(rowsP),{contrasted:contrasted.has(t.id)});
+    if(!contrasted.has(t.id))t.status="unchecked";
+  });
+  return{updatedAt:new Date().toISOString(),currency:"EUR",eurPerUsd:fx,stale,savedAt:savedAt?new Date(savedAt).toISOString():null,
+    divergenceThresholdPct:ALPHA_DIVERGENCE_PCT,count:tokens.length,tokens};
+}
+// Gráfico: velas del pool de más liquidez (GeckoTerminal), pasadas a € con el cambio actual.
+export async function alphaChart(id,days=7,env=null){
+  if(!ALPHA_ID_RE.test(String(id||"")))throw new Error("Token desconocido");
+  const d=[1,7,30,90].includes(days)?days:7;
+  const data=await alphaTokens({env,ids:[id],euroSymbols:new Set()});
+  const t=data.tokens[0];if(!t||!t.pool)throw new Error("Sin pool con liquidez");
+  const net=GT_NETWORK[t.dexChain];if(!net)throw new Error("Cadena sin histórico");
+  const [tf,agg,limit]=d<=1?["minute",15,96]:d<=7?["hour",1,168]:d<=30?["hour",4,180]:["day",1,90];
+  const o=await cached("gtohlcv:"+net+":"+t.pool+":"+tf+agg,()=>getJson("https://api.geckoterminal.com/api/v2/networks/"+net+"/pools/"+encodeURIComponent(t.pool)+"/ohlcv/"+tf+"?aggregate="+agg+"&limit="+limit+"&currency=usd",10000),5*60000);
+  const list=o&&o.data&&o.data.attributes&&Array.isArray(o.data.attributes.ohlcv_list)?o.data.attributes.ohlcv_list:[];
+  const points=list.map(r=>[Number(r[0])*1000,Number(r[4])*data.eurPerUsd]).filter(p=>p[0]>0&&p[1]>0).sort((a,b)=>a[0]-b[0]);
+  return{id,days:d,source:"GeckoTerminal",points};
+}

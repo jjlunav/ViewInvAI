@@ -110,4 +110,17 @@ const input=candidates=>({
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","whole-share candidate above the cap must report the cap");
 }
 
+// Mi cripto: cuenta en el progreso y el ritmo, pero no cambia las compras de acciones.
+{
+  const cfg={...input([]).config,target:2000,startValue:1000};
+  const a=G.plan({...input([base]),config:cfg,cashEur:1000,peakValueEur:1000});
+  const b=G.plan({...input([base]),config:cfg,cashEur:1000,peakValueEur:1000,extraValueEur:500});
+  assert.ok(b.pace.progressPct>a.pace.progressPct,"crypto value must raise goal progress");
+  assert.equal(b.extraValueEur,500);
+  assert.equal(b.valueEur,a.valueEur,"crypto must not enter the stock portfolio value");
+  const ticket=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.ticketEur).join(",");
+  assert.equal(ticket(b),ticket(a),"crypto must not change stock buy sizes");
+  assert.equal(b.defensive,a.defensive);
+}
+
 console.log("Goal engine tests: OK");
