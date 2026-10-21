@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.91">
+<html lang="es" data-app-version="0.6.92">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -587,6 +587,8 @@
                   <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de precio</strong><small>Permite avisos de precio configurados para cada activo.</small></span><label class="settings-switch" aria-label="Movimientos de precio"><input id="globalNotifyPrice" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                   <div class="settings-status-row" data-notification-child-setting><span><strong>Movimientos de cartera</strong><small>Avisa de entradas, salidas y cambios relevantes en las posiciones.</small></span><label class="settings-switch" aria-label="Movimientos de cartera"><input id="globalNotifyPortfolio" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
                   <div class="settings-status-row" data-notification-child-setting><span><strong>Objetivos de cartera</strong><small>Avisa de movimientos que requieran atención y envía un resumen actualizado del objetivo.</small></span><label class="settings-switch" aria-label="Notificar objetivos de cartera"><input id="globalNotifyPortfolioGoal" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="settings-status-row digest-setting-row" data-notification-child-setting><span><strong>Resumen diario</strong><small>Valor de tus carteras y fondos, efectivo aparte y estado de los objetivos. Hora de España; deja una hora vacía para no recibirla.</small></span><label class="settings-switch" aria-label="Resumen diario"><input id="globalDailyDigest" type="checkbox" disabled><span class="settings-switch-track" aria-hidden="true"><span></span></span></label></div>
+                  <div class="digest-times" data-notification-child-setting><label>☀ <input id="digestMorningTime" type="time" step="300" value="08:00" aria-label="Hora del resumen de la mañana" disabled></label><label>☾ <input id="digestEveningTime" type="time" step="300" value="22:00" aria-label="Hora del resumen de la noche" disabled></label><button type="button" id="sendDigestNow" class="btn small ghost" disabled>Enviar ahora</button><em id="digestStatus" class="digest-status" aria-live="polite"></em></div>
                 </div>
               </article>
             </div>
@@ -738,7 +740,7 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.91 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.92 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>

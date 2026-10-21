@@ -192,6 +192,19 @@ async function testPushNotification(){
   if(status){status.textContent=error&&error.message?error.message:'La prueba push ha fallado.';status.classList.add('error');status.classList.remove('active','pending')}
  }finally{if(button){button.textContent='Enviar prueba'}}
 }
+// «Enviar ahora»: el resumen diario al momento, para ver cómo llega al móvil o al reloj.
+async function sendDigestNow(){
+ const auth=window.ViewInvAIAuth,button=$('#sendDigestNow'),status=$('#digestStatus');
+ if(!auth?.apiFetch||!button)return;
+ button.disabled=true;if(status){status.textContent='Preparando…';status.classList.remove('error')}
+ try{
+  const response=await auth.apiFetch('/api/devices/digest',{method:'POST',body:'{}'});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||'No se pudo enviar el resumen.');
+  if(status)status.textContent=data.sent?'Enviado':'Guardado en Avisos (sin dispositivo activo)';
+ }catch(error){if(status){status.textContent=error&&error.message||'No se pudo enviar el resumen.';status.classList.add('error')}}
+ finally{button.disabled=false}
+}
 function renderAnalysisSettings(settings=null){
  accountAnalysisSettings=settings&&typeof settings==='object'?settings:null;
  const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)===1:false;
@@ -205,12 +218,20 @@ function renderAnalysisSettings(settings=null){
  const radarAi=radar;
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
  const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
- const toggles={globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyCatalystEve:catalystEve,globalNotifyRadarHigh:radarHigh,globalNotifyRadarOpportunity:radarOpportunity,globalNotifyRadarWatch:radarWatch,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
+ const dailyDigest=accountAnalysisSettings?Number(accountAnalysisSettings.daily_digest_enabled)!==0:false;
+ const toggles={globalDailyDigest:dailyDigest,globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyCatalystEve:catalystEve,globalNotifyRadarHigh:radarHigh,globalNotifyRadarOpportunity:radarOpportunity,globalNotifyRadarWatch:radarWatch,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
   el.disabled=!accountAnalysisSettings||analysisSettingsBusy||(id!=='globalNotificationsEnabled'&&!enabled);
  }
+ for(const [id,key,fallback] of [['digestMorningTime','digest_morning','08:00'],['digestEveningTime','digest_evening','22:00']]){
+  const el=$('#'+id);if(!el)continue;
+  if(document.activeElement!==el)el.value=accountAnalysisSettings?String(accountAnalysisSettings[key]??fallback):fallback;
+  el.disabled=!accountAnalysisSettings||analysisSettingsBusy||!enabled||!dailyDigest;
+ }
+ const digestNow=$('#sendDigestNow');
+ if(digestNow)digestNow.disabled=!accountAnalysisSettings||analysisSettingsBusy||!enabled;
  document.querySelectorAll('[data-notification-child-setting]').forEach(row=>row.classList.toggle('is-disabled',!enabled));
  const globalStatus=$('#globalNotificationSettingsStatus');
  if(globalStatus){
@@ -236,7 +257,10 @@ async function saveAnalysisSettings(){
   notifyRadarWatch:$('#globalNotifyRadarWatch')?.checked===true,
   notifyPrice:$('#globalNotifyPrice')?.checked===true,
   notifyPortfolio:$('#globalNotifyPortfolio')?.checked===true,
-  notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true
+  notifyPortfolioGoal:$('#globalNotifyPortfolioGoal')?.checked===true,
+  dailyDigest:$('#globalDailyDigest')?.checked===true,
+  digestMorning:$('#digestMorningTime')?.value||'',
+  digestEvening:$('#digestEveningTime')?.value||''
  };
  analysisSettingsBusy=true;renderAnalysisSettings(accountAnalysisSettings);
  try{
@@ -354,7 +378,8 @@ function initSettings(){
   if(event.target.checked)await retryPushRegistration();
   renderPushSettingsStatus();
  });
- ['globalNotifyNewsEvents','globalNotifyCatalystEve','globalNotifyRadarHigh','globalNotifyRadarOpportunity','globalNotifyRadarWatch','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyCatalystEve','globalNotifyRadarHigh','globalNotifyRadarOpportunity','globalNotifyRadarWatch','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal','globalDailyDigest','digestMorningTime','digestEveningTime'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ $('#sendDigestNow')?.addEventListener('click',sendDigestNow);
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));
  window.addEventListener('viewinvai:account-ready',e=>{

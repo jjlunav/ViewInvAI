@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 
 
 function parseMarketNumber(value) {
@@ -1249,7 +1249,8 @@ function marketServerBody(need){
     const k=stock_key+"|"+ticker;if((!stock_key&&!ticker)||seen.has(k))continue;seen.add(k);targets.push({stock_key,ticker});
   }
   return{targets:targets.slice(0,400),exact:!!need.exact,universe:(Array.isArray(need.universe)?need.universe:[]).map(String).sort(),
-    universeStocks:!!need.universeStocks,prices:[...new Set((Array.isArray(need.prices)?need.prices:[]).map(k=>String(k).toUpperCase()))].sort().slice(0,5000)};
+    universeStocks:!!need.universeStocks,prices:[...new Set((Array.isArray(need.prices)?need.prices:[]).map(k=>String(k).toUpperCase()))].sort().slice(0,5000),
+    funds:[...new Set((Array.isArray(need.funds)?need.funds:[]).map(k=>String(k).toUpperCase()).filter(k=>/^[A-Z]{2}[A-Z0-9]{10}$/.test(k)))].sort().slice(0,200)};
 }
 // Stocks (with their events) received in the last 45 s, so the tasks of one cron minute
 // ask the server once for the same stocks instead of once per task or per target.
@@ -1264,7 +1265,7 @@ function rememberServerStocks(data){
   if(marketServerStocks.key.size>3000)for(const [k,v] of marketServerStocks.key)if(at-v.at>MARKET_SERVER_MEMO_MS)marketServerStocks.key.delete(k);
 }
 function cachedServerSnapshot(req){
-  if(req.universe.length||req.prices.length||!req.targets.length)return null;
+  if(req.universe.length||req.prices.length||req.funds.length||!req.targets.length)return null;
   const stocks=[],events=[],seen=new Set();let meta=null;
   for(const t of req.targets){
     const hit=t.stock_key&&marketServerStocks.key.get(t.stock_key);
@@ -1760,6 +1761,7 @@ async function indicesLiveResponse(){
 // the fast-moving fields of all ~6.100 US stocks. The app overlays it on the 30-min
 // snapshot, so lists, rankings, Radar and catalogues use live price/volume; the
 // scheduled backend uses the same overlay for alerts.
+const DIGEST_CRON="*/5 * * * *";
 const MARKET_LIVE_FIELDS=["price","changePct","dayHigh","dayLow","volume","relVolume","avgVolume","premarketPrice","premarketChangePct","premarketVolume","premarketTime","postmarketPrice","postmarketChangePct","postmarketVolume","postmarketTime"];
 const MARKET_LIVE_COLUMNS=["close","change","high","low","volume","relative_volume_10d_calc","average_volume_10d_calc","premarket_close","premarket_change","premarket_volume","premarket_time","postmarket_close","postmarket_change","postmarket_volume","postmarket_time"];
 const MARKET_LIVE_TTL=55000;
@@ -2207,6 +2209,13 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    // Resumen diario de carteras y objetivos (08:00 y 22:00 en España por defecto): su propia
+    // ejecución cada 5 min, con su propio margen de CPU y de peticiones.
+    if(controller&&controller.cron===DIGEST_CRON){
+      ctx.waitUntil(runDailyPortfolioDigest(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuote:loadQuoteForBackend},Number(controller.scheduledTime)||Date.now())
+        .catch(error=>console.error("Daily digest task failed",String(error&&error.stack||error))));
+      return;
+    }
     // GitHub throttles its own «*/5» schedule to every 3-5 h. When a token is configured
     // (secret GITHUB_DISPATCH_TOKEN, fine-grained, Actions: read & write on this repo),
     // the Worker triggers the market-data workflow itself, following the US session
@@ -2239,6 +2248,7 @@ export default {
       return r;
     }));
     if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));
+
     ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));
     }));

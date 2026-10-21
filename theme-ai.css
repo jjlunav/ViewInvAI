@@ -2195,3 +2195,12 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
  html:root:root:root body:not(#sz-a):not(#sz-b) .theme-setting-option{min-height:42px!important}
  html:root:root:root body:not(#sz-a):not(#sz-b) .profile-primary-actions{gap:6px!important}
 }
+
+/* Resumen diario: horas y «Enviar ahora» bajo su ajuste, en una sola línea compacta */
+#view-settings .notification-category-list .digest-times{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:0 0 10px;margin-top:-4px}
+#view-settings .notification-category-list .digest-times.is-disabled{opacity:.5}
+#view-settings .notification-category-list .digest-times label{display:inline-flex;align-items:center;gap:4px;font-size:12px!important;color:var(--muted,#9aa4b2)}
+#view-settings .notification-category-list .digest-times input[type=time]{width:auto;min-height:28px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--line,rgba(255,255,255,.14));background:var(--surface-2,rgba(255,255,255,.04));color:inherit;font:inherit;font-size:12px!important}
+#view-settings .notification-category-list .digest-times .btn{width:auto;flex:0 0 auto}
+#view-settings .notification-category-list .digest-times .digest-status{font-style:normal;font-size:11px!important;color:var(--muted,#9aa4b2)}
+#view-settings .notification-category-list .digest-times .digest-status.error{color:var(--danger,#ff6b6b)}
