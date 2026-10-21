@@ -147,8 +147,41 @@ function profileGeneralExtraStats(s,isTr,se){
   profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
   profileKpi('Fuente cotización',E(source),E(quality)),
   profileKpi('Estado',quoteFreshnessHtml(s,isTr,'profile-stat-freshness'),freshness.updatedAt?E(new Date(freshness.updatedAt).toLocaleString('es-ES')):'Sin sello temporal'),
-  profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones')
+  profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones'),
+  '<div class="profile-stat-row profile-price-check-row"><div><span>Contraste de precio</span><small>'+(isTr?'LSX frente a otras bolsas en €':'Nasdaq · Yahoo · TradingView')+'</small></div><strong data-price-check="'+E(stockKey(s))+'"><span class="price-check-pending">Contrastando…</span></strong></div>'
  ].join('');
+}
+// Contraste del precio con fuentes independientes (servidor: /api/price-check). En EE. UU. se
+// comparan precios de la sesión regular; en LSX, el precio de LSX con la misma acción en euros en
+// otras bolsas alemanas, solo como referencia (horarios y liquidez distintos).
+const profilePriceCheckCache=new Map();
+const PRICE_CHECK_TOLERANCE={us:0.5,tr:1.5};
+async function hydrateProfilePriceCheck(root,s,isTr){
+ const el=root&&root.querySelector('[data-price-check="'+CSS.escape(stockKey(s))+'"]');if(!el)return;
+ const market=isTr?'tr':'us',id=isTr?trIsin(s):String(s.ticker||'').toUpperCase();
+ if(!id){el.innerHTML='<span class="price-check-none">Sin identificador</span>';return}
+ const key=market+':'+id,cached=profilePriceCheckCache.get(key);
+ let data=cached&&Date.now()-cached.at<60000?cached.data:null;
+ try{
+  if(!data){
+   const r=await fetch('/api/price-check?market='+market+'&'+(isTr?'isin=':'ticker=')+encodeURIComponent(id),{cache:'no-store'});
+   data=await r.json();if(!r.ok)throw Error(data.error||r.status);
+   profilePriceCheckCache.set(key,{at:Date.now(),data});
+  }
+ }catch(_){if(el.isConnected)el.innerHTML='<span class="price-check-none">No disponible ahora</span>';return}
+ if(!el.isConnected)return;
+ const rows=(data.rows||[]).slice();
+ if(!isTr){const tv=N(s.price);if(tv>0)rows.push({source:'TradingView',venue:'Snapshot / en vivo',price:tv,currency:'USD'})}
+ const valid=rows.filter(r=>N(r.price)>0);
+ if(valid.length<2){el.innerHTML='<span class="price-check-none">'+(valid.length?'Solo '+E(valid[0].source)+': sin contraste':'Sin fuentes ahora')+'</span>';return}
+ const prices=valid.map(r=>N(r.price)).sort((a,b)=>a-b),mid=prices.length%2?prices[(prices.length-1)/2]:(prices[prices.length/2-1]+prices[prices.length/2])/2;
+ const base=isTr?(N((valid.find(r=>r.primary)||{}).price)||mid):mid,tol=PRICE_CHECK_TOLERANCE[market];
+ for(const r of valid)r.dev=(N(r.price)/base-1)*100;
+ const worst=Math.max(...valid.map(r=>Math.abs(r.dev))),ok=worst<=tol;
+ const sym=isTr?'€':'$',fmt=v=>sym+N(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:N(v)<1?4:2});
+ const list=valid.map(r=>'<li class="'+(Math.abs(r.dev)>tol?'is-off':'')+'"><span>'+E(r.source)+(r.venue?' · '+E(r.venue):'')+(r.note?' ('+E(r.note)+')':'')+'</span><b>'+E(fmt(r.price))+'</b><i>'+(r.primary?'referencia':(r.dev>=0?'+':'')+r.dev.toFixed(2).replace('.',',')+' %')+'</i></li>').join('');
+ el.innerHTML='<details class="price-check '+(ok?'is-ok':'is-warn')+'"><summary>'+(ok?'✓ '+valid.length+' fuentes coinciden':'⚠ Difieren hasta '+worst.toFixed(2).replace('.',',')+' %')+'</summary><ul>'+list+'</ul>'+
+  (isTr?'<p>Las otras bolsas tienen otro horario y liquidez: fuera de su sesión su precio es el último cierre.</p>':'<p>Precios de la sesión regular. Una diferencia pequeña es normal por retrasos de cada fuente.</p>')+'</details>';
 }
 const profileTrSessionCache=new Map();
 async function loadProfileTrSessionStats(s){
@@ -765,6 +798,7 @@ function renderQuickProfile(){
   refreshProfileLiveEvents(s);
   hydrateProfileSupportResistance(box,s,state.profilePreferTr===true);
   if(state.profilePreferTr===true)hydrateProfileTrSessionStats(box,s);
+  hydrateProfilePriceCheck(box,s,state.profilePreferTr===true);
   window.ViewInvAINativeUI?.syncLayout?.();
  });
 }

@@ -159,7 +159,7 @@ function nativePreflightResponse(request) {
 }
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -2050,13 +2050,73 @@ async function attentionRankingResponse(env,request){
   return jsonResponse(payload,200,{"Cache-Control":kind==="stocks"?"public, max-age=300":"public, max-age=1800"});
 }
 
+// ----- Contraste de precios de acciones con fuentes independientes -----
+// EE. UU.: precio de la sesión regular en Nasdaq y Yahoo Finance (la app añade TradingView).
+// LSX (Trade Republic): el precio de LSX y, como referencia, el de la misma acción en euros en
+// otras bolsas alemanas (Xetra, Fráncfort, Stuttgart) vía Yahoo. Nunca se convierte desde USD.
+const YAHOO_HEADERS={"User-Agent":"Mozilla/5.0 (compatible; ViewInvAI/1.0)","Accept":"application/json"};
+const priceCheckMemo=new Map();
+function memoPriceCheck(key,ttl,loader){
+  const hit=priceCheckMemo.get(key);
+  if(hit&&Date.now()-hit.at<ttl)return hit.pending;
+  const pending=loader().catch(error=>{priceCheckMemo.delete(key);throw error});
+  priceCheckMemo.set(key,{at:Date.now(),pending});
+  if(priceCheckMemo.size>400)for(const [k,v] of priceCheckMemo)if(Date.now()-v.at>ttl*4)priceCheckMemo.delete(k);
+  return pending;
+}
+async function yahooRegular(symbol){
+  return memoPriceCheck("y:"+symbol,30000,async()=>{
+    const r=await fetch("https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=5d",{headers:YAHOO_HEADERS,signal:AbortSignal.timeout(8000)});
+    if(!r.ok)throw new Error("Yahoo "+r.status);
+    const m=(await r.json())?.chart?.result?.[0]?.meta||{};
+    const price=parseMarketNumber(m.regularMarketPrice);
+    if(!(price>0))throw new Error("Yahoo sin precio");
+    return{price,currency:String(m.currency||"").toUpperCase(),exchange:String(m.fullExchangeName||m.exchangeName||""),time:Number(m.regularMarketTime)?new Date(Number(m.regularMarketTime)*1000).toISOString():null,state:String(m.marketState||"")};
+  });
+}
+async function yahooEuropeanListings(isin){
+  return memoPriceCheck("ys:"+isin,6*3600000,async()=>{
+    const r=await fetch("https://query2.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(isin)+"&quotesCount=10&newsCount=0",{headers:YAHOO_HEADERS,signal:AbortSignal.timeout(8000)});
+    if(!r.ok)throw new Error("Yahoo search "+r.status);
+    const quotes=(await r.json())?.quotes||[];
+    const rank={".DE":1,".F":2,".SG":3,".MU":4,".BE":5,".DU":6};
+    return quotes.map(q=>String(q&&q.symbol||"")).filter(sym=>Object.keys(rank).some(sfx=>sym.endsWith(sfx)))
+      .sort((a,b)=>rank[a.slice(a.lastIndexOf("."))]-rank[b.slice(b.lastIndexOf("."))]).slice(0,2);
+  });
+}
+async function stockPriceCheck(request){
+  const url=new URL(request.url),market=url.searchParams.get("market")==="tr"?"tr":"us";
+  const rows=[];
+  if(market==="us"){
+    const ticker=safeStockSymbol(url.searchParams.get("ticker")||"");
+    if(!ticker)return jsonResponse({error:"Ticker no válido"},400);
+    const [nasdaq,yahoo]=await Promise.allSettled([fetchNasdaqQuote(ticker),yahooRegular(ticker.replace(/\./g,"-"))]);
+    if(nasdaq.status==="fulfilled"&&nasdaq.value){
+      const q=nasdaq.value,extended=/pre|after|post/i.test(String(q.marketStatus||""));
+      // En pre/posmercado el precio principal de Nasdaq es el de esa sesión: se usa el cierre regular.
+      const price=extended&&q.secondary&&q.secondary.price>0?q.secondary.price:q.price;
+      if(price>0)rows.push({source:"Nasdaq",venue:"Nasdaq / NYSE",price,currency:"USD",note:extended?"cierre regular":""});
+    }
+    if(yahoo.status==="fulfilled"&&yahoo.value.currency==="USD")rows.push({source:"Yahoo Finance",venue:yahoo.value.exchange,price:yahoo.value.price,currency:"USD",time:yahoo.value.time});
+    return jsonResponse({market,ticker,rows,errors:[nasdaq,yahoo].filter(x=>x.status==="rejected").map(x=>String(x.reason&&x.reason.message||x.reason).slice(0,80)),checkedAt:new Date().toISOString()},200,{"Cache-Control":"no-store"});
+  }
+  const isin=String(url.searchParams.get("isin")||"").trim().toUpperCase();
+  if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return jsonResponse({error:"ISIN no válido"},400);
+  const [lsx,listings]=await Promise.allSettled([fetchTradeRepublicTicker(isin,"LSX"),yahooEuropeanListings(isin)]);
+  if(lsx.status==="fulfilled"&&lsx.value&&lsx.value.price>0)rows.push({source:"Trade Republic",venue:"LS Exchange (LSX)",price:lsx.value.price,currency:"EUR",primary:true});
+  const syms=listings.status==="fulfilled"?listings.value:[];
+  const venues=await Promise.allSettled(syms.map(sym=>yahooRegular(sym)));
+  venues.forEach((v,i)=>{if(v.status==="fulfilled"&&v.value.currency==="EUR")rows.push({source:"Yahoo Finance",venue:v.value.exchange||syms[i],price:v.value.price,currency:"EUR",time:v.value.time,reference:true})});
+  return jsonResponse({market,isin,rows,errors:[lsx,listings,...venues].filter(x=>x.status==="rejected").map(x=>String(x.reason&&x.reason.message||x.reason).slice(0,80)),checkedAt:new Date().toISOString()},200,{"Cache-Control":"no-store"});
+}
+
 // Every root routed by handleBackendApi (backend.js). Keep both lists in sync: a root
 // missing here falls through to the static assets and answers 404.
 const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "fund-catalog-extra", "watchlist",
   "analysis", "ai", "alerts", "position-decisions", "event-insight", "admin", "goal-ideas", "radar-check", "translate", "notification-preferences", "portfolio-goal",
-  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices"
+  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices", "crypto-positions"
 ]);
 function isBackendApiPath(pathname) {
   if (pathname === "/api/backend/status") return true;
@@ -2111,6 +2171,7 @@ export default {
     else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
@@ -2131,7 +2192,8 @@ export default {
         loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
-        loadDailyHistory: loadDailyHistoryForBackend
+        loadDailyHistory: loadDailyHistoryForBackend,
+        loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
       }));
     }
     if (url.pathname === "/api/attention-ranking") {
@@ -2167,6 +2229,11 @@ export default {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await tradeRepublicHealthResponse());
     }
+    if (url.pathname === "/api/price-check") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await stockPriceCheck(request)); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Contraste no disponible" }, 502, { "Cache-Control": "no-store" })); }
+    }
     if (url.pathname === "/api/crypto/catalog") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, jsonResponse({ assets: CRYPTO_ASSETS.map(a => ({ symbol: a.symbol, name: a.name })) }, 200, { "Cache-Control": "public, max-age=3600" }));
@@ -2174,7 +2241,7 @@ export default {
     if (url.pathname === "/api/crypto/quotes") {
       const guard = requestGuard(request); if (guard) return guard;
       const symbols = String(url.searchParams.get("symbols") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 60);
-      try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
+      try { return nativeCorsResponse(request, jsonResponse(await cryptoQuotes(symbols, { env, detail: url.searchParams.get("detail") === "1" && symbols.length <= 3 }), 200, { "Cache-Control": "no-store" })); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Cotizaciones cripto no disponibles" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/crypto/chart") {
@@ -2229,7 +2296,7 @@ export default {
     // Resumen diario de carteras y objetivos (08:00 y 22:00 en España por defecto): su propia
     // ejecución cada 5 min, con su propio margen de CPU y de peticiones.
     if(controller&&controller.cron===DIGEST_CRON){
-      ctx.waitUntil(runDailyPortfolioDigest(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuote:loadQuoteForBackend},Number(controller.scheduledTime)||Date.now())
+      ctx.waitUntil(runDailyPortfolioDigest(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuote:loadQuoteForBackend,loadCryptoQuotes:symbols=>cryptoQuotes(symbols,{env})},Number(controller.scheduledTime)||Date.now())
         .catch(error=>console.error("Daily digest task failed",String(error&&error.stack||error))));
       return;
     }

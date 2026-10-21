@@ -26,7 +26,7 @@
   if(sum.loading&&!sum.portfolios.length)return '<section class="today-card today-portfolios"><small>TUS CARTERAS</small><div class="today-loading">Cargando carteras…</div></section>';
   if(!sum.portfolios.length)return '<section class="today-card today-portfolios"><small>TUS CARTERAS</small><strong>Todavía no tienes carteras</strong><button type="button" class="btn" data-today-go="portfolios">Crear cartera</button></section>';
   const t=sum.total,incomplete=sum.portfolios.some(p=>!p.complete);
-  const rows=sum.portfolios.map(p=>'<button type="button" class="today-portfolio-row" data-today-go="portfolios"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span>'+E(p.name)+(p.kind==='funds'?' · Fondos':'')+' <em>'+p.count+'</em></span><b>'+eur(p.value)+'</b><i class="'+tone(p.day)+'">'+signed(p.day)+'</i></button>').join('');
+  const rows=sum.portfolios.map(p=>'<button type="button" class="today-portfolio-row" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span>'+E(p.name)+(p.kind==='funds'?' · Fondos':'')+' <em>'+p.count+'</em></span><b>'+eur(p.value)+'</b><i class="'+tone(p.day)+'">'+signed(p.day)+'</i></button>').join('');
   return '<section class="today-card today-portfolios">'+
    '<div class="today-total"><small>TUS CARTERAS · EUR</small><strong>'+eur(t.value)+'</strong>'+
     '<div class="today-total-chips"><span class="'+tone(t.day)+'">Hoy '+signed(t.day)+'</span><span class="'+tone(t.pnl)+'">P&L neto '+signed(t.pnl)+'</span>'+(t.cash>0?'<span title="Efectivo disponible, aparte del valor de las carteras">Efectivo '+eur(t.cash)+'</span>':'')+'</div>'+
@@ -95,6 +95,8 @@
  function refresh(){if(typeof state!=='undefined'&&state.currentView==='today')render()}
  ['viewinvai:portfolio-membership-changed','viewinvai:portfolios-loaded','viewinvai:account-ready','viewinvai:auth-changed','viewinvai:inbox-updated'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
  window.addEventListener('viewinvai:fund-portfolios-changed',()=>setTimeout(refresh,50));
+ window.addEventListener('viewinvai:crypto-totals',()=>setTimeout(refresh,50));
+ window.addEventListener('viewinvai:crypto-quotes',()=>{if(!quoteTimer)quoteTimer=setTimeout(()=>{quoteTimer=null;refresh()},2000)});
  // Cotizaciones por ISIN (fondos y acciones fuera del catálogo): repintar como mucho cada 2 s.
  let quoteTimer=null;
  window.addEventListener('viewinvai:tr-isin-quote',()=>{if(!quoteTimer)quoteTimer=setTimeout(()=>{quoteTimer=null;refresh()},2000)});

@@ -5,7 +5,7 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','heatmap'];
+const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','crypto','heatmap'];
 const NAV_META={
  today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
@@ -13,6 +13,7 @@ const NAV_META={
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
  favorites:{icon:'★',short:'Favoritos',desc:'Acciones, fondos e índices guardados'},
  funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
+ crypto:{icon:'₿',short:'Cripto',desc:'Precio de consenso, Mi cripto y Radar cripto'},
  catalog:{icon:'▤',short:'TR',desc:'Universo Trade Republic'},
  heatmap:{icon:'▦',short:'Mapa',desc:'Mercado por sectores'},
  future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
@@ -26,19 +27,19 @@ const NAV_META={
 // Bottom bar: Inicio · Radar AI · [⌃ Mercados, the centre arrow] · Carteras · Más.
 // Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
 const PRIMARY_MOBILE_VIEWS=['today','recommendation','portfolios'];
-const MORE_VIEWS=['inbox','catalog','catalogUS','funds','heatmap','tax'];
+const MORE_VIEWS=['inbox','catalog','catalogUS','funds','crypto','heatmap','tax'];
 const NAV_GROUPS={
  today:['today'],
  home:['home'],
  recommendation:['recommendation','entry','future'],
  portfolios:['portfolios'],
- catalogs:['catalog','catalogUS','funds','heatmap'],
+ catalogs:['catalog','catalogUS','funds','crypto','heatmap'],
  inbox:['inbox'],
  tax:['tax'],
  settings:['settings'],
  admin:['admin']
 };
-const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){

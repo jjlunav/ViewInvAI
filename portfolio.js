@@ -497,6 +497,10 @@ function portfolioSummaryHtml(portfolio, positions) {
     }
     if(seen&&complete)realizedPnl=convertedTotal;
   }
+  // Una pérdida realizada mayor que la mitad de lo vendido casi siempre es un dato mal importado.
+  let sellGross=0;
+  if(txSummary&&txSummary.currencies)for(const [code,row] of Object.entries(txSummary.currencies)){const v=portfolioConvertAmount(num(row&&row.sellGross)||0,code,baseCurrency,fxUsdEur);if(v!==null)sellGross+=v}
+  const realizedSuspect=realizedPnl!==null&&realizedPnl<0&&sellGross>0&&-realizedPnl>sellGross*0.5;
   const totalPnl = openPnl !== null && realizedPnl !== null ? openPnl + realizedPnl : null;
   const pnlHtml = (label, value, suffix = "") => value === null ? "" :
     '<div><small>' + label + '</small><strong class="' + (value >= 0 ? 'pnl-up' : 'pnl-down') + '">' +
@@ -507,7 +511,7 @@ function portfolioSummaryHtml(portfolio, positions) {
     '<div><small>CARTERA</small><strong>' + esc(portfolio.name) + '</strong></div>' +
     '<div><small>VALOR</small><strong>' + (totalValue!==null ? formatMoney(totalValue, baseCurrency) : '—') + '</strong></div>' +
     pnlHtml('ABIERTO', openPnl, openPnlPct === null ? '' : ' · ' + (openPnlPct >= 0 ? '+' : '') + formatNumber(openPnlPct, 2) + '%') +
-    pnlHtml('REALIZADO', realizedPnl) +
+    pnlHtml('REALIZADO', realizedPnl, realizedSuspect ? ' <button type="button" class="realized-check" data-portfolio-history="'+esc(portfolio.id)+'" title="La pérdida realizada parece imposible: abre el historial con las operaciones a revisar">⚠ revisar</button>' : '') +
     pnlHtml('TOTAL', totalPnl) +
   '</div>';
 }
@@ -2532,6 +2536,48 @@ function transactionSummaryHtml(summary, currency) {
   '</div>';
 }
 
+// Detector de operaciones incoherentes: explica un P&L realizado imposible antes de que se
+// tome por bueno. No cambia nada; solo señala qué revisar y por qué.
+function transactionIssues(rows){
+  const issues=[],byStock=new Map();
+  for(const tx of rows||[]){const k=String(tx.stock_key||tx.ticker||'');if(!byStock.has(k))byStock.set(k,[]);byStock.get(k).push(tx)}
+  for(const list of byStock.values()){
+    const sorted=list.slice().sort((a,b)=>String(a.executed_at||'').localeCompare(String(b.executed_at||''))||String(a.created_at||'').localeCompare(String(b.created_at||'')));
+    const label=sorted[0].ticker||sorted[0].name||sorted[0].stock_key||'—';
+    const trades=sorted.filter(t=>String(t.origin||'')!=='position-adjustment'&&num(t.quantity)>0&&num(t.price)>0);
+    const currencies=new Set(trades.map(t=>String(t.currency||'EUR').toUpperCase()));
+    if(currencies.size>1)issues.push({tx:null,ticker:label,kind:'currency',text:'Operaciones en varias divisas ('+[...currencies].join(', ')+'): el P&L no se puede calcular bien.'});
+    // Precio muy alejado del resto (precio total en vez de unitario, contrasplit o divisa equivocada).
+    const prices=trades.map(t=>num(t.price)).sort((a,b)=>a-b),med=prices.length>=3?prices[Math.floor(prices.length/2)]:null;
+    const seen=new Map();let held=0,cost=0;
+    const hasSeed=trades.some(t=>t.origin==='position-seed'),hasImport=trades.some(t=>/import|broker|sync|csv|flex/i.test(String(t.origin||'')));
+    if(hasSeed&&hasImport)issues.push({tx:null,ticker:label,kind:'seed',text:'Tiene la compra inicial creada a mano y también compras importadas: puede contar dos veces la misma compra.'});
+    for(const t of sorted){
+      const side=String(t.side||'').toUpperCase(),q=num(t.quantity)||0,pr=num(t.price)||0,day=String(t.executed_at||'').slice(0,10);
+      if(String(t.origin||'')==='position-adjustment'){held=q;cost=q*pr;continue}
+      const dupKey=side+'|'+day+'|'+q+'|'+pr;
+      if(seen.has(dupKey))issues.push({tx:t,ticker:label,kind:'dup',text:'Posible duplicado: misma fecha, cantidad y precio que otra '+(side==='BUY'?'compra':'venta')+'.'});
+      seen.set(dupKey,t);
+      if(med&&pr>0&&(pr<med*0.4||pr>med*2.5))issues.push({tx:t,ticker:label,kind:'price',text:'Precio '+formatMoney(pr,t.currency||'EUR')+' muy distinto del habitual ('+formatMoney(med,t.currency||'EUR')+'): ¿importe total en lugar de precio por acción, o un split?'});
+      if(side==='BUY'){held+=q;cost+=q*pr;continue}
+      if(side==='SELL'){
+        if(q>held+1e-8)issues.push({tx:t,ticker:label,kind:'oversell',text:'Vende '+formatNumber(q,4)+' pero solo había '+formatNumber(held,4)+': falta alguna compra.'});
+        const avg=held>1e-8?cost/held:null;
+        if(avg&&pr<avg*0.4)issues.push({tx:t,ticker:label,kind:'loss',text:'Venta a '+formatMoney(pr,t.currency||'EUR')+' con coste medio '+formatMoney(avg,t.currency||'EUR')+' (−'+Math.round((1-pr/avg)*100)+' %): revisa precio o cantidades.'});
+        const out=Math.min(q,held);cost-=avg?out*avg:0;held=Math.max(0,held-q);if(held<=1e-8){held=0;cost=0}
+      }
+    }
+  }
+  return issues;
+}
+function transactionIssuesHtml(rows){
+  const issues=transactionIssues(rows);
+  if(!issues.length)return '<div class="transaction-issues ok">✓ No se ven operaciones incoherentes.</div>';
+  return '<details class="transaction-issues warn" open><summary>⚠ '+issues.length+' '+(issues.length===1?'operación a revisar':'operaciones a revisar')+'</summary><ul>'+
+    issues.slice(0,40).map(i=>'<li><b>'+esc(i.ticker)+'</b>'+(i.tx&&i.tx.executed_at?' · '+esc(new Date(i.tx.executed_at).toLocaleDateString('es-ES')):'')+' — '+esc(i.text)+'</li>').join('')+
+    '</ul><p>Corrígelo en el fichero del bróker y vuelve a importarlo, o borra la operación manual que sobre. El P&L realizado depende de estas filas.</p></details>';
+}
+
 function transactionRowsHtml(rows, currency) {
   if (!rows || !rows.length) return '<div class="portfolio-empty-state compact">Todavía no hay operaciones registradas.</div>';
   return rows.map(tx => {
@@ -2619,6 +2665,7 @@ async function openPortfolioTransactionHistory(portfolioId) {
     body.innerHTML =
       '<div class="transaction-ledger portfolio-transaction-history">' +
         portfolioTransactionSummaryHtml(data.portfolioSummary) +
+        transactionIssuesHtml(rows) +
         '<div class="transaction-history-head"><strong>Movimientos de ' + esc(portfolio.name) + '</strong><span>Más reciente primero</span></div>' +
         '<div class="transaction-history">' + transactionRowsHtml(rows, portfolio.base_currency || 'EUR') + '</div>' +
       '</div>';
@@ -4240,6 +4287,9 @@ function portfolioDaySummary(){
   // Carteras de fondos (Fondos): mismo valor que sus tarjetas.
   const F=window.ViewInvAIFunds;
   if(F&&typeof F.getPortfolioTotals==='function')rows.push(...F.getPortfolioTotals().map(r=>({...r,kind:'funds'})));
+  // Criptoactivos (Mi cripto): precio de consenso; sin efectivo.
+  const X=window.ViewInvAICrypto,ct=X&&typeof X.totals==='function'?X.totals():null;
+  if(ct&&ct.count>0)rows.push({id:'crypto',name:'Criptoactivos',value:ct.value,cash:0,day:ct.day,pnl:ct.pnl,count:ct.count,complete:ct.complete&&!!ct.updatedAt,kind:'crypto'});
   const total=rows.reduce((t,r)=>({value:t.value+r.value,cash:t.cash+(r.cash||0),day:t.day+r.day,pnl:t.pnl+r.pnl}),{value:0,cash:0,day:0,pnl:0});
   const keys=[...new Set([...open.map(p=>p.stock_key),...state.watchlist.map(w=>w.stock_key)].filter(Boolean))];
   return{signedIn:true,loading:!!state.loading,portfolios:rows,total,stockKeys:keys,positionKeys:[...new Set(open.map(p=>p.stock_key))]};
