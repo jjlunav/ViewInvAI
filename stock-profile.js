@@ -164,7 +164,7 @@ async function hydrateProfilePriceCheck(root,s,isTr){
  let data=cached&&Date.now()-cached.at<60000?cached.data:null;
  try{
   if(!data){
-   const r=await fetch('/api/price-check?market='+market+'&'+(isTr?'isin=':'ticker=')+encodeURIComponent(id),{cache:'no-store'});
+   const r=await fetch('/api/price-check?market='+market+'&'+(isTr?'isin=':'ticker=')+encodeURIComponent(id)+(isTr&&s.name?'&name='+encodeURIComponent(String(s.name).replace(/,?\s+(inc|corp|corporation|ltd|plc|ag|se|sa|nv|co)\.?$/i,'')):''),{cache:'no-store'});
    data=await r.json();if(!r.ok)throw Error(data.error||r.status);
    profilePriceCheckCache.set(key,{at:Date.now(),data});
   }
