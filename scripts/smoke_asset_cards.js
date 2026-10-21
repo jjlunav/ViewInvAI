@@ -148,7 +148,7 @@ window.checkAssetCards = async function () {
   const cashRow=view.querySelector('[data-portfolio-cash-edit="ci"]');
   assert(cashRow&&/Capital líquido/.test(cashRow.textContent),'manual liquid-capital row is missing');
   const assetTabs=[...view.querySelectorAll('.portfolio-asset-switch [role="tab"]')];
-  assert(assetTabs.length===4&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
+  assert(assetTabs.length===5&&assetTabs.some(t=>t.dataset.portfolioAsset==='crypto')&&assetTabs.every(t=>t.classList.contains('tab')),'portfolio asset control is not rendered as tabs');
   const fundsApi=window.ViewInvAIFunds,stockPanel=document.querySelector('#portfolioApp'),fundPanel=document.querySelector('#fundPortfolioApp');
   assert(fundsApi&&typeof fundsApi.setPortfolioAssetMode==='function','portfolio asset mode controller is missing');
   fundsApi.setPortfolioAssetMode('funds',false);

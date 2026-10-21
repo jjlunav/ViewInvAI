@@ -215,7 +215,10 @@
     const peak=Math.max(n(input.peakValueEur)||0,valueEur);
     const drawdownPct=peak>0?(1-valueEur/peak)*100:0;
     const defensive=input.wasDefensive?drawdownPct>DEFENSIVE_OUT:drawdownPct>=DEFENSIVE_IN;
-    const pc=pace(cfg,valueEur,input.nowMs);
+    // Mi cripto (si el objetivo la incluye) cuenta en el progreso y el ritmo, pero no en el tamaño
+    // de las compras ni en el modo defensivo: la volatilidad de la cripto no debe mover el plan de acciones.
+    const extraValue=Math.max(0,n(input.extraValueEur)||0);
+    const pc=pace(cfg,valueEur+extraValue,input.nowMs);
     // Ir retrasado NO autoriza a comprar señales peores ni a sobredimensionar: eso aumenta
     // la probabilidad de alejarse aún más del objetivo. Solo reducimos algo el riesgo si vamos adelantados.
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
@@ -507,7 +510,7 @@
       ...waits,
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
-    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),peakValueEur:r2(peak),
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 

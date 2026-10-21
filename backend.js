@@ -5124,7 +5124,9 @@ async function ensurePortfolioGoalSchema(env){
     ["invest_cap_pct","ALTER TABLE portfolio_goals ADD COLUMN invest_cap_pct REAL"],
     ["allow_fractions","ALTER TABLE portfolio_goals ADD COLUMN allow_fractions INTEGER NOT NULL DEFAULT 1"],
     ["no_fraction_tickers","ALTER TABLE portfolio_goals ADD COLUMN no_fraction_tickers TEXT NOT NULL DEFAULT ''"],
-    ["invest_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN invest_reserve_eur REAL"]
+    ["invest_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN invest_reserve_eur REAL"],
+    // Mi cripto cuenta en el progreso y el ritmo del objetivo (no en el tamaño de las compras de acciones).
+    ["include_crypto","ALTER TABLE portfolio_goals ADD COLUMN include_crypto INTEGER NOT NULL DEFAULT 0"]
   ]){
     if(!goalColumnNames.has(name))await env.DB.prepare(sql).run();
   }
@@ -5145,7 +5147,7 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
@@ -5173,7 +5175,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
     if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
     const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
     const existing=await env.DB.prepare(
-      "SELECT portfolio_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+      "SELECT portfolio_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
     ).bind(portfolioId,user.id).first();
     const rawDate=body.targetDate!==undefined?trimText(body.targetDate,10):(existing&&existing.target_date||"");
     let targetDate=rawDate||null;
@@ -5214,16 +5216,17 @@ async function handlePortfolioGoal(request,env,user,json,url){
     if(body.noFractionTicker!==undefined){const t=tickerOf(body.noFractionTicker);if(t)noFrac.add(t)}
     for(const v of [].concat(body.fractionTicker!==undefined?[body.fractionTicker]:[],Array.isArray(body.fractionTickers)?body.fractionTickers.slice(0,100):[])){const t=tickerOf(v);if(t)noFrac.delete(t)}
     const noFractionTickers=[...noFrac].slice(-100).join(",");
-    // El ritmo se mide desde que se fija (o cambia) el objetivo o su fecha.
-    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date;
+    const includeCrypto=body.includeCrypto!==undefined?(body.includeCrypto===true?1:0):(existing&&Number(existing.include_crypto)===1?1:0);
+    // El ritmo se mide desde que se fija (o cambia) el objetivo, su fecha o lo que cuenta en el valor.
+    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto;
     const startValue=restart?finiteNumber(body.currentValueEur):finiteNumber(existing.start_value_eur);
     const startDate=restart?now:existing.start_date;
     await env.DB.prepare(
-      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "+
+      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "+
       "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,target_date=excluded.target_date,monthly_contribution_eur=excluded.monthly_contribution_eur,risk_profile=excluded.risk_profile,"+
       "max_positions=excluded.max_positions,allow_spec=excluded.allow_spec,start_value_eur=excluded.start_value_eur,start_date=excluded.start_date,"+
-      "invest_cap_eur=excluded.invest_cap_eur,invest_cap_pct=excluded.invest_cap_pct,invest_reserve_eur=excluded.invest_reserve_eur,allow_fractions=excluded.allow_fractions,no_fraction_tickers=excluded.no_fraction_tickers,updated_at=excluded.updated_at"
-    ).bind(portfolioId,user.id,target,targetDate,monthlyContribution,riskProfile,maxPositions,allowSpec,startValue!==null&&startValue>0?Math.round(startValue*100)/100:null,startDate,investCapEur,investCapPct,investReserveEur,allowFractions,noFractionTickers,now,now).run();
+      "invest_cap_eur=excluded.invest_cap_eur,invest_cap_pct=excluded.invest_cap_pct,invest_reserve_eur=excluded.invest_reserve_eur,allow_fractions=excluded.allow_fractions,no_fraction_tickers=excluded.no_fraction_tickers,include_crypto=excluded.include_crypto,updated_at=excluded.updated_at"
+    ).bind(portfolioId,user.id,target,targetDate,monthlyContribution,riskProfile,maxPositions,allowSpec,startValue!==null&&startValue>0?Math.round(startValue*100)/100:null,startDate,investCapEur,investCapPct,investReserveEur,allowFractions,noFractionTickers,includeCrypto,now,now).run();
     const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
     return json({goal:await goalWithPositionState(env,user.id,goal)},existing?200:201);
   }
@@ -7351,13 +7354,33 @@ function goalPaceText(pc){
   if(pc.status==="on")return"Vas en plazo.";
   return"";
 }
+// Valor de Mi cripto por usuario (precio de consenso). Sin cotización de alguna moneda no se suma
+// nada: un valor incompleto haría parecer que el objetivo va peor de lo que va.
+async function goalCryptoValues(env,services,userIds){
+  const out=new Map(),ids=[...new Set(userIds)].slice(0,40);
+  if(!ids.length||!services.loadCryptoQuotes)return out;
+  let rows=[];
+  try{rows=(await env.DB.prepare("SELECT user_id,symbol,units FROM crypto_positions WHERE units>0 AND user_id IN ("+ids.map(()=>"?").join(",")+")").bind(...ids).all()).results||[]}
+  catch(_){return out}
+  if(!rows.length)return out;
+  let quotes={};
+  try{quotes=(await services.loadCryptoQuotes([...new Set(rows.map(r=>r.symbol))])).quotes||{}}catch(_){return out}
+  const broken=new Set();
+  for(const r of rows){
+    const price=finiteNumber(quotes[r.symbol]&&quotes[r.symbol].price);
+    if(!(price>0)){broken.add(r.user_id);continue}
+    out.set(r.user_id,(out.get(r.user_id)||0)+(finiteNumber(r.units)||0)*price);
+  }
+  for(const id of broken)out.delete(id);
+  return out;
+}
 async function scanPortfolioGoalNotifications(env,services){
   const engine=globalThis.ViewInvAIGoal;
   if(!services.loadMarketSnapshot||!engine)return{processed:0,alerts:0};
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -7370,6 +7393,7 @@ async function scanPortfolioGoalNotifications(env,services){
   const snapshot=await services.loadMarketSnapshot(env,{universe:["goal:us","goal:tr"],universeStocks:true}),stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[],usdToEur=goalServerUsdToEur(snapshot);
   const byKey=new Map(stocks.map(s=>[goalServerKey(s),s]));
   const radarCacheByScope=new Map();
+  const cryptoByUser=await goalCryptoValues(env,services,(goals.results||[]).filter(g=>Number(g.include_crypto)===1).map(g=>g.user_id));
   const quoteCache=new Map();
   const quoteEur=async(stock,preferTr,side="LAST")=>{
     if(!stock||!services.loadQuote)return null;
@@ -7490,7 +7514,8 @@ async function scanPortfolioGoalNotifications(env,services){
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1};
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
+        extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.

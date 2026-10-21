@@ -240,7 +240,7 @@
  function syncVisible(){
   const b=mount();if(!b)return;
   const v=document.querySelector('.view.active'),id=v&&v.id.replace(/^view-/,'');
-  b.hidden=!VIEWS.includes(id)||document.body.classList.contains('stock-detail-open');
+  b.hidden=!VIEWS.includes(id)||document.body.classList.contains('stock-detail-open')||document.body.classList.contains('crypto-detail-open');
   if(b.hidden)close();
  }
  function setOpen(open){

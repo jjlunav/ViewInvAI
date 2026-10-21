@@ -32,7 +32,7 @@
  function savedPortfolioAssetMode(){
   try{
    const mode=String(localStorage.getItem(PORTFOLIO_ASSET_UI_KEY)||'stocks');
-   return mode==='funds'||mode==='goal'||mode==='favorites'?mode:'stocks';
+   return mode==='funds'||mode==='goal'||mode==='favorites'||mode==='crypto'?mode:'stocks';
   }catch(_){return 'stocks'}
  }
  function savePortfolioAssetMode(mode){
@@ -41,9 +41,9 @@
 
  function q(s){return document.querySelector(s)}
  function setPortfolioAssetMode(mode,loadFunds=true){
-  mode=mode==='funds'?'funds':mode==='goal'?'goal':mode==='favorites'?'favorites':'stocks';
+  mode=mode==='funds'?'funds':mode==='goal'?'goal':mode==='favorites'?'favorites':mode==='crypto'?'crypto':'stocks';
   savePortfolioAssetMode(mode);
-  const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp'),goalPanel=q('#portfolioGoalApp'),favPanel=q('#portfolioFavoritesApp');
+  const view=q('#view-portfolios'),stockPanel=q('#portfolioApp'),fundPanel=q('#fundPortfolioApp'),goalPanel=q('#portfolioGoalApp'),favPanel=q('#portfolioFavoritesApp'),cryptoPanel=q('#portfolioCryptoApp');
   if(view)view.dataset.portfolioAssetMode=mode;
   document.querySelectorAll('[data-portfolio-asset]').forEach(b=>{
    const active=b.dataset.portfolioAsset===mode;
@@ -63,7 +63,11 @@
   show(fundPanel,mode==='funds');
   show(goalPanel,mode==='goal');
   show(favPanel,mode==='favorites');
-  if(mode==='funds'){
+  show(cryptoPanel,mode==='crypto');
+  if(mode==='crypto'){
+   root.ViewInvAIPortfolios?.setGoalVisible?.(false);
+   root.ViewInvAICrypto?.showPortfolio?.();
+  }else if(mode==='funds'){
    root.ViewInvAIPortfolios?.setGoalVisible?.(false);
    if(loadFunds)loadPortfolio(false);
   }else if(mode==='goal'){
