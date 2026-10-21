@@ -149,7 +149,7 @@ jobs:
           grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
           grep -q "data-app-version=\"${VERSION}\"" mobile-shell/app.html
-          grep -q "viewinvai:liveShell:v1" mobile-shell/index.html
+          grep -q "viewinvai:liveShell:v2" mobile-shell/index.html
           # Los catálogos se descargan del servidor: no deben ir dentro de la APK.
           if [ -e mobile-shell/data/market.json ] || [ -e mobile-shell/data/funds.json ]; then
             echo "::error::La APK no debe empaquetar los catálogos de datos."

@@ -13,7 +13,8 @@
   // lleva la APK (app.html). Dos arranques fallidos seguidos → copia local durante 6 horas.
   (function () {
     'use strict';
-    var ORIGIN = 'https://viewinvai.sonarlab.workers.dev', KEY = 'viewinvai:liveShell:v1', LOCAL = 'app.html';
+    // v2: estado nuevo tras corregir CORS en el servidor (las APK anteriores podían quedar 6 h en la copia local).
+    var ORIGIN = 'https://viewinvai.sonarlab.workers.dev', KEY = 'viewinvai:liveShell:v2', LOCAL = 'app.html';
     function read() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) { return {}; } }
     function save(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) {} }
     function local(reason) {
