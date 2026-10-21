@@ -2,6 +2,12 @@ name: Build ViewInvAI Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      ejecutor:
+        description: "Dónde compilar: github (minutos de la cuenta) o propio (ejecutor propio, p. ej. un Codespace con la etiqueta viewinvai-apk; no gasta minutos)"
+        type: choice
+        options: [github, propio]
+        default: github
   push:
     branches:
       - main
@@ -17,8 +23,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # «propio»: ejecutor propio (Linux) con la etiqueta viewinvai-apk. Usa los mismos secretos del
+    # repositorio (misma firma) y no consume minutos de GitHub Actions.
+    runs-on: ${{ inputs.ejecutor == 'propio' && fromJSON('["self-hosted","linux","viewinvai-apk"]') || 'ubuntu-latest' }}
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -34,6 +42,34 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Prepare self-hosted runner (Android SDK and Chrome)
+        if: runner.environment == 'self-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "${ANDROID_HOME:-/none}" ]; then
+            export ANDROID_HOME="$HOME/android-sdk"
+            if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+              mkdir -p "$ANDROID_HOME/cmdline-tools"
+              curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              rm -rf /tmp/cmdline-tools && unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+              rm -rf "$ANDROID_HOME/cmdline-tools/latest" && mv /tmp/cmdline-tools/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+            fi
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" >/dev/null
+            echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          fi
+          if ! command -v google-chrome >/dev/null && ! command -v chromium >/dev/null && ! command -v chromium-browser >/dev/null; then
+            curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            sudo apt-get update -qq && sudo apt-get install -y -qq /tmp/chrome.deb >/dev/null
+          fi
+          if ! command -v python >/dev/null; then
+            mkdir -p "$HOME/.local/bin" && ln -sf "$(command -v python3)" "$HOME/.local/bin/python"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          echo "Self-hosted runner ready: ANDROID_HOME=${ANDROID_HOME}"
 
       - name: Restore stable signing key from repository secret
         id: signing-secret
@@ -112,13 +148,14 @@ jobs:
           grep -q 'html\[data-native-app="1"\] .notification-bell' mobile-shell/mobile-app.css
           grep -q 'position:absolute!important' mobile-shell/mobile-app.css
           VERSION="$(node -p "require('./package.json').version")"
-          grep -q "data-app-version=\"${VERSION}\"" mobile-shell/index.html
+          grep -q "data-app-version=\"${VERSION}\"" mobile-shell/app.html
+          grep -q "viewinvai:liveShell:v1" mobile-shell/index.html
           # Los catálogos se descargan del servidor: no deben ir dentro de la APK.
           if [ -e mobile-shell/data/market.json ] || [ -e mobile-shell/data/funds.json ]; then
             echo "::error::La APK no debe empaquetar los catálogos de datos."
             exit 1
           fi
-          grep -q 'const native = true' mobile-shell/index.html
+          grep -q 'const native = true' mobile-shell/app.html
           if grep -q '"url"[[:space:]]*:[[:space:]]*"https://viewinvai' capacitor.config.json; then
             echo "::error::Android config still points at the remote web shell."
             exit 1
@@ -144,7 +181,7 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-          p=Path(os.environ["QA_SHELL"])/"index.html"
+          p=Path(os.environ["QA_SHELL"])/"app.html"
           html=p.read_text(encoding="utf-8")
           inject=r"""
           <script>
@@ -218,7 +255,7 @@ jobs:
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           sleep 1
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=412,915 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=12000 --dump-dom http://127.0.0.1:4182/ > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size=412,915 --force-device-scale-factor=1 --user-data-dir=/tmp/viewinvai-native-profile --virtual-time-budget=12000 --dump-dom http://127.0.0.1:4182/app.html > /tmp/viewinvai-native-dom.html 2>/tmp/viewinvai-native-chrome.log
           if ! grep -q 'data-native-smoke="ok"' /tmp/viewinvai-native-dom.html; then
             echo "::error::El frontend empaquetado no supera el recorrido funcional nativo"
             grep -o 'data-native-smoke-error="[^"]*"' /tmp/viewinvai-native-dom.html || true
@@ -509,3 +546,8 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove signing key from self-hosted runner
+        if: always() && runner.environment == 'self-hosted'
+        shell: bash
+        run: rm -f "$HOME/.android/debug.keystore" && echo "Signing key removed from the runner."

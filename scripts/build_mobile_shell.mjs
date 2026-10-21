@@ -79,10 +79,14 @@ html = html.replace(
   '<script src="native-runtime.js?v=20261002o1"></script>'
 );
 
-await writeFile(path.join(out, 'index.html'), html, 'utf8');
+// app.html: la copia completa que lleva la APK (sin conexión o si la versión publicada falla).
+// index.html: el cargador, que abre la versión publicada en el servidor dentro de la propia APK,
+// así las pantallas se actualizan con cada publicación sin compilar una APK nueva.
+await writeFile(path.join(out, 'app.html'), html, 'utf8');
+await cp(path.join(root, 'mobile-loader', 'index.html'), path.join(out, 'index.html'));
 
 const built = await readdir(out);
-if (!built.includes('index.html') || !built.includes('styles.css') || !built.includes('stock-profile.js')) {
+if (!built.includes('index.html') || !built.includes('app.html') || !built.includes('styles.css') || !built.includes('stock-profile.js')) {
   throw new Error('Packaged mobile shell is incomplete.');
 }
 

@@ -1862,7 +1862,9 @@ function overlayMarketLive(snapshot,live){
   return snapshot;
 }
 let radarScoreboardMemo={at:0,value:null};
-const RADAR_SCOREBOARD_KV_KEY="radar:scoreboard:summary";
+// v2 y con caducidad: la clave anterior se guardaba sin fecha de caducidad y el marcador se
+// quedaba congelado en el primer resumen calculado.
+const RADAR_SCOREBOARD_KV_KEY="radar:scoreboard:summary:v2";
 async function radarScoreboardResponse(env){
   try{
     if(!radarScoreboardMemo.value||Date.now()-radarScoreboardMemo.at>10*60000){
@@ -1874,7 +1876,7 @@ async function radarScoreboardResponse(env){
       if(!value){
         value=await radarScoreboardSummary(env);
         if(env.HOT_STATE_KV){
-          try{await env.HOT_STATE_KV.put(RADAR_SCOREBOARD_KV_KEY,JSON.stringify(value))}
+          try{await env.HOT_STATE_KV.put(RADAR_SCOREBOARD_KV_KEY,JSON.stringify(value),{expirationTtl:1800})}
           catch(error){console.warn("Radar scoreboard KV warm failed",String(error&&error.message||error))}
         }
       }
@@ -2231,7 +2233,11 @@ export default {
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
-    tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt));
+    // Tras la foto diaria del Radar, el resumen guardado se recalcula en la siguiente consulta.
+    tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt).then(async r=>{
+      if(r&&r.day&&env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY)}catch(_){}}
+      return r;
+    }));
     if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));
     ctx.waitUntil(Promise.allSettled(tasks).then(results=>{
       for(const result of results)if(result.status==="rejected")console.error("Scheduled task failed",String(result.reason&&result.reason.stack||result.reason));

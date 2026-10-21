@@ -523,7 +523,7 @@ function initSettings(){
   ['Precios en vivo','App → Worker /api/market-live → Netlify market-live (TradingView) cada minuto en horario 04:00-20:00 NY y cada 15 min fuera. Si Netlify falla, el Worker consulta TradingView directamente.'],
   ['Avisos y análisis','Worker cada minuto → pide a Netlify market-server los valores de carteras y seguimiento + Radar y Objetivo ya calculados → decide → guarda en D1 → Firebase Cloud Messaging → móvil/reloj.'],
   ['Fondos y ETFs','«Fondos y ETFs» (viewinvai/data, diario) → funds.json en jjlunav/ViewInvAI → web.'],
-  ['APK','Manual: GitHub jjlunav/ViewInvAI › Actions › Build ViewInvAI Android APK › Run workflow (rama main) → artefacto ViewInvAI-Android-debug.']
+  ['APK','Al abrir, la APK carga la versión publicada de la app (la misma que la web) y, sin conexión o si fallara, la copia que lleva dentro. Solo hace falta compilar otra APK para cambios nativos (icono, permisos, plugins): GitHub jjlunav/ViewInvAI › Actions › Build ViewInvAI Android APK › Run workflow (rama main) → artefacto ViewInvAI-Android-debug.']
  ];
  // [nombre, dónde, para qué, caducidad / cómo renovar, clave de estado en vivo]
  const DOC_KEYS=[
