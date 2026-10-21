@@ -83,6 +83,9 @@ function midPrice(bid,ask,last){
   if(bid>0&&ask>0&&ask>=bid&&(ask-bid)/bid<0.05)return(bid+ask)/2;
   return last>0?last:null;
 }
+// Un mercado con un volumen casi nulo en 24 h no forma un precio representativo: no entra.
+const MIN_EUR_VOLUME_24H=2000;
+function liquid(price,units24h){return units24h===null||price*units24h>=MIN_EUR_VOLUME_24H}
 // Cada cargador devuelve Map(symbol -> {price, change24h?, open24h?}) en EUR.
 const SOURCES = {
   kraken:{label:"Kraken",kind:"mercado",load:()=>cached("kraken",async()=>{
@@ -93,7 +96,8 @@ const SOURCES = {
       let base=m[1];if(base.length===4&&/^X/.test(base))base=base.slice(1);
       base=KRAKEN_ALIAS[base]||base;
       if(!BY_SYMBOL.has(base)||out.has(base))continue;
-      const price=midPrice(num(t&&t.b&&t.b[0]),num(t&&t.a&&t.a[0]),num(t&&t.c&&t.c[0]));if(price>0)out.set(base,{price});
+      const price=midPrice(num(t&&t.b&&t.b[0]),num(t&&t.a&&t.a[0]),num(t&&t.c&&t.c[0]));
+      if(price>0&&liquid(price,num(t&&t.v&&t.v[1])))out.set(base,{price});
     }
     return out;
   })},
@@ -103,7 +107,7 @@ const SOURCES = {
     for(const t of Array.isArray(d)?d:[]){
       const m=String(t&&t.pair||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!BY_SYMBOL.has(m[1]))continue;
       const price=midPrice(num(t.bid),num(t.ask),num(t.last)),open=num(t.open_24);
-      if(price>0)out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null});
+      if(price>0&&liquid(price,num(t.volume)))out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null});
     }
     return out;
   })},
