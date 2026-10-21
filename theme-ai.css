@@ -2437,3 +2437,13 @@ html[data-list-view="compact"] .crypto-card .crypto-quote{flex-direction:column;
 html[data-list-view="compact"] .crypto-card .crypto-quote .crypto-price{font-size:15px;margin:0}
 html[data-list-view="compact"] .crypto-card .crypto-quote b{display:inline-flex;align-items:center;gap:5px}
 html[data-list-view="compact"]:root:root body:not(#a11y-floor):not(#lv-a):not(#cx) .crypto-card .asset-card-row[data-card-template="compact-slots"]{grid-template-areas:"marker identity quote"!important;grid-template-rows:auto!important;min-height:0!important}
+
+/* Alpha va en su propia columna, separada de los mercados autorizados (Mercado, Mi cripto, Radar). */
+#view-crypto .crypto-tabs-row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1.25fr);gap:8px;width:100%}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha{border-style:dashed!important;border-color:color-mix(in srgb,var(--amber,#f5b544) 55%,transparent)!important;background:color-mix(in srgb,var(--amber,#f5b544) 6%,transparent)!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button{line-height:1!important;gap:1px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;color:var(--amber,#c98a12)!important}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button small{display:block;font-size:8.5px;line-height:1;margin-top:1px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button.active{background:color-mix(in srgb,var(--amber,#f5b544) 20%,transparent)!important;color:var(--text)!important}
+html[data-theme="light"]:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button:not(.active){color:#9a6a06!important}
+/* Tarjetas Alpha: borde lateral ámbar para no confundirlas con las monedas de mercados autorizados. */
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.crypto-card-alpha{border-color:color-mix(in srgb,var(--amber,#f5b544) 38%,var(--line))!important;box-shadow:inset 3px 0 0 color-mix(in srgb,var(--amber,#f5b544) 75%,transparent)!important}

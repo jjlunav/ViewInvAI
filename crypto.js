@@ -187,7 +187,7 @@
  }
  function alphaCard(t){
   const qt=Object.assign({image:t.icon},t);
-  return root.ViewInvAICards.render({context:'crypto-alpha',className:'crypto-card',title:t.symbol,subtitle:t.name+' · '+t.chain,leadingHtml:icon(t.symbol,qt),
+  return root.ViewInvAICards.render({context:'crypto-alpha',className:'crypto-card crypto-card-alpha',title:t.symbol,subtitle:t.name+' · '+t.chain,leadingHtml:icon(t.symbol,qt),
    openAttrs:' data-crypto-detail="'+esc(t.id)+'" role="button" tabindex="0"',
    cells:listMode()==='compact'?[{label:'',html:quoteCellHtml(qt,true)}]:[{label:'Precio · 24 h',html:quoteCellHtml(qt,false)},
     {label:'Contraste',html:sourceBadge(qt)},{label:'Volumen 24 h',value:compact(t.volume24h)},{label:'Dónde',html:whereBadge(t)}]});
