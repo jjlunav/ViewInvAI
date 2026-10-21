@@ -343,7 +343,7 @@ function currentMarket(stock, preferTr = false) {
   }
   if (preferTr) {
     const eur = num(stock.trLivePrice);
-    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, bid, ask, spreadPct:spread, source: "Trade Republic / LSX", updatedAt: stock.trLiveUpdatedAt || stock.trLiveReceivedAt || null, live: eur!==null, fallback:false };
+    return { price: eur, change: num(stock.trLiveChangePct), currency: "EUR", eur, usd: null, bid, ask, spreadPct:spread, source: "LS Exchange (vía Trade Republic)", updatedAt: stock.trLiveUpdatedAt || stock.trLiveReceivedAt || null, live: eur!==null, fallback:false };
   }
   const usd = num(stock.usLivePrice);
   return { price: usd, change: num(stock.usLiveChangePct), currency: "USD", eur: null, usd, bid, ask, spreadPct:spread, source: stock.usLiveSource || "Nasdaq", updatedAt: stock.usLiveTimestamp || stock.usLiveReceivedAt || null, live: usd!==null, fallback:false };

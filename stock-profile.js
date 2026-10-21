@@ -140,15 +140,15 @@ function profileQuoteFreshness(q){
 function profileGeneralExtraStats(s,isTr,se){
  let currentPrice=quoteFreshnessDotHtml(s,isTr,'profile-kpi-price-freshness')+pricePair(s,SP(s,se),isTr),quote=canonicalQuote(s,isTr),exactTr=isTr?quote:null;
  let currentChange=isTr?'<span class="quote-change '+C(exactTr&&exactTr.change)+'">'+PC(exactTr&&exactTr.change)+'</span>':liveChangeHtml(s,SC(s,se),false);
- let source=String(quote&&quote.source|| (isTr?'Trade Republic / LSX':'EEUU')).trim()||'—';
+ let source=String(quote&&quote.source|| (isTr?'LS Exchange (vía Trade Republic)':'EEUU')).trim()||'—';
  let freshness=quoteFreshnessInfo(s,isTr),quality=freshness.state==='live'?'Tiempo real':freshness.state==='delayed'||freshness.state==='closed'?'Diferido':'Sin actualizar';
  return [
   profileKpi(isTr?'Precio LSX':'Precio actual',currentPrice,currentChange),
-  profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'Trade Republic / LSX':'Feed EEUU'),
+  profileKpi('BID / ASK',bidAskHtml(s,isTr),isTr?'LS Exchange (vía Trade Republic)':'Feed EEUU'),
   profileKpi('Fuente cotización',E(source),E(quality)),
   profileKpi('Estado',quoteFreshnessHtml(s,isTr,'profile-stat-freshness'),freshness.updatedAt?E(new Date(freshness.updatedAt).toLocaleString('es-ES')):'Sin sello temporal'),
   profileKpi('Volumen promedio',compactVol(s.avgVolume),'10 sesiones'),
-  '<div class="profile-stat-row profile-price-check-row"><div><span>Contraste de precio</span><small>'+(isTr?'LSX frente a otras bolsas en €':'Nasdaq · Yahoo · TradingView')+'</small></div><strong data-price-check="'+E(stockKey(s))+'"><span class="price-check-pending">Contrastando…</span></strong></div>'
+  '<div class="profile-stat-row profile-price-check-row"><div><span>Contraste de precio</span><small>'+(isTr?'LS Exchange frente a Xetra y otras bolsas en €':'Nasdaq · Yahoo · TradingView')+'</small></div><strong data-price-check="'+E(stockKey(s))+'"><span class="price-check-pending">Contrastando…</span></strong></div>'
  ].join('');
 }
 // Contraste del precio con fuentes independientes (servidor: /api/price-check). En EE. UU. se
