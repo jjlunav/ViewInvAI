@@ -619,7 +619,7 @@ function initSettings(){
   const src=(publicSources&&publicSources.sources)||{},tr=(publicSources&&publicSources.tr)||{};
   const st=(ok,txt)=>'<b class="admin-st '+(ok?'ok':'bad')+'">'+(ok?'✅ ':'❌ ')+esc(txt)+'</b>';
   const pub=[
-   ['Trade Republic / LSX','tradeRepublic','https://www.ls-x.de/',tr.ok===true,tr.ok===true?'precios en vivo':(tr.error||'sin precios')],
+   ['LS Exchange (vía Trade Republic)','tradeRepublic','https://www.ls-x.de/',tr.ok===true,tr.ok===true?'precios en vivo':(tr.error||'sin precios')],
    ['Nasdaq / EE. UU.','nasdaq','https://www.nasdaq.com/'],['SEC / EDGAR','sec','https://www.sec.gov/edgar/search/'],
    ['ClinicalTrials.gov','clinicalTrials','https://clinicaltrials.gov/'],['FDA / openFDA','fda','https://open.fda.gov/']
   ].map(([label,key,link,okOverride,txt])=>{const x=src[key];const ok=okOverride!==undefined?okOverride:!!x&&x.configured!==false&&!x.error;

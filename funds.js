@@ -130,7 +130,7 @@
  function fundFreshness(p){
   const q=liveQuote(p.isin);
   if(p.type==='etf'&&q&&num(q.price)!==null){
-   return {kind:'live',label:'En directo · '+exactAgeText(q.receivedAt),title:'Trade Republic / LSX · '+new Date(q.receivedAt).toLocaleString('es-ES')};
+   return {kind:'live',label:'En directo · '+exactAgeText(q.receivedAt),title:'LS Exchange (vía Trade Republic) · '+new Date(q.receivedAt).toLocaleString('es-ES')};
   }
   const at=p.valueDate||p.sourceUpdatedAt;
   if(p.type==='fund')return {kind:'nav',label:'VL oficial · '+ageText(at),title:'Valor liquidativo oficial · '+dateText(p.valueDate)};

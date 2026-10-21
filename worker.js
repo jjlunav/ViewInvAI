@@ -444,7 +444,7 @@ async function fetchTradeRepublicTicker(isin, exchange = "LSX") {
         changePct: price !== null && prevMid > 0 ? (price / prevMid - 1) * 100 : null,
         timestamp,
         isRealTime: true,
-        source: "Trade Republic / LSX"
+        source: "LS Exchange (vía Trade Republic)"
       };
     }
     throw new Error("Trade Republic ticker timeout");
@@ -2052,7 +2052,7 @@ async function attentionRankingResponse(env,request){
 
 // ----- Contraste de precios de acciones con fuentes independientes -----
 // EE. UU.: precio de la sesión regular en Nasdaq y Yahoo Finance (la app añade TradingView).
-// LSX (Trade Republic): el precio de LSX y, como referencia, el de la misma acción en euros en
+// LSX: el precio lo forma LS Exchange (Trade Republic solo lo transmite) y, como referencia, el de la misma acción en euros en
 // otras bolsas alemanas (Xetra, Fráncfort, Stuttgart) vía Yahoo. Nunca se convierte desde USD.
 const YAHOO_HEADERS={"User-Agent":"Mozilla/5.0 (compatible; ViewInvAI/1.0)","Accept":"application/json"};
 const priceCheckMemo=new Map();
@@ -2111,7 +2111,7 @@ async function stockPriceCheck(request){
   if(!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))return jsonResponse({error:"ISIN no válido"},400);
   const name=String(url.searchParams.get("name")||"").replace(/[^\p{L}\p{N} .&-]/gu,"").trim().slice(0,60);
   const [lsx,listings]=await Promise.allSettled([fetchTradeRepublicTicker(isin,"LSX"),yahooEuropeanListings(isin,name)]);
-  if(lsx.status==="fulfilled"&&lsx.value&&lsx.value.price>0)rows.push({source:"Trade Republic",venue:"LS Exchange (LSX)",price:lsx.value.price,currency:"EUR",primary:true});
+  if(lsx.status==="fulfilled"&&lsx.value&&lsx.value.price>0)rows.push({source:"LS Exchange (LSX)",venue:"precio de la bolsa, recibido vía Trade Republic",price:lsx.value.price,currency:"EUR",primary:true});
   const syms=listings.status==="fulfilled"?listings.value.picked:[];
   const venues=await Promise.allSettled(syms.map(sym=>yahooRegular(sym)));
   venues.forEach((v,i)=>{if(v.status==="fulfilled"&&v.value.currency==="EUR")rows.push({source:"Yahoo Finance",venue:v.value.exchange||syms[i],price:v.value.price,currency:"EUR",time:v.value.time,reference:true})});
