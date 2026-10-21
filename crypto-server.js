@@ -53,9 +53,45 @@ export const CRYPTO_ASSETS = [
   ["IMX","Immutable","immutable-x","imx-immutable-x"],
   ["XTZ","Tezos","tezos","xtz-tezos"],
   ["EGLD","MultiversX","elrond-erd-2","egld-elrond"],
-  ["B2M","Bit2Me","bit2me","b2m-bit2me"]
+  ["B2M","Bit2Me","bit2me","b2m-bit2me"],
+  ["ZEC","Zcash","zcash","zec-zcash"],
+  ["DASH","Dash","dash","dash-dash"],
+  ["XMR","Monero","monero","xmr-monero"],
+  ["KAS","Kaspa","kaspa","kas-kaspa"],
+  ["TAO","Bittensor","bittensor","tao-bittensor"],
+  ["ENA","Ethena","ethena","ena-ethena"],
+  ["ONDO","Ondo","ondo-finance","ondo-ondo-finance"],
+  ["BONK","Bonk","bonk","bonk-bonk"],
+  ["WIF","dogwifhat","dogwifcoin","wif-dogwifcoin"],
+  ["SEI","Sei","sei-network","sei-sei"],
+  ["TIA","Celestia","celestia","tia-celestia"],
+  ["JUP","Jupiter","jupiter-exchange-solana","jup-jupiter"],
+  ["HYPE","Hyperliquid","hyperliquid","hype-hyperliquid"],
+  ["XDC","XDC Network","xdce-crowd-sale","xdc-xdc-network"],
+  ["QNT","Quant","quant-network","qnt-quant"],
+  ["MKR","Maker","maker","mkr-maker"],
+  ["COMP","Compound","compound-governance-token","comp-compoundd"],
+  ["SNX","Synthetix","havven","snx-synthetix-network-token"],
+  ["1INCH","1inch","1inch","1inch-1inch"],
+  ["CHZ","Chiliz","chiliz","chz-chiliz"],
+  ["ENJ","Enjin Coin","enjincoin","enj-enjin-coin"],
+  ["BAT","Basic Attention Token","basic-attention-token","bat-basic-attention-token"],
+  ["ZRX","0x","0x","zrx-0x"],
+  ["FLOKI","Floki","floki","floki-floki-inu"],
+  ["KSM","Kusama","kusama","ksm-kusama"],
+  ["FLOW","Flow","flow","flow-flow"],
+  ["MINA","Mina","mina-protocol","mina-mina-protocol"],
+  ["GALA","Gala","gala","gala-gala"],
+  ["APE","ApeCoin","apecoin","ape-apecoin"],
+  ["STX","Stacks","blockstack","stx-blockstack"]
 ].map(([symbol,name,gecko,paprika])=>({symbol,name,gecko,paprika}));
+// Lista conocida: nombre e identificadores de los agregadores. El catálogo real es más amplio:
+// todas las monedas que cotizan en euros en Kraken, Bitstamp o Bit2Me (ver cryptoUniverse).
 const BY_SYMBOL = new Map(CRYPTO_ASSETS.map(a=>[a.symbol,a]));
+const NOT_CRYPTO = new Set(["EUR","USD","GBP","CHF","CAD","AUD","JPY","AED","NZD","SEK","NOK","DKK","PLN","CZK","HUF","TRY","MXN","BRL","ARS","HKD","SGD","ZAR","KRW","CNY","INR"]);
+const SYMBOL_RE=/^[A-Z0-9]{2,10}$/;
+const isCryptoSymbol=s=>SYMBOL_RE.test(s)&&!NOT_CRYPTO.has(s);
+const krakenPairs=new Map();
 // Kraken usa códigos históricos para algunas monedas.
 const KRAKEN_ALIAS = { XBT:"BTC", XDG:"DOGE" };
 const UA = { "User-Agent":"Mozilla/5.0 (compatible; ViewInvAI/1.0)", "Accept":"application/json" };
@@ -95,7 +131,8 @@ const SOURCES = {
       const m=pair.match(/^(.+?)Z?EUR$/);if(!m)continue;
       let base=m[1];if(base.length===4&&/^X/.test(base))base=base.slice(1);
       base=KRAKEN_ALIAS[base]||base;
-      if(!BY_SYMBOL.has(base)||out.has(base))continue;
+      if(!isCryptoSymbol(base)||out.has(base))continue;
+      krakenPairs.set(base,pair);
       const price=midPrice(num(t&&t.b&&t.b[0]),num(t&&t.a&&t.a[0]),num(t&&t.c&&t.c[0]));
       if(price>0&&liquid(price,num(t&&t.v&&t.v[1])))out.set(base,{price});
     }
@@ -105,7 +142,7 @@ const SOURCES = {
     const d=await getJson("https://www.bitstamp.net/api/v2/ticker/");
     const out=new Map();
     for(const t of Array.isArray(d)?d:[]){
-      const m=String(t&&t.pair||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!BY_SYMBOL.has(m[1]))continue;
+      const m=String(t&&t.pair||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!isCryptoSymbol(m[1]))continue;
       const price=midPrice(num(t.bid),num(t.ask),num(t.last)),open=num(t.open_24);
       if(price>0&&liquid(price,num(t.volume)))out.set(m[1],{price,change24h:open>0?(price/open-1)*100:null});
     }
@@ -116,7 +153,9 @@ const SOURCES = {
     const d=await getJson("https://api.coinbase.com/v2/exchange-rates?currency=EUR");
     const out=new Map();
     for(const [sym,rate] of Object.entries(d&&d.data&&d.data.rates||{})){
-      const r=num(rate);if(BY_SYMBOL.has(sym)&&r>0)out.set(sym,{price:1/r});
+      // Coinbase mezcla monedas y divisas: solo cuenta lo que también cotiza en otro mercado
+      // o está en la lista conocida (el filtro final se hace en cryptoUniverse).
+      const r=num(rate);if(isCryptoSymbol(sym)&&r>0)out.set(sym,{price:1/r});
     }
     return out;
   })},
@@ -124,7 +163,7 @@ const SOURCES = {
     const d=await getJson("https://gateway.bit2me.com/v2/trading/tickers");
     const out=new Map();
     for(const t of Array.isArray(d)?d:Array.isArray(d&&d.data)?d.data:[]){
-      const m=String(t&&t.symbol||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!BY_SYMBOL.has(m[1]))continue;
+      const m=String(t&&t.symbol||"").match(/^([A-Z0-9]+)\/EUR$/);if(!m||!isCryptoSymbol(m[1]))continue;
       const price=num(t.close??t.last??t.price),pct=num(t.percentage??t.change24h);
       if(price>0)out.set(m[1],{price,change24h:pct});
     }
@@ -140,9 +179,9 @@ const SOURCES = {
     if(!rows.length)throw new Error("CoinLore sin datos");
     const out=new Map();
     for(const c of rows){
-      const sym=String(c&&c.symbol||"").toUpperCase();if(!BY_SYMBOL.has(sym)||out.has(sym))continue;
+      const sym=String(c&&c.symbol||"").toUpperCase();if(!isCryptoSymbol(sym)||out.has(sym))continue;
       const usd=num(c.price_usd);if(!(usd>0))continue;
-      out.set(sym,{usd,change24h:num(c.percent_change_24h),change7d:num(c.percent_change_7d),marketCapUsd:num(c.market_cap_usd),volumeUsd:num(c.volume24),rank:num(c.rank)});
+      out.set(sym,{name:String(c.name||"").slice(0,60),usd,change24h:num(c.percent_change_24h),change7d:num(c.percent_change_7d),marketCapUsd:num(c.market_cap_usd),volumeUsd:num(c.volume24),rank:num(c.rank)});
     }
     return out;
   },5*60000)}
@@ -176,6 +215,7 @@ async function geckoFetch(){
 }
 // CoinPaprika (otro agregador) solo para una moneda concreta: su lista completa es muy grande.
 async function paprikaOne(asset){
+  if(!asset||!asset.paprika)return null;
   const d=await cached("paprika:"+asset.symbol,()=>getJson("https://api.coinpaprika.com/v1/tickers/"+encodeURIComponent(asset.paprika)+"?quotes=EUR"));
   const q=d&&d.quotes&&d.quotes.EUR;const price=num(q&&q.price);
   return price>0?{price,change24h:num(q.percent_change_24h)}:null;
@@ -201,10 +241,25 @@ function consensus(symbol,rows){
 
 // Cotizaciones de consenso. detail=true añade CoinPaprika (una petición por moneda).
 // env (opcional) da acceso a KV para guardar el último dato de CoinGecko.
+// Universo: lo que cotiza en euros en al menos un mercado (Kraken, Bitstamp, Bit2Me) más la lista
+// conocida. Coinbase solo suma precio a monedas de ese universo (sus tasas incluyen divisas).
+const MARKET_SOURCES=["kraken","bitstamp","bit2me"];
+function universeFrom(names,settled){
+  const set=new Set(CRYPTO_ASSETS.map(a=>a.symbol));
+  names.forEach((n,i)=>{if(MARKET_SOURCES.includes(n)&&settled[i].status==="fulfilled")for(const k of settled[i].value.keys())set.add(k)});
+  return set;
+}
+function nameOf(sym,lore){const a=BY_SYMBOL.get(sym);return a?a.name:(lore&&lore.get(sym)&&lore.get(sym).name)||sym}
+export async function cryptoCatalog(env=null){
+  const names=Object.keys(SOURCES),settled=await Promise.allSettled(names.map(n=>SOURCES[n].load(env)));
+  const lore=settled[names.indexOf("coinlore")].status==="fulfilled"?settled[names.indexOf("coinlore")].value:null;
+  return[...universeFrom(names,settled)].sort().map(symbol=>({symbol,name:nameOf(symbol,lore)}));
+}
 export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
-  const wanted=[...new Set((symbols&&symbols.length?symbols:CRYPTO_ASSETS.map(a=>a.symbol)).map(s=>String(s).toUpperCase()).filter(s=>BY_SYMBOL.has(s)))];
   const names=Object.keys(SOURCES);
   const settled=await Promise.allSettled(names.map(n=>SOURCES[n].load(env)));
+  const universe=universeFrom(names,settled);
+  const wanted=[...new Set((symbols&&symbols.length?symbols:[...universe]).map(s=>String(s).toUpperCase()).filter(s=>universe.has(s)))];
   const value=n=>{const i=names.indexOf(n);return i>=0&&settled[i].status==="fulfilled"?settled[i].value:null};
   const health={};
   names.forEach((n,i)=>{
@@ -230,12 +285,12 @@ export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
       const v=paprika[idx].value;rows.push({source:"CoinPaprika",kind:"agregador",price:v.price});
       if(v.change24h!==null)changes.push(v.change24h);
     }
-    const asset=BY_SYMBOL.get(sym),c=consensus(sym,rows),g=gecko&&gecko.get(sym)||{},l=lore&&lore.get(sym)||null;
+    const c=consensus(sym,rows),g=gecko&&gecko.get(sym)||{},l=lore&&lore.get(sym)||null;
     if(!changes.length&&l&&l.change24h!==null)changes.push(l.change24h);
     // Capitalización y volumen en €: de CoinGecko; si no, los de CoinLore (USD) pasados a € con
     // la relación entre el precio de consenso y su precio en USD.
     const usdRatio=l&&c.price>0&&l.usd>0?c.price/l.usd:null;
-    quotes[sym]=Object.assign(c,{name:asset.name,change24h:changes.length?median(changes):null,
+    quotes[sym]=Object.assign(c,{name:nameOf(sym,lore),change24h:changes.length?median(changes):null,
       change7d:g.change7d??(l?l.change7d:null)??null,change30d:g.change30d??null,
       marketCap:g.marketCap??(usdRatio&&l.marketCapUsd?l.marketCapUsd*usdRatio:null),volume24h:g.volume24h??(usdRatio&&l.volumeUsd?l.volumeUsd*usdRatio:null),
       rank:g.rank??(l?l.rank:null)??null,image:g.image||"",high24h:g.high24h??null,low24h:g.low24h??null,ath:g.ath??null});
@@ -243,12 +298,24 @@ export async function cryptoQuotes(symbols,{detail=false,env=null}={}){
   return{updatedAt:new Date().toISOString(),currency:"EUR",divergenceThresholdPct:DIVERGENCE_PCT,sources:health,quotes};
 }
 
-// Histórico diario (CoinGecko) para el gráfico de la ficha.
-export async function cryptoChart(symbol,days=30){
-  const asset=BY_SYMBOL.get(String(symbol||"").toUpperCase());if(!asset)throw new Error("Moneda desconocida");
+// Gráfico de la ficha: velas de Kraken (un mercado real, sin los límites de CoinGecko) y, si la
+// moneda no cotiza en Kraken, el histórico de CoinGecko.
+export async function cryptoChart(symbol,days=30,env=null){
+  const sym=String(symbol||"").toUpperCase();if(!isCryptoSymbol(sym))throw new Error("Moneda desconocida");
   const d=[7,30,90,365].includes(days)?days:30;
-  const data=await cached("chart:"+asset.symbol+":"+d,()=>getJson("https://api.coingecko.com/api/v3/coins/"+encodeURIComponent(asset.gecko)+"/market_chart?vs_currency=eur&days="+d+(d>90?"&interval=daily":""),10000));
+  if(!krakenPairs.size)try{await SOURCES.kraken.load(env)}catch(_){}
+  const pair=krakenPairs.get(sym);
+  if(pair){
+    const interval=d<=7?60:d<=30?240:1440;
+    const data=await cached("kchart:"+pair+":"+interval,()=>getJson("https://api.kraken.com/0/public/OHLC?pair="+encodeURIComponent(pair)+"&interval="+interval,10000),5*60000);
+    const rows=data&&data.result?Object.entries(data.result).find(([k])=>k!=="last"):null;
+    const since=Date.now()-d*86400000;
+    const points=(rows?rows[1]:[]).map(r=>[Number(r[0])*1000,Number(r[4])]).filter(p=>p[0]>=since&&p[1]>0);
+    if(points.length>1)return{symbol:sym,days:d,source:"Kraken",points};
+  }
+  const asset=BY_SYMBOL.get(sym);if(!asset)throw new Error("Sin histórico");
+  const data=await cached("chart:"+sym+":"+d,()=>getJson("https://api.coingecko.com/api/v3/coins/"+encodeURIComponent(asset.gecko)+"/market_chart?vs_currency=eur&days="+d+(d>90?"&interval=daily":""),10000),5*60000);
   const points=(Array.isArray(data&&data.prices)?data.prices:[]).map(p=>[Number(p[0]),Number(p[1])]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));
-  return{symbol:asset.symbol,days:d,source:"CoinGecko",points};
+  return{symbol:sym,days:d,source:"CoinGecko",points};
 }
-export const CRYPTO_SYMBOLS = new Set(CRYPTO_ASSETS.map(a=>a.symbol));
+
