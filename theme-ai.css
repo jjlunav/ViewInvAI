@@ -2174,3 +2174,10 @@ html[data-theme="light"] .profile-market-menu{background:#fff;box-shadow:0 14px 
 .import-cash-breakdown td{padding:3px 4px;border-bottom:1px solid color-mix(in srgb,currentColor 12%,transparent)}
 .import-cash-breakdown td:nth-child(2),.import-cash-breakdown td:nth-child(3){text-align:right;white-space:nowrap}
 .import-cash-breakdown tr.total td{font-weight:700;border-bottom:0}
+/* Ficha sin botón «Atrás» (APK): la rejilla no reserva su columna de 36 px; el precio ocupa
+   todo el ancho que dejan los botones y la venta/compra baja de línea si no cabe. */
+@media(max-width:820px){
+ #stockQuickDetail .unified-stock-header-inner:has(.profile-primary-actions):not(:has(.profile-back-cell)){grid-template-columns:minmax(0,1fr) auto!important}
+ #stockQuickDetail .unified-stock-header-inner:not(:has(.profile-back-cell))>.profile-live{min-width:0!important;width:auto!important}
+ #stockQuickDetail .unified-stock-header .profile-quote-sides{white-space:normal!important;flex-wrap:wrap!important;row-gap:2px!important}
+}
