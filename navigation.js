@@ -39,7 +39,8 @@ const NAV_GROUPS={
  settings:['settings'],
  admin:['admin']
 };
-const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'Catálogo TR',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
+// Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
+const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
@@ -49,7 +50,7 @@ function renderSectionSwitcher(){
  if(group.length<2)return;
  const nav=document.createElement('nav');
  nav.className='section-switcher';nav.setAttribute('aria-label','Secciones');
- nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(v===state.currentView?' active':'')+'" data-section-view="'+E(v)+'" aria-current="'+(v===state.currentView?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
+ nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(v===state.currentView?' active':'')+'" data-section-view="'+E(v)+'" title="'+E((V[v]||v).replace(/^\d+\s*/,''))+'" aria-current="'+(v===state.currentView?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
  const heading=view.querySelector(':scope>.page-heading');
  if(heading)heading.after(nav);else view.prepend(nav);
  const active=nav.querySelector('.active');

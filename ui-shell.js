@@ -57,17 +57,15 @@
   try{localStorage.setItem(SIZE_KEY,v)}catch(_){}
   applyDeskSize(v);setTimeout(reset,50);
  });
- // Móvil: si el título de la sección no cabe en una línea, pasa a dos con letra más pequeña (15 px y,
- // si aún no cabe, 13 px) en lugar de cortarse con «…».
+ // Móvil: el título va siempre en una línea y con el mismo tamaño. Las secciones de nombre
+ // largo usan uno corto (data-short), sin medir ni reajustar: antes se medía y reajustaba en
+ // bucle y el título cambiaba de tamaño sin parar.
+ const SHORT_TITLES={catalog:'Catálogo LSX',catalogUS:'Catálogo EEUU',funds:'Fondos y ETFs',future:'Potencial futuro',entry:'Radar de entrada',heatmap:'Mapa de calor',crypto:'Criptoactivos'};
  function fitTitle(){
-  document.querySelectorAll('.page-heading h1.title-fit').forEach(h=>{h.classList.remove('title-fit');h.style.removeProperty('--title-fit')});
-  if(!mq.matches)return;
-  const h=document.querySelector('.view.active>.page-heading h1');if(!h||!h.clientWidth)return;
-  // Cuando cambia el hueco (botones que aparecen, giro de pantalla) se vuelve a medir.
-  if(window.ResizeObserver&&!h.__fitWatch){h.__fitWatch=new ResizeObserver(()=>{clearTimeout(fitTitle.t);fitTitle.t=setTimeout(fitTitle,60)});h.__fitWatch.observe(h.parentElement)}
-  if(h.scrollWidth<=h.clientWidth+2)return;
-  h.classList.add('title-fit');
-  for(const px of [15,13.5,12]){h.style.setProperty('--title-fit',px+'px');if(h.scrollHeight<=h.clientHeight+2&&h.scrollWidth<=h.clientWidth+2)break}
+  document.querySelectorAll('.view>.page-heading h1').forEach(h=>{
+   const view=h.closest('.view');const id=view&&view.id.replace(/^view-/,'');
+   if(SHORT_TITLES[id]&&h.dataset.short!==SHORT_TITLES[id])h.dataset.short=SHORT_TITLES[id];
+  });
  }
  function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();fitTitle();apply()}
  window.addEventListener('scroll',onScroll,{passive:true});

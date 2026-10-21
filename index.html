@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.6.93">
+<html lang="es" data-app-version="0.6.94">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -94,10 +94,10 @@
         </div>
       </div>
       <nav class="market-board-tabs compact-tabs" aria-label="Vista de mercados">
-        <button type="button" class="tab active" data-market-board="active">Más activos</button>
+        <button type="button" class="tab active" data-market-board="active" title="Más activos por volumen">Volumen</button>
         <button type="button" class="tab" data-market-board="gainers">Subidas</button>
         <button type="button" class="tab" data-market-board="losers">Bajadas</button>
-        <button type="button" class="tab" data-market-board="funds">Fondos / ETFs</button>
+        <button type="button" class="tab" data-market-board="funds" title="Fondos y ETFs">Fondos</button>
         <button type="button" class="tab" data-market-board="indices">Índices</button>
       </nav>
       <nav id="marketBoardSourceTabs" class="market-board-source-tabs compact-tabs" aria-label="Mercado o plataforma"></nav>
@@ -267,7 +267,7 @@
       </div>
       <div class="portfolio-asset-switch" role="tablist" aria-label="Tipo de cartera">
         <button type="button" class="tab active" role="tab" id="portfolioStocksTab" aria-selected="true" aria-controls="portfolioApp" tabindex="0" data-portfolio-asset="stocks">Acciones</button>
-        <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds">Fondos / ETFs</button>
+        <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds" title="Fondos y ETFs">Fondos</button>
         <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo</button>
         <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span> Favoritos</button>
       </div>
@@ -757,7 +757,7 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.6.93 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.6.94 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
@@ -794,6 +794,7 @@
 <script src="search.js?v=20261008w1"></script>
 <script src="funds.js?v=20261009i2"></script>
 <script src="crypto.js?v=20261021c1"></script>
+<script src="icons.js?v=20261021i1"></script>
 <script src="bootstrap.js?v=20260929r5"></script>
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>
