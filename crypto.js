@@ -518,11 +518,11 @@
   // Formato CoinTracking (el Excel actual de Bit2Me): Tipo · Compra · Moneda · Venta · Moneda ·
   // Comisión · Moneda · … · Fecha. Las columnas de moneda pueden llamarse igual («Cur.»): se toma
   // la que va justo después de cada importe.
-  const ctIn=findCol(head,[/^(buy|buy amount|compra|cantidad compra|entrada|recibido)$/]),ctOut=findCol(head,[/^(sell|sell amount|venta|cantidad venta|salida|enviado)$/]);
+  const ctIn=findCol(head,[/^(buy|buy amount|compra|cantidad compra|cantidad de destino|cantidad destino|entrada|recibido)$/]),ctOut=findCol(head,[/^(sell|sell amount|venta|cantidad venta|cantidad de origen|cantidad origen|salida|enviado)$/]);
   if(ctIn>=0&&ctOut>=0){
    const curAfter=(i,named)=>{const n=findCol(head,named);if(n>=0)return n;const h=head[i+1]||'';return/^(cur|currency|moneda|divisa|cur \d+)$/.test(h)||h.length<=4?i+1:-1};
-   const inCur=curAfter(ctIn,[/^(buy currency|moneda compra|divisa compra)$/]),outCur=curAfter(ctOut,[/^(sell currency|moneda venta|divisa venta)$/]);
-   const fee=findCol(head,[/^(fee|fee amount|comision|tarifa)$/]),feeCur=fee>=0?curAfter(fee,[/^(fee currency|moneda comision|divisa comision)$/]):-1;
+   const inCur=curAfter(ctIn,[/^(buy currency|moneda compra|divisa compra|moneda de destino|moneda destino)$/]),outCur=curAfter(ctOut,[/^(sell currency|moneda venta|divisa venta|moneda de origen|moneda origen)$/]);
+   const fee=findCol(head,[/^(fee|fee amount|comision|comision de la operacion|tarifa)$/]),feeCur=fee>=0?curAfter(fee,[/^(fee currency|moneda comision|divisa comision|moneda de la comision)$/]):-1;
    const type=findCol(head,[/^(type|tipo|tipo de operacion|operacion)$/]);
    const FREE=/income|staking|reward|interest|airdrop|bonus|gift|mining|lending|earn|recompensa|interes|regalo|bono|cashback|mineria|prestamo|bloqueo/;
    const counts={},parked=new Map();
@@ -548,7 +548,7 @@
     if(known.has(fc)&&fa>0)B.sell(fc,fa);
     used++;
    }
-   return{positions:B.positions(),used,skipped,format:'CoinTracking (Excel de Bit2Me)',types:counts};
+   return{positions:B.positions(),used,skipped,format:'Excel de Bit2Me (origen → destino)',types:counts};
   }
   // Kraken · libro mayor: cada operación son dos filas con el mismo refid (cripto y euros).
   const refid=findCol(head,[/^refid$/]),kAsset=findCol(head,[/^asset$/]),kAmount=findCol(head,[/^amount$/]),kType=findCol(head,[/^type$/]);
