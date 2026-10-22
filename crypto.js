@@ -75,8 +75,9 @@
  // Totales para Mi día (mismo valor que la pestaña Mi cripto).
  function totals(){
   let value=0,day=0,pnl=0,invested=0,complete=true;const held=state.positions.filter(p=>num(p.units)>0);
-  for(const p of held){const v=valuation(p);if(v.value===null){complete=false;continue}value+=v.value;if(v.day!==null)day+=v.day;if(v.pnl!==null){pnl+=v.pnl;invested+=v.invested}}
-  return{value,day,pnl,invested,count:held.length,complete,updatedAt:state.updatedAt};
+  let costValue=0;
+  for(const p of held){const v=valuation(p);if(v.value===null){complete=false;continue}value+=v.value;if(v.day!==null)day+=v.day;if(v.pnl!==null){pnl+=v.pnl;invested+=v.invested;costValue+=v.value}}
+  return{value,day,pnl,invested,costValue,count:held.length,complete,updatedAt:state.updatedAt};
  }
  function publishTotals(){root.dispatchEvent(new CustomEvent('viewinvai:crypto-totals',{detail:totals()}))}
 
@@ -144,7 +145,7 @@
  function myHtml(){
   if(!auth())return'<div class="crypto-empty"><p>Inicia sesión para guardar tus criptoactivos de Bit2Me u otra plataforma. Se guardan solo en tu cuenta.</p></div>';
   const t=totals(),held=state.positions.filter(p=>num(p.units)>0),watch=state.positions.filter(p=>!(num(p.units)>0));
-  const head='<div class="crypto-summary"><div><small>Valor</small><strong>'+esc(eur(t.value,{decimals:2}))+'</strong></div><div><small>24 h</small><strong class="'+tone(t.day)+'">'+esc((t.day>=0?'+':'')+eur(t.day,{decimals:2}))+'</strong></div><div><small>Ganancia'+(t.invested>0?' · '+esc(pct(t.pnl/t.invested*100)):'')+'</small><strong class="'+tone(t.pnl)+'">'+esc(t.invested>0?(t.pnl>=0?'+':'')+eur(t.pnl,{decimals:2}):'—')+'</strong></div></div>'+
+  const head='<div class="crypto-summary"><div><small>Valor</small><strong>'+esc(eur(t.value,{decimals:2}))+'</strong></div><div><small>24 h</small><strong class="'+tone(t.day)+'">'+esc((t.day>=0?'+':'')+eur(t.day,{decimals:2}))+'</strong></div><div><small>Ganancia'+(t.invested>=1?' · '+esc(pct(t.pnl/t.invested*100)):'')+'</small><strong class="'+tone(t.pnl)+'">'+esc(t.invested>=1?(t.pnl>=0?'+':'')+eur(t.pnl,{decimals:2}):'—')+'</strong>'+(t.invested>=1&&t.costValue<t.value*0.95?'<small class="crypto-cost-note" title="Solo se calcula sobre las monedas con precio medio conocido">sobre '+esc(eur(t.costValue,{decimals:2}))+' con coste</small>':t.invested<1&&t.value>0?'<small class="crypto-cost-note">sin precio medio</small>':'')+'</div></div>'+
    '<div class="crypto-actions"><button type="button" class="btn small" data-crypto-add>＋ Añadir</button><button type="button" class="btn small ghost" data-crypto-import>⇪ Importar extracto</button></div>';
   const card=p=>{
    const v=valuation(p);
@@ -482,7 +483,7 @@
  // Plataformas del extracto: dónde se descarga y cómo se lee. El fichero se procesa en el
  // dispositivo; solo se guardan el saldo y el precio medio de cada moneda.
  const IMPORT_PLATFORMS=[
-  {id:'bit2me',name:'Bit2Me',help:'En Bit2Me: <b>Perfil › Historial › Descargar</b> (Excel .xlsx o CSV).'},
+  {id:'bit2me',name:'Bit2Me',help:'En Bit2Me: <b>Wallet › Historial › Descargar</b>, un Excel (.xlsx) por año. Selecciónalos todos a la vez.'},
   {id:'coinbase',name:'Coinbase',help:'En Coinbase: <b>Perfil › Extractos › Generar informe › Historial de transacciones</b> (CSV).'},
   {id:'kraken',name:'Kraken',help:'En Kraken: <b>Historial › Exportar › Libro mayor (Ledgers)</b> (CSV).'},
   {id:'binance',name:'Binance',help:'En Binance: <b>Órdenes › Historial de operaciones › Exportar</b> (CSV).'},
@@ -514,6 +515,41 @@
   const dateCol=findCol(head,[/^(fecha|date|time|timestamp|hora|fecha y hora|fecha de la operacion|created at|date utc|date\(utc\))/]);
   if(dateCol>=0){const body=rows.slice(1).map((r,i)=>({r,i,t:rowTime(r[dateCol])}));if(body.filter(x=>x.t!==null).length>=body.length*0.8){body.sort((a,b)=>(a.t??0)-(b.t??0)||a.i-b.i);rows=[rows[0],...body.map(x=>x.r)]}}
   const B=newBook();let used=0,skipped=0;
+  // Formato CoinTracking (el Excel actual de Bit2Me): Tipo · Compra · Moneda · Venta · Moneda ·
+  // Comisión · Moneda · … · Fecha. Las columnas de moneda pueden llamarse igual («Cur.»): se toma
+  // la que va justo después de cada importe.
+  const ctIn=findCol(head,[/^(buy|buy amount|compra|cantidad compra|entrada|recibido)$/]),ctOut=findCol(head,[/^(sell|sell amount|venta|cantidad venta|salida|enviado)$/]);
+  if(ctIn>=0&&ctOut>=0){
+   const curAfter=(i,named)=>{const n=findCol(head,named);if(n>=0)return n;const h=head[i+1]||'';return/^(cur|currency|moneda|divisa|cur \d+)$/.test(h)||h.length<=4?i+1:-1};
+   const inCur=curAfter(ctIn,[/^(buy currency|moneda compra|divisa compra)$/]),outCur=curAfter(ctOut,[/^(sell currency|moneda venta|divisa venta)$/]);
+   const fee=findCol(head,[/^(fee|fee amount|comision|tarifa)$/]),feeCur=fee>=0?curAfter(fee,[/^(fee currency|moneda comision|divisa comision)$/]):-1;
+   const type=findCol(head,[/^(type|tipo|tipo de operacion|operacion)$/]);
+   const FREE=/income|staking|reward|interest|airdrop|bonus|gift|mining|lending|earn|recompensa|interes|regalo|bono|cashback|mineria|prestamo|bloqueo/;
+   const counts={},parked=new Map();
+   for(const r of rows.slice(1)){
+    const t=norm(type>=0?r[type]:''),ic=String(inCur>=0?r[inCur]:'').trim().toUpperCase(),ia=Math.abs(parseNum(r[ctIn])||0);
+    const oc=String(outCur>=0?r[outCur]:'').trim().toUpperCase(),oa=Math.abs(parseNum(r[ctOut])||0);
+    const fc=String(feeCur>=0?r[feeCur]:'').trim().toUpperCase(),fa=Math.abs(parseNum(fee>=0?r[fee]:'')||0);
+    const inK=known.has(ic)&&ia>0,outK=known.has(oc)&&oa>0;
+    if(!inK&&!outK&&!(known.has(fc)&&fa>0)){skipped++;continue}
+    // Movimiento interno (de Wallet a Earn y vuelta): misma moneda y cantidad a los dos lados.
+    if(inK&&outK&&ic===oc&&Math.abs(ia-oa)<=1e-12*Math.max(ia,1)){used++;continue}
+    counts[t||'sin tipo']=(counts[t||'sin tipo']||0)+1;
+    const carried=outK?B.sell(oc,oa):null;
+    // Salida sin contrapartida (a Earn, a otra wallet…): se aparta su coste por si vuelve.
+    if(outK&&!inK&&carried!==null){if(!parked.has(oc))parked.set(oc,[]);parked.get(oc).push({units:oa,cost:carried})}
+    if(inK){
+     const eurFee=fc==='EUR'?fa:0;
+     let cost=oc==='EUR'&&oa>0?oa+eurFee:outK?carried:FREE.test(t)?0:null;
+     // Entrada sin contrapartida: si vuelve lo que salió (±1 %), recupera su coste.
+     if(cost===null&&!outK){const list=parked.get(ic)||[],k=list.findIndex(x=>Math.abs(x.units-ia)<=0.01*Math.max(x.units,ia));if(k>=0){cost=list[k].cost*Math.min(1,ia/list[k].units);list.splice(k,1)}}
+     B.buy(ic,ia,cost);
+    }
+    if(known.has(fc)&&fa>0)B.sell(fc,fa);
+    used++;
+   }
+   return{positions:B.positions(),used,skipped,format:'CoinTracking (Excel de Bit2Me)',types:counts};
+  }
   // Kraken · libro mayor: cada operación son dos filas con el mismo refid (cripto y euros).
   const refid=findCol(head,[/^refid$/]),kAsset=findCol(head,[/^asset$/]),kAmount=findCol(head,[/^amount$/]),kType=findCol(head,[/^type$/]);
   if(refid>=0&&kAsset>=0&&kAmount>=0){
@@ -585,26 +621,58 @@
   if(!auth()){openModal('Importar extracto','<p class="crypto-empty">Inicia sesión para importar.</p>');return}
   pendingImport=null;
   openModal('Importar extracto','<div class="crypto-import">'+importPlatformHtml()+
-   '<input type="file" id="cryptoImportFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"><div id="cryptoImportPreview"></div></div>');
+   '<input type="file" id="cryptoImportFile" multiple accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"><div id="cryptoImportPreview"></div></div>');
  }
- async function previewImport(file){
+ // Lee uno o varios ficheros (Bit2Me exporta un Excel por año) y los une en una sola tabla.
+ async function readStatementRows(files){
+  let head=null,body=[];
+  for(const file of files){
+   const isXlsx=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
+   let rows=isXlsx?await xlsxRows(await file.arrayBuffer()):splitCsv(await file.text());
+   const at=rows.findIndex(r=>r.filter(x=>String(x).trim()).length>=3);if(at<0)continue;rows=rows.slice(at);
+   if(!head)head=rows[0];
+   else if(rows[0].map(norm).join('|')!==head.map(norm).join('|'))throw Error('«'+file.name+'» tiene otras columnas: importa los ficheros de la misma plataforma y del mismo tipo de informe.');
+   body.push(...rows.slice(1));
+  }
+  if(!head)throw Error('Los ficheros están vacíos.');
+  return[head,...body];
+ }
+ function statementPeriod(rows){
+  const head=rows[0].map(norm),c=findCol(head,[/^(fecha|date|time|timestamp|hora|fecha y hora|fecha de la operacion|created at|date utc)/]);
+  if(c<0)return'';
+  const ts=rows.slice(1).map(r=>rowTime(r[c])).filter(t=>t!==null);if(!ts.length)return'';
+  const f=t=>new Date(t).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'});
+  return f(Math.min(...ts))+' – '+f(Math.max(...ts));
+ }
+ // Menos de 1 céntimo: restos de operaciones («polvo»), no se guardan.
+ const isDust=p=>{const qt=state.quotes[p.symbol];return num(p.units)<=1e-7||(qt&&qt.price>0&&p.units*qt.price<0.01)};
+ async function previewImport(files){
   const box=q('#cryptoImportPreview');if(!box)return;
+  files=[...(files||[])];if(!files.length)return;
   const platform=IMPORT_PLATFORMS.find(x=>x.id===importPlatform)||IMPORT_PLATFORMS[0];
   try{
-   const isXlsx=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
-   const input=isXlsx?await xlsxRows(await file.arrayBuffer()):await file.text(),r=parseStatement(input,platform.id);pendingImport=r.positions;
-   if(!r.positions.length){box.innerHTML='<p class="crypto-form-error">No se reconoció ningún saldo de criptoactivos ('+r.skipped+' filas sin reconocer). Mándame una captura de los nombres de las columnas para adaptarlo.</p>';return}
-   box.innerHTML='<p class="crypto-note">Formato detectado: <b>'+esc(r.format)+'</b></p><table class="crypto-sources"><thead><tr><th>Moneda</th><th>Unidades</th><th>Precio medio</th><th>Valor ahora</th></tr></thead><tbody>'+r.positions.map(p=>{const qt=state.quotes[p.symbol];return'<tr><td>'+esc(p.symbol)+'</td><td>'+esc(units(p.units))+'</td><td>'+esc(p.avgPriceEur===null?'—':eur(p.avgPriceEur))+'</td><td>'+esc(qt&&qt.price?eur(p.units*qt.price,{decimals:2}):'—')+'</td></tr>'}).join('')+'</tbody></table>'+
-    '<p class="crypto-note">'+r.used+' movimientos leídos'+(r.skipped?', '+r.skipped+' sin reconocer (depósitos o retiradas en euros, por ejemplo)':'')+'. Compara las unidades con tu saldo en '+esc(platform.name)+' antes de guardar: las monedas de '+esc(platform.name)+' que ya no aparezcan quedarán a 0.</p>'+
-    '<button type="button" class="btn" data-crypto-import-save>Guardar '+r.positions.length+' monedas</button><p class="crypto-form-error" hidden></p>';
+   const rows=await readStatementRows(files),period=statementPeriod(rows),r=parseStatement(rows,platform.id);
+   const dust=r.positions.filter(isDust).length;
+   pendingImport=r.positions.filter(p=>!isDust(p));
+   if(!pendingImport.length){box.innerHTML='<p class="crypto-form-error">No se reconoció ningún saldo de criptoactivos ('+r.skipped+' filas sin reconocer). Mándame una captura de la fila de títulos de las columnas para adaptarlo.</p>';return}
+   const types=r.types?Object.entries(r.types).sort((a,b)=>b[1]-a[1]).map(([k,n])=>k+' '+n).join(' · '):'';
+   box.innerHTML='<p class="crypto-note">Formato detectado: <b>'+esc(r.format)+'</b>'+(period?' · '+esc(period):'')+' · '+files.length+' '+(files.length===1?'fichero':'ficheros')+(types?'<br><small>'+esc(types)+'</small>':'')+'</p>'+
+    (platform.id==='bit2me'?'<p class="crypto-note crypto-alpha-note"><b>Bit2Me exporta un Excel por año.</b> Selecciona a la vez los de todos los años en que operaste: si falta alguno, los saldos salen mal. Lo que esté en Earn puede no aparecer: compara con tu Wallet y corrige las unidades aquí antes de guardar.</p>':'')+
+    '<table class="crypto-sources crypto-import-table"><thead><tr><th>Moneda</th><th>Unidades</th><th>Precio medio</th><th>Valor ahora</th></tr></thead><tbody>'+pendingImport.map((p,i)=>{const qt=state.quotes[p.symbol];return'<tr><td>'+esc(p.symbol)+'</td><td><input class="crypto-import-units" type="number" step="any" min="0" inputmode="decimal" data-import-units="'+i+'" value="'+esc(String(p.units))+'" aria-label="Unidades de '+esc(p.symbol)+'"></td><td>'+esc(p.avgPriceEur===null?'—':eur(p.avgPriceEur))+'</td><td data-import-value="'+i+'">'+esc(qt&&qt.price?eur(p.units*qt.price,{decimals:2}):'—')+'</td></tr>'}).join('')+'</tbody></table>'+
+    '<p class="crypto-note">'+r.used+' movimientos leídos'+(r.skipped?', '+r.skipped+' sin cripto (euros, por ejemplo)':'')+(dust?', '+dust+' '+(dust===1?'resto':'restos')+' de menos de 1 céntimo descartados':'')+'. Si cambias unidades, el precio medio se mantiene. Sustituye la importación anterior de '+esc(platform.name)+'; lo que añadiste a mano y no esté en la lista queda a 0.</p>'+
+    '<button type="button" class="btn" data-crypto-import-save>Guardar '+pendingImport.length+' monedas</button><p class="crypto-form-error" hidden></p>';
   }catch(error){box.innerHTML='<p class="crypto-form-error">'+esc(error.message)+'</p>'}
  }
  async function saveImport(){
   if(!pendingImport)return;
+  // Unidades corregidas a mano en la vista previa.
+  document.querySelectorAll('#cryptoImportPreview [data-import-units]').forEach(inp=>{const p=pendingImport[Number(inp.dataset.importUnits)],v=parseNum(inp.value);if(p&&v!==null&&v>=0)p.units=v});
+  const positions=pendingImport.filter(p=>p.units>0);
   const platform=(IMPORT_PLATFORMS.find(x=>x.id===importPlatform)||IMPORT_PLATFORMS[0]).name;
-  try{const d=await api('/api/crypto-positions/import',{method:'POST',body:JSON.stringify({platform:platform==='Otra plataforma'?'Otra':platform,positions:pendingImport})});state.positions=d.positions||[];state.positionsLoaded=true;pendingImport=null;publishTotals();closeModal();state.tab='mine';render()}
+  try{const d=await api('/api/crypto-positions/import',{method:'POST',body:JSON.stringify({platform:platform==='Otra plataforma'?'Otra':platform,positions})});state.positions=d.positions||[];state.positionsLoaded=true;pendingImport=null;publishTotals();closeModal();state.tab='mine';render()}
   catch(error){const e=q('#cryptoImportPreview .crypto-form-error');if(e){e.hidden=false;e.textContent=error.message}}
  }
+
 
  // ---------- Eventos ----------
  // Se refresca con la vista abierta, con una ficha abierta o en Mi día si tienes criptoactivos.
@@ -642,10 +710,14 @@
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&q('#cryptoModal.open'))closeModal();const t=e.target.closest&&e.target.closest('[data-crypto-detail][role=button]');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openDetail(t.dataset.cryptoDetail)}});
   document.addEventListener('submit',e=>{if(e.target&&e.target.id==='cryptoPositionForm'){e.preventDefault();submitForm(e.target)}});
   document.addEventListener('change',e=>{
-   if(e.target&&e.target.id==='cryptoImportFile'&&e.target.files[0])previewImport(e.target.files[0]);
-   if(e.target&&e.target.id==='cryptoImportPlatform'){importPlatform=e.target.value;const p=IMPORT_PLATFORMS.find(x=>x.id===importPlatform);const h=q('#cryptoImportHelp');if(h&&p)h.innerHTML=p.help+' El fichero se lee en tu dispositivo; solo se guardan el saldo y el precio medio de cada moneda.';const f=q('#cryptoImportFile');if(f&&f.files[0])previewImport(f.files[0])}
+   if(e.target&&e.target.id==='cryptoImportFile'&&e.target.files.length)previewImport(e.target.files);
+   if(e.target&&e.target.id==='cryptoImportPlatform'){importPlatform=e.target.value;const p=IMPORT_PLATFORMS.find(x=>x.id===importPlatform);const h=q('#cryptoImportHelp');if(h&&p)h.innerHTML=p.help+' El fichero se lee en tu dispositivo; solo se guardan el saldo y el precio medio de cada moneda.';const f=q('#cryptoImportFile');if(f&&f.files.length)previewImport(f.files)}
   });
-  document.addEventListener('input',e=>{if(e.target&&e.target.id==='cryptoSearch'){state.search=e.target.value;render()}});
+  document.addEventListener('input',e=>{
+   if(e.target&&e.target.id==='cryptoSearch'){state.search=e.target.value;render()}
+   const iu=e.target&&e.target.dataset&&e.target.dataset.importUnits;
+   if(iu!==undefined&&pendingImport){const p=pendingImport[Number(iu)],qt=p&&state.quotes[p.symbol],v=parseNum(e.target.value),cell=q('#cryptoImportPreview [data-import-value="'+iu+'"]');if(cell)cell.textContent=qt&&qt.price&&v!==null?eur(v*qt.price,{decimals:2}):'—'}
+  });
   root.addEventListener('viewinvai:view-changed',ev=>{if(state.detail)closeDetail();if(ev.detail&&ev.detail.view==='crypto'){loadQuotes();loadPositions()}else if(ev.detail&&ev.detail.view==='today'&&visible()&&(!state.updatedAt||Date.now()-Date.parse(state.updatedAt)>30000))loadQuotes()});
   root.addEventListener('viewinvai:auth-changed',()=>{state.positionsLoaded=false;loadPositions(true)});
   root.addEventListener('viewinvai:account-ready',()=>{loadPositions(true).then(()=>{if(state.positions.length&&!state.updatedAt)loadQuotes()})});

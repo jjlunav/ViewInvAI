@@ -5694,11 +5694,14 @@ async function handleCryptoPositions(request,env,user,json,parts){
     for(const r of rows){const p=cryptoPositionFromBody(Object.assign({},r,{platform,origin:"import"}));if(p.error)return json({error:p.error+" ("+String(r&&r.symbol||"")+")"},400);parsed.push(p)}
     const now=nowIso(),keep=new Set(parsed.map(p=>p.symbol));
     const stmts=parsed.map(p=>upsert(p,now));
-    // Lo que ya no aparece en el fichero queda a 0 (en seguimiento), no se borra.
-    const existing=(await list()).filter(p=>p.platform===platform&&!keep.has(p.symbol)&&Number(p.units)>0);
-    for(const p of existing)stmts.push(env.DB.prepare("UPDATE crypto_positions SET units=0,updated_at=? WHERE id=? AND user_id=?").bind(now,p.id,user.id));
+    // Lo que ya no aparece en el fichero: si lo creó una importación, se borra (la nueva la sustituye);
+    // si lo añadiste a mano, queda a 0 en seguimiento.
+    const gone=(await list()).filter(p=>p.platform===platform&&!keep.has(p.symbol));
+    const removed=gone.filter(p=>p.origin==="import"),zeroed=gone.filter(p=>p.origin!=="import"&&Number(p.units)>0);
+    for(const p of removed)stmts.push(env.DB.prepare("DELETE FROM crypto_positions WHERE id=? AND user_id=?").bind(p.id,user.id));
+    for(const p of zeroed)stmts.push(env.DB.prepare("UPDATE crypto_positions SET units=0,updated_at=? WHERE id=? AND user_id=?").bind(now,p.id,user.id));
     if(stmts.length)await env.DB.batch(stmts);
-    return json({ok:true,imported:parsed.length,zeroed:existing.length,positions:await list()});
+    return json({ok:true,imported:parsed.length,removed:removed.length,zeroed:zeroed.length,positions:await list()});
   }
   if(request.method==="POST"&&!id){
     const p=cryptoPositionFromBody(await readJson(request));
