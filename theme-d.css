@@ -692,3 +692,29 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.page-heading {padding-right:162px!important}
 }
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen {grid-column:1/-1;display:grid;gap:0}
+/* Sello del verificador bajo cada respuesta de la IA */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify {display:grid;gap:3px;margin:8px 0 2px;padding:7px 10px;border-radius:10px;font-size:12px;line-height:1.35}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify b {font-weight:700}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify.ok {background:var(--d-upbg);color:var(--d-up)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify.warn {background:color-mix(in srgb,var(--d-warn) 14%,transparent);color:var(--d-warn)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify-src {color:var(--d-mut);font-size:11.5px}
+/* Modelo cuantitativo */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-tag {font-style:normal;font-weight:700;color:var(--d-accent)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-hist {font-style:normal;font-size:11.5px;color:var(--d-mut);line-height:1.3}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-note {color:var(--d-ink)!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-facts {margin:6px 0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table {width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table th,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table td {padding:5px 4px;border-top:1px solid var(--d-hair);text-align:right;font-variant-numeric:tabular-nums}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table th:first-child {text-align:left;font-weight:600}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table thead th {border-top:0;color:var(--d-mut);font-weight:700;font-size:11.5px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table .positive {color:var(--d-up)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-table .negative {color:var(--d-down)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant {display:grid;gap:4px;padding:10px 12px;border-radius:14px;background:var(--d-aitint);margin:0 0 10px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant>div {display:flex;justify-content:space-between;align-items:center}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant small {font-weight:700;color:var(--d-accent);font-size:12px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant p {margin:0;font-size:12.5px;color:var(--d-mut)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant ul {margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant li {font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--d-surf)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant li.up {color:var(--d-up)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .pi-quant li.down {color:var(--d-down)}

@@ -2564,7 +2564,7 @@ async function ensureRadarScoreboardSchema(env){
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
   ]);
   // Columnas añadidas después (factores en el momento de la señal); si ya existen, SQLite avisa y se sigue.
-  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL"]){
+  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL","quant_prob REAL"]){
     try{await env.DB.prepare("ALTER TABLE radar_signals ADD COLUMN "+col).run()}catch(_){}
   }
   // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
@@ -2590,7 +2590,7 @@ async function migrateRadarToCache(env){
   for(const [table,base] of tables){
     // Las columnas añadidas después solo se copian si D1 ya las tiene.
     const have=new Set(((await d1.prepare("PRAGMA table_info("+table+")").all()).results||[]).map(c=>c.name));
-    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week"].filter(c=>have.has(c)):[];
+    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week","quant_prob"].filter(c=>have.has(c)):[];
     const cols=[base,...extra].join(",");
     const names=cols.split(","),marks=names.map(()=>"?").join(",");
     const rows=(await d1.prepare("SELECT "+cols+" FROM "+table+" WHERE day>=? ORDER BY day").bind(since).all()).results||[];
@@ -2742,7 +2742,7 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
   const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
   const crashPending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM crash_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
-  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],universeStocks:true,prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
   const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
   const now=nowIso();
   // 1) Evaluate earlier signals with today's live prices.
@@ -2764,9 +2764,14 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   for(let i=0;i<updates.length;i+=80)await env.DB.batch(updates.slice(i,i+80));
   // 2) Record today's signals and the benchmark mark.
   const signals=radarSignalsForSnapshot(snapshot,nowMs);
+  // Probabilidad del modelo cuantitativo en el momento de la señal: así se mide en vivo si acierta.
+  try{
+    const qm=services.loadQuantModel?await services.loadQuantModel():null;
+    if(qm)for(const r of signals){const st=findStock(snapshot,{stock_key:r.stock_key});const q=st&&globalThis.ViewInvAIScore.quantScore(qm,st);if(q)r.quant_prob=Math.round(q.prob*10000)/10000}
+  }catch(error){console.warn("Quant on radar signals failed",String(error&&error.message||error))}
   const inserts=signals.map(r=>env.DB.prepare(
-    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,now));
+    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,quant_prob,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,r.quant_prob??null,now));
   for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
   // Caídas bruscas: el servidor de mercado las trae calculadas; si es una versión anterior que
   // no las conoce, se calculan sobre el snapshot completo (un paquete parcial no tiene todo el mercado).
@@ -2793,7 +2798,7 @@ function radarStats(rows,h){
 export async function radarScoreboardSummary(env){return onCacheDb(env,radarScoreboardSummaryOn)}
 async function radarScoreboardSummaryOn(env){
   await ensureRadarScoreboardSchema(env);
-  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,quant_prob,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
   const firstDay=rows.length?rows[rows.length-1].day:null;
   // Una misma acción puede salir varios días seguidos: «primera señal» cuenta cada valor una sola vez
   // cada 10 días, para que las repeticiones no inflen ni hundan el acierto.
@@ -2804,6 +2809,8 @@ async function radarScoreboardSummaryOn(env){
     score80:rows.filter(r=>r.tier==="opportunity"&&Number(r.score)>=80),
     chasing:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)>=8),
     calm:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)<8),
+    quantHigh:rows.filter(r=>r.quant_prob!==null&&r.quant_prob!==undefined&&Number(r.quant_prob)>=0.55),
+    quantLow:rows.filter(r=>r.quant_prob!==null&&r.quant_prob!==undefined&&Number(r.quant_prob)<0.45),
     opportunity:rows.filter(r=>r.tier==="opportunity"),
     opportunitySolid:rows.filter(r=>r.tier==="opportunity"&&Number(r.speculative)===0),
     watch:rows.filter(r=>r.tier==="watch"),
@@ -5916,6 +5923,8 @@ async function aiAskExtras(env,services,userId,body){
         const st=findStock(snap,{stock_key:k});if(!st)continue;
         const evs=(snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===String(st.ticker||"").toUpperCase()).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
         const f=aiStockFacts(st,evs);
+        try{const qm=services.loadQuantModel?await services.loadQuantModel():null;const q=qm&&globalThis.ViewInvAIScore.quantScore(qm,st);
+          if(q)f.quantModel={probBeatSp500Next5Sessions:Math.round(q.prob*1000)/10,historicalAverage:q.base!==null?Math.round(q.base*1000)/10:null,topFactors:q.parts.slice(0,3).map(p=>p.label+(p.delta>0?" (a favor)":" (en contra)")),validatedAuc:qm.validation&&qm.validation.auc}}catch(_){}
         try{f.news=(await newsForCompany(env,{key:k,ticker:f.ticker,name:newsCleanName(st.name),isin:st.isin||st.usIsin||""},4)).map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",240)}))}catch(_){f.news=[]}
         facts.push(f);
       }
@@ -5935,6 +5944,66 @@ async function aiAskContext(env,services,userId){
   return{now:madrid,currency:"EUR",
     totals:{total:r2(digest.total),stocks:r2(digest.stocksValue),stocksDay:r2(digest.stocksDay),funds:r2(digest.fundsValue),fundsDay:r2(digest.fundsDay),crypto:r2(digest.cryptoValue),crypto24h:r2(digest.cryptoDay),cashApart:r2(digest.cash),positionsWithoutPrice:digest.missing},
     positions:digest.positionsDetail,funds:digest.fundsDetail,crypto:digest.cryptoSymbols,summaryLines:digest.lines,recentAlerts:alerts};
+}
+// ----- Verificador de respuestas de la IA -----
+// Números en formato español o inglés: «1.234,56», «2,47 %», «33.51», «-0,5». Devuelve valor absoluto y decimales.
+function aiNumbersIn(text){
+  const out=[];
+  for(const m of String(text||"").matchAll(/(?<![\p{L}\d])[-−+]?(\d{1,3}(?:[.\u00a0 ]\d{3})+|\d+)(?:[,.](\d+))?(?![\p{L}\d])/gu)){
+    const raw=m[0];let ip=m[1].replace(/[.\u00a0 ]/g,""),dec=m[2]||"";
+    // «1.234» sin más: miles en español (no 1,234). «0.9855»: decimal inglés.
+    if(!dec&&/^\d{1,3}(\.\d{3})+$/.test(m[1]))ip=m[1].replace(/\./g,"");
+    const v=Number(ip+(dec?"."+dec:""));if(!Number.isFinite(v))continue;
+    const after=String(text).slice(m.index+raw.length,m.index+raw.length+3),before=String(text).slice(Math.max(0,m.index-1),m.index);
+    out.push({v:Math.abs(v),dec:dec.length,unit:/^\s?(%|€|\$|us\$|usd|eur)/i.test(after)||/[€$]/.test(before),raw});
+  }
+  return out;
+}
+function aiContextNumbers(context){
+  const nums=[];
+  const walk=x=>{
+    if(x===null||x===undefined)return;
+    if(typeof x==="number"){if(Number.isFinite(x))nums.push(Math.abs(x));return}
+    if(typeof x==="string"){for(const n of aiNumbersIn(x))nums.push(n.v);return}
+    if(Array.isArray(x)){x.forEach(walk);return}
+    if(typeof x==="object")Object.values(x).forEach(walk);
+  };
+  walk(context);
+  return nums;
+}
+export function aiVerifyAnswer(text,context,question=""){
+  const issues=[],ctxNums=aiContextNumbers([context,question]);
+  let checked=0;
+  for(const n of aiNumbersIn(text)){
+    // Fechas, recuentos y años no se comprueban (0-31 sin unidad ni decimales, 1990-2100).
+    if(!n.unit&&!n.dec&&(n.v<=31||(n.v>=1990&&n.v<=2100)))continue;
+    checked++;
+    const step=Math.pow(10,-n.dec),ok=ctxNums.some(c=>{
+      const r=Math.round(c/step)*step;
+      return Math.abs(r-n.v)<=step*1.01||(c!==0&&Math.abs(c-n.v)/Math.abs(c)<0.006);
+    });
+    if(!ok)issues.push("la cifra «"+n.raw.trim()+"» no aparece en los datos");
+  }
+  // Tickers que no están en el contexto ni en la pregunta.
+  const known=new Set(),ctxText=JSON.stringify(context||{})+" "+question;
+  for(const m of ctxText.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g))known.add(m[0]);
+  const OK=new Set(["IA","AI","ETF","EE","UU","EEUU","TR","LSX","BCE","FED","IPC","PIB","PER","RSI","USD","EUR","OPA","DCA","TER","SPY","IBEX","CEO","FDA","SEC","EBITDA","EPS","PMI","UE","NYSE","NASDAQ","AMEX","IRPF","FIFO","JSON","OK"]);
+  for(const m of String(text||"").matchAll(/\b[A-Z][A-Z0-9]{1,5}\b/g))if(!known.has(m[0])&&!OK.has(m[0])){issues.push("el valor «"+m[0]+"» no está en los datos");checked++}
+  // Contradicciones: decir que no hay noticias cuando el contexto las trae.
+  const hasNews=["newsTheUserIsAsking","newsOfYourStocks"].some(k=>Array.isArray(context&&context[k])&&context[k].length)||(Array.isArray(context&&context.stocksMentioned)&&context.stocksMentioned.some(x=>x.news&&x.news.length));
+  if(hasNews&&/\bno (hay|se dispone de|tengo|dispongo de|existen?) (ninguna )?noticias?\b/i.test(text))issues.push("dice que no hay noticias, pero el contexto trae noticias");
+  return{ok:!issues.length,checked,issues:[...new Set(issues)]};
+}
+// Fuentes de los datos que ha usado la respuesta (se enseñan bajo la respuesta).
+function aiContextSources(context){
+  const out=[];
+  if(context&&!context.empty)out.push("Tus carteras · "+(context.now||""));
+  const pubs=new Map();
+  for(const list of [context&&context.newsTheUserIsAsking,context&&context.newsOfYourStocks,...((context&&context.stocksMentioned)||[]).map(s=>s.news)])
+    for(const n of Array.isArray(list)?list:[])if(n&&n.publisher&&!pubs.has(n.publisher))pubs.set(n.publisher,n.time||"");
+  if(context&&Array.isArray(context.stocksMentioned)&&context.stocksMentioned.length)out.push("Mercado: "+context.stocksMentioned.map(s=>s.ticker).join(", ")+" (TradingView, Nasdaq, LSX)");
+  for(const [p] of [...pubs].slice(0,5))out.push(p);
+  return out.slice(0,7);
 }
 // Sugerencias válidas: completas (se descartan, no se recortan), escritas como pregunta del usuario
 // y sin tickers que no estén en el contexto (la IA a veces inventa abreviaturas como «PI»).
@@ -5978,7 +6047,7 @@ async function handleAiAsk(request,env,user,json,services){
     "No des certezas ni órdenes: son ideas para que el usuario decida. No es asesoramiento financiero.",
     "El efectivo es aparte: no forma parte del valor de las carteras.",
     "Noticias: «newsTheUserIsAsking» son las que el usuario está leyendo; «newsOfYourStocks», las de sus valores; «stocksMentioned», datos y noticias de los valores que nombra. Si hay noticias en el contexto, úsalas y cita medio y hora; nunca digas que no hay noticias si las hay.",
-    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos)."
+    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos). «quantModel» es el modelo propio entrenado con 10 años: cítalo como probabilidad, nunca como certeza."
   ];
   // Preguntas sugeridas: las haría el usuario a la app, cortas y completas.
   const FOLLOW_RULE="followUps: 3 preguntas que el USUARIO podría hacer a continuación, escritas por él (p. ej. «¿Subo el stop de TaskUs?»), nunca preguntas tuyas al usuario («¿Quieres…?», «¿Te gustaría…?»), de 45 caracteres como máximo, sin cortar palabras y usando solo nombres o tickers que aparezcan en el contexto.";
@@ -5995,19 +6064,33 @@ async function handleAiAsk(request,env,user,json,services){
       "",JSON.stringify({pregunta:question,conversacion:history,contexto:context})]).join("\n");
   }
   try{
-    const run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
-    const parsed=extractAiJson(run.text);
+    let run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
+    let parsed=extractAiJson(run.text);
     if(!parsed)throw new Error("AI response is not valid JSON");
+    // Verificador: cada cifra, ticker y afirmación sobre noticias se contrasta con el contexto. Si algo
+    // no cuadra, la IA lo corrige una vez con la lista de fallos; si sigue sin cuadrar, se avisa.
+    const textOf=p=>[p.answer||p.summary||"",...(Array.isArray(p.keyPoints)?p.keyPoints:[])].join("\n");
+    let check=aiVerifyAnswer(textOf(parsed),context,question);
+    if(!check.ok){
+      try{
+        const retry=await aiRoute(env,{prompt:prompt+"\n\nREVISIÓN: tu respuesta anterior tenía estos fallos frente al contexto: "+check.issues.join("; ")+". Corrígela usando solo cifras y valores del contexto (si calculas algo, di de qué cifras sale). Devuelve el mismo JSON.",maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
+        const again=extractAiJson(retry.text);
+        if(again){const c2=aiVerifyAnswer(textOf(again),context,question);if(c2.issues.length<=check.issues.length){parsed=again;run=retry;check=c2}}
+      }catch(_){}
+    }
+    const verification={ok:check.ok,checked:check.checked,issues:check.issues.slice(0,4),sources:aiContextSources(context)};
     const followUps=aiValidFollowUps(parsed.followUps,context,question);
     const model=run.provider+" · "+run.model;
     if(mode==="brief"){
       const summary=trimText(parsed.summary||"",420);
       if(!summary)throw new Error("Resumen vacío");
-      const payload={summary,followUps,model};
+      // Un resumen con cifras que no cuadran no se guarda: se usa el calculado (sin interpretación).
+      if(!check.ok)throw new Error("Resumen sin verificar: "+check.issues.join("; "));
+      const payload={summary,followUps,model,verification};
       await env.DB.prepare("INSERT INTO ai_briefs (user_id,payload,created_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(user.id,JSON.stringify(payload),nowIso()).run();
       return json(Object.assign(payload,{cached:false,createdAt:nowIso()}));
     }
-    return json({answer:trimText(parsed.answer||parsed.summary||"",1800),keyPoints:(Array.isArray(parsed.keyPoints)?parsed.keyPoints:[]).map(x=>trimText(x,200)).filter(Boolean).slice(0,4),followUps,model});
+    return json({answer:trimText(parsed.answer||parsed.summary||"",1800),keyPoints:(Array.isArray(parsed.keyPoints)?parsed.keyPoints:[]).map(x=>trimText(x,200)).filter(Boolean).slice(0,4),followUps,model,verification});
   }catch(error){
     console.warn("AI ask failed",String(error&&error.message||error));
     // Sin IA disponible: el resumen usa las líneas calculadas (sin interpretación); la pregunta devuelve un aviso.

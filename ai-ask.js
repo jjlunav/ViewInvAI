@@ -70,6 +70,14 @@
   bd.addEventListener('click',()=>toggle(false));
   return el;
  }
+ // Sello del verificador: si las cifras cuadran con los datos de la app, y de dónde salen.
+ function verifyHtml(v){
+  if(!v)return'';
+  const src=v.sources&&v.sources.length?'<span class="ai-verify-src">Fuentes: '+esc(v.sources.join(' · '))+'</span>':'';
+  if(v.ok)return '<div class="ai-verify ok"><b>✓ '+(v.checked?'Cifras verificadas con tus datos':'Sin cifras que verificar')+'</b>'+src+'</div>';
+  return '<div class="ai-verify warn"><b>⚠ Revisa: '+esc((v.issues||[]).join('; '))+'</b>'+src+'</div>';
+ }
+ window.ViewInvAIVerifyHtml=verifyHtml;
  function paintLog(){
   const log=document.getElementById('aiAskLog');if(!log)return;
   const v=view(),sug=SUGGEST[v]||SUGGEST.today;
@@ -78,6 +86,7 @@
    '<div class="ai-msg ai">'+(m.error?'<p class="ai-brief-muted">'+esc(m.content)+'</p>':'<p>'+esc(m.content).replace(/\n/g,'<br>')+'</p>'+
     (m.keyPoints&&m.keyPoints.length?'<ul>'+m.keyPoints.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')+
     (m.followUps&&m.followUps.length?'<div class="ai-chips">'+m.followUps.map(q=>'<button type="button" data-ai-ask-q="'+esc(q)+'">'+esc(q)+'</button>').join('')+'</div>':'')+
+    verifyHtml(m.verification)+
     (m.model?'<small class="ai-msg-model">'+esc(m.model)+'</small>':''))+'</div>').join('')+(S.busy?'<div class="ai-msg ai pending"><p>Pensando con tus datos…</p></div>':'');
   log.scrollTop=log.scrollHeight;
  }
@@ -103,7 +112,7 @@
   toggle(true);
   const prior=S.history.filter(m=>!m.error).slice(-6).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}));
   S.history.push({role:'user',content:question});S.busy=true;paintLog();
-  try{const d=await post({mode:'ask',question,history:prior,view:view(),focus:focusKeys(question),news:Array.isArray(opts.news)?opts.news.slice(0,6):undefined});S.history.push({role:'ai',content:d.answer||'Sin respuesta.',keyPoints:d.keyPoints,followUps:d.followUps,model:d.model})}
+  try{const d=await post({mode:'ask',question,history:prior,view:view(),focus:focusKeys(question),news:Array.isArray(opts.news)?opts.news.slice(0,6):undefined});S.history.push({role:'ai',content:d.answer||'Sin respuesta.',keyPoints:d.keyPoints,followUps:d.followUps,model:d.model,verification:d.verification})}
   catch(error){S.history.push({role:'ai',content:error.message,error:true})}
   finally{S.busy=false;paintLog()}
  }

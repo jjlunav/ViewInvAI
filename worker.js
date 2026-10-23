@@ -1357,6 +1357,17 @@ async function fetchMarketServer(env,body){
   rememberServerStocks(data);
   return Object.assign(data,{partial:true});
 }
+// Modelo cuantitativo publicado por el entrenamiento semanal (data/quant-model.json); 6 h en memoria.
+let quantModelMemo={at:0,value:null};
+async function loadQuantModel(env){
+  if(quantModelMemo.value&&Date.now()-quantModelMemo.at<6*3600000)return quantModelMemo.value;
+  try{
+    const r=await env.ASSETS.fetch(new Request("https://viewinvai.local/data/quant-model.json"));
+    const m=r.ok?await r.json():null;
+    quantModelMemo={at:Date.now(),value:m&&Array.isArray(m.features)?m:null};
+  }catch(error){console.warn("Quant model unavailable",String(error&&error.message||error));quantModelMemo={at:Date.now(),value:null}}
+  return quantModelMemo.value;
+}
 async function loadMarketSnapshotForBackend(env, need = null) {
   if (need && env.MARKET_SERVER_URL) {
     try { return await marketServerSnapshot(env, need); }
@@ -2271,6 +2282,7 @@ export default {
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
         loadDailyHistory: loadDailyHistoryForBackend,
+        loadQuantModel: () => loadQuantModel(env),
         loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
       }));
     }
@@ -2433,7 +2445,7 @@ export default {
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
     // Tras la foto diaria del Radar, el resumen guardado se recalcula en la siguiente consulta.
-    tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt).then(async r=>{
+    tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuantModel:()=>loadQuantModel(env)},scheduledAt).then(async r=>{
       if(r&&r.day){
         scoreboardMemo.clear();
         if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY);await env.HOT_STATE_KV.delete(CRASH_SCOREBOARD_KV_KEY)}catch(_){}}
