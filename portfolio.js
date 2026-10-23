@@ -4425,7 +4425,7 @@ function dRing(score,label){
   return'<em class="ai-score d-ring" data-band="'+(n>=80?"high":n>=60?"mid":"low")+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>';
 }
 // Filas desplegadas: se recuerdan aunque Carteras se repinte al llegar cotizaciones.
-const dOpenRows=new Set();let dOpenScrollY=null;
+const dOpenRows=new Set();
 function dRowDetailHtml(r,open=false){
   const p=r.p,avg=num(p.avg_price),qty=r.qty,cur=String(p.currency||(r.preferTr?"EUR":"USD")).toUpperCase();
   const fee=brokerFeeInCurrency(p.broker,qty,avg,cur,"BUY",p.exchange||"");
@@ -4456,7 +4456,7 @@ function dRowHtml(r){
   const qtyTxt=r.qty===null?"":formatNumber(r.qty,r.qty%1?4:0)+(r.etf?" uds.":" acc.");
   const open=r.stock?' data-portfolio-stock-profile="'+esc(r.p.stock_key)+'" data-profile-prefer-tr="'+(r.preferTr?"1":"0")+'"':' data-position-transactions="'+esc(r.p.id)+'"';
   const isOpen=dOpenRows.has(String(r.p.id));
-  return'<li class="d-row d-position'+(isOpen?' open':'')+'" data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
+  return'<li class="d-row d-position'+(isOpen?' open':'')+'" data-collapsible data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
     '<span class="d-row-text"><b>'+esc(r.name)+'</b><small>'+esc([qtyTxt,r.venue].filter(Boolean).join(" · "))+'</small>'+
     (r.verdict?'<i class="d-row-ai">✦ '+esc(r.verdict)+'</i>':'')+'</span>'+
     '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null?'<small>sin precio</small>':dChip(r.pnl,{pct:r.pnlPct}))+'</span></button>'+
@@ -4632,17 +4632,15 @@ document.addEventListener('click',event=>{
   const li=t.closest('.d-row'),detail=li&&li.querySelector('.d-row-detail');if(!detail)return;
   const open=detail.hidden;detail.hidden=!open;li.classList.toggle('open',open);t.setAttribute('aria-expanded',open?'true':'false');
   const id=String(li.dataset.positionId||'');if(id){if(open)dOpenRows.add(id);else dOpenRows.delete(id)}
-  dOpenScrollY=dOpenRows.size?window.scrollY:null;
   if(open&&window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(detail);
 });
-// Se pliegan solas solo cuando ya te has ido: al desplazarte un 30 % de la pantalla desde donde
-// las abriste (o con la flecha). Una cotización nueva nunca las cierra.
-window.addEventListener('scroll',()=>{
-  if(!dOpenRows.size||dOpenScrollY===null)return;
-  if(Math.abs(window.scrollY-dOpenScrollY)<window.innerHeight*0.3)return;
-  dOpenRows.clear();dOpenScrollY=null;
-  document.querySelectorAll('.d-position.open').forEach(li=>{li.classList.remove('open');const d=li.querySelector('.d-row-detail');if(d)d.hidden=true;const t=li.querySelector('[data-d-row-toggle]');if(t)t.setAttribute('aria-expanded','false')});
-},{passive:true});
+// Se pliegan solas solo cuando ya te has ido lejos de ellas (collapse.js decide cuándo: mientras
+// alguna parte de la fila siga en pantalla, no). Una cotización nueva nunca las cierra.
+document.addEventListener('viewinvai:collapse-away',e=>{
+  const li=e.target&&e.target.closest&&e.target.closest('.d-position');if(!li)return;
+  dOpenRows.delete(String(li.dataset.positionId||''));
+  li.classList.remove('open');const d=li.querySelector('.d-row-detail');if(d)d.hidden=true;const t=li.querySelector('[data-d-row-toggle]');if(t)t.setAttribute('aria-expanded','false');
+});
 document.addEventListener('click',event=>{
   if(event.target.closest&&event.target.closest('.d-more-menu button')){const d=event.target.closest('details');if(d)d.open=false}
 });

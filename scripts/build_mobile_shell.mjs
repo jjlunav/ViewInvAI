@@ -12,6 +12,7 @@ const files = [
   'theme-ai.css',
   'theme-d.css',
   'ui-shell.js',
+  'collapse.js',
   'onboarding.js',
   'tasks.js',
   'decisions.js',
