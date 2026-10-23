@@ -2559,7 +2559,9 @@ async function ensureRadarScoreboardSchema(env){
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL,score REAL NOT NULL,quality REAL NOT NULL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,speculative INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_radar_signals_day ON radar_signals(day)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)")
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS crash_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',score REAL NOT NULL,change_pct REAL NOT NULL,prior_pct REAL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
   ]);
   // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
   if(schemaKey==="radar:turso"){await migrateRadarToCache(env);cacheDbState.radarSyncPending=false}
@@ -2577,16 +2579,20 @@ async function migrateRadarToCache(env){
   if(!exists)return;
   const has=await env.DB.prepare("SELECT COUNT(*) AS n FROM radar_signals").first();
   const since=Number(has&&has.n)>0?isoDay(Date.now()-45*864e5):"";
-  const cols="id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at";
-  const names=cols.split(","),marks=names.map(()=>"?").join(",");
-  const rows=(await d1.prepare("SELECT "+cols+" FROM radar_signals WHERE day>=? ORDER BY day").bind(since).all()).results||[];
-  for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_signals ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
-  const done=rows.filter(r=>r.ret_1d!==null&&r.ret_1d!==undefined||r.ret_5d!==null&&r.ret_5d!==undefined||r.ret_20d!==null&&r.ret_20d!==undefined);
+  const tables=[["radar_signals","id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at"]];
+  if(await d1.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='crash_signals'").first())
+    tables.push(["crash_signals","id,day,stock_key,ticker,name,kind,label,score,change_pct,prior_pct,price,bench_price,tr_tradable,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at"]);
   const v=x=>x===undefined?null:x;
-  for(let i=0;i<done.length;i+=60)await env.DB.batch(done.slice(i,i+60).map(r=>env.DB.prepare(
-    "UPDATE radar_signals SET ret_1d=COALESCE(ret_1d,?),bench_1d=COALESCE(bench_1d,?),ret_5d=COALESCE(ret_5d,?),bench_5d=COALESCE(bench_5d,?),ret_20d=COALESCE(ret_20d,?),bench_20d=COALESCE(bench_20d,?) "+
-    "WHERE day=? AND stock_key=? AND ((ret_1d IS NULL AND ? IS NOT NULL) OR (ret_5d IS NULL AND ? IS NOT NULL) OR (ret_20d IS NULL AND ? IS NOT NULL))"
-  ).bind(v(r.ret_1d),v(r.bench_1d),v(r.ret_5d),v(r.bench_5d),v(r.ret_20d),v(r.bench_20d),r.day,r.stock_key,v(r.ret_1d),v(r.ret_5d),v(r.ret_20d))));
+  for(const [table,cols] of tables){
+    const names=cols.split(","),marks=names.map(()=>"?").join(",");
+    const rows=(await d1.prepare("SELECT "+cols+" FROM "+table+" WHERE day>=? ORDER BY day").bind(since).all()).results||[];
+    for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO "+table+" ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
+    const done=rows.filter(r=>r.ret_1d!==null&&r.ret_1d!==undefined||r.ret_5d!==null&&r.ret_5d!==undefined||r.ret_20d!==null&&r.ret_20d!==undefined);
+    for(let i=0;i<done.length;i+=60)await env.DB.batch(done.slice(i,i+60).map(r=>env.DB.prepare(
+      "UPDATE "+table+" SET ret_1d=COALESCE(ret_1d,?),bench_1d=COALESCE(bench_1d,?),ret_5d=COALESCE(ret_5d,?),bench_5d=COALESCE(bench_5d,?),ret_20d=COALESCE(ret_20d,?),bench_20d=COALESCE(bench_20d,?) "+
+      "WHERE day=? AND stock_key=? AND ((ret_1d IS NULL AND ? IS NOT NULL) OR (ret_5d IS NULL AND ? IS NOT NULL) OR (ret_20d IS NULL AND ? IS NOT NULL))"
+    ).bind(v(r.ret_1d),v(r.bench_1d),v(r.ret_5d),v(r.bench_5d),v(r.ret_20d),v(r.bench_20d),r.day,r.stock_key,v(r.ret_1d),v(r.ret_5d),v(r.ret_20d))));
+  }
   const bench=(await d1.prepare("SELECT day,price,created_at FROM radar_bench WHERE day>=?").bind(since).all()).results||[];
   for(let i=0;i<bench.length;i+=60)await env.DB.batch(bench.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(r.day,r.price,r.created_at)));
 }
@@ -2643,6 +2649,34 @@ export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
   const opp=rows.filter(r=>r.tier==="opportunity"&&!r.speculative).slice(0,24),watch=rows.filter(r=>r.tier==="watch").slice(0,30),spec=rows.filter(r=>r.speculative).slice(0,20);
   return[...opp,...watch,...spec];
 }
+// Caídas bruscas del día (mismas reglas que la sección del Radar AI, en score-engine.js): valores
+// de EE. UU. o negociables en Trade Republic que caen un 25 % o más hoy sin venir de un desplome.
+// El motivo se busca en sus eventos de los últimos 4 días.
+const CRASH_US_EXCHANGE=/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i;
+const CRASH_TYPE_LABEL={earnings:"Resultados",medical:"Clínico / sanitario",financing:"Financiación / dilución",contract:"Contrato / acuerdo",corporate:"Operación corporativa",analyst:"Rating / precio objetivo",regulatory:"Regulatorio / legal",event:"Evento",news:"Noticia"};
+export function crashSignalsForSnapshot(snapshot,nowMs=Date.now()){
+  if(snapshot&&snapshot.universe&&Array.isArray(snapshot.universe.crash))return snapshot.universe.crash;
+  const engine=globalThis.ViewInvAIScore;
+  if(!engine||typeof engine.crashEligible!=="function"||!snapshot||!Array.isArray(snapshot.stocks))return[];
+  const cut=nowMs-4*864e5,byTicker=new Map();
+  for(const e of Array.isArray(snapshot.events)?snapshot.events:[]){
+    const t=String(e&&e.ticker||"").toUpperCase(),at=Date.parse(e&&e.date);if(!t||!(at>=cut&&at<=nowMs+864e5))continue;
+    if(!byTicker.has(t))byTicker.set(t,[]);byTicker.get(t).push(e);
+  }
+  const rows=[];
+  for(const s of snapshot.stocks){
+    const tr=s.tradeRepublicTradable===true;
+    if(!CRASH_US_EXCHANGE.test(String(s.exchange||""))&&!tr)continue;
+    const price=finiteNumber(s.price);if(!(price>0))continue;
+    const hit=engine.crashEligible(s.changePct,s.perfMonth,s.marketCap);if(!hit)continue;
+    const cause=engine.crashCause(byTicker.get(String(s.ticker||"").toUpperCase())||[],e=>CRASH_TYPE_LABEL[e&&e.type]||"Noticia");
+    const score=engine.crashScore({kind:cause.kind,marketCap:s.marketCap,netIncome:s.netIncomeTtm,change:hit.change,rsi:s.rsi,prior:hit.prior});
+    rows.push({stock_key:String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),ticker:String(s.ticker||""),name:String(s.name||""),
+      kind:cause.kind,label:String(cause.label||"").slice(0,160),score,change_pct:Math.round(hit.change*100)/100,prior_pct:hit.prior===null?null:Math.round(hit.prior*10)/10,price,tr_tradable:tr?1:0});
+  }
+  // La pantalla enseña las 8 peores por mercado; el historial guarda hasta 30 al día.
+  return rows.sort((a,b)=>a.change_pct-b.change_pct).slice(0,30);
+}
 // «Lo más comentado»: trending on Stocktwits/Yahoo + verified news in 48 h + market activity.
 // st/yh are [{symbol,rank}] lists. News are counted once per ticker/ISIN (same result as
 // scanning every event for every stock, without the 12.000 × 8.500 loop).
@@ -2697,7 +2731,8 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   if(done)return{skipped:"already-marked"};
   const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
   const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
-  const snapshot=await services.loadMarketSnapshot(env,{universe:["radar"],prices:[...new Set(pending.map(r=>String(r.stock_key).toUpperCase()))]});
+  const crashPending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM crash_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
   const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
   const now=nowIso();
   // 1) Evaluate earlier signals with today's live prices.
@@ -2705,14 +2740,14 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
     ?new Map(Object.entries(snapshot.prices).map(([k,v])=>[k,finiteNumber(v)]))
     :new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),finiteNumber(s.price)]));
   const updates=[];
-  for(const sig of pending){
+  for(const [table,list] of [["radar_signals",pending],["crash_signals",crashPending]])for(const sig of list){
     const sessions=benchDays.filter(d=>d>sig.day).length+1; // today is one more session after the signal
     const now_px=priceByKey.get(String(sig.stock_key).toUpperCase());
     if(!(now_px>0)||!(sig.price>0))continue;
     const ret=(now_px/sig.price-1)*100,bench=sig.bench_price>0?(benchPrice/sig.bench_price-1)*100:null;
     for(const h of RADAR_HORIZONS){
       if(sessions>=h&&sig["ret_"+h+"d"]===null){
-        updates.push(env.DB.prepare("UPDATE radar_signals SET ret_"+h+"d=?,bench_"+h+"d=? WHERE id=? AND ret_"+h+"d IS NULL").bind(Math.round(ret*1000)/1000,bench===null?null:Math.round(bench*1000)/1000,sig.id));
+        updates.push(env.DB.prepare("UPDATE "+table+" SET ret_"+h+"d=?,bench_"+h+"d=? WHERE id=? AND ret_"+h+"d IS NULL").bind(Math.round(ret*1000)/1000,bench===null?null:Math.round(bench*1000)/1000,sig.id));
       }
     }
   }
@@ -2723,8 +2758,16 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
     "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
   ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,now));
   for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
+  // Caídas bruscas: el servidor de mercado las trae calculadas; si es una versión anterior que
+  // no las conoce, se calculan sobre el snapshot completo (un paquete parcial no tiene todo el mercado).
+  let crashes=snapshot.universe&&Array.isArray(snapshot.universe.crash)?snapshot.universe.crash:null;
+  if(!crashes)crashes=crashSignalsForSnapshot(snapshot.partial?await services.loadMarketSnapshot(env):snapshot,nowMs);
+  const crashInserts=crashes.filter(r=>r&&r.stock_key&&r.price>0).map(r=>env.DB.prepare(
+    "INSERT OR IGNORE INTO crash_signals (id,day,stock_key,ticker,name,kind,label,score,change_pct,prior_pct,price,bench_price,tr_tradable,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("cs_"),win.day,r.stock_key,r.ticker,String(r.name||"").slice(0,160),r.kind,r.label||"",r.score,r.change_pct,r.prior_pct??null,r.price,benchPrice,r.tr_tradable?1:0,now));
+  for(let i=0;i<crashInserts.length;i+=80)await env.DB.batch(crashInserts.slice(i,i+80));
   await env.DB.prepare("INSERT OR IGNORE INTO radar_bench (day,price,created_at) VALUES (?,?,?)").bind(win.day,benchPrice,now).run();
-  return{day:win.day,signals:signals.length,evaluated:updates.length};
+  return{day:win.day,signals:signals.length,crashes:crashInserts.length,evaluated:updates.length};
 }
 function radarStats(rows,h){
   const done=rows.filter(r=>r["ret_"+h+"d"]!==null&&r["ret_"+h+"d"]!==undefined);
@@ -2754,6 +2797,20 @@ async function radarScoreboardSummaryOn(env){
   return{since:firstDay,days:days.length,signals:rows.length,stats,
     recent:rows.filter(r=>r.tier==="opportunity").slice(0,25).map(r=>({day:r.day,ticker:r.ticker,name:r.name,stockKey:r.stock_key,score:r.score,speculative:Number(r.speculative)===1,trTradable:Number(r.tr_tradable)===1,ret1d:r.ret_1d,ret5d:r.ret_5d,ret20d:r.ret_20d,bench5d:r.bench_5d})),
     method:"Foto diaria a las 15:45 de Nueva York con el motor del Radar AI y precios en vivo; rentabilidad desde ese precio 1, 5 y 20 sesiones después, frente al SPY en el mismo intervalo. Sin comisiones ni deslizamiento.",
+    updatedAt:nowIso()};
+}
+
+export async function crashScoreboardSummary(env){return onCacheDb(env,crashScoreboardSummaryOn)}
+async function crashScoreboardSummaryOn(env){
+  await ensureRadarScoreboardSchema(env);
+  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,kind,label,score,change_pct,prior_pct,price,tr_tradable,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM crash_signals WHERE day>=? ORDER BY day DESC,change_pct ASC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+  const groups={all:rows,over:rows.filter(r=>r.kind==="over"),trap:rows.filter(r=>r.kind==="trap"),news:rows.filter(r=>r.kind==="news"),none:rows.filter(r=>r.kind==="none"),
+    high:rows.filter(r=>Number(r.score)>=65),trTradable:rows.filter(r=>Number(r.tr_tradable)===1)};
+  const stats={};
+  for(const [k,list] of Object.entries(groups))stats[k]=Object.fromEntries(RADAR_HORIZONS.map(h=>[h+"d",radarStats(list,h)]));
+  return{since:rows.length?rows[rows.length-1].day:null,days:new Set(rows.map(r=>r.day)).size,signals:rows.length,stats,
+    recent:rows.slice(0,30).map(r=>({day:r.day,ticker:r.ticker,name:r.name,stockKey:r.stock_key,kind:r.kind,label:r.label,score:r.score,change:r.change_pct,prior:r.prior_pct,trTradable:Number(r.tr_tradable)===1,ret1d:r.ret_1d,ret5d:r.ret_5d,ret20d:r.ret_20d})),
+    method:"Foto diaria a las 15:45 de Nueva York (a la vez que el Radar AI) de los valores que caen un 25 % o más ese día, con el motivo clasificado en ese momento; rebote medido desde ese precio 1, 5 y 20 sesiones después, frente al SPY. Sin comisiones ni deslizamiento.",
     updatedAt:nowIso()};
 }
 

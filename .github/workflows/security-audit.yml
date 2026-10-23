@@ -40,6 +40,8 @@ jobs:
         run: |
           npm install --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
+      - name: Historial de caídas bruscas (rebotes a 1/5/20 sesiones)
+        run: node scripts/test-crash-scoreboard.mjs
       - name: Validar contabilidad determinista de carteras
         run: |
           node --input-type=module - <<'NODE'

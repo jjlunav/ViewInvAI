@@ -269,7 +269,58 @@
     return 'HOLD';
   }
 
+  // ----- Caídas bruscas: ¿rebote o trampa? (mismas reglas en la pantalla y en el historial) -----
+  // Un valor entra si cae un 25 % o más HOY sin venir ya de un desplome (el mes previo no caía más
+  // de un 25 %). El motivo sale de sus eventos de los últimos días: de fondo («trap») o de
+  // interpretación («over»). La puntuación es una probabilidad orientativa de rebote, no una orden.
+  const CRASH_MIN=-25;
+  const CRASH_TRAPS=[
+    [/\bdid not (meet|achieve)\b|\bfail(s|ed|ure)?\b|\bmissed (its |the )?primary\b|\bdiscontinu|\bterminat(e|ed|es) (the )?(trial|study|program)\b|\bfutility\b/i,'Ensayo o programa fallido'],
+    [/\bcomplete response letter\b|\bcrl\b|\brefus(e|al) to file\b|\bfda (rejects|declines)\b|\bnot approv/i,'Rechazo de la FDA'],
+    [/\boffering\b|\bdilut|\bregistered direct\b|\bprivate placement\b|\bat-the-market\b|\batm\b|\bprospectus\b|\b424B\d\b|\bconvertible (notes|debentures|preferred)\b/i,'Ampliación de capital / dilución'],
+    [/\bgoing concern\b|\bbankrupt|\bchapter 11\b|\binsolven|\bin default\b|\bdefaulted\b|\bdelist/i,'Riesgo de quiebra o exclusión'],
+    [/\bfraud|\binvestigation\b|\bsubpoena|\brestat(e|es|ed|ement)\b|\bsec charges\b|\bclass action\b|\baccounting (irregularit|issue|error)/i,'Riesgo legal o contable'],
+    [/(cuts?|lowers?|slashes?|withdraws?|suspends?) (its |full[- ]year |annual )?(guidance|outlook|forecast)|guidance cut|profit warning/i,'Previsiones recortadas'],
+    [/reverse (stock )?split/i,'Contrasplit']
+  ];
+  const CRASH_OVERS=[
+    [/\bdowngrade|\bcut to (sell|neutral|hold|underperform)\b|\blowers? (its )?price target\b/i,'Rebaja de un analista'],
+    [/\bmiss(es|ed)? (estimates|expectations|consensus)\b|\bbelow (estimates|expectations|consensus)\b|\bdisappoint/i,'Resultados por debajo de lo esperado'],
+    [/\bshort (seller|report)\b|\bhindenburg\b|\bmuddy waters\b/i,'Informe bajista (por contrastar)'],
+    [/\bsector[- ]wide\b|\bpeers\b|\bsell-?off\b|\bmarket rout\b|\btariffs?\b|\binterest rates\b/i,'Venta del sector o del mercado']
+  ];
+  // ¿Entra hoy? change = variación de hoy (%), perfMonth = variación a un mes incluida la de hoy.
+  function crashEligible(change,perfMonth,marketCap){
+    const ch=n(change);if(ch===null||ch>CRASH_MIN||ch<-95)return null;
+    const cap=n(marketCap);if(cap!==null&&cap<20e6)return null;          // fuera chicharros minúsculos
+    const pm=n(perfMonth),prior=pm===null?null:((1+pm/100)/(1+ch/100)-1)*100;
+    if(prior!==null&&prior<-25)return null;                               // ya venía desplomándose
+    return{change:ch,prior};
+  }
+  function crashCause(events,label){
+    const evs=Array.isArray(events)?events:[];
+    const T=e=>String(e&&(e.title||e.fact)||'');
+    const L=typeof label==='function'?label:(e=>String(e&&(e.label||e.type)||'Noticia'));
+    for(const e of evs){const t=T(e);for(const [re,lb] of CRASH_TRAPS)if(re.test(t)||(lb.startsWith('Ampliación')&&e.type==='financing'))return{kind:'trap',label:lb,title:t}}
+    for(const e of evs){const t=T(e);for(const [re,lb] of CRASH_OVERS)if(re.test(t)||(lb.startsWith('Rebaja')&&e.type==='analyst'))return{kind:'over',label:lb,title:t}}
+    for(const e of evs){const t=T(e);if(/\b(positive|beats?|approv(al|ed)|record|raises?)\b/i.test(t))return{kind:'news',label:L(e)+' con buena noticia, pero cae: el mercado esperaba más',title:t}}
+    if(evs.length){const e=evs[0];return{kind:'news',label:L(e),title:T(e)}}
+    return{kind:'none',label:'Sin motivo publicado todavía',title:''};
+  }
+  function crashScore(input={}){
+    const kind=input.kind;
+    let score=50+(kind==='over'?22:kind==='trap'?-35:kind==='news'?0:-5);
+    if(input.valuation==='high')score+=10;else if(input.valuation==='low')score-=5;
+    const cap=n(input.marketCap),ni=n(input.netIncome),ch=n(input.change),rsi=n(input.rsi),prior=n(input.prior);
+    if(cap!==null&&cap<300e6&&ni!==null&&ni<0)score-=10;                 // pequeña y con pérdidas
+    if(ch!==null&&ch<-60)score-=5;
+    if(rsi!==null&&rsi<25)score+=4;
+    if(prior!==null&&prior>50)score-=10;                                   // corrección tras una subida fuerte
+    return Math.round(clamp(score,5,95));
+  }
+
   root.ViewInvAIScore=Object.freeze({
-    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative,radarTier,RADAR_LEVELS
+    VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative,radarTier,RADAR_LEVELS,
+    CRASH_MIN,crashEligible,crashCause,crashScore
   });
 })(globalThis);
