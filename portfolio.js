@@ -516,6 +516,52 @@ function portfolioSummaryHtml(portfolio, positions) {
   '</div>';
 }
 
+// Cuenta del bróker: la cartera de acciones y las de Fondos de la misma plataforma suman
+// un único total, como lo enseña el bróker (acciones + ETF/ETC + fondos). Solo en el diseño D.
+function portfolioAccountKey(text){
+  const t=String(text||"").toLowerCase();
+  if(/trade\s*republic|\btr\b/.test(t))return"tr";
+  if(/interactive|ibkr/.test(t))return"ibkr";
+  if(/my\s*investor/.test(t))return"myinvestor";
+  if(/bit2me|binance|kraken|coinbase/.test(t))return t.match(/bit2me|binance|kraken|coinbase/)[0];
+  return"";
+}
+function portfolioAccountHtml(portfolio,positions){
+  if(!portfolio||document.documentElement.dataset.design!=="d")return"";
+  const F=window.ViewInvAIFunds;
+  if(!F||typeof F.getFundPortfolios!=="function"||typeof F.getPortfolioDetail!=="function")return"";
+  const key=portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name);
+  if(!key)return"";
+  const funds=F.getFundPortfolios().filter(f=>(portfolioAccountKey(f.platform)||portfolioAccountKey(f.name))===key);
+  const rows=funds.flatMap(f=>F.getPortfolioDetail(f.id)).filter(r=>r.currency==="EUR");
+  if(!rows.length)return"";
+  const T=portfolioTotals(portfolio,positions),fx=T.fxUsdEur,cur=T.baseCurrency;
+  const eur=v=>portfolioConvertAmount(v,cur,"EUR",fx);
+  const stockValue=T.complete?eur(T.totalValue):null,stockPnl=eur(T.openPnl),stockDay=eur(T.day);
+  const fundValue=rows.every(r=>r.value!==null)?rows.reduce((a,r)=>a+r.value,0):null;
+  const fundPnl=rows.every(r=>r.pnl!==null)?rows.reduce((a,r)=>a+r.pnl,0):null;
+  const fundDay=rows.reduce((a,r)=>a+(r.value!==null&&r.dayPct!==null?r.value-r.value/(1+r.dayPct/100):0),0);
+  // Si falta algún precio se suma lo conocido y se marca como parcial (no se oculta el total).
+  const stockKnown=stockValue!==null?stockValue:eur(T.positionsValue)||0,fundKnown=rows.reduce((a,r)=>a+(r.value||0),0);
+  const partial=stockValue===null||fundValue===null,total=stockKnown+fundKnown;
+  const pnl=stockPnl!==null&&fundPnl!==null?stockPnl+fundPnl:null;
+  const day=(stockDay||0)+fundDay,invested=pnl!==null?total-pnl:null;
+  const chip=(v,pct)=>v===null?"":'<span class="'+(v>=0?"pnl-up":"pnl-down")+'">'+(v>0?"+":"")+formatMoney(v,"EUR")+(pct===null||pct===undefined?"":" · "+(pct>=0?"+":"")+formatNumber(pct,2)+"%")+'</span>';
+  const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[key]||portfolio.broker||portfolio.name;
+  const fundRow=r=>'<li><span class="pf-account-kind">'+esc(r.kind)+'</span><b>'+esc(r.name)+'</b><em>'+(r.value===null?"Sin precio":formatMoney(r.value,"EUR"))+'</em>'+chip(r.pnl,r.pnlPct)+'</li>';
+  const ask="Analiza mi cuenta de "+label+": acciones, ETF/ETC y fondos juntos. ¿Qué peso tiene cada parte y qué debería vigilar?";
+  return '<section class="pf-account" aria-label="Total de la cuenta '+esc(label)+'">'+
+    '<header><small>CUENTA · '+esc(label.toUpperCase())+'</small><button type="button" class="pf-account-ai" data-ai-ask-q="'+esc(ask)+'">✦ Leer con AI</button></header>'+
+    '<div class="pf-account-total"><strong>'+formatMoney(total,"EUR")+'</strong>'+(partial?'<small title="Falta el precio de alguna posición: se suma lo que tiene precio">parcial · falta algún precio</small>':chip(day,null)+'<small>hoy</small>')+'</div>'+
+    (pnl===null?"":'<p class="pf-account-pnl">Desde la compra '+chip(pnl,invested>0?pnl/invested*100:null)+'</p>')+
+    '<div class="pf-account-split">'+
+      '<div><small>Acciones y ETC</small><b>'+(stockValue===null?"—":formatMoney(stockValue,"EUR"))+'</b><span>'+positions.length+' posiciones</span></div>'+
+      '<button type="button" data-portfolio-asset="funds"><small>Fondos</small><b>'+(fundValue===null?"—":formatMoney(fundValue,"EUR"))+'</b><span>'+rows.length+' en Fondos ›</span></button>'+
+    '</div>'+
+    '<ul class="pf-account-funds">'+rows.map(fundRow).join("")+'</ul>'+
+  '</section>';
+}
+
 function portfolioCurrencySymbol(currency){
   const code=String(currency||"EUR").toUpperCase();
   return code==="EUR"?"€":code==="USD"?"$":code==="GBP"?"£":code;
@@ -938,7 +984,7 @@ function portfolioContextHtml(selected, positions) {
     const rows = positions.length
       ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
-    return portfolioDuplicatesHtml(selected, positions) + summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
+    return portfolioDuplicatesHtml(selected, positions) + portfolioAccountHtml(selected, positions) + summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
       positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
@@ -4232,8 +4278,14 @@ function bind() {
   // Cotización por ISIN de una posición fuera del catálogo: repinta como mucho cada 2 s.
   let isinQuoteTimer = null;
   window.addEventListener("viewinvai:tr-isin-quote", () => {
-    if (!state.user || isinQuoteTimer || !document.querySelector(".portfolio-isin-position")) return;
+    if (!state.user || isinQuoteTimer || !document.querySelector(".portfolio-isin-position, .pf-account")) return;
     isinQuoteTimer = setTimeout(() => { isinQuoteTimer = null; if (!document.querySelector("#view-portfolios.active, #view-portfolios:not([hidden])")) return; if (!document.activeElement || !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) renderActivePortfolioPanel(); }, 2000);
+  });
+  // La tarjeta «Cuenta» suma los fondos: se repinta cuando llegan las carteras de Fondos.
+  window.addEventListener("viewinvai:fund-portfolios-changed", () => {
+    if (!state.user || document.documentElement.dataset.design !== "d" || portfolioAssetMode() !== "stocks") return;
+    if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    renderApp();
   });
   window.addEventListener("viewinvai:auth-changed", event => {
     state.user = event.detail && event.detail.user || null;

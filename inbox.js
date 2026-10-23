@@ -46,7 +46,7 @@
    if(!b){b=document.createElement('i');b.className='nav-badge';el.appendChild(b)}
    b.textContent=label;
   });
-  const more=document.querySelector('.mobile-nav-item[data-mobile-more]');
+  const more=document.querySelector('[data-mobile-more]');
   if(more)more.classList.toggle('has-unread',n>0);
   const bellBadge=document.getElementById('notificationBadge');
   if(bellBadge&&signedIn()){bellBadge.textContent=label;bellBadge.classList.toggle('is-hidden',!n)}

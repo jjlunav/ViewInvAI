@@ -5802,6 +5802,82 @@ async function handleManualAnalysis(request, env, user, json, services) {
 }
 
 
+// ---------- «Pregunta a la IA» (botón central) y resumen AI de Mi día ----------
+// Asistente general con el contexto de tus carteras: valores, variación del día, ganancia, objetivos y avisos
+// recientes. Solo usa esos datos (no inventa); el resumen del día se guarda 3 h en D1 para no repetir consultas.
+const AI_BRIEF_TTL_MS=3*3600000;
+async function ensureAiBriefSchema(env){
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_briefs (user_id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)").run();
+}
+async function aiAskContext(env,services,userId){
+  const digest=await buildDailyDigest(env,services,userId).catch(error=>{console.warn("AI ask digest failed",String(error&&error.message||error));return null});
+  let alerts=[];
+  try{alerts=((await env.DB.prepare("SELECT title,message,created_at FROM alert_events WHERE user_id=? AND alert_type<>'daily-digest' ORDER BY created_at DESC LIMIT 6").bind(userId).all()).results||[]).map(a=>({date:a.created_at,title:trimText(a.title,140),detail:trimText(a.message,220)}))}catch(_){}
+  const madrid=new Intl.DateTimeFormat("es-ES",{timeZone:"Europe/Madrid",weekday:"long",day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"}).format(new Date());
+  if(!digest)return{now:madrid,empty:true,recentAlerts:alerts};
+  const r2=v=>Math.round((finiteNumber(v)||0)*100)/100;
+  return{now:madrid,currency:"EUR",
+    totals:{total:r2(digest.total),stocks:r2(digest.stocksValue),stocksDay:r2(digest.stocksDay),funds:r2(digest.fundsValue),fundsDay:r2(digest.fundsDay),crypto:r2(digest.cryptoValue),crypto24h:r2(digest.cryptoDay),cashApart:r2(digest.cash),positionsWithoutPrice:digest.missing},
+    positions:digest.positionsDetail,funds:digest.fundsDetail,crypto:digest.cryptoSymbols,summaryLines:digest.lines,recentAlerts:alerts};
+}
+async function handleAiAsk(request,env,user,json,services){
+  if(request.method!=="POST")return json({error:"Method not allowed"},405);
+  const body=await readJson(request);
+  const mode=body.mode==="brief"?"brief":"ask";
+  const question=trimText(body.question,1200);
+  if(mode==="ask"&&!question)return json({error:"Escribe una pregunta."},400);
+  const history=Array.isArray(body.history)?body.history.slice(-6).map(h=>({role:h&&h.role==="assistant"?"assistant":"user",content:trimText(h&&h.content,1200)})).filter(h=>h.content):[];
+  const view=trimText(body.view,24);
+  if(mode==="brief"){
+    await ensureAiBriefSchema(env);
+    if(body.force!==true){
+      const row=await env.DB.prepare("SELECT payload,created_at FROM ai_briefs WHERE user_id=?").bind(user.id).first();
+      if(row&&Date.now()-Date.parse(row.created_at)<AI_BRIEF_TTL_MS){try{return json(Object.assign(JSON.parse(row.payload),{cached:true,createdAt:row.created_at}))}catch(_){}}
+    }
+  }
+  const context=await aiAskContext(env,services,user.id);
+  const rules=[
+    "Eres ViewInvAI, el asistente de inversión de la app. Responde SIEMPRE en español de España, claro y breve.",
+    "Usa SOLO los datos de «contexto». No inventes precios, noticias, fechas ni hechos. Si falta un dato, dilo.",
+    "Cifras en formato español (1.234,56 €). Distingue hechos (datos) de tu valoración.",
+    "No des certezas ni órdenes: son ideas para que el usuario decida. No es asesoramiento financiero.",
+    "El efectivo es aparte: no forma parte del valor de las carteras."
+  ];
+  let prompt;
+  if(mode==="brief"){
+    prompt=rules.concat([
+      "Tarea: escribe el resumen del día de las carteras del usuario en 2 o 3 frases (máximo 320 caracteres): cuánto vale todo y cómo va hoy, qué posición lo explica, y qué toca hacer según el objetivo o los avisos. Menciona nombres y cifras concretas.",
+      "Devuelve JSON con: summary (texto), followUps (3 preguntas cortas, de menos de 40 caracteres, que el usuario podría hacer a continuación).",
+      "",JSON.stringify({contexto:context})]).join("\n");
+  }else{
+    prompt=rules.concat([
+      "Tarea: responde a la pregunta del usuario sobre sus inversiones o el mercado con el contexto dado"+(view?" (está en la pantalla «"+view+"»)":"")+".",
+      "Devuelve JSON con: answer (texto, máximo 900 caracteres), keyPoints (hasta 4 frases cortas), followUps (3 preguntas cortas de seguimiento).",
+      "",JSON.stringify({pregunta:question,conversacion:history,contexto:context})]).join("\n");
+  }
+  try{
+    const run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
+    const parsed=extractAiJson(run.text);
+    if(!parsed)throw new Error("AI response is not valid JSON");
+    const followUps=(Array.isArray(parsed.followUps)?parsed.followUps:[]).map(x=>trimText(x,60)).filter(Boolean).slice(0,3);
+    const model=run.provider+" · "+run.model;
+    if(mode==="brief"){
+      const summary=trimText(parsed.summary||"",420);
+      if(!summary)throw new Error("Resumen vacío");
+      const payload={summary,followUps,model};
+      await env.DB.prepare("INSERT INTO ai_briefs (user_id,payload,created_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(user.id,JSON.stringify(payload),nowIso()).run();
+      return json(Object.assign(payload,{cached:false,createdAt:nowIso()}));
+    }
+    return json({answer:trimText(parsed.answer||parsed.summary||"",1800),keyPoints:(Array.isArray(parsed.keyPoints)?parsed.keyPoints:[]).map(x=>trimText(x,200)).filter(Boolean).slice(0,4),followUps,model});
+  }catch(error){
+    console.warn("AI ask failed",String(error&&error.message||error));
+    // Sin IA disponible: el resumen usa las líneas calculadas (sin interpretación); la pregunta devuelve un aviso.
+    if(mode==="brief"&&context&&Array.isArray(context.summaryLines)&&context.summaryLines.length)
+      return json({summary:trimText(context.summaryLines.slice(0,3).join(" · "),420),followUps:["¿Qué hago hoy?","¿Cómo va mi objetivo?","Resúmeme el mercado"],model:"",fallback:true});
+    return json({error:"La IA no está disponible ahora mismo. Inténtalo en unos minutos."},503);
+  }
+}
+
 async function handleAiChat(request, env, user, json, services) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -6034,6 +6110,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
+    if (root === "ai" && parts[1] === "ask") return handleAiAsk(request, env, user, json, services);
     if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
@@ -7674,7 +7751,7 @@ async function buildDailyDigest(env,services,userId){
   await ensurePortfolioGoalNotificationStateSchema(env);
   const [portfolios,positions,fundRows,goalRows]=await Promise.all([
     env.DB.prepare("SELECT p.id,p.name,COALESCE(m.cash_balance,0) AS cash_balance FROM portfolios p LEFT JOIN portfolio_market_settings m ON m.portfolio_id=p.id AND m.user_id=p.user_id WHERE p.user_id=? ORDER BY p.sort_order,p.created_at").bind(userId).all(),
-    env.DB.prepare("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity FROM positions WHERE user_id=? AND active=1 AND quantity>0 LIMIT 40").bind(userId).all(),
+    env.DB.prepare("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency FROM positions WHERE user_id=? AND active=1 AND quantity>0 LIMIT 40").bind(userId).all(),
     env.DB.prepare(
       "SELECT p.fund_portfolio_id,f.name AS portfolio_name,p.isin,p.product_type,p.units,p.currency,x.nav AS extra_nav,"+
       "(SELECT t.price FROM fund_transactions t WHERE t.fund_position_id=p.id AND t.user_id=p.user_id AND t.price>0 ORDER BY t.executed_at DESC,t.created_at DESC LIMIT 1) AS last_price "+
@@ -7705,7 +7782,7 @@ async function buildDailyDigest(env,services,userId){
     const fx=tr?1:usdToEur;
     if(price===null||!(price>0)||fx===null)return null;
     const value=qty*price*fx,day=chg!==null&&chg>-100?value-value/(1+chg/100):0;
-    return{portfolio_id:p.portfolio_id,value,day};
+    return{portfolio_id:p.portfolio_id,value,day,price,changePct:chg,currency:tr?"EUR":"USD"};
   });
   const byPortfolio=new Map();
   stockRows.forEach((p,i)=>{
@@ -7768,7 +7845,15 @@ async function buildDailyDigest(env,services,userId){
   }
   if(missing)lines.push(missing===1?"1 posición sin precio ahora.":missing+" posiciones sin precio ahora.");
   const total=stocksValue+fundsValue+cryptoValue;
-  return{total,stocksValue,stocksDay,fundsValue,fundsDay,cryptoValue,cryptoDay,cash,missing,lines,hasValue:total>0};
+  // Detalle por posición (lo usa «Pregunta a la IA»): precio, variación del día y ganancia frente al precio medio.
+  const portfolioName=new Map((portfolios.results||[]).map(p=>[p.id,p.name]));
+  const positionsDetail=stockRows.map((p,i)=>{
+    const v=valued[i],avg=finiteNumber(p.avg_price),qty=finiteNumber(p.quantity)||0;
+    const pnlPct=v&&avg>0&&String(p.currency||"EUR").toUpperCase()===v.currency?(v.price/avg-1)*100:null;
+    return{portfolio:portfolioName.get(p.portfolio_id)||"",ticker:p.ticker,name:trimText(p.name,60),units:qty,price:v?v.price:null,currency:v?v.currency:null,valueEur:v?Math.round(v.value*100)/100:null,dayPct:v&&v.changePct!==null?Math.round(v.changePct*100)/100:null,pnlPct:pnlPct===null?null:Math.round(pnlPct*10)/10};
+  });
+  const fundsDetail=funds.map((f,i)=>({portfolio:f.portfolio_name||"",isin:f.isin,type:f.product_type||"fund",units:finiteNumber(f.units),valueEur:fundValued[i]?Math.round(fundValued[i].value*100)/100:null}));
+  return{total,stocksValue,stocksDay,fundsValue,fundsDay,cryptoValue,cryptoDay,cash,missing,lines,hasValue:total>0,positionsDetail,fundsDetail,cryptoSymbols:cryptoRows.map(r=>r.symbol)};
 }
 async function sendDailyDigest(env,services,userId,slotTime){
   const digest=await buildDailyDigest(env,services,userId);

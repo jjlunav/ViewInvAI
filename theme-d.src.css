@@ -1,0 +1,249 @@
+/* ViewInvAI · diseño D (identidad propia).
+   Índigo→turquesa como color de marca, Space Grotesk para cifras y títulos, Manrope para texto,
+   bloques redondeados sobre fondo gris azulado, variaciones en cápsula y anillo de puntuación AI.
+   Solo se aplica con html[data-design="d"]; el diseño clásico queda intacto. */
+@font-face{font-family:"VI Manrope";src:url(fonts/manrope-latin-500-normal.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"VI Manrope";src:url(fonts/manrope-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"VI Manrope";src:url(fonts/manrope-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"VI Manrope";src:url(fonts/manrope-latin-800-normal.woff2) format("woff2");font-weight:800 900;font-display:swap}
+@font-face{font-family:"VI Grotesk";src:url(fonts/space-grotesk-latin-500-normal.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"VI Grotesk";src:url(fonts/space-grotesk-latin-600-normal.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"VI Grotesk";src:url(fonts/space-grotesk-latin-700-normal.woff2) format("woff2");font-weight:700 900;font-display:swap}
+
+/* ---------- Colores (claro y oscuro) ---------- */
+@light body{
+ --d-bg:#f4f5fb;--d-surf:#ffffff;--d-surf-2:#f7f8fc;--d-ink:#0f1222;--d-mut:#6b7187;--d-hair:#eceef6;--d-hair-2:#dfe2ee;
+ --d-accent:#5b5bf6;--d-teal:#12b5a6;--d-up:#0f9d6a;--d-down:#e0445b;--d-warn:#c27c05;
+ --d-upbg:#e3f6ee;--d-downbg:#fde8ec;--d-mutbg:#eef0f6;--d-segbg:#e9ebf4;--d-segon:#ffffff;--d-aitint:#f3f2ff;
+ --d-shadow:0 1px 2px rgba(15,18,34,.04),0 6px 20px rgba(15,18,34,.05);--d-shadow-lg:0 12px 34px rgba(15,18,34,.12);
+ --d-grad:linear-gradient(120deg,#5b5bf6,#12b5a6);
+}
+@dark body{
+ --d-bg:#080b15;--d-surf:#121726;--d-surf-2:#161c2d;--d-ink:#edf0f8;--d-mut:#8b93aa;--d-hair:#1f2638;--d-hair-2:#2a3247;
+ --d-accent:#8b8cff;--d-teal:#2dd4bf;--d-up:#3ddc97;--d-down:#ff6b81;--d-warn:#f5b544;
+ --d-upbg:rgba(61,220,151,.14);--d-downbg:rgba(255,107,129,.15);--d-mutbg:rgba(255,255,255,.07);--d-segbg:rgba(255,255,255,.06);--d-segon:rgba(139,140,255,.24);--d-aitint:rgba(139,140,255,.11);
+ --d-shadow:none;--d-shadow-lg:0 14px 40px rgba(0,0,0,.45);
+ --d-grad:linear-gradient(120deg,#6366f1,#14b8a6);
+}
+/* Las variables de las hojas anteriores pasan a la paleta D: así cambian también las piezas que no se tocan una a una. */
+@body{
+ --bg:var(--d-bg);--panel:var(--d-surf);--panel-2:var(--d-surf-2);--text:var(--d-ink);--muted:var(--d-mut);--line:var(--d-hair);
+ --accent:var(--d-accent);--teal:var(--d-teal);--positive:var(--d-up);--negative:var(--d-down);--green:var(--d-up);--red:var(--d-down);--amber:var(--d-warn);
+ --ai-1:var(--d-accent);--ai-2:var(--d-teal);--ai-grad:var(--d-grad);--ai-soft:var(--d-aitint);--ai-line:var(--d-hair-2);
+ --qg-bg:var(--d-bg);--qg-card:var(--d-surf);--qg-card-hi:var(--d-surf-2);--qg-panel:var(--d-surf);--qg-inner:var(--d-surf-2);--qg-field:var(--d-surf);--qg-line:var(--d-hair);--qg-line-2:var(--d-hair-2);--qg-text:var(--d-ink);--qg-muted:var(--d-mut);--qg-teal:var(--d-teal);--qg-radius:20px;
+ --pq-card:var(--d-surf);--pq-panel:var(--d-surf);--pq-inner:var(--d-surf-2);--pq-field:var(--d-surf);--pq-line:var(--d-hair);--pq-line-2:var(--d-hair-2);--pq-text:var(--d-ink);--pq-muted:var(--d-mut);--pq-navy:var(--d-ink);--pq-up:var(--d-up);--pq-down:var(--d-down);--pq-shadow:var(--d-shadow);--pq-radius:20px;
+ --asset-text:var(--d-ink);--asset-muted:var(--d-mut);--asset-line:var(--d-hair);
+ --native-text:var(--d-ink);--native-muted:var(--d-mut);--native-line:var(--d-hair);--native-surface:var(--d-surf);
+ background:var(--d-bg)!important;color:var(--d-ink)!important;
+ font-family:"VI Manrope",Manrope,system-ui,sans-serif!important;font-variant-numeric:tabular-nums;
+}
+@dark body{background:radial-gradient(520px 260px at 92% -40px,rgba(99,102,241,.26),transparent),radial-gradient(420px 260px at -10% 30%,rgba(20,184,166,.10),transparent),var(--d-bg)!important;background-attachment:fixed!important}
+@ .main,@ .view{background:transparent!important}
+@ button,@ input,@ select,@ textarea{font-family:inherit!important}
+
+/* ---------- Tipografía: títulos y cifras en Space Grotesk ---------- */
+@ h1,@ h2,@ h3,@ .page-heading h1,@ .profile-company-name,@ .settings-section-heading h2,@ .settings-card-head h2,
+@ .asset-card-quote-cell strong,@ .asset-investing-main strong,@ .portfolio-summary-bar strong,@ .portfolio-position-exposure b,
+@ .crypto-summary strong,@ .crypto-profile-quote strong,@ .profile-stat-row strong,@ .kv b,@ .today-hero strong{
+ font-family:"VI Grotesk","Space Grotesk",system-ui,sans-serif!important;letter-spacing:-.01em!important;
+}
+@ .page-heading h1{font-weight:700!important}
+
+/* ---------- Bloques: tarjetas redondeadas sobre el fondo ---------- */
+@ .asset-card,@ .profile-section,@ .settings-card,@ .portfolio-block,@ .portfolio-summary-bar,@ .portfolio-goal-hero,@ .portfolio-goal-summary,
+@ .portfolio-goal-decision,@ .portfolio-goal-controls,@ .favorites-market-group,@ .filter-panel,@ .future-filter-bar,@ .event-item,@ .empty-state,
+@ .portfolio-auth-gate,@ .crypto-summary>div,@ .today-card,@ .goal2-progress{
+ background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;border-radius:20px!important;box-shadow:var(--d-shadow)!important;
+}
+@light .asset-card,@light .profile-section,@light .settings-card,@light .portfolio-block,@light .portfolio-summary-bar,@light .today-card{border-color:transparent!important}
+@ .profile-section-head{background:transparent!important;border-color:var(--d-hair)!important}
+@ .profile-stat-row,@ .profile-identity,@ .profile-session-cell{background:var(--d-surf-2)!important;border-color:var(--d-hair)!important;border-radius:14px!important}
+
+/* Listas: una tarjeta por fila pero con separación fina, como un bloque continuo. */
+@ .asset-card+.asset-card{margin-top:8px!important}
+
+/* ---------- Selectores en cápsula (secciones, pestañas, carteras) ---------- */
+@ :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch){
+ background:var(--d-segbg)!important;border:0!important;border-radius:14px!important;padding:4px!important;gap:2px!important;
+}
+@ :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button{
+ border-radius:10px!important;color:var(--d-mut)!important;font-weight:700!important;font-size:13.5px!important;height:34px!important;line-height:34px!important;min-height:34px!important;
+}
+@ :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button:is(.active,[aria-selected="true"],[aria-current="page"]){
+ background:var(--d-segon)!important;color:var(--d-ink)!important;box-shadow:0 1px 3px rgba(15,18,34,.14)!important;
+}
+@dark :is(.section-switcher,.compact-tabs,.crypto-tabs,.portfolio-asset-switch)>button:is(.active,[aria-selected="true"],[aria-current="page"]){box-shadow:none!important}
+
+/* ---------- Botones ---------- */
+@ .btn{border-radius:14px!important;font-weight:700!important}
+@ .btn:not(.ghost):not(.secondary):not(.danger){background:var(--d-grad)!important;border:0!important;color:#fff!important}
+@ .btn.ghost,@ .btn.secondary{background:var(--d-surf)!important;border:1px solid var(--d-hair-2)!important;color:var(--d-ink)!important}
+@ .vi-icon-button,@ .asset-card-open-icon,@ .shell-icon-button{border-radius:12px!important;background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important;box-shadow:var(--d-shadow)!important}
+@ .account-avatar{border-radius:12px!important;background:var(--d-grad)!important;color:#fff!important;border:0!important}
+
+/* ---------- Variaciones en cápsula ---------- */
+@ :is(.pnl-up,.pnl-down){display:inline-block!important;padding:2px 9px!important;border-radius:999px!important;font-family:"VI Grotesk",sans-serif!important}
+@ .pnl-up{background:var(--d-upbg)!important;color:var(--d-up)!important}
+@ .pnl-down{background:var(--d-downbg)!important;color:var(--d-down)!important}
+@ .asset-investing-main>span:is(.positive,.negative,.up,.down){display:inline-flex!important;align-items:center;gap:3px;padding:2px 8px!important;border-radius:999px!important;font-weight:700!important;font-size:12.5px!important}
+@ .asset-investing-main>span:is(.positive,.up){background:var(--d-upbg)!important;color:var(--d-up)!important}
+@ .asset-investing-main>span:is(.negative,.down){background:var(--d-downbg)!important;color:var(--d-down)!important}
+@ .asset-investing-main>span b{color:inherit!important}
+
+/* ---------- Barra superior (móvil) ---------- */
+@media (max-width:820px){
+ @ .view.active>.page-heading{background:color-mix(in srgb,var(--d-bg) 86%,transparent)!important;backdrop-filter:blur(14px)!important;border-bottom:0!important;box-shadow:none!important}
+ @ .view.active>.page-heading h1:not([data-short]){font-size:23px!important}
+ @ .view.active>.page-heading h1[data-short]::before{font-size:23px!important;font-family:"VI Grotesk",sans-serif}
+}
+
+/* ---------- Barra inferior flotante con el rombo «Pregunta» ---------- */
+@ .mobile-bottom-nav{
+ left:12px!important;right:12px!important;bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;width:auto!important;height:66px!important;border-radius:24px!important;
+ background:color-mix(in srgb,var(--d-surf) 92%,transparent)!important;border:1px solid var(--d-hair)!important;box-shadow:var(--d-shadow-lg)!important;backdrop-filter:blur(16px)!important;
+ padding:0 6px!important;overflow:visible!important;box-sizing:border-box!important;
+ grid-template-rows:minmax(0,1fr)!important;align-items:center!important;
+}
+@ .mobile-bottom-nav>.mobile-nav-item{height:54px!important;min-height:0!important;max-height:54px!important;align-self:center!important}
+@ .mobile-bottom-nav .mobile-nav-item{color:var(--d-mut)!important;background:transparent!important}
+@ .mobile-bottom-nav .mobile-nav-item small{font-size:11px!important;font-weight:700!important}
+@ .mobile-bottom-nav .mobile-nav-item.active{color:var(--d-ink)!important}
+@ .mobile-bottom-nav .mobile-nav-item.active span{color:var(--d-accent)!important;background:transparent!important}
+@ .mobile-bottom-nav .mobile-nav-item::before,@ .mobile-bottom-nav .mobile-nav-item::after{display:none!important}
+@ .mobile-nav-ask{display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:transparent;padding:0;margin-top:-30px;font:700 11px "VI Manrope",sans-serif;color:var(--d-accent);cursor:pointer;flex:0 0 70px}
+@ .mobile-nav-ask .orb{width:56px;height:56px;border-radius:19px;display:grid;place-items:center;background:var(--d-grad);transform:rotate(45deg);box-shadow:0 8px 22px rgba(91,91,246,.42)}
+@ .mobile-nav-ask .orb svg{transform:rotate(-45deg);width:24px;height:24px;fill:#fff}
+@ .mobile-nav-ask:focus-visible .orb{outline:3px solid var(--d-teal);outline-offset:3px}
+
+/* ---------- Barra superior: buscar · avisos · Más · cuenta (la ayuda y Configuración van en «Más») ---------- */
+@media (max-width:820px){
+ @ #accountArea>#globalHelpButton,@ #accountArea>#settingsButton{display:none!important}
+ @ .main{padding-bottom:calc(108px + env(safe-area-inset-bottom,0px))!important}
+}
+@media (min-width:821px){@ #designMoreButton{display:none!important}}
+@ #designMoreButton{display:grid!important;place-items:center;width:var(--tb-btn,38px)!important;height:var(--tb-btn,38px)!important;padding:0!important;order:-1}
+@ #designMoreButton svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8}
+@ #designMoreButton.active{color:var(--d-accent)!important}
+@ #accountArea .list-view-top>.list-view-toggle{background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important;border-radius:12px!important}
+@ #accountArea .list-view-top.open{background:var(--d-surf)!important;box-shadow:0 0 0 1px var(--d-hair),var(--d-shadow-lg)!important}
+
+/* Barra inferior: sin el recuadro del tema anterior en la pestaña activa. */
+@ .mobile-bottom-nav .mobile-nav-item.active,@ .mobile-bottom-nav .mobile-nav-item[aria-current="page"]{border:0!important;box-shadow:none!important;background:transparent!important;outline:0!important}
+@ .mobile-bottom-nav .mobile-nav-item span{border:0!important;box-shadow:none!important}
+@ .mobile-bottom-nav .mobile-nav-item.active small{color:var(--d-ink)!important}
+
+/* ---------- Cápsulas: carteras, orden y periodos ---------- */
+@ .portfolio-tab{background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;border-radius:14px!important;color:var(--d-ink)!important;box-shadow:var(--d-shadow)!important}
+@ .portfolio-tab.active{background:var(--d-ink)!important;border-color:var(--d-ink)!important;color:var(--d-surf)!important}
+@dark .portfolio-tab.active{background:var(--d-accent)!important;border-color:var(--d-accent)!important;color:#0b0e19!important}
+@ .portfolio-tab.active :is(b,em,i,span){background:rgba(255,255,255,.18)!important;color:inherit!important;border:0!important}
+@ .portfolio-sort-bar .tab{background:var(--d-mutbg)!important;border:0!important;border-radius:999px!important;color:var(--d-mut)!important;font-weight:700!important;box-shadow:none!important}
+@ .portfolio-sort-bar .tab.active{background:var(--d-ink)!important;color:var(--d-surf)!important}
+@dark .portfolio-sort-bar .tab.active{background:var(--d-accent)!important;color:#0b0e19!important}
+@ .portfolio-icon-action{border-radius:12px!important;background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important}
+
+/* ---------- Hoja «Más»: accesos en tarjetas ---------- */
+@ .mobile-more-sheet{background:var(--d-bg)!important;border:0!important;border-radius:26px 26px 0 0!important;box-shadow:var(--d-shadow-lg)!important}
+@ .mobile-more-head strong{font-family:"VI Grotesk",sans-serif!important;font-size:19px!important}
+@ .mobile-more-grid{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:10px!important}
+@ .mobile-more-item{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:space-between!important;gap:10px!important;min-height:96px!important;padding:12px!important;border-radius:18px!important;background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;box-shadow:var(--d-shadow)!important;text-align:left!important}
+@ .mobile-more-item>span{width:34px!important;height:34px!important;border-radius:11px!important;display:grid!important;place-items:center!important;background:var(--d-aitint)!important;color:var(--d-accent)!important;font-size:17px!important}
+@ .mobile-more-item>span svg{width:19px;height:19px}
+@ .mobile-more-item b{font-size:13px!important;line-height:1.25!important;font-weight:700!important;color:var(--d-ink)!important}
+@ .mobile-more-item small{display:none!important}
+@ .mobile-more-item .nav-badge{position:absolute;top:8px;right:8px}
+@ .mobile-more-item{position:relative!important}
+
+/* ---------- Resumen AI (Mi día) ---------- */
+@ .ai-brief{margin:12px 0 0;padding:14px 16px;border-radius:20px;border:1.5px solid transparent;
+ background:linear-gradient(var(--d-surf),var(--d-surf)) padding-box,linear-gradient(120deg,rgba(91,91,246,.55),rgba(18,181,166,.45)) border-box;box-shadow:var(--d-shadow)}
+@ .ai-brief-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--d-accent)}
+@ .ai-spark{width:16px;height:16px;fill:var(--d-accent);flex:none}
+@ .ai-brief-refresh{margin-left:auto;width:30px;height:30px;border-radius:10px;border:1px solid var(--d-hair);background:var(--d-surf);color:var(--d-mut);font-size:15px;cursor:pointer}
+@ .ai-brief p{margin:8px 0 0;font-size:15px;line-height:1.45;color:var(--d-ink)}
+@ .ai-brief-muted{color:var(--d-mut)!important;font-size:13.5px!important}
+@ .ai-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+@ .ai-chips button{font:700 12.5px "VI Manrope",sans-serif;padding:7px 12px;border-radius:999px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-accent);cursor:pointer}
+
+/* ---------- Hoja «Pregunta a ViewInvAI» ---------- */
+@ .ai-ask-backdrop{position:fixed;inset:0;z-index:2990;background:rgba(8,11,21,.45);opacity:0;pointer-events:none;transition:opacity .2s}
+@ .ai-ask-backdrop.open{opacity:1;pointer-events:auto}
+@ .ai-ask-sheet{position:fixed;left:0;right:0;bottom:0;z-index:3000;max-height:86vh;display:flex;flex-direction:column;background:var(--d-bg);border-radius:26px 26px 0 0;box-shadow:var(--d-shadow-lg);
+ padding:8px 16px calc(14px + env(safe-area-inset-bottom,0px));transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+@ .ai-ask-sheet.open{transform:none}
+@media (min-width:821px){@ .ai-ask-sheet{left:auto;right:24px;bottom:24px;width:420px;border-radius:26px}}
+@ .ai-ask-handle{width:42px;height:5px;border-radius:3px;background:var(--d-hair-2);margin:2px auto 10px}
+@ .ai-ask-head{display:flex;align-items:center;gap:10px;padding-bottom:10px}
+@ .ai-ask-head strong{display:block;font:700 18px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .ai-ask-head small{color:var(--d-mut);font-size:12.5px}
+@ .ai-ask-head>button{margin-left:auto;width:34px;height:34px;border-radius:12px;border:1px solid var(--d-hair);background:var(--d-surf);color:var(--d-ink);font-size:20px;cursor:pointer}
+@ .ai-ask-orb{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:var(--d-grad)}
+@ .ai-ask-orb .ai-spark{fill:#fff;width:18px;height:18px}
+@ .ai-ask-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:180px;padding:4px 0 10px}
+@ .ai-ask-empty p{color:var(--d-mut);font-size:14.5px;margin:6px 0 0}
+@ .ai-msg{max-width:88%;padding:10px 13px;border-radius:18px;font-size:14.5px;line-height:1.45}
+@ .ai-msg p{margin:0}
+@ .ai-msg.user{align-self:flex-end;background:var(--d-ink);color:var(--d-surf);border-bottom-right-radius:6px}
+@dark .ai-msg.user{background:var(--d-accent);color:#0b0e19}
+@ .ai-msg.ai{align-self:flex-start;background:var(--d-surf);color:var(--d-ink);border:1px solid var(--d-hair);border-bottom-left-radius:6px}
+@ .ai-msg.ai ul{margin:8px 0 0;padding-left:18px}
+@ .ai-msg.pending p{color:var(--d-mut)}
+@ .ai-msg-model{display:block;margin-top:6px;color:var(--d-mut);font-size:11px}
+@ .ai-ask-form{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--d-hair)}
+@ .ai-ask-form input{flex:1;height:46px;border-radius:15px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);padding:0 14px;font:600 15px "VI Manrope",sans-serif}
+@ .ai-ask-form button{width:46px;height:46px;border-radius:15px;border:0;background:var(--d-grad);display:grid;place-items:center;cursor:pointer}
+@ .ai-ask-form button .ai-spark{fill:#fff}
+@ .ai-ask-note{margin:8px 0 0;text-align:center;font-size:11.5px;color:var(--d-mut)}
+
+/* ---------- Anillo de puntuación AI (seña del diseño D) ---------- */
+@ em.ai-score{--p:0;--rc:var(--d-warn);display:inline-grid!important;place-items:center!important;width:34px!important;height:34px!important;min-width:34px!important;padding:0!important;margin-right:8px!important;border:0!important;border-radius:50%!important;vertical-align:middle!important;
+ background:radial-gradient(closest-side,var(--d-surf) 76%,transparent 79% 100%),conic-gradient(var(--rc) calc(var(--p)*1%),var(--d-mutbg) 0)!important;color:var(--d-ink)!important;font:700 12px "VI Grotesk",sans-serif!important;font-style:normal!important;box-shadow:none!important}
+@ em.ai-score[data-band="high"]{--rc:var(--d-up)}
+@ em.ai-score[data-band="mid"]{--rc:var(--d-accent)}
+@ em.ai-score[data-p="0"]{--p:0}
+@ em.ai-score[data-p="5"]{--p:5}
+@ em.ai-score[data-p="10"]{--p:10}
+@ em.ai-score[data-p="15"]{--p:15}
+@ em.ai-score[data-p="20"]{--p:20}
+@ em.ai-score[data-p="25"]{--p:25}
+@ em.ai-score[data-p="30"]{--p:30}
+@ em.ai-score[data-p="35"]{--p:35}
+@ em.ai-score[data-p="40"]{--p:40}
+@ em.ai-score[data-p="45"]{--p:45}
+@ em.ai-score[data-p="50"]{--p:50}
+@ em.ai-score[data-p="55"]{--p:55}
+@ em.ai-score[data-p="60"]{--p:60}
+@ em.ai-score[data-p="65"]{--p:65}
+@ em.ai-score[data-p="70"]{--p:70}
+@ em.ai-score[data-p="75"]{--p:75}
+@ em.ai-score[data-p="80"]{--p:80}
+@ em.ai-score[data-p="85"]{--p:85}
+@ em.ai-score[data-p="90"]{--p:90}
+@ em.ai-score[data-p="95"]{--p:95}
+@ em.ai-score[data-p="100"]{--p:100}
+
+/* ---------- Carteras: total de la cuenta (acciones + ETF/ETC + fondos del mismo bróker) ---------- */
+@ .pf-account{margin:0 0 12px;padding:16px;border-radius:22px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .pf-account header{display:flex;align-items:center;gap:8px}
+@ .pf-account header small{font-size:11.5px;font-weight:800;letter-spacing:.06em;color:var(--d-mut)}
+@ .pf-account-ai{margin-left:auto;border:0;border-radius:999px;padding:6px 11px;background:var(--d-aitint);color:var(--d-accent);font:800 12px "VI Manrope",sans-serif;cursor:pointer}
+@ .pf-account-total{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:6px}
+@ .pf-account-total strong{font:700 32px/1.1 "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
+@ .pf-account-total small{font-size:12px;color:var(--d-mut)}
+@ .pf-account-pnl{margin:4px 0 0;font-size:13px;color:var(--d-mut)}
+@ .pf-account .pnl-up,@ .pf-account .pnl-down{display:inline-block;border-radius:8px;padding:2px 7px;font-weight:800;font-size:12.5px}
+@ .pf-account .pnl-up{background:var(--d-upbg);color:var(--d-up)}
+@ .pf-account .pnl-down{background:var(--d-downbg);color:var(--d-down)}
+@ .pf-account-split{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+@ .pf-account-split>*{display:grid;gap:2px;text-align:left;padding:10px 12px;border-radius:16px;background:var(--d-surf-2);border:1px solid var(--d-hair);color:var(--d-ink);font:inherit}
+@ .pf-account-split>button{cursor:pointer}
+@ .pf-account-split small{font-size:11.5px;color:var(--d-mut);font-weight:700}
+@ .pf-account-split b{font:700 17px "VI Grotesk",sans-serif}
+@ .pf-account-split span{font-size:11.5px;color:var(--d-mut)}
+@ .pf-account-split>button span{color:var(--d-accent);font-weight:700}
+@ .pf-account-funds{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:2px}
+@ .pf-account-funds li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;align-items:center;padding:8px 2px;border-top:1px solid var(--d-hair)}
+@ .pf-account-funds li>b{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .pf-account-funds li>em{font-style:normal;font:700 14px "VI Grotesk",sans-serif;text-align:right}
+@ .pf-account-funds li>span:last-child{grid-column:3;justify-self:end;margin-top:2px}
+@ .pf-account-kind{grid-row:span 2;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--d-aitint);color:var(--d-accent);font-size:11px;font-weight:800}

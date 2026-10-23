@@ -84,7 +84,10 @@
   const sum=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getDaySummary==='function'?window.ViewInvAIPortfolios.getDaySummary():{signedIn:false};
   const date=document.getElementById('todayDate');
   if(date)date.textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
-  box.innerHTML=portfoliosHtml(sum)+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
+  // Diseño D: resumen AI del día justo debajo del total (lo prepara el servidor con tus carteras).
+  const A=document.documentElement.dataset.design!=='classic'&&window.ViewInvAIAsk;
+  box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
+  if(A&&sum&&sum.signedIn)A.loadBrief();
   requestAnimationFrame(()=>{if(typeof observeActiveTrLivePrices==='function')observeActiveTrLivePrices()});
  }
 

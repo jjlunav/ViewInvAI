@@ -42,11 +42,16 @@ const NAV_GROUPS={
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
 const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
-function navGroupOf(v){for(const [g,views] of Object.entries(NAV_GROUPS))if(views.includes(v))return g;return 'home'}
+// Diseño D: Mercados agrupa la portada y los catálogos (LSX, EE. UU., fondos, cripto, mapa).
+const isDesignD=()=>document.documentElement.dataset.design!=='classic';
+const D_NAV_GROUPS=Object.assign({},NAV_GROUPS,{home:['home','catalog','catalogUS','funds','crypto','heatmap'],catalogs:[]});
+const D_MORE_VIEWS=['inbox','future','favorites','tax','catalog','catalogUS','funds','crypto','heatmap','settings'];
+const navGroups=()=>isDesignD()?D_NAV_GROUPS:NAV_GROUPS;
+function navGroupOf(v){for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
  document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
  const view=document.querySelector('.view.active');if(!view)return;
- const group=NAV_GROUPS[navGroupOf(state.currentView)]||[];
+ const group=navGroups()[navGroupOf(state.currentView)]||[];
  if(group.length<2)return;
  const nav=document.createElement('nav');
  nav.className='section-switcher';nav.setAttribute('aria-label','Secciones');
@@ -67,38 +72,48 @@ function renderNavigation(){
   let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
- const direct=PRIMARY_MOBILE_VIEWS;
- const rest=MORE_VIEWS.filter(v=>NAV_META[v]);
+ const designD=isDesignD();
+ const rest=(designD?D_MORE_VIEWS:MORE_VIEWS).filter(v=>NAV_META[v]);
  let bottom=$('#mobileBottomNav'),grid=$('#mobileMoreSheet .mobile-more-grid');
  if(bottom){
   const item=v=>'<button type="button" class="mobile-nav-item'+(v==='recommendation'?' ai-pulse-nav':'')+'" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(MOBILE_NAV_LABELS[v]||NAV_META[v].short)+'</small></button>';
-  bottom.innerHTML=item('today')+item('recommendation')+
+  // Diseño D: Hoy · Mercados · ◆ Pregunta · Radar · Carteras. «Más» pasa a la barra superior.
+  const itemD=(v,label)=>'<button type="button" class="mobile-nav-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><small>'+E(label)+'</small></button>';
+  if(designD)bottom.innerHTML=itemD('today','Hoy')+itemD('home','Mercados')+
+   '<button type="button" class="mobile-nav-ask" data-ai-ask="1" aria-label="Pregunta a la IA" aria-haspopup="dialog" aria-controls="aiAskSheet"><span class="orb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.6 6.9 6.9 2.6-6.9 2.6L12 21.5l-2.6-6.9L2.5 12l6.9-2.6z"/></svg></span><span>Pregunta</span></button>'+
+   itemD('recommendation','Radar')+itemD('portfolios','Carteras');
+  else bottom.innerHTML=item('today')+item('recommendation')+
    '<button type="button" class="mobile-nav-bump" data-market-bump="1" aria-label="Abrir Mercados" title="Mercados" aria-haspopup="dialog" aria-controls="marketQuickSheet" aria-expanded="false"><span class="mobile-nav-bump-cap" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 14.5 12 8.5l6 6"/></svg></span></button>'+
    item('portfolios')+
    '<button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false" aria-controls="mobileMoreSheet"><span>•••</span><small>Más</small></button>';
  }
+ // «Más» en la barra superior (solo diseño D).
+ const area=$('#accountArea');let moreTop=$('#designMoreButton');
+ if(designD&&area&&!moreTop){moreTop=document.createElement('button');moreTop.type='button';moreTop.id='designMoreButton';moreTop.className='shell-icon-button design-more-button';moreTop.dataset.mobileMore='1';moreTop.setAttribute('aria-label','Más secciones');moreTop.setAttribute('aria-controls','mobileMoreSheet');moreTop.setAttribute('aria-expanded','false');moreTop.title='Más';moreTop.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></svg>';area.insertBefore(moreTop,area.firstChild)}
+ if(!designD&&moreTop)moreTop.remove();
  if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
  }
  navigationRendered=true;
  syncMobileNavigation();
 }
+function rebuildNavigation(){navigationRendered=false;renderNavigation()}
 function syncMobileNavigation(){
  const group=navGroupOf(state.currentView);
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
  const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
- const more=$('.mobile-nav-item[data-mobile-more]');if(more)more.classList.toggle('active',MORE_VIEWS.includes(state.currentView));
+ const more=$('[data-mobile-more]');if(more)more.classList.toggle('active',(isDesignD()?D_MORE_VIEWS:MORE_VIEWS).includes(state.currentView));
  renderSectionSwitcher();
 }
 function closeMobileMore(){
- let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('.mobile-nav-item[data-mobile-more]');
+ let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('[data-mobile-more]');
  if(sheet){sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true')}
  if(backdrop){backdrop.classList.remove('open');backdrop.setAttribute('aria-hidden','true')}
  if(button)button.setAttribute('aria-expanded','false');
  document.body.classList.remove('mobile-more-open');
 }
 function toggleMobileMore(force){
- let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('.mobile-nav-item[data-mobile-more]');if(!sheet||!backdrop||!button)return;
+ let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('[data-mobile-more]');if(!sheet||!backdrop||!button)return;
  let open=typeof force==='boolean'?force:!sheet.classList.contains('open');
  sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);button.setAttribute('aria-expanded',open?'true':'false');
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');

@@ -552,7 +552,7 @@ jobs:
           fi
           rm -rf /tmp/viewinvai-smoke /tmp/viewinvai-smoke-profile
           mkdir -p /tmp/viewinvai-smoke/data /tmp/viewinvai-smoke-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css theme-d.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js ai-ask.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css /tmp/viewinvai-smoke/
           cat > /tmp/viewinvai-smoke/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"premarketPrice":9.8,"premarketChangePct":3,"premarketVolume":20000,"premarketTime":1790427600,"postmarketPrice":10.2,"postmarketChangePct":4,"postmarketVolume":30000,"postmarketTime":1790451000,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"tradeRepublicCandidate":true,"trIsin":"US0000000001","isin":"US0000000001","usIsin":"US0000000001","trTicker":"TEST","trExchange":"LSX","instrumentLinkStatus":"same_isin","usLivePrice":10.1,"usLiveChangePct":6,"usLiveReceivedAt":1790445600000,"usLiveTimestamp":1790445600000,"usLiveIsRealTime":true,"usLiveSource":"smoke"}],"events":[]}
           JSON
@@ -659,7 +659,7 @@ jobs:
           if [ -z "$CHROME" ]; then exit 1; fi
           rm -rf /tmp/viewinvai-native /tmp/viewinvai-native-profile
           mkdir -p /tmp/viewinvai-native/data /tmp/viewinvai-native-profile
-          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
+          cp scripts/smoke_asset_cards.js index.html asset-card.js asset-card.css theme-ai.css theme-d.css ui-density.css market-session.js score-engine.js goal-engine.js ai-integrations.js app.js settings.js market.js stock-charts.js events.js stock-list.js recommendation.js today.js ai-ask.js help.js stock-profile.js catalog.js heatmap.js stock-interactions.js filter-sheet.js navigation.js mobile-app.js ui-shell.js onboarding.js tasks.js decisions.js security.js broker-import.js tax.js search.js inbox.js favlists.js backup.js funds.js bootstrap.js alerts.js auth.js portfolio.js styles.css web-mobile.css mobile-app.css ui-density.css /tmp/viewinvai-native/
           cat > /tmp/viewinvai-native/data/market.json <<'JSON'
           {"meta":{"updatedAt":"2026-09-26T18:00:00Z","eurUsd":1.1},"stocks":[{"tvSymbol":"NASDAQ:TEST","ticker":"TEST","name":"Smoke Test Company","exchange":"NASDAQ","currency":"USD","price":10,"changePct":5,"volume":100000,"avgVolume":50000,"relVolume":2,"rsi":50,"adx":30,"ema20":9.5,"ema50":9,"tradeRepublicVerified":true,"trIsin":"US0000000001","isin":"US0000000001","trTicker":"TEST","trExchange":"LSX"}],"events":[]}
           JSON
@@ -707,17 +707,26 @@ jobs:
                 const nav=document.querySelector('#mobileBottomNav');
                 const navItems=nav?[...nav.querySelectorAll(':scope > .mobile-nav-item')]:[];
                 const navOrder=navItems.map(item=>item.dataset.mobileView||'more').join('|');
-                if(navItems.length!==4||navOrder!=='today|recommendation|portfolios|more')return fail('native bottom nav order invalid: '+navOrder);
-                const bump=nav.querySelector(':scope > .mobile-nav-bump[data-market-bump]');if(!bump)return fail('Mercados centre arrow missing from the bottom bar');
+                // Diseño D (por defecto): Hoy · Mercados · ◆ Pregunta · Radar · Carteras; clásico: flecha central de Mercados.
+                const designD=document.documentElement.dataset.design!=='classic';
+                const centre=designD?nav.querySelector(':scope > .mobile-nav-ask[data-ai-ask]'):nav.querySelector(':scope > .mobile-nav-bump[data-market-bump]');
+                if(navItems.length!==4||navOrder!==(designD?'today|home|recommendation|portfolios':'today|recommendation|portfolios|more'))return fail('native bottom nav order invalid: '+navOrder);
+                if(!centre)return fail(designD?'AI ask button missing from the bottom bar':'Mercados centre arrow missing from the bottom bar');
                 const navRect=nav.getBoundingClientRect(),radar=nav.querySelector('[data-mobile-view="recommendation"]'),radarRect=radar.getBoundingClientRect();
                 if(radarRect.top<navRect.top-1||radarRect.bottom>navRect.bottom+1)return fail('Radar AI protrudes outside native bottom bar');
                 const centers=navItems.map(item=>{const r=item.getBoundingClientRect();return r.left+r.width/2});
-                const bumpRect=bump.getBoundingClientRect(),mid=bumpRect.left+bumpRect.width/2;
-                if(Math.abs((centers[0]+centers[3])/2-mid)>3||Math.abs((centers[1]+centers[2])/2-mid)>3)return fail('native bottom nav is not symmetric around the centre arrow');
-                bump.click();
-                if(!document.querySelector('#marketQuickSheet.open'))return fail('Mercados sheet did not open from the centre arrow');
-                bump.click();
-                nav.querySelector('[data-mobile-more]')?.click();
+                const bumpRect=centre.getBoundingClientRect(),mid=bumpRect.left+bumpRect.width/2;
+                if(Math.abs((centers[0]+centers[3])/2-mid)>3||Math.abs((centers[1]+centers[2])/2-mid)>3)return fail('native bottom nav is not symmetric around the centre button');
+                if(designD){
+                  centre.click();
+                  if(!document.querySelector('#aiAskSheet.open'))return fail('AI ask sheet did not open from the centre button');
+                  centre.click();
+                }else{
+                  centre.click();
+                  if(!document.querySelector('#marketQuickSheet.open'))return fail('Mercados sheet did not open from the centre arrow');
+                  centre.click();
+                }
+                document.querySelector('[data-mobile-more]')?.click();
                 const fundsItem=document.querySelector('.mobile-more-item[data-mobile-view="funds"]');
                 if(!fundsItem)return fail('funds missing from native More menu');
                 fundsItem.click();
