@@ -620,13 +620,14 @@ function quantCardHtml(){
  const top=r.model.deciles[r.model.deciles.length-1],bot=r.model.deciles[0],etop=r.engine.deciles[r.engine.deciles.length-1];
  const better=r.engine.aucModelSameSample>r.engine.auc;
  const preview='Probado con '+Number(quant.report.universe||0).toLocaleString('es-ES')+' valores de '+r.period.train[0].slice(0,4)+' a hoy: el 10 % mejor valorado bate al S&P 500 el '+F(top.beatRate,0)+' % de las veces (media '+F(r.baseBeatRate,0)+' %).';
- const rows=(r.byChange||[]).map(b=>'<tr><th>'+E(b.bucket)+'</th><td>'+F(b.beatRate,0)+'%</td><td class="'+(b.avgExcess>0?'positive':b.avgExcess<0?'negative':'')+'">'+radarPct(b.avgExcess,2)+'</td><td><small>n='+Number(b.n).toLocaleString('es-ES')+'</small></td></tr>').join('');
+ const rows=(r.byChange||[]).map(b=>'<tr><th>'+E(b.bucket)+'</th><td>'+F(b.beatRate,0)+'%</td><td class="'+(b.medianExcess>0?'positive':b.medianExcess<0?'negative':'')+'">'+radarPct(b.medianExcess,2)+'</td><td><small>n='+Number(b.n).toLocaleString('es-ES')+'</small></td></tr>').join('');
  const html='<div class="d-reading quant-card">'+
   '<p>✦ '+E(m.target)+'. Se entrena hasta '+E(r.period.train[1].slice(0,4))+' y se mide en '+E(r.period.test[0].slice(0,4))+'–'+E(r.period.test[1].slice(0,7))+', con datos que no ha visto.</p>'+
-  '<ul class="quant-facts"><li><b>Modelo</b> · su 10 % mejor bate el '+F(top.beatRate,0)+' % ('+radarPct(top.avgExcess,2)+' de media); su 10 % peor, el '+F(bot.beatRate,0)+' % ('+radarPct(bot.avgExcess,2)+').</li>'+
-  '<li><b>Motor actual</b> · su 10 % mejor bate el '+F(etop.beatRate,0)+' % ('+radarPct(etop.avgExcess,2)+').</li>'+
-  '<li><b>Capacidad de ordenar</b> (AUC; 0,5 es azar): modelo '+F(r.engine.aucModelSameSample,3)+' · motor actual '+F(r.engine.auc,3)+(better?' → el modelo ordena mejor.':' → aún no mejora al motor.')+'</li></ul>'+
-  (rows?'<table class="quant-table"><thead><tr><th>Subida del día</th><th>Bate al S&P</th><th>Media 5 s</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':'')+
+  '<ul class="quant-facts"><li><b>Modelo</b> · su 10 % mejor bate el '+F(top.beatRate,0)+' % (mediana '+radarPct(top.medianExcess,2)+' frente al S&P); su 10 % peor, el '+F(bot.beatRate,0)+' % ('+radarPct(bot.medianExcess,2)+').</li>'+
+  '<li><b>Motor actual</b> · su 10 % mejor bate el '+F(etop.beatRate,0)+' % ('+radarPct(etop.medianExcess,2)+').'+(etop.beatRate<r.baseBeatRate?' Peor que la media: por eso se ha recalibrado.':'')+'</li>'+
+  '<li><b>Capacidad de ordenar</b> (AUC; 0,5 es azar): modelo '+F(r.engine.aucModelSameSample,3)+' · motor '+F(r.engine.auc,3)+'.</li></ul>'+
+  '<p>✦ Lectura honesta: '+(Math.abs(r.engine.aucModelSameSample-0.5)<0.02?'con solo precio y volumen apenas hay ventaja a 5 sesiones; el modelo sirve para descartar lo que históricamente sale peor (perseguir subidas de más del 15 %, volatilidad extrema) más que para elegir ganadores. Por eso el Radar exige además catalizadores verificados.':better?'el modelo ordena mejor que el motor anterior.':'aún no mejora al motor.')+'</p>'+
+  (rows?'<table class="quant-table"><thead><tr><th>Subida del día</th><th>Bate al S&P</th><th>Mediana 5 s</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':'')+
   '<p class="radar-scoreboard-method">Fuente: '+E(quant.report.source||'')+'. Sin comisiones. Solo valores que cotizan hoy. Rentabilidades pasadas no garantizan resultados futuros.</p></div>';
  return '<section class="d-group quant-group"><header><h3>Modelo cuantitativo</h3><span>'+E(m.version||'')+'</span></header>'+(typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('quant-card','Probado con 10 años de datos',preview,html):html)+'</section>';
 }
@@ -734,7 +735,7 @@ function radarAiRowD(row){
  const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
  return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
-  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="Probabilidad de batir al S&amp;P 500 en 5 sesiones según el modelo entrenado con 10 años">modelo '+Math.round(q.prob*100)+' %</em>':''})()+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="Probabilidad de batir al S&amp;P 500 en 5 sesiones según el modelo entrenado con 10 años">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
   '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
 }
 function radarAiShellD(rows,mode,counts,visible){

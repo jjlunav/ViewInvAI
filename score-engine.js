@@ -1,7 +1,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.05-v2';
+  const VERSION='2026.10.24-v3';
 
   function n(value){
     if(value===null||value===undefined||value==='')return null;
@@ -30,9 +30,12 @@
 
     if(ch===null)add('Momentum',-5,'Variación actual no disponible');
     else if(ch<0)add('Momentum',Math.max(-18,ch*1.2),'Movimiento '+ch.toFixed(2)+'%');
-    else if(ch<=12)add('Momentum',5+Math.min(9,ch*.75),'Impulso '+ch.toFixed(2)+'% sin sobreextensión severa');
-    else if(ch<=25)add('Momentum',Math.max(6,10-(ch-12)*.15),'Impulso fuerte '+ch.toFixed(2)+'%');
-    else add('Momentum',Math.max(-12,8-(ch-25)*.45),'Subida '+ch.toFixed(2)+'%; se penaliza perseguir extensiones extremas');
+    // Calibrado con 10 años de históricos (2023-2026 fuera de muestra): a partir de un +8 % en el día,
+    // batir al S&P 500 en 5 sesiones es menos probable (15-30 %: 43 % de las veces, mediana -1,9 %).
+    else if(ch<=8)add('Momentum',5+Math.min(9,ch*.75),'Impulso '+ch.toFixed(2)+'% sin sobreextensión');
+    else if(ch<=15)add('Momentum',11-(ch-8)*.7,'Impulso fuerte '+ch.toFixed(2)+'%: históricamente ya no suma');
+    else if(ch<=30)add('Momentum',6-(ch-15)*.6,'Subida '+ch.toFixed(2)+'%: perseguirla bate al S&P solo el 43 % de las veces');
+    else add('Momentum',Math.max(-12,-3-(ch-30)*.3),'Subida '+ch.toFixed(2)+'%: mediana histórica a 5 sesiones negativa');
 
     if(rv===null)add('Volumen relativo',-2,'Sin volumen relativo comparable');
     else if(rv>=3)add('Volumen relativo',12,'Actividad '+rv.toFixed(2)+'x la media');
@@ -314,8 +317,10 @@
     const cap=n(input.marketCap),ni=n(input.netIncome),ch=n(input.change),rsi=n(input.rsi),prior=n(input.prior);
     if(cap!==null&&cap<300e6&&ni!==null&&ni<0)score-=10;                 // pequeña y con pérdidas
     if(ch!==null&&ch<-60)score-=5;
-    if(rsi!==null&&rsi<25)score+=4;
-    if(prior!==null&&prior>50)score-=10;                                   // corrección tras una subida fuerte
+    // 2.692 caídas desde 2017: con RSI < 25 rebota el 50 % a 5 sesiones (+0,8 % sobre el S&P);
+    // si venía de subir más de un 50 % en el mes, solo el 39 % (mediana -5,8 %).
+    if(rsi!==null&&rsi<25)score+=8;
+    if(prior!==null&&prior>50)score-=12;                                   // corrección tras una subida fuerte
     return Math.round(clamp(score,5,95));
   }
 
