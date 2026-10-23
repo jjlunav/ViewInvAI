@@ -595,3 +595,9 @@
  @ .view.active>.page-heading{padding-right:162px!important}
 }
 @ .d-more-screen{grid-column:1/-1;display:grid;gap:0}
+/* Sello del verificador bajo cada respuesta de la IA */
+@ .ai-verify{display:grid;gap:3px;margin:8px 0 2px;padding:7px 10px;border-radius:10px;font-size:12px;line-height:1.35}
+@ .ai-verify b{font-weight:700}
+@ .ai-verify.ok{background:var(--d-upbg);color:var(--d-up)}
+@ .ai-verify.warn{background:color-mix(in srgb,var(--d-warn) 14%,transparent);color:var(--d-warn)}
+@ .ai-verify-src{color:var(--d-mut);font-size:11.5px}

@@ -692,3 +692,9 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.page-heading {padding-right:162px!important}
 }
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen {grid-column:1/-1;display:grid;gap:0}
+/* Sello del verificador bajo cada respuesta de la IA */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify {display:grid;gap:3px;margin:8px 0 2px;padding:7px 10px;border-radius:10px;font-size:12px;line-height:1.35}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify b {font-weight:700}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify.ok {background:var(--d-upbg);color:var(--d-up)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify.warn {background:color-mix(in srgb,var(--d-warn) 14%,transparent);color:var(--d-warn)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-verify-src {color:var(--d-mut);font-size:11.5px}

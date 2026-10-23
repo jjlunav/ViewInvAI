@@ -194,7 +194,7 @@
  function paintReader(){
   const it=reader.item,el=readerEl();if(!it)return;
   const cited=citedStocks(it,holdings()),mine=cited.some(s=>s.held);
-  const ai=reader.loading?'<p class="ai-brief-muted">Analizando la noticia…</p>':reader.ai?(reader.ai.error?'<p class="ai-brief-muted">'+esc(reader.ai.error)+'</p>':'<p>'+esc(reader.ai.answer)+'</p>'+(reader.ai.keyPoints&&reader.ai.keyPoints.length?'<ul>'+reader.ai.keyPoints.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')):'<button type="button" class="btn small" data-news-ai>✦ ¿Qué significa para mi cartera?</button>';
+  const ai=reader.loading?'<p class="ai-brief-muted">Analizando la noticia…</p>':reader.ai?(reader.ai.error?'<p class="ai-brief-muted">'+esc(reader.ai.error)+'</p>':'<p>'+esc(reader.ai.answer)+'</p>'+(reader.ai.keyPoints&&reader.ai.keyPoints.length?'<ul>'+reader.ai.keyPoints.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')+(typeof window.ViewInvAIVerifyHtml==='function'?window.ViewInvAIVerifyHtml(reader.ai.verification):'')):'<button type="button" class="btn small" data-news-ai>✦ ¿Qué significa para mi cartera?</button>';
   el.innerHTML='<div class="ai-ask-handle" aria-hidden="true"></div>'+
    '<header class="news-reader-head"><small>'+esc([it.publisher,ago(it.time)].filter(Boolean).join(' · '))+'</small><button type="button" data-news-close aria-label="Cerrar">×</button></header>'+
    '<div class="news-reader-body">'+
@@ -227,7 +227,7 @@
    const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news',news:newsForAi([it]),focus:citedStocks(it,holdings()).map(s=>s.key).filter(Boolean).slice(0,4)})});
    const d=await res.json().catch(()=>({}));
    if(!res.ok)throw new Error(d.error||'La IA no está disponible ahora.');
-   reader.ai={answer:d.answer||'Sin respuesta.',keyPoints:d.keyPoints||[]};
+   reader.ai={answer:d.answer||'Sin respuesta.',keyPoints:d.keyPoints||[],verification:d.verification};
   }catch(e){reader.ai={error:e.message||'La IA no está disponible ahora.'}}
   finally{reader.loading=false;if(reader.item===it)paintReader()}
  }

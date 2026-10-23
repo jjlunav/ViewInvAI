@@ -5936,6 +5936,66 @@ async function aiAskContext(env,services,userId){
     totals:{total:r2(digest.total),stocks:r2(digest.stocksValue),stocksDay:r2(digest.stocksDay),funds:r2(digest.fundsValue),fundsDay:r2(digest.fundsDay),crypto:r2(digest.cryptoValue),crypto24h:r2(digest.cryptoDay),cashApart:r2(digest.cash),positionsWithoutPrice:digest.missing},
     positions:digest.positionsDetail,funds:digest.fundsDetail,crypto:digest.cryptoSymbols,summaryLines:digest.lines,recentAlerts:alerts};
 }
+// ----- Verificador de respuestas de la IA -----
+// Números en formato español o inglés: «1.234,56», «2,47 %», «33.51», «-0,5». Devuelve valor absoluto y decimales.
+function aiNumbersIn(text){
+  const out=[];
+  for(const m of String(text||"").matchAll(/(?<![\p{L}\d])[-−+]?(\d{1,3}(?:[.\u00a0 ]\d{3})+|\d+)(?:[,.](\d+))?(?![\p{L}\d])/gu)){
+    const raw=m[0];let ip=m[1].replace(/[.\u00a0 ]/g,""),dec=m[2]||"";
+    // «1.234» sin más: miles en español (no 1,234). «0.9855»: decimal inglés.
+    if(!dec&&/^\d{1,3}(\.\d{3})+$/.test(m[1]))ip=m[1].replace(/\./g,"");
+    const v=Number(ip+(dec?"."+dec:""));if(!Number.isFinite(v))continue;
+    const after=String(text).slice(m.index+raw.length,m.index+raw.length+3),before=String(text).slice(Math.max(0,m.index-1),m.index);
+    out.push({v:Math.abs(v),dec:dec.length,unit:/^\s?(%|€|\$|us\$|usd|eur)/i.test(after)||/[€$]/.test(before),raw});
+  }
+  return out;
+}
+function aiContextNumbers(context){
+  const nums=[];
+  const walk=x=>{
+    if(x===null||x===undefined)return;
+    if(typeof x==="number"){if(Number.isFinite(x))nums.push(Math.abs(x));return}
+    if(typeof x==="string"){for(const n of aiNumbersIn(x))nums.push(n.v);return}
+    if(Array.isArray(x)){x.forEach(walk);return}
+    if(typeof x==="object")Object.values(x).forEach(walk);
+  };
+  walk(context);
+  return nums;
+}
+export function aiVerifyAnswer(text,context,question=""){
+  const issues=[],ctxNums=aiContextNumbers([context,question]);
+  let checked=0;
+  for(const n of aiNumbersIn(text)){
+    // Fechas, recuentos y años no se comprueban (0-31 sin unidad ni decimales, 1990-2100).
+    if(!n.unit&&!n.dec&&(n.v<=31||(n.v>=1990&&n.v<=2100)))continue;
+    checked++;
+    const step=Math.pow(10,-n.dec),ok=ctxNums.some(c=>{
+      const r=Math.round(c/step)*step;
+      return Math.abs(r-n.v)<=step*1.01||(c!==0&&Math.abs(c-n.v)/Math.abs(c)<0.006);
+    });
+    if(!ok)issues.push("la cifra «"+n.raw.trim()+"» no aparece en los datos");
+  }
+  // Tickers que no están en el contexto ni en la pregunta.
+  const known=new Set(),ctxText=JSON.stringify(context||{})+" "+question;
+  for(const m of ctxText.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g))known.add(m[0]);
+  const OK=new Set(["IA","AI","ETF","EE","UU","EEUU","TR","LSX","BCE","FED","IPC","PIB","PER","RSI","USD","EUR","OPA","DCA","TER","SPY","IBEX","CEO","FDA","SEC","EBITDA","EPS","PMI","UE","NYSE","NASDAQ","AMEX","IRPF","FIFO","JSON","OK"]);
+  for(const m of String(text||"").matchAll(/\b[A-Z][A-Z0-9]{1,5}\b/g))if(!known.has(m[0])&&!OK.has(m[0])){issues.push("el valor «"+m[0]+"» no está en los datos");checked++}
+  // Contradicciones: decir que no hay noticias cuando el contexto las trae.
+  const hasNews=["newsTheUserIsAsking","newsOfYourStocks"].some(k=>Array.isArray(context&&context[k])&&context[k].length)||(Array.isArray(context&&context.stocksMentioned)&&context.stocksMentioned.some(x=>x.news&&x.news.length));
+  if(hasNews&&/\bno (hay|se dispone de|tengo|dispongo de|existen?) (ninguna )?noticias?\b/i.test(text))issues.push("dice que no hay noticias, pero el contexto trae noticias");
+  return{ok:!issues.length,checked,issues:[...new Set(issues)]};
+}
+// Fuentes de los datos que ha usado la respuesta (se enseñan bajo la respuesta).
+function aiContextSources(context){
+  const out=[];
+  if(context&&!context.empty)out.push("Tus carteras · "+(context.now||""));
+  const pubs=new Map();
+  for(const list of [context&&context.newsTheUserIsAsking,context&&context.newsOfYourStocks,...((context&&context.stocksMentioned)||[]).map(s=>s.news)])
+    for(const n of Array.isArray(list)?list:[])if(n&&n.publisher&&!pubs.has(n.publisher))pubs.set(n.publisher,n.time||"");
+  if(context&&Array.isArray(context.stocksMentioned)&&context.stocksMentioned.length)out.push("Mercado: "+context.stocksMentioned.map(s=>s.ticker).join(", ")+" (TradingView, Nasdaq, LSX)");
+  for(const [p] of [...pubs].slice(0,5))out.push(p);
+  return out.slice(0,7);
+}
 // Sugerencias válidas: completas (se descartan, no se recortan), escritas como pregunta del usuario
 // y sin tickers que no estén en el contexto (la IA a veces inventa abreviaturas como «PI»).
 export function aiValidFollowUps(list,context,question=""){
@@ -5995,19 +6055,33 @@ async function handleAiAsk(request,env,user,json,services){
       "",JSON.stringify({pregunta:question,conversacion:history,contexto:context})]).join("\n");
   }
   try{
-    const run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
-    const parsed=extractAiJson(run.text);
+    let run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
+    let parsed=extractAiJson(run.text);
     if(!parsed)throw new Error("AI response is not valid JSON");
+    // Verificador: cada cifra, ticker y afirmación sobre noticias se contrasta con el contexto. Si algo
+    // no cuadra, la IA lo corrige una vez con la lista de fallos; si sigue sin cuadrar, se avisa.
+    const textOf=p=>[p.answer||p.summary||"",...(Array.isArray(p.keyPoints)?p.keyPoints:[])].join("\n");
+    let check=aiVerifyAnswer(textOf(parsed),context,question);
+    if(!check.ok){
+      try{
+        const retry=await aiRoute(env,{prompt:prompt+"\n\nREVISIÓN: tu respuesta anterior tenía estos fallos frente al contexto: "+check.issues.join("; ")+". Corrígela usando solo cifras y valores del contexto (si calculas algo, di de qué cifras sale). Devuelve el mismo JSON.",maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
+        const again=extractAiJson(retry.text);
+        if(again){const c2=aiVerifyAnswer(textOf(again),context,question);if(c2.issues.length<=check.issues.length){parsed=again;run=retry;check=c2}}
+      }catch(_){}
+    }
+    const verification={ok:check.ok,checked:check.checked,issues:check.issues.slice(0,4),sources:aiContextSources(context)};
     const followUps=aiValidFollowUps(parsed.followUps,context,question);
     const model=run.provider+" · "+run.model;
     if(mode==="brief"){
       const summary=trimText(parsed.summary||"",420);
       if(!summary)throw new Error("Resumen vacío");
-      const payload={summary,followUps,model};
+      // Un resumen con cifras que no cuadran no se guarda: se usa el calculado (sin interpretación).
+      if(!check.ok)throw new Error("Resumen sin verificar: "+check.issues.join("; "));
+      const payload={summary,followUps,model,verification};
       await env.DB.prepare("INSERT INTO ai_briefs (user_id,payload,created_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(user.id,JSON.stringify(payload),nowIso()).run();
       return json(Object.assign(payload,{cached:false,createdAt:nowIso()}));
     }
-    return json({answer:trimText(parsed.answer||parsed.summary||"",1800),keyPoints:(Array.isArray(parsed.keyPoints)?parsed.keyPoints:[]).map(x=>trimText(x,200)).filter(Boolean).slice(0,4),followUps,model});
+    return json({answer:trimText(parsed.answer||parsed.summary||"",1800),keyPoints:(Array.isArray(parsed.keyPoints)?parsed.keyPoints:[]).map(x=>trimText(x,200)).filter(Boolean).slice(0,4),followUps,model,verification});
   }catch(error){
     console.warn("AI ask failed",String(error&&error.message||error));
     // Sin IA disponible: el resumen usa las líneas calculadas (sin interpretación); la pregunta devuelve un aviso.
