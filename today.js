@@ -81,6 +81,8 @@
 
  // ----- Diseño D: saludo, patrimonio con el resumen AI dentro, cuentas, ideas, avisos y agenda -----
  const money=(v,c='EUR')=>N(v)===null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:c||'EUR',minimumFractionDigits:2,maximumFractionDigits:2});
+ // Precios: con 4 decimales cuando son menores de 1 (céntimos de acciones baratas).
+ const priceMoney=(v,c='EUR')=>N(v)===null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:c||'EUR',minimumFractionDigits:2,maximumFractionDigits:Math.abs(Number(v))<1?4:2});
  function chip(v,{pct=false,suffix=''}={}){
   if(N(v)===null)return'';
   const cls=Math.abs(v)<0.005?'flat':v>0?'up':'down',arrow=cls==='up'?'▲ ':cls==='down'?'▼ ':'';
@@ -107,6 +109,37 @@
   '<section class="d-group"><header><h3>Tus cuentas</h3><button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
    sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(Math.abs(N(p.day)||0)>=0.005?chip(p.day):'')+'</span></button></li>').join('')+
   '</ul></section>';
+ }
+ // Favoritos: acciones (con su mercado preferido, LSX o EE. UU.) y fondos/ETF marcados con ★.
+ // Los que más se mueven hoy primero; se ven 8 y el resto en Favoritos.
+ function favoritesHtmlD(sum){
+  if(!sum||!sum.signedIn)return'';
+  const P=window.ViewInvAIPortfolios,F=window.ViewInvAIFunds,rows=[];
+  const list=P&&typeof P.getWatchlist==='function'?P.getWatchlist():[];
+  for(const w of list){
+   const st=typeof stockByKey==='function'?stockByKey(w.stock_key):null,preferTr=Number(w.prefer_tr)===1;
+   let price=null,change=null,cur=preferTr?'EUR':'USD';
+   if(st){try{const q=canonicalQuote(st,preferTr)||{};price=N(preferTr?q.eur:(q.usd??q.price));change=preferTr?N(q.change):N(marketChange(st,currentMarketSession(),false));if(!preferTr)cur=q.nativeCurrency||'USD'}catch(_){}}
+   const ticker=st?(preferTr?(st.trTicker||st.ticker):(st.ticker||st.trTicker)):(w.ticker||'');
+   const name=String((st&&st.name)||w.name||ticker||'—').replace(/\s*\(The\)$/i,'').replace(/,?\s+(Inc|Corp|Corporation|Company|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
+   rows.push({key:w.stock_key,preferTr,name,sub:[ticker,preferTr?'LSX':((st&&st.exchange)||'EE. UU.')].filter(Boolean).join(' · '),price,change,cur,stock:true});
+  }
+  const funds=F&&typeof F.getFavoriteProducts==='function'?F.getFavoriteProducts():[];
+  for(const f of funds){
+   const q=typeof F.getLiveQuote==='function'?F.getLiveQuote(f.isin):null,pr=N(q&&q.price),prev=N(q&&q.prev);
+   const price=pr??(typeof F.getCurrentValue==='function'?N(F.getCurrentValue(f)):null);
+   rows.push({isin:f.isin,name:f.name||f.isin,sub:[f.type==='etf'?'ETF':f.type==='etp'?'ETC':'Fondo',f.isin].join(' · '),price,change:pr!==null&&prev>0?(pr/prev-1)*100:null,cur:f.currency||'EUR',stock:false});
+  }
+  if(!rows.length)return'<section class="d-group"><header><h3>Favoritos</h3></header><div class="d-list"><p class="d-row-empty">Pulsa la ☆ de cualquier acción, fondo o ETF para seguirlo aquí.</p></div></section>';
+  const mv=r=>N(r.change)===null?-1:Math.abs(r.change);
+  rows.sort((a,b)=>mv(b)-mv(a));
+  const shown=rows.slice(0,8);
+  const row=r=>{
+   const open=r.stock?' data-open-stock="'+E(r.key)+'" data-stock-prefer-tr="'+(r.preferTr?'1':'0')+'"':' data-today-go="funds"';
+   return '<li class="d-row"><button type="button" class="d-row-main d-row-noring"'+open+'><span class="d-row-text"><b>'+E(r.name)+'</b><small>'+E(r.sub)+'</small></span>'+
+    '<span class="d-row-num">'+(r.price===null?'<small>sin precio</small>':'<b>'+priceMoney(r.price,r.cur)+'</b>')+(N(r.change)===null?'':chip(r.change,{pct:true}))+'</span></button></li>';
+  };
+  return '<section class="d-group"><header><h3>Favoritos'+(rows.length>shown.length?' · '+rows.length:'')+'</h3><button type="button" class="d-more-link" data-today-go="favorites" aria-label="Abrir Favoritos">›</button></header><ul class="d-list">'+shown.map(row).join('')+'</ul></section>';
  }
  function ideasHtmlD(){
   let rows=[];try{rows=[...radarAiCandidateRows('tr'),...radarAiCandidateRows('us')].filter(r=>!r.speculative)}catch(_){rows=[]}
@@ -186,7 +219,7 @@
   if(document.documentElement.dataset.design==='d'){
    box.classList.add('d-today');
    const N2=window.ViewInvAINews;
-   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+(N2?N2.miniHtml():'')+alertsHtmlD()+agendaHtmlD(sum);
+   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+favoritesHtmlD(sum)+ideasHtmlD()+(N2?N2.miniHtml():'')+alertsHtmlD()+agendaHtmlD(sum);
   }else{
    box.classList.remove('d-today');
    box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
