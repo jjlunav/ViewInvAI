@@ -193,6 +193,9 @@ function showExitBackBanner(){
 function closeTransientUiForBack(){
  if(window.ViewInvAISearch&&window.ViewInvAISearch.isOpen()){window.ViewInvAISearch.close();return true}
  let quick=$('#marketQuickSheet');if(quick&&quick.classList.contains('open')){toggleMarketQuick(false);return true}
+ // «Atrás» cierra primero el lector de noticias y la hoja Pregunta si están abiertos.
+ if(window.ViewInvAINews&&window.ViewInvAINews.isReaderOpen&&window.ViewInvAINews.isReaderOpen()){window.ViewInvAINews.closeReader();return true}
+ {const ask=document.querySelector('#aiAskSheet.open');if(ask){const c=ask.querySelector('[data-ai-ask-close]');if(c){c.click();return true}}}
  let more=$('#mobileMoreSheet');if(more&&more.classList.contains('open')){closeMobileMore();return true}
  let notification=$('#notificationCenter');if(notification&&notification.classList.contains('open')){$('#notificationClose')?.click();return true}
  let help=$('#hoverHelpBanner');if(help&&help.classList.contains('visible')){hideHelpBanner();return true}

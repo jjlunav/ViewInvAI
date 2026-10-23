@@ -507,3 +507,20 @@
 @ .asset-card:has(+.asset-card){border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;margin-bottom:0!important;box-shadow:none!important}
 @ .asset-card+.asset-card{border-top-left-radius:0!important;border-top-right-radius:0!important}
 @ .asset-card+.asset-card:not(:has(+.asset-card)){box-shadow:var(--d-shadow)!important}
+@body.chrome-hide .mobile-bottom-nav{transform:translateY(calc(100% + 56px + env(safe-area-inset-bottom,0px)))!important}
+
+/* ---------- Lector de noticias dentro de la app ---------- */
+@ .news-main{width:100%;border:0;background:transparent;padding:0;text-align:left;font:inherit;cursor:pointer}
+@ .news-reader-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 18px 0}
+@ .news-reader-head small{font-size:12.5px;font-weight:700;color:var(--d-mut)}
+@ .news-reader-head button{width:34px;height:34px;border-radius:50%;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font-size:18px;cursor:pointer}
+@ .news-reader-body{padding:8px 18px 18px;overflow:auto;display:grid;gap:12px}
+@ .news-reader-body h2{margin:0;font:700 20px/1.3 "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .news-reader-body .news-meta{margin:0}
+@ .news-reader-snippet{margin:0;font-size:15px;line-height:1.55;color:var(--d-ink)}
+@ .news-reader-snippet.muted{font-size:13px;color:var(--d-mut)}
+@ .news-reader-ai{padding:12px 14px;border-radius:16px;background:var(--d-aitint);border:1px solid var(--d-hair-2)}
+@ .news-reader-ai p{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--d-ink)}
+@ .news-reader-ai ul{margin:8px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45;color:var(--d-ink)}
+@ .news-reader-ai .btn{margin-top:8px}
+@ .news-reader-source{display:flex!important;justify-content:center;text-decoration:none}

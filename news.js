@@ -61,14 +61,14 @@
   const label=String(s.ticker||s.clean||s.name||'').slice(0,12);
   return '<button type="button" class="news-stock d-chip '+cls+'" data-open-stock="'+esc(s.key)+'" data-stock-prefer-tr="'+(s.preferTr?'1':'0')+'">'+esc(label)+(ch===null?'':' '+(ch>0?'▲':ch<0?'▼':'')+' '+Math.abs(ch).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %')+'</button>';
  }
- function rowHtml(item,hs){
+ function rowHtml(item,hs,cat,i){
   const cited=citedStocks(item,hs),mine=cited.some(s=>s.held);
   const lead=cited[0]?String(cited[0].ticker||cited[0].clean||'').slice(0,5):'';
   return '<li class="news-row'+(mine?' is-mine':'')+'">'+
-   '<a class="news-main" href="'+esc(item.url)+'" target="_blank" rel="noopener noreferrer">'+
+   '<button type="button" class="news-main" data-news-read="'+esc(cat)+'|'+i+'" aria-label="Leer en la app: '+esc(item.title)+'">'+
     '<span class="news-tile" data-topic="'+esc(item.topic||'')+'" aria-hidden="true">'+(lead?esc(lead):TOPIC_ICON[item.topic]||'✦')+'</span>'+
     '<span class="news-text"><small>'+esc([item.publisher,ago(item.time)].filter(Boolean).join(' · '))+'</small><b data-i18n-content>'+esc(item.title)+'</b></span>'+
-   '</a>'+
+   '</button>'+
    (cited.length||mine?'<div class="news-meta">'+cited.map(stockChip).join('')+(mine?'<span class="news-mine">✦ En tu cartera</span>':'')+'</div>':'')+
   '</li>';
  }
@@ -79,7 +79,7 @@
   if(!d)return'';
   const items=limit?d.items.slice(0,limit):d.items;
   if(!items.length)return'<div class="today-empty">'+(cat==='mine'?'Sin noticias recientes de tus valores. Añade posiciones o favoritos para seguirlos aquí.':'Sin noticias ahora mismo.')+'</div>';
-  return '<ul class="news-list">'+items.map(i=>rowHtml(i,hs)).join('')+'</ul>';
+  return '<ul class="news-list">'+items.map((it,i)=>rowHtml(it,hs,cat,i)).join('')+'</ul>';
  }
  function headHtml(){
   const d=S.data[S.cat];if(!d||!d.items.length)return'';
@@ -103,6 +103,56 @@
   const d=S.data[S.cat];
   box.innerHTML=tabs+headHtml()+listHtml(S.cat)+(d?'<p class="tax-hint news-foot">Google News y Bing News · actualizado '+esc(new Date(d.at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+'. Abre cada noticia en su medio.</p>':'');
  }
+ // Lector dentro de la app: titular y extracto del medio traducidos (data-i18n-content), los valores
+ // citados y la lectura de la IA. El artículo completo sigue en su medio (tiene derechos de autor).
+ const reader={item:null,ai:null,loading:false};
+ function readerEl(){
+  let el=document.getElementById('newsReader');if(el)return el;
+  const bd=document.createElement('div');bd.id='newsReaderBackdrop';bd.className='ai-ask-backdrop';
+  el=document.createElement('section');el.id='newsReader';el.className='ai-ask-sheet news-reader';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label','Noticia');el.setAttribute('aria-hidden','true');
+  document.body.append(bd,el);bd.addEventListener('click',()=>closeReader());
+  return el;
+ }
+ function paintReader(){
+  const it=reader.item,el=readerEl();if(!it)return;
+  const cited=citedStocks(it,holdings()),mine=cited.some(s=>s.held);
+  const ai=reader.loading?'<p class="ai-brief-muted">Analizando la noticia…</p>':reader.ai?(reader.ai.error?'<p class="ai-brief-muted">'+esc(reader.ai.error)+'</p>':'<p>'+esc(reader.ai.answer)+'</p>'+(reader.ai.keyPoints&&reader.ai.keyPoints.length?'<ul>'+reader.ai.keyPoints.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')):'<button type="button" class="btn small" data-news-ai>✦ ¿Qué significa para mi cartera?</button>';
+  el.innerHTML='<div class="ai-ask-handle" aria-hidden="true"></div>'+
+   '<header class="news-reader-head"><small>'+esc([it.publisher,ago(it.time)].filter(Boolean).join(' · '))+'</small><button type="button" data-news-close aria-label="Cerrar">×</button></header>'+
+   '<div class="news-reader-body">'+
+    '<h2 data-i18n-content>'+esc(it.title)+'</h2>'+
+    (cited.length?'<div class="news-meta">'+cited.map(stockChip).join('')+(mine?'<span class="news-mine">✦ En tu cartera</span>':'')+'</div>':'')+
+    (it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(it.snippet)+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto: abajo tienes la lectura de la IA y el enlace al artículo completo.</p>')+
+    '<section class="news-reader-ai"><div class="ai-brief-head"><span>✦ Lectura AI</span></div>'+ai+'</section>'+
+    '<a class="btn news-reader-source" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">Leer el artículo completo en '+esc(it.publisher||'el medio')+' ↗</a>'+
+    '<p class="ai-ask-note">Resumen orientativo con el titular y el extracto: no es asesoramiento financiero.</p>'+
+   '</div>';
+ }
+ function openReader(it){
+  reader.item=it;reader.ai=null;reader.loading=false;
+  const el=readerEl();paintReader();
+  el.classList.add('open');el.setAttribute('aria-hidden','false');document.getElementById('newsReaderBackdrop').classList.add('open');
+  document.body.classList.add('ai-ask-open');
+ }
+ function closeReader(){
+  const el=document.getElementById('newsReader');if(!el)return;
+  el.classList.remove('open');el.setAttribute('aria-hidden','true');
+  const bd=document.getElementById('newsReaderBackdrop');if(bd)bd.classList.remove('open');
+  document.body.classList.remove('ai-ask-open');
+ }
+ async function explain(){
+  const it=reader.item;if(!it||reader.loading)return;
+  reader.loading=true;paintReader();
+  const cited=citedStocks(it,holdings()).map(s=>(s.ticker||s.clean)+(s.held?' (en cartera)':'')).join(', ');
+  const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el extracto; si no basta, dilo. Titular: «'+it.title+'».'+(it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
+  try{
+   const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news'})});
+   const d=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(d.error||'La IA no está disponible ahora.');
+   reader.ai={answer:d.answer||'Sin respuesta.',keyPoints:d.keyPoints||[]};
+  }catch(e){reader.ai={error:e.message||'La IA no está disponible ahora.'}}
+  finally{reader.loading=false;if(reader.item===it)paintReader()}
+ }
  // Bloque compacto para Mi día: las 3 últimas de tus valores.
  function miniHtml(){
   if(!signedIn())return'';
@@ -111,6 +161,11 @@
   return '<section class="d-group"><header><h3>Noticias de lo tuyo</h3><button type="button" class="d-more-link" data-news-open="mine" aria-label="Abrir Noticias">›</button></header>'+listHtml('mine',3)+'</section>';
  }
  document.addEventListener('click',e=>{
+  const rd=e.target.closest&&e.target.closest('[data-news-read]');
+  if(rd){const [cat,i]=rd.dataset.newsRead.split('|'),it=S.data[cat]&&S.data[cat].items[Number(i)];if(it){e.preventDefault();if(document.documentElement.dataset.design==='d')openReader(it);else window.open(it.url,'_blank','noopener')}return}
+  if(e.target.closest&&e.target.closest('[data-news-close]')){closeReader();return}
+  if(e.target.closest&&e.target.closest('#newsReader [data-open-stock]'))setTimeout(closeReader,0);
+  if(e.target.closest&&e.target.closest('[data-news-ai]')){explain();return}
   const c=e.target.closest&&e.target.closest('[data-news-cat]');
   if(c){S.cat=c.dataset.newsCat;try{localStorage.setItem('viewinvai:news-cat',S.cat)}catch(_){}render();return}
   if(e.target.closest&&e.target.closest('[data-news-retry]')){load(S.cat,true);return}
@@ -119,5 +174,6 @@
  });
  window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='news')render()});
  ['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{S.data={};if(isActive())setTimeout(render,300)}));
- window.ViewInvAINews={render,load,miniHtml};
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReader()});
+ window.ViewInvAINews={render,load,miniHtml,closeReader,isReaderOpen:()=>!!document.querySelector('#newsReader.open')};
 })();
