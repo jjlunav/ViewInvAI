@@ -1,0 +1,25 @@
+name: Probar fuentes de históricos (temporal)
+on:
+  push:
+    branches: [claude/keen-cannon-ui2j3n]
+    paths: [.github/workflows/history-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fuentes
+        run: |
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+          t(){ echo "== $1"; curl -s -m 25 -A "$UA" -H "Accept: application/json,text/csv,*/*" -o /tmp/o -w "%{http_code} %{size_download}\n" "$2"; head -c 260 /tmp/o; echo; }
+          t nasdaq "https://api.nasdaq.com/api/quote/AAPL/historical?assetclass=stocks&fromdate=2016-01-01&todate=2026-10-23&limit=9999"
+          t nasdaq-chart "https://api.nasdaq.com/api/quote/AAPL/chart?assetclass=stocks&fromdate=2016-01-01&todate=2026-10-23"
+          t yahoo "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=10y&interval=1d"
+          t yahoo2 "https://query2.finance.yahoo.com/v8/finance/chart/SPY?period1=1451606400&period2=1792800000&interval=1d"
+          t stooq "https://stooq.com/q/d/l/?s=aapl.us&i=d"
+          t tv "https://scanner.tradingview.com/america/scan"
+          t cboe "https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/AAPL.json"
+          t tiingo "https://api.tiingo.com/tiingo/daily/aapl/prices?startDate=2019-01-01"
+          t alphav "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=AAPL&outputsize=full&apikey=demo"
