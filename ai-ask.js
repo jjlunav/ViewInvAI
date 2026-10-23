@@ -32,15 +32,28 @@
   catch(error){S.briefError=error.message;S.briefAt=Date.now()}
   finally{S.briefLoading=false;paintBrief()}
  }
+ // Desplegable cerrado para los textos de arriba de cada pantalla (diseño D): se ve el título y
+ // la primera línea; al tocar se abre entero. Se recuerda abierto/cerrado por bloque.
+ function foldOpen(key){try{return localStorage.getItem('viewinvai:fold:'+key)==='1'}catch(_){return false}}
+ function fold(key,title,preview,bodyHtml,attrs=''){
+  if(document.documentElement.dataset.design!=='d')return bodyHtml;
+  return '<details class="d-fold" data-fold="'+esc(key)+'"'+(foldOpen(key)?' open':'')+attrs+'><summary><span class="d-fold-title">'+SPARK+'<span>'+esc(title)+'</span></span>'+
+   '<span class="d-fold-preview">'+esc(preview||'')+'</span><i class="d-fold-chev" aria-hidden="true">▾</i></summary><div class="d-fold-body">'+bodyHtml+'</div></details>';
+ }
+ document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.matches&&d.matches('details[data-fold]')){try{localStorage.setItem('viewinvai:fold:'+d.dataset.fold,d.open?'1':'0')}catch(_){}}},true);
+ window.ViewInvAIFold=fold;
  function briefHtml(){
   if(!auth())return'';
   const b=S.brief;
   const when=b&&b.createdAt?new Date(b.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'';
   const body=b?'<p>'+esc(b.summary)+'</p>':S.briefError?'<p class="ai-brief-muted">'+esc(S.briefError)+'</p>':'<p class="ai-brief-muted">Preparando tu resumen…</p>';
   const chips=(b&&b.followUps&&b.followUps.length?b.followUps:SUGGEST.today).map(q=>'<button type="button" data-ai-ask-q="'+esc(q)+'">'+esc(q)+'</button>').join('');
-  return '<section class="ai-brief" id="aiBrief" aria-live="polite"><div class="ai-brief-head">'+SPARK+'<span>Resumen AI'+(when?' · '+esc(when):'')+'</span>'+
+  const html='<section class="ai-brief"'+(document.documentElement.dataset.design==='d'?'':' id="aiBrief"')+' aria-live="polite"><div class="ai-brief-head">'+SPARK+'<span>Resumen AI'+(when?' · '+esc(when):'')+'</span>'+
    '<button type="button" class="ai-brief-refresh" data-ai-brief-refresh aria-label="Actualizar el resumen" title="Actualizar">↻</button></div>'+
    body+'<div class="ai-chips">'+chips+'</div>'+(b&&b.fallback?'<small class="ai-brief-muted">Sin IA ahora: son los datos calculados, sin interpretar.</small>':'')+'</section>';
+  if(document.documentElement.dataset.design!=='d')return html;
+  const preview=b?b.summary:S.briefError?S.briefError:'Preparando tu resumen…';
+  return fold('brief','Resumen AI'+(when?' · '+when:''),preview,html,' id="aiBrief" aria-live="polite"');
  }
  function paintBrief(){const el=document.getElementById('aiBrief');if(el)el.outerHTML=briefHtml()}
 

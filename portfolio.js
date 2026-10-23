@@ -516,8 +516,8 @@ function portfolioSummaryHtml(portfolio, positions) {
   '</div>';
 }
 
-// Cuenta del bróker: la cartera de acciones y las de Fondos de la misma plataforma suman
-// un único total, como lo enseña el bróker (acciones + ETF/ETC + fondos). Solo en el diseño D.
+// Cuenta del bróker: la cartera de acciones y las de Fondos de la misma plataforma forman una
+// cuenta (diseño D de Carteras).
 function portfolioAccountKey(text){
   const t=String(text||"").toLowerCase();
   if(/trade\s*republic|\btr\b/.test(t))return"tr";
@@ -526,42 +526,6 @@ function portfolioAccountKey(text){
   if(/bit2me|binance|kraken|coinbase/.test(t))return t.match(/bit2me|binance|kraken|coinbase/)[0];
   return"";
 }
-function portfolioAccountHtml(portfolio,positions){
-  if(!portfolio||document.documentElement.dataset.design!=="d")return"";
-  const F=window.ViewInvAIFunds;
-  if(!F||typeof F.getFundPortfolios!=="function"||typeof F.getPortfolioDetail!=="function")return"";
-  const key=portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name);
-  if(!key)return"";
-  const funds=F.getFundPortfolios().filter(f=>(portfolioAccountKey(f.platform)||portfolioAccountKey(f.name))===key);
-  const rows=funds.flatMap(f=>F.getPortfolioDetail(f.id)).filter(r=>r.currency==="EUR");
-  if(!rows.length)return"";
-  const T=portfolioTotals(portfolio,positions),fx=T.fxUsdEur,cur=T.baseCurrency;
-  const eur=v=>portfolioConvertAmount(v,cur,"EUR",fx);
-  const stockValue=T.complete?eur(T.totalValue):null,stockPnl=eur(T.openPnl),stockDay=eur(T.day);
-  const fundValue=rows.every(r=>r.value!==null)?rows.reduce((a,r)=>a+r.value,0):null;
-  const fundPnl=rows.every(r=>r.pnl!==null)?rows.reduce((a,r)=>a+r.pnl,0):null;
-  const fundDay=rows.reduce((a,r)=>a+(r.value!==null&&r.dayPct!==null?r.value-r.value/(1+r.dayPct/100):0),0);
-  // Si falta algún precio se suma lo conocido y se marca como parcial (no se oculta el total).
-  const stockKnown=stockValue!==null?stockValue:eur(T.positionsValue)||0,fundKnown=rows.reduce((a,r)=>a+(r.value||0),0);
-  const partial=stockValue===null||fundValue===null,total=stockKnown+fundKnown;
-  const pnl=stockPnl!==null&&fundPnl!==null?stockPnl+fundPnl:null;
-  const day=(stockDay||0)+fundDay,invested=pnl!==null?total-pnl:null;
-  const chip=(v,pct)=>v===null?"":'<span class="'+(v>=0?"pnl-up":"pnl-down")+'">'+(v>0?"+":"")+formatMoney(v,"EUR")+(pct===null||pct===undefined?"":" · "+(pct>=0?"+":"")+formatNumber(pct,2)+"%")+'</span>';
-  const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[key]||portfolio.broker||portfolio.name;
-  const fundRow=r=>'<li><span class="pf-account-kind">'+esc(r.kind)+'</span><b>'+esc(r.name)+'</b><em>'+(r.value===null?"Sin precio":formatMoney(r.value,"EUR"))+'</em>'+chip(r.pnl,r.pnlPct)+'</li>';
-  const ask="Analiza mi cuenta de "+label+": acciones, ETF/ETC y fondos juntos. ¿Qué peso tiene cada parte y qué debería vigilar?";
-  return '<section class="pf-account" aria-label="Total de la cuenta '+esc(label)+'">'+
-    '<header><small>CUENTA · '+esc(label.toUpperCase())+'</small><button type="button" class="pf-account-ai" data-ai-ask-q="'+esc(ask)+'">✦ Leer con AI</button></header>'+
-    '<div class="pf-account-total"><strong>'+formatMoney(total,"EUR")+'</strong>'+(partial?'<small title="Falta el precio de alguna posición: se suma lo que tiene precio">parcial · falta algún precio</small>':chip(day,null)+'<small>hoy</small>')+'</div>'+
-    (pnl===null?"":'<p class="pf-account-pnl">Desde la compra '+chip(pnl,invested>0?pnl/invested*100:null)+'</p>')+
-    '<div class="pf-account-split">'+
-      '<div><small>Acciones y ETC</small><b>'+(stockValue===null?"—":formatMoney(stockValue,"EUR"))+'</b><span>'+positions.length+' posiciones</span></div>'+
-      '<button type="button" data-portfolio-asset="funds"><small>Fondos</small><b>'+(fundValue===null?"—":formatMoney(fundValue,"EUR"))+'</b><span>'+rows.length+' en Fondos ›</span></button>'+
-    '</div>'+
-    '<ul class="pf-account-funds">'+rows.map(fundRow).join("")+'</ul>'+
-  '</section>';
-}
-
 function portfolioCurrencySymbol(currency){
   const code=String(currency||"EUR").toUpperCase();
   return code==="EUR"?"€":code==="USD"?"$":code==="GBP"?"£":code;
@@ -918,6 +882,8 @@ function portfolioPerformanceHtml(portfolio){
 function refreshPerfCard(id){
   const el=document.querySelector('[data-pf-perf="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   const selected=state.portfolios.find(p=>String(p.id)===String(id));
+  const hero=document.querySelector('[data-d-hero="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  if(hero&&selected){const tmp=document.createElement('div');tmp.innerHTML=dHeroHtml(selected,portfolioPositions(selected.id));hero.replaceWith(tmp.firstElementChild)}
   if(!el||!selected)return;
   const html=portfolioPerformanceHtml(selected);
   if(!html){el.remove();return}
@@ -984,7 +950,7 @@ function portfolioContextHtml(selected, positions) {
     const rows = positions.length
       ? sortPositions(positions).map(renderPositionRowSafe).join('')
       : '<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa “+” para añadir una.</div>';
-    return portfolioDuplicatesHtml(selected, positions) + portfolioAccountHtml(selected, positions) + summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
+    return portfolioDuplicatesHtml(selected, positions) + summary + portfolioCashRowHtml(selected) + portfolioPerformanceHtml(selected) + portfolioInsightsHtml(selected) +
       positionSortBarHtml(positions.length) +
       '<section class="portfolio-block integrated portfolio-positions-only">' +
         '<div class="portfolio-position-list stock-list">' + rows + '</div>' +
@@ -2107,8 +2073,12 @@ function renderApp() {
   const mappedGoal=selected?state.goals[String(selected.id)]||null:null;
   if(mappedGoal)state.goal=mappedGoal;
   else if(!state.goal||state.goal.portfolio_id)state.goal=null;
-  box.innerHTML=portfolioWorkbarHtml(selected)+
-    '<div id="portfolioContext" class="portfolio-context">'+portfolioContextHtml(selected,positions)+'</div>';
+  const designD=dIsDesign()&&!!selected;
+  let contextHtml;
+  if(designD){try{contextHtml=dPortfolioContextHtml(selected,positions)}catch(error){console.error("Design D portfolio render failed",error);contextHtml=portfolioContextHtml(selected,positions)}}
+  else contextHtml=portfolioContextHtml(selected,positions);
+  box.innerHTML=(designD?dPortfolioWorkbarHtml():portfolioWorkbarHtml(selected))+
+    '<div id="portfolioContext" class="portfolio-context'+(designD?' d-context':'')+'">'+contextHtml+'</div>';
 
   box.querySelectorAll("[data-insight-w]").forEach(el=>el.style.setProperty("width",el.dataset.insightW+"%"));
   requestAnimationFrame(()=>{
@@ -4394,6 +4364,226 @@ function portfolioPositionsDetail(portfolioId=null){
     };
   });
 }
+
+// ===== Carteras · diseño D: la cuenta como en el bróker =====
+// Pestañas por cuenta, total de la cuenta (acciones + ETF/ETC + fondos del mismo bróker) con su
+// gráfico, tres datos (invertido, desde la compra, efectivo), lectura AI, botones con nombre y
+// una sola lista agrupada con el anillo AI y el veredicto en cada fila. Debajo siguen Riesgo y
+// dividendos y Rentabilidad frente a índices. El diseño clásico no pasa por aquí.
+const D_RANGES={'1w':'1S','1m':'1M','3m':'3M','1y':'1A','all':'Máx'};
+function dRangeKey(){try{const k=localStorage.getItem('viewinvai:pf-d-range');return D_RANGES[k]?k:'1m'}catch(_){return'1m'}}
+function dIsDesign(){return document.documentElement.dataset.design==="d"}
+const dMoney=v=>v===null||v===undefined||!Number.isFinite(v)?"—":formatMoney(v,"EUR");
+function dChip(v,{pct=null,money=true,suffix=""}={}){
+  if(v===null||v===undefined||!Number.isFinite(v))return"";
+  const up=v>0,down=v<0,txt=money?formatMoney(Math.abs(v),"EUR"):formatNumber(Math.abs(v),2)+" %";
+  return '<span class="d-chip '+(up?"up":down?"down":"flat")+'">'+(up?"▲ ":down?"▼ ":"")+txt+(pct!==null&&Number.isFinite(pct)?" · "+formatNumber(Math.abs(pct),2)+" %":"")+(suffix?" "+esc(suffix):"")+'</span>';
+}
+// Valor, P&L y cambio del día de una posición, en euros (también las de fuera del catálogo).
+function dPositionRow(p){
+  const stock=stockByKey(p.stock_key),qty=num(p.quantity),preferTr=Number(p.prefer_tr)===1;
+  const name=String(stock?(stock.name||stock.ticker||p.name):(p.name||p.ticker||positionIsin(p)||"Posición")).replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,"");
+  let value=null,pnl=null,pnlPct=null,dayPct=null,score=null,signal=String(p.last_signal||"").toUpperCase(),etf=false,venue="";
+  if(stock){
+    const m=positionSortMetrics(p),market=currentMarket(stock,preferTr);
+    value=m.value;pnl=m.pnlAbs;pnlPct=m.pnlPct;dayPct=market.change;
+    etf=/etf|etc|etp|fund|trust/i.test(String(stock.instrumentType||""));
+    venue=preferTr?"LSX":String(stock.exchange||"EE. UU.");
+    score=num(p.last_score);
+    const pulse=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.analyzeStock==="function"?window.ViewInvAIPulseCoach.analyzeStock(stock,preferTr):null;
+    if(score===null&&pulse)score=num(pulse.score);
+    if(!signal&&pulse)signal=String(pulse.signal||"").toUpperCase();
+  }else{
+    const isin=positionIsin(p),F=window.ViewInvAIFunds,q=isin&&F&&typeof F.getLiveQuote==="function"?F.getLiveQuote(isin):null;
+    if(isin&&F&&typeof F.subscribeIsin==="function")F.subscribeIsin(isin);
+    const cur=String(p.currency||"EUR").toUpperCase(),price=q&&cur==="EUR"?num(q.price):null,prev=q?num(q.prev):null,avg=num(p.avg_price);
+    value=qty!==null&&price!==null?qty*price:null;
+    const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg:null);
+    pnl=value!==null&&cost!==null?value-cost:null;pnlPct=pnl!==null&&cost>0?pnl/cost*100:null;
+    dayPct=price!==null&&prev>0?(price/prev-1)*100:null;
+    etf=/\b(ETC|ETF|ETP|UCITS|ETN)\b/i.test(name);venue="LSX";
+  }
+  // Veredicto: tu decisión, luego la acción del Objetivo, luego la señal de la IA.
+  let verdict="";
+  const d=window.ViewInvAIDecisions&&typeof window.ViewInvAIDecisions.forPosition==="function"?window.ViewInvAIDecisions.forPosition(p.id):null;
+  if(d)verdict=d.decision==="hold"?"Mantienes (tu decisión)":d.decision==="later"?"Decidir el "+new Date(d.review_at).toLocaleDateString("es-ES",{day:"numeric",month:"short"}):"Vas a vender";
+  if(!verdict&&stock){
+    const plan=goalPlanForStock(stock);
+    if(plan&&plan.kind==="position"){
+      if(plan.action&&plan.action.text)verdict=plan.action.text;
+      else if(plan.holdText)verdict=plan.holdText;
+      else if(num(plan.stopEur)!==null)verdict="Mantener · stop "+formatMoney(plan.stopEur,"EUR");
+    }
+  }
+  if(!verdict&&signal){const[label]=signalInfo(signal);verdict=label.charAt(0)+label.slice(1).toLowerCase()}
+  const dayEur=value!==null&&dayPct!==null&&dayPct>-100?value-value/(1+dayPct/100):null;
+  return{p,stock,name,qty,value,pnl,pnlPct,dayPct,dayEur,score,signal,verdict,etf,venue,preferTr};
+}
+function dRing(score,label){
+  if(score===null||!Number.isFinite(score))return'<span class="d-ring d-ring-kind">'+esc(label||"")+'</span>';
+  const n=Math.max(0,Math.min(100,Math.round(score)));
+  return'<em class="ai-score d-ring" data-band="'+(n>=80?"high":n>=60?"mid":"low")+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>';
+}
+function dRowDetailHtml(r){
+  const p=r.p,avg=num(p.avg_price),qty=r.qty,cur=String(p.currency||(r.preferTr?"EUR":"USD")).toUpperCase();
+  const fee=brokerFeeInCurrency(p.broker,qty,avg,cur,"BUY",p.exchange||"");
+  const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(fee.fee??0):null),fees=num(p.fees_total)??(fee.fee??0);
+  let quote="",vsAvg=null;
+  if(r.stock){
+    quote=typeof compactInvestingQuoteHtml==="function"?compactInvestingQuoteHtml(r.stock,r.preferTr):"";
+    const unit=marketValueInCurrency(currentMarket(r.stock,r.preferTr),cur);
+    if(unit!==null&&avg)vsAvg=(unit/avg-1)*100;
+  }else{
+    const isin=positionIsin(p),F=window.ViewInvAIFunds,q=isin&&F&&typeof F.getLiveQuote==="function"?F.getLiveQuote(isin):null,price=q&&cur==="EUR"?num(q.price):null;
+    quote='<span class="portfolio-isin-quote">'+(price===null?"Cotización de Trade Republic…":"<b>"+esc(formatMoney(price,cur))+"</b>"+(r.dayPct!==null?" · hoy "+(r.dayPct>=0?"+":"")+formatNumber(r.dayPct,2)+" %":""))+'</span>';
+    if(price!==null&&avg)vsAvg=(price/avg-1)*100;
+  }
+  const cell=(label,value,cls="")=>'<div'+(cls?' class="'+cls+'"':'')+'><small>'+label+'</small><b>'+value+'</b></div>';
+  return '<div class="d-row-detail" hidden>'+
+    '<div class="d-row-quote">'+quote+'</div>'+
+    '<div class="d-row-cells">'+
+      cell("Precio medio",esc(formatMoney(avg,cur)))+cell("Coste",esc(formatMoney(cost,cur)))+cell("Comisiones",esc(formatMoney(fees,cur)))+
+      cell("Precio vs. media",vsAvg===null?"—":(vsAvg>0?"+":"")+formatNumber(vsAvg,2)+" %",vsAvg===null?"":vsAvg>=0?"d-pos":"d-neg")+
+      (String(p.broker||"").trim()?cell("Bróker",esc(String(p.broker).trim())):"")+
+    '</div>'+positionDecisionChip(p,avg,cur)+
+    '<div class="d-row-actions"><button type="button" class="portfolio-register-operation-icon" data-position-transactions="'+esc(p.id)+'">⇄ Registrar operación</button>'+
+      (r.stock?'<button type="button" data-portfolio-stock-profile="'+esc(p.stock_key)+'" data-profile-prefer-tr="'+(r.preferTr?"1":"0")+'">Ver ficha ›</button>':'')+'</div>'+
+  '</div>';
+}
+function dRowHtml(r){
+  const qtyTxt=r.qty===null?"":formatNumber(r.qty,r.qty%1?4:0)+(r.etf?" uds.":" acc.");
+  const open=r.stock?' data-portfolio-stock-profile="'+esc(r.p.stock_key)+'" data-profile-prefer-tr="'+(r.preferTr?"1":"0")+'"':' data-position-transactions="'+esc(r.p.id)+'"';
+  return'<li class="d-row d-position" data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
+    '<span class="d-row-text"><b>'+esc(r.name)+'</b><small>'+esc([qtyTxt,r.venue].filter(Boolean).join(" · "))+'</small>'+
+    (r.verdict?'<i class="d-row-ai">✦ '+esc(r.verdict)+'</i>':'')+'</span>'+
+    '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null?'<small>sin precio</small>':dChip(r.pnl,{pct:r.pnlPct}))+'</span></button>'+
+    '<button type="button" class="d-row-toggle" data-d-row-toggle aria-expanded="false" aria-label="Más datos de '+esc(r.name)+'" title="Precio, coste, comisiones y operaciones">▾</button>'+
+    dRowDetailHtml(r)+'</li>';
+}
+function dFundRowHtml(f){
+  return'<li class="d-row"><button type="button" class="d-row-main" data-portfolio-asset="funds" aria-label="Abrir Fondos">'+dRing(null,f.kind)+
+    '<span class="d-row-text"><b>'+esc(f.name)+'</b><small>'+esc(f.kind+" · en Fondos")+'</small>'+(f.dayPct!==null?'<i class="d-row-ai">Hoy '+(f.dayPct>=0?"+":"")+formatNumber(f.dayPct,2)+' %</i>':'')+'</span>'+
+    '<span class="d-row-num"><b>'+dMoney(f.value)+'</b>'+(f.pnl===null?'':dChip(f.pnl,{pct:f.pnlPct}))+'</span></button></li>';
+}
+function dAccountFunds(portfolio){
+  const F=window.ViewInvAIFunds;
+  if(!F||typeof F.getFundPortfolios!=="function"||typeof F.getPortfolioDetail!=="function")return[];
+  const key=portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name);
+  if(!key)return[];
+  return F.getFundPortfolios().filter(f=>(portfolioAccountKey(f.platform)||portfolioAccountKey(f.name))===key)
+    .flatMap(f=>F.getPortfolioDetail(f.id)).filter(r=>r.currency==="EUR");
+}
+function dChartHtml(portfolio){
+  const entry=perfCache.get(String(portfolio.id)),range=dRangeKey();
+  const tabs='<div class="d-ranges" role="group" aria-label="Periodo del gráfico">'+Object.entries(D_RANGES).map(([k,l])=>'<button type="button" class="'+(k===range?"active":"")+'" data-pf-d-range="'+k+'" aria-pressed="'+(k===range)+'">'+l+'</button>').join("")+'</div>';
+  const p=entry&&entry.data;
+  if(!p||p.computing||!p.days||p.days.length<2||!p.value)return{svg:'<div class="d-chart d-chart-empty">'+(entry&&entry.error?"Gráfico no disponible ahora":"Preparando el gráfico…")+'</div>'+tabs,gain:null};
+  const n=p.days.length-1,map={'1w':null,'1m':'1m','3m':'3m','1y':'1y','all':'all'};
+  let i0;
+  if(range==='1w'){const last=new Date(p.days[n]+'T12:00:00Z');last.setUTCDate(last.getUTCDate()-7);const cut=last.toISOString().slice(0,10);i0=0;for(let i=0;i<p.days.length;i++){if(p.days[i]<=cut)i0=i;else break}}
+  else i0=perfStartIndex(p.days,map[range]);
+  if(i0>=n)i0=Math.max(0,n-1);
+  const vals=[];for(let i=i0;i<=n;i++){const v=num(p.value[i]);if(v!==null)vals.push([i,v])}
+  let flows=0;for(let i=i0+1;i<=n;i++)flows+=num(p.flow&&p.flow[i])||0;
+  const gain=vals.length>1?vals[vals.length-1][1]-vals[0][1]-flows:null;
+  if(vals.length<2)return{svg:'<div class="d-chart d-chart-empty">Sin datos suficientes en este periodo</div>'+tabs,gain:null};
+  let lo=Infinity,hi=-Infinity;vals.forEach(([,v])=>{lo=Math.min(lo,v);hi=Math.max(hi,v)});
+  const pad=(hi-lo)*.12||Math.max(1,hi*.02);lo-=pad;hi+=pad;
+  const W=320,H=96,x=i=>(i-i0)/Math.max(1,n-i0)*W,y=v=>H-(v-lo)/(hi-lo)*H;
+  const line=vals.map(([i,v],j)=>(j?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)).join("");
+  const tone=gain===null||gain>=0?"up":"down";
+  return{gain,svg:'<svg class="d-chart '+tone+'" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Valor de la cartera de acciones en el periodo"><path class="area" d="'+line+'L'+W+' '+H+'L0 '+H+'Z"/><path class="line" d="'+line+'"/></svg>'+tabs};
+}
+function dReadingHtml(label,groups,rows,funds){
+  const total=groups.reduce((a,g)=>a+g.value,0);
+  if(!(total>0))return"";
+  const parts=groups.filter(g=>g.value>0).sort((a,b)=>b.value-a.value).map(g=>"el "+formatNumber(g.value/total*100,0)+" % en "+g.text);
+  const movers=rows.concat(funds.map(f=>({name:f.name,dayEur:f.value!==null&&f.dayPct!==null?f.value-f.value/(1+f.dayPct/100):null}))).filter(r=>r.dayEur!==null&&Math.abs(r.dayEur)>=0.005).sort((a,b)=>Math.abs(b.dayEur)-Math.abs(a.dayEur));
+  const top=movers[0];
+  const text=(parts.length?parts.join(", ").replace(/^el/,"El")+".":"")+(top?" Hoy lo que más mueve la cuenta es "+top.name+" ("+(top.dayEur>0?"+":"−")+formatMoney(Math.abs(top.dayEur),"EUR")+").":" Hoy la cuenta va en plano.");
+  const ask="Analiza mi cuenta de "+label+": cómo está repartida, qué la mueve hoy y qué debería vigilar.";
+  const q2=top?"¿Qué hago con "+top.name+"?":"¿Estoy bien diversificado?";
+  const html='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+esc(text)+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="'+esc(ask)+'">Analizar con AI</button><button type="button" data-ai-ask-q="'+esc(q2)+'">'+esc(q2)+'</button></div></div>';
+  return typeof window.ViewInvAIFold==="function"?window.ViewInvAIFold("pf-reading","Lectura AI de la cuenta",text,html):html;
+}
+function dGroupHtml(title,items,sortable){
+  if(!items.length)return"";
+  const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+}
+function dHeroHtml(portfolio,positions){
+  const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
+  const T=portfolioTotals(portfolio,positions),fx=T.fxUsdEur,eur=v=>portfolioConvertAmount(v,T.baseCurrency,"EUR",fx);
+  const funds=dAccountFunds(portfolio);
+  const stockValue=eur(T.positionsValue)||0,fundValue=funds.reduce((a,f)=>a+(f.value||0),0);
+  const partial=!T.complete||funds.some(f=>f.value===null);
+  const total=stockValue+fundValue,cash=eur(T.cashBalance)||0;
+  const fundInvested=funds.reduce((a,f)=>a+(f.value!==null&&f.pnl!==null?f.value-f.pnl:0),0);
+  const invested=(eur(T.invested)||0)+fundInvested;
+  // «Desde la compra»: abierto (acciones + fondos) + realizado, como lo enseña el bróker.
+  const txSummary=state.portfolioTransactionSummaries[String(portfolio.id)]||null;
+  let realized=0;if(txSummary&&txSummary.currencies)for(const[code,row]of Object.entries(txSummary.currencies)){const v=portfolioConvertAmount(num(row&&row.realizedPnl)||0,code,"EUR",fx);if(v!==null)realized+=v}
+  const openPnl=eur(T.openPnl),fundPnl=funds.reduce((a,f)=>a+(f.pnl||0),0);
+  const sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
+  const chart=dChartHtml(portfolio),range=dRangeKey();
+  const fundDay=funds.reduce((a,f)=>a+(f.value!==null&&f.dayPct!==null?f.value-f.value/(1+f.dayPct/100):0),0);
+  const day=(eur(T.day)||0)+fundDay;
+  return'<section class="d-hero" data-d-hero="'+esc(portfolio.id)+'"><small>Cuenta de valores · '+esc(label)+'</small>'+
+    '<div class="d-hero-total"><strong>'+dMoney(total)+'</strong>'+(chart.gain!==null?dChip(chart.gain,{suffix:D_RANGES[range]}):dChip(day,{suffix:"hoy"}))+'</div>'+
+    (partial?'<p class="d-hero-note">Parcial: falta el precio de alguna posición.</p>':(chart.gain!==null?'<p class="d-hero-note">Hoy '+(day>=0?"+":"−")+formatMoney(Math.abs(day),"EUR")+(funds.length?' · gráfico de acciones y ETC':'')+'</p>':''))+
+    chart.svg+
+    '<div class="d-stats"><div><small>Invertido</small><b>'+dMoney(invested)+'</b></div>'+
+      '<div><small>Desde la compra</small><b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>'+(realized?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+'</div>'+
+      '<button type="button" data-portfolio-cash-edit="'+esc(portfolio.id)+'" aria-label="Editar capital líquido"><small>Capital líquido ✎</small><b>'+dMoney(cash)+'</b></button></div>'+
+  '</section>';
+}
+function dActionsHtml(selected){
+  const id=selected?esc(selected.id):"";
+  return'<div class="d-actions">'+
+    '<button type="button" class="d-primary portfolio-add-current"'+(selected?'':' disabled')+'>＋ Operación</button>'+
+    '<button type="button" data-broker-import>'+pfIcon('import')+' Importar</button>'+
+    '<button type="button"'+(selected?' data-portfolio-history="'+id+'"':' disabled')+'>'+pfIcon('history')+' Historial</button>'+
+    '<details class="d-more"><summary aria-label="Más opciones de la cartera">⋯</summary><div class="d-more-menu">'+
+      '<button type="button"'+(selected?' data-portfolio-market-config="'+id+'"':' disabled')+'>'+pfIcon('globe')+' Mercado de la cartera</button>'+
+      '<button type="button" data-new-portfolio="1">'+pfIcon('folderPlus')+' Nueva cartera</button>'+
+      '<button type="button" data-portfolio-order-edit>'+pfIcon('edit')+' Editar carteras</button>'+
+      '<button type="button" class="portfolio-refresh">'+pfIcon('refresh')+' Actualizar precios</button>'+
+    '</div></details></div>';
+}
+function dPortfolioContextHtml(selected,positions){
+  const label=selected.broker||selected.name;
+  const rows=sortPositions(positions).map(dPositionRow),funds=dAccountFunds(selected);
+  const stocks=rows.filter(r=>!r.etf),etfs=rows.filter(r=>r.etf);
+  const sum=list=>list.reduce((a,r)=>a+(r.value||0),0);
+  const groups=[{text:stocks.length===1?"una acción":stocks.length+" acciones",value:sum(stocks)},{text:"ETF y ETC",value:sum(etfs)},{text:"fondos",value:sum(funds)}];
+  const empty=!rows.length&&!funds.length?'<div class="portfolio-empty-state compact">Esta cartera todavía no tiene posiciones. Pulsa «＋ Operación» para añadir una.</div>':'';
+  return portfolioDuplicatesHtml(selected,positions)+dHeroHtml(selected,positions)+dReadingHtml(label,groups,rows,funds)+dActionsHtml(selected)+empty+
+    dGroupHtml("Acciones",stocks.map(dRowHtml),stocks.length>1)+
+    dGroupHtml("ETF y ETC",etfs.map(dRowHtml),false)+
+    dGroupHtml("Fondos",funds.map(dFundRowHtml),false)+
+    '<div class="d-extras">'+portfolioPerformanceHtml(selected)+portfolioInsightsHtml(selected)+'</div>';
+}
+function dPortfolioWorkbarHtml(){
+  return'<div class="portfolio-workbar d-workbar"><div class="portfolio-tabs-wrap">'+
+    '<div class="portfolio-tabs-track" id="portfolioTabsTrack" role="tablist" aria-label="Mis cuentas">'+state.portfolios.map(renderPortfolioCard).join('')+'</div>'+
+    '<button type="button" class="portfolio-tabs-more" data-portfolio-tabs-more aria-label="Mostrar carteras ocultas" title="Más carteras" hidden>›</button>'+
+    '<div class="portfolio-tabs-overflow" id="portfolioTabsOverflow" aria-hidden="true"></div></div></div>';
+}
+document.addEventListener('click',event=>{
+  const r=event.target.closest&&event.target.closest('[data-pf-d-range]');if(!r)return;
+  try{localStorage.setItem('viewinvai:pf-d-range',r.dataset.pfDRange)}catch(_){}
+  const hero=document.querySelector('[data-d-hero]'),pf=hero&&state.portfolios.find(p=>String(p.id)===String(hero.dataset.dHero));
+  if(pf){const tmp=document.createElement('div');tmp.innerHTML=dHeroHtml(pf,portfolioPositions(pf.id));hero.replaceWith(tmp.firstElementChild)}
+});
+document.addEventListener('click',event=>{
+  const t=event.target.closest&&event.target.closest('[data-d-row-toggle]');if(!t)return;
+  const li=t.closest('.d-row'),detail=li&&li.querySelector('.d-row-detail');if(!detail)return;
+  const open=detail.hidden;detail.hidden=!open;li.classList.toggle('open',open);t.setAttribute('aria-expanded',open?'true':'false');
+  if(open&&window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(detail);
+});
+document.addEventListener('click',event=>{
+  if(event.target.closest&&event.target.closest('.d-more-menu button')){const d=event.target.closest('details');if(d)d.open=false}
+});
 
 window.ViewInvAIPortfolios = {
   render: renderApp,

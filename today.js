@@ -79,6 +79,77 @@
   return '<section class="today-card today-events"><header><small>CALENDARIO · 14 DÍAS</small><h2>'+title+'</h2><button type="button" class="today-link" data-today-go="future">Potencial futuro ›</button></header>'+list.map(row).join('')+'</section>';
  }
 
+ // ----- Diseño D: saludo, patrimonio con el resumen AI dentro, cuentas, ideas, avisos y agenda -----
+ const money=(v,c='EUR')=>N(v)===null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:c||'EUR',minimumFractionDigits:2,maximumFractionDigits:2});
+ function chip(v,{pct=false,suffix=''}={}){
+  if(N(v)===null)return'';
+  const cls=Math.abs(v)<0.005?'flat':v>0?'up':'down',arrow=cls==='up'?'▲ ':cls==='down'?'▼ ':'';
+  return '<span class="d-chip '+cls+'">'+arrow+(pct?Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %':money(Math.abs(v)))+(suffix?' '+E(suffix):'')+'</span>';
+ }
+ function ring(score){
+  const n=Math.max(0,Math.min(100,Math.round(N(score)??0)));
+  return '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'">'+n+'</em>';
+ }
+ function wealthHtmlD(sum,A){
+  if(!sum||!sum.signedIn||!sum.portfolios.length)return portfoliosHtml(sum);
+  const t=sum.total,by=k=>sum.portfolios.filter(p=>k.includes(p.kind)).reduce((a,p)=>a+(N(p.value)||0),0);
+  const market=by(['stocks','funds']),crypto=by(['crypto']),cash=N(t.cash)||0,total=market+crypto+cash;
+  const base=(N(t.value)||0)-(N(t.day)||0),dayPct=base>0?(N(t.day)||0)/base*100:null;
+  const incomplete=sum.portfolios.some(p=>!p.complete);
+  const tile=(label,value,go,funds)=>'<button type="button" data-today-go="'+go+'"'+(funds?' data-today-funds="1"':'')+'><small>'+label+'</small><b>'+money(value)+'</b></button>';
+  return '<section class="d-wealth"><small>Patrimonio total</small>'+
+   '<div class="d-wealth-total"><strong>'+money(total)+'</strong>'+chip(dayPct,{pct:true,suffix:'hoy'})+'</div>'+
+   '<p class="d-wealth-sub">Hoy '+(N(t.day)>=0?'+':'−')+money(Math.abs(N(t.day)||0))+' · desde la compra '+(N(t.pnl)>=0?'+':'−')+money(Math.abs(N(t.pnl)||0))+'</p>'+
+   '<div class="d-tiles">'+tile('Bolsa y fondos',market,'portfolios')+tile('Cripto',crypto,'crypto')+tile('Efectivo',cash,'portfolios')+'</div>'+
+   (incomplete?'<p class="d-wealth-sub">Alguna posición aún no tiene cotización: el total puede estar incompleto.</p>':'')+
+   (A?A.briefHtml():'')+
+  '</section>'+
+  '<section class="d-group"><header><h3>Tus cuentas</h3><button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
+   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(Math.abs(N(p.day)||0)>=0.005?chip(p.day):'')+'</span></button></li>').join('')+
+  '</ul></section>';
+ }
+ function ideasHtmlD(){
+  let rows=[];try{rows=[...radarAiCandidateRows('tr'),...radarAiCandidateRows('us')].filter(r=>!r.speculative)}catch(_){rows=[]}
+  const high=rows.filter(r=>r.tier==='high');
+  const picks=(high.length?high:rows.filter(r=>r.tier==='opportunity')).sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,4);
+  const body=picks.length?picks.map(r=>{
+   const s=r.s,q=typeof canonicalQuote==='function'?canonicalQuote(s,r.preferTr)||{}:{},cur=r.preferTr?'EUR':(q.nativeCurrency||'USD');
+   const price=N(r.preferTr?q.eur:(q.usd??q.price)),ticker=r.preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+   const rv=typeof RV==='function'?N(RV(s,currentMarketSession())):null;
+   const sub=[ticker,r.tier==='high'?'alta convicción':'oportunidad',rv!==null&&rv>=0.1?'vol. ×'+rv.toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:1}):''].filter(Boolean).join(' · ');
+   const ai=r.ai&&r.ai.verdict?'IA externa: '+r.ai.verdict:'';
+   return '<li class="d-row"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(r.preferTr?'1':'0')+'">'+ring(r.score)+
+    '<span class="d-row-text"><b>'+E(s.name||ticker)+'</b><small>'+E(sub)+'</small>'+(ai?'<i class="d-row-ai">✦ '+E(ai)+'</i>':'')+'</span>'+
+    '<span class="d-row-num"><b>'+money(price,cur)+'</b>'+chip(N(q.change),{pct:true})+'</span></button></li>';
+  }).join(''):'<li class="d-row d-row-empty">Sin señales destacadas ahora mismo. La IA prefiere esperar a forzar una entrada.</li>';
+  return '<section class="d-group"><header><h3>Ideas del Radar</h3><button type="button" class="d-more-link" data-today-go="recommendation" aria-label="Abrir Radar AI">›</button></header><ul class="d-list">'+body+'</ul></section>';
+ }
+ function alertsHtmlD(){
+  const inbox=window.ViewInvAIInbox&&typeof window.ViewInvAIInbox.recent==='function'?window.ViewInvAIInbox.recent(20):[];
+  const server=inbox.map(r=>({title:r.title,message:r.message,createdAt:r.created_at,stockKey:r.stock_key,unread:!r.read_at}));
+  const local=(window.AppAlerts&&typeof window.AppAlerts.getHistory==='function'?window.AppAlerts.getHistory():[]);
+  const rows=(server.length?server:local).filter(r=>Date.now()-new Date(r.createdAt||0).getTime()<36*3600e3).slice(0,3);
+  const unread=window.ViewInvAIInbox&&typeof window.ViewInvAIInbox.unread==='function'?window.ViewInvAIInbox.unread():0;
+  if(!rows.length&&!unread)return'';
+  return '<section class="d-group"><header><h3>Avisos'+(unread?' · '+unread+' sin leer':'')+'</h3><button type="button" class="d-more-link" data-today-go="inbox" aria-label="Abrir Avisos">›</button></header><ul class="d-list">'+rows.map(r=>{
+   const when=new Date(r.createdAt||Date.now()).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+   const open=r.stockKey?' data-open-stock="'+E(r.stockKey)+'" data-stock-prefer-tr="0"':' data-today-go="inbox"';
+   return '<li class="d-row'+(r.unread?' unread':'')+'"><button type="button" class="d-row-main d-row-simple"'+open+'><span class="d-row-text"><b>'+E(r.title||'Aviso')+'</b><small>'+E(r.message||'')+'</small></span><span class="d-row-num"><small>'+E(when)+'</small></span></button></li>';
+  }).join('')+'</ul></section>';
+ }
+ function agendaHtmlD(sum){
+  const keys=new Set((sum&&sum.stockKeys)||[]),now=Date.now(),limit=now+14*864e5;
+  const upcoming=(db.events||[]).filter(e=>{const t=new Date(e.date).getTime();return t>=now-3600e3&&t<=limit});
+  const mine=keys.size?upcoming.filter(e=>{const s=stockForEvent(e);return s&&keys.has(stockKey(s))}):[];
+  const list=(mine.length?mine:upcoming.filter(e=>(N(e.impactScore)||0)>=60)).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,8);
+  if(!list.length)return'';
+  const card=e=>{
+   const s=stockForEvent(e);if(!s)return'';
+   const ticker=s.ticker||s.trTicker||'',when=String(eventWhen(e)||'').replace('/'+new Date().getFullYear(),'');
+   return '<button type="button" class="d-agenda-card" data-open-stock="'+E(stockKey(s))+'"><small>'+E(when)+'</small><b>'+E(EL(e))+'</b><span>'+E(ticker)+(keys.has(stockKey(s))?' · en tu cartera':'')+'</span></button>';
+  };
+  return '<section class="d-group"><header><h3>Agenda'+(mine.length?' de lo tuyo':'')+'</h3><button type="button" class="d-more-link" data-today-go="future" aria-label="Abrir Potencial futuro">›</button></header><div class="d-agenda">'+list.map(card).join('')+'</div></section>';
+ }
  function render(){
   const box=document.getElementById('todayResults');if(!box)return;
   const sum=window.ViewInvAIPortfolios&&typeof window.ViewInvAIPortfolios.getDaySummary==='function'?window.ViewInvAIPortfolios.getDaySummary():{signedIn:false};
@@ -86,7 +157,13 @@
   if(date)date.textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
   // Diseño D: resumen AI del día justo debajo del total (lo prepara el servidor con tus carteras).
   const A=document.documentElement.dataset.design!=='classic'&&window.ViewInvAIAsk;
-  box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
+  if(document.documentElement.dataset.design==='d'){
+   box.classList.add('d-today');
+   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+alertsHtmlD()+agendaHtmlD(sum);
+  }else{
+   box.classList.remove('d-today');
+   box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
+  }
   if(A&&sum&&sum.signedIn)A.loadBrief();
   requestAnimationFrame(()=>{if(typeof observeActiveTrLivePrices==='function')observeActiveTrLivePrices()});
  }

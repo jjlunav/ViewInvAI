@@ -222,28 +222,172 @@
 @ em.ai-score[data-p="95"]{--p:95}
 @ em.ai-score[data-p="100"]{--p:100}
 
-/* ---------- Carteras: total de la cuenta (acciones + ETF/ETC + fondos del mismo bróker) ---------- */
-@ .pf-account{margin:0 0 12px;padding:16px;border-radius:22px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
-@ .pf-account header{display:flex;align-items:center;gap:8px}
-@ .pf-account header small{font-size:11.5px;font-weight:800;letter-spacing:.06em;color:var(--d-mut)}
-@ .pf-account-ai{margin-left:auto;border:0;border-radius:999px;padding:6px 11px;background:var(--d-aitint);color:var(--d-accent);font:800 12px "VI Manrope",sans-serif;cursor:pointer}
-@ .pf-account-total{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:6px}
-@ .pf-account-total strong{font:700 32px/1.1 "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
-@ .pf-account-total small{font-size:12px;color:var(--d-mut)}
-@ .pf-account-pnl{margin:4px 0 0;font-size:13px;color:var(--d-mut)}
-@ .pf-account .pnl-up,@ .pf-account .pnl-down{display:inline-block;border-radius:8px;padding:2px 7px;font-weight:800;font-size:12.5px}
-@ .pf-account .pnl-up{background:var(--d-upbg);color:var(--d-up)}
-@ .pf-account .pnl-down{background:var(--d-downbg);color:var(--d-down)}
-@ .pf-account-split{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-@ .pf-account-split>*{display:grid;gap:2px;text-align:left;padding:10px 12px;border-radius:16px;background:var(--d-surf-2);border:1px solid var(--d-hair);color:var(--d-ink);font:inherit}
-@ .pf-account-split>button{cursor:pointer}
-@ .pf-account-split small{font-size:11.5px;color:var(--d-mut);font-weight:700}
-@ .pf-account-split b{font:700 17px "VI Grotesk",sans-serif}
-@ .pf-account-split span{font-size:11.5px;color:var(--d-mut)}
-@ .pf-account-split>button span{color:var(--d-accent);font-weight:700}
-@ .pf-account-funds{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:2px}
-@ .pf-account-funds li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;align-items:center;padding:8px 2px;border-top:1px solid var(--d-hair)}
-@ .pf-account-funds li>b{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@ .pf-account-funds li>em{font-style:normal;font:700 14px "VI Grotesk",sans-serif;text-align:right}
-@ .pf-account-funds li>span:last-child{grid-column:3;justify-self:end;margin-top:2px}
-@ .pf-account-kind{grid-row:span 2;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--d-aitint);color:var(--d-accent);font-size:11px;font-weight:800}
+/* ---------- Carteras D: cuenta, gráfico, lectura AI, botones con nombre y lista agrupada ---------- */
+@ .d-workbar{display:block!important;padding:0!important;margin:0 0 10px!important;background:transparent!important;border:0!important;box-shadow:none!important}
+@ .d-workbar .portfolio-tabs-wrap{background:var(--d-segbg)!important;border-radius:14px!important;padding:4px!important;border:0!important}
+@ .d-workbar .portfolio-tab{background:transparent!important;border:0!important;box-shadow:none!important;color:var(--d-mut)!important;border-radius:10px!important;min-height:34px!important;font-weight:700!important}
+@ .d-workbar .portfolio-tab.active{background:var(--d-segon)!important;color:var(--d-ink)!important;box-shadow:0 1px 3px rgba(15,18,34,.14)!important}
+@ .d-workbar .portfolio-tab span,@ .d-workbar .portfolio-tab .portfolio-tab-count{background:transparent!important;color:var(--d-mut)!important;border:0!important}
+@ .d-context>.portfolio-summary-bar,@ .d-context>.portfolio-cash-row{display:none!important}
+@ .d-hero{padding:16px 16px 12px;border-radius:22px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .d-hero>small{font-size:12.5px;font-weight:700;color:var(--d-mut)}
+@ .d-hero-total{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:2px}
+@ .d-hero-total strong{font:700 34px/1.15 "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
+@ .d-hero-note{margin:2px 0 0;font-size:12.5px;color:var(--d-mut)}
+@ .d-chip{display:inline-block;border-radius:8px;padding:3px 8px;font-weight:800;font-size:12.5px;white-space:nowrap;background:var(--d-mutbg);color:var(--d-mut)}
+@ .d-chip.up{background:var(--d-upbg);color:var(--d-up)}
+@ .d-chip.down{background:var(--d-downbg);color:var(--d-down)}
+@ .d-chart{display:block;width:100%;height:96px;margin:10px 0 6px}
+@ .d-chart .line{fill:none;stroke-width:2.2;vector-effect:non-scaling-stroke}
+@ .d-chart.up .line{stroke:var(--d-teal)}
+@ .d-chart.down .line{stroke:var(--d-down)}
+@ .d-chart .area{opacity:.12}
+@ .d-chart.up .area{fill:var(--d-teal)}
+@ .d-chart.down .area{fill:var(--d-down)}
+@ .d-chart-empty{display:grid;place-items:center;font-size:12.5px;color:var(--d-mut);background:var(--d-surf-2);border-radius:14px}
+@ .d-ranges{display:flex;justify-content:space-between;gap:4px}
+@ .d-ranges button{flex:1;border:0;background:transparent;color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;padding:6px 0;border-radius:999px;cursor:pointer}
+@ .d-ranges button.active{background:var(--d-ink);color:var(--d-surf)}
+@ .d-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+@ .d-stats>*{display:grid;align-content:start;gap:2px;text-align:left;padding:9px 10px;border-radius:14px;background:var(--d-surf-2);border:1px solid var(--d-hair);color:var(--d-ink);font:inherit;min-width:0}
+@ .d-stats>button{cursor:pointer}
+@ .d-stats small{font-size:11.5px;font-weight:700;color:var(--d-mut)}
+@ .d-stats b{font:700 15px "VI Grotesk",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-stats span{font-size:10.5px;color:var(--d-mut)}
+@ .d-stats .d-pos{color:var(--d-up)!important}
+@ .d-stats .d-neg{color:var(--d-down)!important}
+@ .d-reading{margin:10px 0 0;padding:12px 14px;border-radius:18px;background:var(--d-aitint);border:1px solid var(--d-hair-2)}
+@ .d-reading p{margin:0;font-size:14px;line-height:1.45;color:var(--d-ink)}
+@ .d-reading p>span{color:var(--d-accent);font-weight:800}
+@ .d-reading .ai-chips{margin-top:8px}
+@ .d-actions{display:flex;gap:8px;margin:12px 0 4px;align-items:center}
+@ .d-actions>button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border-radius:12px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font:700 13.5px "VI Manrope",sans-serif;cursor:pointer;padding:0 8px;white-space:nowrap}
+@ .d-actions>button .pf-icon{width:16px;height:16px}
+@ .d-actions>button.d-primary{background:var(--d-grad);border:0;color:#fff}
+@ .d-more{position:relative}
+@ .d-more>summary{list-style:none;width:40px;height:40px;display:grid;place-items:center;border-radius:12px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font-weight:800;cursor:pointer}
+@ .d-more>summary::-webkit-details-marker{display:none}
+@ .d-more-menu{position:absolute;right:0;top:46px;z-index:30;display:grid;min-width:220px;padding:6px;border-radius:16px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow-lg)}
+@ .d-more-menu button{display:flex;align-items:center;gap:10px;border:0;background:transparent;color:var(--d-ink);font:600 14px "VI Manrope",sans-serif;padding:10px;border-radius:10px;text-align:left;cursor:pointer}
+@ .d-more-menu button .pf-icon{width:18px;height:18px;color:var(--d-mut)}
+@ .d-group{margin-top:14px}
+@ .d-group>header{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px}
+@ .d-group h3{margin:0;font:700 17px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .d-group>header>span{font-size:12px;color:var(--d-mut);font-weight:700}
+@ .d-sort{border:0;background:transparent;color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;cursor:pointer}
+@ .d-list{list-style:none;margin:0;padding:2px 12px;border-radius:20px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .d-row{display:flex;align-items:center;border-top:1px solid var(--d-hair)}
+@ .d-row:first-child{border-top:0}
+@ .d-row-main{flex:1;min-width:0;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 0;border:0;background:transparent;color:var(--d-ink);font:inherit;text-align:left;cursor:pointer}
+@ .d-row-text{display:grid;gap:1px;min-width:0}
+@ .d-row-text b{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-row-text small{font-size:12px;color:var(--d-mut)}
+@ .d-row-ai{font-style:normal;font-size:12px;font-weight:700;color:var(--d-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-row-num{display:grid;justify-items:end;gap:3px}
+@ .d-row-num b{font:700 15px "VI Grotesk",sans-serif}
+@ .d-row-num small{font-size:11.5px;color:var(--d-mut)}
+@ .d-row-ops{flex:0 0 26px;height:32px;border:0;background:transparent;color:var(--d-mut);font-weight:800;cursor:pointer;margin-left:2px}
+@ .d-ring{width:38px;height:38px;font-size:12.5px!important}
+@ .d-ring-kind{display:grid;place-items:center;border-radius:12px;background:var(--d-aitint);color:var(--d-accent);font-size:10.5px;font-weight:800}
+@ .d-extras{margin-top:14px;display:grid;gap:10px}
+@ .d-row em.ai-score{margin:0!important;width:38px!important;height:38px!important;min-width:38px!important}
+@ .d-actions>button.d-primary{font:800 13.5px "VI Manrope",sans-serif!important}
+
+/* ---------- Mi día D ---------- */
+@ .d-hello{display:grid;gap:2px;margin:2px 4px 12px}
+@ .d-hello strong{font:700 24px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .d-hello small{font-size:13px;color:var(--d-mut)}
+@ .d-wealth{padding:16px;border-radius:22px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .d-wealth>small{font-size:12.5px;font-weight:700;color:var(--d-mut)}
+@ .d-wealth-total{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+@ .d-wealth-total strong{font:700 34px/1.15 "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
+@ .d-wealth-sub{margin:2px 0 0;font-size:12.5px;color:var(--d-mut)}
+@ .d-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+@ .d-tiles>button{display:grid;gap:2px;text-align:left;padding:9px 10px;border-radius:14px;background:var(--d-surf-2);border:1px solid var(--d-hair);color:var(--d-ink);font:inherit;cursor:pointer;min-width:0}
+@ .d-tiles small{font-size:11.5px;font-weight:700;color:var(--d-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-tiles b{font:700 15px "VI Grotesk",sans-serif;white-space:nowrap}
+@ .d-wealth .ai-brief{margin-top:12px}
+@ .d-more-link{width:30px;height:30px;border-radius:50%;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font-size:17px;line-height:1;cursor:pointer;display:grid;place-items:center}
+@ .d-row-simple{grid-template-columns:minmax(0,1fr) auto!important}
+@ .d-row-empty{padding:14px 2px;font-size:13px;color:var(--d-mut)}
+@ .d-row.unread .d-row-text b::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--d-accent);margin-right:6px;vertical-align:middle}
+@ .d-row-text small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-agenda{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+@ .d-agenda::-webkit-scrollbar{display:none}
+@ .d-agenda-card{flex:0 0 150px;display:grid;gap:4px;text-align:left;padding:12px;border-radius:18px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow);color:var(--d-ink);font:inherit;cursor:pointer}
+@ .d-agenda-card small{font-size:11.5px;color:var(--d-mut);font-weight:700}
+@ .d-agenda-card b{font-size:13.5px;line-height:1.25}
+@ .d-agenda-card span{font-size:12px;color:var(--d-accent);font-weight:700}
+@ .d-more-h{grid-column:1/-1;margin:8px 2px 0;font:700 15px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .d-more-account{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:4px 2px 6px}
+@ .d-more-account>span:nth-child(2){display:grid;flex:1;min-width:0}
+@ .d-more-account b{font:700 17px "VI Grotesk",sans-serif;color:var(--d-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-more-account small{font-size:12px;color:var(--d-mut)}
+@ .d-more-avatar{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--d-grad);color:#fff;font:800 18px "VI Grotesk",sans-serif}
+@ .d-more-gear{width:40px;height:40px;border-radius:12px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);display:grid;place-items:center;cursor:pointer}
+@ .d-more-gear svg{width:20px;height:20px}
+@ .mobile-more-item.d-more-ai{background:var(--d-grad)!important;border:0!important}
+@ .mobile-more-item.d-more-ai>span{background:rgba(255,255,255,.22)!important;color:#fff!important}
+@ .mobile-more-item.d-more-ai b{color:#fff!important}
+
+/* ---------- Mercados D: Destacados ---------- */
+@ #marketBoardSourceTabs:empty{display:none!important}
+@ .d-pulse{padding:16px;border-radius:22px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .d-pulse>small{font-size:12.5px;font-weight:700;color:var(--d-mut)}
+@ .d-pulse h2{margin:2px 0 0;font:700 26px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .d-pills{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 2px 8px}
+@ .d-pills button{border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;padding:6px 12px;border-radius:999px;cursor:pointer}
+@ .d-pills button.active{background:var(--d-ink);border-color:var(--d-ink);color:var(--d-surf)}
+@ .d-pills-sep{flex:1}
+@ .d-row-noring{grid-template-columns:minmax(0,1fr) auto!important}
+@ div.d-row-main{cursor:default}
+@ .d-group-note{margin:0 4px 8px;font-size:12px;color:var(--d-mut)}
+@ .market-board-tabs{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;scrollbar-width:none}
+@ .market-board-tabs::-webkit-scrollbar{display:none}
+@ .market-board-tabs>.tab{flex:0 0 auto!important;width:auto!important;padding:0 14px!important}
+@ .market-board-tabs>.tab[hidden]{display:none!important}
+
+/* ---------- Radar D ---------- */
+@ .d-radar>.radar-market-tabs{margin-bottom:10px}
+@ .d-radar>.d-pulse{margin-bottom:4px}
+@ .d-radar .radar-scoreboard,@ .d-radar .radar-ai-contrast{margin-top:12px}
+@ .d-row.d-tier-spec .d-row-text small{color:var(--d-warn)}
+/* Preapertura / posmercado en una sola línea bajo el precio (las filas siguen siendo compactas). */
+@ .asset-investing-extended{flex-wrap:nowrap!important;gap:4px!important;font-size:11px!important;line-height:1.3!important;white-space:nowrap!important;min-width:0}
+@ .asset-investing-extended strong{font-size:11.5px!important}
+@ .asset-investing-extended time{font-size:10px!important;opacity:.8}
+@ .d-row{flex-wrap:wrap}
+@ .d-row-toggle{flex:0 0 28px;height:34px;border:0;background:transparent;color:var(--d-mut);font-size:14px;cursor:pointer;transition:transform .15s}
+@ .d-row.open .d-row-toggle{transform:rotate(180deg)}
+@ .d-row-text small em{font-style:normal;font-weight:700}
+@ .d-row-text small .pnl-up{color:var(--d-up)}
+@ .d-row-text small .pnl-down{color:var(--d-down)}
+@ .d-row-detail{flex:1 0 100%;display:grid;gap:10px;padding:2px 0 12px}
+@ .d-row-detail[hidden]{display:none}
+@ .d-row-quote{font-size:13px}
+@ .d-row-cells{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+@ .d-row-cells>div{display:grid;gap:1px;padding:7px 9px;border-radius:12px;background:var(--d-surf-2);min-width:0}
+@ .d-row-cells small{font-size:11px;color:var(--d-mut);font-weight:700}
+@ .d-row-cells b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-row-cells .d-pos b{color:var(--d-up)}
+@ .d-row-cells .d-neg b{color:var(--d-down)}
+@ .d-row-actions{display:flex;gap:8px}
+@ .d-row-actions button{flex:1;min-height:36px;border-radius:12px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font:700 13px "VI Manrope",sans-serif;cursor:pointer}
+
+/* ---------- Textos de arriba en desplegable cerrado (título + primera línea) ---------- */
+@ .d-fold{margin-top:10px;border-radius:16px;background:var(--d-aitint);border:1px solid var(--d-hair-2)}
+@ .d-fold>summary{list-style:none;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:1px;padding:10px 12px;cursor:pointer}
+@ .d-fold>summary::-webkit-details-marker{display:none}
+@ .d-fold-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--d-accent)}
+@ .d-fold-title .ai-spark{width:14px;height:14px;fill:currentColor}
+@ .d-fold-preview{grid-column:1;font-size:13px;color:var(--d-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .d-fold-chev{grid-column:2;grid-row:1/3;align-self:center;font-style:normal;color:var(--d-mut);transition:transform .15s}
+@ .d-fold[open]>summary .d-fold-preview{display:none}
+@ .d-fold[open]>summary .d-fold-chev{transform:rotate(180deg)}
+@ .d-fold-body{padding:0 12px 12px}
+@ .d-fold-body .d-reading{margin:0;padding:0;background:transparent;border:0}
+@ .d-fold-body .ai-brief{margin:0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important}
+@ .d-fold-body .ai-brief-head{position:absolute;right:40px;top:6px}
+@ .d-fold-body .ai-brief-head>svg,@ .d-fold-body .ai-brief-head>span{display:none!important}
+@ .d-fold{position:relative}
+@ .d-fold-body .ai-brief p{margin-top:0!important}
