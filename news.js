@@ -51,6 +51,41 @@
   const tk=String(ticker||'').toUpperCase();
   return tk.length>=2&&new RegExp('(\\('+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\)|:'+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b)').test(String(text||''));
  }
+ // Índice del catálogo para encontrar todas las empresas que nombra una noticia, no solo las tuyas.
+ const SUFFIX=/(,?\s+(inc|incorporated|corp|corporation|company|co|ltd|limited|plc|s\.?a|n\.?v|ag|se|asa|holdings?|group|class [ab]|adr|ads|ordinary shares|common stock)\.?)+$/i;
+ const COMMON=new Set(['the','energy','power','global','first','general','united','american','national','international','bank','capital','group','technologies','solutions','systems','pharma','therapeutics','gold','silver','oil','gas','health','care','digital','data','cloud','china','europe','target','block','shell','visa','gap','meta','box','match','snap','square','lucid','sea','ring','compass','genius','trade','republic','federal','reserve','bitcoin','ethereum','market','stock','stocks','index','fund','funds','growth','value','energy']);
+ const US_EX=/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i;
+ let idx=null;
+ function catalogIndex(){
+  const all=(typeof db!=='undefined'&&db&&db.stocks)||[];
+  if(idx&&idx.n===all.length)return idx;
+  const multi=new Map(),single=new Map(),tick=new Map();
+  const better=(a,b)=>!a||(!US_EX.test(String(a.exchange||''))&&US_EX.test(String(b.exchange||'')));
+  for(const st of all){
+   if(!st||!st.name)continue;
+   let clean=String(st.name).replace(/\s*\(the\)$/i,'').replace(/^the\s+/i,'').replace(SUFFIX,'').replace(/\.com$/i,'').replace(/[,.]+$/,'').trim();
+   if(clean.length<3)continue;
+   const words=clean.split(/\s+/);
+   if(words.length>=2){const k=fold(clean);if(better(multi.get(k),st))multi.set(k,st)}
+   else if(clean.length>=4&&!COMMON.has(clean.toLowerCase())){if(better(single.get(clean),st))single.set(clean,st)}
+   // Marcas con mayúscula interna (FuelCell, PayPal): la primera palabra basta.
+   if(words.length>=2&&/^[A-Z][a-z]+[A-Z][A-Za-z]+$/.test(words[0])&&!single.has(words[0]))single.set(words[0],st);
+   if(US_EX.test(String(st.exchange||''))&&st.ticker)tick.set(String(st.ticker).toUpperCase(),st);
+  }
+  idx={n:all.length,multi,single,tick};
+  return idx;
+ }
+ function catalogMentions(text){
+  const I=catalogIndex(),found=[];
+  const add=st=>{if(st&&!found.includes(st))found.push(st)};
+  const words=String(text||'').split(/[^\p{L}\p{N}&'’-]+/u).filter(Boolean);
+  for(let i=0;i<words.length;i++){
+   for(let n=4;n>=2;n--){if(i+n>words.length)continue;const st=I.multi.get(fold(words.slice(i,i+n).join(' ')));if(st){add(st);break}}
+   const w=words[i].replace(/['’]s$/,'');const st=I.single.get(w);if(st)add(st);
+  }
+  for(const m of String(text||'').matchAll(/(?:\(|\b(?:NASDAQ|NYSE|AMEX)\s*:\s*)([A-Z]{1,5})\)?/g))add(I.tick.get(m[1]));
+  return found;
+ }
  function citedStocks(item,hs){
   const text=item.title+' '+(item.snippet||''),list=[];
   for(const s of item.stocks||[]){
@@ -60,7 +95,16 @@
    list.push({...s,held:!!(h&&h.held),preferTr:h?h.preferTr:false});
   }
   for(const h of hs){if(list.some(s=>s.key===h.key))continue;if(mentions(text,h.name,h.ticker))list.push(h)}
-  return list.slice(0,3);
+  // El resto de empresas que nombra la noticia (catálogo completo); si una es tuya, va con tu mercado.
+  for(const st of catalogMentions(text)){
+   const key=typeof stockKey==='function'?stockKey(st):'';if(!key)continue;
+   const name=fold(String(st.name||'').replace(SUFFIX,''));
+   if(list.some(x=>x.key===key||fold(String(x.name||'').replace(SUFFIX,''))===name))continue;
+   const h=hs.find(x=>fold(String(x.name||'').replace(SUFFIX,''))===name);
+   list.push(h?{...h}:{key,ticker:st.ticker,name:st.name,held:false,preferTr:false});
+  }
+  // Primero lo que tienes, después favoritos y el resto en el orden en que aparecen.
+  return list.sort((a,b)=>(b.held?2:hs.some(h=>h.key===b.key)?1:0)-(a.held?2:hs.some(h=>h.key===a.key)?1:0)).slice(0,6);
  }
  function ago(iso){
   const t=Date.parse(iso);if(!Number.isFinite(t))return'';
@@ -191,5 +235,5 @@
  window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='news')render()});
  ['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{S.data={};if(isActive())setTimeout(render,300)}));
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReader()});
- window.ViewInvAINews={render,load,miniHtml,closeReader,isReaderOpen:()=>!!document.querySelector('#newsReader.open')};
+ window.ViewInvAINews={citedFor:(title,snippet)=>citedStocks({title,snippet},holdings()).map(x=>(x.ticker||x.name)+(x.held?'*':'')),render,load,miniHtml,closeReader,isReaderOpen:()=>!!document.querySelector('#newsReader.open')};
 })();
