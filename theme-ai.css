@@ -2447,3 +2447,7 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tab
 html[data-theme="light"]:root:root body:not(#s1):not(#s2):not(#s3):not(#s4) #view-crypto .crypto-tabs.crypto-tabs-alpha>button:not(.active){color:#9a6a06!important}
 /* Tarjetas Alpha: borde lateral ámbar para no confundirlas con las monedas de mercados autorizados. */
 html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.crypto-card-alpha{border-color:color-mix(in srgb,var(--amber,#f5b544) 38%,var(--line))!important;box-shadow:inset 3px 0 0 color-mix(in srgb,var(--amber,#f5b544) 75%,transparent)!important}
+
+/* Importar extracto: unidades editables antes de guardar. */
+.crypto-import-table input.crypto-import-units{width:100%;min-width:90px;max-width:140px;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text)}
+.crypto-summary .crypto-cost-note{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
