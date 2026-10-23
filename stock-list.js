@@ -716,7 +716,7 @@ function renderHomeFeaturedD(box){
  const moves='<section class="d-group"><header><h3>Movimientos fuertes</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
   '<div class="d-pills">'+chips+'<span class="d-pills-sep"></span>'+srcChips+'</div>'+closeNote+'<ul class="d-list">'+
   (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src,mv==='high52'||mv==='low52'?dExtremeNote(s,mv==='high52'):'')).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
- box.innerHTML=dPulseHtml()+followed+moves;
+ box.innerHTML='<div class="d-featured">'+dPulseHtml()+followed+moves+'</div>';
 }
 if(typeof document!=='undefined')document.addEventListener('click',e=>{
  const m=e.target.closest&&e.target.closest('[data-d-move],[data-d-move-src]');if(!m)return;

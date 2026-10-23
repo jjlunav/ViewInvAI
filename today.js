@@ -149,7 +149,10 @@
  function macroCards(){
   loadMacro();
   const now=Date.now(),until=now+3*864e5;
-  return macro.events.filter(e=>{const t=Date.parse(e.time);return e.impact==='high'&&t>=now-3600e3&&t<=until}).slice(0,6);
+  // Primero el impacto alto; se completa con el medio (los PMI suelen venir como medio) hasta 6.
+  const soon=macro.events.filter(e=>{const t=Date.parse(e.time);return t>=now-3600e3&&t<=until});
+  const high=soon.filter(e=>e.impact==='high'),picked=high.concat(soon.filter(e=>e.impact!=='high').slice(0,Math.max(0,6-high.length))).slice(0,6);
+  return picked.sort((a,b)=>Date.parse(a.time)-Date.parse(b.time));
  }
  function macroWhen(iso){
   const d=new Date(iso),today=new Date(),k=x=>x.toDateString(),tm=new Date(today.getTime()+864e5);
