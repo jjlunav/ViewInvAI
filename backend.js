@@ -7061,7 +7061,11 @@ function newsRssItems(xml,source,linkOf,limit=20){
     let title=rssTag(item,"title"),publisher=rssTag(item,"source")||rssTag(item,"News:Source");
     // Google añade « - Medio» al final del título: se quita y queda como medio.
     const m=title.match(/^(.*\S)\s+-\s+([^-]{2,60})$/);if(m){title=m[1];publisher=publisher||m[2]}
-    return{title:trimText(title,200),url:linkOf(rssTag(item,"link")),publisher:trimText(publisher,60),time:Number.isFinite(pub)?new Date(pub).toISOString():"",source};
+    // Extracto del propio medio (Bing lo trae; en Google suele ser el titular repetido y se descarta).
+    let snippet=rssTag(item,"description");
+    const norm=x=>String(x||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();
+    if(!snippet||norm(snippet).startsWith(norm(title).slice(0,40)))snippet="";
+    return{title:trimText(title,200),snippet:trimText(snippet,500),url:linkOf(rssTag(item,"link")),publisher:trimText(publisher,60),time:Number.isFinite(pub)?new Date(pub).toISOString():"",source};
   }).filter(x=>x.title&&/^https:\/\//.test(x.url));
 }
 async function newsSearch(env,query,hl="es-ES",gl="ES",limit=20){
@@ -7078,7 +7082,7 @@ async function newsSearch(env,query,hl="es-ES",gl="ES",limit=20){
   }catch(error){await recordProviderUse(env,"bingnews",false,String(error&&error.message||error));return[]}
 }
 async function newsCached(env,key,fn){
-  const bucket=Math.floor(Date.now()/NEWS_TTL_MS),ck="news1:"+key+":"+bucket;
+  const bucket=Math.floor(Date.now()/NEWS_TTL_MS),ck="news2:"+key+":"+bucket;
   try{const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(ck).first()});
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(Array.isArray(p))return p}}catch(_){}
   const items=await fn();
