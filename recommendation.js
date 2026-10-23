@@ -778,7 +778,41 @@ function crashEventsFor(s){
  }
  return crashEventsIdx.m.get(stockKey(s))||[];
 }
-function crashCause(s){return CRASH.crashCause(crashEventsFor(s),EL)}
+// Lecturas de catalizadores hechas por dos IAs en el servidor (/api/catalysts); 5 minutos en memoria.
+const catal={byKey:new Map(),asked:new Map(),loading:false};
+function loadCatalysts(keys){
+ const now=Date.now(),want=[...new Set(keys.filter(Boolean))].filter(k=>!(catal.asked.get(k)>now-5*60000)).slice(0,40);
+ if(!want.length||catal.loading)return;
+ want.forEach(k=>catal.asked.set(k,now));catal.loading=true;
+ fetch('/api/catalysts?keys='+encodeURIComponent(want.join(',')),{cache:'no-store'}).then(r=>r.ok?r.json():{items:[]}).catch(()=>({items:[]})).then(d=>{
+  catal.loading=false;let changed=false;
+  for(const k of want){const list=(d.items||[]).filter(x=>x.stockKey===k);if(list.length||catal.byKey.has(k)){catal.byKey.set(k,list);changed=true}}
+  if(changed)window.dispatchEvent(new CustomEvent('viewinvai:catalysts-ready'));
+ });
+}
+function catalystsFor(s){const k=stockKey(s);if(!catal.byKey.has(k))loadCatalysts([k]);return catal.byKey.get(k)||[]}
+window.ViewInvAICatalysts={forStock:catalystsFor,load:loadCatalysts};
+window.addEventListener('viewinvai:catalysts-ready',()=>{
+ try{
+  if(document.body.classList.contains('stock-detail-open')){if(typeof renderQuickProfile==='function'&&state.profileKey)renderQuickProfile()}
+  else if(state.currentView==='crash')renderCrashView();
+ }catch(_){}
+});
+const CAT_TRAP=new Set(['ampliacion','legal','ensayo','fda','prevision','deuda']),CAT_OVER=new Set(['analista','resultados','sector']);
+const CAT_LABEL={resultados:'Resultados',prevision:'Previsiones',fda:'FDA',ensayo:'Ensayo clínico',ampliacion:'Ampliación de capital',deuda:'Deuda',fusion:'Fusión / adquisición',contrato:'Contrato',analista:'Analistas',legal:'Legal / regulatorio',directivos:'Directivos',recompra:'Recompra',dividendo:'Dividendo',sector:'Sector / mercado',otro:'Otro'};
+function crashCause(s){
+ // Primero la lectura contrastada por dos IAs (si coinciden y es relevante); si no, las reglas por palabras.
+ const cut=new Date(Date.now()-4*864e5).toISOString().slice(0,10);
+ const reads=catalystsFor(s).filter(r=>r.agree&&r.material&&r.day>=cut).sort((a,b)=>a.direction-b.direction);
+ const r=reads[0];
+ if(r){
+  const label=(CAT_LABEL[r.kind]||'Noticia')+' · 2 IAs coinciden';
+  if(r.direction<0&&(CAT_TRAP.has(r.kind)||r.business))return{kind:'trap',label,title:r.summary||r.title,ai:true};
+  if(r.direction<0&&CAT_OVER.has(r.kind))return{kind:'over',label,title:r.summary||r.title,ai:true};
+  if(r.direction>0)return{kind:'news',label:label+': buena noticia, pero cae: el mercado esperaba más',title:r.summary||r.title,ai:true};
+ }
+ return CRASH.crashCause(crashEventsFor(s),EL);
+}
 function crashCandidates(mode){
  const isTr=mode==='tr',se=currentMarketSession(),out=[];
  for(const s of db.stocks||[]){
@@ -787,13 +821,16 @@ function crashCandidates(mode){
   const hit=CRASH.crashEligible(isTr?trLiveChange(s):marketChange(s,se,false),s.perfMonth,s.marketCap);
   if(hit)out.push({s,ch:hit.change,prior:hit.prior});
  }
- return out.sort((a,b)=>a.ch-b.ch).slice(0,8).map(x=>{
+ const top=out.sort((a,b)=>a.ch-b.ch).slice(0,8);
+ loadCatalysts(top.map(x=>stockKey(x.s)));
+ return top.map(x=>{
   const cause=crashCause(x.s);
   let valuation=null;try{const v=typeof profileValuation==='function'?profileValuation(x.s):null;valuation=v&&v.tone||null}catch(_){}
   return{...x,cause,score:CRASH.crashScore({kind:cause.kind,valuation,marketCap:x.s.marketCap,netIncome:x.s.netIncomeTtm,change:x.ch,rsi:x.s.rsi,prior:x.prior})};
  });
 }
 function crashVerdict(c){
+ if(c.cause.ai)return{tone:c.cause.kind==='trap'?'down':c.cause.kind==='over'?'up':'flat',text:(c.cause.kind==='trap'?'Motivo de fondo':c.cause.kind==='over'?'Posible sobrerreacción':'Noticia')+' ('+c.cause.label+'): '+c.cause.title};
  if(c.cause.kind==='trap')return{tone:'down',text:'Motivo de fondo: '+c.cause.label+'. Suele seguir bajando.'};
  if(c.cause.kind==='over')return{tone:'up',text:'Posible sobrerreacción: '+c.cause.label+'.'};
  if(c.cause.kind==='news')return{tone:'flat',text:'Noticia: '+c.cause.label+(/esperaba más/.test(c.cause.label)?'.':'. Revisa si cambia el negocio.')};

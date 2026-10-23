@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
@@ -2263,6 +2263,7 @@ export default {
     else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/crash-scoreboard")limited=await enforcedRateLimit(request,env,"crash-scoreboard",20,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/catalysts")limited=await enforcedRateLimit(request,env,"catalysts",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fund-search")limited=await enforcedRateLimit(request,env,"fund-search",30,60000,"MARKET_RATE_LIMITER");
@@ -2297,6 +2298,13 @@ export default {
     if (url.pathname === "/api/radar-scoreboard") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await radarScoreboardResponse(env));
+    }
+    if (url.pathname === "/api/catalysts") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try{
+        const keys=String(url.searchParams.get("keys")||"").split(",").slice(0,40);
+        return nativeCorsResponse(request, jsonResponse({items:await catalystReadsFor(env,keys)},200,{"Cache-Control":"public, max-age=300"}));
+      }catch(error){console.warn("Catalysts unavailable",String(error&&error.message||error));return nativeCorsResponse(request, jsonResponse({items:[]},200,{"Cache-Control":"no-store"}))}
     }
     if (url.pathname === "/api/crash-scoreboard") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -2444,6 +2452,8 @@ export default {
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
+    // Lector de catalizadores (dos IAs por evento): pocos cada 15 minutos para no agotar los cupos gratuitos.
+    if(minute%15===7)tasks.push(runCatalystReader(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt));
     // Tras la foto diaria del Radar, el resumen guardado se recalcula en la siguiente consulta.
     tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuantModel:()=>loadQuantModel(env)},scheduledAt).then(async r=>{
       if(r&&r.day){
