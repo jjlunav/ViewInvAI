@@ -53,7 +53,7 @@
  }
  // Índice del catálogo para encontrar todas las empresas que nombra una noticia, no solo las tuyas.
  const SUFFIX=/(,?\s+(inc|incorporated|corp|corporation|company|co|ltd|limited|plc|s\.?a|n\.?v|ag|se|asa|holdings?|group|class [ab]|adr|ads|ordinary shares|common stock)\.?)+$/i;
- const COMMON=new Set(['the','energy','power','global','first','general','united','american','national','international','bank','capital','group','technologies','solutions','systems','pharma','therapeutics','gold','silver','oil','gas','health','care','digital','data','cloud','china','europe','target','block','shell','visa','gap','meta','box','match','snap','square','lucid','sea','ring','compass','genius','trade','republic','federal','reserve','bitcoin','ethereum','market','stock','stocks','index','fund','funds','growth','value','energy']);
+ const COMMON=new Set(['the','energy','power','global','first','general','united','american','national','international','bank','capital','group','technologies','solutions','systems','pharma','therapeutics','gold','silver','oil','gas','health','care','digital','data','cloud','china','europe','target','block','shell','visa','gap','meta','box','match','snap','square','lucid','sea','ring','compass','genius','trade','republic','federal','reserve','bitcoin','ethereum','market','stock','stocks','index','fund','funds','growth','value','energy','action','actions','cours','bourse','acciones','mercado','precio','oferta','alpha','beta','delta','nova','core','prime','pure','next','open','real','north','south','west','east','smart','life','home','free','best','well','clear','bright','vital','mobile','media','news','network','green']);
  const US_EX=/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i;
  let idx=null;
  function catalogIndex(){
@@ -67,7 +67,9 @@
    if(clean.length<3)continue;
    const words=clean.split(/\s+/);
    if(words.length>=2){const k=fold(clean);if(better(multi.get(k),st))multi.set(k,st)}
-   else if(clean.length>=4&&!COMMON.has(clean.toLowerCase())){if(better(single.get(clean),st))single.set(clean,st)}
+   // Un nombre de una sola palabra puede ser una palabra corriente («Action», «Target»): solo cuenta si la
+   // empresa es grande (≥ 2.000 M de capitalización), así se descartan homónimos pequeños de otros países.
+   else if(clean.length>=4&&!COMMON.has(clean.toLowerCase())&&Number(st.marketCap)>=2e9){if(better(single.get(clean),st))single.set(clean,st)}
    // Marcas con mayúscula interna (FuelCell, PayPal): la primera palabra basta.
    if(words.length>=2&&/^[A-Z][a-z]+[A-Z][A-Za-z]+$/.test(words[0])&&!single.has(words[0]))single.set(words[0],st);
    if(US_EX.test(String(st.exchange||''))&&st.ticker)tick.set(String(st.ticker).toUpperCase(),st);
@@ -106,6 +108,20 @@
   // Primero lo que tienes, después favoritos y el resto en el orden en que aparecen.
   return list.sort((a,b)=>(b.held?2:hs.some(h=>h.key===b.key)?1:0)-(a.held?2:hs.some(h=>h.key===a.key)?1:0)).slice(0,6);
  }
+ // Icono de la noticia: tu valor si la noticia lo cita; si no, el primero que nombra el titular
+ // (nunca un favorito que solo sale de pasada en el extracto).
+ function leadTicker(item,cited){
+  const held=cited.find(s=>s.held);if(held)return String(held.ticker||held.clean||'').slice(0,5);
+  let best=null,at=Infinity;const title=String(item.title||''),ft=fold(title);
+  for(const s of cited){
+   const st=typeof stockByKey==='function'?stockByKey(s.key):null;
+   const names=[s.name,st&&st.name].filter(Boolean).map(n=>fold(String(n).replace(SUFFIX,'')).trim()).filter(n=>n.length>=3);
+   let i=Math.min(...names.map(n=>{const k=ft.indexOf(n);return k<0?Infinity:k}),Infinity);
+   const tk=String(s.ticker||'');if(tk){const k=title.indexOf(tk);if(k>=0&&k<i)i=k}
+   if(i<at){at=i;best=s}
+  }
+  return best?String(best.ticker||best.clean||'').slice(0,5):'';
+ }
  function ago(iso){
   const t=Date.parse(iso);if(!Number.isFinite(t))return'';
   const m=Math.max(0,Math.round((Date.now()-t)/60000));
@@ -116,14 +132,14 @@
  function stockChip(s){
   const stock=typeof stockByKey==='function'?stockByKey(s.key):null;
   let ch=null;
-  try{if(stock){const q=canonicalQuote(stock,!!s.preferTr)||{};ch=s.preferTr?Number(q.change):marketChange(stock,currentMarketSession(),false);if(!Number.isFinite(ch))ch=null}}catch(_){}
+  try{if(stock){const q=canonicalQuote(stock,!!s.preferTr)||{};ch=s.preferTr?Number(q.change):marketChange(stock,currentMarketSession(),false);if(!Number.isFinite(ch))ch=Number(stock.changePct);if(!Number.isFinite(ch))ch=null}}catch(_){}
   const cls=ch===null?'flat':ch>0?'up':ch<0?'down':'flat';
   const label=String(s.ticker||s.clean||s.name||'').slice(0,12);
   return '<button type="button" class="news-stock d-chip '+cls+'" data-open-stock="'+esc(s.key)+'" data-stock-prefer-tr="'+(s.preferTr?'1':'0')+'">'+esc(label)+(ch===null?'':' '+(ch>0?'▲':ch<0?'▼':'')+' '+Math.abs(ch).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %')+'</button>';
  }
  function rowHtml(item,hs,cat,i){
   const cited=citedStocks(item,hs),mine=cited.some(s=>s.held);
-  const lead=cited[0]?String(cited[0].ticker||cited[0].clean||'').slice(0,5):'';
+  const lead=leadTicker(item,cited);
   return '<li class="news-row'+(mine?' is-mine':'')+'">'+
    '<button type="button" class="news-main" data-news-read="'+esc(cat)+'|'+i+'" aria-label="Leer en la app: '+esc(item.title)+'">'+
     '<span class="news-tile" data-topic="'+esc(item.topic||'')+'" aria-hidden="true">'+(lead?esc(lead):TOPIC_ICON[item.topic]||'✦')+'</span>'+
@@ -144,11 +160,13 @@
  function headHtml(){
   const d=S.data[S.cat];if(!d||!d.items.length)return'';
   const hs=holdings(),mine=d.items.filter(i=>citedStocks(i,hs).some(s=>s.held));
-  const top=(mine.length?mine:d.items).slice(0,5).map((i,n)=>(n+1)+') '+i.title).join(' ');
-  const question=('Resume estas noticias y dime si afectan a mi cartera y cómo: '+top).slice(0,1100);
   const title=mine.length?(mine.length===1?'1 noticia cita tus valores':mine.length+' noticias citan tus valores'):'Ninguna noticia cita tus valores';
-  const preview=mine.length?mine.slice(0,2).map(i=>i.title).join(' · '):'Toca para que la IA te resuma lo importante de hoy.';
-  const body='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+esc(preview)+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="'+esc(question)+'">¿Cómo me afectan?</button><button type="button" data-ai-ask-q="Resúmeme en tres puntos las noticias de mercado más importantes de hoy.">Resúmeme el día</button></div></div>';
+  // Lectura: qué valores tuyos salen y cuántas veces (sin repetir titulares).
+  const count=new Map();
+  for(const it of mine)for(const s of citedStocks(it,hs).filter(x=>x.held)){const k=s.name||s.ticker;count.set(k,(count.get(k)||0)+1)}
+  const names=[...count].map(([n,c])=>String(n).replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'')+(c>1?' ('+c+')':''));
+  const preview=mine.length?'De tu cartera: '+names.join(', ')+'. Pregunta a la IA qué significa para ti.':'Hoy ninguna noticia nombra tus valores. Pide a la IA el resumen del mercado.';
+  const body='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+esc(preview)+'</p><div class="ai-chips">'+(mine.length?'<button type="button" data-news-ask="mine">¿Cómo me afectan?</button>':'')+'<button type="button" data-news-ask="day">Resúmeme el día</button></div></div>';
   const F=window.ViewInvAIFold;
   return '<section class="d-pulse news-head"><small>Para tu cartera</small><h2>'+esc(title)+'</h2>'+(typeof F==='function'?F('news-ai','Lectura AI',preview,body):body)+'</section>';
  }
@@ -161,7 +179,7 @@
   load(S.cat);
   const tabs='<div class="d-pills news-tabs" role="tablist" aria-label="Categorías de noticias">'+CATS.map(([k,l])=>'<button type="button" role="tab" class="'+(k===S.cat?'active':'')+'" data-news-cat="'+k+'" aria-selected="'+(k===S.cat)+'">'+l+'</button>').join('')+'</div>';
   const d=S.data[S.cat];
-  box.innerHTML=tabs+headHtml()+listHtml(S.cat)+(d?'<p class="tax-hint news-foot">Google News y Bing News · actualizado '+esc(new Date(d.at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+'. Abre cada noticia en su medio.</p>':'');
+  box.innerHTML=tabs+headHtml()+listHtml(S.cat)+(d?'<p class="tax-hint news-foot">Google News y Bing News · actualizado '+esc(new Date(d.at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+'. Toca una noticia para leerla traducida y con la lectura de la IA.</p>':'');
  }
  // Lector dentro de la app: titular y extracto del medio traducidos (data-i18n-content), los valores
  // citados y la lectura de la IA. El artículo completo sigue en su medio (tiene derechos de autor).
@@ -206,7 +224,7 @@
   const cited=citedStocks(it,holdings()).map(s=>(s.ticker||s.clean)+(s.held?' (en cartera)':'')).join(', ');
   const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el extracto; si no basta, dilo. Titular: «'+it.title+'».'+(it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
   try{
-   const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news'})});
+   const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news',news:newsForAi([it]),focus:citedStocks(it,holdings()).map(s=>s.key).filter(Boolean).slice(0,4)})});
    const d=await res.json().catch(()=>({}));
    if(!res.ok)throw new Error(d.error||'La IA no está disponible ahora.');
    reader.ai={answer:d.answer||'Sin respuesta.',keyPoints:d.keyPoints||[]};
@@ -226,6 +244,14 @@
   if(e.target.closest&&e.target.closest('[data-news-close]')){closeReader();return}
   if(e.target.closest&&e.target.closest('#newsReader [data-open-stock]'))setTimeout(closeReader,0);
   if(e.target.closest&&e.target.closest('[data-news-ai]')){explain();return}
+  const na=e.target.closest&&e.target.closest('[data-news-ask]');
+  if(na&&window.ViewInvAIAsk){
+   const d=S.data[S.cat];if(!d)return;
+   const hs=holdings(),mine=d.items.filter(i=>citedStocks(i,hs).some(s=>s.held));
+   if(na.dataset.newsAsk==='mine')window.ViewInvAIAsk.ask('¿Cómo afectan a mi cartera las noticias de hoy sobre mis valores?',{news:newsForAi(mine.slice(0,6))});
+   else window.ViewInvAIAsk.ask('Resúmeme en tres puntos las noticias de mercado más importantes de hoy y si me afectan.',{news:newsForAi(d.items.slice(0,6))});
+   return;
+  }
   const c=e.target.closest&&e.target.closest('[data-news-cat]');
   if(c){S.cat=c.dataset.newsCat;try{localStorage.setItem('viewinvai:news-cat',S.cat)}catch(_){}render();return}
   if(e.target.closest&&e.target.closest('[data-news-retry]')){load(S.cat,true);return}
@@ -235,5 +261,38 @@
  window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='news')render()});
  ['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{S.data={};if(isActive())setTimeout(render,300)}));
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReader()});
- window.ViewInvAINews={citedFor:(title,snippet)=>citedStocks({title,snippet},holdings()).map(x=>(x.ticker||x.name)+(x.held?'*':'')),render,load,miniHtml,closeReader,isReaderOpen:()=>!!document.querySelector('#newsReader.open')};
+ // Para «Pregunta a AI»: valores que nombra el texto del usuario (nombre, «(TICK)» o un ticker de
+ // EE. UU. escrito en mayúsculas, como «PLUG»), más los tuyos que cite por nombre.
+ let firstIdx=null;
+ function mentionKeys(text){
+  const t=String(text||''),out=[];
+  const add=k=>{if(k&&!out.includes(k))out.push(k)};
+  // Tus valores también por su primera palabra («Spero», «TaskUs»): en una pregunta es lo habitual.
+  const ft=' '+fold(t).replace(/[^\p{L}\p{N}]+/gu,' ')+' ';
+  for(const h of holdings()){
+   const w=fold(String(h.clean||'').split(/\s+/)[0]||'');
+   if(mentions(t,h.name,h.ticker)||(h.ticker&&new RegExp('\\b'+String(h.ticker).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(t))||(w.length>=4&&!COMMON.has(w)&&ft.includes(' '+w+' ')))add(h.key);
+  }
+  for(const st of catalogMentions(t))add(typeof stockKey==='function'?stockKey(st):'');
+  const I=catalogIndex(),SKIP=new Set(['IA','AI','ETF','EE','UU','TR','LSX','BCE','FED','IPC','PIB','PER','RSI','USD','EUR','OPA','DCA','TER','CEO','IRPF','UE','EEUU','S','A']);
+  for(const m of t.matchAll(/\b[A-Z]{2,5}\b/g))if(!SKIP.has(m[0])&&I.tick.has(m[0]))add(stockKey(I.tick.get(m[0])));
+  // Y empresas del catálogo por su primera palabra con mayúscula («Ballard», «Nvidia»), la de más capitalización.
+  if(!firstIdx||firstIdx.n!==I.n){
+   const m=new Map();
+   for(const st of (typeof db!=='undefined'&&db.stocks)||[]){
+    const w=String(st&&st.name||'').replace(/^the\s+/i,'').split(/\s+/)[0]||'';const k=fold(w);
+    if(k.length<5||COMMON.has(k))continue;const cur=m.get(k);
+    if(!cur||(Number(st.marketCap)||0)>(Number(cur.marketCap)||0))m.set(k,st);
+   }
+   firstIdx={n:I.n,m};
+  }
+  for(const w of t.match(/\b\p{Lu}[\p{L}\p{N}&-]{4,}/gu)||[]){const st=firstIdx.m.get(fold(w));if(st)add(stockKey(st))}
+  return out.filter(Boolean).slice(0,4);
+ }
+ // Noticias tal cual las ve el usuario, para pasárselas a la IA.
+ function newsForAi(list){
+  const hs=holdings();
+  return list.map(it=>({time:it.time,publisher:it.publisher,title:it.title,snippet:it.snippet||'',stocks:citedStocks(it,hs).map(s=>(s.ticker||s.name)+(s.held?' (en cartera)':''))}));
+ }
+ window.ViewInvAINews={mentionKeys,citedFor:(title,snippet)=>citedStocks({title,snippet},holdings()).map(x=>(x.ticker||x.name)+(x.held?'*':'')),render,load,miniHtml,closeReader,isReaderOpen:()=>!!document.querySelector('#newsReader.open')};
 })();

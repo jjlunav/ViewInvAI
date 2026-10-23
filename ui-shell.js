@@ -60,14 +60,24 @@
  // Móvil: el título va siempre en una línea y con el mismo tamaño. Las secciones de nombre
  // largo usan uno corto (data-short), sin medir ni reajustar: antes se medía y reajustaba en
  // bucle y el título cambiaba de tamaño sin parar.
- const SHORT_TITLES={catalog:'Catálogo LSX',catalogUS:'Catálogo EEUU',funds:'Fondos y ETFs',future:'Potencial futuro',entry:'Radar de entrada',heatmap:'Mapa de calor',crypto:'Criptoactivos'};
+ const SHORT_TITLES={catalog:'Catálogo LSX',catalogUS:'Catálogo EEUU',funds:'Fondos y ETFs',future:'Potencial futuro',entry:'Radar de entrada',heatmap:'Mapa de calor',crypto:'Criptoactivos',crash:'Caídas bruscas'};
  function fitTitle(){
   document.querySelectorAll('.view>.page-heading h1').forEach(h=>{
    const view=h.closest('.view');const id=view&&view.id.replace(/^view-/,'');
    if(SHORT_TITLES[id]&&h.dataset.short!==SHORT_TITLES[id])h.dataset.short=SHORT_TITLES[id];
   });
  }
- function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();fitTitle();apply()}
+ // Móvil: las pestañas quedan fijas bajo la cabecera al bajar (la de secciones y, debajo, la del
+ // mercado o la categoría). Aquí solo se miden las alturas; la posición la pone theme-d.css.
+ function syncMobileSticky(){
+  const v=document.querySelector('.view.active');if(!v)return;
+  if(!mq.matches){v.style.removeProperty('--stick1');v.style.removeProperty('--stick2');return}
+  const head=v.querySelector(':scope>.page-heading'),sw=v.querySelector(':scope>.section-switcher');
+  const h1=head?Math.round(head.getBoundingClientRect().bottom):0;
+  const h2=h1+(sw&&sw.offsetParent?sw.offsetHeight+6:0);
+  v.style.setProperty('--stick1',h1+'px');v.style.setProperty('--stick2',h2+'px');
+ }
+ function reset(){acc=0;lastY=window.scrollY||0;document.body.classList.remove('chrome-hide');syncHeadingInsets();syncDesktopSticky();fitTitle();apply();requestAnimationFrame(syncMobileSticky)}
  window.addEventListener('scroll',onScroll,{passive:true});
  window.addEventListener('resize',reset,{passive:true});
  window.addEventListener('viewinvai:view-changed',reset);

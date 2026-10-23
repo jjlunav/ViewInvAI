@@ -615,3 +615,80 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-ai.is-flat {color:var(--d-warn)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-crash .d-row-ai {white-space:normal;line-height:1.35}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-crash-group>.d-fold {margin:0 0 8px}
+
+/* ---------- Cabecera única: los mismos cuatro botones en todas las pantallas ---------- */
+/* Actualizar, ayuda y formato de lista pasan a «Más» (sección de la pantalla actual). */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view .page-heading .heading-actions,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view>.page-heading>.section-help {display:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea .list-view-top {display:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea :is(.notification-bell,
+.global-search-button,
+.design-more-button,
+.account-button) {width:34px!important;height:34px!important;min-width:34px!important;max-width:34px!important;padding:0!important;border-radius:11px!important;display:grid!important;place-items:center!important;box-shadow:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea :is(.notification-bell,
+.global-search-button,
+.design-more-button) {background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea .account-button {border:1px solid var(--d-hair)!important;overflow:hidden!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea .account-button img {width:100%!important;height:100%!important;border-radius:0!important;object-fit:cover!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #marketBoardSourceTabs[hidden] {display:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen:empty {display:none}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen-row {display:flex;gap:8px;margin:0 0 8px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen-row>button {flex:1 1 0;display:flex;align-items:center;justify-content:center;gap:7px;height:40px;border-radius:12px;background:var(--d-surf);border:1px solid var(--d-hair);color:var(--d-ink);font:700 13px "VI Manrope",sans-serif;cursor:pointer}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen-row>button span {color:var(--d-accent);font-weight:800}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-format {display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--d-segbg);margin:0 0 6px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-format>button {flex:1;height:32px;border-radius:9px;border:0;background:transparent;color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;cursor:pointer}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-format>button.active {background:var(--d-segon);color:var(--d-ink)}
+
+/* ---------- Móvil: pestañas fijas bajo la cabecera (ui-shell.js mide --stick1 y --stick2) ---------- */
+@media (max-width:820px){
+ /* «hidden» en el body lo convierte en contenedor de scroll y anula sticky; «clip» recorta igual sin hacerlo. */
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) {overflow-x:clip!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.section-switcher {position:sticky!important;top:var(--stick1,48px)!important;z-index:40!important;background:linear-gradient(var(--d-segbg),var(--d-segbg)) var(--d-bg)!important;box-shadow:0 -6px 0 var(--d-bg),0 6px 0 var(--d-bg)!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active :is(.radar-market-tabs,
+.news-tabs,
+.market-board-tabs) {position:sticky!important;top:var(--stick2,96px)!important;z-index:39!important;box-shadow:0 -6px 0 var(--d-bg),0 6px 0 var(--d-bg)!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active :is(.radar-market-tabs,
+.market-board-tabs) {background:linear-gradient(var(--d-segbg),var(--d-segbg)) var(--d-bg)!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active .news-tabs {background:var(--d-bg)!important}
+}
+
+/* ---------- Historial (Radar AI y caídas): una fila por señal, columnas fijas ---------- */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent {grid-template-columns:1fr!important;gap:0!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li {grid-template-columns:50px minmax(0,1fr) auto!important;gap:10px!important;padding:8px 2px!important;border-radius:0!important;background:transparent!important;border-top:1px solid var(--d-hair)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li:first-child {border-top:0}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li b {display:grid;min-width:0;font-size:13px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li b small {font-size:11.5px;font-weight:600;color:var(--d-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li i {font-size:12.5px;white-space:nowrap}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .radar-scoreboard-recent li span {font-size:12px;color:var(--d-mut);opacity:1!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-crash-pulse .d-hero-note {margin:2px 0 8px}
+
+/* ---------- Pantallas estrechas (≤ 400 px, la mayoría de Android): todo un punto más compacto ---------- */
+@media (max-width:400px){
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.page-heading h1:not([data-short]),
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.page-heading h1[data-short]::before {font-size:20px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pulse {padding:12px 14px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pulse h2 {font-size:22px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pulse>small {font-size:11.5px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-main {grid-template-columns:34px minmax(0,1fr) auto;gap:9px;padding:9px 0}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-main.d-row-noring,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-main.d-row-simple {grid-template-columns:minmax(0,1fr) auto}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-ring {width:32px!important;height:32px!important;font-size:11px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-text b {font-size:13.5px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-text small {font-size:11px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-ai {font-size:11.5px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-num b {font-size:13.5px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-chip {font-size:11px!important;padding:2px 6px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-group>header h3 {font-size:16px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-tile {width:36px;height:36px;border-radius:11px;font-size:10px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-text b {font-size:13.5px;line-height:1.3}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-text small {font-size:10.5px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) :is(.section-switcher,
+.compact-tabs)>button {font-size:12.5px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills>button {font-size:12px!important;padding:5px 10px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-ask-sheet {font-size:14px}
+}
+/* El título usa todo el ancho que dejan los cuatro botones (antes reservaba sitio para siete). */
+@media (max-width:820px){
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .view.active>.page-heading {padding-right:162px!important}
+}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-more-screen {grid-column:1/-1;display:grid;gap:0}

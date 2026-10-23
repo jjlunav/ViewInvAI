@@ -2563,6 +2563,10 @@ async function ensureRadarScoreboardSchema(env){
     env.DB.prepare("CREATE TABLE IF NOT EXISTS crash_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',score REAL NOT NULL,change_pct REAL NOT NULL,prior_pct REAL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
   ]);
+  // Columnas añadidas después (factores en el momento de la señal); si ya existen, SQLite avisa y se sigue.
+  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL"]){
+    try{await env.DB.prepare("ALTER TABLE radar_signals ADD COLUMN "+col).run()}catch(_){}
+  }
   // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
   if(schemaKey==="radar:turso"){await migrateRadarToCache(env);cacheDbState.radarSyncPending=false}
   cacheSchemaReady.add(schemaKey);
@@ -2583,7 +2587,11 @@ async function migrateRadarToCache(env){
   if(await d1.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='crash_signals'").first())
     tables.push(["crash_signals","id,day,stock_key,ticker,name,kind,label,score,change_pct,prior_pct,price,bench_price,tr_tradable,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d,created_at"]);
   const v=x=>x===undefined?null:x;
-  for(const [table,cols] of tables){
+  for(const [table,base] of tables){
+    // Las columnas añadidas después solo se copian si D1 ya las tiene.
+    const have=new Set(((await d1.prepare("PRAGMA table_info("+table+")").all()).results||[]).map(c=>c.name));
+    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week"].filter(c=>have.has(c)):[];
+    const cols=[base,...extra].join(",");
     const names=cols.split(","),marks=names.map(()=>"?").join(",");
     const rows=(await d1.prepare("SELECT "+cols+" FROM "+table+" WHERE day>=? ORDER BY day").bind(since).all()).results||[];
     for(let i=0;i<rows.length;i+=60)await env.DB.batch(rows.slice(i,i+60).map(r=>env.DB.prepare("INSERT OR IGNORE INTO "+table+" ("+cols+") VALUES ("+marks+")").bind(...names.map(n=>r[n]??null))));
@@ -2642,7 +2650,9 @@ export function radarSignalsForSnapshot(snapshot,nowMs=Date.now()){
       :{tier:"",eligible:false};
     if(!rt.tier)continue;
     rows.push({stock_key:String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),ticker:String(s.ticker||""),name:String(s.name||""),
-      tier:rt.tier==="spec"?"opportunity":rt.tier,score,quality,price,tr_tradable:s.tradeRepublicTradable===true?1:0,speculative:rt.tier==="spec"?1:0});
+      tier:rt.tier==="spec"?"opportunity":rt.tier,score,quality,price,tr_tradable:s.tradeRepublicTradable===true?1:0,speculative:rt.tier==="spec"?1:0,
+      // Lo que tenía el valor al dar la señal, para saber después qué factores aciertan y cuáles no.
+      change_pct:finiteNumber(s.changePct),rel_volume:finiteNumber(s.relVolume),rsi:finiteNumber(s.rsi),perf_week:finiteNumber(s.perfWeek)});
   }
   rows.sort((a,b)=>b.score-a.score||b.quality-a.quality);
   // The screen shows at most 12 opportunities, 15 on watch and 10 speculative per market.
@@ -2755,8 +2765,8 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   // 2) Record today's signals and the benchmark mark.
   const signals=radarSignalsForSnapshot(snapshot,nowMs);
   const inserts=signals.map(r=>env.DB.prepare(
-    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
-  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,now));
+    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,now));
   for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
   // Caídas bruscas: el servidor de mercado las trae calculadas; si es una versión anterior que
   // no las conoce, se calculan sobre el snapshot completo (un paquete parcial no tiene todo el mercado).
@@ -2783,9 +2793,17 @@ function radarStats(rows,h){
 export async function radarScoreboardSummary(env){return onCacheDb(env,radarScoreboardSummaryOn)}
 async function radarScoreboardSummaryOn(env){
   await ensureRadarScoreboardSchema(env);
-  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
   const firstDay=rows.length?rows[rows.length-1].day:null;
+  // Una misma acción puede salir varios días seguidos: «primera señal» cuenta cada valor una sola vez
+  // cada 10 días, para que las repeticiones no inflen ni hundan el acierto.
+  const lastSeen=new Map(),first=new Set();
+  for(const r of rows.slice().reverse()){const t=Date.parse(r.day),prev=lastSeen.get(r.stock_key);if(prev===undefined||t-prev>10*864e5)first.add(r);lastSeen.set(r.stock_key,t)}
   const groups={
+    opportunityFirst:rows.filter(r=>r.tier==="opportunity"&&first.has(r)),
+    score80:rows.filter(r=>r.tier==="opportunity"&&Number(r.score)>=80),
+    chasing:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)>=8),
+    calm:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)<8),
     opportunity:rows.filter(r=>r.tier==="opportunity"),
     opportunitySolid:rows.filter(r=>r.tier==="opportunity"&&Number(r.speculative)===0),
     watch:rows.filter(r=>r.tier==="watch"),
@@ -5866,6 +5884,47 @@ const AI_BRIEF_TTL_MS=3*3600000;
 async function ensureAiBriefSchema(env){
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_briefs (user_id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)").run();
 }
+// Datos de mercado de un valor para la IA (los mismos campos que enseña la ficha).
+function aiStockFacts(s,events=[]){
+  const r=v=>{const x=finiteNumber(v);return x===null?null:Math.round(x*100)/100};
+  return{ticker:String(s.ticker||""),tickerLsx:s.trTicker||null,name:String(s.name||""),exchange:s.exchange||"",currency:s.currency||"USD",sector:s.sector||"",
+    price:r(s.price),changeTodayPct:r(s.changePct),premarketPct:r(s.premarketChangePct),postmarketPct:r(s.postmarketChangePct),
+    perfWeekPct:r(s.perfWeek),perfMonthPct:r(s.perfMonth),perf3mPct:r(s.perf3M),perfYtdPct:r(s.perfYtd),perf1yPct:r(s.perf1Y),
+    high52w:r(s.high52w),low52w:r(s.low52w),marketCap:r(s.marketCap),pe:r(s.peRatio),priceBook:r(s.priceBook),dividendYieldPct:r(s.dividendYield),
+    revenueTtm:r(s.revenueTtm),netIncomeTtm:r(s.netIncomeTtm),rsi:r(s.rsi),relVolume:r(s.relVolume),earningsDate:s.earningsDate||null,
+    tradeRepublic:s.tradeRepublicTradable===true,
+    events:(events||[]).slice(0,5).map(e=>({date:String(e.date||"").slice(0,10),type:e.type||"",title:trimText(e.title||e.fact||"",180)}))};
+}
+async function aiAskExtras(env,services,userId,body){
+  const out={};
+  const tasks=[];
+  // Noticias de tus valores (las mismas de la pantalla Noticias).
+  tasks.push(newsForHoldings(env,userId).then(items=>{
+    out.newsOfYourStocks=items.sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,10)
+      .map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",280),stocks:(x.stocks||[]).map(s=>s.ticker+(s.held?" (en cartera)":" (favorito)"))}));
+  }).catch(()=>{}));
+  // Noticias concretas desde las que pregunta el usuario.
+  const attached=Array.isArray(body.news)?body.news.slice(0,6).map(n=>({time:trimText(n&&n.time,40),publisher:trimText(n&&n.publisher,60),title:decodeHtmlEntities(trimText(n&&n.title,220)),snippet:decodeHtmlEntities(trimText(n&&n.snippet,500)),stocks:Array.isArray(n&&n.stocks)?n.stocks.slice(0,6).map(x=>trimText(x,40)):[]})).filter(n=>n.title):[];
+  if(attached.length)out.newsTheUserIsAsking=attached;
+  // Valores que nombra la pregunta (o la ficha abierta), estén o no en cartera.
+  const focus=(Array.isArray(body.focus)?body.focus:[]).map(k=>trimText(k,120).toUpperCase()).filter(k=>/^[A-Z0-9._-]+:[A-Z0-9._-]+$/.test(k)).slice(0,4);
+  if(focus.length&&services.loadMarketSnapshot){
+    tasks.push((async()=>{
+      const snap=await services.loadMarketSnapshot(env,{targets:focus.map(k=>({stock_key:k})),exact:true});
+      const facts=[];
+      for(const k of focus){
+        const st=findStock(snap,{stock_key:k});if(!st)continue;
+        const evs=(snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===String(st.ticker||"").toUpperCase()).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+        const f=aiStockFacts(st,evs);
+        try{f.news=(await newsForCompany(env,{key:k,ticker:f.ticker,name:newsCleanName(st.name),isin:st.isin||st.usIsin||""},4)).map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",240)}))}catch(_){f.news=[]}
+        facts.push(f);
+      }
+      if(facts.length)out.stocksMentioned=facts;
+    })().catch(error=>console.warn("AI ask focus failed",String(error&&error.message||error))));
+  }
+  await Promise.all(tasks);
+  return out;
+}
 async function aiAskContext(env,services,userId){
   const digest=await buildDailyDigest(env,services,userId).catch(error=>{console.warn("AI ask digest failed",String(error&&error.message||error));return null});
   let alerts=[];
@@ -5876,6 +5935,24 @@ async function aiAskContext(env,services,userId){
   return{now:madrid,currency:"EUR",
     totals:{total:r2(digest.total),stocks:r2(digest.stocksValue),stocksDay:r2(digest.stocksDay),funds:r2(digest.fundsValue),fundsDay:r2(digest.fundsDay),crypto:r2(digest.cryptoValue),crypto24h:r2(digest.cryptoDay),cashApart:r2(digest.cash),positionsWithoutPrice:digest.missing},
     positions:digest.positionsDetail,funds:digest.fundsDetail,crypto:digest.cryptoSymbols,summaryLines:digest.lines,recentAlerts:alerts};
+}
+// Sugerencias válidas: completas (se descartan, no se recortan), escritas como pregunta del usuario
+// y sin tickers que no estén en el contexto (la IA a veces inventa abreviaturas como «PI»).
+export function aiValidFollowUps(list,context,question=""){
+  const known=new Set(),text=JSON.stringify(context||{})+" "+String(question||"");
+  for(const m of text.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g))known.add(m[0]);
+  const ALLOWED=new Set(["IA","AI","ETF","ETFS","EE","UU","EEUU","TR","LSX","BCE","FED","IPC","PIB","PER","RSI","USD","EUR","S&P","OPA","IRPF","FIFO","DCA","TER","SPY","IBEX"]);
+  const out=[];
+  for(const raw of Array.isArray(list)?list:[]){
+    let q=String(raw||"").replace(/\s+/g," ").trim();
+    if(!q||q.length>60)continue;
+    if(/^¿?\s*(quieres|te gustar[ií]a|deseas|necesitas|prefieres|te interesa)/i.test(q))continue;
+    if(!q.startsWith("¿")&&q.endsWith("?"))q="¿"+q;
+    const bad=[...q.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g)].some(m=>!known.has(m[0])&&!ALLOWED.has(m[0]));
+    if(bad||out.some(x=>x.toLowerCase()===q.toLowerCase()))continue;
+    out.push(q);if(out.length>=3)break;
+  }
+  return out;
 }
 async function handleAiAsk(request,env,user,json,services){
   if(request.method!=="POST")return json({error:"Method not allowed"},405);
@@ -5892,31 +5969,36 @@ async function handleAiAsk(request,env,user,json,services){
       if(row&&Date.now()-Date.parse(row.created_at)<AI_BRIEF_TTL_MS){try{return json(Object.assign(JSON.parse(row.payload),{cached:true,createdAt:row.created_at}))}catch(_){}}
     }
   }
-  const context=await aiAskContext(env,services,user.id);
+  const [context,extras]=await Promise.all([aiAskContext(env,services,user.id),mode==="ask"?aiAskExtras(env,services,user.id,body):Promise.resolve({})]);
+  Object.assign(context,extras);
   const rules=[
     "Eres ViewInvAI, el asistente de inversión de la app. Responde SIEMPRE en español de España, claro y breve.",
     "Usa SOLO los datos de «contexto». No inventes precios, noticias, fechas ni hechos. Si falta un dato, dilo.",
     "Cifras en formato español (1.234,56 €). Distingue hechos (datos) de tu valoración.",
     "No des certezas ni órdenes: son ideas para que el usuario decida. No es asesoramiento financiero.",
-    "El efectivo es aparte: no forma parte del valor de las carteras."
+    "El efectivo es aparte: no forma parte del valor de las carteras.",
+    "Noticias: «newsTheUserIsAsking» son las que el usuario está leyendo; «newsOfYourStocks», las de sus valores; «stocksMentioned», datos y noticias de los valores que nombra. Si hay noticias en el contexto, úsalas y cita medio y hora; nunca digas que no hay noticias si las hay.",
+    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos)."
   ];
+  // Preguntas sugeridas: las haría el usuario a la app, cortas y completas.
+  const FOLLOW_RULE="followUps: 3 preguntas que el USUARIO podría hacer a continuación, escritas por él (p. ej. «¿Subo el stop de TaskUs?»), nunca preguntas tuyas al usuario («¿Quieres…?», «¿Te gustaría…?»), de 45 caracteres como máximo, sin cortar palabras y usando solo nombres o tickers que aparezcan en el contexto.";
   let prompt;
   if(mode==="brief"){
     prompt=rules.concat([
       "Tarea: escribe el resumen del día de las carteras del usuario en 2 o 3 frases (máximo 320 caracteres): cuánto vale todo y cómo va hoy, qué posición lo explica, y qué toca hacer según el objetivo o los avisos. Menciona nombres y cifras concretas.",
-      "Devuelve JSON con: summary (texto), followUps (3 preguntas cortas, de menos de 40 caracteres, que el usuario podría hacer a continuación).",
+      "Devuelve JSON con: summary (texto) y followUps.",FOLLOW_RULE,
       "",JSON.stringify({contexto:context})]).join("\n");
   }else{
     prompt=rules.concat([
       "Tarea: responde a la pregunta del usuario sobre sus inversiones o el mercado con el contexto dado"+(view?" (está en la pantalla «"+view+"»)":"")+".",
-      "Devuelve JSON con: answer (texto, máximo 900 caracteres), keyPoints (hasta 4 frases cortas), followUps (3 preguntas cortas de seguimiento).",
+      "Devuelve JSON con: answer (texto, máximo 900 caracteres), keyPoints (hasta 4 frases cortas) y followUps.",FOLLOW_RULE,
       "",JSON.stringify({pregunta:question,conversacion:history,contexto:context})]).join("\n");
   }
   try{
     const run=await aiRoute(env,{prompt,maxTokens:mode==="brief"?400:900,json:true,task:"decision"});
     const parsed=extractAiJson(run.text);
     if(!parsed)throw new Error("AI response is not valid JSON");
-    const followUps=(Array.isArray(parsed.followUps)?parsed.followUps:[]).map(x=>trimText(x,60)).filter(Boolean).slice(0,3);
+    const followUps=aiValidFollowUps(parsed.followUps,context,question);
     const model=run.provider+" · "+run.model;
     if(mode==="brief"){
       const summary=trimText(parsed.summary||"",420);
@@ -7071,9 +7153,21 @@ const ISIN_LANG={DE:["de","DE"],AT:["de","AT"],CH:["de","CH"],ES:["es","ES"],FR:
   NO:["no","NO"],SE:["sv","SE"],DK:["da","DK"],FI:["fi","FI"],PT:["pt-PT","PT"],GB:["en-GB","GB"],IE:["en-GB","IE"],CA:["en-CA","CA"],AU:["en-AU","AU"],JP:["ja","JP"]};
 // Noticias por RSS, gratis y sin clave: Google News y, si falla o no trae nada, Bing News.
 const RSS_HEADERS={"Accept":"application/rss+xml, application/xml;q=0.9, */*;q=0.8","User-Agent":"Mozilla/5.0 (compatible; ViewInvAI/1.0; +https://viewinvai.sonarlab.workers.dev)"};
+// Entidades HTML, también las codificadas dos veces («&amp;#225;» llega así de Google News).
+const HTML_NAMED={amp:"&",lt:"<",gt:">",quot:'"',apos:"'",nbsp:" ",aacute:"á",eacute:"é",iacute:"í",oacute:"ó",uacute:"ú",Aacute:"Á",Eacute:"É",Iacute:"Í",Oacute:"Ó",Uacute:"Ú",ntilde:"ñ",Ntilde:"Ñ",uuml:"ü",Uuml:"Ü",ccedil:"ç",agrave:"à",egrave:"è",ograve:"ò",iexcl:"¡",iquest:"¿",laquo:"«",raquo:"»",ldquo:"“",rdquo:"”",lsquo:"‘",rsquo:"’",hellip:"…",ndash:"–",mdash:"—",euro:"€",ordm:"º",ordf:"ª",deg:"°"};
+export function decodeHtmlEntities(text){
+  let out=String(text||"");
+  for(let i=0;i<3&&/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(out);i++){
+    out=out.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi,(m,e)=>{
+      if(e[0]==="#"){const n=e[1]==="x"||e[1]==="X"?parseInt(e.slice(2),16):parseInt(e.slice(1),10);return n>0&&n<0x110000?String.fromCodePoint(n):m}
+      return Object.prototype.hasOwnProperty.call(HTML_NAMED,e)?HTML_NAMED[e]:m;
+    });
+  }
+  return out;
+}
 function rssTag(item,name){const m=item.match(new RegExp("<"+name+"[^>]*>([\\s\\S]*?)</"+name+">"));if(!m)return"";
   // Primero se decodifican las entidades (la descripción trae HTML escapado) y después se quitan las etiquetas.
-  return m[1].replace(/<!\[CDATA\[|\]\]>/g,"").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,"&").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
+  return decodeHtmlEntities(m[1].replace(/<!\[CDATA\[|\]\]>/g,"")).replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
 function rssItems(xml,source,linkOf){
   return (String(xml||"").match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,6).map(item=>{
     const pub=Date.parse(rssTag(item,"pubDate")),src=rssTag(item,"source")||rssTag(item,"News:Source");
@@ -7108,10 +7202,16 @@ async function googleNewsRss(env,query,isin){
 // Sin fotos de prensa (tienen derechos): título, medio, hora y los valores que cita. Caché de 20 min.
 const NEWS_TTL_MS=20*60000;
 const NEWS_TOPICS={
-  latest:'bolsa OR "Wall Street" OR Ibex OR Nasdaq',
-  macro:'BCE OR "Reserva Federal" OR inflación OR PMI OR "tipos de interés" OR empleo',
+  latest:'bolsa OR "Wall Street" OR Ibex OR Nasdaq OR "S&P 500"',
+  macro:'BCE OR "Reserva Federal" OR Fed OR inflación OR IPC OR PMI OR "tipos de interés" OR PIB OR "datos de empleo"',
   crypto:'bitcoin OR ethereum OR criptomonedas'
 };
+// Una noticia de tema (no de tus valores) solo entra si es de mercados o economía: Google mezcla
+// sucesos, política o empleo local de medios latinoamericanos cuando la consulta lleva «empleo».
+const NEWS_FINANCE=/\b(bolsas?|burs[aá]til|mercados?|acci[oó]n(es)?|[ií]ndices?|ibex|wall street|nasdaq|dow jones|s&p|stoxx|dax|nikkei|euro ?stoxx|bce|fed|reserva federal|banco central|tipos? de inter[eé]s|inflaci[oó]n|ipc|pmi|pib|recesi[oó]n|deuda|bonos?|rentabilidad|divisas?|euro|d[oó]lar|petr[oó]leo|crudo|brent|oro|materias primas|aranceles?|resultados|beneficios?|ingresos|facturaci[oó]n|dividendos?|opa|cotiza|inversores?|inversi[oó]n|fondos?|etf|bitcoin|ethereum|cripto\w*|empresas?|compañ[ií]as?|sector|banca|bancos?|el[eé]ctricas?|tecnol[oó]gicas?|econom[ií]a|econ[oó]mic[oa]s?|paro|desempleo|empleo en (ee\.? ?uu\.?|estados unidos|la eurozona|españa)|n[oó]minas)\b/i;
+// Páginas de cotización o fichas («Cours Spero Therapeutics», «AAPL Stock Price & Quote»): no son noticias.
+const NEWS_QUOTE_PAGE=/^(cours|cotizaci[oó]n( de| en tiempo real)?|precio de (la )?acci[oó]n|kurs|quote)\b|\b(stock (price|quote)|share price|price & news|quote & (news|history)|cotizaci[oó]n en tiempo real|historical (prices|data))\b/i;
+function newsIsQuotePage(item){return NEWS_QUOTE_PAGE.test(String(item&&item.title||""))}
 function newsRssItems(xml,source,linkOf,limit=20){
   return (String(xml||"").match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,limit).map(item=>{
     const pub=Date.parse(rssTag(item,"pubDate"));
@@ -7156,30 +7256,36 @@ function newsMentions(text,c){
   return tk.length>=2&&new RegExp("(\\("+tk+"\\)|:"+tk+"\\b)").test(String(text||""));
 }
 const newsCleanName=n=>String(n||"").replace(/,?\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?|group|co\.?)$/i,"").trim();
+// Noticias de los valores del usuario: posiciones abiertas primero y luego favoritos, hasta 8
+// empresas distintas, cada una buscada en el idioma del país de su ISIN. Las comparten la pantalla
+// de Noticias y la IA (así la IA ve exactamente lo que ve el usuario).
+function newsClean(x){return{...x,title:decodeHtmlEntities(x.title),snippet:decodeHtmlEntities(x.snippet||""),publisher:decodeHtmlEntities(x.publisher||"")}}
+async function newsForCompany(env,c,limit=4){
+  const [hl,gl]=ISIN_LANG[String(c.isin||"").slice(0,2)]||["en-US","US"];
+  const items=await newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5));
+  // Solo noticias que nombran de verdad a la empresa: Google también devuelve artículos de
+  // competidoras o del sector, y esos no pueden marcarse como «de tus valores».
+  return items.map(newsClean).filter(x=>!newsIsQuotePage(x)&&newsMentions(x.title+" "+(x.snippet||""),c)).slice(0,limit)
+    .map(x=>({...x,topic:"mine",stocks:[{key:c.key,ticker:c.ticker,name:c.name,held:!!c.held}]}));
+}
+async function newsForHoldings(env,userId){
+  const [pos,fav]=await Promise.all([
+    env.DB.prepare("SELECT stock_key,ticker,name,isin FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(userId).all(),
+    env.DB.prepare("SELECT stock_key,ticker,name,isin FROM watchlist WHERE user_id=? ORDER BY created_at DESC").bind(userId).all()]);
+  const seen=new Set(),list=[];
+  for(const [r,held] of [...(pos.results||[]).map(r=>[r,true]),...(fav.results||[]).map(r=>[r,false])]){
+    const name=newsCleanName(r.name);if(!name||name.length<3)continue;
+    const k=name.toLowerCase();if(seen.has(k))continue;seen.add(k);list.push({key:r.stock_key,ticker:String(r.ticker||"").toUpperCase(),name,isin:String(r.isin||"").toUpperCase(),held});
+    if(list.length>=8)break;
+  }
+  return(await Promise.all(list.map(c=>newsForCompany(env,c).catch(()=>[])))).flat();
+}
 async function handleNews(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   const cat=["foryou","mine","latest","macro","crypto"].includes(url.searchParams.get("cat"))?url.searchParams.get("cat"):"foryou";
-  const topic=async t=>(await newsCached(env,"topic:"+t,()=>newsSearch(env,NEWS_TOPICS[t]))).map(x=>({...x,topic:t}));
-  // Mis valores: posiciones abiertas primero y luego favoritos, hasta 8 empresas distintas.
-  const mine=async()=>{
-    const [pos,fav]=await Promise.all([
-      env.DB.prepare("SELECT stock_key,ticker,name,isin FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id).all(),
-      env.DB.prepare("SELECT stock_key,ticker,name,isin FROM watchlist WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all()]);
-    const seen=new Set(),list=[];
-    for(const [r,held] of [...(pos.results||[]).map(r=>[r,true]),...(fav.results||[]).map(r=>[r,false])]){
-      const name=newsCleanName(r.name);if(!name||name.length<3)continue;
-      const k=name.toLowerCase();if(seen.has(k))continue;seen.add(k);list.push({key:r.stock_key,ticker:String(r.ticker||"").toUpperCase(),name,isin:String(r.isin||"").toUpperCase(),held});
-      if(list.length>=8)break;
-    }
-    const groups=await Promise.all(list.map(async c=>{
-      const [hl,gl]=ISIN_LANG[c.isin.slice(0,2)]||["en-US","US"];
-      const items=await newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5));
-      // Solo noticias que nombran de verdad a la empresa: Google también devuelve artículos de
-      // competidoras o del sector, y esos no pueden marcarse como «de tus valores».
-      return items.filter(x=>newsMentions(x.title+" "+(x.snippet||""),c)).slice(0,4).map(x=>({...x,topic:"mine",stocks:[{key:c.key,ticker:c.ticker,name:c.name,held:c.held}]}));
-    }));
-    return groups.flat();
-  };
+  const topic=async t=>(await newsCached(env,"topic:"+t,()=>newsSearch(env,NEWS_TOPICS[t]))).map(newsClean)
+    .filter(x=>!newsIsQuotePage(x)&&(t==="crypto"||NEWS_FINANCE.test(x.title+" "+x.snippet))).map(x=>({...x,topic:t}));
+  const mine=()=>newsForHoldings(env,user.id);
   let items=[];
   if(cat==="mine")items=await mine();
   else if(cat==="foryou"){

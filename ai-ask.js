@@ -87,12 +87,23 @@
   document.body.classList.toggle('ai-ask-open',open);
   if(open){paintLog();setTimeout(()=>{const i=document.getElementById('aiAskInput');if(i&&!('ontouchstart' in window))i.focus()},120)}
  }
- async function ask(question){
+ // Valores de los que trata la pregunta: los que nombra (o los de las preguntas anteriores) y la ficha
+ // abierta. El servidor añade sus datos de mercado y sus noticias aunque no estén en cartera.
+ function focusKeys(question){
+  const keys=[];
+  try{const N=window.ViewInvAINews;if(N&&N.mentionKeys){
+   for(const k of N.mentionKeys(question))if(!keys.includes(k))keys.push(k);
+   if(!keys.length)for(const m of S.history.filter(x=>x.role==='user').slice(-2).reverse())for(const k of N.mentionKeys(m.content))if(!keys.includes(k))keys.push(k);
+  }}catch(_){}
+  try{if(view()==='profile'&&state.profileKey&&!keys.includes(state.profileKey))keys.unshift(state.profileKey)}catch(_){}
+  return keys.slice(0,4);
+ }
+ async function ask(question,opts={}){
   question=String(question||'').trim();if(!question||S.busy)return;
   toggle(true);
   const prior=S.history.filter(m=>!m.error).slice(-6).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}));
   S.history.push({role:'user',content:question});S.busy=true;paintLog();
-  try{const d=await post({mode:'ask',question,history:prior,view:view()});S.history.push({role:'ai',content:d.answer||'Sin respuesta.',keyPoints:d.keyPoints,followUps:d.followUps,model:d.model})}
+  try{const d=await post({mode:'ask',question,history:prior,view:view(),focus:focusKeys(question),news:Array.isArray(opts.news)?opts.news.slice(0,6):undefined});S.history.push({role:'ai',content:d.answer||'Sin respuesta.',keyPoints:d.keyPoints,followUps:d.followUps,model:d.model})}
   catch(error){S.history.push({role:'ai',content:error.message,error:true})}
   finally{S.busy=false;paintLog()}
  }

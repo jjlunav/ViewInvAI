@@ -2,7 +2,7 @@
 // Usa SQLite en memoria con la misma interfaz que D1 (prepare/bind/first/all/run/batch).
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { runRadarScoreboard, crashScoreboardSummary, crashSignalsForSnapshot } from "../backend.js";
+import { runRadarScoreboard, crashScoreboardSummary, crashSignalsForSnapshot, radarScoreboardSummary } from "../backend.js";
 
 function d1(){
   const db=new DatabaseSync(":memory:");
@@ -63,4 +63,9 @@ assert.equal(sum.stats.all["5d"].n,5);
 assert.equal(sum.recent.find(x=>x.ticker==="OVER").kind,"over");
 // El Radar AI sigue igual: su marca diaria se guarda junto a la de las caídas.
 assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM radar_bench").get().n,6);
+// El resumen del Radar AI con los factores nuevos (columnas añadidas con ALTER) sigue funcionando.
+const radar=await radarScoreboardSummary(env);
+for(const k of ["opportunityFirst","score80","chasing","calm","opportunity","watch"])assert.ok(radar.stats[k]&&radar.stats[k]["1d"],"grupo "+k);
+const cols=env.DB.raw.prepare("PRAGMA table_info(radar_signals)").all().map(c=>c.name);
+for(const c of ["change_pct","rel_volume","rsi","perf_week"])assert.ok(cols.includes(c),"columna "+c);
 console.log("crash scoreboard ok:",JSON.stringify(sum.stats.over["5d"]));
