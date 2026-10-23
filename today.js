@@ -193,6 +193,8 @@
   return day+' · '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
  }
  function agendaHtmlD(sum){
+  // «en tu cartera» solo con posición abierta; lo que solo está en favoritos se dice así.
+  const held=new Set((sum&&sum.positionKeys)||[]);
   const keys=new Set((sum&&sum.stockKeys)||[]),now=Date.now(),limit=now+14*864e5;
   const upcoming=(db.events||[]).filter(e=>{const t=new Date(e.date).getTime();return t>=now-3600e3&&t<=limit});
   const mine=keys.size?upcoming.filter(e=>{const s=stockForEvent(e);return s&&keys.has(stockKey(s))}):[];
@@ -202,7 +204,7 @@
   const card=e=>{
    const s=stockForEvent(e);if(!s)return'';
    const ticker=s.ticker||s.trTicker||'',when=String(eventWhen(e)||'').replace('/'+new Date().getFullYear(),'');
-   return '<button type="button" class="d-agenda-card" data-open-stock="'+E(stockKey(s))+'"><small>'+E(when)+'</small><b>'+E(EL(e))+'</b><span>'+E(ticker)+(keys.has(stockKey(s))?' · en tu cartera':'')+'</span></button>';
+   return '<button type="button" class="d-agenda-card" data-open-stock="'+E(stockKey(s))+'"><small>'+E(when)+'</small><b>'+E(EL(e))+'</b><span>'+E(ticker)+(held.has(stockKey(s))?' · en tu cartera':keys.has(stockKey(s))?' · en favoritos':'')+'</span></button>';
   };
   const macroCard=e=>'<div class="d-agenda-card is-macro"><small>'+E(macroWhen(e.time))+'</small><b data-i18n-content>'+E(e.title)+'</b><span>'+E(e.country)+(e.forecast?' · prev. '+E(e.forecast):'')+(e.previous?' · ant. '+E(e.previous):'')+'</span></div>';
   // Macro y catalizadores juntos, por fecha.

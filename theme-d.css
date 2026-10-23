@@ -609,3 +609,4 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-reader-ai ul {margin:8px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45;color:var(--d-ink)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-reader-ai .btn {margin-top:8px}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .news-reader-source {display:flex!important;justify-content:center;text-decoration:none}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-stats b {white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere;font-size:clamp(13px,3.7vw,15px)!important;line-height:1.2}

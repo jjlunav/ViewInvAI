@@ -7082,13 +7082,21 @@ async function newsSearch(env,query,hl="es-ES",gl="ES",limit=20){
   }catch(error){await recordProviderUse(env,"bingnews",false,String(error&&error.message||error));return[]}
 }
 async function newsCached(env,key,fn){
-  const bucket=Math.floor(Date.now()/NEWS_TTL_MS),ck="news2:"+key+":"+bucket;
+  const bucket=Math.floor(Date.now()/NEWS_TTL_MS),ck="news3:"+key+":"+bucket;
   try{const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(ck).first()});
     if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(Array.isArray(p))return p}}catch(_){}
   const items=await fn();
   if(items.length){try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
     return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(ck,"news:"+key,JSON.stringify(items),nowIso()).run()})}catch(_){}}
   return items;
+}
+function newsMentions(text,c){
+  const t=" "+String(text||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()+" ";
+  const name=String(c.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  if(name.length>=3){const esc=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");if(new RegExp("[^\\p{L}\\p{N}]"+esc+"[^\\p{L}\\p{N}]","u").test(t))return true}
+  // El ticker solo cuenta escrito como ticker: «(TASK)» o «NASDAQ:TASK», nunca como palabra suelta.
+  const tk=String(c.ticker||"").toUpperCase();
+  return tk.length>=2&&new RegExp("(\\("+tk+"\\)|:"+tk+"\\b)").test(String(text||""));
 }
 const newsCleanName=n=>String(n||"").replace(/,?\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?|group|co\.?)$/i,"").trim();
 async function handleNews(request,env,user,json,url){
@@ -7109,7 +7117,9 @@ async function handleNews(request,env,user,json,url){
     const groups=await Promise.all(list.map(async c=>{
       const [hl,gl]=ISIN_LANG[c.isin.slice(0,2)]||["en-US","US"];
       const items=await newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5));
-      return items.slice(0,4).map(x=>({...x,topic:"mine",stocks:[{key:c.key,ticker:c.ticker,name:c.name,held:c.held}]}));
+      // Solo noticias que nombran de verdad a la empresa: Google también devuelve artículos de
+      // competidoras o del sector, y esos no pueden marcarse como «de tus valores».
+      return items.filter(x=>newsMentions(x.title+" "+(x.snippet||""),c)).slice(0,4).map(x=>({...x,topic:"mine",stocks:[{key:c.key,ticker:c.ticker,name:c.name,held:c.held}]}));
     }));
     return groups.flat();
   };

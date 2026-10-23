@@ -4424,7 +4424,9 @@ function dRing(score,label){
   const n=Math.max(0,Math.min(100,Math.round(score)));
   return'<em class="ai-score d-ring" data-band="'+(n>=80?"high":n>=60?"mid":"low")+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>';
 }
-function dRowDetailHtml(r){
+// Filas desplegadas: se recuerdan aunque Carteras se repinte al llegar cotizaciones.
+const dOpenRows=new Set();let dOpenScrollY=null;
+function dRowDetailHtml(r,open=false){
   const p=r.p,avg=num(p.avg_price),qty=r.qty,cur=String(p.currency||(r.preferTr?"EUR":"USD")).toUpperCase();
   const fee=brokerFeeInCurrency(p.broker,qty,avg,cur,"BUY",p.exchange||"");
   const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(fee.fee??0):null),fees=num(p.fees_total)??(fee.fee??0);
@@ -4439,7 +4441,7 @@ function dRowDetailHtml(r){
     if(price!==null&&avg)vsAvg=(price/avg-1)*100;
   }
   const cell=(label,value,cls="")=>'<div'+(cls?' class="'+cls+'"':'')+'><small>'+label+'</small><b>'+value+'</b></div>';
-  return '<div class="d-row-detail" hidden>'+
+  return '<div class="d-row-detail"'+(open?'':' hidden')+'>'+
     '<div class="d-row-quote">'+quote+'</div>'+
     '<div class="d-row-cells">'+
       cell("Precio medio",esc(formatMoney(avg,cur)))+cell("Coste",esc(formatMoney(cost,cur)))+cell("Comisiones",esc(formatMoney(fees,cur)))+
@@ -4453,12 +4455,13 @@ function dRowDetailHtml(r){
 function dRowHtml(r){
   const qtyTxt=r.qty===null?"":formatNumber(r.qty,r.qty%1?4:0)+(r.etf?" uds.":" acc.");
   const open=r.stock?' data-portfolio-stock-profile="'+esc(r.p.stock_key)+'" data-profile-prefer-tr="'+(r.preferTr?"1":"0")+'"':' data-position-transactions="'+esc(r.p.id)+'"';
-  return'<li class="d-row d-position" data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
+  const isOpen=dOpenRows.has(String(r.p.id));
+  return'<li class="d-row d-position'+(isOpen?' open':'')+'" data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
     '<span class="d-row-text"><b>'+esc(r.name)+'</b><small>'+esc([qtyTxt,r.venue].filter(Boolean).join(" · "))+'</small>'+
     (r.verdict?'<i class="d-row-ai">✦ '+esc(r.verdict)+'</i>':'')+'</span>'+
     '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null?'<small>sin precio</small>':dChip(r.pnl,{pct:r.pnlPct}))+'</span></button>'+
-    '<button type="button" class="d-row-toggle" data-d-row-toggle aria-expanded="false" aria-label="Más datos de '+esc(r.name)+'" title="Precio, coste, comisiones y operaciones">▾</button>'+
-    dRowDetailHtml(r)+'</li>';
+    '<button type="button" class="d-row-toggle" data-d-row-toggle aria-expanded="'+(isOpen?'true':'false')+'" aria-label="Más datos de '+esc(r.name)+'" title="Precio, coste, comisiones y operaciones">▾</button>'+
+    dRowDetailHtml(r,isOpen)+'</li>';
 }
 function dFundRowHtml(f){
   return'<li class="d-row"><button type="button" class="d-row-main" data-portfolio-asset="funds" aria-label="Abrir Fondos">'+dRing(null,f.kind)+
@@ -4628,8 +4631,18 @@ document.addEventListener('click',event=>{
   const t=event.target.closest&&event.target.closest('[data-d-row-toggle]');if(!t)return;
   const li=t.closest('.d-row'),detail=li&&li.querySelector('.d-row-detail');if(!detail)return;
   const open=detail.hidden;detail.hidden=!open;li.classList.toggle('open',open);t.setAttribute('aria-expanded',open?'true':'false');
+  const id=String(li.dataset.positionId||'');if(id){if(open)dOpenRows.add(id);else dOpenRows.delete(id)}
+  dOpenScrollY=dOpenRows.size?window.scrollY:null;
   if(open&&window.ViewInvAI&&typeof window.ViewInvAI.observeLiveQuotes==="function")window.ViewInvAI.observeLiveQuotes(detail);
 });
+// Se pliegan solas solo cuando ya te has ido: al desplazarte un 30 % de la pantalla desde donde
+// las abriste (o con la flecha). Una cotización nueva nunca las cierra.
+window.addEventListener('scroll',()=>{
+  if(!dOpenRows.size||dOpenScrollY===null)return;
+  if(Math.abs(window.scrollY-dOpenScrollY)<window.innerHeight*0.3)return;
+  dOpenRows.clear();dOpenScrollY=null;
+  document.querySelectorAll('.d-position.open').forEach(li=>{li.classList.remove('open');const d=li.querySelector('.d-row-detail');if(d)d.hidden=true;const t=li.querySelector('[data-d-row-toggle]');if(t)t.setAttribute('aria-expanded','false')});
+},{passive:true});
 document.addEventListener('click',event=>{
   if(event.target.closest&&event.target.closest('.d-more-menu button')){const d=event.target.closest('details');if(d)d.open=false}
 });
