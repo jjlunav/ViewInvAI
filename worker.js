@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
@@ -1918,33 +1918,37 @@ function overlayMarketLive(snapshot,live){
   snapshot.meta=Object.assign({},snapshot.meta||{},{liveUpdatedAt:live.updatedAt});
   return snapshot;
 }
-let radarScoreboardMemo={at:0,value:null};
 // v2 y con caducidad: la clave anterior se guardaba sin fecha de caducidad y el marcador se
 // quedaba congelado en el primer resumen calculado.
 const RADAR_SCOREBOARD_KV_KEY="radar:scoreboard:summary:v2";
-async function radarScoreboardResponse(env){
+const CRASH_SCOREBOARD_KV_KEY="radar:crash-scoreboard:summary:v1";
+const scoreboardMemo=new Map();
+async function scoreboardResponse(env,kvKey,summarize,label){
   try{
-    if(!radarScoreboardMemo.value||Date.now()-radarScoreboardMemo.at>10*60000){
+    const memo=scoreboardMemo.get(kvKey);
+    if(!memo||Date.now()-memo.at>10*60000){
       let value=null;
       if(env.HOT_STATE_KV){
-        try{value=await env.HOT_STATE_KV.get(RADAR_SCOREBOARD_KV_KEY,"json")}
-        catch(error){console.warn("Radar scoreboard KV read fallback",String(error&&error.message||error))}
+        try{value=await env.HOT_STATE_KV.get(kvKey,"json")}
+        catch(error){console.warn(label+" KV read fallback",String(error&&error.message||error))}
       }
       if(!value){
-        value=await radarScoreboardSummary(env);
+        value=await summarize(env);
         if(env.HOT_STATE_KV){
-          try{await env.HOT_STATE_KV.put(RADAR_SCOREBOARD_KV_KEY,JSON.stringify(value),{expirationTtl:1800})}
-          catch(error){console.warn("Radar scoreboard KV warm failed",String(error&&error.message||error))}
+          try{await env.HOT_STATE_KV.put(kvKey,JSON.stringify(value),{expirationTtl:1800})}
+          catch(error){console.warn(label+" KV warm failed",String(error&&error.message||error))}
         }
       }
-      radarScoreboardMemo={at:Date.now(),value};
+      scoreboardMemo.set(kvKey,{at:Date.now(),value});
     }
-    return jsonResponse(radarScoreboardMemo.value,200,{"Cache-Control":"public, max-age=300"});
+    return jsonResponse(scoreboardMemo.get(kvKey).value,200,{"Cache-Control":"public, max-age=300"});
   }catch(error){
-    console.warn("Radar scoreboard unavailable",String(error&&error.message||error));
+    console.warn(label+" unavailable",String(error&&error.message||error));
     return jsonResponse({error:"Marcador no disponible"},503,{"Cache-Control":"no-store"});
   }
 }
+const radarScoreboardResponse=env=>scoreboardResponse(env,RADAR_SCOREBOARD_KV_KEY,radarScoreboardSummary,"Radar scoreboard");
+const crashScoreboardResponse=env=>scoreboardResponse(env,CRASH_SCOREBOARD_KV_KEY,crashScoreboardSummary,"Crash scoreboard");
 async function marketLiveResponse(env){
   try{
     const raw=await marketLiveRaw(env);
@@ -2247,6 +2251,7 @@ export default {
     else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/crash-scoreboard")limited=await enforcedRateLimit(request,env,"crash-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-chart"||url.pathname==="/api/tr-history")limited=await enforcedRateLimit(request,env,"chart",60,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/fund-search")limited=await enforcedRateLimit(request,env,"fund-search",30,60000,"MARKET_RATE_LIMITER");
@@ -2280,6 +2285,10 @@ export default {
     if (url.pathname === "/api/radar-scoreboard") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await radarScoreboardResponse(env));
+    }
+    if (url.pathname === "/api/crash-scoreboard") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await crashScoreboardResponse(env));
     }
     if (url.pathname === "/api/market-dispatch-status") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -2425,7 +2434,10 @@ export default {
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
     // Tras la foto diaria del Radar, el resumen guardado se recalcula en la siguiente consulta.
     tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend},scheduledAt).then(async r=>{
-      if(r&&r.day&&env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY)}catch(_){}}
+      if(r&&r.day){
+        scoreboardMemo.clear();
+        if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY);await env.HOT_STATE_KV.delete(CRASH_SCOREBOARD_KV_KEY)}catch(_){}}
+      }
       return r;
     }));
     if(minute===17)tasks.push(runScheduledBrokerVerification(env,{limit:2}));

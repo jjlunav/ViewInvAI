@@ -34,6 +34,7 @@ jobs:
           node --check events.js
           node --check stock-list.js
           node scripts/test-session-quotes.mjs
+          node scripts/test-crash-scoreboard.mjs
           node --check asset-card.js
           node --check recommendation.js
           node --check help.js

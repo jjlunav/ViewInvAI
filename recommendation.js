@@ -717,22 +717,7 @@ function radarAiShellD(rows,mode,counts,visible){
 // fallido, rechazo FDA, ampliación/dilución, previsiones recortadas, riesgo legal o contable) suele
 // seguir bajando; si es de interpretación (rebaja de analista, resultados por debajo de lo
 // esperado, venta del sector o del mercado) es más frecuente el rebote. No es una recomendación.
-const CRASH_MIN=-25;
-const CRASH_TRAPS=[
- [/\bdid not (meet|achieve)\b|\bfail(s|ed|ure)?\b|\bmissed (its |the )?primary\b|\bdiscontinu|\bterminat(e|ed|es) (the )?(trial|study|program)\b|\bfutility\b/i,'Ensayo o programa fallido'],
- [/\bcomplete response letter\b|\bcrl\b|\brefus(e|al) to file\b|\bfda (rejects|declines)\b|\bnot approv/i,'Rechazo de la FDA'],
- [/\boffering\b|\bdilut|\bregistered direct\b|\bprivate placement\b|\bat-the-market\b|\batm\b|\bprospectus\b|\b424B\d\b|\bconvertible (notes|debentures|preferred)\b/i,'Ampliación de capital / dilución'],
- [/\bgoing concern\b|\bbankrupt|\bchapter 11\b|\binsolven|\bin default\b|\bdefaulted\b|\bdelist/i,'Riesgo de quiebra o exclusión'],
- [/\bfraud|\binvestigation\b|\bsubpoena|\brestat(e|es|ed|ement)\b|\bsec charges\b|\bclass action\b|\baccounting (irregularit|issue|error)/i,'Riesgo legal o contable'],
- [/(cuts?|lowers?|slashes?|withdraws?|suspends?) (its |full[- ]year |annual )?(guidance|outlook|forecast)|guidance cut|profit warning/i,'Previsiones recortadas'],
- [/reverse (stock )?split/i,'Contrasplit']
-];
-const CRASH_OVERS=[
- [/\bdowngrade|\bcut to (sell|neutral|hold|underperform)\b|\blowers? (its )?price target\b/i,'Rebaja de un analista'],
- [/\bmiss(es|ed)? (estimates|expectations|consensus)\b|\bbelow (estimates|expectations|consensus)\b|\bdisappoint/i,'Resultados por debajo de lo esperado'],
- [/\bshort (seller|report)\b|\bhindenburg\b|\bmuddy waters\b/i,'Informe bajista (por contrastar)'],
- [/\bsector[- ]wide\b|\bpeers\b|\bsell-?off\b|\bmarket rout\b|\btariffs?\b|\binterest rates\b/i,'Venta del sector o del mercado']
-];
+const CRASH=window.ViewInvAIScore;
 let crashEventsIdx=null;
 function crashEventsFor(s){
  const n=(db.events||[]).length;
@@ -743,36 +728,19 @@ function crashEventsFor(s){
  }
  return crashEventsIdx.m.get(stockKey(s))||[];
 }
-function crashCause(s){
- const evs=crashEventsFor(s);
- for(const e of evs){const t=String(e.title||e.fact||'');for(const [re,label] of CRASH_TRAPS)if(re.test(t)||(label.startsWith('Ampliación')&&e.type==='financing'))return{kind:'trap',label,title:t}}
- for(const e of evs){const t=String(e.title||e.fact||'');for(const [re,label] of CRASH_OVERS)if(re.test(t)||(label.startsWith('Rebaja')&&e.type==='analyst'))return{kind:'over',label,title:t}}
- for(const e of evs){const t=String(e.title||e.fact||'');if(/\b(positive|beats?|approv(al|ed)|record|raises?)\b/i.test(t))return{kind:'news',label:EL(e)+' con buena noticia, pero cae: el mercado esperaba más',title:t}}
- if(evs.length){const e=evs[0];return{kind:'news',label:EL(e),title:String(e.title||e.fact||'')}}
- return{kind:'none',label:'Sin motivo publicado todavía',title:''};
-}
+function crashCause(s){return CRASH.crashCause(crashEventsFor(s),EL)}
 function crashCandidates(mode){
  const isTr=mode==='tr',se=currentMarketSession(),out=[];
  for(const s of db.stocks||[]){
   if(!s||!stockKey(s))continue;
   if(isTr?!trTradable(s):!/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||'')))continue;
-  const ch=isTr?N(trLiveChange(s)):N(marketChange(s,se,false));
-  if(ch===null||ch>CRASH_MIN||ch<-95)continue;
-  const cap=N(s.marketCap);if(cap!==null&&cap<20e6)continue;            // fuera chicharros minúsculos
-  const pm=N(s.perfMonth);const prior=pm===null?null:((1+pm/100)/(1+ch/100)-1)*100;
-  if(prior!==null&&prior<-25)continue;                                    // ya venía desplomándose
-  out.push({s,ch,prior});
+  const hit=CRASH.crashEligible(isTr?trLiveChange(s):marketChange(s,se,false),s.perfMonth,s.marketCap);
+  if(hit)out.push({s,ch:hit.change,prior:hit.prior});
  }
  return out.sort((a,b)=>a.ch-b.ch).slice(0,8).map(x=>{
   const cause=crashCause(x.s);
-  let score=50+(cause.kind==='over'?22:cause.kind==='trap'?-35:cause.kind==='news'?0:-5);
-  try{const v=typeof profileValuation==='function'?profileValuation(x.s):null;if(v&&v.tone==='high')score+=10;else if(v&&v.tone==='low')score-=5}catch(_){}
-  const cap=N(x.s.marketCap),ni=N(x.s.netIncomeTtm);
-  if(cap!==null&&cap<300e6&&ni!==null&&ni<0)score-=10;                  // pequeña y con pérdidas
-  if(x.ch<-60)score-=5;
-  const rsi=N(x.s.rsi);if(rsi!==null&&rsi<25)score+=4;
-  if(x.prior!==null&&x.prior>50)score-=10;                                 // corrección tras una subida fuerte
-  return{...x,cause,score:Math.max(5,Math.min(95,Math.round(score)))};
+  let valuation=null;try{const v=typeof profileValuation==='function'?profileValuation(x.s):null;valuation=v&&v.tone||null}catch(_){}
+  return{...x,cause,score:CRASH.crashScore({kind:cause.kind,valuation,marketCap:x.s.marketCap,netIncome:x.s.netIncomeTtm,change:x.ch,rsi:x.s.rsi,prior:x.prior})};
  });
 }
 function crashVerdict(c){
@@ -799,7 +767,53 @@ function radarCrashSectionD(mode){
  const F2=window.ViewInvAIFold;
  const head=(typeof F2==='function'?F2('radar-crash-how','Cómo se leen',how,'<div class="d-reading"><p>'+E(how)+'</p><div class="ai-chips">'+(list[0]?'<button type="button" data-ai-ask-q="'+E('¿La caída de hoy de '+(list[0].s.ticker||list[0].s.name)+' es una sobrerreacción o tiene motivo de fondo? Dime qué vigilar antes de plantear un rebote.')+'">¿Rebote o trampa en '+E(list[0].s.ticker||'')+'?</button>':'')+'</div></div>'):'');
  return '<section class="d-group d-crash-group"><header><h3>Caídas bruscas · ¿rebote o trampa?</h3><span>'+(list.length?(over?over+' posibles rebotes':'')+(over&&trap?' · ':'')+(trap?trap+' con motivo de fondo':''):'hoy ninguna')+'</span></header>'+head+
-  (list.length?'<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul>':'<div class="d-list"><p class="d-row-empty">Ningún valor de '+(isTr?'Trade Republic':'EE. UU.')+' cae hoy un 25 % o más de golpe.</p></div>')+'</section>';
+  (list.length?'<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul>':'<div class="d-list"><p class="d-row-empty">Ningún valor de '+(isTr?'Trade Republic':'EE. UU.')+' cae hoy un 25 % o más de golpe.</p></div>')+crashScoreboardHtml()+'</section>';
+}
+// Historial de caídas bruscas: el servidor guarda cada día las que entran (a las 15:45 de Nueva
+// York, con el motivo clasificado en ese momento) y mide su rebote 1, 5 y 20 sesiones después.
+let crashBoard={at:0,data:null,loading:false,failed:false};
+async function loadCrashScoreboard(){
+ if(crashBoard.loading||(crashBoard.data&&Date.now()-crashBoard.at<10*60000))return;
+ crashBoard.loading=true;crashBoard.failed=false;
+ try{
+  const r=await fetch('/api/crash-scoreboard',{cache:'no-store'});
+  if(!r.ok)throw Error(r.status);
+  crashBoard={at:Date.now(),data:await r.json(),loading:false,failed:false};
+ }catch(_){crashBoard.failed=true;crashBoard.at=Date.now()}
+ finally{
+  crashBoard.loading=false;
+  document.querySelectorAll('[data-crash-scoreboard]').forEach(box=>{box.outerHTML=crashScoreboardHtml()});
+ }
+}
+const CRASH_KIND_LABEL={over:'Posible sobrerreacción',trap:'Motivo de fondo',news:'Con noticia',none:'Sin motivo publicado'};
+function crashScoreboardHtml(){
+ const d=crashBoard.data;
+ if(!d&&!crashBoard.loading&&(!crashBoard.failed||Date.now()-crashBoard.at>60000))setTimeout(loadCrashScoreboard,50);
+ if(!d)return '<details class="radar-scoreboard crash-scoreboard" data-crash-scoreboard><summary><span><small>HISTORIAL DE CAÍDAS BRUSCAS</small><b>'+(crashBoard.failed?'Historial no disponible ahora mismo':'Cargando rebotes…')+'</b></span></summary></details>';
+ const st=d.stats||{},o5=st.over&&st.over['5d'],t5=st.trap&&st.trap['5d'],a5=st.all&&st.all['5d'];
+ let head;
+ if(a5&&a5.n>0){
+  head='<b>A 5 sesiones rebotan el '+F(a5.hitRate,0)+'% ('+radarPct(a5.avgReturn)+' de media)</b><em>'+
+   'Sobrerreacción '+(o5&&o5.n?F(o5.hitRate,0)+'%':'—')+' · motivo de fondo '+(t5&&t5.n?F(t5.hitRate,0)+'%':'—')+'</em>';
+ }else{
+  const since=d.since?new Date(d.since+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short'}):null;
+  head='<b>'+(since?'Acumulando historial desde '+E(since)+' · '+(d.signals||0)+' caídas':'El historial empieza con la próxima caída')+'</b><em>Primeras cifras: a 1 sesión al día siguiente, a 5 en una semana, a 20 en un mes.</em>';
+ }
+ const col=(x)=>x&&x.n?'<td><b>'+F(x.hitRate,0)+'%</b><span>'+radarPct(x.avgReturn)+'</span><i class="'+(x.avgExcess>0?'positive':x.avgExcess<0?'negative':'')+'">'+radarPct(x.avgExcess)+'</i><small>n='+x.n+'</small></td>':'<td class="empty">—</td>';
+ const row=(label,key)=>'<tr><th>'+label+'</th>'+['1d','5d','20d'].map(h=>col(st[key]&&st[key][h])).join('')+'</tr>';
+ const recent=(d.recent||[]).slice(0,12).map(r=>{
+  const ret=r.ret5d??r.ret1d,tag=r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'pendiente';
+  return '<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0" title="'+E((CRASH_KIND_LABEL[r.kind]||'')+(r.label?' · '+r.label:''))+'"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+' <em class="crash-kind-'+E(r.kind)+'">'+E(radarPct(r.change,0))+'</em></b><i class="'+(ret>0?'positive':ret<0?'negative':'')+'">'+tag+'</i></li>';
+ }).join('');
+ return '<details class="radar-scoreboard crash-scoreboard" data-crash-scoreboard><summary><span><small>HISTORIAL DE CAÍDAS BRUSCAS · '+(d.days||0)+' SESIONES</small>'+head+'</span></summary>'+
+  '<div class="radar-scoreboard-body">'+
+   '<table><thead><tr><th></th><th>1 sesión</th><th>5 sesiones</th><th>20 sesiones</th></tr></thead><tbody>'+
+    row('Posible sobrerreacción','over')+row('Con noticia','news')+row('Sin motivo publicado','none')+row('Motivo de fondo','trap')+row('Rebote ≥ 65','high')+row('Negociables en TR','trTradable')+row('Todas','all')+
+   '</tbody></table>'+
+   '<p class="radar-scoreboard-legend"><b>%</b> que rebotan (suben desde el precio de la señal) · rentabilidad media · <i>diferencia con el S&P 500</i> · n caídas.</p>'+
+   (recent?'<ul class="radar-scoreboard-recent">'+recent+'</ul>':'')+
+   '<p class="radar-scoreboard-method">'+E(d.method||'')+' Rentabilidades pasadas no garantizan resultados futuros.</p>'+
+  '</div></details>';
 }
 // «Lo que dicen los analistas»: consenso y precio objetivo (Nasdaq) de las primeras ideas de EE. UU.
 const radarAnalystsCache=new Map();
