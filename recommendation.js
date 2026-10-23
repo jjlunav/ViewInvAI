@@ -654,6 +654,7 @@ function radarAiShell(advanced=radarAiLastAdvanced){
  const chip=(t,label,n)=>'<button type="button" class="radar-tier-chip radar-tier-chip-'+t+(radarAiTierFilter===t?' active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'"><i aria-hidden="true"></i>'+label+'<b>'+n+'</b></button>';
  const list=visible.length?visible.map(radarAiCard).join(''):'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
  if(!radarScoreboard.data&&!radarScoreboard.loading&&(!radarScoreboard.failed||Date.now()-radarScoreboard.at>60000))setTimeout(loadRadarScoreboard,50);
+ if(document.documentElement.dataset.design==='d')return radarAiShellD(rows,mode,counts,visible);
  return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+'">'+radarScoreboardHtml()+
   '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EEUU / NASDAQ')+'</nav>'+
   '<div class="radar-list-meta">'+(isTr?'Trade Republic / LSX · EUR':'NASDAQ / NYSE / AMEX · USD')+' · '+(rows.analyzed||rows.length)+' analizadas</div>'+
@@ -662,6 +663,46 @@ function radarAiShell(advanced=radarAiLastAdvanced){
   '</div>'+
   radarAiContrastPanel(rows,mode)+
   '<div class="radar-list unified-asset-list">'+list+'</div>'+
+ '</div>';
+}
+// Diseño D: cada idea en una fila (anillo AI, plan en una línea, precio y cápsula) y un bloque
+// «Cómo se eligen» arriba. Mismas filas, niveles, contraste e historial que el diseño clásico.
+function radarAiRowD(row){
+ const s=row.s,preferTr=row.preferTr,q=canonicalQuote(s,preferTr)||{},cur=preferTr?'EUR':(q.nativeCurrency||'USD');
+ const price=N(preferTr?q.eur:(q.usd??q.price)),change=preferTr?N(q.change):marketChange(s,currentMarketSession(),false);
+ const ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker);
+ const n=Math.max(0,Math.min(100,Math.round(N(row.score)||0)));
+ const level=row.speculative?'especulativo':row.tier==='high'?'alta convicción':row.tier==='opportunity'?'oportunidad':'vigilancia';
+ let plan='';
+ try{const P=window.ViewInvAIPortfolios,g=P&&typeof P.getGoalPlanFor==='function'?P.getGoalPlanFor(s):null;
+  if(g&&g.kind==='buy')plan='Comprar'+(N(g.stopEur)!==null?' · stop '+N(g.stopEur).toLocaleString('es-ES',{style:'currency',currency:'EUR'}):'');
+  else if(g&&g.kind==='position')plan=g.action&&g.action.text?g.action.text:'En tu cartera';
+  else if(g&&g.kind==='wait')plan=g.text||'Esperar mejor precio';
+ }catch(_){}
+ if(!plan&&row.ai&&row.ai.verdict)plan='IA externa: '+row.ai.verdict;
+ if(!plan&&row.speculative&&row.specReasons&&row.specReasons.length)plan='⚠ '+row.specReasons[0];
+ const name=String(s.name||ticker||'—').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
+ const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
+ return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
+  '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
+  '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
+}
+function radarAiShellD(rows,mode,counts,visible){
+ const isTr=mode==='tr',ideas=counts.high+counts.opportunity;
+ const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
+ const pill=(t,label,n)=>'<button type="button" class="'+(radarAiTierFilter===t?'active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'">'+label+' '+n+'</button>';
+ const first=visible[0]&&(visible[0].s.ticker||visible[0].s.trTicker);
+ const list=visible.length?'<ul class="d-list">'+visible.map(radarAiRowD).join('')+'</ul>':'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
+ return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+' d-radar">'+
+  '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EE. UU.')+'</nav>'+
+  '<section class="d-pulse"><small>Cómo se eligen</small><h2>'+(ideas?ideas+(ideas===1?' idea hoy':' ideas hoy'):counts.watch?counts.watch+' en vigilancia':'Sin ideas hoy')+'</h2>'+(ideas?'':'<p class="d-hero-note">Ninguna pasa hoy el filtro de entrada; estas son las que la IA vigila.</p>')+
+   '<div class="d-reading"><p><span aria-hidden="true">✦</span> De '+(rows.analyzed||rows.length)+' valores analizados en '+(isTr?'Trade Republic / LSX':'EE. UU.')+', se quedan los que combinan tendencia, volumen, catalizadores y datos fiables. Cada idea se contrasta con noticias y con tu IA antes de enseñarse.</p>'+
+   '<div class="ai-chips">'+(first?'<button type="button" data-ai-ask-q="'+E('Explícame por qué '+first+' está en el Radar AI hoy y qué riesgo tiene.')+'">Explícame '+E(first)+'</button>':'')+'<button type="button" data-ai-ask-q="Compara las ideas del Radar AI de hoy con mi cartera: ¿alguna encaja?">Compáralas con mi cartera</button></div></div></section>'+
+  '<section class="d-group"><header><h3>Ideas de hoy</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
+   '<div class="d-pills" role="group" aria-label="Filtrar por nivel">'+pill('all','Todas',counts.high+counts.opportunity+counts.watch)+pill('high','Alta',counts.high)+pill('opportunity','Oportunidad',counts.opportunity)+pill('watch','Vigilancia',counts.watch)+pill('spec','Especulativo',counts.spec)+'</div>'+
+   list+'</section>'+
+  radarAiContrastPanel(rows,mode)+radarScoreboardHtml()+
  '</div>';
 }
 function rerenderRadarAiList(){

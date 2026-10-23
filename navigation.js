@@ -91,7 +91,23 @@ function renderNavigation(){
  const area=$('#accountArea');let moreTop=$('#designMoreButton');
  if(designD&&area&&!moreTop){moreTop=document.createElement('button');moreTop.type='button';moreTop.id='designMoreButton';moreTop.className='shell-icon-button design-more-button';moreTop.dataset.mobileMore='1';moreTop.setAttribute('aria-label','Más secciones');moreTop.setAttribute('aria-controls','mobileMoreSheet');moreTop.setAttribute('aria-expanded','false');moreTop.title='Más';moreTop.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></svg>';area.insertBefore(moreTop,area.firstChild)}
  if(!designD&&moreTop)moreTop.remove();
- if(grid){
+ if(grid&&designD){
+  // Diseño D: «Más» por secciones (tu cuenta, herramientas AI, explorar y gestión).
+  const tile=(v,extra='',label='')=>NAV_META[v]?'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"'+extra+'><span>'+navigationIconHtml(v)+'</span><b>'+E(label||V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>':'';
+  const head=t=>'<h4 class="d-more-h">'+E(t)+'</h4>';
+  let user=null;try{user=window.ViewInvAIAuth&&window.ViewInvAIAuth.getUser&&window.ViewInvAIAuth.getUser()}catch(_){}
+  const name=String(user&&(user.displayName||user.email)||'Invitado');
+  grid.innerHTML='<div class="d-more-account"><span class="d-more-avatar" aria-hidden="true">'+E(name.charAt(0).toUpperCase())+'</span><span><b>'+E(user?name:'Tu cuenta')+'</b><small>'+(user?'Sesión iniciada · datos sincronizados':'Inicia sesión para guardar tus carteras')+'</small></span>'+
+    '<button type="button" class="d-more-gear" data-mobile-view="settings" aria-label="Configuración">'+navigationIconHtml('settings')+'</button></div>'+
+   head('Herramientas AI')+
+   '<button type="button" class="mobile-more-item d-more-ai" data-ai-ask="1"><span aria-hidden="true">✦</span><b>Pregunta a la IA</b><small>Sobre tus carteras y el mercado</small></button>'+
+   '<button type="button" class="mobile-more-item" data-mobile-view="portfolios" data-portfolio-asset="goal"><span aria-hidden="true">◎</span><b>Objetivo</b><small>Plan de la IA para tu meta</small></button>'+
+   tile('future')+
+   head('Explorar')+tile('catalog','', 'Catálogo LSX')+tile('catalogUS','','EE. UU.')+tile('funds','','Fondos y ETF')+tile('crypto','','Cripto')+tile('heatmap','','Mapa de calor')+tile('favorites')+
+   head('Gestión')+
+   '<button type="button" class="mobile-more-item" data-broker-import><span aria-hidden="true">⇅</span><b>Importar extracto</b><small>Trade Republic, IBKR o CSV</small></button>'+
+   tile('tax','','Fiscal (IRPF)')+tile('inbox','','Avisos')+tile('settings');
+ }else if(grid){
   grid.innerHTML=rest.map(v=>'<button type="button" class="mobile-more-item" data-mobile-view="'+E(v)+'"><span>'+navigationIconHtml(v)+'</span><b>'+E(V[v].replace(/^\d+\s*/,''))+'</b><small>'+E(NAV_META[v].desc||'')+'</small></button>').join('');
  }
  navigationRendered=true;
@@ -255,7 +271,7 @@ document.addEventListener('click',e=>{
  if(shellView){e.preventDefault();const v=shellView.dataset.shellView;if(v)show(v);return}
 
  let mobileView=e.target.closest&&e.target.closest('[data-mobile-view]');
- if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item'))){
+ if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item')||mobileView.classList.contains('d-more-gear'))){
   e.preventDefault();let v=mobileView.dataset.mobileView;
   if(v&&mobileView.classList.contains('mobile-nav-item')){
    const group=NAV_GROUPS[v]||[v];
@@ -377,3 +393,7 @@ window.ViewInvAINavigation=Object.assign(window.ViewInvAINavigation||{},{
  back:()=>navigateBackOneStep(),
  show:(view)=>show(view)
 });
+// Diseño D: las acciones del menú «Más» que no cambian de vista también lo cierran.
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#mobileMoreSheet [data-ai-ask],#mobileMoreSheet [data-broker-import]'))setTimeout(closeMobileMore,0)});
+window.addEventListener('viewinvai:auth-changed',()=>{if(isDesignD())setTimeout(rebuildNavigation,50)});
+

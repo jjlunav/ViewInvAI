@@ -506,11 +506,12 @@ function homePanel(title,subtitle,stocks,kind,tone){
  return '<section class="home-market-panel '+tone+'"><header><div><h2>'+E(title)+'</h2><p>'+E(subtitle)+'</p></div><span>'+stocks.length+'</span></header>'+
   '<div class="home-stock-list">'+(stocks.length?stocks.map((s,i)=>homeStockRow(s,i,kind)).join(''):'<div class="home-empty">Sin datos disponibles todavía.</div>')+'</div></section>';
 }
-let marketBoardMode='active';
-const marketBoardSourceByMode={active:'us',gainers:'us',losers:'us',funds:'tr',indices:'global'};
+let marketBoardMode=typeof document!=='undefined'&&document.documentElement.dataset.design==='d'?'featured':'active';
+const marketBoardSourceByMode={featured:'global',active:'us',gainers:'us',losers:'us',funds:'tr',indices:'global'};
 function marketBoardSourceOptions(mode=marketBoardMode){
  if(mode==='funds')return[{key:'tr',label:'Trade Republic'},{key:'mi',label:'MyInvestor'}];
  if(mode==='indices')return[{key:'global',label:'Mercado global'}];
+ if(mode==='featured')return[];
  return[{key:'us',label:'EEUU'},{key:'tr',label:'Trade Republic / LSX'}];
 }
 function currentMarketBoardSource(){
@@ -591,6 +592,7 @@ function renderMarketQuickSheet(){
 function renderMarketBoardStatus(updatedAt=null){
  const source=currentMarketBoardSource(),se=homeSession();
  let label=SN(se)+' · EEUU · Top 10';
+ if(marketBoardMode==='featured')label='Destacados · '+SN(se);
  if(marketBoardMode==='funds')label=(source==='mi'?'MyInvestor':'Trade Republic')+' · Top 10';
  else if(marketBoardMode==='indices')label='Mercado global · Top 10';
  else if(source==='tr')label='Trade Republic / LSX · Top 10';
@@ -628,11 +630,100 @@ async function renderIndicesTop10(box){
   }).join('')+'</div>':'<div class="empty-state">Ranking de índices en actualización.</div>';
  }catch(e){box.innerHTML='<div class="empty-state">No se pudieron actualizar los índices ahora mismo.</div>'}
 }
+// ===== Mercados · diseño D: «Destacados» (pulso del mercado, lo más seguido y movimientos fuertes) =====
+const dMarket={move:'gainers',source:'us',indices:null,indicesAt:0,loading:false};
+function dIsDesignD(){return document.documentElement.dataset.design==='d'}
+function dChipPct(v){
+ if(N(v)===null)return'';
+ const cls=Math.abs(v)<0.005?'flat':v>0?'up':'down';
+ return '<span class="d-chip '+cls+'">'+(cls==='up'?'▲ ':cls==='down'?'▼ ':'')+Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %</span>';
+}
+function dRingHtml(score){
+ if(N(score)===null)return'';
+ const n=Math.max(0,Math.min(100,Math.round(score)));
+ return '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>';
+}
+function dStockRowHtml(s,source,note='',changeOverride){
+ const preferTr=source==='tr',q=canonicalQuote(s,preferTr)||{},cur=preferTr?'EUR':(q.nativeCurrency||'USD');
+ const price=changeOverride!==undefined&&!preferTr?N(s.price):N(preferTr?q.eur:(q.usd??q.price)),change=changeOverride!==undefined?N(changeOverride):preferTr?N(q.change):marketChange(s,homeSession(),false);
+ const ticker=preferTr?(s.trTicker||s.ticker):(s.ticker||s.trTicker),exchange=preferTr?'LSX':(s.exchange||'EE. UU.');
+ const pulse=window.ViewInvAIPulseCoach&&typeof window.ViewInvAIPulseCoach.analyzeStock==='function'?window.ViewInvAIPulseCoach.analyzeStock(s,preferTr):null;
+ const rv=N(RV(s,homeSession()));
+ const ai=note||(rv!==null&&rv>=1.5?'Volumen ×'+F(rv,1)+' frente a lo habitual':'');
+ const name=String(s.name||ticker||'—').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
+ return '<li class="d-row"><button type="button" class="d-row-main'+(pulse?'':' d-row-noring')+'" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+(pulse?dRingHtml(pulse.score):'')+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,exchange].filter(Boolean).join(' · '))+'</small>'+(ai?'<i class="d-row-ai">✦ '+E(ai)+'</i>':'')+'</span>'+
+  '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b>'+dChipPct(change)+'</span></button></li>';
+}
+function dIndexRowHtml(x){
+ const ch=N(x.change);
+ return '<li class="d-row"><div class="d-row-main d-row-simple"><span class="d-row-text"><b>'+E(x.name||x.symbol||'Índice')+'</b><small>'+E([x.symbol,x.exchange].filter(Boolean).join(' · '))+'</small></span><span class="d-row-num"><b>'+E(PR(x.price))+'</b>'+dChipPct(ch)+'</span></div></li>';
+}
+async function dLoadIndices(){
+ if(dMarket.loading||(dMarket.indices&&Date.now()-dMarket.indicesAt<120000))return;
+ dMarket.loading=true;
+ try{
+  const [live,rank]=await Promise.all([fetch('/api/indices-live',{cache:'no-store'}),fetch('/api/attention-ranking?kind=indices',{cache:'no-store'}).catch(()=>null)]);
+  if(!live.ok)throw Error(String(live.status));
+  const data=await live.json();let rows=Array.isArray(data.indices)?data.indices:[];
+  if(rank&&rank.ok){const r=await rank.json(),order=new Map((r.items||[]).map((x,i)=>[String(x.symbol||'').toUpperCase(),i]));rows=rows.slice().sort((a,b)=>(order.get(String(a.symbol||'').toUpperCase())??999)-(order.get(String(b.symbol||'').toUpperCase())??999))}
+  dMarket.indices=rows;dMarket.indicesAt=Date.now();dMarket.updatedAt=data.updatedAt||null;
+ }catch(e){dMarket.indices=dMarket.indices||[]}
+ finally{dMarket.loading=false;if(state.currentView==='home'&&marketBoardMode==='featured')renderHome()}
+}
+function dPulseHtml(){
+ const rows=dMarket.indices||[];
+ const pick=re=>rows.find(x=>re.test(String(x.name||'')+' '+String(x.symbol||'')));
+ const eu=pick(/stoxx|dax|ibex|cac|ftse|euro/i),us=pick(/s&p|spx|nasdaq|ndx|dow|us\s?500/i);
+ const arrow=x=>x&&N(x.change)!==null?(x.change>=0?'▲':'▼'):'·';
+ const word=x=>x&&N(x.change)!==null?(Math.abs(x.change)<0.15?'en plano':x.change>0?'sube':'baja'):'';
+ const parts=[];
+ if(eu)parts.push(E(eu.name)+' '+word(eu)+' '+F(Math.abs(N(eu.change)||0),2)+' %');
+ if(us)parts.push(E(us.name)+' '+word(us)+' '+F(Math.abs(N(us.change)||0),2)+' %');
+ const all=rows.filter(x=>N(x.change)!==null),up=all.filter(x=>x.change>0).length;
+ const breadth=all.length?' De los '+all.length+' índices seguidos, '+up+' suben.':'';
+ const text=parts.length?parts.join(' y ')+'.'+breadth:'Cargando los índices…';
+ return '<section class="d-pulse"><small>Pulso del mercado</small>'+
+  '<h2>'+(eu?'Europa '+arrow(eu):'')+(eu&&us?' · ':'')+(us?'EE. UU. '+arrow(us):'')+(!eu&&!us?'Mercados':'')+'</h2>'+
+  '<div class="d-reading"><p><span aria-hidden="true">✦</span> '+text+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="¿Cómo afecta el mercado de hoy a mi cartera?">¿Afecta a mi cartera?</button><button type="button" data-ai-ask-q="Resúmeme el mercado de hoy en tres puntos.">Resúmeme el mercado</button></div></div></section>';
+}
+function renderHomeFeaturedD(box){
+ dLoadIndices();
+ const idx=(dMarket.indices||[]).slice(0,5),viewed=homeUserViewedStocks(3);
+ const followed='<section class="d-group"><header><h3>Lo más seguido</h3><button type="button" class="d-more-link" data-market-board="indices" aria-label="Ver todos los índices">›</button></header><ul class="d-list">'+
+  (idx.length?idx.map(dIndexRowHtml).join(''):'<li class="d-row d-row-empty">Actualizando índices…</li>')+
+  viewed.map(s=>dStockRowHtml(s,'us','Lo has visto esta semana')).join('')+'</ul></section>';
+ const src=dMarket.source,mv=dMarket.move;
+ if(src==='tr'&&typeof seedTradeRepublicMarketBoard==='function')seedTradeRepublicMarketBoard(120);
+ let list=mv==='active'?homeActiveStocks(6,src):homeMoveStocks(mv==='gainers',6,src),closeNote='';
+ // Antes de que lleguen los cambios de la sesión en curso: los de la última sesión regular, avisándolo.
+ if(!list.length&&src==='us'&&mv!=='active'){
+  list=homeUniverse('us').map(x=>({s:x,ch:N(x.changePct)})).filter(x=>x.ch!==null&&(mv==='gainers'?x.ch>0:x.ch<0)).sort((a,b)=>mv==='gainers'?b.ch-a.ch:a.ch-b.ch).slice(0,6).map(x=>x.s);
+  if(list.length)closeNote='<p class="d-group-note">Última sesión regular: los movimientos de la sesión actual aparecen en cuanto llegan.</p>';
+ }
+ if(src==='tr')list.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
+ const chips=[['gainers','Suben'],['losers','Bajan'],['active','Volumen']].map(([k,l])=>'<button type="button" class="'+(k===mv?'active':'')+'" data-d-move="'+k+'" aria-pressed="'+(k===mv)+'">'+l+'</button>').join('');
+ const srcChips=[['us','EE. UU.'],['tr','LSX']].map(([k,l])=>'<button type="button" class="'+(k===src?'active':'')+'" data-d-move-src="'+k+'" aria-pressed="'+(k===src)+'">'+l+'</button>').join('');
+ const moves='<section class="d-group"><header><h3>Movimientos fuertes</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
+  '<div class="d-pills">'+chips+'<span class="d-pills-sep"></span>'+srcChips+'</div>'+closeNote+'<ul class="d-list">'+
+  (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src)).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
+ box.innerHTML=dPulseHtml()+followed+moves;
+}
+if(typeof document!=='undefined')document.addEventListener('click',e=>{
+ const m=e.target.closest&&e.target.closest('[data-d-move],[data-d-move-src]');if(!m)return;
+ if(m.dataset.dMove)dMarket.move=m.dataset.dMove;else dMarket.source=m.dataset.dMoveSrc;
+ renderHome();
+});
 function renderHome(){
  let box=$('#homeGroups');if(!box)return;
  renderMarketBoardSourceTabs();
  const source=currentMarketBoardSource();
- if(marketBoardMode==='funds'){
+ if(marketBoardMode==='featured'&&!dIsDesignD())marketBoardMode='active';
+ const featuredTab=document.querySelector('.market-board-tabs [data-market-board="featured"]');if(featuredTab)featuredTab.hidden=!dIsDesignD();
+ document.querySelectorAll('.market-board-tabs [data-market-board]').forEach(b=>{const on=b.dataset.marketBoard===marketBoardMode;b.classList.toggle('active',on);b.setAttribute('aria-pressed',on?'true':'false')});
+ if(marketBoardMode==='featured'){
+  renderHomeFeaturedD(box);
+ }else if(marketBoardMode==='funds'){
   box.innerHTML='<div class="empty-state compact">Cargando Top 10 de fondos y ETFs…</div>';
   window.ViewInvAIFunds?.renderMarketTop10?.(box,10,source);
  }else if(marketBoardMode==='indices'){

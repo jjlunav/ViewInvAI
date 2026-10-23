@@ -82,18 +82,36 @@ window.checkAssetCards = async function () {
   // (both rows are the same company, and sorting by name is stable).
   try{localStorage.setItem('viewinvai:position-sort','name')}catch(_){}
   portfolio.render();view.style.display='block';
-  const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
-  assert(rows.length===2,'portfolio positions did not render');
-  const a=rows[0].getBoundingClientRect(),b=rows[1].getBoundingClientRect();
-  assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
-  const row=rows[0].querySelector('[data-open-stock]');
-  assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
-  const operationAction=rows[0].querySelector('.portfolio-register-operation-icon[data-position-transactions]');
-  assert(operationAction,'portfolio position lost the single register-operation control');
-  assert(!rows[0].querySelector('[data-position-side="BUY"],[data-position-side="SELL"]'),'portfolio position reintroduced redundant buy/sell controls');
-  assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
-  assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
-  rows[1].querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),'portfolio TR position shows an unlabelled pre/post line'));
+  if(document.documentElement.dataset.design==='d'){
+   // Diseño D: una fila por posición con el detalle (cotización compartida, coste, operación) desplegable.
+   const rows=[...view.querySelectorAll('.d-list .d-position')];
+   assert(rows.length===2,'portfolio positions did not render');
+   const a=rows[0].getBoundingClientRect(),b=rows[1].getBoundingClientRect();
+   assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
+   const main=rows[0].querySelector('.d-row-main[data-portfolio-stock-profile]');
+   assert(main&&main.dataset.profilePreferTr==='0','portfolio lost preferred market');
+   assert(rows[0].querySelector('.portfolio-register-operation-icon[data-position-transactions]'),'portfolio position lost the single register-operation control');
+   assert(!rows[0].querySelector('[data-position-side="BUY"],[data-position-side="SELL"]'),'portfolio position reintroduced redundant buy/sell controls');
+   rows[0].querySelector('[data-d-row-toggle]').click();
+   assert(!rows[0].querySelector('.d-row-detail').hidden,'portfolio row details do not open');
+   assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock quote');
+   assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
+   rows[1].querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),'portfolio TR position shows an unlabelled pre/post line'));
+  }else{
+    const rows=[...view.querySelectorAll('.portfolio-position-list .asset-card')];
+    assert(rows.length===2,'portfolio positions did not render');
+    const a=rows[0].getBoundingClientRect(),b=rows[1].getBoundingClientRect();
+    assert(Math.abs(a.left-b.left)<2&&b.top>=a.bottom-1,'portfolio uses square tiles instead of one row per position');
+    const row=rows[0].querySelector('[data-open-stock]');
+    assert(row.dataset.positionPreferTr==='0','portfolio lost preferred market');
+    const operationAction=rows[0].querySelector('.portfolio-register-operation-icon[data-position-transactions]');
+    assert(operationAction,'portfolio position lost the single register-operation control');
+    assert(!rows[0].querySelector('[data-position-side="BUY"],[data-position-side="SELL"]'),'portfolio position reintroduced redundant buy/sell controls');
+    assert(rows[0].querySelector('.asset-investing-quote[data-compact-quote-tr="0"]')&&rows[0].querySelector('.asset-investing-main'),'portfolio US position does not use the shared compact stock row');
+    assert(rows[1].querySelector('.asset-investing-quote[data-compact-quote-tr="1"]'),'portfolio TR position does not use the shared LSX compact quote');
+    rows[1].querySelectorAll('.asset-investing-extended').forEach(x=>assert(/EEUU/.test(x.textContent)&&/\$/.test(x.textContent),'portfolio TR position shows an unlabelled pre/post line'));
+
+  }
 
   // A dual-listed company is not "in portfolio" on every venue just because
   // one listing exists. Membership and operation flows must stay market-specific.
@@ -174,7 +192,9 @@ window.checkAssetCards = async function () {
   assert(document.querySelector('#goalWizard').hidden,'goal wizard did not close');
   fundsApi.setPortfolioAssetMode('stocks',false);
   const liveRow=view.querySelector('.portfolio-position-list [data-open-stock]');
-  liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  // Diseño D: la fila es un botón que abre la ficha.
+  if(liveRow)liveRow.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  else view.querySelector('.d-position .d-row-main').click();
   assert(!document.querySelector('#stockQuickDetail').classList.contains('is-hidden'),'portfolio row did not open the shared stock detail');
   assert(!document.querySelector('#portfolioModal')?.classList.contains('open'),'portfolio row incorrectly opened the exposure manager');
   assert(document.querySelectorAll('#stockQuickDetail .unified-stock-header').length===1,'portfolio row duplicated the shared detail');
