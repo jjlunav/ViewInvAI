@@ -63,7 +63,7 @@ COLS = [
     "average_volume_10d_calc","relative_volume_10d_calc",
     "premarket_close","premarket_change","premarket_volume","premarket_time",
     "postmarket_close","postmarket_change","postmarket_volume","postmarket_time",
-    "RSI","ADX","ATR","EMA20","EMA50","Perf.W","Perf.1M","Perf.3M","Perf.6M","Perf.YTD","Perf.1Y",
+    "RSI","ADX","ATR","EMA20","EMA50","price_52_week_high","price_52_week_low","Perf.W","Perf.1M","Perf.3M","Perf.6M","Perf.YTD","Perf.1Y",
     "price_earnings_ttm","earnings_per_share_diluted_ttm","dividends_yield_current","beta_1_year",
     "total_shares_outstanding","total_revenue","net_income_ttm","price_book_fq","enterprise_value_fq","fundamental_currency_code",
     "earnings_release_next_date","earnings_release_next_calendar_date","earnings_release_next_time","earnings_release_next_trading_date_fq","update_mode","last_bar_update_time",
@@ -304,6 +304,8 @@ def tv_row(sym, ex, ticker, d):
         "atr": d.get("ATR"),
         "ema20": d.get("EMA20"),
         "ema50": d.get("EMA50"),
+        "high52w": d.get("price_52_week_high"),
+        "low52w": d.get("price_52_week_low"),
         "perfWeek": d.get("Perf.W"),
         "perfMonth": d.get("Perf.1M"),
         "perf3M": d.get("Perf.3M"),
@@ -397,7 +399,7 @@ TR_WORLD_MARKETS = [
     "canada", "japan", "hongkong", "australia", "singapore", "israel", "brazil", "mexico",
 ]
 EU_COLS = COLS + ["isin", "is_primary"]
-PRICE_FIELDS = ("price", "dayHigh", "dayLow", "ema20", "ema50", "atr")
+PRICE_FIELDS = ("price", "dayHigh", "dayLow", "ema20", "ema50", "atr", "high52w", "low52w")
 MONEY_FIELDS = ("marketCap", "enterpriseValue", "revenueTtm", "netIncomeTtm")
 
 

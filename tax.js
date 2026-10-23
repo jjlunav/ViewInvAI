@@ -26,6 +26,8 @@
   const res=await window.ViewInvAIAuth.apiFetch('/api/tax-report?year='+y);
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||'No se pudo calcular el informe fiscal.');
+  // El año siempre es el pedido, aunque el servidor no lo devuelva.
+  if(data&&typeof data==='object'&&!data.year)data.year=y;
   cache[y]={at:Date.now(),data};
   return data;
  }

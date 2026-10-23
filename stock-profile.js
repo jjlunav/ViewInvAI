@@ -766,6 +766,85 @@ async function refreshProfileLiveEvents(s){
   console.warn('Live profile events unavailable',error);
  }
 }
+// ----- Ficha · lo esencial de ViewInvAI: rango de 52 semanas, valoración propia y analistas -----
+function profileMoney(v,cur){v=N(v);if(v===null)return'—';try{return v.toLocaleString('es-ES',{style:'currency',currency:cur||'USD',minimumFractionDigits:2,maximumFractionDigits:v<1?4:2})}catch(_){return F(v,2)}}
+function profileRange52Html(s){
+ const p=N(s.price),lo=N(s.low52w),hi=N(s.high52w);
+ if(p===null||lo===null||hi===null||hi<=lo)return'';
+ const pos=Math.max(0,Math.min(100,(p-lo)/(hi-lo)*100)),cur=s.currency||'USD';
+ const fromHi=(p/hi-1)*100,fromLo=(p/lo-1)*100;
+ return '<div class="pi-block"><div class="pi-head"><b>Rango de 52 semanas</b><span>'+(fromHi>-0.5?'en máximos':fromLo<0.5?'en mínimos':F(fromHi,1)+' % desde el máximo')+'</span></div>'+
+  '<div class="pi-range" role="img" aria-label="Precio en el '+Math.round(pos)+' % del rango de 52 semanas"><i data-p="'+Math.round(pos/5)*5+'"></i></div>'+
+  '<div class="pi-range-ends"><span>'+E(profileMoney(lo,cur))+'</span><span>'+E(profileMoney(hi,cur))+'</span></div></div>';
+}
+// Valoración propia y transparente: PER y precio/valor contable frente a la mediana de su sector,
+// corregido por el margen neto. No copia ningún «valor razonable» de terceros.
+const profileSectorMedians=new Map();
+function profileMedian(a){if(!a.length)return null;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2}
+function profileSectorStats(sector){
+ const n=(db.stocks||[]).length,hit=profileSectorMedians.get(sector);
+ if(hit&&hit.n===n)return hit;
+ const peers=(db.stocks||[]).filter(x=>x&&x.sector===sector);
+ const pe=peers.map(x=>N(x.peRatio)).filter(v=>v!==null&&v>0&&v<300);
+ const pb=peers.map(x=>N(x.priceBook)).filter(v=>v!==null&&v>0&&v<60);
+ const mg=peers.map(x=>{const ni=N(x.netIncomeTtm),rv=N(x.revenueTtm);return ni!==null&&rv>0?ni/rv*100:null}).filter(v=>v!==null&&v>-200&&v<100);
+ const out={n,count:peers.length,pe:pe.length>=8?profileMedian(pe):null,pb:pb.length>=8?profileMedian(pb):null,mg:mg.length>=8?profileMedian(mg):null};
+ profileSectorMedians.set(sector,out);return out;
+}
+function profileValuation(s){
+ if(!s||!s.sector)return null;
+ const st=profileSectorStats(s.sector),pe=N(s.peRatio),pb=N(s.priceBook),ni=N(s.netIncomeTtm),rv=N(s.revenueTtm);
+ const mg=ni!==null&&rv>0?ni/rv*100:null;
+ const parts=[];let score=0,w=0;
+ if(pe!==null&&pe>0&&st.pe){const r=Math.log(st.pe/pe);score+=Math.max(-1,Math.min(1,r));w++}
+ if(pb!==null&&pb>0&&st.pb){const r=Math.log(st.pb/pb);score+=Math.max(-1,Math.min(1,r))*0.7;w+=0.7}
+ if(!w){
+  if(ni!==null&&ni<0)return{label:'Sin beneficios',tone:'mid',text:'Pierde dinero: no se puede valorar por PER. Mira caja, ventas y catalizadores.',rows:mg!==null&&st.mg!==null?[['Margen neto',F(mg,1)+' %','sector '+F(st.mg,1)+' %']]:[]};
+  return null;
+ }
+ score/=w;
+ if(mg!==null&&st.mg!==null)score+=Math.max(-0.25,Math.min(0.25,(mg-st.mg)/100));
+ const label=score>0.25?'Barata frente a su sector':score<-0.25?'Cara frente a su sector':'En línea con su sector';
+ const tone=score>0.25?'high':score<-0.25?'low':'mid';
+ if(pe!==null&&pe>0&&st.pe)parts.push(['PER',F(pe,1),'sector '+F(st.pe,1)]);
+ if(pb!==null&&pb>0&&st.pb)parts.push(['Precio / valor contable',F(pb,2),'sector '+F(st.pb,2)]);
+ if(mg!==null&&st.mg!==null)parts.push(['Margen neto',F(mg,1)+' %','sector '+F(st.mg,1)+' %']);
+ const sectorName=window.ViewInvAISectorEs?window.ViewInvAISectorEs(s.sector):s.sector;
+ return{label,tone,score,rows:parts,text:'Comparada con la mediana de '+st.count+' empresas de '+sectorName+'.'};
+}
+function profileValuationHtml(s){
+ const v=profileValuation(s);if(!v)return'';
+ return '<div class="pi-block"><div class="pi-head"><b>Valoración ViewInvAI</b><span class="pi-tag" data-tone="'+v.tone+'">'+E(v.label)+'</span></div>'+
+  (v.rows.length?'<div class="pi-rows">'+v.rows.map(([l,a,b])=>'<div><span>'+E(l)+'</span><b>'+E(a)+'</b><small>'+E(b)+'</small></div>').join('')+'</div>':'')+
+  '<p class="pi-note">'+E(v.text)+' Modelo propio y transparente; no es una recomendación.</p></div>';
+}
+function profileUsSymbol(s){return /^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||''))?String(s.ticker||'').toUpperCase():''}
+function profileAnalystsShell(s){
+ const sym=profileUsSymbol(s);if(!sym)return'';
+ return '<div class="pi-block" data-profile-analysts="'+E(sym)+'"><div class="pi-head"><b>Analistas</b><span>Cargando…</span></div></div>';
+}
+async function hydrateProfileAnalysts(box,s){
+ const el=box&&box.querySelector('[data-profile-analysts]');if(!el)return;
+ const sym=el.dataset.profileAnalysts;
+ try{
+  const r=await fetch('/api/analysts?symbol='+encodeURIComponent(sym));const d=await r.json();
+  if(!r.ok||!d||d.empty){el.innerHTML='<div class="pi-head"><b>Analistas</b><span>Sin cobertura</span></div><p class="pi-note">Ningún analista publica precio objetivo de '+E(sym)+' en Nasdaq.</p>';return}
+  const v=d.votes||{},total=(v.buy||0)+(v.hold||0)+(v.sell||0),t=d.target||{};
+  const price=N(s.price),up=price&&N(t.mean)?(t.mean/price-1)*100:null;
+  const label={buy:'Comprar',hold:'Mantener',sell:'Vender'}[d.consensus]||'—';
+  const pct=n=>total?Math.round(n/total*20)*5:0;
+  el.innerHTML='<div class="pi-head"><b>Analistas</b><span class="pi-tag" data-tone="'+(d.consensus==='buy'?'high':d.consensus==='sell'?'low':'mid')+'">Consenso: '+E(label)+'</span></div>'+
+   (total?'<div class="pi-votes" role="img" aria-label="'+v.buy+' comprar, '+v.hold+' mantener, '+v.sell+' vender"><i class="buy" data-w="'+pct(v.buy)+'"></i><i class="hold" data-w="'+pct(v.hold)+'"></i><i class="sell" data-w="'+pct(v.sell)+'"></i></div>'+
+    '<div class="pi-votes-legend"><span>Comprar '+(v.buy||0)+'</span><span>Mantener '+(v.hold||0)+'</span><span>Vender '+(v.sell||0)+'</span></div>':'')+
+   (N(t.mean)!==null?'<div class="pi-rows"><div><span>Precio objetivo medio</span><b>'+E(profileMoney(t.mean,'USD'))+'</b><small>'+(up===null?'':(up>=0?'+':'')+F(up,1)+' % de potencial')+'</small></div>'+
+    '<div><span>Rango</span><b>'+E(profileMoney(t.low,'USD'))+' – '+E(profileMoney(t.high,'USD'))+'</b><small>'+total+' analistas</small></div></div>':'')+
+   '<p class="pi-note">Fuente: Nasdaq (consenso de analistas de EE. UU.).</p>';
+ }catch(_){el.innerHTML='<div class="pi-head"><b>Analistas</b><span>No disponible ahora</span></div>'}
+}
+function profileInsightsHtml(s){
+ const body=profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s);
+ return body?'<section class="profile-section profile-insights"><div class="profile-section-head"><h3>Lo esencial</h3><span>52 semanas · valoración · analistas</span></div>'+body+'</section>':'';
+}
 function quickProfileHtml(s,opts={}){
  let requested=opts.preferTr===true?true:opts.preferTr===false?false:state.profilePreferTr===true;
  let isTr=(requested||intlListing(s))&&trTradable(s),se=currentMarketSession();
@@ -775,6 +854,7 @@ function quickProfileHtml(s,opts={}){
    '<section class="profile-tab-panel active" data-profile-panel="general">'+
    profileCompanyIdentityHtml(s,isTr)+
    '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen de mercado</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
+   profileInsightsHtml(s)+
    (isTr?'':profileFixedMarketSection('Sesiones de mercado',profileSessionStrip(s),'Premarket · Regular · Postmarket · solo EEUU','profile-market-sessions'))+
    profileFixedMarketSection('Más datos de mercado','<div class="profile-stat-list">'+profileGeneralExtraStats(s,isTr,se)+'</div>','Precio, spread, volumen medio y capitalización','profile-market-extra')+
    profileFixedMarketSection('Datos de empresa','<div class="profile-stat-list">'+profileGeneralBusinessStats(s)+'</div>','Magnitudes fundamentales disponibles','profile-business-extra')+
@@ -797,6 +877,7 @@ function renderQuickProfile(){
   pollUsLive();
   refreshProfileLiveEvents(s);
   hydrateProfileSupportResistance(box,s,state.profilePreferTr===true);
+  hydrateProfileAnalysts(box,s);
   if(state.profilePreferTr===true)hydrateProfileTrSessionStats(box,s);
   hydrateProfilePriceCheck(box,s,state.profilePreferTr===true);
   window.ViewInvAINativeUI?.syncLayout?.();

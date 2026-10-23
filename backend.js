@@ -6111,6 +6111,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "ai" && parts[1] === "ask") return handleAiAsk(request, env, user, json, services);
+    if (root === "news") return handleNews(request, env, user, json, url);
     if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
     if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
@@ -7045,6 +7046,79 @@ async function googleNewsRss(env,query,isin){
     else{items=rssItems(await r.text(),"googlenews",x=>x);await recordProviderUse(env,"googlenews",true)}
   }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error))}
   return items.length?items:bingNewsRss(env,query,lang);
+}
+// ----- Noticias por categorías (pantalla Noticias): Google News en español y, si falla, Bing -----
+// Sin fotos de prensa (tienen derechos): título, medio, hora y los valores que cita. Caché de 20 min.
+const NEWS_TTL_MS=20*60000;
+const NEWS_TOPICS={
+  latest:'bolsa OR "Wall Street" OR Ibex OR Nasdaq',
+  macro:'BCE OR "Reserva Federal" OR inflación OR PMI OR "tipos de interés" OR empleo',
+  crypto:'bitcoin OR ethereum OR criptomonedas'
+};
+function newsRssItems(xml,source,linkOf,limit=20){
+  return (String(xml||"").match(/<item>[\s\S]*?<\/item>/g)||[]).slice(0,limit).map(item=>{
+    const pub=Date.parse(rssTag(item,"pubDate"));
+    let title=rssTag(item,"title"),publisher=rssTag(item,"source")||rssTag(item,"News:Source");
+    // Google añade « - Medio» al final del título: se quita y queda como medio.
+    const m=title.match(/^(.*\S)\s+-\s+([^-]{2,60})$/);if(m){title=m[1];publisher=publisher||m[2]}
+    return{title:trimText(title,200),url:linkOf(rssTag(item,"link")),publisher:trimText(publisher,60),time:Number.isFinite(pub)?new Date(pub).toISOString():"",source};
+  }).filter(x=>x.title&&/^https:\/\//.test(x.url));
+}
+async function newsSearch(env,query,hl="es-ES",gl="ES",limit=20){
+  const lang=hl.split("-")[0];
+  try{
+    const r=await providerFetch("googlenews","https://news.google.com/rss/search?q="+encodeURIComponent(query+" when:2d")+"&hl="+hl+"&gl="+gl+"&ceid="+gl+":"+lang,{headers:{...RSS_HEADERS,"Accept-Language":hl+","+lang+";q=0.9"}},10000);
+    if(r.ok){const items=newsRssItems(await r.text(),"googlenews",x=>x,limit);await recordProviderUse(env,"googlenews",true);if(items.length)return items}
+    else await recordProviderUse(env,"googlenews",false,"HTTP "+r.status);
+  }catch(error){await recordProviderUse(env,"googlenews",false,String(error&&error.message||error))}
+  try{
+    const r=await providerFetch("bingnews","https://www.bing.com/news/search?format=rss&q="+encodeURIComponent(query)+"&setlang="+lang+"&qft=interval%3d%227%22",{headers:RSS_HEADERS},10000);
+    if(!r.ok){await recordProviderUse(env,"bingnews",false,"HTTP "+r.status);return[]}
+    const items=newsRssItems(await r.text(),"bingnews",bingRealUrl,limit);await recordProviderUse(env,"bingnews",true);return items;
+  }catch(error){await recordProviderUse(env,"bingnews",false,String(error&&error.message||error));return[]}
+}
+async function newsCached(env,key,fn){
+  const bucket=Math.floor(Date.now()/NEWS_TTL_MS),ck="news1:"+key+":"+bucket;
+  try{const hit=await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);return db.prepare("SELECT payload FROM event_insights WHERE cache_key=?").bind(ck).first()});
+    if(hit&&hit.payload){const p=JSON.parse(hit.payload);if(Array.isArray(p))return p}}catch(_){}
+  const items=await fn();
+  if(items.length){try{await withCacheDb(env,async db=>{await ensureEventInsightSchema(db);
+    return db.prepare("INSERT INTO event_insights (cache_key,stock_key,payload,created_at) VALUES (?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,created_at=excluded.created_at").bind(ck,"news:"+key,JSON.stringify(items),nowIso()).run()})}catch(_){}}
+  return items;
+}
+const newsCleanName=n=>String(n||"").replace(/,?\s+(inc\.?|corp\.?|corporation|plc|ag|sa|se|asa|nv|n\.v\.|ltd\.?|holdings?|group|co\.?)$/i,"").trim();
+async function handleNews(request,env,user,json,url){
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  const cat=["foryou","mine","latest","macro","crypto"].includes(url.searchParams.get("cat"))?url.searchParams.get("cat"):"foryou";
+  const topic=async t=>(await newsCached(env,"topic:"+t,()=>newsSearch(env,NEWS_TOPICS[t]))).map(x=>({...x,topic:t}));
+  // Mis valores: posiciones abiertas primero y luego favoritos, hasta 8 empresas distintas.
+  const mine=async()=>{
+    const [pos,fav]=await Promise.all([
+      env.DB.prepare("SELECT stock_key,ticker,name,isin FROM positions WHERE user_id=? AND active=1 ORDER BY created_at DESC").bind(user.id).all(),
+      env.DB.prepare("SELECT stock_key,ticker,name,isin FROM watchlist WHERE user_id=? ORDER BY created_at DESC").bind(user.id).all()]);
+    const seen=new Set(),list=[];
+    for(const [r,held] of [...(pos.results||[]).map(r=>[r,true]),...(fav.results||[]).map(r=>[r,false])]){
+      const name=newsCleanName(r.name);if(!name||name.length<3)continue;
+      const k=name.toLowerCase();if(seen.has(k))continue;seen.add(k);list.push({key:r.stock_key,ticker:String(r.ticker||"").toUpperCase(),name,isin:String(r.isin||"").toUpperCase(),held});
+      if(list.length>=8)break;
+    }
+    const groups=await Promise.all(list.map(async c=>{
+      const [hl,gl]=ISIN_LANG[c.isin.slice(0,2)]||["en-US","US"];
+      const items=await newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5));
+      return items.slice(0,4).map(x=>({...x,topic:"mine",stocks:[{key:c.key,ticker:c.ticker,name:c.name,held:c.held}]}));
+    }));
+    return groups.flat();
+  };
+  let items=[];
+  if(cat==="mine")items=await mine();
+  else if(cat==="foryou"){
+    const [m,l,mac]=await Promise.all([mine(),topic("latest"),topic("macro")]);
+    items=[...m,...l.slice(0,8),...mac.slice(0,6)];
+  }else items=await topic(cat);
+  const seen=new Set();
+  items=items.filter(x=>{const k=x.title.toLowerCase().slice(0,80);if(seen.has(k))return false;seen.add(k);return true})
+    .sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,40);
+  return json({cat,items,updatedAt:nowIso()},200,{"Cache-Control":"private, max-age=120"});
 }
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);

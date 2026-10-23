@@ -688,6 +688,14 @@ function dPulseHtml(){
   '<h2>'+(eu?'Europa '+arrow(eu):'')+(eu&&us?' · ':'')+(us?'EE. UU. '+arrow(us):'')+(!eu&&!us?'Mercados':'')+'</h2>'+
   dFoldHtml('market-pulse','Lectura AI del mercado',text.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'"),'<div class="d-reading"><p><span aria-hidden="true">✦</span> '+text+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="¿Cómo afecta el mercado de hoy a mi cartera?">¿Afecta a mi cartera?</button><button type="button" data-ai-ask-q="Resúmeme el mercado de hoy en tres puntos.">Resúmeme el mercado</button></div></div>')+'</section>';
 }
+// Máximos y mínimos de 52 semanas (escáner de TradingView): los más cerca del extremo, con volumen.
+// La distancia se mide en la divisa de la bolsa de origen, así sirve igual para EE. UU. y LSX.
+function dExtremeRatio(s,high){const p=N(s.price),h=N(s.high52w),l=N(s.low52w);if(p===null||p<=0||h===null||l===null||h<=l)return null;return high?p/h:l/p}
+function dExtremeStocks(high,limit,source){
+ return homeUniverse(source).map(s=>({s,r:dExtremeRatio(s,high),v:N(s.volume)||0})).filter(x=>x.r!==null&&x.r>=0.98&&x.v>0)
+  .sort((a,b)=>b.r-a.r||b.v-a.v).slice(0,limit).map(x=>x.s);
+}
+function dExtremeNote(s,high){const r=dExtremeRatio(s,high);if(r===null)return'';const d=(1-r)*100;return d<0.05?(high?'En máximo de 52 semanas':'En mínimo de 52 semanas'):'A '+F(d,1)+' % del '+(high?'máximo':'mínimo')+' de 52 semanas'}
 function renderHomeFeaturedD(box){
  dLoadIndices();
  const idx=(dMarket.indices||[]).slice(0,5),viewed=homeUserViewedStocks(3);
@@ -696,18 +704,18 @@ function renderHomeFeaturedD(box){
   viewed.map(s=>dStockRowHtml(s,'us','Lo has visto esta semana')).join('')+'</ul></section>';
  const src=dMarket.source,mv=dMarket.move;
  if(src==='tr'&&typeof seedTradeRepublicMarketBoard==='function')seedTradeRepublicMarketBoard(120);
- let list=mv==='active'?homeActiveStocks(6,src):homeMoveStocks(mv==='gainers',6,src),closeNote='';
+ let list=mv==='active'?homeActiveStocks(6,src):mv==='high52'||mv==='low52'?dExtremeStocks(mv==='high52',6,src):homeMoveStocks(mv==='gainers',6,src),closeNote='';
  // Antes de que lleguen los cambios de la sesión en curso: los de la última sesión regular, avisándolo.
  if(!list.length&&src==='us'&&mv!=='active'){
   list=homeUniverse('us').map(x=>({s:x,ch:N(x.changePct)})).filter(x=>x.ch!==null&&(mv==='gainers'?x.ch>0:x.ch<0)).sort((a,b)=>mv==='gainers'?b.ch-a.ch:a.ch-b.ch).slice(0,6).map(x=>x.s);
   if(list.length)closeNote='<p class="d-group-note">Última sesión regular: los movimientos de la sesión actual aparecen en cuanto llegan.</p>';
  }
  if(src==='tr')list.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
- const chips=[['gainers','Suben'],['losers','Bajan'],['active','Volumen']].map(([k,l])=>'<button type="button" class="'+(k===mv?'active':'')+'" data-d-move="'+k+'" aria-pressed="'+(k===mv)+'">'+l+'</button>').join('');
+ const chips=[['gainers','Suben'],['losers','Bajan'],['active','Volumen'],['high52','Máx. 52 s'],['low52','Mín. 52 s']].map(([k,l])=>'<button type="button" class="'+(k===mv?'active':'')+'" data-d-move="'+k+'" aria-pressed="'+(k===mv)+'">'+l+'</button>').join('');
  const srcChips=[['us','EE. UU.'],['tr','LSX']].map(([k,l])=>'<button type="button" class="'+(k===src?'active':'')+'" data-d-move-src="'+k+'" aria-pressed="'+(k===src)+'">'+l+'</button>').join('');
  const moves='<section class="d-group"><header><h3>Movimientos fuertes</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
   '<div class="d-pills">'+chips+'<span class="d-pills-sep"></span>'+srcChips+'</div>'+closeNote+'<ul class="d-list">'+
-  (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src)).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
+  (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src,mv==='high52'||mv==='low52'?dExtremeNote(s,mv==='high52'):'')).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
  box.innerHTML=dPulseHtml()+followed+moves;
 }
 if(typeof document!=='undefined')document.addEventListener('click',e=>{
