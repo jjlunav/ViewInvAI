@@ -703,8 +703,37 @@ function radarAiShellD(rows,mode,counts,visible){
   '<section class="d-group"><header><h3>Ideas de hoy</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
    '<div class="d-pills" role="group" aria-label="Filtrar por nivel">'+pill('all','Todas',counts.high+counts.opportunity+counts.watch)+pill('high','Alta',counts.high)+pill('opportunity','Oportunidad',counts.opportunity)+pill('watch','Vigilancia',counts.watch)+pill('spec','Especulativo',counts.spec)+'</div>'+
    list+'</section>'+
+  radarAnalystsShellD(visible)+
   radarAiContrastPanel(rows,mode)+radarScoreboardHtml()+
  '</div>';
+}
+// «Lo que dicen los analistas»: consenso y precio objetivo (Nasdaq) de las primeras ideas de EE. UU.
+const radarAnalystsCache=new Map();
+function radarAnalystSymbols(visible){
+ const out=[];for(const r of visible){const s=r.s;if(/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||''))&&s.ticker&&!out.some(x=>x.sym===String(s.ticker).toUpperCase()))out.push({sym:String(s.ticker).toUpperCase(),s,preferTr:r.preferTr});if(out.length>=5)break}
+ return out;
+}
+function radarAnalystsShellD(visible){
+ const list=radarAnalystSymbols(visible);if(!list.length)return'';
+ setTimeout(()=>hydrateRadarAnalysts(list),60);
+ return '<section class="d-group" data-radar-analysts><header><h3>Lo que dicen los analistas</h3><span>Nasdaq</span></header><ul class="d-list">'+list.map(x=>'<li class="d-row" data-radar-analyst="'+E(x.sym)+'">'+radarAnalystRow(x,radarAnalystsCache.get(x.sym))+'</li>').join('')+'</ul></section>';
+}
+function radarAnalystRow(x,d){
+ const name=String(x.s.name||x.sym).replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
+ let right='<small>Cargando…</small>';
+ if(d&&d.empty)right='<small>Sin cobertura</small>';
+ else if(d&&d.target){
+  const price=N(x.s.price),up=price&&N(d.target.mean)?(d.target.mean/price-1)*100:null,lab={buy:'Comprar',hold:'Mantener',sell:'Vender'}[d.consensus]||'—';
+  right='<b>'+(N(d.target.mean)===null?'—':E(d.target.mean.toLocaleString('es-ES',{style:'currency',currency:'USD'})))+'</b>'+(up===null?'':'<span class="d-chip '+(up>=0?'up':'down')+'">'+(up>=0?'▲ ':'▼ ')+F(Math.abs(up),1)+' %</span>');
+  return '<button type="button" class="d-row-main d-row-noring" data-open-stock="'+E(stockKey(x.s))+'" data-stock-prefer-tr="'+(x.preferTr?'1':'0')+'"><span class="d-row-text"><b>'+E(name)+'</b><small>'+E(x.sym)+' · '+(d.analysts||0)+' analistas</small><i class="d-row-ai">✦ Consenso: '+E(lab)+'</i></span><span class="d-row-num">'+right+'</span></button>';
+ }
+ return '<div class="d-row-main d-row-noring"><span class="d-row-text"><b>'+E(name)+'</b><small>'+E(x.sym)+'</small></span><span class="d-row-num">'+right+'</span></div>';
+}
+async function hydrateRadarAnalysts(list){
+ await Promise.all(list.map(async x=>{
+  if(!radarAnalystsCache.has(x.sym)){try{const r=await fetch('/api/analysts?symbol='+encodeURIComponent(x.sym));const d=await r.json();radarAnalystsCache.set(x.sym,r.ok?d:{empty:true})}catch(_){radarAnalystsCache.set(x.sym,{empty:true})}}
+  const li=document.querySelector('[data-radar-analyst="'+x.sym+'"]');if(li)li.innerHTML=radarAnalystRow(x,radarAnalystsCache.get(x.sym));
+ }));
 }
 function rerenderRadarAiList(){
  const box=$('#recommendationResults');if(!box)return;

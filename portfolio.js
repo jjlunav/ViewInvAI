@@ -4370,7 +4370,7 @@ function portfolioPositionsDetail(portfolioId=null){
 // gráfico, tres datos (invertido, desde la compra, efectivo), lectura AI, botones con nombre y
 // una sola lista agrupada con el anillo AI y el veredicto en cada fila. Debajo siguen Riesgo y
 // dividendos y Rentabilidad frente a índices. El diseño clásico no pasa por aquí.
-const D_RANGES={'1w':'1S','1m':'1M','3m':'3M','1y':'1A','all':'Máx'};
+const D_RANGES={'1d':'1D','1w':'1S','1m':'1M','3m':'3M','1y':'1A','all':'Máx'};
 function dRangeKey(){try{const k=localStorage.getItem('viewinvai:pf-d-range');return D_RANGES[k]?k:'1m'}catch(_){return'1m'}}
 function dIsDesign(){return document.documentElement.dataset.design==="d"}
 const dMoney=v=>v===null||v===undefined||!Number.isFinite(v)?"—":formatMoney(v,"EUR");
@@ -4473,9 +4473,58 @@ function dAccountFunds(portfolio){
   return F.getFundPortfolios().filter(f=>(portfolioAccountKey(f.platform)||portfolioAccountKey(f.name))===key)
     .flatMap(f=>F.getPortfolioDetail(f.id)).filter(r=>r.currency==="EUR");
 }
+// 1D: suma de la cotización intradía de cada posición (LSX para las de Trade Republic, Nasdaq para
+// EE. UU.) por sus unidades, en euros. Lo que no tiene serie intradía cuenta con su valor actual.
+const dIntraday=new Map();
+async function dLoadIntraday(portfolio){
+  const id=String(portfolio.id),hit=dIntraday.get(id);
+  if(hit&&(hit.loading||Date.now()-hit.at<3*60000))return;
+  dIntraday.set(id,{...(hit||{}),loading:true});
+  const fx=portfolioUsdToEurRate(),positions=portfolioPositions(portfolio.id).slice(0,15);
+  const series=[],fixed={value:0};
+  await Promise.all(positions.map(async p=>{
+    const stock=stockByKey(p.stock_key),qty=num(p.quantity);if(!stock||qty===null)return;
+    const preferTr=Number(p.prefer_tr)===1;
+    try{
+      if(preferTr&&typeof trIsin==="function"&&trIsin(stock)){
+        const r=await fetch('/api/tr-history?isin='+encodeURIComponent(trIsin(stock))+'&exchange='+encodeURIComponent(stock.trExchange||'LSX')+'&range=1d&resolution=300000',{cache:'no-store'});
+        const d=await r.json();const pts=(d.points||[]).map(x=>[Number(x.time),num(x.close)]).filter(x=>x[1]!==null&&Number.isFinite(x[0]));
+        if(pts.length>1){series.push({qty,mult:1,pts});return}
+      }else if(!preferTr&&stock.ticker){
+        const r=await fetch('/api/us-chart?symbol='+encodeURIComponent(stock.ticker),{cache:'no-store'});
+        const d=await r.json(),day=Date.now()-20*3600e3;const pts=(d.points||[]).map(x=>[Number(x.time),num(x.price)]).filter(x=>x[1]!==null&&x[0]>=day);
+        if(pts.length>1&&fx){series.push({qty,mult:fx,pts});return}
+      }
+    }catch(_){}
+    const v=positionSortMetrics(p).value;if(v!==null)fixed.value+=v;
+  }));
+  let points=[];
+  if(series.length){
+    const times=[...new Set(series.flatMap(x=>x.pts.map(p=>Math.floor(p[0]/300000)*300000)))].sort((a,b)=>a-b);
+    points=times.map(t=>[t,fixed.value+series.reduce((sum,x)=>{let last=x.pts[0][1];for(const p of x.pts){if(p[0]<=t+299999)last=p[1];else break}return sum+x.qty*last*x.mult},0)]);
+  }
+  dIntraday.set(id,{at:Date.now(),loading:false,points});
+  if(dRangeKey()==='1d'){const hero=document.querySelector('[data-d-hero="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');if(hero){const tmp=document.createElement('div');tmp.innerHTML=dHeroHtml(portfolio,portfolioPositions(portfolio.id));hero.replaceWith(tmp.firstElementChild)}}
+}
+function dSvg(vals,i0,n,gain){
+  let lo=Infinity,hi=-Infinity;vals.forEach(([,v])=>{lo=Math.min(lo,v);hi=Math.max(hi,v)});
+  const pad=(hi-lo)*.12||Math.max(1,hi*.02);lo-=pad;hi+=pad;
+  const W=320,H=96,x=i=>(i-i0)/Math.max(1,n-i0)*W,y=v=>H-(v-lo)/(hi-lo)*H;
+  const line=vals.map(([i,v],j)=>(j?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)).join("");
+  const tone=gain===null||gain>=0?"up":"down";
+  return '<svg class="d-chart '+tone+'" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="Valor de la cartera de acciones en el periodo"><path class="area" d="'+line+'L'+W+' '+H+'L0 '+H+'Z"/><path class="line" d="'+line+'"/></svg>';
+}
 function dChartHtml(portfolio){
   const entry=perfCache.get(String(portfolio.id)),range=dRangeKey();
   const tabs='<div class="d-ranges" role="group" aria-label="Periodo del gráfico">'+Object.entries(D_RANGES).map(([k,l])=>'<button type="button" class="'+(k===range?"active":"")+'" data-pf-d-range="'+k+'" aria-pressed="'+(k===range)+'">'+l+'</button>').join("")+'</div>';
+  if(range==='1d'){
+    const it=dIntraday.get(String(portfolio.id));
+    if(!it||(!it.points&&it.loading)||(it.loading&&!it.points.length)){dLoadIntraday(portfolio);return{svg:'<div class="d-chart d-chart-empty">Cargando la sesión de hoy…</div>'+tabs,gain:null,intraday:true}}
+    if(Date.now()-it.at>=3*60000)dLoadIntraday(portfolio);
+    if(it.points.length<2)return{svg:'<div class="d-chart d-chart-empty">Sin cotización intradía todavía</div>'+tabs,gain:null,intraday:true};
+    const t0=it.points[0][0],vals=it.points.map(([t,v])=>[(t-t0)/300000,v]),n=vals[vals.length-1][0];
+    return{svg:dSvg(vals,0,n,vals[vals.length-1][1]-vals[0][1])+tabs,gain:null,intraday:true};
+  }
   const p=entry&&entry.data;
   if(!p||p.computing||!p.days||p.days.length<2||!p.value)return{svg:'<div class="d-chart d-chart-empty">'+(entry&&entry.error?"Gráfico no disponible ahora":"Preparando el gráfico…")+'</div>'+tabs,gain:null};
   const n=p.days.length-1,map={'1w':null,'1m':'1m','3m':'3m','1y':'1y','all':'all'};
