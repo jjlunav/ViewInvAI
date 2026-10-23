@@ -507,3 +507,4 @@
 @ .asset-card:has(+.asset-card){border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;margin-bottom:0!important;box-shadow:none!important}
 @ .asset-card+.asset-card{border-top-left-radius:0!important;border-top-right-radius:0!important}
 @ .asset-card+.asset-card:not(:has(+.asset-card)){box-shadow:var(--d-shadow)!important}
+@body.chrome-hide .mobile-bottom-nav{transform:translateY(calc(100% + 56px + env(safe-area-inset-bottom,0px)))!important}

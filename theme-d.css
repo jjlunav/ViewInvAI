@@ -592,3 +592,4 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card:has(+.asset-card) {border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;margin-bottom:0!important;box-shadow:none!important}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card+.asset-card {border-top-left-radius:0!important;border-top-right-radius:0!important}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card+.asset-card:not(:has(+.asset-card)) {box-shadow:var(--d-shadow)!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6).chrome-hide .mobile-bottom-nav {transform:translateY(calc(100% + 56px + env(safe-area-inset-bottom,0px)))!important}
