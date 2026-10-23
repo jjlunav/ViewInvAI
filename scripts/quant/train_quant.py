@@ -206,17 +206,9 @@ def features(a):
     }
 
 
-# Factores del modelo (en la app salen del snapshot con los mismos nombres).
+# Factores del modelo, en el orden de las columnas de main() (en la app los calcula quantFeatures de score-engine.js).
 MODEL_FEATURES = ["change", "relVolume", "rsi", "adx", "dist20", "dist50", "trend", "perfWeek",
                   "perfMonth", "traded", "fromHigh", "fromLow", "atrPct"]
-
-
-def model_row(f, i):
-    p, e20, e50 = f["price"][i], f["ema20"][i], f["ema50"][i]
-    return [f["change"][i], math.log(max(f["relVolume"][i], 0.01)), f["rsi"][i], f["adx"][i],
-            (p / e20 - 1) * 100, (p / e50 - 1) * 100, (e20 / e50 - 1) * 100, f["perfWeek"][i],
-            f["perfMonth"][i], math.log10(max(p * f["avgVolume"][i], 1.0)), f["fromHigh"][i],
-            f["fromLow"][i], f["atrPct"][i]]
 
 
 # ---------- 3. Modelo aditivo por tramos ----------
@@ -326,68 +318,77 @@ def main():
     spy = fetch("SPY", "etf")
     if spy is None:
         sys.exit("Sin histórico del SPY")
-    spy_idx = {d: i for i, d in enumerate(spy["d"])}
     spy_c = spy["c"]
 
-    def spy_fwd(day, k):
-        i = spy_idx.get(day)
-        if i is None or i + k >= len(spy_c):
-            return float("nan")
-        return (spy_c[i + k] / spy_c[i] - 1) * 100
-
+    data = []
     with ThreadPoolExecutor(WORKERS) as ex:
-        data = list(ex.map(fetch, tickers))
+        for i, a in enumerate(ex.map(fetch, tickers), 1):
+            data.append(a)
+            if i % 250 == 0:
+                log("  descargados", i, "/", len(tickers), "·", round(time.time() - t0), "s")
     got = [(t, a) for t, a in zip(tickers, data) if a is not None]
     log("Históricos descargados:", len(got), "en", round(time.time() - t0), "s")
 
-    X, Y, EX, D, ENG, CH = [], [], [], [], [], []
+    ENG_KEYS = ["price", "change", "relVolume", "rsi", "adx", "ema20", "ema50", "perfWeek", "perfMonth", "avgVolume"]
+    Xs, EXs, Ds, CHs, ENGs = [], [], [], [], []
     crashes = []
     splits_total = 0
+    spy_days = np.array(spy["d"])
     for t, a in got:
         splits_total += fix_splits(a)
         f = features(a)
         n = len(a["c"])
-        for i in range(60, n - 1):
-            ch = f["change"][i]
-            p = f["price"][i]
-            traded = p * f["avgVolume"][i] if not math.isnan(f["avgVolume"][i]) else float("nan")
-            if math.isnan(ch) or math.isnan(traded) or traded < 200000 or p < 0.5:
-                continue
-            day = str(a["d"][i])
-            # Caídas bruscas: el día entero, sin muestreo.
-            if -95 <= ch <= -25:
-                prior = ((1 + f["perfMonth"][i] / 100) / (1 + ch / 100) - 1) * 100 if not math.isnan(f["perfMonth"][i]) else float("nan")
-                if math.isnan(prior) or prior > -25:
-                    ev = {"day": day, "t": t, "ch": ch, "prior": prior, "rsi": f["rsi"][i], "traded": traded}
-                    for h in (1, 5, 20):
-                        r = f["fwd%d" % h][i]
-                        ev["r%d" % h] = r
-                        ev["x%d" % h] = r - spy_fwd(day, h) if not math.isnan(r) else float("nan")
-                    crashes.append(ev)
-            fwd = f["fwd5"][i]
-            if math.isnan(fwd) or i + HORIZON >= n:
-                continue
+        days = a["d"]
+        # Rentabilidad del SPY desde cada día del valor (alineada por fecha).
+        pos = np.searchsorted(spy_days, days)
+        pos = np.clip(pos, 0, len(spy_days) - 1)
+        same = spy_days[pos] == days
+        spy_fwd_arr = {}
+        for h in (1, 5, 20):
+            j = pos + h
+            ok = same & (j < len(spy_c))
+            v = np.full(n, np.nan)
+            v[ok] = (spy_c[j[ok]] / spy_c[pos[ok]] - 1) * 100
+            spy_fwd_arr[h] = v
+        idx = np.arange(n)
+        with np.errstate(all="ignore"):
+            traded = f["price"] * f["avgVolume"]
+            base = (idx >= 60) & (idx < n - 1) & np.isfinite(f["change"]) & np.isfinite(traded) & (traded >= 200000) & (f["price"] >= 0.5)
+            # Caídas bruscas: todos los días, sin muestreo.
+            prior = ((1 + f["perfMonth"] / 100) / (1 + f["change"] / 100) - 1) * 100
+            cm = base & (f["change"] <= -25) & (f["change"] >= -95) & ~(prior <= -25)
+            for i in np.where(cm)[0]:
+                ev = {"day": str(days[i]), "t": t, "ch": float(f["change"][i]), "prior": float(prior[i]), "rsi": float(f["rsi"][i]), "traded": float(traded[i])}
+                for h in (1, 5, 20):
+                    r = float(f["fwd%d" % h][i])
+                    ev["r%d" % h] = r
+                    ev["x%d" % h] = r - float(spy_fwd_arr[h][i])
+                crashes.append(ev)
             # Muestra: todos los días con movimiento (≥ 2 % o ≤ -8 %) y 1 de cada 6 del resto.
-            if not (ch >= 2 or ch <= -8) and random.random() > 1 / 6:
+            move = (f["change"] >= 2) | (f["change"] <= -8)
+            keep = base & (idx + HORIZON < n) & np.isfinite(f["fwd5"]) & np.isfinite(spy_fwd_arr[HORIZON]) & (move | (np.random.random(n) < 1 / 6))
+            k = np.where(keep)[0]
+            if not len(k):
                 continue
-            row = model_row(f, i)
-            if any(math.isnan(x) or math.isinf(x) for x in row):
-                continue
-            sx = spy_fwd(day, HORIZON)
-            if math.isnan(sx):
-                continue
-            X.append(row)
-            EX.append(fwd - sx)
-            D.append(day)
-            CH.append(ch)
-            ENG.append({"price": p, "change": ch, "relVolume": f["relVolume"][i], "rsi": f["rsi"][i], "adx": f["adx"][i],
-                        "ema20": f["ema20"][i], "ema50": f["ema50"][i], "perfWeek": f["perfWeek"][i],
-                        "perfMonth": f["perfMonth"][i], "avgVolume": f["avgVolume"][i]})
-    X = np.array(X, dtype=np.float64)
-    EX = np.array(EX)
+            p, e20, e50 = f["price"][k], f["ema20"][k], f["ema50"][k]
+            M = np.column_stack([f["change"][k], np.log(np.maximum(f["relVolume"][k], 0.01)), f["rsi"][k], f["adx"][k],
+                                 (p / e20 - 1) * 100, (p / e50 - 1) * 100, (e20 / e50 - 1) * 100, f["perfWeek"][k],
+                                 f["perfMonth"][k], np.log10(np.maximum(p * f["avgVolume"][k], 1.0)), f["fromHigh"][k],
+                                 f["fromLow"][k], f["atrPct"][k]])
+            good = np.all(np.isfinite(M), axis=1)
+            k, M = k[good], M[good]
+            Xs.append(M.astype(np.float32))
+            EXs.append((f["fwd5"][k] - spy_fwd_arr[HORIZON][k]).astype(np.float32))
+            Ds.append(days[k])
+            CHs.append(f["change"][k].astype(np.float32))
+            ENGs.append(np.column_stack([f[key][k] for key in ENG_KEYS]).astype(np.float32))
+    X = np.concatenate(Xs).astype(np.float64)
+    EX = np.concatenate(EXs).astype(np.float64)
     Y = (EX > 0).astype(np.float64)
-    D = np.array(D)
-    CH = np.array(CH)
+    D = np.concatenate(Ds)
+    CH = np.concatenate(CHs).astype(np.float64)
+    ENG = np.concatenate(ENGs)
+    log("Factores calculados en", round(time.time() - t0), "s")
     log("Filas:", len(X), "· caídas bruscas:", len(crashes), "· splits corregidos:", splits_total)
 
     train = D < SPLIT_AT
@@ -400,7 +401,7 @@ def main():
     # Motor actual en el mismo periodo fuera de muestra (muestra de 300.000 filas como máximo).
     te_idx = np.where(test)[0]
     sample = np.random.choice(te_idx, size=min(len(te_idx), 300000), replace=False)
-    eng = engine_scores([ENG[i] for i in sample])
+    eng = engine_scores([{key: float(ENG[i, j]) for j, key in enumerate(ENG_KEYS)} for i in sample])
     ex_s, y_s = EX[sample], Y[sample]
     p_s = predict(to_bins(X[sample], edges), b, W)
     report_radar = {
