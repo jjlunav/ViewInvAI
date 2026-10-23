@@ -590,21 +590,25 @@ async function loadRadarScoreboard(){
  }
 }
 // ----- Modelo cuantitativo (entrenado cada semana con ~10 años de históricos, data/quant-model.json) -----
-const quant={model:null,report:null,loading:false,at:0};
+const quant={model:null,modelTr:null,report:null,loading:false,at:0};
 function loadQuant(){
  if(quant.loading||(quant.at&&Date.now()-quant.at<6*3600e3))return;
  quant.loading=true;
  const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
- Promise.all([get('/data/quant-model.json'),get('/data/quant-backtest.json')]).then(([m,r])=>{
-  quant.model=m&&Array.isArray(m.features)?m:null;quant.report=r||null;quant.at=Date.now();quant.loading=false;
+ Promise.all([get('/data/quant-model.json'),get('/data/quant-backtest.json'),get('/data/quant-model-tr.json')]).then(([m,r,t])=>{
+  quant.model=m&&Array.isArray(m.features)?m:null;quant.modelTr=t&&Array.isArray(t.features)?t:null;quant.report=r||null;quant.at=Date.now();quant.loading=false;
   if(quant.model||quant.report)window.dispatchEvent(new CustomEvent('viewinvai:quant-ready'));
  });
 }
-// Solo valores de EE. UU.: el modelo se ha entrenado con sus históricos.
+// Valores de EE. UU.: modelo entrenado con sus históricos (frente al S&P 500). Resto de valores de
+// Trade Republic: modelo entrenado con 5 años de LSX (frente a la mediana de LSX).
 function quantFor(s){
- if(!s||!/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||'')))return null;
- if(!quant.model){loadQuant();return null}
- try{return window.ViewInvAIScore.quantScore(quant.model,s)}catch(_){return null}
+ if(!s)return null;
+ const us=/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||''));
+ if(!us&&!(typeof trTradable==='function'&&trTradable(s)))return null;
+ if(!quant.at){loadQuant();return null}
+ const model=us?quant.model:quant.modelTr;if(!model)return null;
+ try{const q=window.ViewInvAIScore.quantScore(model,s);return q?Object.assign(q,{market:us?'us':'tr',benchmark:us?'el S&P 500':'la mediana de LSX'}):null}catch(_){return null}
 }
 window.ViewInvAIQuant={load:loadQuant,scoreFor:quantFor,state:()=>quant};
 window.addEventListener('viewinvai:quant-ready',()=>{
@@ -735,7 +739,7 @@ function radarAiRowD(row){
  const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
  return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
-  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="Probabilidad de batir al S&amp;P 500 en 5 sesiones según el modelo entrenado con 10 años">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="'+(q.market==='tr'?'Probabilidad de batir a la mediana de LSX en 5 sesiones (modelo entrenado con 5 años de LSX)':'Probabilidad de batir al S&amp;P 500 en 5 sesiones (modelo entrenado con 10 años)')+'">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
   '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
 }
 function radarAiShellD(rows,mode,counts,visible){

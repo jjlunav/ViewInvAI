@@ -28,12 +28,16 @@ from pathlib import Path
 
 import numpy as np
 import requests
+import websocket
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_URL = os.environ.get("APP_URL", "https://viewinvai.sonarlab.workers.dev").rstrip("/")
 CACHE = Path(os.environ.get("QUANT_CACHE", ROOT / ".quant-cache"))
 OUT_MODEL = ROOT / "data" / "quant-model.json"
 OUT_REPORT = ROOT / "data" / "quant-backtest.json"
+OUT_MODEL_TR = ROOT / "data" / "quant-model-tr.json"
+TR_WS_URL = "wss://api.traderepublic.com"
+MAX_TR = int(os.environ.get("QUANT_MAX_TR", "2500"))
 FROM = os.environ.get("QUANT_FROM", "2016-01-01")
 MAX_TICKERS = int(os.environ.get("QUANT_MAX_TICKERS", "4500"))
 WORKERS = int(os.environ.get("QUANT_WORKERS", "8"))
@@ -46,6 +50,9 @@ random.seed(7)
 np.random.seed(7)
 
 
+CATALOG = []
+
+
 def log(*a):
     print(*a, flush=True)
 
@@ -55,6 +62,7 @@ def universe():
     r = requests.get(APP_URL + "/data/market.json", headers=HEADERS, timeout=180)
     r.raise_for_status()
     stocks = r.json().get("stocks") or []
+    CATALOG[:] = stocks
     rows = []
     for s in stocks:
         if str(s.get("exchange") or "").upper() not in US_EX:
@@ -311,6 +319,154 @@ def crash_stats(ev, key):
     return out
 
 
+# ---------- 6. Trade Republic / LSX (valores que no cotizan en EE. UU.) ----------
+def tr_history(isins):
+    """Histórico diario de 5 años en LSX por la API pública de cotizaciones de Trade Republic
+    (la misma que usa la app; sin cuenta ni PIN). Devuelve {isin: arrays}."""
+    out = {}
+    todo = [i for i in isins if not (CACHE / ("tr_" + i + ".npz")).exists() or
+            str(np.load(CACHE / ("tr_" + i + ".npz"))["fetched"]) != date.today().isoformat()]
+    for i in isins:
+        if i not in todo:
+            z = np.load(CACHE / ("tr_" + i + ".npz"))
+            out[i] = {k: z[k] for k in ("d", "o", "h", "l", "c", "v")}
+    ws = None
+    try:
+        ws = websocket.create_connection(TR_WS_URL, timeout=15, origin="https://app.traderepublic.com", header=["User-Agent: Mozilla/5.0"])
+        ws.send("connect 30")
+        if not str(ws.recv()).startswith("connected"):
+            raise RuntimeError("saludo inesperado de Trade Republic")
+        sid = 0
+        for start in range(0, len(todo), 15):
+            batch = todo[start:start + 15]
+            pending = {}
+            for isin in batch:
+                sid += 1
+                pending[str(sid)] = isin
+                ws.send("sub %d %s" % (sid, json.dumps({"type": "aggregateHistoryLight", "id": isin + ".LSX", "range": "5y", "resolution": 86400000}, separators=(",", ":"))))
+            deadline = time.time() + 30
+            while pending and time.time() < deadline:
+                try:
+                    msg = str(ws.recv())
+                except websocket.WebSocketTimeoutException:
+                    break
+                parts = msg.split(" ", 2)
+                if len(parts) < 2 or parts[0] not in pending:
+                    continue
+                isin = pending.pop(parts[0])
+                try:
+                    ws.send("unsub " + parts[0])
+                except websocket.WebSocketException:
+                    pass
+                if parts[1] != "A" or len(parts) < 3:
+                    continue
+                try:
+                    agg = (json.loads(parts[2]) or {}).get("aggregates") or []
+                except ValueError:
+                    continue
+                if len(agg) < 120:
+                    continue
+                d = np.array([datetime.fromtimestamp(int(x["time"]) / 1000, timezone.utc).strftime("%Y-%m-%d") for x in agg])
+                arr = {"d": d}
+                for k, f in (("o", "open"), ("h", "high"), ("l", "low"), ("c", "close"), ("v", "volume")):
+                    arr[k] = np.array([num(x.get(f)) for x in agg], dtype=np.float64)
+                arr["v"] = np.nan_to_num(arr["v"], nan=0.0)
+                np.savez_compressed(CACHE / ("tr_" + isin + ".npz"), fetched=date.today().isoformat(), **arr)
+                out[isin] = arr
+            if (start // 15) % 20 == 0:
+                log("  LSX", start + len(batch), "/", len(todo))
+    except (OSError, websocket.WebSocketException, RuntimeError) as error:
+        log("::warning::Trade Republic no disponible para históricos:", error)
+    finally:
+        if ws is not None:
+            try:
+                ws.close()
+            except websocket.WebSocketException:
+                pass
+    return out
+
+
+def train_model(X, Y, D, EX):
+    """Valida fuera de muestra (hasta SPLIT_AT / después) y reentrena con todo. Devuelve el modelo y su validación."""
+    train = D < SPLIT_AT
+    test = ~train
+    edges = fit_bins(X[train])
+    b, W = train_logit(to_bins(X[train], edges), Y[train], edges)
+    p_test = predict(to_bins(X[test], edges), b, W)
+    dec = deciles(p_test, EX[test])
+    edges_all = fit_bins(X)
+    b_all, W_all = train_logit(to_bins(X, edges_all), Y, edges_all)
+    return edges_all, b_all, W_all, {"auc": round(auc(p_test, Y[test]), 4), "test": [min(D[test].tolist()), max(D[test].tolist())],
+                                     "topDecile": dec[-1], "bottomDecile": dec[0], "baseBeatRate": round(float(Y[test].mean() * 100), 1),
+                                     "deciles": dec}
+
+
+def train_tr():
+    stocks = [s for s in CATALOG if s.get("tradeRepublicTradable") and str(s.get("exchange") or "").upper() not in US_EX
+              and (s.get("marketCap") or 0) >= 100e6]
+    stocks.sort(key=lambda s: -(s.get("marketCap") or 0))
+    isins = []
+    for s in stocks:
+        i = str(s.get("trIsin") or s.get("isin") or "").upper()
+        if len(i) == 12 and i not in isins:
+            isins.append(i)
+    isins = isins[:MAX_TR]
+    log("LSX: universo", len(isins), "valores internacionales")
+    data = tr_history(isins)
+    log("LSX: históricos", len(data))
+    if len(data) < 200:
+        log("::warning::Pocos históricos de LSX; no se entrena el modelo internacional.")
+        return None
+    rows = {}
+    for isin, a in data.items():
+        fix_splits(a)
+        f = features(a)
+        n = len(a["c"])
+        idx = np.arange(n)
+        with np.errstate(all="ignore"):
+            k = np.where((idx >= 60) & (idx + HORIZON < n) & np.isfinite(f["fwd5"]) & np.isfinite(f["change"]) & (f["price"] > 0.2))[0]
+        for i in k:
+            rows.setdefault(str(a["d"][i]), []).append((isin, f, i))
+    # Objetivo: batir a la mediana del universo LSX ese día (sin ruido de divisa frente al S&P).
+    Xs, EXs, Ds, CHs = [], [], [], []
+    for day, items in rows.items():
+        if len(items) < 30:
+            continue
+        fw = np.array([f["fwd5"][i] for _, f, i in items])
+        med = float(np.median(fw))
+        for (isin, f, i), r in zip(items, fw):
+            p, e20, e50 = f["price"][i], f["ema20"][i], f["ema50"][i]
+            av = f["avgVolume"][i]
+            row = [f["change"][i], math.log(max(f["relVolume"][i], 0.01)) if np.isfinite(f["relVolume"][i]) else np.nan, f["rsi"][i], f["adx"][i],
+                   (p / e20 - 1) * 100, (p / e50 - 1) * 100, (e20 / e50 - 1) * 100, f["perfWeek"][i], f["perfMonth"][i],
+                   math.log10(max(p * av, 1.0)) if np.isfinite(av) else np.nan, f["fromHigh"][i], f["fromLow"][i], f["atrPct"][i]]
+            if not all(np.isfinite(row)):
+                continue
+            Xs.append(row)
+            EXs.append(r - med)
+            Ds.append(day)
+            CHs.append(f["change"][i])
+    if len(Xs) < 20000:
+        log("::warning::Pocas filas de LSX:", len(Xs))
+        return None
+    X = np.array(Xs)
+    EX = np.array(EXs)
+    Y = (EX > 0).astype(np.float64)
+    D = np.array(Ds)
+    edges, b, W, val = train_model(X, Y, D, EX)
+    model = {"version": datetime.now(timezone.utc).strftime("%Y.%m.%d"), "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "target": "Probabilidad de batir a la mediana de Trade Republic / LSX en las 5 sesiones siguientes",
+             "market": "tr", "horizon": HORIZON, "intercept": round(b, 5), "baseRate": round(float(Y.mean()), 4),
+             "features": [{"name": nme, "edges": [round(float(e), 5) for e in edges[j]], "weights": [round(float(w), 5) for w in W[j]]}
+                          for j, nme in enumerate(MODEL_FEATURES)],
+             "validation": {k: v for k, v in val.items() if k != "deciles"}, "universe": len(data), "rows": int(len(X)),
+             "byChange": bucket_stats(np.array(CHs), EX, [-100, -8, 0, 2, 5, 8, 15, 30, 1000],
+                                      ["< -8 %", "-8 a 0 %", "0 a 2 %", "2 a 5 %", "5 a 8 %", "8 a 15 %", "15 a 30 %", "> 30 %"])}
+    OUT_MODEL_TR.write_text(json.dumps(model, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log("LSX: AUC", val["auc"], "· filas", len(X), "· 10 % mejor", val["topDecile"])
+    return model
+
+
 def main():
     t0 = time.time()
     tickers = universe()
@@ -462,6 +618,11 @@ def main():
     OUT_REPORT.write_text(json.dumps(report, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log("Listo en", round(time.time() - t0), "s ·", OUT_MODEL, OUT_REPORT)
     log(json.dumps({"radar": {k: report_radar[k] for k in ("baseBeatRate", "byChange")}, "crash_all": report_crash["all"]}, ensure_ascii=False))
+    if os.environ.get("QUANT_SKIP_TR") != "1":
+        try:
+            train_tr()
+        except Exception as error:  # el modelo de EE. UU. ya está guardado: el de LSX no debe tumbarlo
+            log("::warning::Modelo LSX no entrenado:", repr(error))
 
 
 if __name__ == "__main__":

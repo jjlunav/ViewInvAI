@@ -847,7 +847,7 @@ function profileQuantHtml(s){
  const pct=Math.round(q.prob*100),base=q.base!==null?Math.round(q.base*100):null,tone=base===null?'flat':pct>=base+4?'up':pct<=base-4?'down':'flat';
  const parts=q.parts.slice(0,3).map(p=>'<li class="'+(p.delta>0?'up':'down')+'">'+(p.delta>0?'▲ ':'▼ ')+E(p.label)+'</li>').join('');
  return '<div class="pi-quant"><div><small>Modelo cuantitativo · 5 sesiones</small><b class="d-chip '+tone+'">'+pct+' %</b></div>'+
-  '<p>Probabilidad de batir al S&P 500 en las próximas 5 sesiones'+(base!==null?' (media histórica '+base+' %)':'')+'. Lo que más pesa:</p><ul>'+parts+'</ul></div>';
+  '<p>Probabilidad de batir a '+E(q.benchmark||'el S&P 500')+' en las próximas 5 sesiones'+(base!==null?' (media histórica '+base+' %)':'')+'. Lo que más pesa:</p><ul>'+parts+'</ul></div>';
 }
 function profileInsightsHtml(s){
  const body=profileQuantHtml(s)+profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s);
