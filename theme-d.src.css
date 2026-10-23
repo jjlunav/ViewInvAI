@@ -601,3 +601,22 @@
 @ .ai-verify.ok{background:var(--d-upbg);color:var(--d-up)}
 @ .ai-verify.warn{background:color-mix(in srgb,var(--d-warn) 14%,transparent);color:var(--d-warn)}
 @ .ai-verify-src{color:var(--d-mut);font-size:11.5px}
+/* Modelo cuantitativo */
+@ .quant-tag{font-style:normal;font-weight:700;color:var(--d-accent)}
+@ .d-row-hist{font-style:normal;font-size:11.5px;color:var(--d-mut);line-height:1.3}
+@ .quant-note{color:var(--d-ink)!important}
+@ .quant-facts{margin:6px 0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+@ .quant-table{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}
+@ .quant-table th,@ .quant-table td{padding:5px 4px;border-top:1px solid var(--d-hair);text-align:right;font-variant-numeric:tabular-nums}
+@ .quant-table th:first-child{text-align:left;font-weight:600}
+@ .quant-table thead th{border-top:0;color:var(--d-mut);font-weight:700;font-size:11.5px}
+@ .quant-table .positive{color:var(--d-up)}
+@ .quant-table .negative{color:var(--d-down)}
+@ .pi-quant{display:grid;gap:4px;padding:10px 12px;border-radius:14px;background:var(--d-aitint);margin:0 0 10px}
+@ .pi-quant>div{display:flex;justify-content:space-between;align-items:center}
+@ .pi-quant small{font-weight:700;color:var(--d-accent);font-size:12px}
+@ .pi-quant p{margin:0;font-size:12.5px;color:var(--d-mut)}
+@ .pi-quant ul{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+@ .pi-quant li{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--d-surf)}
+@ .pi-quant li.up{color:var(--d-up)}
+@ .pi-quant li.down{color:var(--d-down)}

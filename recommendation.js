@@ -589,6 +589,53 @@ async function loadRadarScoreboard(){
   const box=document.querySelector('[data-radar-scoreboard]');if(box)box.outerHTML=radarScoreboardHtml();
  }
 }
+// ----- Modelo cuantitativo (entrenado cada semana con ~10 años de históricos, data/quant-model.json) -----
+const quant={model:null,report:null,loading:false,at:0};
+function loadQuant(){
+ if(quant.loading||(quant.at&&Date.now()-quant.at<6*3600e3))return;
+ quant.loading=true;
+ const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+ Promise.all([get('/data/quant-model.json'),get('/data/quant-backtest.json')]).then(([m,r])=>{
+  quant.model=m&&Array.isArray(m.features)?m:null;quant.report=r||null;quant.at=Date.now();quant.loading=false;
+  if(quant.model||quant.report)window.dispatchEvent(new CustomEvent('viewinvai:quant-ready'));
+ });
+}
+// Solo valores de EE. UU.: el modelo se ha entrenado con sus históricos.
+function quantFor(s){
+ if(!s||!/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||'')))return null;
+ if(!quant.model){loadQuant();return null}
+ try{return window.ViewInvAIScore.quantScore(quant.model,s)}catch(_){return null}
+}
+window.ViewInvAIQuant={load:loadQuant,scoreFor:quantFor,state:()=>quant};
+window.addEventListener('viewinvai:quant-ready',()=>{
+ try{
+  if(document.body.classList.contains('stock-detail-open')){if(typeof renderQuickProfile==='function'&&state.profileKey)renderQuickProfile()}
+  else if(['recommendation','crash'].includes(state.currentView))renderCurrentView();
+ }catch(_){}
+});
+setTimeout(loadQuant,3000);
+function quantCardHtml(){
+ const r=quant.report&&quant.report.radar,m=quant.model;
+ if(!r||!m){loadQuant();return''}
+ const top=r.model.deciles[r.model.deciles.length-1],bot=r.model.deciles[0],etop=r.engine.deciles[r.engine.deciles.length-1];
+ const better=r.engine.aucModelSameSample>r.engine.auc;
+ const preview='Probado con '+Number(quant.report.universe||0).toLocaleString('es-ES')+' valores de '+r.period.train[0].slice(0,4)+' a hoy: el 10 % mejor valorado bate al S&P 500 el '+F(top.beatRate,0)+' % de las veces (media '+F(r.baseBeatRate,0)+' %).';
+ const rows=(r.byChange||[]).map(b=>'<tr><th>'+E(b.bucket)+'</th><td>'+F(b.beatRate,0)+'%</td><td class="'+(b.avgExcess>0?'positive':b.avgExcess<0?'negative':'')+'">'+radarPct(b.avgExcess,2)+'</td><td><small>n='+Number(b.n).toLocaleString('es-ES')+'</small></td></tr>').join('');
+ const html='<div class="d-reading quant-card">'+
+  '<p>✦ '+E(m.target)+'. Se entrena hasta '+E(r.period.train[1].slice(0,4))+' y se mide en '+E(r.period.test[0].slice(0,4))+'–'+E(r.period.test[1].slice(0,7))+', con datos que no ha visto.</p>'+
+  '<ul class="quant-facts"><li><b>Modelo</b> · su 10 % mejor bate el '+F(top.beatRate,0)+' % ('+radarPct(top.avgExcess,2)+' de media); su 10 % peor, el '+F(bot.beatRate,0)+' % ('+radarPct(bot.avgExcess,2)+').</li>'+
+  '<li><b>Motor actual</b> · su 10 % mejor bate el '+F(etop.beatRate,0)+' % ('+radarPct(etop.avgExcess,2)+').</li>'+
+  '<li><b>Capacidad de ordenar</b> (AUC; 0,5 es azar): modelo '+F(r.engine.aucModelSameSample,3)+' · motor actual '+F(r.engine.auc,3)+(better?' → el modelo ordena mejor.':' → aún no mejora al motor.')+'</li></ul>'+
+  (rows?'<table class="quant-table"><thead><tr><th>Subida del día</th><th>Bate al S&P</th><th>Media 5 s</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':'')+
+  '<p class="radar-scoreboard-method">Fuente: '+E(quant.report.source||'')+'. Sin comisiones. Solo valores que cotizan hoy. Rentabilidades pasadas no garantizan resultados futuros.</p></div>';
+ return '<section class="d-group quant-group"><header><h3>Modelo cuantitativo</h3><span>'+E(m.version||'')+'</span></header>'+(typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('quant-card','Probado con 10 años de datos',preview,html):html)+'</section>';
+}
+// Tasa histórica de rebote para una caída de este tamaño (pruebas retrospectivas).
+function crashHistoryFor(ch){
+ const c=quant.report&&quant.report.crash;if(!c||!c.bySeverity){loadQuant();return null}
+ const key=ch>-40?'-25 a -40 %':ch>-60?'-40 a -60 %':'< -60 %',g=c.bySeverity[key];
+ return g&&g['5d']?{key,...g['5d']}:null;
+}
 function shortName(n){return String(n||'').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE|Co|Holdings?|Group)\.?$/i,'').slice(0,40)}
 function radarPct(v,d=1){return v===null||v===undefined||!Number.isFinite(+v)?'—':(v>0?'+':'')+F(v,d)+'%'}
 function radarScoreboardHtml(){
@@ -608,7 +655,7 @@ function radarScoreboardHtml(){
  return '<details class="radar-scoreboard" data-radar-scoreboard'+(radarScoreboardOpen?' open':'')+'><summary><span><small>HISTORIAL DEL RADAR AI · '+(d.days||0)+' SESIONES</small>'+head+'</span></summary>'+
   '<div class="radar-scoreboard-body">'+
    '<table><thead><tr><th></th><th>1 sesión</th><th>5 sesiones</th><th>20 sesiones</th></tr></thead><tbody>'+
-    row('Oportunidades sólidas','opportunitySolid')+row('Todas las oportunidades','opportunity')+row('Primera señal (sin repetir)','opportunityFirst')+row('Puntuación ≥ 80','score80')+row('Entró subiendo ≥ 8 %','chasing')+row('Entró subiendo < 8 %','calm')+row('Negociables en TR','trTradable')+row('En vigilancia','watch')+
+    row('Oportunidades sólidas','opportunitySolid')+row('Todas las oportunidades','opportunity')+row('Primera señal (sin repetir)','opportunityFirst')+row('Puntuación ≥ 80','score80')+row('Entró subiendo ≥ 8 %','chasing')+row('Entró subiendo < 8 %','calm')+row('Modelo ≥ 55 %','quantHigh')+row('Modelo < 45 %','quantLow')+row('Negociables en TR','trTradable')+row('En vigilancia','watch')+
    '</tbody></table>'+
    '<p class="radar-scoreboard-legend"><b>%</b> que suben · rentabilidad media · <i>diferencia con el S&P 500</i> · n señales. «Sólidas» excluye las especulativas; «primera señal» cuenta cada valor una vez cada 10 días.</p>'+
    (main&&main.n>0&&main.avgExcess<0?'<p class="radar-scoreboard-legend">✦ Lectura honesta: con '+(d.days||0)+' sesiones las oportunidades aún no baten al S&P 500. Es poca muestra y muchas señales se repiten días seguidos; el historial guarda ya la subida, el volumen y el RSI de cada señal para corregir el motor cuando haya datos suficientes.</p>':'')+
@@ -687,7 +734,7 @@ function radarAiRowD(row){
  const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
  return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
-  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="Probabilidad de batir al S&amp;P 500 en 5 sesiones según el modelo entrenado con 10 años">modelo '+Math.round(q.prob*100)+' %</em>':''})()+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
   '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
 }
 function radarAiShellD(rows,mode,counts,visible){
@@ -706,7 +753,7 @@ function radarAiShellD(rows,mode,counts,visible){
    '<div class="d-pills" role="group" aria-label="Filtrar por nivel">'+pill('all','Todas',counts.high+counts.opportunity+counts.watch)+pill('high','Alta',counts.high)+pill('opportunity','Oportunidad',counts.opportunity)+pill('watch','Vigilancia',counts.watch)+pill('spec','Especulativo',counts.spec)+'</div>'+
    list+'</section>'+
   radarAnalystsShellD(visible)+
-  radarAiContrastPanel(rows,mode)+radarScoreboardHtml()+
+  radarAiContrastPanel(rows,mode)+radarScoreboardHtml()+quantCardHtml()+
  '</div>';
 }
 // ----- Caídas bruscas: ¿rebote o trampa? -----
@@ -755,7 +802,7 @@ function radarCrashRowD(c,isTr){
  const n=c.score;
  return '<li class="d-row d-crash d-crash-'+c.cause.kind+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(isTr?'1':'0')+'" title="'+E(c.cause.title||v.text)+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=65?'high':n>=45?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Probabilidad orientativa de rebote '+n+'/100">'+n+'</em>'+
-  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,isTr?'LSX':(s.exchange||'EE. UU.'),c.prior!==null?'mes previo '+(c.prior>=0?'+':'')+F(c.prior,0)+' %':''].filter(Boolean).join(' · '))+'</small><i class="d-row-ai is-'+v.tone+'">'+(c.cause.kind==='trap'?'⚠ ':'✦ ')+E(v.text)+'</i></span>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,isTr?'LSX':(s.exchange||'EE. UU.'),c.prior!==null?'mes previo '+(c.prior>=0?'+':'')+F(c.prior,0)+' %':''].filter(Boolean).join(' · '))+'</small><i class="d-row-ai is-'+v.tone+'">'+(c.cause.kind==='trap'?'⚠ ':'✦ ')+E(v.text)+'</i>'+(()=>{const h=crashHistoryFor(c.ch);return h?'<i class="d-row-hist">Históricamente, caídas de '+E(h.key)+': rebotan a 5 sesiones el '+F(h.reboundRate,0)+' % (mediana '+radarPct(h.median,1)+', n='+Number(h.n).toLocaleString('es-ES')+')</i>':''})()+'</span>'+
   '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b><span class="d-chip down">▼ '+F(Math.abs(c.ch),1)+' %</span></span></button></li>';
 }
 // Pestaña «Caídas» del Radar: mismo mercado (TR / EE. UU.) que el Radar AI.
@@ -781,7 +828,7 @@ function radarCrashSectionD(mode){
  const F2=window.ViewInvAIFold;
  const head=(typeof F2==='function'?F2('radar-crash-how','Cómo se leen',how,'<div class="d-reading"><p>'+E(how)+'</p><div class="ai-chips">'+(list[0]?'<button type="button" data-ai-ask-q="'+E('¿La caída de hoy de '+(list[0].s.ticker||list[0].s.name)+' es una sobrerreacción o tiene motivo de fondo? Dime qué vigilar antes de plantear un rebote.')+'">¿Rebote o trampa en '+E(list[0].s.ticker||'')+'?</button>':'')+'</div></div>'):'');
  const rest=list.length-over-trap,summary=list.length?[over?over+(over===1?' posible rebote':' posibles rebotes'):'',trap?trap+' con motivo de fondo':'',rest?rest+' por aclarar':''].filter(Boolean).join(' · '):'Ningún valor cae hoy un 25 % o más sin venir ya de un desplome.';
- return '<section class="d-pulse d-crash-pulse"><small>Caídas bruscas · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(list.length?list.length+(list.length===1?' caída de golpe':' caídas de golpe'):'Hoy ninguna')+'</h2><p class="d-hero-note">'+E(summary)+'</p>'+head+'</section>'+
+ return '<section class="d-pulse d-crash-pulse"><small>Caídas bruscas · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(list.length?list.length+(list.length===1?' caída de golpe':' caídas de golpe'):'Hoy ninguna')+'</h2><p class="d-hero-note">'+E(summary)+'</p>'+(()=>{const c=quant.report&&quant.report.crash,a=c&&c.all&&c.all['5d'];if(!a){loadQuant();return''}return '<p class="d-hero-note quant-note">✦ En '+Number(c.n).toLocaleString('es-ES')+' caídas así desde '+E(String(c.period&&c.period[0]||'').slice(0,4))+', a 5 sesiones rebotó el '+F(a.reboundRate,0)+' % (mediana '+radarPct(a.median,1)+'; la mitad central entre '+radarPct(a.p25,0)+' y '+radarPct(a.p75,0)+').</p>'})()+head+'</section>'+
   (list.length?'<section class="d-group d-crash-group"><header><h3>¿Rebote o trampa?</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
   '<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul></section>':'')+crashScoreboardHtml();
 }

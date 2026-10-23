@@ -2564,7 +2564,7 @@ async function ensureRadarScoreboardSchema(env){
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
   ]);
   // Columnas añadidas después (factores en el momento de la señal); si ya existen, SQLite avisa y se sigue.
-  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL"]){
+  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL","quant_prob REAL"]){
     try{await env.DB.prepare("ALTER TABLE radar_signals ADD COLUMN "+col).run()}catch(_){}
   }
   // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
@@ -2590,7 +2590,7 @@ async function migrateRadarToCache(env){
   for(const [table,base] of tables){
     // Las columnas añadidas después solo se copian si D1 ya las tiene.
     const have=new Set(((await d1.prepare("PRAGMA table_info("+table+")").all()).results||[]).map(c=>c.name));
-    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week"].filter(c=>have.has(c)):[];
+    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week","quant_prob"].filter(c=>have.has(c)):[];
     const cols=[base,...extra].join(",");
     const names=cols.split(","),marks=names.map(()=>"?").join(",");
     const rows=(await d1.prepare("SELECT "+cols+" FROM "+table+" WHERE day>=? ORDER BY day").bind(since).all()).results||[];
@@ -2742,7 +2742,7 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
   const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
   const crashPending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM crash_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
-  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],universeStocks:true,prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
   const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
   const now=nowIso();
   // 1) Evaluate earlier signals with today's live prices.
@@ -2764,9 +2764,14 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   for(let i=0;i<updates.length;i+=80)await env.DB.batch(updates.slice(i,i+80));
   // 2) Record today's signals and the benchmark mark.
   const signals=radarSignalsForSnapshot(snapshot,nowMs);
+  // Probabilidad del modelo cuantitativo en el momento de la señal: así se mide en vivo si acierta.
+  try{
+    const qm=services.loadQuantModel?await services.loadQuantModel():null;
+    if(qm)for(const r of signals){const st=findStock(snapshot,{stock_key:r.stock_key});const q=st&&globalThis.ViewInvAIScore.quantScore(qm,st);if(q)r.quant_prob=Math.round(q.prob*10000)/10000}
+  }catch(error){console.warn("Quant on radar signals failed",String(error&&error.message||error))}
   const inserts=signals.map(r=>env.DB.prepare(
-    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,now));
+    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,quant_prob,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,r.quant_prob??null,now));
   for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
   // Caídas bruscas: el servidor de mercado las trae calculadas; si es una versión anterior que
   // no las conoce, se calculan sobre el snapshot completo (un paquete parcial no tiene todo el mercado).
@@ -2793,7 +2798,7 @@ function radarStats(rows,h){
 export async function radarScoreboardSummary(env){return onCacheDb(env,radarScoreboardSummaryOn)}
 async function radarScoreboardSummaryOn(env){
   await ensureRadarScoreboardSchema(env);
-  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,quant_prob,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
   const firstDay=rows.length?rows[rows.length-1].day:null;
   // Una misma acción puede salir varios días seguidos: «primera señal» cuenta cada valor una sola vez
   // cada 10 días, para que las repeticiones no inflen ni hundan el acierto.
@@ -2804,6 +2809,8 @@ async function radarScoreboardSummaryOn(env){
     score80:rows.filter(r=>r.tier==="opportunity"&&Number(r.score)>=80),
     chasing:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)>=8),
     calm:rows.filter(r=>r.tier==="opportunity"&&r.change_pct!==null&&r.change_pct!==undefined&&Number(r.change_pct)<8),
+    quantHigh:rows.filter(r=>r.quant_prob!==null&&r.quant_prob!==undefined&&Number(r.quant_prob)>=0.55),
+    quantLow:rows.filter(r=>r.quant_prob!==null&&r.quant_prob!==undefined&&Number(r.quant_prob)<0.45),
     opportunity:rows.filter(r=>r.tier==="opportunity"),
     opportunitySolid:rows.filter(r=>r.tier==="opportunity"&&Number(r.speculative)===0),
     watch:rows.filter(r=>r.tier==="watch"),
@@ -5916,6 +5923,8 @@ async function aiAskExtras(env,services,userId,body){
         const st=findStock(snap,{stock_key:k});if(!st)continue;
         const evs=(snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===String(st.ticker||"").toUpperCase()).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
         const f=aiStockFacts(st,evs);
+        try{const qm=services.loadQuantModel?await services.loadQuantModel():null;const q=qm&&globalThis.ViewInvAIScore.quantScore(qm,st);
+          if(q)f.quantModel={probBeatSp500Next5Sessions:Math.round(q.prob*1000)/10,historicalAverage:q.base!==null?Math.round(q.base*1000)/10:null,topFactors:q.parts.slice(0,3).map(p=>p.label+(p.delta>0?" (a favor)":" (en contra)")),validatedAuc:qm.validation&&qm.validation.auc}}catch(_){}
         try{f.news=(await newsForCompany(env,{key:k,ticker:f.ticker,name:newsCleanName(st.name),isin:st.isin||st.usIsin||""},4)).map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",240)}))}catch(_){f.news=[]}
         facts.push(f);
       }
@@ -6038,7 +6047,7 @@ async function handleAiAsk(request,env,user,json,services){
     "No des certezas ni órdenes: son ideas para que el usuario decida. No es asesoramiento financiero.",
     "El efectivo es aparte: no forma parte del valor de las carteras.",
     "Noticias: «newsTheUserIsAsking» son las que el usuario está leyendo; «newsOfYourStocks», las de sus valores; «stocksMentioned», datos y noticias de los valores que nombra. Si hay noticias en el contexto, úsalas y cita medio y hora; nunca digas que no hay noticias si las hay.",
-    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos)."
+    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos). «quantModel» es el modelo propio entrenado con 10 años: cítalo como probabilidad, nunca como certeza."
   ];
   // Preguntas sugeridas: las haría el usuario a la app, cortas y completas.
   const FOLLOW_RULE="followUps: 3 preguntas que el USUARIO podría hacer a continuación, escritas por él (p. ej. «¿Subo el stop de TaskUs?»), nunca preguntas tuyas al usuario («¿Quieres…?», «¿Te gustaría…?»), de 45 caracteres como máximo, sin cortar palabras y usando solo nombres o tickers que aparezcan en el contexto.";

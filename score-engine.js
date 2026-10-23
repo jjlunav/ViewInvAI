@@ -319,8 +319,33 @@
     return Math.round(clamp(score,5,95));
   }
 
+  // ----- Modelo cuantitativo entrenado con ~10 años de históricos (data/quant-model.json) -----
+  // Aditivo por tramos: cada factor cae en un tramo y suma su peso; la suma pasa por la logística.
+  // Devuelve la probabilidad de batir al S&P 500 en 5 sesiones y lo que aporta cada factor.
+  const QUANT_LABELS={change:'Variación de hoy',relVolume:'Volumen relativo',rsi:'RSI',adx:'Fuerza de tendencia (ADX)',dist20:'Distancia a la EMA20',dist50:'Distancia a la EMA50',trend:'EMA20 frente a EMA50',perfWeek:'Rendimiento semanal',perfMonth:'Rendimiento mensual',traded:'Liquidez',fromHigh:'Distancia al máximo de 52 s',fromLow:'Distancia al mínimo de 52 s',atrPct:'Volatilidad (ATR)'};
+  function quantFeatures(s={}){
+    const p=n(s.price),e20=n(s.ema20),e50=n(s.ema50),rv=n(s.relVolume),av=n(s.avgVolume),hi=n(s.high52w),lo=n(s.low52w),atr=n(s.atr);
+    const pct=(a,b)=>a!==null&&b!==null&&b>0?(a/b-1)*100:null;
+    return{change:n(s.changePct!==undefined?s.changePct:s.change),relVolume:rv!==null&&rv>0?Math.log(Math.max(rv,.01)):null,rsi:n(s.rsi),adx:n(s.adx),
+      dist20:pct(p,e20),dist50:pct(p,e50),trend:pct(e20,e50),perfWeek:n(s.perfWeek),perfMonth:n(s.perfMonth),
+      traded:p!==null&&av!==null&&p*av>0?Math.log10(p*av):null,fromHigh:pct(p,hi),fromLow:pct(p,lo),atrPct:p&&atr!==null?atr/p*100:null};
+  }
+  function quantScore(model,s){
+    if(!model||!Array.isArray(model.features))return null;
+    const f=quantFeatures(s);let z=n(model.intercept)??0,used=0;const parts=[];
+    for(const ft of model.features){
+      const v=f[ft.name];if(v===null||v===undefined||!Number.isFinite(v))continue;
+      let i=0;while(i<ft.edges.length&&v>=ft.edges[i])i++;
+      const w=n(ft.weights[i])??0;z+=w;used++;parts.push({name:ft.name,label:QUANT_LABELS[ft.name]||ft.name,delta:w});
+    }
+    if(used<model.features.length-3)return null;           // faltan demasiados datos: no se estima
+    const prob=1/(1+Math.exp(-z));
+    parts.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
+    return{prob,base:n(model.baseRate),parts,used};
+  }
+
   root.ViewInvAIScore=Object.freeze({
     VERSION,technical,catalyst,quality,analyze,watchSignal,positionSignal,speculative,radarTier,RADAR_LEVELS,
-    CRASH_MIN,crashEligible,crashCause,crashScore
+    CRASH_MIN,crashEligible,crashCause,crashScore,quantScore,quantFeatures
   });
 })(globalThis);
