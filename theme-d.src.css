@@ -524,3 +524,4 @@
 @ .news-reader-ai ul{margin:8px 0 0;padding-left:18px;font-size:13.5px;line-height:1.45;color:var(--d-ink)}
 @ .news-reader-ai .btn{margin-top:8px}
 @ .news-reader-source{display:flex!important;justify-content:center;text-decoration:none}
+@ .d-stats b{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere;font-size:clamp(13px,3.7vw,15px)!important;line-height:1.2}

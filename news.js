@@ -41,9 +41,25 @@
    return{...h,clean,re:clean.length>=4?new RegExp('(^|[^\\p{L}])'+clean.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^\\p{L}]|$)','iu'):null};
   });
  }
+ // Un valor solo se marca si el titular o el extracto lo nombran de verdad (nombre o ticker escrito
+ // como ticker), y «en tu cartera» solo si hay una posición abierta ahora mismo. Nunca se fía de la
+ // búsqueda: Google devuelve también noticias de competidoras.
+ const fold=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ function mentions(text,name,ticker){
+  const t=' '+fold(text)+' ',n=fold(String(name||'').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE|Holdings?|Group)\.?$/i,'')).trim();
+  if(n.length>=3&&new RegExp('[^\\p{L}\\p{N}]'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^\\p{L}\\p{N}]','u').test(t))return true;
+  const tk=String(ticker||'').toUpperCase();
+  return tk.length>=2&&new RegExp('(\\('+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\)|:'+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b)').test(String(text||''));
+ }
  function citedStocks(item,hs){
-  const list=(item.stocks||[]).map(s=>{const h=hs.find(x=>x.key===s.key);return{...s,held:h?h.held:!!s.held,preferTr:h?h.preferTr:false}});
-  for(const h of hs){if(list.some(s=>s.key===h.key))continue;if(h.re&&h.re.test(item.title))list.push(h)}
+  const text=item.title+' '+(item.snippet||''),list=[];
+  for(const s of item.stocks||[]){
+   const h=hs.find(x=>x.key===s.key),st=typeof stockByKey==='function'?stockByKey(s.key):null;
+   const names=[s.name,h&&h.name,st&&st.name].filter(Boolean),tickers=[s.ticker,st&&st.ticker,st&&st.trTicker].filter(Boolean);
+   if(!names.some(n=>mentions(text,n,''))&&!tickers.some(t=>mentions(text,'',t)))continue;
+   list.push({...s,held:!!(h&&h.held),preferTr:h?h.preferTr:false});
+  }
+  for(const h of hs){if(list.some(s=>s.key===h.key))continue;if(mentions(text,h.name,h.ticker))list.push(h)}
   return list.slice(0,3);
  }
  function ago(iso){
