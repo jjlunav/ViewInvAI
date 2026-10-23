@@ -583,7 +583,7 @@ async function analystsResponse(request){
     const [tp,rt]=await Promise.all([nasdaqAnalystJson(encodeURIComponent(symbol)+"/targetprice").catch(()=>null),nasdaqAnalystJson(encodeURIComponent(symbol)+"/ratings").catch(()=>null)]);
     const o=tp&&tp.consensusOverview;
     if(!o&&!rt)return{symbol,empty:true,source:"Nasdaq",fetchedAt:new Date().toISOString()};
-    const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+    const num=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
     const votes={buy:num(o&&o.buy)||0,hold:num(o&&o.hold)||0,sell:num(o&&o.sell)||0};
     const total=votes.buy+votes.hold+votes.sell;
     const mean=String(rt&&rt.meanRatingType||"").toLowerCase();

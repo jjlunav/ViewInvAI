@@ -578,3 +578,17 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills::-webkit-scrollbar {display:none}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills>button {flex:0 0 auto}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills-sep {flex:1 0 8px!important;min-width:8px}
+@media (min-width:1100px){
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-featured {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 18px;align-items:start}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-featured>.d-pulse {grid-column:1/-1}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-featured>.d-group {margin-top:10px}
+}
+
+/* ---------- Listas de valores: una sola tarjeta con separadores finos (no una tarjeta por fila) ---------- */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) :is(div,
+section,
+ul):has(>.asset-card+.asset-card) {gap:0!important;row-gap:0!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card+.asset-card {margin-top:0!important;border-top:1px solid var(--d-hair)!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card:has(+.asset-card) {border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;margin-bottom:0!important;box-shadow:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card+.asset-card {border-top-left-radius:0!important;border-top-right-radius:0!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card+.asset-card:not(:has(+.asset-card)) {box-shadow:var(--d-shadow)!important}
