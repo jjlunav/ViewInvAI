@@ -4503,7 +4503,8 @@ function dReadingHtml(label,groups,rows,funds){
   const text=(parts.length?parts.join(", ").replace(/^el/,"El")+".":"")+(top?" Hoy lo que más mueve la cuenta es "+top.name+" ("+(top.dayEur>0?"+":"−")+formatMoney(Math.abs(top.dayEur),"EUR")+").":" Hoy la cuenta va en plano.");
   const ask="Analiza mi cuenta de "+label+": cómo está repartida, qué la mueve hoy y qué debería vigilar.";
   const q2=top?"¿Qué hago con "+top.name+"?":"¿Estoy bien diversificado?";
-  return'<div class="d-reading"><p><span aria-hidden="true">✦</span> '+esc(text)+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="'+esc(ask)+'">Analizar con AI</button><button type="button" data-ai-ask-q="'+esc(q2)+'">'+esc(q2)+'</button></div></div>';
+  const html='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+esc(text)+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="'+esc(ask)+'">Analizar con AI</button><button type="button" data-ai-ask-q="'+esc(q2)+'">'+esc(q2)+'</button></div></div>';
+  return typeof window.ViewInvAIFold==="function"?window.ViewInvAIFold("pf-reading","Lectura AI de la cuenta",text,html):html;
 }
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";

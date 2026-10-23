@@ -632,6 +632,7 @@ async function renderIndicesTop10(box){
 }
 // ===== Mercados · diseño D: «Destacados» (pulso del mercado, lo más seguido y movimientos fuertes) =====
 const dMarket={move:'gainers',source:'us',indices:null,indicesAt:0,loading:false};
+function dFoldHtml(key,title,preview,html){return typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold(key,title,preview,html):html}
 function dIsDesignD(){return document.documentElement.dataset.design==='d'}
 function dChipPct(v){
  if(N(v)===null)return'';
@@ -685,7 +686,7 @@ function dPulseHtml(){
  const text=parts.length?parts.join(' y ')+'.'+breadth:'Cargando los índices…';
  return '<section class="d-pulse"><small>Pulso del mercado</small>'+
   '<h2>'+(eu?'Europa '+arrow(eu):'')+(eu&&us?' · ':'')+(us?'EE. UU. '+arrow(us):'')+(!eu&&!us?'Mercados':'')+'</h2>'+
-  '<div class="d-reading"><p><span aria-hidden="true">✦</span> '+text+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="¿Cómo afecta el mercado de hoy a mi cartera?">¿Afecta a mi cartera?</button><button type="button" data-ai-ask-q="Resúmeme el mercado de hoy en tres puntos.">Resúmeme el mercado</button></div></div></section>';
+  dFoldHtml('market-pulse','Lectura AI del mercado',text.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'"),'<div class="d-reading"><p><span aria-hidden="true">✦</span> '+text+'</p><div class="ai-chips"><button type="button" data-ai-ask-q="¿Cómo afecta el mercado de hoy a mi cartera?">¿Afecta a mi cartera?</button><button type="button" data-ai-ask-q="Resúmeme el mercado de hoy en tres puntos.">Resúmeme el mercado</button></div></div>')+'</section>';
 }
 function renderHomeFeaturedD(box){
  dLoadIndices();

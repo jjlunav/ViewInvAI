@@ -90,11 +90,6 @@
   const n=Math.max(0,Math.min(100,Math.round(N(score)??0)));
   return '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'">'+n+'</em>';
  }
- function greetingHtml(){
-  let name='';try{const u=window.ViewInvAIAuth&&window.ViewInvAIAuth.getUser&&window.ViewInvAIAuth.getUser();name=String(u&&(u.displayName||u.name||'')||'').trim().split(/\s+/)[0]||''}catch(_){}
-  const h=new Date().getHours(),hello=h<6?'Buenas noches':h<14?'Buenos días':h<21?'Buenas tardes':'Buenas noches';
-  return '<div class="d-hello"><strong>'+E(hello+(name?', '+name:''))+'</strong><small>'+E(new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}).replace(/^./,c=>c.toUpperCase()))+'</small></div>';
- }
  function wealthHtmlD(sum,A){
   if(!sum||!sum.signedIn||!sum.portfolios.length)return portfoliosHtml(sum);
   const t=sum.total,by=k=>sum.portfolios.filter(p=>k.includes(p.kind)).reduce((a,p)=>a+(N(p.value)||0),0);
@@ -110,7 +105,7 @@
    (A?A.briefHtml():'')+
   '</section>'+
   '<section class="d-group"><header><h3>Tus cuentas</h3><button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
-   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+chip(p.day)+'</span></button></li>').join('')+
+   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(Math.abs(N(p.day)||0)>=0.005?chip(p.day):'')+'</span></button></li>').join('')+
   '</ul></section>';
  }
  function ideasHtmlD(){
@@ -164,7 +159,7 @@
   const A=document.documentElement.dataset.design!=='classic'&&window.ViewInvAIAsk;
   if(document.documentElement.dataset.design==='d'){
    box.classList.add('d-today');
-   box.innerHTML=greetingHtml()+wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+alertsHtmlD()+agendaHtmlD(sum);
+   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+alertsHtmlD()+agendaHtmlD(sum);
   }else{
    box.classList.remove('d-today');
    box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);

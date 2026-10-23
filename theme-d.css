@@ -447,3 +447,22 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-cells .d-neg b {color:var(--d-down)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-actions {display:flex;gap:8px}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-actions button {flex:1;min-height:36px;border-radius:12px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font:700 13px "VI Manrope",sans-serif;cursor:pointer}
+
+/* ---------- Textos de arriba en desplegable cerrado (título + primera línea) ---------- */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold {margin-top:10px;border-radius:16px;background:var(--d-aitint);border:1px solid var(--d-hair-2)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold>summary {list-style:none;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:1px;padding:10px 12px;cursor:pointer}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold>summary::-webkit-details-marker {display:none}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-title {display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--d-accent)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-title .ai-spark {width:14px;height:14px;fill:currentColor}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-preview {grid-column:1;font-size:13px;color:var(--d-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-chev {grid-column:2;grid-row:1/3;align-self:center;font-style:normal;color:var(--d-mut);transition:transform .15s}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold[open]>summary .d-fold-preview {display:none}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold[open]>summary .d-fold-chev {transform:rotate(180deg)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body {padding:0 12px 12px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .d-reading {margin:0;padding:0;background:transparent;border:0}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .ai-brief {margin:0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .ai-brief-head {position:absolute;right:40px;top:6px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .ai-brief-head>svg,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .ai-brief-head>span {display:none!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold {position:relative}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-fold-body .ai-brief p {margin-top:0!important}
