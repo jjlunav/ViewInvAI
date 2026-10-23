@@ -5,6 +5,11 @@
  const escape=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  const content=cell=>cell&&cell.html!==undefined?String(cell.html):escape(cell&&cell.value!==undefined?cell.value:'—');
 
+ // Puntuación AI (0-100) como anillo en el diseño D; en cripto el número es la posición por capitalización.
+ function scoreEm(options){
+  const n=Number(options.rank),isScore=options.context!=='crypto'&&options.context!=='crypto-alpha'&&Number.isFinite(n)&&n>=0&&n<=100;
+  return isScore?'<em class="ai-score" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'">'+escape(options.rank)+'</em>':'<em>'+escape(options.rank)+'</em>';
+ }
  function cellHtml(cell,extraClass=''){
   if(!cell)return '<div class="asset-card-cell '+extraClass+' asset-card-cell-empty" aria-hidden="true"></div>';
   const body=cell.html!==undefined
@@ -36,7 +41,7 @@
   return '<article class="asset-card'+(options.className?' '+escape(options.className):'')+'" data-card-context="'+escape(options.context||'stock')+'"'+(options.cardAttrs||'')+'>'+
    '<div class="asset-card-row'+(interactive?' stock-open-row':'')+'" data-card-template="compact-slots"'+(chevronOnly?' data-end="chevron"':'')+(options.openAttrs||'')+'>'+
     '<div class="asset-card-marker">'+(options.leadingHtml||'')+'</div>'+
-    '<div class="asset-card-identity'+(options.sparkHtml?' has-spark':'')+'"><div class="asset-card-copy"><strong>'+(options.rank?'<em>'+escape(options.rank)+'</em>':'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+(options.sparkHtml||'')+'</div></div>'+
+    '<div class="asset-card-identity'+(options.sparkHtml?' has-spark':'')+'"><div class="asset-card-copy"><strong>'+(options.rank?scoreEm(options):'')+escape(options.title||'—')+'</strong>'+identifier+(options.subtitle?'<small>'+escape(options.subtitle)+'</small>':'')+(options.sparkHtml||'')+'</div></div>'+
     '<div class="asset-card-quote-slot">'+cellHtml(quoteCell,'asset-card-quote-cell')+'</div>'+
     '<div class="asset-card-context-slot">'+contextHtml(contextual)+'</div>'+
     '<div class="asset-card-end-actions">'+

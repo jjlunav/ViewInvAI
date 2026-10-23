@@ -10,6 +10,7 @@ const files = [
   'asset-card.js',
   'asset-card.css',
   'theme-ai.css',
+  'theme-d.css',
   'ui-shell.js',
   'onboarding.js',
   'tasks.js',
@@ -24,6 +25,7 @@ const files = [
   'favlists.js',
   'backup.js',
   'today.js',
+  'ai-ask.js',
   'styles.css',
   'web-mobile.css',
   'mobile-app.css',
@@ -64,6 +66,8 @@ await mkdir(out, { recursive: true });
 for (const file of files) {
   await cp(path.join(root, file), path.join(out, file));
 }
+// Tipografías del diseño (Manrope y Space Grotesk, licencia OFL).
+await cp(path.join(root, 'fonts'), path.join(out, 'fonts'), { recursive: true });
 // Los catálogos (acciones, fondos) no van dentro de la APK: se descargan del servidor y el
 // móvil guarda la última copia para abrir sin conexión (native-runtime.js).
 

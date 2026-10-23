@@ -2166,7 +2166,8 @@ export default {
     // La página principal y los dos módulos (auth.js, portfolio.js) pasan por el Worker
     // (run_worker_first) solo para que la APK (origen https://localhost) pueda cargarlos desde
     // aquí: fetch y <script type="module"> exigen CORS. Sin ese origen se sirven tal cual.
-    if (NATIVE_LIVE_SHELL_PATHS.has(url.pathname) && request.method === "GET") {
+    // Las fuentes del diseño se piden en modo CORS: la APK (origen https://localhost) las necesita con permiso.
+    if ((NATIVE_LIVE_SHELL_PATHS.has(url.pathname) || url.pathname.startsWith("/fonts/")) && request.method === "GET") {
       const page = await env.ASSETS.fetch(request);
       return trustedNativeOrigin(request) ? nativeCorsResponse(request, page) : page;
     }
@@ -2181,7 +2182,7 @@ export default {
     }
 
     let limited=null;
-    if(url.pathname==="/api/ai/chat")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
+    if(url.pathname==="/api/ai/chat"||url.pathname==="/api/ai/ask")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/goal-ideas")limited=await enforcedRateLimit(request,env,"goal-ideas",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");

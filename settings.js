@@ -371,6 +371,15 @@ function initSettings(){
  document.querySelectorAll('[data-theme-setting]').forEach(button=>button.addEventListener('click',()=>{
   applyTheme(button.dataset.themeSetting==='light'?'light':'dark',true);
  }));
+ // Diseño de la interfaz (ViewInvAI o clásico). Cambia al momento; la barra inferior se vuelve a montar.
+ const syncDesignButtons=()=>document.querySelectorAll('[data-design-setting]').forEach(b=>{const on=b.dataset.designSetting===(document.documentElement.dataset.design||'d');b.classList.toggle('active',on);b.setAttribute('aria-pressed',on?'true':'false')});
+ syncDesignButtons();
+ document.querySelectorAll('[data-design-setting]').forEach(button=>button.addEventListener('click',()=>{
+  const design=button.dataset.designSetting==='classic'?'classic':'d';
+  try{localStorage.setItem('viewinvai:design:v1',design)}catch(_){}
+  document.documentElement.dataset.design=design;syncDesignButtons();
+  if(typeof rebuildNavigation==='function')rebuildNavigation();
+ }));
 
  $('#testPushNotification')?.addEventListener('click',testPushNotification);
  $('#globalNotificationsEnabled')?.addEventListener('change',async event=>{

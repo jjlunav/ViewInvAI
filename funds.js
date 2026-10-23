@@ -826,6 +826,16 @@
    return{id:pf.id,name:pf.name,value,day,pnl,count:list.length,complete};
   });
  }
+ // Detalle por posición de una cartera de fondos, para la tarjeta «Cuenta» de Carteras
+ // (acciones + fondos del mismo bróker en una sola lista).
+ function portfolioDetail(portfolioId){
+  return fundPositions(portfolioId).map(position=>{
+   const p=productForPosition(position),v=positionValuation(position,p),cur=String(position.currency||p.currency||'EUR').toUpperCase();
+   const q=v.source==='market'?liveQuote(p.isin):null,prev=num(q&&q.prev),price=num(q&&q.price);
+   return{isin:p.isin,name:p.name||position.name||p.isin,kind:p.type==='etf'?'ETF':p.type==='etp'?'ETC':'Fondo',currency:cur,
+    value:v.value,pnl:v.pnl,pnlPct:v.pnlPct,dayPct:prev!==null&&prev>0&&price!==null?(price/prev-1)*100:null};
+  });
+ }
  function fundPlans(portfolioId){return account.plans.filter(p=>String(p.fund_portfolio_id)===String(portfolioId)&&Number(p.enabled)!==0)}
  function planSummaryHtml(portfolioId){
   // Solo los planes: el Saveback y el Redondeo ya cuentan en lo invertido de cada fondo.
@@ -1325,5 +1335,5 @@
   renderPortfolio();
  }
 
- root.ViewInvAIFunds={subscribeIsin:subscribeFund,getLiveQuote:liveQuote,init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getPortfolioTotals:portfolioTotals,getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
+ root.ViewInvAIFunds={subscribeIsin:subscribeFund,getLiveQuote:liveQuote,init,load,render,loadPortfolio,renderPortfolio,renderMarketTop10,setPortfolioAssetMode,getState:()=>state,getAccountState:()=>account,getByIsin:isin=>state.products.find(p=>p.isin===isin)||null,getCurrentValue:fundCurrentValue,getPortfolioTotals:portfolioTotals,getPortfolioDetail:portfolioDetail,getFundPortfolios:()=>account.portfolios.map(p=>({id:p.id,name:p.name,platform:p.platform||''})),getFreshness:fundFreshness,getFavoriteProducts:()=>state.products.filter(p=>favoriteIsins.has(p.isin))};
 })(window);
