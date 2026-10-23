@@ -528,6 +528,8 @@ function renderMarketBoardSourceTabs(){
   '<button type="button" class="tab '+(item.key===source?'active':'')+'" data-market-board-source="'+E(item.key)+'" aria-pressed="'+(item.key===source?'true':'false')+'">'+E(item.label)+'</button>'
  ).join('');
  nav.dataset.mode=marketBoardMode;
+ // Una sola opción no es una elección: no se enseña la pestaña.
+ nav.hidden=options.length<2;
 }
 function marketBoardStocks(mode='active',limit=10,source=currentMarketBoardSource()){
  if(mode==='gainers')return homeMoveStocks(true,limit,source);
@@ -623,6 +625,7 @@ async function renderIndicesTop10(box){
    rows=rows.slice().sort((a,b)=>(order.get(String(a.symbol||'').toUpperCase())??999)-(order.get(String(b.symbol||'').toUpperCase())??999));
   }
   rows=rows.slice(0,10);
+  if(dIsDesignD()){box.innerHTML=rows.length?'<ul class="d-list">'+rows.map(dIndexRowHtml).join('')+'</ul>':'<div class="empty-state">Ranking de índices en actualización.</div>';return}
   box.innerHTML=rows.length?'<div class="market-board-list">'+rows.map((x,i)=>{
    let ch=N(x.change),tone=ch===null?'muted':C(ch);
    return window.ViewInvAICards.render({context:'indices',title:x.name||x.symbol||'Índice',rank:'#'+(i+1),subtitle:[x.symbol,x.exchange].filter(Boolean).join(' · '),

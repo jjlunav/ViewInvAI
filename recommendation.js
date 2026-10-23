@@ -589,6 +589,7 @@ async function loadRadarScoreboard(){
   const box=document.querySelector('[data-radar-scoreboard]');if(box)box.outerHTML=radarScoreboardHtml();
  }
 }
+function shortName(n){return String(n||'').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE|Co|Holdings?|Group)\.?$/i,'').slice(0,40)}
 function radarPct(v,d=1){return v===null||v===undefined||!Number.isFinite(+v)?'—':(v>0?'+':'')+F(v,d)+'%'}
 function radarScoreboardHtml(){
  const d=radarScoreboard.data;
@@ -603,13 +604,14 @@ function radarScoreboardHtml(){
  }
  const col=(st,h)=>{const x=st&&st[h];return x&&x.n?'<td><b>'+F(x.hitRate,0)+'%</b><span>'+radarPct(x.avgReturn)+'</span><i class="'+(x.avgExcess>0?'positive':x.avgExcess<0?'negative':'')+'">'+radarPct(x.avgExcess)+'</i><small>n='+x.n+'</small></td>':'<td class="empty">—</td>'};
  const row=(label,key)=>'<tr><th>'+label+'</th>'+['1d','5d','20d'].map(h=>col(d.stats&&d.stats[key],h)).join('')+'</tr>';
- const recent=(d.recent||[]).slice(0,10).map(r=>'<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+(r.speculative?' <em>esp.</em>':'')+'</b><i class="'+((r.ret5d??r.ret1d)>0?'positive':(r.ret5d??r.ret1d)<0?'negative':'')+'">'+(r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'pendiente')+'</i></li>').join('');
+ const recent=(d.recent||[]).slice(0,10).map(r=>'<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+(r.speculative?' <em>esp.</em>':'')+'<small>'+E(shortName(r.name))+'</small></b><i class="'+((r.ret5d??r.ret1d)>0?'positive':(r.ret5d??r.ret1d)<0?'negative':'')+'">'+(r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'en curso')+'</i></li>').join('');
  return '<details class="radar-scoreboard" data-radar-scoreboard'+(radarScoreboardOpen?' open':'')+'><summary><span><small>HISTORIAL DEL RADAR AI · '+(d.days||0)+' SESIONES</small>'+head+'</span></summary>'+
   '<div class="radar-scoreboard-body">'+
    '<table><thead><tr><th></th><th>1 sesión</th><th>5 sesiones</th><th>20 sesiones</th></tr></thead><tbody>'+
-    row('Oportunidades sólidas','opportunitySolid')+row('Todas las oportunidades','opportunity')+row('Negociables en TR','trTradable')+row('En vigilancia','watch')+
+    row('Oportunidades sólidas','opportunitySolid')+row('Todas las oportunidades','opportunity')+row('Primera señal (sin repetir)','opportunityFirst')+row('Puntuación ≥ 80','score80')+row('Entró subiendo ≥ 8 %','chasing')+row('Entró subiendo < 8 %','calm')+row('Negociables en TR','trTradable')+row('En vigilancia','watch')+
    '</tbody></table>'+
-   '<p class="radar-scoreboard-legend"><b>%</b> que suben · rentabilidad media · <i>diferencia con el S&P 500</i> · n señales. «Sólidas» excluye las especulativas.</p>'+
+   '<p class="radar-scoreboard-legend"><b>%</b> que suben · rentabilidad media · <i>diferencia con el S&P 500</i> · n señales. «Sólidas» excluye las especulativas; «primera señal» cuenta cada valor una vez cada 10 días.</p>'+
+   (main&&main.n>0&&main.avgExcess<0?'<p class="radar-scoreboard-legend">✦ Lectura honesta: con '+(d.days||0)+' sesiones las oportunidades aún no baten al S&P 500. Es poca muestra y muchas señales se repiten días seguidos; el historial guarda ya la subida, el volumen y el RSI de cada señal para corregir el motor cuando haya datos suficientes.</p>':'')+
    (recent?'<ul class="radar-scoreboard-recent">'+recent+'</ul>':'')+
    '<p class="radar-scoreboard-method">'+E(d.method||'')+' Rentabilidades pasadas no garantizan resultados futuros.</p>'+
   '</div></details>';
@@ -693,8 +695,6 @@ function radarAiShellD(rows,mode,counts,visible){
  const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-radar-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
  const pill=(t,label,n)=>'<button type="button" class="'+(radarAiTierFilter===t?'active':'')+'" data-radar-tier="'+t+'" aria-pressed="'+(radarAiTierFilter===t)+'">'+label+' '+n+'</button>';
  const first=visible[0]&&(visible[0].s.ticker||visible[0].s.trTicker);
- // Caídas bruscas arriba cuando las hay (son de hoy y caducan rápido); si no, discretas al final.
- const crashHtml=radarCrashSectionD(mode),crashTop=/class="d-list"><li/.test(crashHtml)||/<ul class="d-list">/.test(crashHtml);
  const list=visible.length?'<ul class="d-list">'+visible.map(radarAiRowD).join('')+'</ul>':'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
  return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+' d-radar">'+
   '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EE. UU.')+'</nav>'+
@@ -702,11 +702,9 @@ function radarAiShellD(rows,mode,counts,visible){
    (()=>{const how='De '+(rows.analyzed||rows.length)+' valores analizados en '+(isTr?'Trade Republic / LSX':'EE. UU.')+', se quedan los que combinan tendencia, volumen, catalizadores y datos fiables. Cada idea se contrasta con noticias y con tu IA antes de enseñarse.';
     const html='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+E(how)+'</p><div class="ai-chips">'+(first?'<button type="button" data-ai-ask-q="'+E('Explícame por qué '+first+' está en el Radar AI hoy y qué riesgo tiene.')+'">Explícame '+E(first)+'</button>':'')+'<button type="button" data-ai-ask-q="Compara las ideas del Radar AI de hoy con mi cartera: ¿alguna encaja?">Compáralas con mi cartera</button></div></div>';
     return typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('radar-how','Cómo se eligen',how,html):html})()+'</section>'+
-  (crashTop?crashHtml:'')+
   '<section class="d-group"><header><h3>Ideas de hoy</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
    '<div class="d-pills" role="group" aria-label="Filtrar por nivel">'+pill('all','Todas',counts.high+counts.opportunity+counts.watch)+pill('high','Alta',counts.high)+pill('opportunity','Oportunidad',counts.opportunity)+pill('watch','Vigilancia',counts.watch)+pill('spec','Especulativo',counts.spec)+'</div>'+
    list+'</section>'+
-  (crashTop?'':crashHtml)+
   radarAnalystsShellD(visible)+
   radarAiContrastPanel(rows,mode)+radarScoreboardHtml()+
  '</div>';
@@ -760,14 +758,32 @@ function radarCrashRowD(c,isTr){
   '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,isTr?'LSX':(s.exchange||'EE. UU.'),c.prior!==null?'mes previo '+(c.prior>=0?'+':'')+F(c.prior,0)+' %':''].filter(Boolean).join(' · '))+'</small><i class="d-row-ai is-'+v.tone+'">'+(c.cause.kind==='trap'?'⚠ ':'✦ ')+E(v.text)+'</i></span>'+
   '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b><span class="d-chip down">▼ '+F(Math.abs(c.ch),1)+' %</span></span></button></li>';
 }
+// Pestaña «Caídas» del Radar: mismo mercado (TR / EE. UU.) que el Radar AI.
+function renderCrashView(){
+ const box=document.getElementById('crashResults');if(!box)return;
+ const mode=radarAiMarket==='us'?'us':'tr';
+ const tab=(m,label)=>'<button type="button" class="tab'+(m===mode?' active':'')+'" data-crash-market="'+m+'" aria-pressed="'+(m===mode)+'">'+label+'</button>';
+ box.innerHTML='<div class="radar-ai-shell d-radar d-crash-view">'+
+  '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado">'+tab('tr','Trade Republic')+tab('us','EE. UU.')+'</nav>'+
+  radarCrashSectionD(mode)+'</div>';
+ requestAnimationFrame(()=>{try{observeActiveTrLivePrices();pollUsLive()}catch(_){}});
+}
+document.addEventListener('click',e=>{
+ const m=e.target.closest&&e.target.closest('[data-crash-market]');
+ if(!m)return;
+ radarAiMarket=m.dataset.crashMarket==='us'?'us':'tr';try{localStorage.setItem('viewinvai:radar-market',radarAiMarket)}catch(_){}
+ renderCrashView();
+});
 function radarCrashSectionD(mode){
  const isTr=mode==='tr',list=crashCandidates(mode);
  const over=list.filter(c=>c.cause.kind==='over').length,trap=list.filter(c=>c.cause.kind==='trap').length;
  const how='Caen un 25 % o más hoy sin venir ya de un desplome. Busco el motivo en sus noticias de los últimos días: si es de fondo (ensayo fallido, rechazo FDA, ampliación de capital, previsiones recortadas, riesgo legal) lo normal es que siga bajando; si es de interpretación (rebaja de un analista, resultados algo peores de lo esperado, venta del sector) el rebote es más frecuente. El número es una probabilidad orientativa de rebote, no una recomendación: espera a que deje de caer y usa stop.';
  const F2=window.ViewInvAIFold;
  const head=(typeof F2==='function'?F2('radar-crash-how','Cómo se leen',how,'<div class="d-reading"><p>'+E(how)+'</p><div class="ai-chips">'+(list[0]?'<button type="button" data-ai-ask-q="'+E('¿La caída de hoy de '+(list[0].s.ticker||list[0].s.name)+' es una sobrerreacción o tiene motivo de fondo? Dime qué vigilar antes de plantear un rebote.')+'">¿Rebote o trampa en '+E(list[0].s.ticker||'')+'?</button>':'')+'</div></div>'):'');
- return '<section class="d-group d-crash-group"><header><h3>Caídas bruscas · ¿rebote o trampa?</h3><span>'+(list.length?(over?over+' posibles rebotes':'')+(over&&trap?' · ':'')+(trap?trap+' con motivo de fondo':''):'hoy ninguna')+'</span></header>'+head+
-  (list.length?'<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul>':'<div class="d-list"><p class="d-row-empty">Ningún valor de '+(isTr?'Trade Republic':'EE. UU.')+' cae hoy un 25 % o más de golpe.</p></div>')+crashScoreboardHtml()+'</section>';
+ const rest=list.length-over-trap,summary=list.length?[over?over+(over===1?' posible rebote':' posibles rebotes'):'',trap?trap+' con motivo de fondo':'',rest?rest+' por aclarar':''].filter(Boolean).join(' · '):'Ningún valor cae hoy un 25 % o más sin venir ya de un desplome.';
+ return '<section class="d-pulse d-crash-pulse"><small>Caídas bruscas · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(list.length?list.length+(list.length===1?' caída de golpe':' caídas de golpe'):'Hoy ninguna')+'</h2><p class="d-hero-note">'+E(summary)+'</p>'+head+'</section>'+
+  (list.length?'<section class="d-group d-crash-group"><header><h3>¿Rebote o trampa?</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
+  '<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul></section>':'')+crashScoreboardHtml();
 }
 // Historial de caídas bruscas: el servidor guarda cada día las que entran (a las 15:45 de Nueva
 // York, con el motivo clasificado en ese momento) y mide su rebote 1, 5 y 20 sesiones después.
@@ -802,8 +818,8 @@ function crashScoreboardHtml(){
  const col=(x)=>x&&x.n?'<td><b>'+F(x.hitRate,0)+'%</b><span>'+radarPct(x.avgReturn)+'</span><i class="'+(x.avgExcess>0?'positive':x.avgExcess<0?'negative':'')+'">'+radarPct(x.avgExcess)+'</i><small>n='+x.n+'</small></td>':'<td class="empty">—</td>';
  const row=(label,key)=>'<tr><th>'+label+'</th>'+['1d','5d','20d'].map(h=>col(st[key]&&st[key][h])).join('')+'</tr>';
  const recent=(d.recent||[]).slice(0,12).map(r=>{
-  const ret=r.ret5d??r.ret1d,tag=r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'pendiente';
-  return '<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0" title="'+E((CRASH_KIND_LABEL[r.kind]||'')+(r.label?' · '+r.label:''))+'"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+' <em class="crash-kind-'+E(r.kind)+'">'+E(radarPct(r.change,0))+'</em></b><i class="'+(ret>0?'positive':ret<0?'negative':'')+'">'+tag+'</i></li>';
+  const ret=r.ret5d??r.ret1d,tag=r.ret5d!==null&&r.ret5d!==undefined?radarPct(r.ret5d)+' 5s':r.ret1d!==null&&r.ret1d!==undefined?radarPct(r.ret1d)+' 1s':'en curso';
+  return '<li data-open-stock="'+E(r.stockKey)+'" role="button" tabindex="0" title="'+E((CRASH_KIND_LABEL[r.kind]||'')+(r.label?' · '+r.label:''))+'"><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</span><b>'+E(r.ticker)+' <em class="crash-kind-'+E(r.kind)+'">'+E(radarPct(r.change,0))+'</em><small>'+E(shortName(r.name))+'</small></b><i class="'+(ret>0?'positive':ret<0?'negative':'')+'">'+tag+'</i></li>';
  }).join('');
  return '<details class="radar-scoreboard crash-scoreboard" data-crash-scoreboard><summary><span><small>HISTORIAL DE CAÍDAS BRUSCAS · '+(d.days||0)+' SESIONES</small>'+head+'</span></summary>'+
   '<div class="radar-scoreboard-body">'+

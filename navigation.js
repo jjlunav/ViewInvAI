@@ -5,11 +5,12 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['today','home','news','recommendation','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','crypto','heatmap'];
+const NAV_ORDER=['today','home','news','recommendation','crash','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','crypto','heatmap'];
 const NAV_META={
  today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
  recommendation:{icon:'✹',short:'Radar AI',desc:'Alta convicción, oportunidades y vigilancia'},
+ crash:{icon:'⇣',short:'Caídas',desc:'Caídas bruscas: ¿rebote o trampa?'},
  portfolios:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-wallet" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v2h1v9a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2V6.5Zm2.5-.5a.5.5 0 0 0 0 1H18V6H5.5ZM16 11v4h5v-4h-5Zm2 1.25h1.5v1.5H18v-1.5Z"/></svg>',short:'Carteras',desc:'Posiciones y seguimiento'},
  favorites:{icon:'★',short:'Favoritos',desc:'Acciones, fondos e índices guardados'},
  funds:{icon:'◇',short:'Fondos',desc:'Fondos indexados y ETFs'},
@@ -32,7 +33,7 @@ const MORE_VIEWS=['news','inbox','catalog','catalogUS','funds','crypto','heatmap
 const NAV_GROUPS={
  today:['today'],
  home:['home'],
- recommendation:['recommendation','entry','future'],
+ recommendation:['recommendation','crash','entry','future'],
  portfolios:['portfolios'],
  catalogs:['catalog','catalogUS','funds','crypto','heatmap'],
  inbox:['inbox'],
@@ -41,7 +42,7 @@ const NAV_GROUPS={
  admin:['admin']
 };
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
-const SECTION_LABELS={home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',crash:'Caídas',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 // Diseño D: Mercados agrupa la portada y los catálogos (LSX, EE. UU., fondos, cripto, mapa).
 const isDesignD=()=>document.documentElement.dataset.design!=='classic';
@@ -100,6 +101,7 @@ function renderNavigation(){
   const name=String(user&&(user.displayName||user.email)||'Invitado');
   grid.innerHTML='<div class="d-more-account"><span class="d-more-avatar" aria-hidden="true">'+E(name.charAt(0).toUpperCase())+'</span><span><b>'+E(user?name:'Tu cuenta')+'</b><small>'+(user?'Sesión iniciada · datos sincronizados':'Inicia sesión para guardar tus carteras')+'</small></span>'+
     '<button type="button" class="d-more-gear" data-mobile-view="settings" aria-label="Configuración">'+navigationIconHtml('settings')+'</button></div>'+
+   '<div class="d-more-screen" id="dMoreScreen"></div>'+
    head('Herramientas AI')+
    '<button type="button" class="mobile-more-item d-more-ai" data-ai-ask="1"><span aria-hidden="true">✦</span><b>Pregunta a la IA</b><small>Sobre tus carteras y el mercado</small></button>'+
    '<button type="button" class="mobile-more-item" data-mobile-view="portfolios" data-portfolio-asset="goal"><span aria-hidden="true">◎</span><b>Objetivo</b><small>Plan de la IA para tu meta</small></button>'+
@@ -129,9 +131,29 @@ function closeMobileMore(){
  if(button)button.setAttribute('aria-expanded','false');
  document.body.classList.remove('mobile-more-open');
 }
+// Diseño D: los controles de la pantalla actual (actualizar, ayuda y formato de lista) viven en «Más»,
+// así la barra superior tiene siempre los mismos cuatro botones y el título cabe entero.
+function paintMoreScreen(){
+ const box=$('#dMoreScreen');if(!box)return;
+ const view=$('.view.active'),refresh=view&&view.querySelector('.heading-actions .icon-btn'),help=view&&view.querySelector('.section-help');
+ const lv=$('#listViewSwitch'),mode=document.documentElement.dataset.listView||'compact';
+ const title=(SECTION_LABELS[state.currentView]||(V[state.currentView]||'').replace(/^\d+\s*/,''));
+ const btn=(attr,icon,label)=>'<button type="button" '+attr+'><span aria-hidden="true">'+icon+'</span>'+E(label)+'</button>';
+ const items=[refresh?btn('data-d-screen="refresh"','↻','Actualizar'):'',help?btn('data-d-screen="help"','?','Ayuda'):''].join('');
+ const formats=lv&&!lv.hidden?'<div class="d-more-format" role="group" aria-label="Formato de las listas">'+[['compact','Compacta'],['detailed','Detallada'],['grid','Cuadrícula']].map(([m,l])=>'<button type="button" data-list-view-set="'+m+'" class="'+(m===mode?'active':'')+'" aria-pressed="'+(m===mode)+'">'+l+'</button>').join('')+'</div>':'';
+ box.innerHTML=items||formats?'<h4 class="d-more-h">'+E(title||'Esta pantalla')+'</h4><div class="d-more-screen-row">'+items+'</div>'+formats:'';
+}
+document.addEventListener('click',e=>{
+ if(e.target.closest&&e.target.closest('#dMoreScreen [data-list-view-set]')){setTimeout(paintMoreScreen,0);return}
+ const b=e.target.closest&&e.target.closest('[data-d-screen]');if(!b)return;
+ const view=$('.view.active');toggleMobileMore(false);
+ const target=b.dataset.dScreen==='refresh'?view&&view.querySelector('.heading-actions .icon-btn'):view&&view.querySelector('.section-help');
+ if(target)target.click();
+});
 function toggleMobileMore(force){
  let sheet=$('#mobileMoreSheet'),backdrop=$('#mobileMoreBackdrop'),button=$('[data-mobile-more]');if(!sheet||!backdrop||!button)return;
  let open=typeof force==='boolean'?force:!sheet.classList.contains('open');
+ if(open)paintMoreScreen();
  sheet.classList.toggle('open',open);backdrop.classList.toggle('open',open);button.setAttribute('aria-expanded',open?'true':'false');
  sheet.setAttribute('aria-hidden',open?'false':'true');backdrop.setAttribute('aria-hidden',open?'false':'true');
  document.body.classList.toggle('mobile-more-open',open);
