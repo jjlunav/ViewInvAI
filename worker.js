@@ -562,6 +562,59 @@ async function nasdaqChart(request) {
   }
 }
 
+// ----- Analistas (Nasdaq) y calendario económico (ForexFactory, TradingView de respaldo) -----
+// Fuentes públicas y gratuitas comprobadas desde GitHub Actions. Se cachean en el borde.
+async function edgeCachedJson(key,ttlSec,fn){
+  const cacheKey=new Request("https://viewinvai.internal/"+key),cache=typeof caches!=="undefined"?caches.default:null;
+  if(cache){try{const hit=await cache.match(cacheKey);if(hit)return await hit.json()}catch(_){}}
+  const value=await fn();
+  if(cache&&value&&!value.error){try{await cache.put(cacheKey,new Response(JSON.stringify(value),{headers:{"Content-Type":"application/json","Cache-Control":"max-age="+ttlSec}}))}catch(_){}}
+  return value;
+}
+async function nasdaqAnalystJson(path){
+  const r=await fetch("https://api.nasdaq.com/api/analyst/"+path,{headers:{...NASDAQ_HEADERS,"Origin":"https://www.nasdaq.com"}});
+  if(!r.ok)throw new Error("Nasdaq HTTP "+r.status);
+  const d=await r.json();return d&&d.data||null;
+}
+async function analystsResponse(request){
+  const symbol=safeStockSymbol(new URL(request.url).searchParams.get("symbol"));
+  if(!symbol)return jsonResponse({error:"No valid symbol"},400,{"Cache-Control":"no-store"});
+  const value=await edgeCachedJson("analysts/v1/"+symbol,12*3600,async()=>{
+    const [tp,rt]=await Promise.all([nasdaqAnalystJson(encodeURIComponent(symbol)+"/targetprice").catch(()=>null),nasdaqAnalystJson(encodeURIComponent(symbol)+"/ratings").catch(()=>null)]);
+    const o=tp&&tp.consensusOverview;
+    if(!o&&!rt)return{symbol,empty:true,source:"Nasdaq",fetchedAt:new Date().toISOString()};
+    const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+    const votes={buy:num(o&&o.buy)||0,hold:num(o&&o.hold)||0,sell:num(o&&o.sell)||0};
+    const total=votes.buy+votes.hold+votes.sell;
+    const mean=String(rt&&rt.meanRatingType||"").toLowerCase();
+    const consensus=/strong buy|buy/.test(mean)?"buy":/sell/.test(mean)?"sell":/hold/.test(mean)?"hold":total?(votes.buy>=votes.hold&&votes.buy>=votes.sell?"buy":votes.sell>votes.hold?"sell":"hold"):"";
+    const history=(tp&&Array.isArray(tp.historicalConsensus)?tp.historicalConsensus:[]).map(h=>({time:num(h.x)?num(h.x)*1000:null,target:num(h.y)})).filter(h=>h.time&&h.target).slice(-12);
+    const changes=(rt&&Array.isArray(rt.upgradesDowngrades)?rt.upgradesDowngrades:[]).slice(0,6).map(u=>({date:String(u.date||u.dateTime||"").slice(0,10),firm:String(u.brokerName||u.firm||"").slice(0,40),action:String(u.action||u.rating||"").slice(0,30),to:String(u.toGrade||u.newRating||"").slice(0,30)}));
+    return{symbol,empty:!total&&!(o&&num(o.priceTarget)),target:{mean:num(o&&o.priceTarget),low:num(o&&o.lowPriceTarget),high:num(o&&o.highPriceTarget)},votes,analysts:total,consensus,history,changes,source:"Nasdaq",fetchedAt:new Date().toISOString()};
+  });
+  return jsonResponse(value,200,{"Cache-Control":"public, max-age=1800"});
+}
+const ECON_COUNTRIES={USD:"EE. UU.",EUR:"Eurozona",GBP:"Reino Unido",US:"EE. UU.",EU:"Eurozona",ES:"España",DE:"Alemania",GB:"Reino Unido"};
+async function econCalendarResponse(){
+  const value=await edgeCachedJson("econ-calendar/v1/"+Math.floor(Date.now()/1800000),1800,async()=>{
+    let events=[],source="";
+    try{
+      const r=await fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json",{headers:{"User-Agent":"Mozilla/5.0 ViewInvAI/1.0","Accept":"application/json"}});
+      if(r.ok){const d=await r.json();events=(Array.isArray(d)?d:[]).filter(e=>ECON_COUNTRIES[e.country]&&/high|medium/i.test(String(e.impact))).map(e=>({title:String(e.title||"").slice(0,90),country:ECON_COUNTRIES[e.country],time:new Date(e.date).toISOString(),impact:/high/i.test(e.impact)?"high":"medium",forecast:String(e.forecast||""),previous:String(e.previous||""),actual:""}));source="ForexFactory"}
+    }catch(_){}
+    if(!events.length){
+      try{
+        const now=new Date(),to=new Date(Date.now()+8*86400000);
+        const r=await fetch("https://economic-calendar.tradingview.com/events?from="+now.toISOString()+"&to="+to.toISOString()+"&countries=US,EU,ES,DE",{headers:{"User-Agent":"Mozilla/5.0 ViewInvAI/1.0","Origin":"https://www.tradingview.com","Referer":"https://www.tradingview.com/"}});
+        if(r.ok){const d=await r.json();events=(d&&Array.isArray(d.result)?d.result:[]).filter(e=>Number(e.importance)>=0).map(e=>({title:String(e.title||"").slice(0,90),country:ECON_COUNTRIES[e.country]||e.country,time:new Date(e.date).toISOString(),impact:Number(e.importance)>=1?"high":"medium",forecast:e.forecast==null?"":String(e.forecast),previous:e.previous==null?"":String(e.previous),actual:e.actual==null?"":String(e.actual)}));source="TradingView"}
+      }catch(_){}
+    }
+    events.sort((a,b)=>a.time.localeCompare(b.time));
+    return{events:events.slice(0,80),source,fetchedAt:new Date().toISOString()};
+  });
+  return jsonResponse(value,200,{"Cache-Control":"public, max-age=600"});
+}
+
 async function tradeRepublicHistory(request) {
   const url = new URL(request.url);
   const isin = String(url.searchParams.get("isin") || "");
@@ -2125,7 +2178,7 @@ const BACKEND_API_ROOTS = new Set([
   "me", "portfolios", "brokers", "positions", "transactions", "broker-sync", "tax-report", "dividends", "backup",
   "fund-portfolios", "fund-positions", "fund-transactions", "fund-plans", "fund-catalog-extra", "watchlist",
   "analysis", "ai", "alerts", "position-decisions", "event-insight", "admin", "goal-ideas", "radar-check", "translate", "notification-preferences", "portfolio-goal",
-  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices", "crypto-positions"
+  "portfolio-goal-history", "portfolio-performance", "settings", "ui-preferences", "devices", "crypto-positions", "news"
 ]);
 function isBackendApiPath(pathname) {
   if (pathname === "/api/backend/status") return true;
@@ -2188,6 +2241,8 @@ export default {
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
+    else if(url.pathname==="/api/analysts"||url.pathname==="/api/econ-calendar")limited=await enforcedRateLimit(request,env,"analysts",40,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/news")limited=await enforcedRateLimit(request,env,"news",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
@@ -2291,6 +2346,16 @@ export default {
         console.warn("Live stock events upstream error", String(error && error.message || error));
         return nativeCorsResponse(request, jsonResponse({ error: "Live stock events unavailable" }, 502, { "Cache-Control": "no-store" }));
       }
+    }
+    if (url.pathname === "/api/analysts") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await analystsResponse(request)); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Analysts unavailable" }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/econ-calendar") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await econCalendarResponse()); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Calendar unavailable" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/fund-search") {
       const guard = requestGuard(request); if (guard) return guard;

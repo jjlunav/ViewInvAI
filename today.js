@@ -137,18 +137,41 @@
    return '<li class="d-row'+(r.unread?' unread':'')+'"><button type="button" class="d-row-main d-row-simple"'+open+'><span class="d-row-text"><b>'+E(r.title||'Aviso')+'</b><small>'+E(r.message||'')+'</small></span><span class="d-row-num"><small>'+E(when)+'</small></span></button></li>';
   }).join('')+'</ul></section>';
  }
+ // Calendario económico (ForexFactory / TradingView vía /api/econ-calendar): impacto alto, próximos 3 días.
+ const macro={at:0,events:[],loading:false};
+ async function loadMacro(){
+  if(macro.loading||Date.now()-macro.at<30*60000)return;
+  macro.loading=true;
+  try{const r=await fetch('/api/econ-calendar');const d=await r.json();if(r.ok&&Array.isArray(d.events)){macro.events=d.events;macro.at=Date.now();refresh()}}
+  catch(_){macro.at=Date.now()-25*60000}
+  finally{macro.loading=false}
+ }
+ function macroCards(){
+  loadMacro();
+  const now=Date.now(),until=now+3*864e5;
+  return macro.events.filter(e=>{const t=Date.parse(e.time);return e.impact==='high'&&t>=now-3600e3&&t<=until}).slice(0,6);
+ }
+ function macroWhen(iso){
+  const d=new Date(iso),today=new Date(),k=x=>x.toDateString(),tm=new Date(today.getTime()+864e5);
+  const day=k(d)===k(today)?'Hoy':k(d)===k(tm)?'Mañana':d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric'});
+  return day+' · '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+ }
  function agendaHtmlD(sum){
   const keys=new Set((sum&&sum.stockKeys)||[]),now=Date.now(),limit=now+14*864e5;
   const upcoming=(db.events||[]).filter(e=>{const t=new Date(e.date).getTime();return t>=now-3600e3&&t<=limit});
   const mine=keys.size?upcoming.filter(e=>{const s=stockForEvent(e);return s&&keys.has(stockKey(s))}):[];
   const list=(mine.length?mine:upcoming.filter(e=>(N(e.impactScore)||0)>=60)).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,8);
-  if(!list.length)return'';
+  const macroList=macroCards();
+  if(!list.length&&!macroList.length)return'';
   const card=e=>{
    const s=stockForEvent(e);if(!s)return'';
    const ticker=s.ticker||s.trTicker||'',when=String(eventWhen(e)||'').replace('/'+new Date().getFullYear(),'');
    return '<button type="button" class="d-agenda-card" data-open-stock="'+E(stockKey(s))+'"><small>'+E(when)+'</small><b>'+E(EL(e))+'</b><span>'+E(ticker)+(keys.has(stockKey(s))?' · en tu cartera':'')+'</span></button>';
   };
-  return '<section class="d-group"><header><h3>Agenda'+(mine.length?' de lo tuyo':'')+'</h3><button type="button" class="d-more-link" data-today-go="future" aria-label="Abrir Potencial futuro">›</button></header><div class="d-agenda">'+list.map(card).join('')+'</div></section>';
+  const macroCard=e=>'<div class="d-agenda-card is-macro"><small>'+E(macroWhen(e.time))+'</small><b data-i18n-content>'+E(e.title)+'</b><span>'+E(e.country)+(e.forecast?' · prev. '+E(e.forecast):'')+(e.previous?' · ant. '+E(e.previous):'')+'</span></div>';
+  // Macro y catalizadores juntos, por fecha.
+  const all=[...list.map(e=>({t:new Date(e.date).getTime(),html:card(e)})),...macroList.map(e=>({t:Date.parse(e.time),html:macroCard(e)}))].sort((a,b)=>a.t-b.t);
+  return '<section class="d-group"><header><h3>Agenda</h3><button type="button" class="d-more-link" data-today-go="future" aria-label="Abrir Potencial futuro">›</button></header><div class="d-agenda">'+all.map(x=>x.html).join('')+'</div></section>';
  }
  function render(){
   const box=document.getElementById('todayResults');if(!box)return;
@@ -159,7 +182,8 @@
   const A=document.documentElement.dataset.design!=='classic'&&window.ViewInvAIAsk;
   if(document.documentElement.dataset.design==='d'){
    box.classList.add('d-today');
-   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+alertsHtmlD()+agendaHtmlD(sum);
+   const N2=window.ViewInvAINews;
+   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+ideasHtmlD()+(N2?N2.miniHtml():'')+alertsHtmlD()+agendaHtmlD(sum);
   }else{
    box.classList.remove('d-today');
    box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);
@@ -175,6 +199,7 @@
  function refresh(){if(typeof state!=='undefined'&&state.currentView==='today')render()}
  ['viewinvai:portfolio-membership-changed','viewinvai:portfolios-loaded','viewinvai:account-ready','viewinvai:auth-changed','viewinvai:inbox-updated'].forEach(n=>window.addEventListener(n,()=>setTimeout(refresh,50)));
  window.addEventListener('viewinvai:fund-portfolios-changed',()=>setTimeout(refresh,50));
+ window.addEventListener('viewinvai:news-updated',e=>{if(e.detail&&e.detail.cat==='mine')setTimeout(refresh,50)});
  window.addEventListener('viewinvai:crypto-totals',()=>setTimeout(refresh,50));
  window.addEventListener('viewinvai:crypto-quotes',()=>{if(!quoteTimer)quoteTimer=setTimeout(()=>{quoteTimer=null;refresh()},2000)});
  // Cotizaciones por ISIN (fondos y acciones fuera del catálogo): repintar como mucho cada 2 s.

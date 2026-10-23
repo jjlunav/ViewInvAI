@@ -391,3 +391,107 @@
 @ .d-fold-body .ai-brief-head>svg,@ .d-fold-body .ai-brief-head>span{display:none!important}
 @ .d-fold{position:relative}
 @ .d-fold-body .ai-brief p{margin-top:0!important}
+
+/* ---------- Noticias ---------- */
+@ .news-tabs{margin:0 0 10px;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+@ .news-tabs::-webkit-scrollbar{display:none}
+@ .news-tabs button{flex:0 0 auto}
+@ .news-head{margin-bottom:12px}
+@ .news-list{list-style:none;margin:0;padding:2px 14px;border-radius:20px;background:var(--d-surf);border:1px solid var(--d-hair);box-shadow:var(--d-shadow)}
+@ .news-row{padding:12px 0;border-top:1px solid var(--d-hair)}
+@ .news-row:first-child{border-top:0}
+@ .news-main{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;align-items:start;color:var(--d-ink);text-decoration:none}
+@ .news-tile{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--d-aitint);color:var(--d-accent);font:800 11.5px "VI Grotesk",sans-serif;letter-spacing:.02em}
+@ .news-tile[data-topic="macro"]{background:color-mix(in srgb,var(--d-teal) 14%,transparent);color:var(--d-teal);font-size:18px}
+@ .news-tile[data-topic="crypto"]{background:color-mix(in srgb,var(--d-warn) 16%,transparent);color:var(--d-warn);font-size:18px}
+@ .news-tile[data-topic="latest"]{font-size:17px}
+@ .news-row.is-mine .news-tile{background:var(--d-grad);color:#fff}
+@ .news-text{display:grid;gap:3px;min-width:0}
+@ .news-text small{font-size:11.5px;font-weight:700;color:var(--d-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@ .news-text b{font-size:14.5px;line-height:1.35;font-weight:700;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+@ .news-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 0 56px}
+@ .news-stock{border:0;cursor:pointer;font-family:inherit}
+@ .news-mine{font-size:12px;font-weight:800;color:var(--d-accent)}
+@ .news-foot{margin-top:10px}
+/* Selector de secciones de Mercados: desplazable y con el nombre entero de cada sección. */
+@ .section-switcher{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;scrollbar-width:none;grid-template-columns:none!important}
+@ .section-switcher::-webkit-scrollbar{display:none}
+@ .section-switcher>button{flex:0 0 auto!important;width:auto!important;min-width:0!important;padding:0 13px!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important}
+
+/* ---------- Ficha · Lo esencial (52 semanas, valoración, analistas) ---------- */
+@ .profile-insights{display:grid;gap:10px}
+@ .pi-block{padding:12px 14px;border-radius:16px;background:var(--d-surf-2);border:1px solid var(--d-hair)}
+@ .pi-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+@ .pi-head b{font:700 14.5px "VI Grotesk",sans-serif;color:var(--d-ink)}
+@ .pi-head span{font-size:12px;color:var(--d-mut);font-weight:700}
+@ .pi-tag{padding:3px 9px;border-radius:999px;background:var(--d-mutbg)}
+@ .pi-tag[data-tone="high"]{background:var(--d-upbg);color:var(--d-up)!important}
+@ .pi-tag[data-tone="low"]{background:var(--d-downbg);color:var(--d-down)!important}
+@ .pi-tag[data-tone="mid"]{background:var(--d-aitint);color:var(--d-accent)!important}
+@ .pi-range{position:relative;height:8px;border-radius:999px;background:linear-gradient(90deg,var(--d-down),var(--d-warn) 50%,var(--d-up));opacity:.9}
+@ .pi-range i{position:absolute;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--d-surf);border:3px solid var(--d-ink);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+@ .pi-range-ends{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--d-mut);font-weight:700}
+@ .pi-rows{display:grid;gap:6px}
+@ .pi-rows>div{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:baseline}
+@ .pi-rows span{font-size:13px;color:var(--d-mut)}
+@ .pi-rows b{font:700 14px "VI Grotesk",sans-serif;color:var(--d-ink);text-align:right}
+@ .pi-rows small{grid-column:2;text-align:right;font-size:11.5px;color:var(--d-mut)}
+@ .pi-note{margin:8px 0 0;font-size:11.5px;line-height:1.4;color:var(--d-mut)}
+@ .pi-votes{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--d-mutbg)}
+@ .pi-votes i{display:block;height:100%}
+@ .pi-votes .buy{background:var(--d-up)}
+@ .pi-votes .hold{background:var(--d-warn)}
+@ .pi-votes .sell{background:var(--d-down)}
+@ .pi-votes-legend{display:flex;justify-content:space-between;margin:6px 0 10px;font-size:11.5px;color:var(--d-mut);font-weight:700}
+@ .pi-range i[data-p="0"]{left:0%}
+@ .pi-range i[data-p="5"]{left:5%}
+@ .pi-range i[data-p="10"]{left:10%}
+@ .pi-range i[data-p="15"]{left:15%}
+@ .pi-range i[data-p="20"]{left:20%}
+@ .pi-range i[data-p="25"]{left:25%}
+@ .pi-range i[data-p="30"]{left:30%}
+@ .pi-range i[data-p="35"]{left:35%}
+@ .pi-range i[data-p="40"]{left:40%}
+@ .pi-range i[data-p="45"]{left:45%}
+@ .pi-range i[data-p="50"]{left:50%}
+@ .pi-range i[data-p="55"]{left:55%}
+@ .pi-range i[data-p="60"]{left:60%}
+@ .pi-range i[data-p="65"]{left:65%}
+@ .pi-range i[data-p="70"]{left:70%}
+@ .pi-range i[data-p="75"]{left:75%}
+@ .pi-range i[data-p="80"]{left:80%}
+@ .pi-range i[data-p="85"]{left:85%}
+@ .pi-range i[data-p="90"]{left:90%}
+@ .pi-range i[data-p="95"]{left:95%}
+@ .pi-range i[data-p="100"]{left:100%}
+@ .pi-votes i[data-w="0"]{width:0%}
+@ .pi-votes i[data-w="5"]{width:5%}
+@ .pi-votes i[data-w="10"]{width:10%}
+@ .pi-votes i[data-w="15"]{width:15%}
+@ .pi-votes i[data-w="20"]{width:20%}
+@ .pi-votes i[data-w="25"]{width:25%}
+@ .pi-votes i[data-w="30"]{width:30%}
+@ .pi-votes i[data-w="35"]{width:35%}
+@ .pi-votes i[data-w="40"]{width:40%}
+@ .pi-votes i[data-w="45"]{width:45%}
+@ .pi-votes i[data-w="50"]{width:50%}
+@ .pi-votes i[data-w="55"]{width:55%}
+@ .pi-votes i[data-w="60"]{width:60%}
+@ .pi-votes i[data-w="65"]{width:65%}
+@ .pi-votes i[data-w="70"]{width:70%}
+@ .pi-votes i[data-w="75"]{width:75%}
+@ .pi-votes i[data-w="80"]{width:80%}
+@ .pi-votes i[data-w="85"]{width:85%}
+@ .pi-votes i[data-w="90"]{width:90%}
+@ .pi-votes i[data-w="95"]{width:95%}
+@ .pi-votes i[data-w="100"]{width:100%}
+@ .d-agenda-card.is-macro{cursor:default;background:color-mix(in srgb,var(--d-teal) 7%,var(--d-surf))}
+@ .d-agenda-card.is-macro span{color:var(--d-teal)}
+/* Ningún bloque puede ensanchar la página: los carruseles y las píldoras se desplazan dentro. */
+@ .d-group,@ .d-wealth,@ .d-hero,@ .d-pulse,@ .news-list,@ .d-list{min-width:0;max-width:100%}
+@ #todayResults,@ #homeGroups,@ #newsResults,@ #portfolioContext{min-width:0;max-width:100%;overflow-x:clip}
+@ .d-agenda{max-width:100%}
+@ .d-pills{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+@ .d-pills::-webkit-scrollbar{display:none}
+@ .d-pills>button{flex:0 0 auto}
+@ .d-pills-sep{flex:1 0 8px!important;min-width:8px}

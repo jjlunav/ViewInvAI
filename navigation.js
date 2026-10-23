@@ -5,7 +5,7 @@
  * Market data and rendering stay in app.js; native geometry stays in mobile-app.js.
  */
 
-const NAV_ORDER=['today','home','recommendation','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','crypto','heatmap'];
+const NAV_ORDER=['today','home','news','recommendation','future','portfolios','favorites','inbox','tax','catalog','catalogUS','funds','crypto','heatmap'];
 const NAV_META={
  today:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-today" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>',short:'Inicio',desc:'Tu día: carteras, IA, avisos y catalizadores'},
  home:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-candles" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M3 8h4v7H3zM12 2v20M10 5h4v6h-4zM19 4v17M17 12h4v6h-4z"/></svg>',short:'Mercados',desc:'Mercados y movimientos'},
@@ -19,6 +19,7 @@ const NAV_META={
  future:{icon:'✦',short:'Futuro',desc:'Catalizadores próximos'},
  calendar:{icon:'▣',short:'Calendario',desc:'Noticias y eventos'},
  catalogUS:{icon:'▥',short:'EEUU',desc:'Nasdaq, NYSE y AMEX'},
+ news:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-news" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h11v14H6a1 1 0 0 1-1-1V5Z"/><path d="M16 9h3v9a1 1 0 0 1-1 1h-2"/><path d="M8 9h5M8 12h5M8 15h3"/></svg>',short:'Noticias',desc:'Tus valores, mercado, macro y cripto'},
  inbox:{icon:'',iconHtml:'<svg class="nav-symbol-svg nav-bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.4 15.4A1 1 0 0 0 5.3 17h13.4a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Zm-2.2 15.5a2.3 2.3 0 0 0 4.4 0h-4.4Z"/></svg>',short:'Avisos',desc:'Historial de tus avisos, leídos y sin leer'},
  tax:{icon:'§',short:'Fiscal',desc:'IRPF: plusvalías FIFO, regla de 2 meses y 720'},
  settings:{icon:'⚙',short:'Configuración',desc:'Preferencias, avisos y dispositivo'},
@@ -27,7 +28,7 @@ const NAV_META={
 // Bottom bar: Inicio · Radar AI · [⌃ Mercados, the centre arrow] · Carteras · Más.
 // Mercados lives only in the centre arrow sheet; Más holds catalogues, the heatmap and settings.
 const PRIMARY_MOBILE_VIEWS=['today','recommendation','portfolios'];
-const MORE_VIEWS=['inbox','catalog','catalogUS','funds','crypto','heatmap','tax'];
+const MORE_VIEWS=['news','inbox','catalog','catalogUS','funds','crypto','heatmap','tax'];
 const NAV_GROUPS={
  today:['today'],
  home:['home'],
@@ -40,12 +41,12 @@ const NAV_GROUPS={
  admin:['admin']
 };
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
-const SECTION_LABELS={home:'Mercado',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 // Diseño D: Mercados agrupa la portada y los catálogos (LSX, EE. UU., fondos, cripto, mapa).
 const isDesignD=()=>document.documentElement.dataset.design!=='classic';
-const D_NAV_GROUPS=Object.assign({},NAV_GROUPS,{home:['home','catalog','catalogUS','funds','crypto','heatmap'],catalogs:[]});
-const D_MORE_VIEWS=['inbox','future','favorites','tax','catalog','catalogUS','funds','crypto','heatmap','settings'];
+const D_NAV_GROUPS=Object.assign({},NAV_GROUPS,{home:['home','news','catalog','catalogUS','funds','crypto','heatmap'],catalogs:[]});
+const D_MORE_VIEWS=['news','inbox','future','favorites','tax','catalog','catalogUS','funds','crypto','heatmap','settings'];
 const navGroups=()=>isDesignD()?D_NAV_GROUPS:NAV_GROUPS;
 function navGroupOf(v){for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
@@ -103,7 +104,7 @@ function renderNavigation(){
    '<button type="button" class="mobile-more-item d-more-ai" data-ai-ask="1"><span aria-hidden="true">✦</span><b>Pregunta a la IA</b><small>Sobre tus carteras y el mercado</small></button>'+
    '<button type="button" class="mobile-more-item" data-mobile-view="portfolios" data-portfolio-asset="goal"><span aria-hidden="true">◎</span><b>Objetivo</b><small>Plan de la IA para tu meta</small></button>'+
    tile('future')+
-   head('Explorar')+tile('catalog','', 'Catálogo LSX')+tile('catalogUS','','EE. UU.')+tile('funds','','Fondos y ETF')+tile('crypto','','Cripto')+tile('heatmap','','Mapa de calor')+tile('favorites')+
+   head('Explorar')+tile('news')+tile('catalog','', 'Catálogo LSX')+tile('catalogUS','','EE. UU.')+tile('funds','','Fondos y ETF')+tile('crypto','','Cripto')+tile('heatmap','','Mapa de calor')+tile('favorites')+
    head('Gestión')+
    '<button type="button" class="mobile-more-item" data-broker-import><span aria-hidden="true">⇅</span><b>Importar extracto</b><small>Trade Republic, IBKR o CSV</small></button>'+
    tile('tax','','Fiscal (IRPF)')+tile('inbox','','Avisos')+tile('settings');

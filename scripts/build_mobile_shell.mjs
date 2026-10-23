@@ -26,6 +26,7 @@ const files = [
   'backup.js',
   'today.js',
   'ai-ask.js',
+  'news.js',
   'styles.css',
   'web-mobile.css',
   'mobile-app.css',
