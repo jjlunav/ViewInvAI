@@ -525,3 +525,8 @@
 @ .news-reader-ai .btn{margin-top:8px}
 @ .news-reader-source{display:flex!important;justify-content:center;text-decoration:none}
 @ .d-stats b{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere;font-size:clamp(13px,3.7vw,15px)!important;line-height:1.2}
+@ .d-row-ai.is-up{color:var(--d-up)}
+@ .d-row-ai.is-down{color:var(--d-down)}
+@ .d-row-ai.is-flat{color:var(--d-warn)}
+@ .d-crash .d-row-ai{white-space:normal;line-height:1.35}
+@ .d-crash-group>.d-fold{margin:0 0 8px}
