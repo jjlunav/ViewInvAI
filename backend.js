@@ -6154,6 +6154,59 @@ export async function catalystReadsFor(env,keys,days=7){
 }
 // ----- Verificador de respuestas de la IA -----
 // Números en formato español o inglés: «1.234,56», «2,47 %», «33.51», «-0,5». Devuelve valor absoluto y decimales.
+// ----- Noticia completa: muchos medios solo publican un extracto cortado en su RSS. Se lee el artículo
+// (Jina Reader si hay clave, si no la propia página) y la IA lo resume en frases completas. Todas las cifras
+// del resumen tienen que aparecer en el artículo; si alguna no está, se pide a otra IA y, si tampoco, se avisa.
+async function ensureArticleSchema(db){
+  await ensureCacheSchema(db,"news_article",["CREATE TABLE IF NOT EXISTS news_article (url_hash TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL)"]);
+}
+function articleTextFromHtml(html){
+  const body=String(html||"").replace(/<(script|style|noscript|svg|nav|footer|header|aside|form)[\s\S]*?<\/\1>/gi," ");
+  const paras=[...body.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>decodeHtmlEntities(m[1].replace(/<[^>]+>/g," ")).replace(/\s+/g," ").trim()).filter(t=>t.length>=60);
+  return paras.join("\n");
+}
+async function articleText(env,url){
+  const key=String(env.JINA_API_KEY||"").trim();
+  if(key&&providerReady(env,"jina")){
+    try{const r=await providerFetch("jina","https://r.jina.ai/"+url,{headers:{"Authorization":"Bearer "+key,"Accept":"text/plain","X-Return-Format":"text","X-Timeout":"15"}},20000);
+      if(r.ok){const t=(await r.text()).replace(/\n{3,}/g,"\n\n").trim();await recordProviderUse(env,"jina",true);if(t.length>=400)return t}
+      else{providerFail("jina",r.status);await recordProviderUse(env,"jina",false,"HTTP "+r.status)}}
+    catch(error){await recordProviderUse(env,"jina",false,String(error&&error.message||error))}
+  }
+  try{const r=await providerFetch("article",url,{headers:{...RSS_HEADERS,"Accept":"text/html"},redirect:"follow"},15000);
+    if(r.ok&&/html/i.test(r.headers.get("content-type")||""))return articleTextFromHtml(await r.text())}catch(_){}
+  return "";
+}
+async function handleAiArticle(request,env,user,json){
+  if(request.method!=="POST")return json({error:"Method not allowed"},405);
+  const body=await readJson(request);
+  const url=String(body.url||"").trim(),title=trimText(body.title,220);
+  let u;try{u=new URL(url)}catch(_){return json({error:"URL no válida"},400)}
+  if(!/^https?:$/.test(u.protocol)||/^(localhost|127\.|10\.|192\.168\.|169\.254\.)/.test(u.hostname))return json({error:"URL no válida"},400);
+  const hash=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(u.href)))].slice(0,16).map(x=>x.toString(16).padStart(2,"0")).join("");
+  try{const hit=await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("SELECT payload,created_at FROM news_article WHERE url_hash=?").bind(hash).first()});
+    if(hit&&Date.now()-Date.parse(hit.created_at)<7*864e5)return json({...JSON.parse(hit.payload),cached:true})}catch(_){}
+  const text=trimText(await articleText(env,u.href),9000);
+  if(text.length<400)return json({ok:false,reason:"El medio no deja leer el artículo completo desde aquí."});
+  const prompt=["Resume en español de España este artículo de prensa financiera. Responde SOLO JSON con: summary (4 a 6 frases completas, sin cortar ninguna, sin opinión ni consejo, solo lo que dice el artículo) y keyFacts (hasta 4 datos clave cortos con sus cifras exactas tal como aparecen).",
+    "No inventes nada: si una cifra no está en el texto, no la pongas. Titular: «"+title+"».","Artículo:",text].join("\n");
+  const source=new Set(aiNumbersIn(text).map(n=>n.v));
+  const check=d=>aiNumbersIn([d.summary,...(d.keyFacts||[])].join(" ")).filter(n=>n.v>=2&&!source.has(n.v)).map(n=>n.raw);
+  let out=null,exclude=[];
+  for(let i=0;i<2&&!(out&&out.verified);i++){
+    try{const a=await aiRoute(env,{prompt,maxTokens:700,json:true,task:"light",exclude});exclude.push(a.provider);
+      const d=JSON.parse(String(a.text).replace(/^```(?:json)?|```$/g,"").trim());
+      const summary=trimText(String(d.summary||"").trim(),1200);if(summary.length<60)continue;
+      const r={summary,keyFacts:(Array.isArray(d.keyFacts)?d.keyFacts:[]).map(x=>trimText(String(x||""),160)).filter(Boolean).slice(0,4),provider:a.provider};
+      const bad=check(r);r.verified=!bad.length;if(bad.length)r.unverified=bad.slice(0,4);
+      if(!out||r.verified)out=r;
+    }catch(_){}
+  }
+  if(!out)return json({ok:false,reason:"La IA no ha podido resumir el artículo ahora."});
+  const payload={ok:true,...out,at:nowIso()};
+  if(out.verified){try{await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("INSERT OR REPLACE INTO news_article (url_hash,payload,created_at) VALUES (?,?,?)").bind(hash,JSON.stringify(payload),nowIso()).run()})}catch(_){}}
+  return json(payload);
+}
 function aiNumbersIn(text){
   const out=[];
   for(const m of String(text||"").matchAll(/(?<![\p{L}\d])[-−+]?(\d{1,3}(?:[.\u00a0 ]\d{3})+|\d+)(?:[,.](\d+))?(?![\p{L}\d])/gu)){
@@ -6541,6 +6594,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "ai" && parts[1] === "ask") return handleAiAsk(request, env, user, json, services);
+    if (root === "ai" && parts[1] === "article") return handleAiArticle(request, env, user, json);
     if (root === "news") return handleNews(request, env, user, json, url);
     if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);
