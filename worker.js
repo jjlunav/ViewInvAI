@@ -1288,7 +1288,7 @@ async function r2MarketAssetResponse(env, pathname) {
   }
 }
 
-// Market server (Netlify, MARKET_SERVER_URL): holds the full snapshot with the live overlay
+// Market server (Vercel, MARKET_SERVER_URL; Netlify de respaldo en MARKET_SERVER_URL_2): holds the full snapshot with the live overlay
 // and returns only what each task needs: the requested stocks with their events, and the
 // universe scans (Radar, Objetivo discovery, «lo más comentado») already computed. Parsing
 // the 19 MB snapshot here costs ~100 ms of CPU, ten times the Workers Free limit.
