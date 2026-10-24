@@ -2800,10 +2800,25 @@ function radarStats(rows,h){
     median:Math.round(rets[Math.floor(rets.length/2)]*100)/100,avgExcess:excess.length?Math.round(avg(excess)*100)/100:null,
     beatRate:excess.length?Math.round(beat/excess.length*1000)/10:null,best:Math.round(rets[rets.length-1]*10)/10,worst:Math.round(rets[0]*10)/10};
 }
-export async function radarScoreboardSummary(env){return onCacheDb(env,radarScoreboardSummaryOn)}
-async function radarScoreboardSummaryOn(env){
-  await ensureRadarScoreboardSchema(env);
-  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,tier,score,price,tr_tradable,speculative,change_pct,quant_prob,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM radar_signals WHERE day>=? ORDER BY day DESC,score DESC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+// El historial vive en Turso (principal) y en D1 (lo escrito mientras Turso no respondía). El resumen
+// lee las dos y las une por (día, valor): nunca enseña una sola base incompleta. «SELECT *» para que
+// una columna añadida después que falte en una de ellas no tumbe la consulta.
+async function historyRows(env,table,since,order){
+  const read=async db=>{try{return(await db.prepare("SELECT * FROM "+table+" WHERE day>=?").bind(since).all()).results||[]}catch(error){console.warn("History read failed",table,cacheDbLabel(db),String(error&&error.message||error));return[]}};
+  const dbs=[env.DB];
+  const t=cacheDb(env);if(t&&t!==env.DB)dbs.push(t);
+  const merged=new Map();
+  const filled=r=>["ret_1d","ret_5d","ret_20d"].filter(k=>r[k]!==null&&r[k]!==undefined).length;
+  for(const rows of await Promise.all(dbs.map(read)))for(const r of rows){
+    const k=r.day+"|"+r.stock_key,prev=merged.get(k);
+    if(!prev)merged.set(k,r);
+    else{const a=filled(r)>=filled(prev)?r:prev,b=a===r?prev:r;merged.set(k,Object.fromEntries(Object.keys({...b,...a}).map(c=>[c,a[c]??b[c]??null])))}
+  }
+  return [...merged.values()].sort(order);
+}
+export async function radarScoreboardSummary(env){
+  try{await onCacheDb(env,ensureRadarScoreboardSchema)}catch(_){}
+  const rows=await historyRows(env,"radar_signals",new Date(Date.now()-400*864e5).toISOString().slice(0,10),(a,b)=>String(b.day).localeCompare(String(a.day))||Number(b.score)-Number(a.score));
   const firstDay=rows.length?rows[rows.length-1].day:null;
   // Una misma acción puede salir varios días seguidos: «primera señal» cuenta cada valor una sola vez
   // cada 10 días, para que las repeticiones no inflen ni hundan el acierto.
@@ -2830,10 +2845,9 @@ async function radarScoreboardSummaryOn(env){
     updatedAt:nowIso()};
 }
 
-export async function crashScoreboardSummary(env){return onCacheDb(env,crashScoreboardSummaryOn)}
-async function crashScoreboardSummaryOn(env){
-  await ensureRadarScoreboardSchema(env);
-  const rows=(await env.DB.prepare("SELECT day,ticker,name,stock_key,kind,label,score,change_pct,prior_pct,price,tr_tradable,ret_1d,ret_5d,ret_20d,bench_1d,bench_5d,bench_20d FROM crash_signals WHERE day>=? ORDER BY day DESC,change_pct ASC").bind(new Date(Date.now()-400*864e5).toISOString().slice(0,10)).all()).results||[];
+export async function crashScoreboardSummary(env){
+  try{await onCacheDb(env,ensureRadarScoreboardSchema)}catch(_){}
+  const rows=await historyRows(env,"crash_signals",new Date(Date.now()-400*864e5).toISOString().slice(0,10),(a,b)=>String(b.day).localeCompare(String(a.day))||Number(a.change_pct)-Number(b.change_pct));
   const groups={all:rows,over:rows.filter(r=>r.kind==="over"),trap:rows.filter(r=>r.kind==="trap"),news:rows.filter(r=>r.kind==="news"),none:rows.filter(r=>r.kind==="none"),
     high:rows.filter(r=>Number(r.score)>=65),trTradable:rows.filter(r=>Number(r.tr_tradable)===1)};
   const stats={};
