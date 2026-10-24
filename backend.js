@@ -4763,9 +4763,46 @@ async function appStats(env){
   catch(_){for(const t of tables){try{const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM "+t).first();out[t.split(" ")[0]]=r?Number(r.n)||0:null}catch(__){out[t.split(" ")[0]]=null}}}
   return out;
 }
+// Caducidad de tokens y claves: solo fechas y dónde se usan (nunca el valor). Se ven y editan en
+// Administración → Caducidades, que avisa con 30 días de antelación.
+const CREDENTIAL_SEED=[
+  ["GITHUB_DISPATCH_TOKEN","GitHub (token fine-grained) → secreto en Cloudflare","2027-10-21","Cloudflare lanza la actualización de datos de mercado"],
+  ["viewinvai-datos","GitHub (token fine-grained)","2027-10-02","Publicación de datos en la app"],
+  ["APP_REPO_TOKEN","GitHub (token fine-grained) → secreto en viewinvai/data","","El proceso de datos copia el motor de la app"],
+  ["viewinvai-analytics","GitHub (token fine-grained)","","Consumo de GitHub en Administración"],
+  ["GITHUB_MODELS_TOKEN","GitHub (viewinvai-models) → secreto en Cloudflare","","IA gratuita de GitHub Models"],
+  ["VERCEL_TOKEN","Vercel → secreto en viewinvai/data","","Despliegue del servidor de mercado en Vercel"],
+  ["NETLIFY_AUTH_TOKEN","Netlify → secreto en viewinvai/data","","Despliegue del servidor de mercado en Netlify"],
+  ["HF_TOKEN","Hugging Face → secreto en Cloudflare","","FinBERT (sentimiento financiero)"],
+  ["FRED_API_KEY","FRED → secreto en Cloudflare","","Macro oficial de EE. UU."],
+  ["FMP_API_KEY","Financial Modeling Prep → secreto en Cloudflare","","Estimaciones y resultados"]
+];
+async function ensureCredentialSchema(env){
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS credential_expiry (name TEXT PRIMARY KEY,place TEXT NOT NULL DEFAULT '',expires TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL)").run();
+  await env.DB.batch(CREDENTIAL_SEED.map(([n,p,e,note])=>env.DB.prepare("INSERT OR IGNORE INTO credential_expiry (name,place,expires,note,updated_at) VALUES (?,?,?,?,?)").bind(n,p,e,note,nowIso())));
+}
+async function credentialList(env){
+  await ensureCredentialSchema(env);
+  const today=Date.parse(nowIso().slice(0,10));
+  return((await env.DB.prepare("SELECT name,place,expires,note,updated_at FROM credential_expiry ORDER BY CASE WHEN expires='' THEN 1 ELSE 0 END,expires,name").all()).results||[])
+    .map(r=>({name:r.name,place:r.place,expires:r.expires||null,note:r.note,daysLeft:r.expires?Math.round((Date.parse(r.expires)-today)/864e5):null,updatedAt:r.updated_at}));
+}
 async function handleAdmin(request,env,user,json,url){
-  if(request.method!=="GET")return json({error:"Method not allowed"},405);
   if(!await isAdminUser(env,user))return json({error:"Solo para la cuenta de administración."},403);
+  if(request.method==="POST"){
+    const b=await readJson(request);
+    if(b.action!=="credential")return json({error:"Acción no válida"},400);
+    const name=trimText(b.name,60).replace(/[^\w.-]/g,"");if(!name)return json({error:"Falta el nombre"},400);
+    await ensureCredentialSchema(env);
+    if(b.remove===true){await env.DB.prepare("DELETE FROM credential_expiry WHERE name=?").bind(name).run();return json({ok:true,credentials:await credentialList(env)})}
+    const expires=String(b.expires||"").trim();
+    if(expires&&!/^\d{4}-\d{2}-\d{2}$/.test(expires))return json({error:"Fecha no válida (AAAA-MM-DD)"},400);
+    await env.DB.prepare("INSERT INTO credential_expiry (name,place,expires,note,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET place=excluded.place,expires=excluded.expires,note=excluded.note,updated_at=excluded.updated_at")
+      .bind(name,trimText(b.place,120),expires,trimText(b.note,160),nowIso()).run();
+    return json({ok:true,credentials:await credentialList(env)});
+  }
+  if(request.method!=="GET")return json({error:"Method not allowed"},405);
+  if(url.searchParams.get("credentials")==="1")return json({credentials:await credentialList(env)});
   if(url.searchParams.get("lite")==="1")return json({admin:true});
   // El consumo (Cloudflare, Turso, GitHub, recuentos) es lento: se pide aparte para no bloquear el panel.
   if(url.searchParams.get("usage")==="1"){
