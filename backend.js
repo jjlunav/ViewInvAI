@@ -6016,7 +6016,9 @@ export async function runCatalystReader(env,services={},nowMs=Date.now(),limit=6
   for(const key of order){
     const st=findStock(snap,{stock_key:key});if(!st)continue;
     const t=String(st.ticker||"").toUpperCase();
-    for(const e of (snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===t&&String(e.date||"").slice(0,10)>=cut)){
+    // Solo lo ya ocurrido (los avisos de calendario con fecha futura no son noticias).
+    const today=new Date(nowMs).toISOString().slice(0,10);
+    for(const e of (snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===t&&String(e.date||"").slice(0,10)>=cut&&String(e.date||"").slice(0,10)<=today)){
       const title=trimText(e.title||e.fact||"",220);if(title.length<12)continue;
       items.push({key:catalystKey(key,title),stock_key:key,ticker:t,name:newsCleanName(st.name)||t,day:String(e.date).slice(0,10),type:e.type,title,snippet:trimText(e.fact&&e.fact!==e.title?e.fact:"",300)});
     }
