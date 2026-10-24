@@ -19,10 +19,10 @@
     "FIREBASE_PROJECT_ID": "viewinvai",
     "SEC_USER_AGENT": "ViewInvAI/1.0 (https://viewinvai.firebaseapp.com)",
     "MARKET_DISPATCH_MINUTES": "30",
-    "MARKET_LIVE_URL": "https://viewinvai-data.netlify.app/market-live",
-    "MARKET_SERVER_URL": "https://viewinvai-data.netlify.app/market-server",
-    "MARKET_LIVE_URL_2": "https://viewinvai-data.vercel.app/api/market-live",
-    "MARKET_SERVER_URL_2": "https://viewinvai-data.vercel.app/api/market-server"
+    "MARKET_LIVE_URL": "https://viewinvai-data.vercel.app/api/market-live",
+    "MARKET_SERVER_URL": "https://viewinvai-data.vercel.app/api/market-server",
+    "MARKET_LIVE_URL_2": "https://viewinvai-data.netlify.app/market-live",
+    "MARKET_SERVER_URL_2": "https://viewinvai-data.netlify.app/market-server"
   },
   "triggers": {
     "crons": [
