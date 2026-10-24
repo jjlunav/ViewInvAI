@@ -6168,18 +6168,18 @@ function articleTextFromHtml(html){
 async function articleText(env,url){
   const key=String(env.JINA_API_KEY||"").trim();
   if(key&&providerReady(env,"jina")){
-    try{const r=await providerFetch("jina","https://r.jina.ai/"+url,{headers:{"Authorization":"Bearer "+key,"Accept":"text/plain","X-Return-Format":"text","X-Timeout":"15"}},20000);
+    try{const r=await providerFetch("jina","https://r.jina.ai/"+url,{headers:{"Authorization":"Bearer "+key,"Accept":"text/plain","X-Return-Format":"text","X-Timeout":"10"}},14000);
       if(r.ok){const t=(await r.text()).replace(/\n{3,}/g,"\n\n").trim();await recordProviderUse(env,"jina",true);if(t.length>=400)return t}
       else{providerFail("jina",r.status);await recordProviderUse(env,"jina",false,"HTTP "+r.status)}}
     catch(error){await recordProviderUse(env,"jina",false,String(error&&error.message||error))}
   }
-  try{const r=await providerFetch("article",url,{headers:{...RSS_HEADERS,"Accept":"text/html"},redirect:"follow"},15000);
+  try{const r=await providerFetch("article",url,{headers:{...RSS_HEADERS,"Accept":"text/html"},redirect:"follow"},10000);
     if(r.ok&&/html/i.test(r.headers.get("content-type")||""))return articleTextFromHtml(await r.text())}catch(_){}
   return "";
 }
 async function handleAiArticle(request,env,user,json){
   if(request.method!=="POST")return json({error:"Method not allowed"},405);
-  const body=await readJson(request);
+  const t0=Date.now(),body=await readJson(request);
   const url=String(body.url||"").trim(),title=trimText(body.title,220);
   let u;try{u=new URL(url)}catch(_){return json({error:"URL no válida"},400)}
   if(!/^https?:$/.test(u.protocol)||/^(localhost|127\.|10\.|192\.168\.|169\.254\.)/.test(u.hostname))return json({error:"URL no válida"},400);
@@ -6192,9 +6192,11 @@ async function handleAiArticle(request,env,user,json){
     "No inventes nada: si una cifra no está en el texto, no la pongas. Titular: «"+title+"».","Artículo:",text].join("\n");
   const source=new Set(aiNumbersIn(text).map(n=>n.v));
   const check=d=>aiNumbersIn([d.summary,...(d.keyFacts||[])].join(" ")).filter(n=>n.v>=2&&!source.has(n.v)).map(n=>n.raw);
+  // Presupuesto de tiempo: el lector espera como mucho 50 s. La segunda IA solo si queda margen.
+  const within=(p,ms)=>Promise.race([p,new Promise((_,no)=>setTimeout(()=>no(new Error("tiempo agotado")),ms))]);
   let out=null,exclude=[];
-  for(let i=0;i<2&&!(out&&out.verified);i++){
-    try{const a=await aiRoute(env,{prompt,maxTokens:700,json:true,task:"light",exclude});exclude.push(a.provider);
+  for(let i=0;i<2&&!(out&&out.verified)&&Date.now()-t0<32000;i++){
+    try{const a=await within(aiRoute(env,{prompt,maxTokens:700,json:true,task:"light",exclude}),Math.max(8000,44000-(Date.now()-t0)));exclude.push(a.provider);
       const d=JSON.parse(String(a.text).replace(/^```(?:json)?|```$/g,"").trim());
       const summary=trimText(String(d.summary||"").trim(),1200);if(summary.length<60)continue;
       const r={summary,keyFacts:(Array.isArray(d.keyFacts)?d.keyFacts:[]).map(x=>trimText(String(x||""),160)).filter(Boolean).slice(0,4),provider:a.provider};
@@ -6202,7 +6204,7 @@ async function handleAiArticle(request,env,user,json){
       if(!out||r.verified)out=r;
     }catch(_){}
   }
-  if(!out)return json({ok:false,reason:"La IA no ha podido resumir el artículo ahora."});
+  if(!out)return json({ok:false,retry:true,reason:"La IA no ha podido resumir el artículo ahora."});
   const payload={ok:true,...out,at:nowIso()};
   if(out.verified){try{await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("INSERT OR REPLACE INTO news_article (url_hash,payload,created_at) VALUES (?,?,?)").bind(hash,JSON.stringify(payload),nowIso()).run()})}catch(_){}}
   return json(payload);
@@ -7595,7 +7597,11 @@ async function newsCached(env,key,fn){
 function newsMentions(text,c){
   const t=" "+String(text||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()+" ";
   const name=String(c.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
-  if(name.length>=3){const esc=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");if(new RegExp("[^\\p{L}\\p{N}]"+esc+"[^\\p{L}\\p{N}]","u").test(t))return true}
+  // Nombre de una sola palabra: tiene que ir con mayúscula inicial, como nombre propio. Si no, palabras comunes
+  // de otros idiomas cuentan como la empresa (en estonio «taskus» es «en el bolsillo», no TaskUs).
+  if(name.length>=3){const esc=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),re=new RegExp("[^\\p{L}\\p{N}]("+esc+")[^\\p{L}\\p{N}]","giu");
+    const orig=" "+String(text||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")+" ";
+    if(/\s/.test(name)?re.test(t):[...orig.matchAll(re)].some(m=>/^\p{Lu}/u.test(m[1])))return true}
   // El ticker solo cuenta escrito como ticker: «(TASK)» o «NASDAQ:TASK», nunca como palabra suelta.
   const tk=String(c.ticker||"").toUpperCase();
   return tk.length>=2&&new RegExp("(\\("+tk+"\\)|:"+tk+"\\b)").test(String(text||""));

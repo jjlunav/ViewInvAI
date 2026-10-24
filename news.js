@@ -47,7 +47,10 @@
  const fold=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  function mentions(text,name,ticker){
   const t=' '+fold(text)+' ',n=fold(String(name||'').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE|Holdings?|Group)\.?$/i,'')).trim();
-  if(n.length>=3&&new RegExp('[^\\p{L}\\p{N}]'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^\\p{L}\\p{N}]','u').test(t))return true;
+  // Nombre de una sola palabra: solo cuenta con mayúscula inicial (en estonio «taskus» es «en el bolsillo», no TaskUs).
+  if(n.length>=3){const re=new RegExp('[^\\p{L}\\p{N}]('+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')[^\\p{L}\\p{N}]','giu');
+   const orig=' '+String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')+' ';
+   if(/\s/.test(n)?re.test(t):[...orig.matchAll(re)].some(m=>/^\p{Lu}/u.test(m[1])))return true}
   const tk=String(ticker||'').toUpperCase();
   return tk.length>=2&&new RegExp('(\\('+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\)|:'+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b)').test(String(text||''));
  }
@@ -209,29 +212,26 @@
  // Muchos medios cortan el extracto del RSS a media frase («— un ...»). Entonces se lee el artículo completo en
  // el servidor y se enseña su resumen en frases enteras; si no se puede, el extracto acaba en la última frase completa.
  const cutSnippet=t=>/(\.\.\.|…|\[…\]|\[\.\.\.\])\s*$/.test(String(t||'').trim());
- function wholeSentences(t){
-  t=String(t||'').trim();if(!cutSnippet(t))return t;
-  const body=t.replace(/\s*(\.\.\.|…|\[…\]|\[\.\.\.\])\s*$/,'');
-  const m=body.match(/^[\s\S]*[.!?»"](?=\s)/);
-  return m&&m[0].length>=Math.min(80,body.length*.4)?m[0]:body+'…';
- }
  function fullHtml(it){
   const f=reader.full;
   if(f&&f.ok)return '<div class="news-reader-full"><small class="news-full-tag">✦ Resumen del artículo completo'+(f.verified?' · cifras comprobadas':'')+'</small><p data-i18n-content>'+esc(f.summary)+'</p>'+
    (f.keyFacts&&f.keyFacts.length?'<ul>'+f.keyFacts.map(k=>'<li data-i18n-content>'+esc(k)+'</li>').join('')+'</ul>':'')+
    (f.verified===false?'<p class="ai-brief-muted">⚠ Algunas cifras no se han podido contrastar con el artículo: '+esc((f.unverified||[]).join(', '))+'.</p>':'')+'</div>';
-  const snip=it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(wholeSentences(it.snippet))+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto.</p>';
+  // El extracto va tal cual (así reutiliza la traducción ya hecha en la lista); si viene cortado, se avisa.
+  const snip=it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(it.snippet)+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto.</p>';
   if(reader.fullLoading)return snip+'<p class="ai-brief-muted">Leyendo el artículo completo…</p>';
-  if(f&&!f.ok&&(cutSnippet(it.snippet)||!it.snippet))return snip+'<p class="ai-brief-muted">'+esc(f.reason||'El medio solo publica este extracto.')+'</p>';
+  if(f&&!f.ok&&(cutSnippet(it.snippet)||!it.snippet))return snip+'<p class="ai-brief-muted">'+esc(f.reason||'El medio solo publica este extracto.')+(f.retry?' <button type="button" class="d-chip" data-news-full-retry>Reintentar</button>':'')+'</p>';
   return snip;
  }
  async function loadFull(it){
   if(!it.url||!(cutSnippet(it.snippet)||String(it.snippet||'').length<140))return;
   const A=auth();if(!A||typeof A.apiFetch!=='function')return;
   reader.fullLoading=true;paintReader();
-  try{const r=await A.apiFetch('/api/ai/article',{method:'POST',body:JSON.stringify({url:it.url,title:it.title,publisher:it.publisher})});
-   const d=await r.json().catch(()=>({}));if(reader.item===it)reader.full=r.ok?d:{ok:false,reason:d.error||''}}
-  catch(_){if(reader.item===it)reader.full={ok:false}}
+  // Como mucho 50 s esperando: si el medio o la IA tardan más, se dice y se puede reintentar.
+  const slow=new Promise((_,no)=>setTimeout(()=>no(new Error('slow')),50000));
+  try{const r=await Promise.race([A.apiFetch('/api/ai/article',{method:'POST',body:JSON.stringify({url:it.url,title:it.title,publisher:it.publisher})}),slow]);
+   const d=await Promise.race([r.json().catch(()=>({})),slow]);if(reader.item===it)reader.full=r.ok?d:{ok:false,reason:d.error||'',retry:true}}
+  catch(e){if(reader.item===it)reader.full={ok:false,retry:true,reason:e&&e.message==='slow'?'El artículo está tardando demasiado en leerse.':'No se ha podido leer el artículo ahora.'}}
   finally{if(reader.item===it){reader.fullLoading=false;paintReader()}}
  }
  function openReader(it){
@@ -270,6 +270,7 @@
   const rd=e.target.closest&&e.target.closest('[data-news-read]');
   if(rd){const [cat,i]=rd.dataset.newsRead.split('|'),it=S.data[cat]&&S.data[cat].items[Number(i)];if(it){e.preventDefault();if(document.documentElement.dataset.design==='d')openReader(it);else window.open(it.url,'_blank','noopener')}return}
   if(e.target.closest&&e.target.closest('[data-news-close]')){closeReader();return}
+  if(e.target.closest&&e.target.closest('[data-news-full-retry]')){const it=reader.item;if(it){reader.full=null;loadFull(it)}return}
   if(e.target.closest&&e.target.closest('#newsReader [data-open-stock]'))setTimeout(closeReader,0);
   if(e.target.closest&&e.target.closest('[data-news-ai]')){explain();return}
   const na=e.target.closest&&e.target.closest('[data-news-ask]');
