@@ -859,7 +859,7 @@ async function hydrateProfileEarnings(box){
   el.innerHTML='<div class="pi-head"><b>Resultados vs. estimación</b>'+(beats.length?'<span class="pi-tag" data-tone="'+tone+'">Supera '+won+' de '+beats.length+'</span>':'')+'</div>'+
    '<div class="pi-rows">'+(d.past||[]).map(x=>'<div><span>'+E(day(x.date))+'</span><b>BPA '+E(eps(x.eps))+'</b><small>'+(x.surprisePct===null?'estimado '+E(eps(x.epsEst)):'estimado '+E(eps(x.epsEst))+' · '+(x.surprisePct>=0?'+':'')+F(x.surprisePct,1)+' %')+'</small></div>').join('')+
    (d.next?'<div><span>Próx. '+E(day(d.next.date))+'</span><b>BPA estimado '+E(eps(d.next.epsEst))+'</b><small>'+(d.next.revenueEst?'ventas estimadas '+E(big(d.next.revenueEst)):'')+'</small></div>':'')+'</div>'+
-   '<p class="pi-note">Beneficio por acción real frente a la media de analistas. Fuente: Financial Modeling Prep.</p>';
+   '<p class="pi-note">Beneficio por acción real frente a la media de analistas. Fuente: '+E(d.source||'Financial Modeling Prep')+'.</p>';
   el.style.display='';
  }catch(_){}
 }
