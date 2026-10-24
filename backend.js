@@ -6147,8 +6147,9 @@ export async function catalystReadsFor(env,keys,days=7){
   await ensureCatalystSchema(env);
   const list=[...new Set((keys||[]).map(k=>String(k||"").toUpperCase()).filter(k=>/^[A-Z0-9._-]+:[A-Z0-9._-]+$/.test(k)))].slice(0,40);
   if(!list.length)return[];
+  // Solo lo ya ocurrido: lecturas antiguas de avisos de calendario con fecha futura no cuentan como noticia.
   const cut=new Date(Date.now()-days*864e5).toISOString().slice(0,10);
-  return((await env.DB.prepare("SELECT stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers FROM catalyst_reads WHERE stock_key IN ("+list.map(()=>"?").join(",")+") AND day>=? ORDER BY day DESC,created_at DESC LIMIT 200").bind(...list,cut).all()).results||[])
+  return((await env.DB.prepare("SELECT stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers FROM catalyst_reads WHERE stock_key IN ("+list.map(()=>"?").join(",")+") AND day>=? AND day<=? ORDER BY day DESC,created_at DESC LIMIT 200").bind(...list,cut,new Date().toISOString().slice(0,10)).all()).results||[])
     .map(r=>({stockKey:r.stock_key,ticker:r.ticker,day:r.day,title:r.title,kind:r.kind,direction:r.direction,material:!!r.material,business:!!r.business,summary:r.summary,agree:!!r.agree,providers:r.providers}));
 }
 // ----- Verificador de respuestas de la IA -----
