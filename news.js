@@ -200,14 +200,42 @@
    '<div class="news-reader-body">'+
     '<h2 data-i18n-content>'+esc(it.title)+'</h2>'+
     (cited.length?'<div class="news-meta">'+cited.map(stockChip).join('')+(mine?'<span class="news-mine">✦ En tu cartera</span>':'')+'</div>':'')+
-    (it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(it.snippet)+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto: abajo tienes la lectura de la IA y el enlace al artículo completo.</p>')+
+    fullHtml(it)+
     '<section class="news-reader-ai"><div class="ai-brief-head"><span>✦ Lectura AI</span></div>'+ai+'</section>'+
     '<a class="btn news-reader-source" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">Leer el artículo completo en '+esc(it.publisher||'el medio')+' ↗</a>'+
-    '<p class="ai-ask-note">Resumen orientativo con el titular y el extracto: no es asesoramiento financiero.</p>'+
+    '<p class="ai-ask-note">'+(reader.full&&reader.full.ok?'Resumen del artículo hecho por IA con el texto completo del medio':'Resumen orientativo con el titular y el extracto')+': no es asesoramiento financiero.</p>'+
    '</div>';
  }
+ // Muchos medios cortan el extracto del RSS a media frase («— un ...»). Entonces se lee el artículo completo en
+ // el servidor y se enseña su resumen en frases enteras; si no se puede, el extracto acaba en la última frase completa.
+ const cutSnippet=t=>/(\.\.\.|…|\[…\]|\[\.\.\.\])\s*$/.test(String(t||'').trim());
+ function wholeSentences(t){
+  t=String(t||'').trim();if(!cutSnippet(t))return t;
+  const body=t.replace(/\s*(\.\.\.|…|\[…\]|\[\.\.\.\])\s*$/,'');
+  const m=body.match(/^[\s\S]*[.!?»"](?=\s)/);
+  return m&&m[0].length>=Math.min(80,body.length*.4)?m[0]:body+'…';
+ }
+ function fullHtml(it){
+  const f=reader.full;
+  if(f&&f.ok)return '<div class="news-reader-full"><small class="news-full-tag">✦ Resumen del artículo completo'+(f.verified?' · cifras comprobadas':'')+'</small><p data-i18n-content>'+esc(f.summary)+'</p>'+
+   (f.keyFacts&&f.keyFacts.length?'<ul>'+f.keyFacts.map(k=>'<li data-i18n-content>'+esc(k)+'</li>').join('')+'</ul>':'')+
+   (f.verified===false?'<p class="ai-brief-muted">⚠ Algunas cifras no se han podido contrastar con el artículo: '+esc((f.unverified||[]).join(', '))+'.</p>':'')+'</div>';
+  const snip=it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(wholeSentences(it.snippet))+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto.</p>';
+  if(reader.fullLoading)return snip+'<p class="ai-brief-muted">Leyendo el artículo completo…</p>';
+  if(f&&!f.ok&&(cutSnippet(it.snippet)||!it.snippet))return snip+'<p class="ai-brief-muted">'+esc(f.reason||'El medio solo publica este extracto.')+'</p>';
+  return snip;
+ }
+ async function loadFull(it){
+  if(!it.url||!(cutSnippet(it.snippet)||String(it.snippet||'').length<140))return;
+  const A=auth();if(!A||typeof A.apiFetch!=='function')return;
+  reader.fullLoading=true;paintReader();
+  try{const r=await A.apiFetch('/api/ai/article',{method:'POST',body:JSON.stringify({url:it.url,title:it.title,publisher:it.publisher})});
+   const d=await r.json().catch(()=>({}));if(reader.item===it)reader.full=r.ok?d:{ok:false,reason:d.error||''}}
+  catch(_){if(reader.item===it)reader.full={ok:false}}
+  finally{if(reader.item===it){reader.fullLoading=false;paintReader()}}
+ }
  function openReader(it){
-  reader.item=it;reader.ai=null;reader.loading=false;
+  reader.item=it;reader.ai=null;reader.loading=false;reader.full=null;reader.fullLoading=false;loadFull(it);
   const el=readerEl();paintReader();
   el.classList.add('open');el.setAttribute('aria-hidden','false');document.getElementById('newsReaderBackdrop').classList.add('open');
   document.body.classList.add('ai-ask-open');
@@ -222,7 +250,7 @@
   const it=reader.item;if(!it||reader.loading)return;
   reader.loading=true;paintReader();
   const cited=citedStocks(it,holdings()).map(s=>(s.ticker||s.clean)+(s.held?' (en cartera)':'')).join(', ');
-  const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el extracto; si no basta, dilo. Titular: «'+it.title+'».'+(it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
+  const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el texto que te doy; si no basta, dilo. Titular: «'+it.title+'».'+(reader.full&&reader.full.ok?' Resumen del artículo completo: «'+reader.full.summary+'».':it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
   try{
    const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news',news:newsForAi([it]),focus:citedStocks(it,holdings()).map(s=>s.key).filter(Boolean).slice(0,4)})});
    const d=await res.json().catch(()=>({}));
