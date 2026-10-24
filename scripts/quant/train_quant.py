@@ -437,28 +437,35 @@ def train_tr():
         for (isin, f, i), r in zip(items, fw):
             p, e20, e50 = f["price"][i], f["ema20"][i], f["ema50"][i]
             av = f["avgVolume"][i]
-            row = [f["change"][i], math.log(max(f["relVolume"][i], 0.01)) if np.isfinite(f["relVolume"][i]) else np.nan, f["rsi"][i], f["adx"][i],
+            row = [f["change"][i], math.log(max(f["relVolume"][i], 0.01)) if np.isfinite(f["relVolume"][i]) and f["avgVolume"][i] > 0 else np.nan, f["rsi"][i], f["adx"][i],
                    (p / e20 - 1) * 100, (p / e50 - 1) * 100, (e20 / e50 - 1) * 100, f["perfWeek"][i], f["perfMonth"][i],
-                   math.log10(max(p * av, 1.0)) if np.isfinite(av) else np.nan, f["fromHigh"][i], f["fromLow"][i], f["atrPct"][i]]
-            if not all(np.isfinite(row)):
-                continue
+                   math.log10(p * av) if np.isfinite(av) and av > 0 else np.nan, f["fromHigh"][i], f["fromLow"][i], f["atrPct"][i]]
             Xs.append(row)
             EXs.append(r - med)
             Ds.append(day)
             CHs.append(f["change"][i])
-    if len(Xs) < 20000:
-        log("::warning::Pocas filas de LSX:", len(Xs))
+    X = np.array(Xs, dtype=np.float64)
+    # LSX no publica el volumen negociado: los factores que casi nunca existen se quitan del modelo
+    # (en la app, un factor que el modelo no tiene simplemente no suma).
+    cols = [j for j in range(X.shape[1]) if np.isfinite(X[:, j]).mean() >= 0.8]
+    names = [MODEL_FEATURES[j] for j in cols]
+    X = X[:, cols]
+    ok = np.all(np.isfinite(X), axis=1)
+    X = X[ok]
+    EX = np.array(EXs)[ok]
+    D = np.array(Ds)[ok]
+    CHs = list(np.array(CHs)[ok])
+    log("LSX: factores usados", names, "· filas", len(X))
+    if len(X) < 20000:
+        log("::warning::Pocas filas de LSX:", len(X))
         return None
-    X = np.array(Xs)
-    EX = np.array(EXs)
     Y = (EX > 0).astype(np.float64)
-    D = np.array(Ds)
     edges, b, W, val = train_model(X, Y, D, EX)
     model = {"version": datetime.now(timezone.utc).strftime("%Y.%m.%d"), "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "target": "Probabilidad de batir a la mediana de Trade Republic / LSX en las 5 sesiones siguientes",
              "market": "tr", "horizon": HORIZON, "intercept": round(b, 5), "baseRate": round(float(Y.mean()), 4),
              "features": [{"name": nme, "edges": [round(float(e), 5) for e in edges[j]], "weights": [round(float(w), 5) for w in W[j]]}
-                          for j, nme in enumerate(MODEL_FEATURES)],
+                          for j, nme in enumerate(names)],
              "validation": {k: v for k, v in val.items() if k != "deciles"}, "universe": len(data), "rows": int(len(X)),
              "byChange": bucket_stats(np.array(CHs), EX, [-100, -8, 0, 2, 5, 8, 15, 30, 1000],
                                       ["< -8 %", "-8 a 0 %", "0 a 2 %", "2 a 5 %", "5 a 8 %", "8 a 15 %", "15 a 30 %", "> 30 %"])}
