@@ -89,7 +89,8 @@ def fetch(ticker, assetclass="stocks"):
     today = date.today().isoformat()
     if path.exists():
         z = np.load(path)
-        if str(z["fetched"]) == today:
+        # Se reutiliza 3 días: para un entrenamiento semanal no cambia nada y evita 25 minutos de descarga.
+        if (date.today() - date.fromisoformat(str(z["fetched"]))).days <= 3:
             return {k: z[k] for k in ("d", "o", "h", "l", "c", "v")}
     url = ("https://api.nasdaq.com/api/quote/" + ticker + "/historical?assetclass=" + assetclass +
            "&fromdate=" + FROM + "&todate=" + today + "&limit=9999")
@@ -325,7 +326,7 @@ def tr_history(isins):
     (la misma que usa la app; sin cuenta ni PIN). Devuelve {isin: arrays}."""
     out = {}
     todo = [i for i in isins if not (CACHE / ("tr_" + i + ".npz")).exists() or
-            str(np.load(CACHE / ("tr_" + i + ".npz"))["fetched"]) != date.today().isoformat()]
+            (date.today() - date.fromisoformat(str(np.load(CACHE / ("tr_" + i + ".npz"))["fetched"]))).days > 3]
     for i in isins:
         if i not in todo:
             z = np.load(CACHE / ("tr_" + i + ".npz"))
