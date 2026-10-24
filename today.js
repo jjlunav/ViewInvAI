@@ -192,6 +192,28 @@
   const day=k(d)===k(today)?'Hoy':k(d)===k(tm)?'Mañana':d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric'});
   return day+' · '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
  }
+ // Indicadores oficiales (Fed vía FRED y BCE) desde /api/macro: valor, fecha de publicación y cambio.
+ const official={at:0,list:[],loading:false};
+ async function loadOfficial(){
+  if(official.loading||Date.now()-official.at<60*60000)return;
+  official.loading=true;
+  try{const r=await fetch('/api/macro');const d=await r.json();if(r.ok&&Array.isArray(d.indicators)){official.list=d.indicators;official.at=Date.now();refresh()}else official.at=Date.now()-50*60000}
+  catch(_){official.at=Date.now()-50*60000}
+  finally{official.loading=false}
+ }
+ function officialHtmlD(){
+  loadOfficial();
+  if(!official.list.length)return'';
+  const fmt=(v,x)=>Number(v).toLocaleString('es-ES',{minimumFractionDigits:x.digits||2,maximumFractionDigits:x.digits||2})+(x.unit==='%'?' %':x.unit==='pp'?' pp':x.unit==='$'?' $':'');
+  const day=d=>{const t=new Date(String(d).length===7?d+'-01T12:00:00Z':String(d).slice(0,10)+'T12:00:00Z');return String(d).length===7?t.toLocaleDateString('es-ES',{month:'short',year:'numeric'}):t.toLocaleDateString('es-ES',{day:'numeric',month:'short'})};
+  const card=x=>{
+   const diff=x.prev!==null&&x.prev!==undefined?x.value-x.prev:null,eps=Math.pow(10,-(x.digits||2))/2;
+   const move=diff===null||Math.abs(diff)<eps?'':diff>0?' ▲':' ▼';
+   return '<div class="d-agenda-card is-macro is-official" title="'+E(x.source)+'"><small>'+E(x.region)+' · '+E(day(x.date))+'</small><b>'+E(x.label)+'</b><span>'+E(fmt(x.value,x))+move+(diff!==null&&move?' <i>ant. '+E(fmt(x.prev,x))+'</i>':'')+'</span></div>';
+  };
+  const src=[...new Set(official.list.map(x=>/FRED/.test(x.source)?'FRED':'BCE'))].join(' · ');
+  return '<section class="d-group"><header><h3>Indicadores oficiales</h3><span>'+E(src)+'</span></header><div class="d-agenda">'+official.list.map(card).join('')+'</div></section>';
+ }
  function agendaHtmlD(sum){
   // «en tu cartera» solo con posición abierta; lo que solo está en favoritos se dice así.
   const held=new Set((sum&&sum.positionKeys)||[]);
@@ -221,7 +243,7 @@
   if(document.documentElement.dataset.design==='d'){
    box.classList.add('d-today');
    const N2=window.ViewInvAINews;
-   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+favoritesHtmlD(sum)+ideasHtmlD()+(N2?N2.miniHtml():'')+alertsHtmlD()+agendaHtmlD(sum);
+   box.innerHTML=wealthHtmlD(sum,A&&sum&&sum.signedIn?A:null)+favoritesHtmlD(sum)+ideasHtmlD()+(N2?N2.miniHtml():'')+alertsHtmlD()+agendaHtmlD(sum)+officialHtmlD();
   }else{
    box.classList.remove('d-today');
    box.innerHTML=portfoliosHtml(sum)+(A&&sum&&sum.signedIn?A.briefHtml():'')+aiPicksHtml()+alertsHtml()+catalystsHtml(sum);

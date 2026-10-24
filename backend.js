@@ -4407,6 +4407,7 @@ const PROVIDERS=[
   {id:"sambanova",label:"SambaNova Cloud",kind:"IA",secret:"SAMBANOVA_API_KEY",free:"Plan gratuito con límites por minuto",dashboard:"https://cloud.sambanova.ai/apis",base:"https://api.sambanova.ai/v1",models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-V3-0324"]},
   {id:"nvidia",label:"NVIDIA NIM",kind:"IA",secret:"NVIDIA_API_KEY",free:"Gratis sin tarjeta; ~40 consultas/minuto",dashboard:"https://build.nvidia.com/",base:"https://integrate.api.nvidia.com/v1",models:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b","deepseek-ai/deepseek-v3.1"]},
   {id:"ollama",label:"Ollama Cloud",kind:"IA",secret:"OLLAMA_API_KEY",free:"Plan gratuito con límites de uso",dashboard:"https://ollama.com/settings/keys",base:"https://ollama.com/v1",models:["gpt-oss:120b","gpt-oss:20b"]},
+  {id:"githubmodels",label:"GitHub Models",kind:"IA",secret:"GITHUB_MODELS_TOKEN",free:"Gratis con cuenta de GitHub: ~50 consultas/día en modelos grandes y ~150 en los pequeños",dashboard:"https://github.com/marketplace/models",base:"https://models.github.ai/inference",probe:"https://models.github.ai/catalog/models",models:["openai/gpt-4.1","openai/gpt-4o-mini"]},
   {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
   {id:"tavily",label:"Tavily",kind:"Búsqueda",secret:"TAVILY_API_KEY",free:"1.000 créditos/mes",dashboard:"https://app.tavily.com/home",monthlyLimit:1000},
   {id:"serper",label:"Serper (Google)",kind:"Búsqueda",secret:"SERPER_API_KEY",free:"2.500 búsquedas gratis al registrarse (una vez)",dashboard:"https://serper.dev/dashboard"},
@@ -4416,6 +4417,10 @@ const PROVIDERS=[
   {id:"bingnews",label:"Bing News (RSS, respaldo)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; entra si Google News falla",dashboard:"https://www.bing.com/news"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
+  {id:"huggingface",label:"Hugging Face (FinBERT)",kind:"Sentimiento",secret:"HF_TOKEN",free:"Cupo mensual gratuito de inferencia",dashboard:"https://huggingface.co/settings/billing"},
+  {id:"fred",label:"FRED (Reserva Federal)",kind:"Datos macro",secret:"FRED_API_KEY",free:"Gratis; límite por minuto muy amplio",dashboard:"https://fredaccount.stlouisfed.org/apikeys"},
+  {id:"ecb",label:"BCE (portal de datos)",kind:"Datos macro",secret:"",free:"Público, sin clave",dashboard:"https://data.ecb.europa.eu/"},
+  {id:"fmp",label:"Financial Modeling Prep",kind:"Datos de mercado",secret:"FMP_API_KEY",free:"~250 consultas/día",dashboard:"https://site.financialmodelingprep.com/developer/docs/dashboard"},
   {id:"finnhub",label:"Finnhub",kind:"Datos de mercado",secret:"FINNHUB_API_KEY",free:"60 consultas/minuto",dashboard:"https://finnhub.io/dashboard"}
 ];
 const providerKey=(env,p)=>p.secret?String(env[p.secret]||"").trim():"";
@@ -4480,6 +4485,7 @@ async function openAiCompatible(id,url,key,model,prompt,maxTokens){
 const PROVIDER_PROFILE={
   gemini:{decision:95,light:80,daily:1000},groq:{decision:86,light:95,daily:1000},sambanova:{decision:86,light:70,daily:400},
   nvidia:{decision:86,light:78,daily:1000},openrouter:{decision:80,light:60,daily:50},ollama:{decision:80,light:84,daily:300},
+  githubmodels:{decision:90,light:76,daily:50},
   cohere:{decision:70,light:62,daily:33},workersai:{decision:52,light:70,daily:100000},
   tavily:{search:90,daily:30},serper:{search:94,daily:40},exa:{search:86,daily:80},langsearch:{search:74,daily:100},firecrawl:{search:76,daily:33},jina:{search:66,daily:100}
 };
@@ -4531,7 +4537,8 @@ const TASK_MODELS={
   groq:{decision:["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"],light:["openai/gpt-oss-20b","qwen/qwen3-32b","openai/gpt-oss-120b"]},
   nvidia:{decision:["deepseek-ai/deepseek-v3.1","openai/gpt-oss-120b","meta/llama-3.3-70b-instruct"],light:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b"]},
   sambanova:{decision:["DeepSeek-V3-0324","Meta-Llama-3.3-70B-Instruct"],light:["Meta-Llama-3.3-70B-Instruct"]},
-  ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]}
+  ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]},
+  githubmodels:{decision:["openai/gpt-4.1","openai/gpt-4o"],light:["openai/gpt-4o-mini","openai/gpt-4.1-mini"]}
 };
 async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null}){
   const tried=[],t=task==="light"?"light":"decision";
@@ -4664,6 +4671,10 @@ async function providerProbe(env,p){
     else if(p.id==="langsearch"){r=await res("https://api.langsearch.com/v1/web-search",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({query:"FDA",count:1})})}
     else if(p.id==="jina"){r=await res("https://r.jina.ai/https://example.com",{headers:{"Authorization":"Bearer "+key,"Accept":"application/json"}})}
     else if(p.base){r=await res(p.probe||p.base+"/models",{headers:{"Authorization":"Bearer "+key}})}
+    else if(p.id==="huggingface"){r=await res("https://huggingface.co/api/whoami-v2",{headers:{"Authorization":"Bearer "+key}})}
+    else if(p.id==="fred"){r=await res("https://api.stlouisfed.org/fred/series/observations?series_id=DFF&file_type=json&sort_order=desc&limit=1&api_key="+encodeURIComponent(key))}
+    else if(p.id==="ecb"){r=await res("https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=jsondata",{headers:{"Accept":"application/json"}})}
+    else if(p.id==="fmp"){r=await res("https://financialmodelingprep.com/stable/quote-short?symbol=AAPL&apikey="+encodeURIComponent(key))}
     else if(p.id==="finnhub"){r=await res("https://finnhub.io/api/v1/quote?symbol=AAPL&token="+encodeURIComponent(key))}
     else if(p.id==="workersai"){const a=await aiHealthStatus(env,new URL("https://x/?probe=ai"));return{ok:!!(a.probe&&a.probe.ok),status:a.probe&&a.probe.ok?200:0,detail:a.probe&&a.probe.model||a.lastError||""}}
     if(!r)return{ok:false,status:0,detail:"sin prueba"};
@@ -5968,6 +5979,11 @@ async function aiAskExtras(env,services,userId,body){
     out.newsOfYourStocks=items.sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,10)
       .map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",280),stocks:(x.stocks||[]).map(s=>s.ticker+(s.held?" (en cartera)":" (favorito)"))}));
   }).catch(()=>{}));
+  // Indicadores macro oficiales (Fed vía FRED y BCE) con su fecha, para preguntas de tipos, inflación o divisa.
+  if(services.loadMacro)tasks.push(services.loadMacro().then(m=>{
+    const list=(m&&m.indicators||[]).map(x=>({indicator:x.label,region:x.region,value:x.value,unit:x.unit,date:x.date,previous:x.prev,source:x.source}));
+    if(list.length)out.officialMacro=list;
+  }).catch(()=>{}));
   // Noticias concretas desde las que pregunta el usuario.
   const attached=Array.isArray(body.news)?body.news.slice(0,6).map(n=>({time:trimText(n&&n.time,40),publisher:trimText(n&&n.publisher,60),title:decodeHtmlEntities(trimText(n&&n.title,220)),snippet:decodeHtmlEntities(trimText(n&&n.snippet,500)),stocks:Array.isArray(n&&n.stocks)?n.stocks.slice(0,6).map(x=>trimText(x,40)):[]})).filter(n=>n.title):[];
   if(attached.length)out.newsTheUserIsAsking=attached;
@@ -6027,6 +6043,24 @@ function catalystParse(text){
   const dir=Math.max(-2,Math.min(2,Math.round(Number(j.direction))));if(!Number.isFinite(dir))return null;
   return{kind,direction:dir,material:j.material===true||j.material==="true"?1:0,business:j.changesBusiness===true||j.changesBusiness==="true"?1:0,summary:trimText(String(j.summary||""),180)};
 }
+// FinBERT (modelo de sentimiento financiero, Hugging Face): tercera opinión independiente de los LLM.
+// Solo entiende inglés, así que con titulares en otro idioma no opina. Devuelve -1, 0 o +1 con su confianza.
+export async function finbertSentiment(env,text){
+  const key=String(env.HF_TOKEN||"").trim(),t=String(text||"").trim();
+  if(!key||t.length<12||!providerReady(env,"huggingface"))return null;
+  if(/[áéíóúñ¿¡äöüß]|\b(?:el|la|los|las|del|und|der|die|das|une|des|pour)\b/i.test(t))return null;
+  try{
+    const r=await providerFetch("huggingface","https://router.huggingface.co/hf-inference/models/ProsusAI/finbert",{method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({inputs:t.slice(0,500)})},15000);
+    if(!r.ok){providerFail("huggingface",r.status);await recordProviderUse(env,"huggingface",false,"HTTP "+r.status);return null}
+    const d=await r.json(),list=Array.isArray(d)&&Array.isArray(d[0])?d[0]:Array.isArray(d)?d:[];
+    const best=list.filter(x=>x&&typeof x.score==="number").sort((a,b)=>b.score-a.score)[0];
+    if(!best)return null;
+    await recordProviderUse(env,"huggingface",true);
+    const label=String(best.label||"").toLowerCase();
+    return{sign:label==="positive"?1:label==="negative"?-1:0,score:best.score};
+  }catch(error){await recordProviderUse(env,"huggingface",false,String(error&&error.message||error));return null}
+}
 export async function readCatalyst(env,item){
   const prompt=["Eres analista financiero. Clasifica este evento de una empresa cotizada. Responde SOLO JSON.",
     "Campos: kind (uno de: "+CATALYST_KINDS.join(", ")+"), direction (entero de -2 muy negativo a +2 muy positivo para el precio), material (true si puede mover el precio de forma relevante), changesBusiness (true si cambia el negocio a largo plazo, no solo la percepción), summary (una frase en español de España, máximo 160 caracteres, sin inventar datos).",
@@ -6037,9 +6071,14 @@ export async function readCatalyst(env,item){
   let rb=null,b=null;
   try{b=await aiRoute(env,{prompt,maxTokens:220,json:true,task:"light",exclude:[a.provider]});rb=catalystParse(b.text)}catch(_){}
   // Coinciden si van en el mismo sentido (o ambas neutras) y no se separan más de un punto.
-  const agree=rb?((Math.sign(ra.direction)===Math.sign(rb.direction))&&Math.abs(ra.direction-rb.direction)<=1?1:0):0;
-  const pick=rb&&agree&&Math.abs(rb.direction)<Math.abs(ra.direction)?rb:ra;   // ante la duda, la lectura más prudente
-  return{...pick,kind:agree&&rb&&rb.kind!==ra.kind&&ra.kind==="otro"?rb.kind:pick.kind,agree,providers:[a.provider,b&&b.provider].filter(Boolean).join("+")};
+  let agree=rb?((Math.sign(ra.direction)===Math.sign(rb.direction))&&Math.abs(ra.direction-rb.direction)<=1?1:0):0;
+  let pick=rb&&agree&&Math.abs(rb.direction)<Math.abs(ra.direction)?rb:ra;   // ante la duda, la lectura más prudente
+  // FinBERT, si está y opina con seguridad (≥70 %): desempata cuando las dos IA no coinciden y confirma
+  // la lectura cuando solo ha respondido una. No cambia nada si no hay clave o el titular no está en inglés.
+  const fb=agree?null:await finbertSentiment(env,item.title),sure=fb&&fb.score>=.7;
+  if(sure&&!rb&&Math.sign(ra.direction)===fb.sign)agree=1;
+  else if(sure&&rb&&!agree){const ma=Math.sign(ra.direction)===fb.sign,mb=Math.sign(rb.direction)===fb.sign;if(ma!==mb)pick=mb?rb:ra}
+  return{...pick,kind:agree&&rb&&rb.kind!==ra.kind&&ra.kind==="otro"?rb.kind:pick.kind,agree,providers:[a.provider,b&&b.provider,fb&&"finbert"].filter(Boolean).join("+")};
 }
 export async function runCatalystReader(env,services={},nowMs=Date.now(),limit=6){
   if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
@@ -6154,7 +6193,7 @@ export function aiVerifyAnswer(text,context,question=""){
   // Tickers que no están en el contexto ni en la pregunta.
   const known=new Set(),ctxText=JSON.stringify(context||{})+" "+question;
   for(const m of ctxText.matchAll(/\b[A-Z][A-Z0-9.]{1,6}\b/g))known.add(m[0]);
-  const OK=new Set(["IA","AI","ETF","EE","UU","EEUU","TR","LSX","BCE","FED","IPC","PIB","PER","RSI","USD","EUR","OPA","DCA","TER","SPY","IBEX","CEO","FDA","SEC","EBITDA","EPS","PMI","UE","NYSE","NASDAQ","AMEX","IRPF","FIFO","JSON","OK"]);
+  const OK=new Set(["IA","AI","ETF","EE","UU","EEUU","TR","LSX","BCE","FED","IPC","PIB","PER","RSI","USD","EUR","OPA","DCA","TER","SPY","IBEX","CEO","FDA","SEC","EBITDA","EPS","PMI","UE","NYSE","NASDAQ","AMEX","IRPF","FIFO","JSON","OK","IPCA","FRED","FMP"]);
   for(const m of String(text||"").matchAll(/\b[A-Z][A-Z0-9]{1,5}\b/g))if(!known.has(m[0])&&!OK.has(m[0])){issues.push("el valor «"+m[0]+"» no está en los datos");checked++}
   // Contradicciones: decir que no hay noticias cuando el contexto las trae.
   const hasNews=["newsTheUserIsAsking","newsOfYourStocks"].some(k=>Array.isArray(context&&context[k])&&context[k].length)||(Array.isArray(context&&context.stocksMentioned)&&context.stocksMentioned.some(x=>x.news&&x.news.length));
@@ -6169,6 +6208,7 @@ function aiContextSources(context){
   for(const list of [context&&context.newsTheUserIsAsking,context&&context.newsOfYourStocks,...((context&&context.stocksMentioned)||[]).map(s=>s.news)])
     for(const n of Array.isArray(list)?list:[])if(n&&n.publisher&&!pubs.has(n.publisher))pubs.set(n.publisher,n.time||"");
   if(context&&Array.isArray(context.stocksMentioned)&&context.stocksMentioned.length)out.push("Mercado: "+context.stocksMentioned.map(s=>s.ticker).join(", ")+" (TradingView, Nasdaq, LSX)");
+  if(context&&Array.isArray(context.officialMacro)&&context.officialMacro.length)out.push("Macro oficial: "+[...new Set(context.officialMacro.map(x=>/FRED/.test(x.source)?"FRED":"BCE"))].join(" y "));
   for(const [p] of [...pubs].slice(0,5))out.push(p);
   return out.slice(0,7);
 }

@@ -615,6 +615,70 @@ async function econCalendarResponse(){
   return jsonResponse(value,200,{"Cache-Control":"public, max-age=600"});
 }
 
+// Indicadores macro oficiales: Reserva Federal (FRED, necesita FRED_API_KEY) y Banco Central Europeo
+// (portal de datos del BCE, sin clave). Cada serie va por separado: si una falla, simplemente no sale.
+const FRED_SERIES=[
+  {id:"DFF",label:"Tipo de la Fed (efectivo)",region:"EE. UU."},
+  {id:"CPIAUCSL",units:"pc1",label:"Inflación (IPC interanual)",region:"EE. UU."},
+  {id:"UNRATE",label:"Tasa de paro",region:"EE. UU."},
+  {id:"DGS10",label:"Bono a 10 años",region:"EE. UU."},
+  {id:"T10Y2Y",label:"Diferencial 10 años − 2 años",region:"EE. UU.",unit:"pp"}
+];
+const ECB_SERIES=[
+  {id:"FM/B.U2.EUR.4F.KR.DFR.LEV",label:"Tipo de depósito del BCE",region:"Eurozona"},
+  {id:"ICP/M.U2.N.000000.4.ANR",label:"Inflación (IPCA interanual)",region:"Eurozona"},
+  {id:"EXR/D.USD.EUR.SP00.A",label:"Euro / dólar (referencia BCE)",region:"Eurozona",unit:"$",digits:4}
+];
+async function fredSeries(key,s){
+  const r=await fetch("https://api.stlouisfed.org/fred/series/observations?series_id="+s.id+"&api_key="+encodeURIComponent(key)+"&file_type=json&sort_order=desc&limit=10"+(s.units?"&units="+s.units:""),{headers:{"Accept":"application/json"}});
+  if(!r.ok)throw new Error("FRED HTTP "+r.status);
+  const obs=((await r.json()).observations||[]).map(o=>({date:String(o.date||""),value:Number(o.value)})).filter(o=>o.date&&o.value===o.value&&String(o.value)!=="");
+  if(!obs.length)return null;
+  return{id:s.id,label:s.label,region:s.region,unit:s.unit||"%",value:obs[0].value,date:obs[0].date,prev:obs[1]?obs[1].value:null,prevDate:obs[1]?obs[1].date:null,source:"FRED (Reserva Federal de St. Louis)",digits:s.digits||2};
+}
+async function ecbSeries(s){
+  const r=await fetch("https://data-api.ecb.europa.eu/service/data/"+s.id+"?lastNObservations=2&format=jsondata",{headers:{"Accept":"application/json"}});
+  if(!r.ok)throw new Error("BCE HTTP "+r.status);
+  const d=await r.json(),series=d&&d.dataSets&&d.dataSets[0]&&d.dataSets[0].series||{},first=series[Object.keys(series)[0]];
+  const times=(((d.structure||{}).dimensions||{}).observation||[]).find(x=>x.id==="TIME_PERIOD");
+  if(!first||!first.observations||!times)return null;
+  const obs=Object.entries(first.observations).map(([i,v])=>({date:String(times.values[Number(i)]&&times.values[Number(i)].id||""),value:Number(Array.isArray(v)?v[0]:NaN)}))
+    .filter(o=>o.date&&Number.isFinite(o.value)).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!obs.length)return null;
+  return{id:s.id,label:s.label,region:s.region,unit:s.unit||"%",value:obs[0].value,date:obs[0].date,prev:obs[1]?obs[1].value:null,prevDate:obs[1]?obs[1].date:null,source:"Banco Central Europeo",digits:s.digits||2};
+}
+async function macroIndicators(env){
+  const key=String(env&&env.FRED_API_KEY||"").trim();
+  return edgeCachedJson("macro/v1/"+(key?"f":"n")+"/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
+    const jobs=[...(key?FRED_SERIES.map(s=>fredSeries(key,s)):[]),...ECB_SERIES.map(ecbSeries)];
+    const out=await Promise.allSettled(jobs);
+    const indicators=out.map(x=>x.status==="fulfilled"?x.value:null).filter(Boolean);
+    const failed=out.filter(x=>x.status==="rejected").length;
+    return{indicators,fred:!!key,failed,fetchedAt:new Date().toISOString()};
+  });
+}
+
+// Resultados trimestrales frente a la estimación media de analistas (Financial Modeling Prep, FMP_API_KEY).
+// Plan gratuito de ~250 consultas/día: se guarda 12 h por valor. Sin clave devuelve «sin configurar».
+async function earningsResponse(request,env){
+  const url=new URL(request.url),symbol=safeStockSymbol(url.searchParams.get("symbol")||"");
+  const key=String(env&&env.FMP_API_KEY||"").trim();
+  if(!symbol)return jsonResponse({error:"symbol required"},400,{"Cache-Control":"no-store"});
+  if(!key)return jsonResponse({symbol,empty:true,configured:false},200,{"Cache-Control":"public, max-age=3600"});
+  const value=await edgeCachedJson("earnings/v1/"+symbol+"/"+Math.floor(Date.now()/(12*3600e3)),12*3600,async()=>{
+    const r=await fetch("https://financialmodelingprep.com/stable/earnings?symbol="+encodeURIComponent(symbol)+"&limit=12&apikey="+encodeURIComponent(key),{headers:{"Accept":"application/json"}});
+    if(!r.ok)return{symbol,empty:true,configured:true,status:r.status};
+    const d=await r.json().catch(()=>null),num=v=>v===null||v===undefined||v===""?null:Number.isFinite(Number(v))?Number(v):null;
+    const rows=(Array.isArray(d)?d:[]).map(x=>({date:String(x.date||"").slice(0,10),eps:num(x.epsActual),epsEst:num(x.epsEstimated),revenue:num(x.revenueActual),revenueEst:num(x.revenueEstimated)})).filter(x=>/^\d{4}-\d\d-\d\d$/.test(x.date));
+    const today=new Date().toISOString().slice(0,10);
+    const past=rows.filter(x=>x.date<=today&&x.eps!==null).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4)
+      .map(x=>({...x,surprisePct:x.epsEst!==null&&Math.abs(x.epsEst)>=0.01?Math.round((x.eps-x.epsEst)/Math.abs(x.epsEst)*1000)/10:null}));
+    const next=rows.filter(x=>x.date>today&&x.eps===null).sort((a,b)=>a.date.localeCompare(b.date))[0]||null;
+    return{symbol,empty:!past.length&&!next,configured:true,past,next,source:"Financial Modeling Prep",fetchedAt:new Date().toISOString()};
+  });
+  return jsonResponse(value,200,{"Cache-Control":"public, max-age=3600"});
+}
+
 async function tradeRepublicHistory(request) {
   const url = new URL(request.url);
   const isin = String(url.searchParams.get("isin") || "");
@@ -2270,7 +2334,7 @@ export default {
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
-    else if(url.pathname==="/api/analysts"||url.pathname==="/api/econ-calendar")limited=await enforcedRateLimit(request,env,"analysts",40,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/analysts"||url.pathname==="/api/econ-calendar"||url.pathname==="/api/macro"||url.pathname==="/api/earnings")limited=await enforcedRateLimit(request,env,"analysts",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/news")limited=await enforcedRateLimit(request,env,"news",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
@@ -2298,6 +2362,7 @@ export default {
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
         loadDailyHistory: loadDailyHistoryForBackend,
         loadQuantModel: () => loadQuantModel(env),
+        loadMacro: () => macroIndicators(env),
         loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
       }));
     }
@@ -2399,6 +2464,16 @@ export default {
       const guard = requestGuard(request); if (guard) return guard;
       try { return nativeCorsResponse(request, await econCalendarResponse()); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Calendar unavailable" }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/earnings") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, await earningsResponse(request, env)); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Earnings unavailable" }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/macro") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { return nativeCorsResponse(request, jsonResponse(await macroIndicators(env), 200, { "Cache-Control": "public, max-age=1800" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Macro unavailable" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/fund-search") {
       const guard = requestGuard(request); if (guard) return guard;

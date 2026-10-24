@@ -841,6 +841,28 @@ async function hydrateProfileAnalysts(box,s){
    '<p class="pi-note">Fuente: Nasdaq (consenso de analistas de EE. UU.).</p>';
  }catch(_){el.innerHTML='<div class="pi-head"><b>Analistas</b><span>No disponible ahora</span></div>'}
 }
+// Resultados trimestrales frente a lo que esperaban los analistas (FMP) y la próxima estimación.
+function profileEarningsShell(s){
+ const sym=profileUsSymbol(s);if(!sym)return'';
+ return '<div class="pi-block" data-profile-earnings="'+E(sym)+'" style="display:none"></div>';
+}
+async function hydrateProfileEarnings(box){
+ const el=box&&box.querySelector('[data-profile-earnings]');if(!el)return;
+ try{
+  const r=await fetch('/api/earnings?symbol='+encodeURIComponent(el.dataset.profileEarnings));const d=await r.json();
+  if(!r.ok||!d||d.empty)return;   // sin clave o sin datos: el bloque no aparece
+  const day=x=>new Date(x+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'2-digit'});
+  const eps=v=>v===null||v===undefined?'—':F(v,2)+' $';
+  const big=v=>Math.abs(v)>=1e9?F(v/1e9,2)+' mil M$':F(v/1e6,1)+' M$';
+  const beats=(d.past||[]).filter(x=>x.surprisePct!==null),won=beats.filter(x=>x.surprisePct>0).length;
+  const tone=!beats.length?'mid':won>=Math.ceil(beats.length*.75)?'high':won<=Math.floor(beats.length/4)?'low':'mid';
+  el.innerHTML='<div class="pi-head"><b>Resultados vs. estimación</b>'+(beats.length?'<span class="pi-tag" data-tone="'+tone+'">Supera '+won+' de '+beats.length+'</span>':'')+'</div>'+
+   '<div class="pi-rows">'+(d.past||[]).map(x=>'<div><span>'+E(day(x.date))+'</span><b>BPA '+E(eps(x.eps))+'</b><small>'+(x.surprisePct===null?'estimado '+E(eps(x.epsEst)):'estimado '+E(eps(x.epsEst))+' · '+(x.surprisePct>=0?'+':'')+F(x.surprisePct,1)+' %')+'</small></div>').join('')+
+   (d.next?'<div><span>Próx. '+E(day(d.next.date))+'</span><b>BPA estimado '+E(eps(d.next.epsEst))+'</b><small>'+(d.next.revenueEst?'ventas estimadas '+E(big(d.next.revenueEst)):'')+'</small></div>':'')+'</div>'+
+   '<p class="pi-note">Beneficio por acción real frente a la media de analistas. Fuente: Financial Modeling Prep.</p>';
+  el.style.display='';
+ }catch(_){}
+}
 // Lo que dice el modelo cuantitativo (entrenado con ~10 años de históricos) y qué factores pesan más.
 function profileQuantHtml(s){
  const Q=window.ViewInvAIQuant,q=Q&&Q.scoreFor(s);if(!q)return'';
@@ -853,10 +875,11 @@ function profileQuantHtml(s){
 function profileCatalystsHtml(s){
  const C=window.ViewInvAICatalysts,list=C?C.forStock(s):[];if(!list.length)return'';
  const dir=d=>d>=2?'muy positivo':d===1?'positivo':d===0?'neutro':d===-1?'negativo':'muy negativo';
- return '<div class="pi-cats"><small>Catalizadores leídos por la IA</small><ul>'+list.slice(0,4).map(r=>'<li class="'+(r.direction>0?'up':r.direction<0?'down':'flat')+'"><b>'+E(r.summary||r.title)+'</b><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short'}))+' · '+E(dir(r.direction))+(r.business?' · cambia el negocio':'')+' · '+(r.agree?'✓ 2 IAs coinciden':'⚠ las IAs no coinciden')+'</span></li>').join('')+'</ul></div>';
+ const agreeText=r=>{const p=String(r.providers||'').split('+');if(p[0]==='sec-edgar')return '✓ registro oficial SEC';if(!r.agree)return '⚠ las IAs no coinciden';return p.filter(x=>x&&x!=='finbert').length>=2?'✓ 2 IAs coinciden':'✓ IA y FinBERT coinciden'};
+ return '<div class="pi-cats"><small>Catalizadores leídos por la IA</small><ul>'+list.slice(0,4).map(r=>'<li class="'+(r.direction>0?'up':r.direction<0?'down':'flat')+'"><b>'+E(r.summary||r.title)+'</b><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short'}))+' · '+E(dir(r.direction))+(r.business?' · cambia el negocio':'')+' · '+agreeText(r)+'</span></li>').join('')+'</ul></div>';
 }
 function profileInsightsHtml(s){
- const body=profileQuantHtml(s)+profileCatalystsHtml(s)+profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s);
+ const body=profileQuantHtml(s)+profileCatalystsHtml(s)+profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s)+profileEarningsShell(s);
  return body?'<section class="profile-section profile-insights"><div class="profile-section-head"><h3>Lo esencial</h3><span>Modelo · 52 semanas · valoración · analistas</span></div>'+body+'</section>':'';
 }
 function quickProfileHtml(s,opts={}){
@@ -892,6 +915,7 @@ function renderQuickProfile(){
   refreshProfileLiveEvents(s);
   hydrateProfileSupportResistance(box,s,state.profilePreferTr===true);
   hydrateProfileAnalysts(box,s);
+  hydrateProfileEarnings(box);
   if(state.profilePreferTr===true)hydrateProfileTrSessionStats(box,s);
   hydrateProfilePriceCheck(box,s,state.profilePreferTr===true);
   window.ViewInvAINativeUI?.syncLayout?.();
