@@ -618,16 +618,17 @@ async function econCalendarResponse(){
 // Indicadores macro oficiales: Reserva Federal (FRED, necesita FRED_API_KEY) y Banco Central Europeo
 // (portal de datos del BCE, sin clave). Cada serie va por separado: si una falla, simplemente no sale.
 const FRED_SERIES=[
-  {id:"DFF",label:"Tipo de la Fed (efectivo)",region:"EE. UU."},
-  {id:"CPIAUCSL",units:"pc1",label:"Inflación (IPC interanual)",region:"EE. UU."},
-  {id:"UNRATE",label:"Tasa de paro",region:"EE. UU."},
-  {id:"DGS10",label:"Bono a 10 años",region:"EE. UU."},
-  {id:"T10Y2Y",label:"Diferencial 10 años − 2 años",region:"EE. UU.",unit:"pp"}
+  {id:"DFF",label:"Tipo de la Fed (efectivo)",region:"EE. UU.",maxAge:20},
+  {id:"CPIAUCSL",units:"pc1",label:"Inflación (IPC interanual)",region:"EE. UU.",maxAge:100},
+  {id:"UNRATE",label:"Tasa de paro",region:"EE. UU.",maxAge:100},
+  {id:"DGS10",label:"Bono a 10 años",region:"EE. UU.",maxAge:20},
+  {id:"T10Y2Y",label:"Diferencial 10 años − 2 años",region:"EE. UU.",unit:"pp",maxAge:20},
+  {id:"CP0000EZ19M086NEST",units:"pc1",label:"Inflación (IPCA interanual)",region:"Eurozona",maxAge:100}
 ];
 const ECB_SERIES=[
   {id:"FM/B.U2.EUR.4F.KR.DFR.LEV",label:"Tipo de depósito del BCE",region:"Eurozona"},
-  {id:"ICP/M.U2.N.000000.4.ANR",label:"Inflación (IPCA interanual)",region:"Eurozona"},
-  {id:"EXR/D.USD.EUR.SP00.A",label:"Euro / dólar (referencia BCE)",region:"Eurozona",unit:"$",digits:4}
+  {id:"ICP/M.U2.N.000000.4.ANR",label:"Inflación (IPCA interanual)",region:"Eurozona",maxAge:100},
+  {id:"EXR/D.USD.EUR.SP00.A",label:"Euro / dólar (referencia BCE)",region:"Eurozona",unit:"$",digits:4,maxAge:20}
 ];
 async function fredSeries(key,s){
   const r=await fetch("https://api.stlouisfed.org/fred/series/observations?series_id="+s.id+"&api_key="+encodeURIComponent(key)+"&file_type=json&sort_order=desc&limit=10"+(s.units?"&units="+s.units:""),{headers:{"Accept":"application/json"}});
@@ -649,10 +650,16 @@ async function ecbSeries(s){
 }
 async function macroIndicators(env){
   const key=String(env&&env.FRED_API_KEY||"").trim();
-  return edgeCachedJson("macro/v1/"+(key?"f":"n")+"/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
+  return edgeCachedJson("macro/v2/"+(key?"f":"n")+"/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
     const jobs=[...(key?FRED_SERIES.map(s=>fredSeries(key,s)):[]),...ECB_SERIES.map(ecbSeries)];
     const out=await Promise.allSettled(jobs);
-    const indicators=out.map(x=>x.status==="fulfilled"?x.value:null).filter(Boolean);
+    // Fuera lo que lleva más tiempo sin publicarse del normal (serie interrumpida o renombrada): mejor no
+    // enseñar un dato que enseñar uno viejo. Los tipos oficiales solo cambian en reuniones, no caducan.
+    const all=[...FRED_SERIES,...ECB_SERIES],age=d=>(Date.now()-Date.parse(d.length===7?d+"-28":d))/864e5;
+    const fresh=out.map(x=>x.status==="fulfilled"?x.value:null).filter(x=>{if(!x)return false;const sd=all.find(s=>s.id===x.id);return !sd||!sd.maxAge||age(x.date)<=sd.maxAge});
+    // Una misma magnitud de dos fuentes (IPCA del BCE y de FRED): se queda la publicación más reciente.
+    const indicators=[];
+    for(const x of fresh){const i=indicators.findIndex(y=>y.label===x.label&&y.region===x.region);if(i<0)indicators.push(x);else if(x.date>indicators[i].date)indicators[i]=x}
     const failed=out.filter(x=>x.status==="rejected").length;
     return{indicators,fred:!!key,failed,fetchedAt:new Date().toISOString()};
   });
@@ -660,14 +667,25 @@ async function macroIndicators(env){
 
 // Resultados trimestrales frente a la estimación media de analistas (Financial Modeling Prep, FMP_API_KEY).
 // Plan gratuito de ~250 consultas/día: se guarda 12 h por valor. Sin clave devuelve «sin configurar».
+async function nasdaqEarnings(symbol){
+  const r=await fetch("https://api.nasdaq.com/api/company/"+encodeURIComponent(symbol)+"/earnings-surprise",{headers:{...NASDAQ_HEADERS,"Origin":"https://www.nasdaq.com"}});
+  if(!r.ok)throw new Error("Nasdaq HTTP "+r.status);
+  const d=await r.json(),rows=d&&d.data&&d.data.earningsSurpriseTable&&d.data.earningsSurpriseTable.rows||[];
+  const num=v=>{const n=Number(String(v??"").replace(/[$,%\s]/g,""));return String(v??"").trim()!==""&&Number.isFinite(n)?n:null};
+  const iso=t=>{const m=String(t||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?m[3]+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0"):""};
+  const past=rows.map(x=>{const eps=num(x.eps),est=num(x.consensusForecast);
+    return{date:iso(x.dateReported),quarter:String(x.fiscalQtrEnd||""),eps,epsEst:est,surprisePct:eps!==null&&est!==null&&Math.abs(est)>=0.01?Math.round((eps-est)/Math.abs(est)*1000)/10:null}})
+    .filter(x=>x.date&&x.eps!==null).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4);
+  return{symbol,empty:!past.length,configured:true,past,next:null,source:"Nasdaq (Zacks)",fetchedAt:new Date().toISOString()};
+}
 async function earningsResponse(request,env){
   const url=new URL(request.url),symbol=safeStockSymbol(url.searchParams.get("symbol")||"");
   const key=String(env&&env.FMP_API_KEY||"").trim();
   if(!symbol)return jsonResponse({error:"symbol required"},400,{"Cache-Control":"no-store"});
-  if(!key)return jsonResponse({symbol,empty:true,configured:false},200,{"Cache-Control":"public, max-age=3600"});
-  const value=await edgeCachedJson("earnings/v1/"+symbol+"/"+Math.floor(Date.now()/(12*3600e3)),12*3600,async()=>{
-    const r=await fetch("https://financialmodelingprep.com/stable/earnings?symbol="+encodeURIComponent(symbol)+"&limit=12&apikey="+encodeURIComponent(key),{headers:{"Accept":"application/json"}});
-    if(!r.ok)return{symbol,empty:true,configured:true,status:r.status};
+  const value=await edgeCachedJson("earnings/v2/"+symbol+"/"+Math.floor(Date.now()/(12*3600e3)),12*3600,async()=>{
+    const r=key?await fetch("https://financialmodelingprep.com/stable/earnings?symbol="+encodeURIComponent(symbol)+"&limit=12&apikey="+encodeURIComponent(key),{headers:{"Accept":"application/json"}}):null;
+    // Sin clave o fuera del plan gratuito de FMP (402): sorpresas de resultados de Nasdaq (públicas, sin clave).
+    if(!r||!r.ok)return await nasdaqEarnings(symbol).catch(()=>({symbol,empty:true,status:r?r.status:0}));
     const d=await r.json().catch(()=>null),num=v=>v===null||v===undefined||v===""?null:Number.isFinite(Number(v))?Number(v):null;
     const rows=(Array.isArray(d)?d:[]).map(x=>({date:String(x.date||"").slice(0,10),eps:num(x.epsActual),epsEst:num(x.epsEstimated),revenue:num(x.revenueActual),revenueEst:num(x.revenueEstimated)})).filter(x=>/^\d{4}-\d\d-\d\d$/.test(x.date));
     const today=new Date().toISOString().slice(0,10);
