@@ -634,7 +634,7 @@ function initSettings(){
    ['ClinicalTrials.gov','clinicalTrials','https://clinicaltrials.gov/'],['FDA / openFDA','fda','https://open.fda.gov/']
   ].map(([label,key,link,okOverride,txt])=>{const x=src[key];const ok=okOverride!==undefined?okOverride:!!x&&x.configured!==false&&!x.error;
    return card(label,link,!publicSources?note('Comprobando…'):okOverride===undefined&&!x?note('Sin datos de estado.'):st(ok,txt||(ok?'operativa':x.error||'sin configurar')))}).join('');
-  return providerSection(d,['Datos de mercado'],'DATOS DE MERCADO','Cotizaciones y datos','Con clave (Finnhub) y fuentes públicas sin clave.')+
+  return providerSection(d,['Datos de mercado','Datos macro','Sentimiento'],'DATOS DE MERCADO','Cotizaciones y datos','Con clave (Finnhub, FMP, FRED, FinBERT) y fuentes públicas sin clave (BCE y las de abajo).')+
    '<div class="admin-grid admin-grid-gap">'+pub+'</div>';
  }
  function fill(name,html){const el=document.querySelector('[data-admin-panel="'+name+'"]');if(el)el.innerHTML=html}
