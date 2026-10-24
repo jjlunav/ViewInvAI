@@ -647,7 +647,7 @@ function initSettings(){
    '<div class="settings-stack"><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SERVICIOS</span></div></div>'+
    row('Servicios externos',ps.length+' en total')+
    (d.probedAt?row('Conectados',ok+' de '+ps.length,ok===ps.length?'admin-st ok':''):'')+
-   (failed?row('Con error',String(failed),'admin-st bad'):'')+
+   (failed?row('Con error',ps.filter(p=>p.test&&!p.test.ok).map(p=>esc(p.label)+(p.test.detail?' · '+esc(p.test.detail):'')).join('<br>'),'admin-st bad'):'')+
    (noKey?row('Sin clave',String(noKey),'admin-st warn'):'')+
    (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
    row('Consultas hoy a IA y búsqueda web',fmt(calls))+
@@ -708,7 +708,7 @@ function initSettings(){
    const cf=last.cloudflare||{},gh=last.github||{},app=last.app||{},tu=(last.turso||{}).usage||{};
    const usageFails=[last.usageError?'consumo':'',cf.configured&&cf.ok===false?'Cloudflare':'',gh.configured&&gh.ok===false?'GitHub':'',tu.configured&&tu.ok===false?'Turso':'',app.error||app.ok===false?'recuentos de la app':''].filter(Boolean);
    const when=last.probedAt?new Date(last.probedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'';
-   const msg=(probe?'Conexiones comprobadas'+(when?' a las '+when:'')+': '+ok+' de '+ps.length+' conectados'+(bad?' · '+bad+' con error':''):'Datos actualizados')+
+   const msg=(probe?'Conexiones comprobadas'+(when?' a las '+when:'')+': '+ok+' de '+ps.length+' conectados'+(bad?' · con error: '+ps.filter(p=>p.test&&!p.test.ok).map(p=>p.label+(p.test.detail?' ('+p.test.detail+')':'')).join(', '):''):'Datos actualizados')+
     (usageFails.length?' · sin datos de '+usageFails.join(', '):'');
    const warn=!!bad||usageFails.length>0;
    progress((warn?'⚠ ':'✓ ')+msg,warn?'warn':'done');if(manual||probe)sayToast(msg,warn);
