@@ -428,7 +428,7 @@ function initSettings(){
  const auth=()=>window.ViewInvAIAuth;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=n=>Number(n||0).toLocaleString('es-ES');
- const SECTIONS=['summary','ai','search','market','infra','app','docs'];
+ const SECTIONS=['summary','ai','search','market','infra','app','creds','docs'];
  const SECTION_KEY='viewinvai:admin-section:v1';
  let checked=false,isAdmin=false,loading=false,last=null;
  async function api(path){const a=auth();const r=await a.apiFetch(path);const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('Error '+r.status)),{status:r.status});return d}
@@ -448,6 +448,7 @@ function initSettings(){
   document.querySelectorAll('[data-admin-section]').forEach(b=>{const on=b.dataset.adminSection===next;b.classList.toggle('active',on);b.setAttribute('aria-current',on?'page':'false')});
   document.querySelectorAll('[data-admin-panel]').forEach(p=>{const on=p.dataset.adminPanel===next;p.classList.toggle('active',on);p.hidden=!on});
   if(next==='docs'){const el=document.querySelector('[data-admin-panel="docs"]');if(el&&!el.innerHTML.trim())el.innerHTML=docsHtml(last||{})}
+  if(next==='creds')loadCreds();
   if(persist){try{localStorage.setItem(SECTION_KEY,next)}catch(_){}}
   requestAnimationFrame(()=>window.ViewInvAIShell?.resetChrome?.());
  }
@@ -650,6 +651,7 @@ function initSettings(){
    (noKey?row('Sin clave',String(noKey),'admin-st warn'):'')+
    (paused?row('En pausa por cupo',String(paused),'admin-st warn'):'')+
    row('Consultas hoy a IA y búsqueda web',fmt(calls))+
+   (()=>{const soon=typeof credsSoon==='function'?credsSoon():[];return soon.length?row('Caducan en 30 días o menos',soon.map(c=>esc(c.name)+' ('+(c.daysLeft<0?'caducado':c.daysLeft+' d')+')').join(', '),'admin-st bad'):''})()+
    row('Caché de mercado',d.turso&&d.turso.active==='turso'?'Turso (activa)':'D1 (Turso no activa)',d.turso&&d.turso.active==='turso'?'admin-st ok':'admin-st warn')+
    row('Cloudflare',d.usageLoading?'cargando…':!cf.configured?'sin secretos':cf.ok?'leyendo consumo':'error',d.usageLoading?'':!cf.configured?'admin-st warn':cf.ok?'admin-st ok':'admin-st bad')+
    '</article><article class="settings-card compact-settings-card"><div class="settings-card-head"><div><span class="settings-kicker">SECRETOS DE ADMINISTRACIÓN</span></div></div>'+
@@ -720,7 +722,49 @@ function initSettings(){
    }
   }finally{loading=false}
  }
- window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='admin'){selectSection(savedSection(),false);if(last)render(last);load(false)}});
+ // ----- Caducidades: tokens y claves con su fecha (nunca el valor), avisando con 30 días -----
+ let creds=null,credsLoading=false;
+ async function loadCreds(force=false){
+  if(credsLoading||(creds&&!force)){if(creds)fill('creds',credsHtml());return}
+  credsLoading=true;
+  try{creds=(await api('/api/admin?credentials=1')).credentials||[];fill('creds',credsHtml());if(last)render(last)}
+  catch(e){fill('creds','<p class="settings-note admin-err">No se pudieron leer las caducidades: '+esc(e.message)+'</p>')}
+  finally{credsLoading=false}
+ }
+ const credTone=c=>c.daysLeft===null?'ok':c.daysLeft<0?'bad':c.daysLeft<=30?'bad':c.daysLeft<=90?'warn':'ok';
+ const credText=c=>c.daysLeft===null?'Sin caducidad':c.daysLeft<0?'Caducado hace '+(-c.daysLeft)+' días':c.daysLeft===0?'Caduca hoy':'Caduca en '+c.daysLeft+' días · '+new Date(c.expires+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'});
+ function credsSoon(){return(creds||[]).filter(c=>c.daysLeft!==null&&c.daysLeft<=30)}
+ function credsHtml(){
+  const list=creds||[];
+  const rows=list.map(c=>'<article class="settings-card admin-card admin-cred" data-cred="'+esc(c.name)+'">'+
+   '<div class="admin-cred-head"><b>'+esc(c.name)+'</b><b class="admin-st '+credTone(c)+'">'+(credTone(c)==='ok'?'✅ ':'⚠️ ')+esc(credText(c))+'</b></div>'+
+   '<small>'+esc(c.place||'')+(c.note?' · '+esc(c.note):'')+'</small>'+
+   '<form class="admin-cred-form" data-cred-form="'+esc(c.name)+'"><label><span>Caduca el</span><input type="date" name="expires" value="'+esc(c.expires||'')+'"></label>'+
+   '<label><span>Dónde</span><input type="text" name="place" maxlength="120" value="'+esc(c.place||'')+'"></label>'+
+   '<label><span>Para qué</span><input type="text" name="note" maxlength="160" value="'+esc(c.note||'')+'"></label>'+
+   '<div class="admin-cred-actions"><button type="submit" class="btn small">Guardar</button><button type="button" class="btn small ghost" data-cred-remove="'+esc(c.name)+'">Quitar</button></div></form></article>').join('');
+  return heading('CADUCIDADES','Tokens y claves','Solo la fecha y para qué sirve cada una; los valores siguen guardados como secretos y nunca se muestran. Deja la fecha vacía si no caduca. Aviso con 30 días de antelación.')+
+   '<div class="settings-stack">'+rows+
+   '<article class="settings-card admin-card"><b>Añadir otra</b><form class="admin-cred-form" data-cred-form=""><label><span>Nombre</span><input type="text" name="name" maxlength="60" required placeholder="NOMBRE_DEL_SECRETO"></label>'+
+   '<label><span>Caduca el</span><input type="date" name="expires"></label><label><span>Dónde</span><input type="text" name="place" maxlength="120" placeholder="GitHub, Cloudflare…"></label>'+
+   '<label><span>Para qué</span><input type="text" name="note" maxlength="160"></label><div class="admin-cred-actions"><button type="submit" class="btn small">Añadir</button></div></form></article></div>';
+ }
+ async function saveCred(body){
+  const a=auth();const r=await a.apiFetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'credential',...body})});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error '+r.status);
+  creds=d.credentials||creds;fill('creds',credsHtml());if(last)render(last);
+ }
+ document.addEventListener('submit',e=>{
+  const f=e.target.closest&&e.target.closest('[data-cred-form]');if(!f)return;e.preventDefault();
+  const fd=new FormData(f),name=f.dataset.credForm||String(fd.get('name')||'').trim();
+  saveCred({name,expires:String(fd.get('expires')||''),place:String(fd.get('place')||''),note:String(fd.get('note')||'')}).then(()=>sayToast('Guardado: '+name)).catch(err=>sayToast(err.message,true));
+ });
+ document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-cred-remove]');if(!b)return;e.preventDefault();
+  if(!confirm('¿Quitar «'+b.dataset.credRemove+'» de la lista? (No borra el secreto, solo el recordatorio)'))return;
+  saveCred({name:b.dataset.credRemove,remove:true}).catch(err=>sayToast(err.message,true));
+ });
+ window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='admin'){selectSection(savedSection(),false);if(last)render(last);load(false);loadCreds(true)}});
  document.addEventListener('click',e=>{
   const t=e.target.closest?e.target:null;if(!t)return;
   if(t.closest('#accountAdmin')){const m=document.getElementById('accountMenu');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}return}
