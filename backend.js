@@ -6023,7 +6023,32 @@ export async function runCatalystReader(env,services={},nowMs=Date.now(),limit=6
       items.push({key:catalystKey(key,title),stock_key:key,ticker:t,name:newsCleanName(st.name)||t,day:String(e.date).slice(0,10),type:e.type,title,snippet:trimText(e.fact&&e.fact!==e.title?e.fact:"",300)});
     }
   }
-  if(!items.length)return{read:0};
+  // SEC EDGAR para las caídas bruscas y tus posiciones: lo inequívoco se guarda con reglas, sin IA.
+  const ruled=[];
+  for(const key of [...new Set([...crash,...pos])].slice(0,40)){
+    const st=findStock(snap,{stock_key:key});if(!st||!st.secCik)continue;
+    for(const f of await secRecentFilings(env,st.secCik,cut)){
+      const rule=secRule(f);if(!rule)continue;
+      const title="SEC "+f.form+(f.items.length?" · "+f.items.map(x=>SEC_ITEMS[x]||x).join(", "):"");
+      ruled.push({key:catalystKey(key,title+" "+f.accession),stock_key:key,ticker:String(st.ticker||"").toUpperCase(),day:f.day,title,...rule});
+    }
+  }
+  if(ruled.length){
+    await env.DB.batch(ruled.map(r=>env.DB.prepare("INSERT OR IGNORE INTO catalyst_reads (key,stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,'sec-edgar',?)")
+      .bind(r.key,r.stock_key,r.ticker,r.day,r.title,r.kind,r.direction,r.material,r.business,r.summary,nowIso())));
+  }
+  // Noticias (Google News + GDELT) de las caídas bruscas: es donde el motivo importa más.
+  for(const key of crash.slice(0,8)){
+    const st=findStock(snap,{stock_key:key});if(!st)continue;
+    const name=newsCleanName(st.name)||String(st.ticker||"");
+    try{
+      for(const n of await newsForCompany(env,{key,ticker:String(st.ticker||"").toUpperCase(),name,isin:st.isin||st.usIsin||""},4)){
+        const day=String(n.time||"").slice(0,10);if(!day||day<cut)continue;
+        items.push({key:catalystKey(key,n.title),stock_key:key,ticker:String(st.ticker||"").toUpperCase(),name,day,type:"noticia",title:n.title,snippet:n.snippet||""});
+      }
+    }catch(_){}
+  }
+  if(!items.length)return{read:0,sec:ruled.length};
   const have=new Set();
   for(let i=0;i<items.length;i+=80){
     const chunk=items.slice(i,i+80),marks=chunk.map(()=>"?").join(",");
@@ -6039,7 +6064,7 @@ export async function runCatalystReader(env,services={},nowMs=Date.now(),limit=6
       read++;
     }catch(error){console.warn("Catalyst read failed",it.ticker,String(error&&error.message||error));break}
   }
-  return{read,pending:Math.max(0,items.length-have.size-read)};
+  return{read,sec:ruled.length,pending:Math.max(0,items.length-have.size-read)};
 }
 export async function catalystReadsFor(env,keys,days=7){
   if(!env.DB)return[];
@@ -7448,9 +7473,58 @@ const newsCleanName=n=>String(n||"").replace(/,?\s+(inc\.?|corp\.?|corporation|p
 // empresas distintas, cada una buscada en el idioma del país de su ISIN. Las comparten la pantalla
 // de Noticias y la IA (así la IA ve exactamente lo que ve el usuario).
 function newsClean(x){return{...x,title:decodeHtmlEntities(x.title),snippet:decodeHtmlEntities(x.snippet||""),publisher:decodeHtmlEntities(x.publisher||"")}}
+// GDELT (gratuito, sin clave): artículos de los últimos días en inglés que nombran a la empresa.
+async function gdeltSearch(env,name,limit=10){
+  try{
+    const q='"'+String(name).replace(/"/g,"")+'" sourcelang:english';
+    const r=await providerFetch("gdelt","https://api.gdeltproject.org/api/v2/doc/doc?query="+encodeURIComponent(q)+"&mode=artlist&format=json&maxrecords="+limit+"&timespan=3d&sort=datedesc",{headers:{"User-Agent":"ViewInvAI/1.0","Accept":"application/json"}},10000);
+    if(!r.ok){await recordProviderUse(env,"gdelt",false,"HTTP "+r.status);return[]}
+    const d=await r.json().catch(()=>({}));
+    await recordProviderUse(env,"gdelt",true);
+    return(Array.isArray(d.articles)?d.articles:[]).map(a=>{
+      const m=String(a.seendate||"").match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+      return{title:trimText(decodeHtmlEntities(a.title||""),200),snippet:"",url:String(a.url||""),publisher:trimText(String(a.domain||""),60),time:m?m[1]+"-"+m[2]+"-"+m[3]+"T"+m[4]+":"+m[5]+":"+m[6]+"Z":"",source:"gdelt"};
+    }).filter(x=>x.title&&/^https:\/\//.test(x.url));
+  }catch(error){await recordProviderUse(env,"gdelt",false,String(error&&error.message||error));return[]}
+}
+// SEC EDGAR (gratuito; la SEC pide un User-Agent con contacto): documentos oficiales recientes.
+// Los que no admiten interpretación se clasifican con reglas, sin IA.
+const SEC_ITEMS={"1.01":"acuerdo material","1.02":"fin de un acuerdo material","1.03":"quiebra o administración concursal","2.01":"compra o venta de activos","2.02":"resultados","2.03":"nueva deuda","2.05":"reestructuración","2.06":"deterioro de activos","3.01":"aviso de exclusión de bolsa","3.02":"venta de acciones no registradas","3.03":"cambio en los derechos de los accionistas","4.01":"cambio de auditor","4.02":"los estados financieros dejan de ser fiables","5.01":"cambio de control","5.02":"salida o nombramiento de directivos","5.07":"votación de accionistas","7.01":"comunicación al mercado","8.01":"otros hechos relevantes"};
+const secCache=new Map();
+async function secRecentFilings(env,cik,sinceDay){
+  const id=String(cik||"").replace(/\D/g,"").padStart(10,"0");if(!/^\d{10}$/.test(id)||id==="0000000000")return[];
+  const hit=secCache.get(id);if(hit&&Date.now()-hit.at<30*60000)return hit.rows.filter(r=>r.day>=sinceDay);
+  try{
+    const r=await providerFetch("sec","https://data.sec.gov/submissions/CIK"+id+".json",{headers:{"User-Agent":env.SEC_USER_AGENT||"ViewInvAI/1.0 (https://viewinvai.sonarlab.workers.dev)","Accept":"application/json"}},12000);
+    if(!r.ok){await recordProviderUse(env,"sec",false,"HTTP "+r.status);return[]}
+    const rec=((await r.json()).filings||{}).recent||{};
+    await recordProviderUse(env,"sec",true);
+    const rows=[];
+    for(let i=0;i<Math.min(40,(rec.form||[]).length);i++){
+      const form=String(rec.form[i]||"").toUpperCase(),day=String(rec.filingDate&&rec.filingDate[i]||"");
+      if(!day)continue;
+      const items=String(rec.items&&rec.items[i]||"").split(",").map(x=>x.trim()).filter(Boolean);
+      rows.push({form,day,items,accession:String(rec.accessionNumber&&rec.accessionNumber[i]||"")});
+    }
+    secCache.set(id,{at:Date.now(),rows});
+    return rows.filter(x=>x.day>=sinceDay);
+  }catch(error){await recordProviderUse(env,"sec",false,String(error&&error.message||error));return[]}
+}
+function secRule(f){
+  if(/^(424B[1-8]|S-1|S-3|F-1|F-3)(\/A)?$/.test(f.form))return{kind:"ampliacion",direction:-1,material:1,business:0,summary:"Documento oficial "+f.form+" en la SEC: emisión o registro de acciones nuevas (posible dilución)."};
+  if(f.items.includes("1.03"))return{kind:"legal",direction:-2,material:1,business:1,summary:"8-K en la SEC: quiebra o administración concursal."};
+  if(f.items.includes("3.01"))return{kind:"legal",direction:-2,material:1,business:0,summary:"8-K en la SEC: aviso de exclusión de bolsa o de incumplimiento de requisitos de cotización."};
+  if(f.items.includes("4.02"))return{kind:"legal",direction:-2,material:1,business:0,summary:"8-K en la SEC: los estados financieros anteriores dejan de ser fiables."};
+  if(f.items.includes("3.02"))return{kind:"ampliacion",direction:-1,material:1,business:0,summary:"8-K en la SEC: venta de acciones no registradas (dilución)."};
+  return null;
+}
 async function newsForCompany(env,c,limit=4){
   const [hl,gl]=ISIN_LANG[String(c.isin||"").slice(0,2)]||["en-US","US"];
-  const items=await newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5));
+  const [gn,gd]=await Promise.all([newsCached(env,"co:"+c.name.toLowerCase(),()=>newsSearch(env,'"'+c.name+'"',hl,gl,5)),
+    newsCached(env,"gd:"+c.name.toLowerCase(),()=>gdeltSearch(env,c.name,8)).catch(()=>[])]);
+  // Google News primero y GDELT para completar (sin repetir titulares).
+  const seenT=new Set(),norm=t=>String(t||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim().slice(0,70);
+  const items=[...gn,...gd].filter(x=>{const k=norm(x.title);if(!k||seenT.has(k))return false;seenT.add(k);return true});
   // Solo noticias que nombran de verdad a la empresa: Google también devuelve artículos de
   // competidoras o del sector, y esos no pueden marcarse como «de tus valores».
   return items.map(newsClean).filter(x=>!newsIsQuotePage(x)&&newsMentions(x.title+" "+(x.snippet||""),c)).slice(0,limit)

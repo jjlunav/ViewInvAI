@@ -1347,11 +1347,25 @@ async function marketServerSnapshot(env,need){
     return Object.assign({},data,{stocks:data.stocks.slice(),events:Array.isArray(data.events)?data.events.slice():[]});
   }catch(error){marketServerMemo.delete(body);throw error}
 }
+// Servidores auxiliares en dos proveedores gratuitos (Netlify y Vercel): se prueba el primero que no
+// haya fallado en los últimos 5 minutos y, si falla, el otro. Si ninguno responde, quien llama usa
+// el snapshot completo (más CPU en el Worker, mismo resultado).
+const auxFailedUntil=new Map();
+function auxUrls(...urls){
+  const list=urls.map(u=>String(u||"").trim()).filter(Boolean),now=Date.now();
+  return[...list.filter(u=>!(auxFailedUntil.get(u)>now)),...list.filter(u=>auxFailedUntil.get(u)>now)];
+}
+function auxFailed(url){auxFailedUntil.set(url,Date.now()+5*60000)}
 async function fetchMarketServer(env,body){
   const headers={"Content-Type":"application/json","Accept":"application/json"};
   if(env.MARKET_SERVER_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_SERVER_KEY;
-  const r=await fetch(env.MARKET_SERVER_URL,{method:"POST",headers,body,signal:AbortSignal.timeout(20000)});
-  if(!r.ok)throw new Error("Market server "+r.status);
+  let r=null,lastError=null;
+  for(const url of auxUrls(env.MARKET_SERVER_URL,env.MARKET_SERVER_URL_2)){
+    try{r=await fetch(url,{method:"POST",headers,body,signal:AbortSignal.timeout(20000)});if(r.ok)break;lastError=new Error("Market server "+r.status+" ("+new URL(url).host+")")}
+    catch(error){lastError=error}
+    auxFailed(url);r=null;
+  }
+  if(!r)throw lastError||new Error("Market server: sin servidores");
   const data=await r.json();
   if(!data||!Array.isArray(data.stocks))throw new Error("Market server: respuesta no válida");
   rememberServerStocks(data);
@@ -1369,7 +1383,7 @@ async function loadQuantModel(env){
   return quantModelMemo.value;
 }
 async function loadMarketSnapshotForBackend(env, need = null) {
-  if (need && env.MARKET_SERVER_URL) {
+  if (need && (env.MARKET_SERVER_URL || env.MARKET_SERVER_URL_2)) {
     try { return await marketServerSnapshot(env, need); }
     catch (error) { console.warn("Market server unavailable, loading the full snapshot", String(error && error.message || error)); }
   }
@@ -1870,16 +1884,16 @@ function marketLiveTtl(ms=Date.now()){
   return !["Sat","Sun"].includes(p.weekday)&&minuteOfDay>=240&&minuteOfDay<1200?MARKET_LIVE_TTL:15*60000;
 }
 async function fetchMarketLiveText(env){
-  const url=env&&env.MARKET_LIVE_URL;
-  if(url){
+  for(const url of auxUrls(env&&env.MARKET_LIVE_URL,env&&env.MARKET_LIVE_URL_2)){
     try{
       const headers={"Accept":"application/json"};
       if(env.MARKET_SERVER_KEY)headers["X-ViewInvAI-Key"]=env.MARKET_SERVER_KEY;
-      const r=await fetch(url,{headers});
+      const r=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});
       const at=Date.parse(r.headers.get("X-Updated-At")||"");
       if(r.ok&&Number.isFinite(at))return{at,text:await r.text()};
-      console.warn("Market live remote",r.status);
+      console.warn("Market live remote",r.status,new URL(url).host);
     }catch(error){console.warn("Market live remote failed",String(error&&error.message||error))}
+    auxFailed(url);
   }
   const value=await fetchMarketLiveFromSource();
   return{at:Date.parse(value.updatedAt),text:JSON.stringify(value)};
@@ -2078,7 +2092,7 @@ async function buildStockAttentionRanking(env){
 async function buildFundAttentionRanking(env){
   // The market server ranks the 4,9 MB funds file; locally only as a fallback.
   let candidates=null;
-  if(env.MARKET_SERVER_URL){
+  if(env.MARKET_SERVER_URL||env.MARKET_SERVER_URL_2){
     try{const snap=await loadMarketSnapshotForBackend(env,{universe:["funds"]});candidates=snap.universe&&Array.isArray(snap.universe.funds)?snap.universe.funds:null}
     catch(_){candidates=null}
   }
