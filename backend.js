@@ -2564,7 +2564,7 @@ async function ensureRadarScoreboardSchema(env){
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
   ]);
   // Columnas añadidas después (factores en el momento de la señal); si ya existen, SQLite avisa y se sigue.
-  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL","quant_prob REAL"]){
+  for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL","quant_prob REAL","cat_dir REAL"]){
     try{await env.DB.prepare("ALTER TABLE radar_signals ADD COLUMN "+col).run()}catch(_){}
   }
   // Solo se da por listo cuando la sincronización con D1 termina bien (si falla, se reintenta).
@@ -2590,7 +2590,7 @@ async function migrateRadarToCache(env){
   for(const [table,base] of tables){
     // Las columnas añadidas después solo se copian si D1 ya las tiene.
     const have=new Set(((await d1.prepare("PRAGMA table_info("+table+")").all()).results||[]).map(c=>c.name));
-    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week","quant_prob"].filter(c=>have.has(c)):[];
+    const extra=table==="radar_signals"?["change_pct","rel_volume","rsi","perf_week","quant_prob","cat_dir"].filter(c=>have.has(c)):[];
     const cols=[base,...extra].join(",");
     const names=cols.split(","),marks=names.map(()=>"?").join(",");
     const rows=(await d1.prepare("SELECT "+cols+" FROM "+table+" WHERE day>=? ORDER BY day").bind(since).all()).results||[];
@@ -2769,9 +2769,14 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
     const qm=services.loadQuantModel?await services.loadQuantModel():null;
     if(qm)for(const r of signals){const st=findStock(snapshot,{stock_key:r.stock_key});const q=st&&globalThis.ViewInvAIScore.quantScore(qm,st);if(q)r.quant_prob=Math.round(q.prob*10000)/10000}
   }catch(error){console.warn("Quant on radar signals failed",String(error&&error.message||error))}
+  // Catalizadores contrastados por dos IAs en los 3 días anteriores (suma de direcciones relevantes).
+  try{
+    const reads=await catalystReadsFor(env,signals.map(r=>r.stock_key),3);
+    for(const r of signals){const mine=reads.filter(c=>c.stockKey===r.stock_key&&c.agree&&c.material);if(mine.length)r.cat_dir=mine.reduce((a,c)=>a+c.direction,0)}
+  }catch(error){console.warn("Catalysts on radar signals failed",String(error&&error.message||error))}
   const inserts=signals.map(r=>env.DB.prepare(
-    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,quant_prob,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,r.quant_prob??null,now));
+    "INSERT OR IGNORE INTO radar_signals (id,day,stock_key,ticker,name,tier,score,quality,price,bench_price,tr_tradable,speculative,change_pct,rel_volume,rsi,perf_week,quant_prob,cat_dir,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(uid("rs_"),win.day,r.stock_key,r.ticker,r.name.slice(0,160),r.tier,r.score,r.quality,r.price,benchPrice,r.tr_tradable,r.speculative,r.change_pct??null,r.rel_volume??null,r.rsi??null,r.perf_week??null,r.quant_prob??null,r.cat_dir??null,now));
   for(let i=0;i<inserts.length;i+=80)await env.DB.batch(inserts.slice(i,i+80));
   // Caídas bruscas: el servidor de mercado las trae calculadas; si es una versión anterior que
   // no las conoce, se calculan sobre el snapshot completo (un paquete parcial no tiene todo el mercado).
@@ -4514,7 +4519,7 @@ const TASK_MODELS={
   sambanova:{decision:["DeepSeek-V3-0324","Meta-Llama-3.3-70B-Instruct"],light:["Meta-Llama-3.3-70B-Instruct"]},
   ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]}
 };
-async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null}){
+async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null}){
   const tried=[],t=task==="light"?"light":"decision";
   // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
   const pinModels=list=>pin&&pin.model?[pin.model]:list;
@@ -4563,6 +4568,8 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=n
   let order=await orderProviders(env,ready.filter(id=>id!=="workersai"),t);
   // Workers AI queda siempre como último recurso: no tiene clave ni cupo que repartir, pero es el más flojo.
   if(ready.includes("workersai"))order.push("workersai");
+  // exclude: servicios que no deben responder (para pedir una segunda opinión a otro distinto).
+  if(Array.isArray(exclude)&&exclude.length)order=order.filter(id=>!exclude.includes(id));
   if(pin&&pin.provider){
     // El elegido se prueba aunque esté en pausa por fallos recientes: lo ha pedido el usuario.
     const p=PROVIDERS.find(x=>x.id===pin.provider);
@@ -5925,6 +5932,7 @@ async function aiAskExtras(env,services,userId,body){
         const f=aiStockFacts(st,evs);
         try{const qm=services.loadQuantModel?await services.loadQuantModel():null;const q=qm&&globalThis.ViewInvAIScore.quantScore(qm,st);
           if(q)f.quantModel={probBeatSp500Next5Sessions:Math.round(q.prob*1000)/10,historicalAverage:q.base!==null?Math.round(q.base*1000)/10:null,topFactors:q.parts.slice(0,3).map(p=>p.label+(p.delta>0?" (a favor)":" (en contra)")),validatedAuc:qm.validation&&qm.validation.auc}}catch(_){}
+        try{f.catalystReads=(await catalystReadsFor(env,[k])).slice(0,5).map(c=>({day:c.day,kind:c.kind,direction:c.direction,material:c.material,changesBusiness:c.business,summary:c.summary,twoAiAgree:c.agree}))}catch(_){}
         try{f.news=(await newsForCompany(env,{key:k,ticker:f.ticker,name:newsCleanName(st.name),isin:st.isin||st.usIsin||""},4)).map(x=>({time:x.time,publisher:x.publisher,title:x.title,snippet:trimText(x.snippet||"",240)}))}catch(_){f.news=[]}
         facts.push(f);
       }
@@ -5944,6 +5952,87 @@ async function aiAskContext(env,services,userId){
   return{now:madrid,currency:"EUR",
     totals:{total:r2(digest.total),stocks:r2(digest.stocksValue),stocksDay:r2(digest.stocksDay),funds:r2(digest.fundsValue),fundsDay:r2(digest.fundsDay),crypto:r2(digest.cryptoValue),crypto24h:r2(digest.cryptoDay),cashApart:r2(digest.cash),positionsWithoutPrice:digest.missing},
     positions:digest.positionsDetail,funds:digest.fundsDetail,crypto:digest.cryptoSymbols,summaryLines:digest.lines,recentAlerts:alerts};
+}
+
+// ===== Lector de catalizadores: dos IAs de servicios distintos leen cada evento =====
+// Cada noticia o evento reciente de las posiciones, las caídas bruscas y el Radar se convierte en un
+// dato estructurado (tipo, dirección, si es relevante y si cambia el negocio). Si las dos lecturas
+// coinciden, queda como contrastada; si no, se guarda como dudosa. Así los catalizadores pasan a
+// ser datos que se pueden medir y, más adelante, aprender.
+const CATALYST_KINDS=["resultados","prevision","fda","ensayo","ampliacion","deuda","fusion","contrato","analista","legal","directivos","recompra","dividendo","sector","otro"];
+async function ensureCatalystSchema(env){
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS catalyst_reads (key TEXT PRIMARY KEY,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,day TEXT NOT NULL,title TEXT NOT NULL,kind TEXT NOT NULL,direction INTEGER NOT NULL,material INTEGER NOT NULL DEFAULT 0,business INTEGER NOT NULL DEFAULT 0,summary TEXT NOT NULL DEFAULT '',agree INTEGER NOT NULL DEFAULT 0,providers TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_catalyst_reads_stock ON catalyst_reads(stock_key,day)")
+  ]);
+}
+function catalystKey(stockKey,title){
+  let h=2166136261;for(const ch of String(stockKey)+"|"+String(title).toLowerCase().replace(/\s+/g," ").trim()){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)>>>0}
+  return "ct_"+h.toString(36);
+}
+function catalystParse(text){
+  const j=extractAiJson(text);if(!j)return null;
+  const kind=CATALYST_KINDS.includes(String(j.kind||"").toLowerCase())?String(j.kind).toLowerCase():"otro";
+  const dir=Math.max(-2,Math.min(2,Math.round(Number(j.direction))));if(!Number.isFinite(dir))return null;
+  return{kind,direction:dir,material:j.material===true||j.material==="true"?1:0,business:j.changesBusiness===true||j.changesBusiness==="true"?1:0,summary:trimText(String(j.summary||""),180)};
+}
+export async function readCatalyst(env,item){
+  const prompt=["Eres analista financiero. Clasifica este evento de una empresa cotizada. Responde SOLO JSON.",
+    "Campos: kind (uno de: "+CATALYST_KINDS.join(", ")+"), direction (entero de -2 muy negativo a +2 muy positivo para el precio), material (true si puede mover el precio de forma relevante), changesBusiness (true si cambia el negocio a largo plazo, no solo la percepción), summary (una frase en español de España, máximo 160 caracteres, sin inventar datos).",
+    "Empresa: "+item.name+" ("+item.ticker+"). Fecha: "+item.day+". Tipo de origen: "+(item.type||"noticia")+".",
+    "Titular: «"+item.title+"»"+(item.snippet?" Extracto: «"+item.snippet+"»":"")].join("\n");
+  const a=await aiRoute(env,{prompt,maxTokens:220,json:true,task:"light"});
+  const ra=catalystParse(a.text);if(!ra)throw new Error("Lectura no válida");
+  let rb=null,b=null;
+  try{b=await aiRoute(env,{prompt,maxTokens:220,json:true,task:"light",exclude:[a.provider]});rb=catalystParse(b.text)}catch(_){}
+  // Coinciden si van en el mismo sentido (o ambas neutras) y no se separan más de un punto.
+  const agree=rb?((Math.sign(ra.direction)===Math.sign(rb.direction))&&Math.abs(ra.direction-rb.direction)<=1?1:0):0;
+  const pick=rb&&agree&&Math.abs(rb.direction)<Math.abs(ra.direction)?rb:ra;   // ante la duda, la lectura más prudente
+  return{...pick,kind:agree&&rb&&rb.kind!==ra.kind&&ra.kind==="otro"?rb.kind:pick.kind,agree,providers:[a.provider,b&&b.provider].filter(Boolean).join("+")};
+}
+export async function runCatalystReader(env,services={},nowMs=Date.now(),limit=6){
+  if(!env.DB||!services.loadMarketSnapshot)return{skipped:"no-db"};
+  await ensureCatalystSchema(env);
+  const pos=((await env.DB.prepare("SELECT DISTINCT stock_key FROM positions WHERE active=1 LIMIT 120").all()).results||[]).map(r=>String(r.stock_key||"").toUpperCase()).filter(Boolean);
+  const snap=await services.loadMarketSnapshot(env,{universe:["crash","radar"],universeStocks:true,targets:pos.map(k=>({stock_key:k})),exact:true});
+  const crash=(snap.universe&&snap.universe.crash||[]).map(r=>r.stock_key),radar=(snap.universe&&snap.universe.radar||[]).slice(0,30).map(r=>r.stock_key);
+  const order=[...new Set([...crash,...pos,...radar])];
+  const cut=new Date(nowMs-3*864e5).toISOString().slice(0,10);
+  const items=[];
+  for(const key of order){
+    const st=findStock(snap,{stock_key:key});if(!st)continue;
+    const t=String(st.ticker||"").toUpperCase();
+    for(const e of (snap.events||[]).filter(e=>String(e.ticker||"").toUpperCase()===t&&String(e.date||"").slice(0,10)>=cut)){
+      const title=trimText(e.title||e.fact||"",220);if(title.length<12)continue;
+      items.push({key:catalystKey(key,title),stock_key:key,ticker:t,name:newsCleanName(st.name)||t,day:String(e.date).slice(0,10),type:e.type,title,snippet:trimText(e.fact&&e.fact!==e.title?e.fact:"",300)});
+    }
+  }
+  if(!items.length)return{read:0};
+  const have=new Set();
+  for(let i=0;i<items.length;i+=80){
+    const chunk=items.slice(i,i+80),marks=chunk.map(()=>"?").join(",");
+    for(const r of (await env.DB.prepare("SELECT key FROM catalyst_reads WHERE key IN ("+marks+")").bind(...chunk.map(x=>x.key)).all()).results||[])have.add(r.key);
+  }
+  const todo=items.filter((x,i,a)=>!have.has(x.key)&&a.findIndex(y=>y.key===x.key)===i).slice(0,limit);
+  let read=0;
+  for(const it of todo){
+    try{
+      const r=await readCatalyst(env,it);
+      await env.DB.prepare("INSERT OR IGNORE INTO catalyst_reads (key,stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(it.key,it.stock_key,it.ticker,it.day,it.title,r.kind,r.direction,r.material,r.business,r.summary,r.agree,r.providers,nowIso()).run();
+      read++;
+    }catch(error){console.warn("Catalyst read failed",it.ticker,String(error&&error.message||error));break}
+  }
+  return{read,pending:Math.max(0,items.length-have.size-read)};
+}
+export async function catalystReadsFor(env,keys,days=7){
+  if(!env.DB)return[];
+  await ensureCatalystSchema(env);
+  const list=[...new Set((keys||[]).map(k=>String(k||"").toUpperCase()).filter(k=>/^[A-Z0-9._-]+:[A-Z0-9._-]+$/.test(k)))].slice(0,40);
+  if(!list.length)return[];
+  const cut=new Date(Date.now()-days*864e5).toISOString().slice(0,10);
+  return((await env.DB.prepare("SELECT stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers FROM catalyst_reads WHERE stock_key IN ("+list.map(()=>"?").join(",")+") AND day>=? ORDER BY day DESC,created_at DESC LIMIT 200").bind(...list,cut).all()).results||[])
+    .map(r=>({stockKey:r.stock_key,ticker:r.ticker,day:r.day,title:r.title,kind:r.kind,direction:r.direction,material:!!r.material,business:!!r.business,summary:r.summary,agree:!!r.agree,providers:r.providers}));
 }
 // ----- Verificador de respuestas de la IA -----
 // Números en formato español o inglés: «1.234,56», «2,47 %», «33.51», «-0,5». Devuelve valor absoluto y decimales.
@@ -6047,7 +6136,7 @@ async function handleAiAsk(request,env,user,json,services){
     "No des certezas ni órdenes: son ideas para que el usuario decida. No es asesoramiento financiero.",
     "El efectivo es aparte: no forma parte del valor de las carteras.",
     "Noticias: «newsTheUserIsAsking» son las que el usuario está leyendo; «newsOfYourStocks», las de sus valores; «stocksMentioned», datos y noticias de los valores que nombra. Si hay noticias en el contexto, úsalas y cita medio y hora; nunca digas que no hay noticias si las hay.",
-    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos). «quantModel» es el modelo propio entrenado con 10 años: cítalo como probabilidad, nunca como certeza."
+    "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos). «quantModel» es el modelo propio entrenado con 10 años: cítalo como probabilidad, nunca como certeza. «catalystReads» son lecturas de catalizadores hechas por dos IAs (twoAiAgree indica si coinciden)."
   ];
   // Preguntas sugeridas: las haría el usuario a la app, cortas y completas.
   const FOLLOW_RULE="followUps: 3 preguntas que el USUARIO podría hacer a continuación, escritas por él (p. ej. «¿Subo el stop de TaskUs?»), nunca preguntas tuyas al usuario («¿Quieres…?», «¿Te gustaría…?»), de 45 caracteres como máximo, sin cortar palabras y usando solo nombres o tickers que aparezcan en el contexto.";

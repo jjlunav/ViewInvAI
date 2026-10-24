@@ -590,21 +590,25 @@ async function loadRadarScoreboard(){
  }
 }
 // ----- Modelo cuantitativo (entrenado cada semana con ~10 años de históricos, data/quant-model.json) -----
-const quant={model:null,report:null,loading:false,at:0};
+const quant={model:null,modelTr:null,report:null,loading:false,at:0};
 function loadQuant(){
  if(quant.loading||(quant.at&&Date.now()-quant.at<6*3600e3))return;
  quant.loading=true;
  const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
- Promise.all([get('/data/quant-model.json'),get('/data/quant-backtest.json')]).then(([m,r])=>{
-  quant.model=m&&Array.isArray(m.features)?m:null;quant.report=r||null;quant.at=Date.now();quant.loading=false;
+ Promise.all([get('/data/quant-model.json'),get('/data/quant-backtest.json'),get('/data/quant-model-tr.json')]).then(([m,r,t])=>{
+  quant.model=m&&Array.isArray(m.features)?m:null;quant.modelTr=t&&Array.isArray(t.features)?t:null;quant.report=r||null;quant.at=Date.now();quant.loading=false;
   if(quant.model||quant.report)window.dispatchEvent(new CustomEvent('viewinvai:quant-ready'));
  });
 }
-// Solo valores de EE. UU.: el modelo se ha entrenado con sus históricos.
+// Valores de EE. UU.: modelo entrenado con sus históricos (frente al S&P 500). Resto de valores de
+// Trade Republic: modelo entrenado con 5 años de LSX (frente a la mediana de LSX).
 function quantFor(s){
- if(!s||!/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||'')))return null;
- if(!quant.model){loadQuant();return null}
- try{return window.ViewInvAIScore.quantScore(quant.model,s)}catch(_){return null}
+ if(!s)return null;
+ const us=/^(NASDAQ|NYSE|AMEX|NYSE ARCA|BATS)$/i.test(String(s.exchange||''));
+ if(!us&&!(typeof trTradable==='function'&&trTradable(s)))return null;
+ if(!quant.at){loadQuant();return null}
+ const model=us?quant.model:quant.modelTr;if(!model)return null;
+ try{const q=window.ViewInvAIScore.quantScore(model,s);return q?Object.assign(q,{market:us?'us':'tr',benchmark:us?'el S&P 500':'la mediana de LSX'}):null}catch(_){return null}
 }
 window.ViewInvAIQuant={load:loadQuant,scoreFor:quantFor,state:()=>quant};
 window.addEventListener('viewinvai:quant-ready',()=>{
@@ -628,6 +632,9 @@ function quantCardHtml(){
   '<li><b>Capacidad de ordenar</b> (AUC; 0,5 es azar): modelo '+F(r.engine.aucModelSameSample,3)+' · motor '+F(r.engine.auc,3)+'.</li></ul>'+
   '<p>✦ Lectura honesta: '+(Math.abs(r.engine.aucModelSameSample-0.5)<0.02?'con solo precio y volumen apenas hay ventaja a 5 sesiones; el modelo sirve para descartar lo que históricamente sale peor (perseguir subidas de más del 15 %, volatilidad extrema) más que para elegir ganadores. Por eso el Radar exige además catalizadores verificados.':better?'el modelo ordena mejor que el motor anterior.':'aún no mejora al motor.')+'</p>'+
   (rows?'<table class="quant-table"><thead><tr><th>Subida del día</th><th>Bate al S&P</th><th>Mediana 5 s</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':'')+
+  (()=>{const t=quant.modelTr,v=t&&t.validation;if(!v||!v.topDecile)return'';
+   return '<p>✦ <b>Trade Republic / LSX</b> ('+Number(t.universe).toLocaleString('es-ES')+' valores internacionales, 5 años, medido en '+E(String(v.test[0]).slice(0,4))+'–'+E(String(v.test[1]).slice(0,7))+'): su 10 % mejor bate a la mediana de LSX el '+F(v.topDecile.beatRate,0)+' % de las veces y su 10 % peor, el '+F(v.bottomDecile.beatRate,0)+' % (AUC '+F(v.auc,3)+').'+
+    (()=>{const b=(t.byChange||[]),dn=b.find(x=>x.bucket==='< -8 %'),up=b.find(x=>x.bucket==='> 30 %');return dn&&up?' Los que caen más de un 8 % en el día la baten el '+F(dn.beatRate,0)+' % de las veces; los que suben más de un 30 %, solo el '+F(up.beatRate,0)+' %.':''})()+'</p>'})()+
   '<p class="radar-scoreboard-method">Fuente: '+E(quant.report.source||'')+'. Sin comisiones. Solo valores que cotizan hoy. Rentabilidades pasadas no garantizan resultados futuros.</p></div>';
  return '<section class="d-group quant-group"><header><h3>Modelo cuantitativo</h3><span>'+E(m.version||'')+'</span></header>'+(typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('quant-card','Probado con 10 años de datos',preview,html):html)+'</section>';
 }
@@ -735,7 +742,7 @@ function radarAiRowD(row){
  const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
  return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
-  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="Probabilidad de batir al S&amp;P 500 en 5 sesiones según el modelo entrenado con 10 años">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
+  '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="'+(q.market==='tr'?'Probabilidad de batir a la mediana de LSX en 5 sesiones (modelo entrenado con 5 años de LSX)':'Probabilidad de batir al S&amp;P 500 en 5 sesiones (modelo entrenado con 10 años)')+'">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
   '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
 }
 function radarAiShellD(rows,mode,counts,visible){
@@ -774,7 +781,41 @@ function crashEventsFor(s){
  }
  return crashEventsIdx.m.get(stockKey(s))||[];
 }
-function crashCause(s){return CRASH.crashCause(crashEventsFor(s),EL)}
+// Lecturas de catalizadores hechas por dos IAs en el servidor (/api/catalysts); 5 minutos en memoria.
+const catal={byKey:new Map(),asked:new Map(),loading:false};
+function loadCatalysts(keys){
+ const now=Date.now(),want=[...new Set(keys.filter(Boolean))].filter(k=>!(catal.asked.get(k)>now-5*60000)).slice(0,40);
+ if(!want.length||catal.loading)return;
+ want.forEach(k=>catal.asked.set(k,now));catal.loading=true;
+ fetch('/api/catalysts?keys='+encodeURIComponent(want.join(',')),{cache:'no-store'}).then(r=>r.ok?r.json():{items:[]}).catch(()=>({items:[]})).then(d=>{
+  catal.loading=false;let changed=false;
+  for(const k of want){const list=(d.items||[]).filter(x=>x.stockKey===k);if(list.length||catal.byKey.has(k)){catal.byKey.set(k,list);changed=true}}
+  if(changed)window.dispatchEvent(new CustomEvent('viewinvai:catalysts-ready'));
+ });
+}
+function catalystsFor(s){const k=stockKey(s);if(!catal.byKey.has(k))loadCatalysts([k]);return catal.byKey.get(k)||[]}
+window.ViewInvAICatalysts={forStock:catalystsFor,load:loadCatalysts};
+window.addEventListener('viewinvai:catalysts-ready',()=>{
+ try{
+  if(document.body.classList.contains('stock-detail-open')){if(typeof renderQuickProfile==='function'&&state.profileKey)renderQuickProfile()}
+  else if(state.currentView==='crash')renderCrashView();
+ }catch(_){}
+});
+const CAT_TRAP=new Set(['ampliacion','legal','ensayo','fda','prevision','deuda']),CAT_OVER=new Set(['analista','resultados','sector']);
+const CAT_LABEL={resultados:'Resultados',prevision:'Previsiones',fda:'FDA',ensayo:'Ensayo clínico',ampliacion:'Ampliación de capital',deuda:'Deuda',fusion:'Fusión / adquisición',contrato:'Contrato',analista:'Analistas',legal:'Legal / regulatorio',directivos:'Directivos',recompra:'Recompra',dividendo:'Dividendo',sector:'Sector / mercado',otro:'Otro'};
+function crashCause(s){
+ // Primero la lectura contrastada por dos IAs (si coinciden y es relevante); si no, las reglas por palabras.
+ const cut=new Date(Date.now()-4*864e5).toISOString().slice(0,10);
+ const reads=catalystsFor(s).filter(r=>r.agree&&r.material&&r.day>=cut).sort((a,b)=>a.direction-b.direction);
+ const r=reads[0];
+ if(r){
+  const label=(CAT_LABEL[r.kind]||'Noticia')+' · 2 IAs coinciden';
+  if(r.direction<0&&(CAT_TRAP.has(r.kind)||r.business))return{kind:'trap',label,title:r.summary||r.title,ai:true};
+  if(r.direction<0&&CAT_OVER.has(r.kind))return{kind:'over',label,title:r.summary||r.title,ai:true};
+  if(r.direction>0)return{kind:'news',label:label+': buena noticia, pero cae: el mercado esperaba más',title:r.summary||r.title,ai:true};
+ }
+ return CRASH.crashCause(crashEventsFor(s),EL);
+}
 function crashCandidates(mode){
  const isTr=mode==='tr',se=currentMarketSession(),out=[];
  for(const s of db.stocks||[]){
@@ -783,13 +824,16 @@ function crashCandidates(mode){
   const hit=CRASH.crashEligible(isTr?trLiveChange(s):marketChange(s,se,false),s.perfMonth,s.marketCap);
   if(hit)out.push({s,ch:hit.change,prior:hit.prior});
  }
- return out.sort((a,b)=>a.ch-b.ch).slice(0,8).map(x=>{
+ const top=out.sort((a,b)=>a.ch-b.ch).slice(0,8);
+ loadCatalysts(top.map(x=>stockKey(x.s)));
+ return top.map(x=>{
   const cause=crashCause(x.s);
   let valuation=null;try{const v=typeof profileValuation==='function'?profileValuation(x.s):null;valuation=v&&v.tone||null}catch(_){}
   return{...x,cause,score:CRASH.crashScore({kind:cause.kind,valuation,marketCap:x.s.marketCap,netIncome:x.s.netIncomeTtm,change:x.ch,rsi:x.s.rsi,prior:x.prior})};
  });
 }
 function crashVerdict(c){
+ if(c.cause.ai)return{tone:c.cause.kind==='trap'?'down':c.cause.kind==='over'?'up':'flat',text:(c.cause.kind==='trap'?'Motivo de fondo':c.cause.kind==='over'?'Posible sobrerreacción':'Noticia')+' ('+c.cause.label+'): '+c.cause.title};
  if(c.cause.kind==='trap')return{tone:'down',text:'Motivo de fondo: '+c.cause.label+'. Suele seguir bajando.'};
  if(c.cause.kind==='over')return{tone:'up',text:'Posible sobrerreacción: '+c.cause.label+'.'};
  if(c.cause.kind==='news')return{tone:'flat',text:'Noticia: '+c.cause.label+(/esperaba más/.test(c.cause.label)?'.':'. Revisa si cambia el negocio.')};

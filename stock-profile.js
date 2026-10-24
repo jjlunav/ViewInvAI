@@ -847,10 +847,16 @@ function profileQuantHtml(s){
  const pct=Math.round(q.prob*100),base=q.base!==null?Math.round(q.base*100):null,tone=base===null?'flat':pct>=base+4?'up':pct<=base-4?'down':'flat';
  const parts=q.parts.slice(0,3).map(p=>'<li class="'+(p.delta>0?'up':'down')+'">'+(p.delta>0?'▲ ':'▼ ')+E(p.label)+'</li>').join('');
  return '<div class="pi-quant"><div><small>Modelo cuantitativo · 5 sesiones</small><b class="d-chip '+tone+'">'+pct+' %</b></div>'+
-  '<p>Probabilidad de batir al S&P 500 en las próximas 5 sesiones'+(base!==null?' (media histórica '+base+' %)':'')+'. Lo que más pesa:</p><ul>'+parts+'</ul></div>';
+  '<p>Probabilidad de batir a '+E(q.benchmark||'el S&P 500')+' en las próximas 5 sesiones'+(base!==null?' (media histórica '+base+' %)':'')+'. Lo que más pesa:</p><ul>'+parts+'</ul></div>';
+}
+// Catalizadores recientes leídos por dos IAs en el servidor (contrastados si coinciden).
+function profileCatalystsHtml(s){
+ const C=window.ViewInvAICatalysts,list=C?C.forStock(s):[];if(!list.length)return'';
+ const dir=d=>d>=2?'muy positivo':d===1?'positivo':d===0?'neutro':d===-1?'negativo':'muy negativo';
+ return '<div class="pi-cats"><small>Catalizadores leídos por la IA</small><ul>'+list.slice(0,4).map(r=>'<li class="'+(r.direction>0?'up':r.direction<0?'down':'flat')+'"><b>'+E(r.summary||r.title)+'</b><span>'+E(new Date(r.day+'T12:00:00Z').toLocaleDateString('es-ES',{day:'numeric',month:'short'}))+' · '+E(dir(r.direction))+(r.business?' · cambia el negocio':'')+' · '+(r.agree?'✓ 2 IAs coinciden':'⚠ las IAs no coinciden')+'</span></li>').join('')+'</ul></div>';
 }
 function profileInsightsHtml(s){
- const body=profileQuantHtml(s)+profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s);
+ const body=profileQuantHtml(s)+profileCatalystsHtml(s)+profileRange52Html(s)+profileValuationHtml(s)+profileAnalystsShell(s);
  return body?'<section class="profile-section profile-insights"><div class="profile-section-head"><h3>Lo esencial</h3><span>Modelo · 52 semanas · valoración · analistas</span></div>'+body+'</section>':'';
 }
 function quickProfileHtml(s,opts={}){

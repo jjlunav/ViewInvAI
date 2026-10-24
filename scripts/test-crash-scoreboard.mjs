@@ -2,7 +2,7 @@
 // Usa SQLite en memoria con la misma interfaz que D1 (prepare/bind/first/all/run/batch).
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { runRadarScoreboard, crashScoreboardSummary, crashSignalsForSnapshot, radarScoreboardSummary } from "../backend.js";
+import { runRadarScoreboard, crashScoreboardSummary, crashSignalsForSnapshot, radarScoreboardSummary, runCatalystReader, catalystReadsFor } from "../backend.js";
 
 function d1(){
   const db=new DatabaseSync(":memory:");
@@ -68,4 +68,11 @@ const radar=await radarScoreboardSummary(env);
 for(const k of ["opportunityFirst","score80","chasing","calm","opportunity","watch"])assert.ok(radar.stats[k]&&radar.stats[k]["1d"],"grupo "+k);
 const cols=env.DB.raw.prepare("PRAGMA table_info(radar_signals)").all().map(c=>c.name);
 for(const c of ["change_pct","rel_volume","rsi","perf_week"])assert.ok(cols.includes(c),"columna "+c);
+// Lector de catalizadores: sin IA configurada no lee nada (ni rompe), y las lecturas guardadas se devuelven por valor.
+env.DB.raw.prepare("CREATE TABLE IF NOT EXISTS positions (stock_key TEXT, active INTEGER)").run();
+const cr=await runCatalystReader(env,{loadMarketSnapshot:async()=>({...snapshot(day1,ch1),universe:{crash:[{stock_key:"NASDAQ:TRAP"}],radar:[]}})},Date.parse("2026-10-21T20:00:00Z"));
+assert.equal(cr.read,0);
+env.DB.raw.prepare("INSERT INTO catalyst_reads (key,stock_key,ticker,day,title,kind,direction,material,business,summary,agree,providers,created_at) VALUES ('k1','NASDAQ:TRAP','TRAP',?,'Offering','ampliacion',-2,1,0,'Ampliación de capital',1,'a+b','x')").run(new Date().toISOString().slice(0,10));
+const reads=await catalystReadsFor(env,["NASDAQ:TRAP","bad key"]);
+assert.equal(reads.length,1);assert.equal(reads[0].agree,true);assert.equal(reads[0].kind,"ampliacion");
 console.log("crash scoreboard ok:",JSON.stringify(sum.stats.over["5d"]));

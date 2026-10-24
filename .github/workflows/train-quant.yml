@@ -51,7 +51,7 @@ jobs:
         run: |
           git config user.name "viewinvai-quant[bot]"
           git config user.email "quant@viewinvai.invalid"
-          git add data/quant-model.json data/quant-backtest.json
+          git add data/quant-model.json data/quant-backtest.json $(ls data/quant-model-tr.json 2>/dev/null)
           if git diff --cached --quiet; then echo "Sin cambios."; exit 0; fi
           git commit -m "Modelo cuantitativo: reentrenado con históricos"
           for i in 1 2 3 4; do
