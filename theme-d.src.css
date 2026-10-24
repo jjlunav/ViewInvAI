@@ -97,11 +97,12 @@
  @ .view.active>.page-heading h1[data-short]::before{font-size:23px!important;font-family:"VI Grotesk",sans-serif}
 }
 
-/* ---------- Barra inferior flotante con el rombo «Pregunta» ---------- */
+/* ---------- Barra inferior pegada al borde con el rombo «Pregunta» ---------- */
+/* Ocupa hasta el final de la pantalla (también la zona de la barra de gestos) para que no asome contenido por debajo. */
 @ .mobile-bottom-nav{
- left:12px!important;right:12px!important;bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;width:auto!important;height:66px!important;border-radius:24px!important;
- background:color-mix(in srgb,var(--d-surf) 92%,transparent)!important;border:1px solid var(--d-hair)!important;box-shadow:var(--d-shadow-lg)!important;backdrop-filter:blur(16px)!important;
- padding:0 6px!important;overflow:visible!important;box-sizing:border-box!important;
+ left:0!important;right:0!important;bottom:0!important;width:auto!important;height:calc(66px + env(safe-area-inset-bottom,0px))!important;border-radius:22px 22px 0 0!important;
+ background:color-mix(in srgb,var(--d-surf) 97%,transparent)!important;border:1px solid var(--d-hair)!important;border-bottom:0!important;box-shadow:0 -8px 24px rgba(0,0,0,.18)!important;backdrop-filter:blur(16px)!important;
+ padding:0 8px env(safe-area-inset-bottom,0px)!important;overflow:visible!important;box-sizing:border-box!important;
  grid-template-rows:minmax(0,1fr)!important;align-items:center!important;
 }
 @ .mobile-bottom-nav>.mobile-nav-item{height:54px!important;min-height:0!important;max-height:54px!important;align-self:center!important}
