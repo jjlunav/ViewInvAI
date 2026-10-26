@@ -650,3 +650,10 @@
 @ .price-check li>span{grid-column:1/-1;white-space:normal;overflow-wrap:anywhere;color:var(--d-mut)}
 @ .price-check li>b{font-variant-numeric:tabular-nums}
 @ .price-check p{margin:6px 0 0;font-size:11px;line-height:1.4;color:var(--d-mut);font-weight:500;text-align:left}
+/* Botones de la ficha (cartera, editar, avisos) iguales que los de la barra superior: mismo tamaño, esquina y
+   borde, sin relleno de degradado. En móvil el toque dejaba el lápiz «pulsado» con el degradado puesto. */
+@ .profile-primary-actions{gap:8px!important;align-items:center!important}
+@ .profile-primary-actions :is(.profile-wallet-action,.profile-edit-position,.profile-notification-bell,.btn,button){width:40px!important;height:40px!important;min-width:40px!important;max-width:40px!important;padding:0!important;border-radius:12px!important;display:grid!important;place-items:center!important;background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important;box-shadow:none!important}
+@ .profile-primary-actions :is(.profile-wallet-action,.profile-edit-position,.profile-notification-bell,.btn,button):is(:hover,:focus-visible,[aria-expanded="true"],.is-managed){background:var(--d-surf-2)!important;border-color:var(--d-accent)!important;color:var(--d-ink)!important}
+@media (hover:none){@ .profile-primary-actions :is(.profile-wallet-action,.profile-edit-position,.profile-notification-bell,.btn,button):is(:hover,:focus){background:var(--d-surf)!important;border-color:var(--d-hair)!important}}
+@ .profile-primary-actions svg{width:18px!important;height:18px!important}

@@ -215,6 +215,8 @@ function quotePrecision(s,preferTr=false,fallback=null){
  let cap=vals.some(v=>Math.abs(v)<1)?6:4;
  return Math.min(cap,Math.max(2,...vals.map(v=>decimalPlaces(v,cap))));
 }
+// Rango del día en EE. UU. con los mismos decimales en los dos extremos (antes «8,39 - 8,648»).
+function usRangeText(lo,hi){const d=Math.min(lo,hi)<1?4:2,f=v=>N(v).toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});return f(lo)+' - '+f(hi)}
 function quoteMoney(v,symbol,decimals){
  v=N(v);if(v===null)return symbol+'—';
  decimals=Math.max(0,Math.min(6,Number(decimals)||0));
@@ -949,7 +951,7 @@ function refreshUsLiveDom(){
  visibleLiveNodes('[data-profile-live-range-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.profileLiveRangeKey);if(!s)return;
   let lo=N(s.usLiveDayLow)??N(s.dayLow),hi=N(s.usLiveDayHigh)??N(s.dayHigh);
-  el.textContent=lo!==null&&hi!==null?PR(lo)+' - '+PR(hi):'—';
+  el.textContent=lo!==null&&hi!==null?usRangeText(lo,hi):'—';
  });
  visibleLiveNodes('[data-profile-live-volume-key]').forEach(el=>{
   let s=usStockByKey(el.dataset.profileLiveVolumeKey);if(!s)return;
