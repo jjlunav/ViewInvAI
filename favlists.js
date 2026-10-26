@@ -42,7 +42,9 @@
   return '<div class="fav-lists" role="group" aria-label="Listas de favoritos"><span>Listas</span>'+
    chip('','Todas',null)+all.map(l=>chip(l.id,l.name,l.keys.filter(k=>fav.has(k)).length)).join('')+
    (cur?'<button type="button" class="tab fav-list-edit" data-fav-list-edit="'+esc(cur.id)+'" aria-label="Editar la lista '+esc(cur.name)+'">✎</button>':'')+
-   '<button type="button" class="tab fav-list-new" data-fav-list-new>＋ Lista</button></div>';
+   '<button type="button" class="tab fav-list-new" data-fav-list-new>＋ Lista</button>'+
+   // Botón de periodo (1D/1S/1M/Σ) de toda la app, también aquí.
+   (window.ViewInvAIPeriod?'<span class="fav-lists-period">'+window.ViewInvAIPeriod.buttonHtml()+'</span>':'')+'</div>';
  }
  // Filter for the dashboard: null = no list selected.
  function activeKeys(){const l=activeList();return l?new Set(l.keys):null}

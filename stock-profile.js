@@ -312,21 +312,25 @@ function profileTechnicalStats(s){
   profileKpi('Liquidez',lowLiquidity(s,SES(),false)?'Vigilar':'Normal','Volumen y spread de la sesión')
  ].join('');
 }
-function profilePerformanceStrip(s){
- let rows=[
-  ['1 semana',s.perfWeek],
-  ['1 mes',s.perfMonth],
-  ['3 meses',s.perf3M],
-  ['6 meses',s.perf6M],
-  ['YTD',s.perfYtd],
-  ['1 año',s.perf1Y]
- ];
- return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
+// Cuánto ha subido o bajado en cada periodo, en el mercado en que la miras: LSX en € (las de EE. UU. con el
+// euro/dólar del BCE de cada fecha) y EE. UU. en su divisa. Sin dato fiable, «—».
+const PROFILE_PERIODS=[['1D','day'],['1S','week'],['1M','month'],['3M','quarter'],['6M','half'],['Año','ytd'],['1A','year']];
+function profilePeriodRows(s,isTr){
+ let day=null;
+ try{day=isTr?(N(s.trLiveChangePct)??N(canonicalQuote(s,true).change)):N(usSessionDisplayData(s,currentMarketSession()).regular.pct)}catch(_){day=N(s.changePct)}
+ const P=window.ViewInvAIPeriod;
+ return PROFILE_PERIODS.map(([label,key])=>({label,key,pct:key==='day'?day:P?P.stockPct(s,isTr,day,key):null})).filter(r=>!(r.key==='year'&&r.pct===null));
+}
+const profilePct=v=>v===null?'—':(v>0?'+':v<0?'−':'')+Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:Math.abs(v)<10?2:1,maximumFractionDigits:Math.abs(v)<10?2:1})+' %';
+// Fila de chips bajo el precio de la cabecera: siempre a la vista, en cualquier pestaña de la ficha.
+function profilePerfChipsHtml(s,isTr){
+ return '<div class="profile-perf-chips" aria-label="Variación por periodo">'+profilePeriodRows(s,isTr).map(r=>
+  '<span class="'+(r.pct===null?'flat':r.pct>0?'up':r.pct<0?'down':'flat')+'"><small>'+E(r.label)+'</small><b>'+E(profilePct(r.pct))+'</b></span>').join('')+'</div>';
 }
 function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
  return '<section class="profile-tab-panel" data-profile-panel="chart" hidden>'+
-   '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+
+   '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+'</section>'+
   '</section>'+
   '<section class="profile-tab-panel" data-profile-panel="ai" hidden>'+
    // Lectura de la IA, por qué se mueve hoy, plan de operación y próximo evento: todo lo de IA, junto.
@@ -734,7 +738,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div>'+profileIdentityHtml(s,isTr,marketTitle,company,ticker)+'</div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
-   '</div>'+
+   '</div>'+profilePerfChipsHtml(s,isTr)+
   '</header>';
 }
 

@@ -739,11 +739,17 @@ function radarAiRowD(row){
  if(!plan&&row.ai&&row.ai.verdict)plan='IA externa: '+row.ai.verdict;
  if(!plan&&row.speculative&&row.specReasons&&row.specReasons.length)plan='⚠ '+row.specReasons[0];
  const name=String(s.name||ticker||'—').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
- const chg=change===null?'':'<span class="d-chip '+(Math.abs(change)<0.005?'flat':change>0?'up':'down')+'">'+(change>0?'▲ ':change<0?'▼ ':'')+F(Math.abs(change),2)+' %</span>';
+ const chg=radarPeriodChip(s,preferTr,change);
  return '<li class="d-row d-tier-'+(row.speculative?'spec':row.tier)+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Puntuación AI '+n+'/100">'+n+'</em>'+
   '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E(ticker)+(()=>{const q=quantFor(s);return q?' · <em class="quant-tag" title="'+(q.market==='tr'?'Probabilidad de batir a la mediana de LSX en 5 sesiones (modelo entrenado con 5 años de LSX)':'Probabilidad de batir al S&amp;P 500 en 5 sesiones (modelo entrenado con 10 años)')+'">modelo '+Math.round(q.prob*100)+' %</em>':''})()+E(' · '+[preferTr?'LSX':(s.exchange||'EE. UU.'),level].filter(Boolean).join(' · '))+'</small>'+(plan?'<i class="d-row-ai">✦ '+E(plan)+'</i>':'')+'</span>'+
   '<span class="d-row-num">'+(price===null?'<small>'+(preferTr?'precio LSX pendiente':'sin precio')+'</small>':'<b>'+E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2}))+'</b>')+chg+'</span></button></li>';
+}
+// Chip de variación según el botón de periodo (1D/1S/1M; «desde la compra» se ve como la del día).
+function radarPeriodChip(s,preferTr,dayPct,digits=2){
+ const P=window.ViewInvAIPeriod,m=P&&P.get()!=='since'?P.get():'day',v=P?P.stockPct(s,preferTr,dayPct,m):N(dayPct),tag=P?P.tag(m):'';
+ if(v===null)return tag?'<span class="d-chip flat">— '+E(tag)+'</span>':'';
+ return '<span class="d-chip '+(Math.abs(v)<0.005?'flat':v>0?'up':'down')+'">'+(v>0?'▲ ':v<0?'▼ ':'')+F(Math.abs(v),digits)+' %'+(tag?' '+E(tag):'')+'</span>';
 }
 function radarAiShellD(rows,mode,counts,visible){
  const isTr=mode==='tr',ideas=counts.high+counts.opportunity;
@@ -757,7 +763,7 @@ function radarAiShellD(rows,mode,counts,visible){
    (()=>{const how='De '+(rows.analyzed||rows.length)+' valores analizados en '+(isTr?'Trade Republic / LSX':'EE. UU.')+', se quedan los que combinan tendencia, volumen, catalizadores y datos fiables. Cada idea se contrasta con noticias y con tu IA antes de enseñarse.';
     const html='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+E(how)+'</p><div class="ai-chips">'+(first?'<button type="button" data-ai-ask-q="'+E('Explícame por qué '+first+' está en el Radar AI hoy y qué riesgo tiene.')+'">Explícame '+E(first)+'</button>':'')+'<button type="button" data-ai-ask-q="Compara las ideas del Radar AI de hoy con mi cartera: ¿alguna encaja?">Compáralas con mi cartera</button></div></div>';
     return typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('radar-how','Cómo se eligen',how,html):html})()+'</section>'+
-  '<section class="d-group"><header><h3>Ideas de hoy</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
+  '<section class="d-group"><header><h3>Ideas de hoy</h3><span class="d-group-cur">'+(isTr?'EUR':'USD')+'</span>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'</header>'+
    '<div class="d-pills" role="group" aria-label="Filtrar por nivel">'+pill('all','Todas',counts.high+counts.opportunity+counts.watch)+pill('high','Alta',counts.high)+pill('opportunity','Oportunidad',counts.opportunity)+pill('watch','Vigilancia',counts.watch)+pill('spec','Especulativo',counts.spec)+'</div>'+
    list+'</section>'+
   radarAnalystsShellD(visible)+
@@ -848,7 +854,7 @@ function radarCrashRowD(c,isTr){
  return '<li class="d-row d-crash d-crash-'+c.cause.kind+'"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(isTr?'1':'0')+'" title="'+E(c.cause.title||v.text)+'">'+
   '<em class="ai-score d-ring" data-band="'+(n>=65?'high':n>=45?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'" title="Probabilidad orientativa de rebote '+n+'/100">'+n+'</em>'+
   '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,isTr?'LSX':(s.exchange||'EE. UU.'),c.prior!==null?'mes previo '+(c.prior>=0?'+':'')+F(c.prior,0)+' %':''].filter(Boolean).join(' · '))+'</small><i class="d-row-ai is-'+v.tone+'">'+(c.cause.kind==='trap'?'⚠ ':'✦ ')+E(v.text)+'</i>'+(()=>{const h=crashHistoryFor(c.ch);return h?'<i class="d-row-hist">Históricamente, caídas de '+E(h.key)+': rebotan a 5 sesiones el '+F(h.reboundRate,0)+' % (mediana '+radarPct(h.median,1)+', n='+Number(h.n).toLocaleString('es-ES')+')</i>':''})()+'</span>'+
-  '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b><span class="d-chip down">▼ '+F(Math.abs(c.ch),1)+' %</span></span></button></li>';
+  '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b>'+radarPeriodChip(s,isTr,c.ch,1)+'</span></button></li>';
 }
 // Pestaña «Caídas» del Radar: mismo mercado (TR / EE. UU.) que el Radar AI.
 function renderCrashView(){
@@ -874,7 +880,7 @@ function radarCrashSectionD(mode){
  const head=(typeof F2==='function'?F2('radar-crash-how','Cómo se leen',how,'<div class="d-reading"><p>'+E(how)+'</p><div class="ai-chips">'+(list[0]?'<button type="button" data-ai-ask-q="'+E('¿La caída de hoy de '+(list[0].s.ticker||list[0].s.name)+' es una sobrerreacción o tiene motivo de fondo? Dime qué vigilar antes de plantear un rebote.')+'">¿Rebote o trampa en '+E(list[0].s.ticker||'')+'?</button>':'')+'</div></div>'):'');
  const rest=list.length-over-trap,summary=list.length?[over?over+(over===1?' posible rebote':' posibles rebotes'):'',trap?trap+' con motivo de fondo':'',rest?rest+' por aclarar':''].filter(Boolean).join(' · '):'Ningún valor cae hoy un 25 % o más sin venir ya de un desplome.';
  return '<section class="d-pulse d-crash-pulse"><small>Caídas bruscas · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(list.length?list.length+(list.length===1?' caída de golpe':' caídas de golpe'):'Hoy ninguna')+'</h2><p class="d-hero-note">'+E(summary)+'</p>'+(()=>{const c=quant.report&&quant.report.crash,a=c&&c.all&&c.all['5d'];if(!a){loadQuant();return''}return '<p class="d-hero-note quant-note">✦ En '+Number(c.n).toLocaleString('es-ES')+' caídas así desde '+E(String(c.period&&c.period[0]||'').slice(0,4))+', a 5 sesiones rebotó el '+F(a.reboundRate,0)+' % (mediana '+radarPct(a.median,1)+'; la mitad central entre '+radarPct(a.p25,0)+' y '+radarPct(a.p75,0)+').</p>'})()+head+'</section>'+
-  (list.length?'<section class="d-group d-crash-group"><header><h3>¿Rebote o trampa?</h3><span>'+(isTr?'EUR':'USD')+'</span></header>'+
+  (list.length?'<section class="d-group d-crash-group"><header><h3>¿Rebote o trampa?</h3><span class="d-group-cur">'+(isTr?'EUR':'USD')+'</span>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'</header>'+
   '<ul class="d-list">'+list.map(c=>radarCrashRowD(c,isTr)).join('')+'</ul></section>':'')+crashScoreboardHtml();
 }
 // Historial de caídas bruscas: el servidor guarda cada día las que entran (a las 15:45 de Nueva

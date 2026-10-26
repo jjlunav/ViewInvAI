@@ -128,7 +128,7 @@
    (incomplete?'<p class="d-wealth-sub">Alguna posición aún no tiene cotización: el total puede estar incompleto.</p>':'')+
    (A?A.briefHtml():'')+
   '</section>'+
-  '<section class="d-group"><header><h3>Tus cuentas</h3><button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
+  '<section class="d-group"><header><h3>Tus cuentas</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'<button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
    sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(()=>{const v=perAccount(p),tag=PER()?PER().tag():'';return v===null?(tag?'<span class="d-chip flat">— '+E(tag)+'</span>':''):Math.abs(v)>=0.005||tag?chip(v,{suffix:tag}):''})()+'</span></button></li>').join('')+
   '</ul></section>';
  }
@@ -161,7 +161,7 @@
    return '<li class="d-row"><button type="button" class="d-row-main d-row-noring"'+open+'><span class="d-row-text"><b>'+E(r.name)+'</b><small>'+E(r.sub)+'</small></span>'+
     '<span class="d-row-num">'+(r.price===null?'<small>sin precio</small>':'<b>'+priceMoney(r.price,r.cur)+'</b>')+(r.st?perStockChip(r.st,r.preferTr,r.change):perMode()==='day'||perMode()==='since'?(N(r.change)===null?'':chip(r.change,{pct:true})):'<span class="d-chip flat">— '+E(PER().tag(perMode()))+'</span>')+'</span></button></li>';
   };
-  return '<section class="d-group"><header><h3>Favoritos'+(rows.length>shown.length?' · '+rows.length:'')+'</h3><button type="button" class="d-more-link" data-today-go="favorites" aria-label="Abrir Favoritos">›</button></header><ul class="d-list">'+shown.map(row).join('')+'</ul></section>';
+  return '<section class="d-group"><header><h3>Favoritos'+(rows.length>shown.length?' · '+rows.length:'')+'</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'<button type="button" class="d-more-link" data-today-go="favorites" aria-label="Abrir Favoritos">›</button></header><ul class="d-list">'+shown.map(row).join('')+'</ul></section>';
  }
  function ideasHtmlD(){
   let rows=[];try{rows=[...radarAiCandidateRows('tr'),...radarAiCandidateRows('us')].filter(r=>!r.speculative)}catch(_){rows=[]}

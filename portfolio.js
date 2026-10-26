@@ -4348,7 +4348,8 @@ function portfolioDaySummary(){
       if(ok)for(const p of positions){
         const stock=stockByKey(p.stock_key),v=positionSortMetrics(p).value;
         if(!stock||v===null){ok=false;break}
-        const pct=P.stockPct(stock,true,null,m),amt=P.amountFromPct(v,pct);
+        const basis=positionPeriodBasis(p,m),pnl=positionSortMetrics(p).pnlAbs;
+        const pct=P.stockPct(stock,true,null,m),amt=basis==="since"?pnl:P.amountFromPct(v,pct);
         if(amt===null){ok=false;break}
         sum+=amt;
       }
@@ -4399,16 +4400,28 @@ function dChip(v,{pct=null,money=true,suffix=""}={}){
 }
 // Chip de una fila según el botón de periodo (1D, 1S, 1M, Σ): importe en la divisa de la posición y %.
 // Si no hay dato fiable para el periodo, «—» con su etiqueta (nunca una cifra inventada).
+// Cómo contar el periodo de una posición: si la compraste entera dentro del periodo, cuenta desde tu compra
+// (la variación de la semana incluiría días en que aún no la tenías); si añadiste acciones dentro, la cifra es
+// aproximada (≈); si es anterior al periodo, valor × variación del periodo.
+function positionPeriodBasis(p,m){
+  if(!p||m==="since")return"period";
+  const now=new Date(),start=m==="day"?new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime():now.getTime()-(m==="week"?7:30)*864e5;
+  const opened=Date.parse(p.opened_at||""),last=Date.parse(p.last_buy_at||"");
+  if(Number.isFinite(opened)&&opened>start)return"since";
+  if(Number.isFinite(last)&&last>start)return"approx";
+  return"period";
+}
 function dPeriodChip(r){
-  const P=window.ViewInvAIPeriod,m=P?P.get():"day",cur=r.cur||"EUR";
+  const P=window.ViewInvAIPeriod,m=P?P.get():"day",cur=r.cur||"EUR",basis=positionPeriodBasis(r.p,m);
   let money=null,pct=null;
-  if(m==="since"){money=r.nPnl;pct=r.nPnlPct}
+  if(m==="since"||basis==="since"){money=r.nPnl;pct=r.nPnlPct}
   else if(m==="day"){pct=r.dayPct;money=P?P.amountFromPct(r.nValue,pct):null}
   else{pct=r.stock&&P?P.stockPct(r.stock,r.preferTr,r.dayPct,m):null;money=P?P.amountFromPct(r.nValue,pct):null}
   const tag=P?P.tag(m):"",ok=v=>v!==null&&v!==undefined&&Number.isFinite(v);
   if(!ok(money)&&!ok(pct))return'<span class="d-chip flat">—'+(tag?" "+esc(tag):"")+'</span>';
   const v=ok(money)?money:pct,up=v>0,down=v<0;
-  return'<span class="d-chip '+(up?"up":down?"down":"flat")+'">'+(up?"▲ ":down?"▼ ":"")+(ok(money)?esc(formatMoney(Math.abs(money),cur)):"")+(ok(money)&&ok(pct)?" · ":"")+(ok(pct)?formatNumber(Math.abs(pct),2)+" %":"")+(tag?" "+esc(tag):"")+'</span>';
+  const approx=basis==="approx"?"≈ ":"",title=basis==="since"?' title="Comprada dentro del periodo: cuenta desde tu compra"':basis==="approx"?' title="Añadiste acciones dentro del periodo: cifra aproximada"':"";
+  return'<span class="d-chip '+(up?"up":down?"down":"flat")+'"'+title+'>'+(up?"▲ ":down?"▼ ":"")+approx+(ok(money)?esc(formatMoney(Math.abs(money),cur)):"")+(ok(money)&&ok(pct)?" · ":"")+(ok(pct)?formatNumber(Math.abs(pct),2)+" %":"")+(tag?" "+esc(tag):"")+'</span>';
 }
 // Valor, P&L y cambio del día de una posición, en euros (también las de fuera del catálogo).
 function dPositionRow(p){
@@ -4598,7 +4611,7 @@ function dReadingHtml(label,groups,rows,funds){
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";
   const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
-  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
 }
 function dHeroHtml(portfolio,positions){
   const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
