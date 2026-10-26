@@ -641,3 +641,12 @@
 @ .admin-cred-form label{display:grid;gap:3px;font-size:12px;color:var(--d-mut);min-width:0}
 @ .admin-cred-form input{min-height:34px;border-radius:10px;border:1px solid var(--d-hair-2);background:var(--d-surf-2);color:var(--d-ink);padding:6px 9px;font:inherit;font-size:13px;width:100%;min-width:0;box-sizing:border-box}
 @ .admin-cred-actions{display:flex;gap:8px;align-items:end}
+/* Contraste de precio: a todo el ancho y cada fuente en dos líneas (nombre arriba; precio y diferencia abajo). */
+@ .profile-price-check-row{grid-column:1/-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+@ .profile-price-check-row>strong{min-width:0;text-align:right}
+@ .price-check[open]{grid-column:1/-1}
+@ .price-check ul{display:grid;gap:6px}
+@ .price-check li{grid-template-columns:minmax(0,1fr) auto!important;row-gap:1px!important;align-items:baseline}
+@ .price-check li>span{grid-column:1/-1;white-space:normal;overflow-wrap:anywhere;color:var(--d-mut)}
+@ .price-check li>b{font-variant-numeric:tabular-nums}
+@ .price-check p{margin:6px 0 0;font-size:11px;line-height:1.4;color:var(--d-mut);font-weight:500;text-align:left}

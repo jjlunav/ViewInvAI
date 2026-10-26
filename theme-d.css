@@ -739,3 +739,12 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .admin-cred-form label {display:grid;gap:3px;font-size:12px;color:var(--d-mut);min-width:0}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .admin-cred-form input {min-height:34px;border-radius:10px;border:1px solid var(--d-hair-2);background:var(--d-surf-2);color:var(--d-ink);padding:6px 9px;font:inherit;font-size:13px;width:100%;min-width:0;box-sizing:border-box}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .admin-cred-actions {display:flex;gap:8px;align-items:end}
+/* Contraste de precio: a todo el ancho y cada fuente en dos líneas (nombre arriba; precio y diferencia abajo). */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-price-check-row {grid-column:1/-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-price-check-row>strong {min-width:0;text-align:right}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check[open] {grid-column:1/-1}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check ul {display:grid;gap:6px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check li {grid-template-columns:minmax(0,1fr) auto!important;row-gap:1px!important;align-items:baseline}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check li>span {grid-column:1/-1;white-space:normal;overflow-wrap:anywhere;color:var(--d-mut)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check li>b {font-variant-numeric:tabular-nums}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .price-check p {margin:6px 0 0;font-size:11px;line-height:1.4;color:var(--d-mut);font-weight:500;text-align:left}
