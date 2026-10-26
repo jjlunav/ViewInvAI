@@ -515,7 +515,7 @@ function profileGoalPlanHtml(g){
  if(g.kind==='frozen'){
   head='Congeladas hasta el '+until+' · el Objetivo no las toca';
  }else if(g.kind==='buy'){
-  head='Comprar '+F(g.units,0)+' acciones · Stop '+px(g.stopEur)+' (−'+pct(g.stopPct)+')'+(N(g.targetEur)!==null?' · Objetivo '+px(g.targetEur)+' (+'+pct(g.targetPct)+')':'');
+  head='Comprar '+F(g.units,0)+(Number(g.units)===1?' acción':' acciones')+' · Stop '+px(g.stopEur)+' (−'+pct(g.stopPct)+')'+(N(g.targetEur)!==null?' · Objetivo '+px(g.targetEur)+' (+'+pct(g.targetPct)+')':'');
   grid='<div><small>ENTRADA</small><b>'+px(g.entryEur)+'</b><span>precio de compra</span></div><div><small>STOP</small><b class="negative">'+px(g.stopEur)+'</b><span>−'+pct(g.stopPct)+'</span></div><div><small>OBJETIVO</small><b class="positive">'+px(g.targetEur)+'</b><span>+'+pct(g.targetPct)+'</span></div>';
  }else if(g.kind==='wait'){
   head=N(g.limitPriceEur)!==null?'Esperar · no comprar por encima de '+px(g.limitPriceEur):'Esperar · el punto de entrada aún no es limpio';
@@ -621,7 +621,7 @@ function profileTradePlanHtml(s,isTr=false){
   let shares=perShare>0?riskMoney/perShare:0;
   const maxShares=capital*band.maxPos/100/entry;shares=Math.min(shares,maxShares);
   const whole=Math.floor(shares),amount=(whole>=1?whole:shares)*entry;
-  sizing='<div class="plan-size"><small>TAMAÑO</small><b>'+(whole>=1?whole+' acciones':'≈ '+F(shares,2)+' acciones (fraccionadas)')+'</b><span>≈ '+F(amount,0)+' '+sym+' · arriesgas '+F(Math.min(riskMoney,shares*perShare),0)+' '+sym+' ('+F(band.risk*(spec.speculative?.5:1),2)+'% de tu cartera)</span></div>';
+  sizing='<div class="plan-size"><small>TAMAÑO</small><b>'+(whole>=1?whole+(whole===1?' acción':' acciones'):'≈ '+F(shares,2)+' acciones (fraccionadas)')+'</b><span>≈ '+F(amount,0)+' '+sym+' · arriesgas '+F(Math.min(riskMoney,shares*perShare),0)+' '+sym+' ('+F(band.risk*(spec.speculative?.5:1),2)+'% de tu cartera)</span></div>';
  }else sizing='<div class="plan-size"><small>TAMAÑO</small><b>Inicia sesión y añade tu cartera</b><span>El tamaño se calcula con el '+F(band.risk,1)+'% de tu cartera como riesgo máximo.</span></div>';
  const chips=Object.entries(PLAN_BANDS).map(([k,b])=>'<button type="button" class="plan-risk'+(k===key?' active':'')+'" data-plan-risk="'+k+'" aria-pressed="'+(k===key)+'">'+b.label+'</button>').join('');
  const px=v=>F(v,v<10?3:2)+' '+sym;
