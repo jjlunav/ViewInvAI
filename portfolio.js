@@ -741,6 +741,18 @@ document.addEventListener('click',event=>{
   try{localStorage.setItem('viewinvai:position-sort',b.dataset.positionSort)}catch(_){}
   if(state.primaryTab!=='goal')renderApp();
 });
+// Cifra de cada fila en Carteras: «desde la compra» u «hoy», en € y %, solo € o solo %. Se recuerda.
+const PF_METRIC_KEY='viewinvai:pf-metric';
+function pfMetric(){try{const v=JSON.parse(localStorage.getItem(PF_METRIC_KEY)||'{}');return{period:v.period==='day'?'day':'since',unit:['money','pct'].includes(v.unit)?v.unit:'both'}}catch(_){return{period:'since',unit:'both'}}}
+document.addEventListener('click',event=>{
+  const b=event.target.closest&&event.target.closest('[data-pf-metric]');if(!b)return;
+  event.preventDefault();event.stopPropagation();
+  const m=pfMetric();
+  if(b.dataset.pfMetric==='period')m.period=m.period==='since'?'day':'since';
+  else m.unit={both:'money',money:'pct',pct:'both'}[m.unit];
+  try{localStorage.setItem(PF_METRIC_KEY,JSON.stringify(m))}catch(_){}
+  if(state.primaryTab!=='goal')renderApp();
+});
 // ----- Riesgo y dividendos de la cartera (con los datos ya cargados, sin peticiones) -----
 const SECTOR_ES={"Electronic Technology":"Tecnología electrónica","Technology Services":"Servicios tecnológicos","Health Technology":"Tecnología sanitaria","Health Services":"Servicios sanitarios","Finance":"Finanzas","Retail Trade":"Comercio minorista","Consumer Non-Durables":"Consumo básico","Consumer Durables":"Consumo duradero","Consumer Services":"Servicios al consumo","Producer Manufacturing":"Industria","Process Industries":"Industria de procesos","Industrial Services":"Servicios industriales","Energy Minerals":"Energía","Non-Energy Minerals":"Materias primas","Utilities":"Servicios públicos","Transportation":"Transporte","Communications":"Comunicaciones","Commercial Services":"Servicios comerciales","Distribution Services":"Distribución","Miscellaneous":"Otros","Government":"Sector público"};
 const COUNTRY_ES={US:"EEUU",DE:"Alemania",NL:"Países Bajos",IE:"Irlanda",FR:"Francia",ES:"España",GB:"Reino Unido",CA:"Canadá",CH:"Suiza",JP:"Japón",CN:"China",KY:"Islas Caimán",LU:"Luxemburgo",IL:"Israel",TW:"Taiwán",DK:"Dinamarca",SE:"Suecia",IT:"Italia",BE:"Bélgica",AU:"Australia",BR:"Brasil",KR:"Corea del Sur",FI:"Finlandia",NO:"Noruega",BM:"Bermudas",JE:"Jersey",HK:"Hong Kong",IN:"India",SG:"Singapur",AT:"Austria",PT:"Portugal"};
@@ -4598,7 +4610,7 @@ function dReadingHtml(label,groups,rows,funds){
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";
   const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
-  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+dMetricControlsHtml()+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
 }
 function dHeroHtml(portfolio,positions){
   const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
