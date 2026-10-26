@@ -502,6 +502,11 @@ const PLAN_BANDS={
 function planRiskKey(){try{const v=localStorage.getItem('viewinvai:plan-risk');return PLAN_BANDS[v]?v:'balanced'}catch(_){return'balanced'}}
 // Si la acción está en el plan del Objetivo de la cartera seleccionada (mismo mercado), la ficha
 // muestra ese plan (stop y objetivo de «Hoy toca») en lugar del plan orientativo por ATR.
+// La ficha se repinta con cada cotización: los desplegables recuerdan si estaban abiertos (si no, se cerraban
+// al instante y parecía que la flecha no hacía nada).
+const profileOpenDetails=new Set();
+const keepOpenAttr=k=>' data-keep-open="'+E(k)+'"'+(profileOpenDetails.has(k)?' open':'');
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.matches&&d.matches('details[data-keep-open]')){if(d.open)profileOpenDetails.add(d.dataset.keepOpen);else profileOpenDetails.delete(d.dataset.keepOpen)}},true);
 function profileGoalPlanHtml(g){
  const px=v=>{const n=N(v);if(n===null)return'—';const d=Math.abs(n)<10?3:2;return n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d})+' €'},pct=v=>F(Math.abs(N(v)||0),1)+'%';
  let head='',grid='',note='';
@@ -521,7 +526,7 @@ function profileGoalPlanHtml(g){
   if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
   if(g.holdText){head='⏳ '+String(g.holdText).replace(/^Mantener [^:]*: /,'');note+='<p class="plan-note">'+E(g.holdText)+'</p>'}
  }
- return '<details class="profile-plan" data-profile-plan data-plan-source="goal"><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
+ return '<details class="profile-plan" data-profile-plan data-plan-source="goal"'+keepOpenAttr('goal-plan')+'><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
   '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+frozenNote+
   '<p class="plan-note">Es el mismo plan que «Hoy toca» en el Objetivo de esta cartera (importes en €).</p></div></details>';
 }
@@ -534,7 +539,7 @@ function profileEventInsightHtml(s){
  const memo=eventInsightMemo.get(key);
  setTimeout(()=>{const box=document.querySelector('[data-event-insight="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');
   if(memo&&Date.now()-memo.at<15*60e3){if(box)eventInsightRender(box,memo.data)}else loadEventInsight(key,true)},0);
- return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"><summary><span><small>PRÓXIMO EVENTO</small><b data-event-head data-i18n-content>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
+ return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"'+keepOpenAttr('event:'+key)+'><summary><span><small>PRÓXIMO EVENTO</small><b data-event-head data-i18n-content>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
 }
 const eventInsightMemo=new Map();
 function eventInsightRender(box,data){
@@ -1113,11 +1118,31 @@ async function loadAiBrief(root,s,preferTr=false){
  let slot=root&&root.querySelector('[data-ai-auto-key="'+CSS.escape(stockKey(s))+'"]');if(!slot)return;
  if(!window.ViewInvAIAuth?.getUser?.()){slot.innerHTML='<span class="ai-live-dot"></span><span>Inicia sesión para activar el análisis IA automático.</span>';return}
  let cacheKey=stockKey(s)+'|'+(preferTr?'tr':'us'),cached=aiBriefCache.get(cacheKey);
- if(cached&&Date.now()-cached.at<120000){slot.innerHTML=cached.html;return}
- slot.innerHTML='<span class="ai-live-dot thinking"></span><span>IA analizando mercado, tendencia y catalizadores…</span>';
- try{
-  let data=await aiApiAsk(s,preferTr,'Genera una lectura rápida y accionable del estado actual: momentum, tendencia, riesgo FOMO, noticia/catalizador principal y qué confirmación faltaría antes de tomar una decisión.',[]);
-  let html='<span class="ai-live-dot active"></span><span><b>'+E(data.signal||'LECTURA IA')+(N(data.confidence)!==null?' · '+Math.round(N(data.confidence))+'%':'')+'</b> · '+E(data.summary||data.answer||'Análisis completado.')+'</span>';
-  aiBriefCache.set(cacheKey,{at:Date.now(),html});slot.innerHTML=html;
- }catch(e){slot.innerHTML='<span class="ai-live-dot"></span><span>IA avanzada no disponible ahora.</span>'}
+ if(cached&&Date.now()-cached.at<120000){slot.hidden=false;slot.innerHTML=cached.html;return}
+ // Mientras piensa, la sección no se queda colgada: se oculta y sale un globo flotante «IA analizando…».
+ // La ficha se repinta con cada cotización: si ya hay una petición en marcha, se espera a esa.
+ slot.hidden=true;
+ let job=aiBriefInflight.get(cacheKey);
+ if(!job){
+  aiWorkingBubble(true);
+  job=aiApiAsk(s,preferTr,'Genera una lectura rápida y accionable del estado actual: momentum, tendencia, riesgo FOMO, noticia/catalizador principal y qué confirmación faltaría antes de tomar una decisión.',[])
+   .then(data=>{const html='<span class="ai-live-dot active"></span><span><b>'+E(data.signal||'LECTURA IA')+(N(data.confidence)!==null?' · '+Math.round(N(data.confidence))+'%':'')+'</b> · '+E(data.summary||data.answer||'Análisis completado.')+'</span>';
+    aiBriefCache.set(cacheKey,{at:Date.now(),html});aiWorkingBubble(false,'✓ Lectura IA lista');return html})
+   .catch(()=>{aiWorkingBubble(false,'IA avanzada no disponible ahora');return '<span class="ai-live-dot"></span><span>IA avanzada no disponible ahora.</span>'})
+   .finally(()=>aiBriefInflight.delete(cacheKey));
+  aiBriefInflight.set(cacheKey,job);
+ }
+ const html=await job;
+ const fresh=document.querySelector('[data-ai-auto-key="'+CSS.escape(stockKey(s))+'"]')||slot;
+ fresh.innerHTML=html;fresh.hidden=false;
+}
+const aiBriefInflight=new Map();
+// Globo flotante (encima de la barra inferior) mientras la IA analiza; al terminar avisa y se va solo.
+function aiWorkingBubble(on,doneText){
+ let el=document.getElementById('aiWorkingBubble');
+ if(!el){el=document.createElement('div');el.id='aiWorkingBubble';el.className='ai-working-bubble';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.appendChild(el)}
+ clearTimeout(el._t);
+ if(on){el.innerHTML='<span class="ai-live-dot thinking"></span><span>✦ IA analizando…</span>';el.classList.add('show');return}
+ el.innerHTML='<span>'+E(doneText||'Listo')+'</span>';el.classList.add('show');
+ el._t=setTimeout(()=>el.classList.remove('show'),2200);
 }
