@@ -666,3 +666,21 @@
    redondo visible. Antes era el carácter «⌄», que se veía como una «v» suelta y no giraba. */
 @ .profile-plan>summary::after{content:""!important;flex:0 0 28px;width:28px;height:28px;border-radius:50%;border:1px solid var(--d-hair);background:var(--d-surf-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/16px no-repeat;opacity:1!important;transition:transform .2s}
 @ .profile-plan[open]>summary::after{transform:rotate(180deg)}
+/* Menú «⋯» de Carteras: «Actualizar precios» lleva la clase .portfolio-refresh, que en otras pantallas es un botón
+   cuadrado de icono; aquí se veía aplastado y asomaba fuera del menú («Act… pre…»). Igual que las demás filas. */
+@ .d-more-menu button.portfolio-refresh{position:static!important;inset:auto!important;transform:none!important;margin:0!important;width:auto!important;height:auto!important;min-width:0!important;max-width:none!important;min-height:0!important;display:flex!important;justify-content:flex-start!important;gap:10px!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--d-ink)!important;font:600 14px "VI Manrope",sans-serif!important;padding:10px!important;border-radius:10px!important;white-space:nowrap!important;overflow:visible!important}
+@ .d-more-menu button.portfolio-refresh .pf-icon{width:18px!important;height:18px!important;color:var(--d-mut)!important}
+@ .d-more-menu{z-index:60!important;max-width:calc(100vw - 32px);display:flex!important;flex-direction:column!important;align-items:stretch!important;width:max-content!important;min-width:220px!important;gap:0!important}
+@ .d-more-menu>button{width:100%!important;justify-content:flex-start!important;white-space:nowrap!important;font:600 14px "VI Manrope",sans-serif!important}
+@ .d-more-menu>button .pf-icon{width:18px!important;height:18px!important}
+/* La fila de acciones cabe en el ancho del móvil: los botones se encogen y «⋯» es un botón cuadrado fijo. */
+@ .d-actions{min-width:0;flex-wrap:nowrap}
+@ .d-actions>button{min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis}
+@ .d-actions>.d-more{flex:0 0 40px;position:relative}
+@media (max-width:420px){@ .d-actions>button{font-size:12.5px!important;gap:4px;padding:0 6px}@ .d-actions>button .pf-icon{width:14px;height:14px}}
+/* Aviso de operaciones incoherentes bajo «Desde la compra». */
+@ .d-stat-warn{display:block;margin-top:4px;padding:0;border:0;background:none;color:#f5b544;font:700 12px "VI Manrope",sans-serif;text-align:left;cursor:pointer;text-decoration:underline}
+/* Interruptores de la cifra de cada fila en Carteras (desde la compra / hoy y € / %). */
+@ .d-group>header .d-metric{display:flex;gap:6px;margin-left:auto;margin-right:8px}
+@ .d-metric button{border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font:700 12px "VI Manrope",sans-serif;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+@ .d-metric button:active{transform:scale(.96)}
