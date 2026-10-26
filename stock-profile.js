@@ -102,7 +102,7 @@ function profileGeneralBusinessStats(s){
 }
 function profileGeneralPrimaryStats(s,isTr,se){
  let low=N(s.usLiveDayLow)??N(s.dayLow),high=N(s.usLiveDayHigh)??N(s.dayHigh);
- let range=low!==null&&high!==null?PR(low)+' - '+PR(high):'—';
+ let range=low!==null&&high!==null?usRangeText(low,high):'—';
  const key=stockKey(s),tr=isTr?'1':'0';
  const rangeHtml=isTr
   ?'<span data-profile-tr-range-key="'+E(key)+'">Cargando…</span>'
@@ -458,7 +458,11 @@ function profileSectorMoves(){
  profileSectorCache={stamp,map};return map;
 }
 function profileWhyMovingHtml(s,isTr=false){
- const chg=isTr?(N(s.trLiveChangePct)??N(s.changePct)):N(s.changePct);
+ // La misma variación que enseña la cabecera (en vivo si la hay); antes usaba la del último snapshot y
+ // podía decir «sube un 12,6 %» con la cabecera en +10,54 %.
+ let chg=null;
+ if(isTr)chg=N(s.trLiveChangePct)??N(s.changePct);
+ else{try{chg=N(usSessionDisplayData(s,currentMarketSession()).regular.pct)}catch(_){}if(chg===null)chg=N(s.changePct)}
  if(chg===null||Math.abs(chg)<1.5)return'';
  const up=chg>0,reasons=[];
  const now=Date.now();
