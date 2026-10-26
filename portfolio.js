@@ -5,6 +5,7 @@ const state = {
   watchlist: [],
   brokers: [],
   portfolioTransactionSummaries: {},
+  portfolioTxIssues: {},
   selectedPortfolioId: null,
   primaryTab: "portfolio",
   goal: null,
@@ -738,6 +739,18 @@ function positionSortBarHtml(count){
 document.addEventListener('click',event=>{
   const b=event.target.closest&&event.target.closest('[data-position-sort]');if(!b)return;
   try{localStorage.setItem('viewinvai:position-sort',b.dataset.positionSort)}catch(_){}
+  if(state.primaryTab!=='goal')renderApp();
+});
+// Cifra de cada fila en Carteras: «desde la compra» u «hoy», en € y %, solo € o solo %. Se recuerda.
+const PF_METRIC_KEY='viewinvai:pf-metric';
+function pfMetric(){try{const v=JSON.parse(localStorage.getItem(PF_METRIC_KEY)||'{}');return{period:v.period==='day'?'day':'since',unit:['money','pct'].includes(v.unit)?v.unit:'both'}}catch(_){return{period:'since',unit:'both'}}}
+document.addEventListener('click',event=>{
+  const b=event.target.closest&&event.target.closest('[data-pf-metric]');if(!b)return;
+  event.preventDefault();event.stopPropagation();
+  const m=pfMetric();
+  if(b.dataset.pfMetric==='period')m.period=m.period==='since'?'day':'since';
+  else m.unit={both:'money',money:'pct',pct:'both'}[m.unit];
+  try{localStorage.setItem(PF_METRIC_KEY,JSON.stringify(m))}catch(_){}
   if(state.primaryTab!=='goal')renderApp();
 });
 // ----- Riesgo y dividendos de la cartera (con los datos ya cargados, sin peticiones) -----
@@ -2665,8 +2678,11 @@ async function refreshPortfolioTransactionSummary(portfolioId, rerender = true) 
   portfolioId = String(portfolioId || "");
   if (!state.user || !portfolioId) return null;
   try {
-    const data = await fetchJson('/api/transactions?portfolioId=' + encodeURIComponent(portfolioId) + '&limit=1');
+    // Se traen las operaciones (no solo el resumen) para detectar las incoherentes: un precio o una cantidad
+    // mal puestos dan un P&L realizado imposible y no se puede enseñar como bueno sin avisar.
+    const data = await fetchJson('/api/transactions?portfolioId=' + encodeURIComponent(portfolioId) + '&limit=500');
     state.portfolioTransactionSummaries[portfolioId] = data.portfolioSummary || null;
+    try { state.portfolioTxIssues[portfolioId] = transactionIssues(data.transactions || []).length; } catch (_) { state.portfolioTxIssues[portfolioId] = 0; }
     if (rerender && String(state.selectedPortfolioId || "") === portfolioId) renderActivePortfolioPanel();
     return data.portfolioSummary || null;
   } catch (error) {
@@ -4379,6 +4395,20 @@ function dChip(v,{pct=null,money=true,suffix=""}={}){
   const up=v>0,down=v<0,txt=money?formatMoney(Math.abs(v),"EUR"):formatNumber(Math.abs(v),2)+" %";
   return '<span class="d-chip '+(up?"up":down?"down":"flat")+'">'+(up?"▲ ":down?"▼ ":"")+txt+(pct!==null&&Number.isFinite(pct)?" · "+formatNumber(Math.abs(pct),2)+" %":"")+(suffix?" "+esc(suffix):"")+'</span>';
 }
+// Chip de una fila según la preferencia: periodo (desde la compra / hoy) y unidad (€ y %, €, %).
+function dMetricChip(sinceMoney,sincePct,dayMoney,dayPct){
+  const m=pfMetric(),day=m.period==='day',money=day?dayMoney:sinceMoney,pct=day?dayPct:sincePct,suffix=day?'hoy':'';
+  const okM=money!==null&&money!==undefined&&Number.isFinite(money),okP=pct!==null&&pct!==undefined&&Number.isFinite(pct);
+  if(m.unit==='pct'&&okP)return dChip(pct,{money:false,suffix});
+  if(m.unit==='money'&&okM)return dChip(money,{suffix});
+  if(okM)return dChip(money,{pct:okP?pct:null,suffix});
+  return okP?dChip(pct,{money:false,suffix}):(day?'<small>sin dato de hoy</small>':'');
+}
+function dMetricControlsHtml(){
+  const m=pfMetric();
+  return'<span class="d-metric"><button type="button" data-pf-metric="period" title="Cambiar entre desde la compra y hoy">'+(m.period==='day'?'Hoy':'Desde compra')+'</button>'+
+    '<button type="button" data-pf-metric="unit" title="Cambiar entre € y %">'+({both:'€ · %',money:'€',pct:'%'}[m.unit])+'</button></span>';
+}
 // Valor, P&L y cambio del día de una posición, en euros (también las de fuera del catálogo).
 function dPositionRow(p){
   const stock=stockByKey(p.stock_key),qty=num(p.quantity),preferTr=Number(p.prefer_tr)===1;
@@ -4459,14 +4489,14 @@ function dRowHtml(r){
   return'<li class="d-row d-position'+(isOpen?' open':'')+'" data-collapsible data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
     '<span class="d-row-text"><b>'+esc(r.name)+'</b><small>'+esc([qtyTxt,r.venue].filter(Boolean).join(" · "))+'</small>'+
     (r.verdict?'<i class="d-row-ai">✦ '+esc(r.verdict)+'</i>':'')+'</span>'+
-    '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null?'<small>sin precio</small>':dChip(r.pnl,{pct:r.pnlPct}))+'</span></button>'+
+    '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null&&r.dayEur===null?'<small>sin precio</small>':dMetricChip(r.pnl,r.pnlPct,r.dayEur,r.dayPct))+'</span></button>'+
     '<button type="button" class="d-row-toggle" data-d-row-toggle aria-expanded="'+(isOpen?'true':'false')+'" aria-label="Más datos de '+esc(r.name)+'" title="Precio, coste, comisiones y operaciones">▾</button>'+
     dRowDetailHtml(r,isOpen)+'</li>';
 }
 function dFundRowHtml(f){
   return'<li class="d-row"><button type="button" class="d-row-main" data-portfolio-asset="funds" aria-label="Abrir Fondos">'+dRing(null,f.kind)+
     '<span class="d-row-text"><b>'+esc(f.name)+'</b><small>'+esc(f.kind+" · en Fondos")+'</small>'+(f.dayPct!==null?'<i class="d-row-ai">Hoy '+(f.dayPct>=0?"+":"")+formatNumber(f.dayPct,2)+' %</i>':'')+'</span>'+
-    '<span class="d-row-num"><b>'+dMoney(f.value)+'</b>'+(f.pnl===null?'':dChip(f.pnl,{pct:f.pnlPct}))+'</span></button></li>';
+    '<span class="d-row-num"><b>'+dMoney(f.value)+'</b>'+dMetricChip(f.pnl,f.pnlPct,f.value!==null&&f.dayPct!==null&&f.dayPct>-100?f.value-f.value/(1+f.dayPct/100):null,f.dayPct)+'</span></button></li>';
 }
 function dAccountFunds(portfolio){
   const F=window.ViewInvAIFunds;
@@ -4561,7 +4591,7 @@ function dReadingHtml(label,groups,rows,funds){
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";
   const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
-  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+dMetricControlsHtml()+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
 }
 function dHeroHtml(portfolio,positions){
   const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
@@ -4577,6 +4607,7 @@ function dHeroHtml(portfolio,positions){
   let realized=0;if(txSummary&&txSummary.currencies)for(const[code,row]of Object.entries(txSummary.currencies)){const v=portfolioConvertAmount(num(row&&row.realizedPnl)||0,code,"EUR",fx);if(v!==null)realized+=v}
   const openPnl=eur(T.openPnl),fundPnl=funds.reduce((a,f)=>a+(f.pnl||0),0);
   const sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
+  const txIssues=Number(state.portfolioTxIssues[String(portfolio.id)])||0;
   const chart=dChartHtml(portfolio),range=dRangeKey();
   const fundDay=funds.reduce((a,f)=>a+(f.value!==null&&f.dayPct!==null?f.value-f.value/(1+f.dayPct/100):0),0);
   const day=(eur(T.day)||0)+fundDay;
@@ -4585,7 +4616,8 @@ function dHeroHtml(portfolio,positions){
     (partial?'<p class="d-hero-note">Parcial: falta el precio de alguna posición.</p>':(chart.gain!==null?'<p class="d-hero-note">Hoy '+(day>=0?"+":"−")+formatMoney(Math.abs(day),"EUR")+(funds.length?' · gráfico de acciones y ETC':'')+'</p>':''))+
     chart.svg+
     '<div class="d-stats"><div><small>Invertido</small><b>'+dMoney(invested)+'</b></div>'+
-      '<div><small>Desde la compra</small><b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>'+(realized?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+'</div>'+
+      '<div><small>Desde la compra</small><b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>'+(realized?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+
+        (txIssues?'<button type="button" class="d-stat-warn" data-portfolio-history="'+esc(portfolio.id)+'">⚠ '+txIssues+(txIssues===1?' operación':' operaciones')+' a revisar</button>':'')+'</div>'+
       '<button type="button" data-portfolio-cash-edit="'+esc(portfolio.id)+'" aria-label="Editar capital líquido"><small>Capital líquido ✎</small><b>'+dMoney(cash)+'</b></button></div>'+
   '</section>';
 }
