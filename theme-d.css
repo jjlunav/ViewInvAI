@@ -815,3 +815,9 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-perf-chips .up b {color:var(--d-up)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-perf-chips .down b {color:var(--d-down)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-perf-chips .flat b {color:var(--d-mut)}
+/* Variación del periodo (1S/1M) bajo la cotización de las tarjetas de los listados. */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-period {display:flex;gap:4px;justify-content:flex-end;align-items:baseline;font:700 12px "VI Manrope",sans-serif;font-variant-numeric:tabular-nums}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-period b {font:800 10.5px "VI Manrope",sans-serif;color:var(--d-mut)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-period.positive {color:var(--d-up)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-period.negative {color:var(--d-down)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .fav-lists-period {margin-left:auto;display:inline-flex}

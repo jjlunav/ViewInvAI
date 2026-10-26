@@ -69,6 +69,8 @@
  }
  document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-period-cycle]');if(!b)return;e.preventDefault();e.stopPropagation();next()});
  if(mode==='week'||mode==='month')loadFx();
+ // Botones escritos en el HTML (barras de los catálogos): se ponen en el modo guardado al cargar.
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint);else paint();
  window.ViewInvAIPeriod={get:()=>mode,set,next,symbol:m=>SYM[m||mode],label:m=>LABEL[m||mode],stockPct,amountFromPct,
   // Etiqueta corta para los chips de las listas: solo fuera de «hoy», para no recargar.
   tag:(m=mode)=>m==='day'?'':SYM[m],buttonHtml};

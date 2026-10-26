@@ -210,7 +210,11 @@ function compactInvestingQuoteHtml(s,preferTr=false){
  }
  // LSX cards of US-listed stocks also poll the US quote so their pre/post line stays live.
  const usPoll=preferTr&&market(s,'us')?' data-us-poll-key="'+E(stockKey(s))+'"':'';
- return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'"'+usPoll+'>'+main+extended+'</div>';
+ // Con el botón de periodo en semana o mes, debajo va la variación de ese periodo (en € si se mira en LSX).
+ const per=window.ViewInvAIPeriod,pm=per&&per.get();
+ let period='';
+ if(pm==='week'||pm==='month'){const v=per.stockPct(s,preferTr,null,pm);period='<div class="asset-investing-period '+(v===null?'':v>=0?'positive':'negative')+'"><b>'+E(per.tag(pm))+'</b> '+(v===null?'—':PC(v))+'</div>'}
+ return '<div class="asset-investing-quote" data-compact-quote-key="'+E(stockKey(s))+'" data-compact-quote-tr="'+(preferTr?'1':'0')+'"'+usPoll+'>'+main+extended+period+'</div>';
 }
 function compactInvestingQuoteCell(s,preferTr=false){
  return{label:'Cotización',value:'',tone:'',html:compactInvestingQuoteHtml(s,preferTr)};

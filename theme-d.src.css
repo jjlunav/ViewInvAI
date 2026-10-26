@@ -701,3 +701,9 @@
 @ .profile-perf-chips .up b{color:var(--d-up)}
 @ .profile-perf-chips .down b{color:var(--d-down)}
 @ .profile-perf-chips .flat b{color:var(--d-mut)}
+/* Variación del periodo (1S/1M) bajo la cotización de las tarjetas de los listados. */
+@ .asset-investing-period{display:flex;gap:4px;justify-content:flex-end;align-items:baseline;font:700 12px "VI Manrope",sans-serif;font-variant-numeric:tabular-nums}
+@ .asset-investing-period b{font:800 10.5px "VI Manrope",sans-serif;color:var(--d-mut)}
+@ .asset-investing-period.positive{color:var(--d-up)}
+@ .asset-investing-period.negative{color:var(--d-down)}
+@ .fav-lists-period{margin-left:auto;display:inline-flex}

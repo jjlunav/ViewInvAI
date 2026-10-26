@@ -1,3 +1,4 @@
+const trPeriodPct=(s,m)=>{const P=window.ViewInvAIPeriod;return P?P.stockPct(s,true,null,m):N(m==='week'?s.perfWeek:s.perfMonth)};
 /*
  * ViewInvAI catalog
  * -----------------
@@ -26,8 +27,9 @@ const CATALOG_COLUMNS={
   {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
   {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
   {id:'ema50',label:'EMA50',type:'number',value:s=>N(s.ema50),cell:s=>PR(s.ema50)},
-  {id:'week',label:'1 sem.',type:'number',value:s=>N(s.perfWeek),cell:s=>PC(s.perfWeek)},
-  {id:'month',label:'1 mes',type:'number',value:s=>N(s.perfMonth),cell:s=>PC(s.perfMonth)},
+  // En LSX, semana y mes en € (las de EE. UU. pasadas con el euro/dólar del BCE de cada fecha).
+  {id:'week',label:'1 sem. €',type:'number',value:s=>trPeriodPct(s,'week'),cell:s=>'<span class="'+C(trPeriodPct(s,'week'))+'">'+PC(trPeriodPct(s,'week'))+'</span>'},
+  {id:'month',label:'1 mes €',type:'number',value:s=>trPeriodPct(s,'month'),cell:s=>'<span class="'+C(trPeriodPct(s,'month'))+'">'+PC(trPeriodPct(s,'month'))+'</span>'},
   {id:'wkn',label:'WKN',type:'text',value:s=>s.trWkn||'',cell:s=>E(s.trWkn||'—')},
   {id:'isin',label:'ISIN',type:'text',value:s=>s.trIsin||s.isin||'',cell:s=>E(s.trIsin||s.isin||'—')},
   {id:'feed',label:'Feed',type:'text',value:s=>s.trLiveQuality||'LSX',cell:s=>E(s.trLiveQuality||'LSX')},
