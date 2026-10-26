@@ -708,7 +708,7 @@ function dExtremeNote(s,high){const r=dExtremeRatio(s,high);if(r===null)return''
 function renderHomeFeaturedD(box){
  dLoadIndices();
  const idx=(dMarket.indices||[]).slice(0,5),viewed=homeUserViewedStocks(3);
- const followed='<section class="d-group"><header><h3>Lo más seguido</h3><button type="button" class="d-more-link" data-market-board="indices" aria-label="Ver todos los índices">›</button></header><ul class="d-list">'+
+ const followed='<section class="d-group"><header><h3>Lo más seguido</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'<button type="button" class="d-more-link" data-market-board="indices" aria-label="Ver todos los índices">›</button></header><ul class="d-list">'+
   (idx.length?idx.map(dIndexRowHtml).join(''):'<li class="d-row d-row-empty">Actualizando índices…</li>')+
   viewed.map(s=>dStockRowHtml(s,'us','Lo has visto esta semana')).join('')+'</ul></section>';
  const src=dMarket.source,mv=dMarket.move;
@@ -729,7 +729,7 @@ function renderHomeFeaturedD(box){
  if(src==='tr')list.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
  const chips=[['gainers','Suben'],['losers','Bajan'],['active','Volumen'],['high52','Máx. 52 s'],['low52','Mín. 52 s']].map(([k,l])=>'<button type="button" class="'+(k===mv?'active':'')+'" data-d-move="'+k+'" aria-pressed="'+(k===mv)+'">'+l+'</button>').join('');
  const srcChips=[['us','EE. UU.'],['tr','LSX']].map(([k,l])=>'<button type="button" class="'+(k===src?'active':'')+'" data-d-move-src="'+k+'" aria-pressed="'+(k===src)+'">'+l+'</button>').join('');
- const moves='<section class="d-group"><header><h3>Movimientos fuertes'+(per==='week'?' · semana':per==='month'?' · mes':'')+'</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
+ const moves='<section class="d-group"><header><h3>Movimientos fuertes'+(per==='week'?' · semana':per==='month'?' · mes':'')+'</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'<button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
   '<div class="d-pills">'+chips+'<span class="d-pills-sep"></span>'+srcChips+'</div>'+closeNote+'<ul class="d-list">'+
   (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src,mv==='high52'||mv==='low52'?dExtremeNote(s,mv==='high52'):'')).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
  box.innerHTML='<div class="d-featured">'+dPulseHtml()+followed+moves+'</div>';

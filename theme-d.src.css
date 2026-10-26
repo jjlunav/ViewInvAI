@@ -680,14 +680,18 @@
 @media (max-width:420px){@ .d-actions>button{font-size:12.5px!important;gap:4px;padding:0 6px}@ .d-actions>button .pf-icon{width:14px;height:14px}}
 /* Aviso de operaciones incoherentes bajo «Desde la compra». */
 @ .d-stat-warn{display:block;margin-top:4px;padding:0;border:0;background:none;color:#f5b544;font:700 12px "VI Manrope",sans-serif;text-align:left;cursor:pointer;text-decoration:underline}
-/* Botón de periodo de la barra superior: un solo símbolo (1D, 1S, 1M, Σ) y un relleno que crece con el periodo. */
-@ #accountArea .period-button{width:34px!important;height:34px!important;min-width:34px!important;max-width:34px!important;padding:0!important;border-radius:11px!important;display:grid!important;place-items:center!important;box-shadow:none!important;position:relative;overflow:hidden}
-@ .period-button b{position:relative;z-index:1;font:800 12px "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
-@ .period-button::before{content:"";position:absolute;left:0;right:0;bottom:0;height:0;background:color-mix(in srgb,var(--d-accent) 28%,transparent);transition:height .25s}
-@ .period-button[data-period="week"]::before{height:34%}
-@ .period-button[data-period="month"]::before{height:66%}
-@ .period-button[data-period="since"]::before{height:100%;background:color-mix(in srgb,var(--d-accent) 38%,transparent)}
-@ .period-button[data-period="since"] b{font-size:16px}
+/* Botón de periodo en la cabecera de cada sección (1D, 1S, 1M, Σ): todos son el mismo interruptor.
+   El relleno crece con el periodo para reconocer el modo de un vistazo. */
+@ .d-group>header{gap:8px}
+@ .d-group>header>h3{margin-right:auto}
+@ .d-period{position:relative;overflow:hidden;display:inline-grid;place-items:center;min-width:44px;height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);cursor:pointer;flex:0 0 auto}
+@ .d-period b{position:relative;z-index:1;font:800 12.5px "VI Grotesk",sans-serif;letter-spacing:-.01em}
+@ .d-period::before{content:"";position:absolute;left:0;top:0;bottom:0;width:0;background:color-mix(in srgb,var(--d-accent) 30%,transparent);transition:width .25s}
+@ .d-period[data-period="week"]::before{width:34%}
+@ .d-period[data-period="month"]::before{width:67%}
+@ .d-period[data-period="since"]::before{width:100%}
+@ .d-period[data-period="since"] b{font-size:15px}
+@ .d-period:active{transform:scale(.94)}
 /* Variación por periodo en la ficha: seis chips bajo el precio, a todo el ancho de la cabecera. */
 @ .profile-perf-chips{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:8px 0 2px;padding:0 12px;width:100%;box-sizing:border-box}
 @ .profile-perf-chips::-webkit-scrollbar{display:none}

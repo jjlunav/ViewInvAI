@@ -4598,7 +4598,7 @@ function dReadingHtml(label,groups,rows,funds){
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";
   const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
-  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
 }
 function dHeroHtml(portfolio,positions){
   const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
