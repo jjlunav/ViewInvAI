@@ -322,34 +322,15 @@ function profilePeriodRows(s,isTr){
  return PROFILE_PERIODS.map(([label,key])=>({label,key,pct:key==='day'?day:P?P.stockPct(s,isTr,day,key):null})).filter(r=>!(r.key==='year'&&r.pct===null));
 }
 const profilePct=v=>v===null?'—':(v>0?'+':v<0?'−':'')+Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:Math.abs(v)<10?2:1,maximumFractionDigits:Math.abs(v)<10?2:1})+' %';
-// Variante A: fila de chips bajo el precio de la cabecera (siempre a la vista, desliza en horizontal).
+// Fila de chips bajo el precio de la cabecera: siempre a la vista, en cualquier pestaña de la ficha.
 function profilePerfChipsHtml(s,isTr){
  return '<div class="profile-perf-chips" aria-label="Variación por periodo">'+profilePeriodRows(s,isTr).map(r=>
   '<span class="'+(r.pct===null?'flat':r.pct>0?'up':r.pct<0?'down':'flat')+'"><small>'+E(r.label)+'</small><b>'+E(profilePct(r.pct))+'</b></span>').join('')+'</div>';
 }
-// Variante B: tarjeta «Rentabilidad» con barras proporcionales al inicio de la pestaña General.
-function profilePerfBarsHtml(s,isTr){
- const rows=profilePeriodRows(s,isTr),max=Math.max(1,...rows.map(r=>Math.abs(r.pct||0)));
- return '<section class="profile-perf-bars"><div class="pi-head"><b>Rentabilidad</b><span>'+(isTr?'LSX · en €':'EE. UU. · en $')+'</span></div>'+rows.map(r=>{
-  const w=r.pct===null?0:Math.max(2,Math.round(Math.abs(r.pct)/max*50)),tone=r.pct===null?'flat':r.pct>0?'up':r.pct<0?'down':'flat';
-  return '<div class="ppb-row '+tone+'"><small>'+E(r.label)+'</small><span class="ppb-track"><i style="'+(r.pct>=0?'left:50%':'right:50%')+';width:'+w+'%"></i></span><b>'+E(profilePct(r.pct))+'</b></div>';
- }).join('')+'</section>';
-}
-function profilePerformanceStrip(s){
- let rows=[
-  ['1 semana',s.perfWeek],
-  ['1 mes',s.perfMonth],
-  ['3 meses',s.perf3M],
-  ['6 meses',s.perf6M],
-  ['YTD',s.perfYtd],
-  ['1 año',s.perf1Y]
- ];
- return '<div class="profile-performance-strip">'+rows.map(([label,value])=>'<div><span>'+E(label)+'</span><strong class="'+C(value)+'">'+PC(value)+'</strong></div>').join('')+'</div>';
-}
 function profileVisualAnalysisHtml(s,isTr=false){
  let key=stockKey(s);
  return '<section class="profile-tab-panel" data-profile-panel="chart" hidden>'+
-   '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+profilePerformanceStrip(s)+'</section>'+
+   '<section class="profile-section profile-chart-section profile-chart-clean" id="profile-chart">'+miniChart(s,isTr)+'</section>'+
   '</section>'+
   '<section class="profile-tab-panel" data-profile-panel="ai" hidden>'+
    // Lectura de la IA, por qué se mueve hoy, plan de operación y próximo evento: todo lo de IA, junto.
@@ -757,7 +738,7 @@ function profileHeroHtml(s,isTr=false,opts={}){
     '<div class="profile-title">'+favButton(s,isTr)+'<div>'+profileIdentityHtml(s,isTr,marketTitle,company,ticker)+'</div></div>'+
     '<div class="profile-live"><small>'+(isTr?'LSX · cotización actual':'EEUU · cotización actual')+'</small><div class="profile-live-main">'+profileHeroQuoteHtml(s,se,isTr)+'</div></div>'+
     (opts.hideActions?'':'<div class="profile-primary-actions">'+profilePortfolioActionHtml(s,isTr)+profilePositionEditActionHtml(s,isTr)+profileNotificationActionHtml(s,isTr)+'</div>')+
-   '</div>'+(window.__perfVariant==='b'?'':profilePerfChipsHtml(s,isTr))+
+   '</div>'+profilePerfChipsHtml(s,isTr)+
   '</header>';
 }
 
@@ -928,7 +909,6 @@ function quickProfileHtml(s,opts={}){
   '<div class="unified-profile-body">'+
    profileBodyTabsHtml()+
    '<section class="profile-tab-panel active" data-profile-panel="general">'+
-   (window.__perfVariant==='b'?profilePerfBarsHtml(s,isTr):'')+
    profileCompanyIdentityHtml(s,isTr)+
    '<section class="profile-section profile-stats-section profile-primary-stats" id="profile-general"><div class="profile-section-head"><h3>Resumen de mercado</h3><span>Lo esencial primero</span></div><div class="profile-stat-list">'+profileGeneralPrimaryStats(s,isTr,se)+'</div></section>'+
    profileInsightsHtml(s)+
