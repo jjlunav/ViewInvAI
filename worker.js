@@ -648,6 +648,25 @@ async function ecbSeries(s){
   if(!obs.length)return null;
   return{id:s.id,label:s.label,region:s.region,unit:s.unit||"%",value:obs[0].value,date:obs[0].date,prev:obs[1]?obs[1].value:null,prevDate:obs[1]?obs[1].date:null,source:"Banco Central Europeo",digits:s.digits||2};
 }
+// Euro/dólar del BCE hoy, hace una semana y hace un mes: para pasar a € la variación semanal y mensual de
+// las acciones de EE. UU. que se miran en LS Exchange. Si el BCE no responde, no se inventa nada.
+async function fxHistory(){
+  return edgeCachedJson("fx-history/v1/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
+    const r=await fetch("https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=40&format=jsondata",{headers:{"Accept":"application/json"}});
+    if(!r.ok)return{error:"BCE HTTP "+r.status};
+    const d=await r.json(),series=d&&d.dataSets&&d.dataSets[0]&&d.dataSets[0].series||{},first=series[Object.keys(series)[0]];
+    const times=(((d.structure||{}).dimensions||{}).observation||[]).find(x=>x.id==="TIME_PERIOD");
+    if(!first||!first.observations||!times)return{error:"sin datos"};
+    const obs=Object.entries(first.observations).map(([i,v])=>({date:String(times.values[Number(i)]&&times.values[Number(i)].id||""),value:Number(Array.isArray(v)?v[0]:NaN)}))
+      .filter(o=>/^\d{4}-\d\d-\d\d$/.test(o.date)&&Number.isFinite(o.value)&&o.value>0).sort((a,b)=>a.date.localeCompare(b.date));
+    if(!obs.length)return{error:"sin datos"};
+    const last=obs[obs.length-1];
+    // El último fijo publicado en o antes de la fecha pedida (fines de semana y festivos no tienen fijo).
+    const at=days=>{const t=new Date(Date.parse(last.date+"T12:00:00Z")-days*864e5).toISOString().slice(0,10);const o=obs.filter(x=>x.date<=t).pop();return o||null};
+    const w=at(7),m=at(30);
+    return{now:last.value,nowDate:last.date,week:w&&w.value,weekDate:w&&w.date,month:m&&m.value,monthDate:m&&m.date,source:"Banco Central Europeo",fetchedAt:new Date().toISOString()};
+  });
+}
 async function macroIndicators(env){
   const key=String(env&&env.FRED_API_KEY||"").trim();
   return edgeCachedJson("macro/v2/"+(key?"f":"n")+"/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
@@ -2352,7 +2371,7 @@ export default {
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/ai/contrast"&&request.method==="POST")limited=await enforcedRateLimit(request,env,"ai-contrast",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/translate")limited=await enforcedRateLimit(request,env,"translate",20,60000,"AI_RATE_LIMITER");
-    else if(url.pathname==="/api/analysts"||url.pathname==="/api/econ-calendar"||url.pathname==="/api/macro"||url.pathname==="/api/earnings")limited=await enforcedRateLimit(request,env,"analysts",40,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/analysts"||url.pathname==="/api/econ-calendar"||url.pathname==="/api/macro"||url.pathname==="/api/earnings"||url.pathname==="/api/fx-history")limited=await enforcedRateLimit(request,env,"analysts",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/news")limited=await enforcedRateLimit(request,env,"news",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/us-live")limited=await enforcedRateLimit(request,env,"us-live",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
@@ -2487,6 +2506,11 @@ export default {
       const guard = requestGuard(request); if (guard) return guard;
       try { return nativeCorsResponse(request, await earningsResponse(request, env)); }
       catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "Earnings unavailable" }, 502, { "Cache-Control": "no-store" })); }
+    }
+    if (url.pathname === "/api/fx-history") {
+      const guard = requestGuard(request); if (guard) return guard;
+      try { const v = await fxHistory(); return nativeCorsResponse(request, jsonResponse(v, v.error ? 502 : 200, { "Cache-Control": v.error ? "no-store" : "public, max-age=1800" })); }
+      catch (error) { return nativeCorsResponse(request, jsonResponse({ error: "FX unavailable" }, 502, { "Cache-Control": "no-store" })); }
     }
     if (url.pathname === "/api/macro") {
       const guard = requestGuard(request); if (guard) return guard;

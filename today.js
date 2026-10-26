@@ -88,9 +88,31 @@
   const cls=Math.abs(v)<0.005?'flat':v>0?'up':'down',arrow=cls==='up'?'▲ ':cls==='down'?'▼ ':'';
   return '<span class="d-chip '+cls+'">'+arrow+(pct?Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %':money(Math.abs(v)))+(suffix?' '+E(suffix):'')+'</span>';
  }
+ // Botón de periodo (1D/1S/1M/Σ). En listas sin posición, «desde la compra» se ve como la del día.
+ const PER=()=>window.ViewInvAIPeriod;
+ const perMode=()=>{const P=PER();return P?P.get():'day'};
+ function perStockChip(st,preferTr,dayPct){
+  const P=PER();if(!P||!st)return N(dayPct)===null?'':chip(dayPct,{pct:true});
+  const m=P.get()==='since'?'day':P.get(),v=P.stockPct(st,preferTr,dayPct,m),tag=P.tag(m);
+  return v===null?(tag?'<span class="d-chip flat">— '+E(tag)+'</span>':''):chip(v,{pct:true,suffix:tag});
+ }
+ // Importe del periodo de una cuenta (en €). null = sin dato fiable para ese periodo.
+ function perAccount(p){const m=perMode();return m==='day'?N(p.day):m==='since'?N(p.pnl):N(p[m])}
  function ring(score){
   const n=Math.max(0,Math.min(100,Math.round(N(score)??0)));
   return '<em class="ai-score d-ring" data-band="'+(n>=80?'high':n>=60?'mid':'low')+'" data-p="'+Math.round(n/5)*5+'">'+n+'</em>';
+ }
+ // Variación del patrimonio según el botón de periodo. En semana y mes solo suman las cuentas con dato
+ // (fondos y cripto no lo tienen todavía): se avisa con «parcial» en vez de dar una cifra que no cuadra.
+ function wealthPeriodChip(sum,dayPct){
+  const m=perMode(),P=PER();
+  if(m==='day')return chip(dayPct,{pct:true,suffix:'hoy'});
+  const tag=P?P.tag(m):'';
+  if(m==='since'){const t=sum.total,base=(N(t.value)||0)-(N(t.pnl)||0);return base>0?chip((N(t.pnl)||0)/base*100,{pct:true,suffix:tag}):''}
+  let amt=0,base=0,missing=false;
+  for(const p of sum.portfolios){const v=N(p[m]);if(v===null){if((N(p.value)||0)>0)missing=true;continue}amt+=v;base+=(N(p.value)||0)-v}
+  if(!(base>0))return '<span class="d-chip flat">— '+E(tag)+'</span>';
+  return chip(amt/base*100,{pct:true,suffix:tag+(missing?' · parcial':'')});
  }
  function wealthHtmlD(sum,A){
   if(!sum||!sum.signedIn||!sum.portfolios.length)return portfoliosHtml(sum);
@@ -100,14 +122,14 @@
   const incomplete=sum.portfolios.some(p=>!p.complete);
   const tile=(label,value,go,funds)=>'<button type="button" data-today-go="'+go+'"'+(funds?' data-today-funds="1"':'')+'><small>'+label+'</small><b>'+money(value)+'</b></button>';
   return '<section class="d-wealth"><small>Patrimonio total</small>'+
-   '<div class="d-wealth-total"><strong>'+money(total)+'</strong>'+chip(dayPct,{pct:true,suffix:'hoy'})+'</div>'+
+   '<div class="d-wealth-total"><strong>'+money(total)+'</strong>'+wealthPeriodChip(sum,dayPct)+'</div>'+
    '<p class="d-wealth-sub">Hoy '+(N(t.day)>=0?'+':'−')+money(Math.abs(N(t.day)||0))+' · desde la compra '+(N(t.pnl)>=0?'+':'−')+money(Math.abs(N(t.pnl)||0))+'</p>'+
    '<div class="d-tiles">'+tile('Bolsa y fondos',market,'portfolios')+tile('Cripto',crypto,'crypto')+tile('Efectivo',cash,'portfolios')+'</div>'+
    (incomplete?'<p class="d-wealth-sub">Alguna posición aún no tiene cotización: el total puede estar incompleto.</p>':'')+
    (A?A.briefHtml():'')+
   '</section>'+
   '<section class="d-group"><header><h3>Tus cuentas</h3><button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
-   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(Math.abs(N(p.day)||0)>=0.005?chip(p.day):'')+'</span></button></li>').join('')+
+   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(()=>{const v=perAccount(p),tag=PER()?PER().tag():'';return v===null?(tag?'<span class="d-chip flat">— '+E(tag)+'</span>':''):Math.abs(v)>=0.005||tag?chip(v,{suffix:tag}):''})()+'</span></button></li>').join('')+
   '</ul></section>';
  }
  // Favoritos: acciones (con su mercado preferido, LSX o EE. UU.) y fondos/ETF marcados con ★.
@@ -122,7 +144,7 @@
    if(st){try{const q=canonicalQuote(st,preferTr)||{};price=N(preferTr?q.eur:(q.usd??q.price));change=preferTr?N(q.change):N(marketChange(st,currentMarketSession(),false));if(!preferTr)cur=q.nativeCurrency||'USD'}catch(_){}}
    const ticker=st?(preferTr?(st.trTicker||st.ticker):(st.ticker||st.trTicker)):(w.ticker||'');
    const name=String((st&&st.name)||w.name||ticker||'—').replace(/\s*\(The\)$/i,'').replace(/,?\s+(Inc|Corp|Corporation|Company|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
-   rows.push({key:w.stock_key,preferTr,name,sub:[ticker,preferTr?'LSX':((st&&st.exchange)||'EE. UU.')].filter(Boolean).join(' · '),price,change,cur,stock:true});
+   rows.push({key:w.stock_key,preferTr,name,sub:[ticker,preferTr?'LSX':((st&&st.exchange)||'EE. UU.')].filter(Boolean).join(' · '),price,change,cur,stock:true,st});
   }
   const funds=F&&typeof F.getFavoriteProducts==='function'?F.getFavoriteProducts():[];
   for(const f of funds){
@@ -137,7 +159,7 @@
   const row=r=>{
    const open=r.stock?' data-open-stock="'+E(r.key)+'" data-stock-prefer-tr="'+(r.preferTr?'1':'0')+'"':' data-today-go="funds"';
    return '<li class="d-row"><button type="button" class="d-row-main d-row-noring"'+open+'><span class="d-row-text"><b>'+E(r.name)+'</b><small>'+E(r.sub)+'</small></span>'+
-    '<span class="d-row-num">'+(r.price===null?'<small>sin precio</small>':'<b>'+priceMoney(r.price,r.cur)+'</b>')+(N(r.change)===null?'':chip(r.change,{pct:true}))+'</span></button></li>';
+    '<span class="d-row-num">'+(r.price===null?'<small>sin precio</small>':'<b>'+priceMoney(r.price,r.cur)+'</b>')+(r.st?perStockChip(r.st,r.preferTr,r.change):perMode()==='day'||perMode()==='since'?(N(r.change)===null?'':chip(r.change,{pct:true})):'<span class="d-chip flat">— '+E(PER().tag(perMode()))+'</span>')+'</span></button></li>';
   };
   return '<section class="d-group"><header><h3>Favoritos'+(rows.length>shown.length?' · '+rows.length:'')+'</h3><button type="button" class="d-more-link" data-today-go="favorites" aria-label="Abrir Favoritos">›</button></header><ul class="d-list">'+shown.map(row).join('')+'</ul></section>';
  }
@@ -153,7 +175,7 @@
    const ai=r.ai&&r.ai.verdict?'IA externa: '+r.ai.verdict:'';
    return '<li class="d-row"><button type="button" class="d-row-main" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(r.preferTr?'1':'0')+'">'+ring(r.score)+
     '<span class="d-row-text"><b>'+E(s.name||ticker)+'</b><small>'+E(sub)+'</small>'+(ai?'<i class="d-row-ai">✦ '+E(ai)+'</i>':'')+'</span>'+
-    '<span class="d-row-num"><b>'+money(price,cur)+'</b>'+chip(N(q.change),{pct:true})+'</span></button></li>';
+    '<span class="d-row-num"><b>'+money(price,cur)+'</b>'+perStockChip(s,r.preferTr,N(q.change))+'</span></button></li>';
   }).join(''):'<li class="d-row d-row-empty">Sin señales destacadas ahora mismo. La IA prefiere esperar a forzar una entrada.</li>';
   return '<section class="d-group"><header><h3>Ideas del Radar</h3><button type="button" class="d-more-link" data-today-go="recommendation" aria-label="Abrir Radar AI">›</button></header><ul class="d-list">'+body+'</ul></section>';
  }

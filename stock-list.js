@@ -637,10 +637,16 @@ async function renderIndicesTop10(box){
 const dMarket={move:'gainers',source:'us',indices:null,indicesAt:0,loading:false};
 function dFoldHtml(key,title,preview,html){return typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold(key,title,preview,html):html}
 function dIsDesignD(){return document.documentElement.dataset.design==='d'}
-function dChipPct(v){
- if(N(v)===null)return'';
+function dChipPct(v,tag=''){
+ if(N(v)===null)return tag?'<span class="d-chip flat">— '+E(tag)+'</span>':'';
  const cls=Math.abs(v)<0.005?'flat':v>0?'up':'down';
- return '<span class="d-chip '+cls+'">'+(cls==='up'?'▲ ':cls==='down'?'▼ ':'')+Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %</span>';
+ return '<span class="d-chip '+cls+'">'+(cls==='up'?'▲ ':cls==='down'?'▼ ':'')+Math.abs(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' %'+(tag?' '+E(tag):'')+'</span>';
+}
+// Variación según el botón de periodo (1D/1S/1M): en Mercados, «desde la compra» se ve como la del día.
+function dPeriodPct(s,preferTr,dayPct){
+ const P=window.ViewInvAIPeriod;if(!P)return{pct:N(dayPct),tag:''};
+ const m=P.get()==='since'?'day':P.get();
+ return{pct:P.stockPct(s,preferTr,dayPct,m),tag:P.tag(m)};
 }
 function dRingHtml(score){
  if(N(score)===null)return'';
@@ -657,11 +663,11 @@ function dStockRowHtml(s,source,note='',changeOverride){
  const name=String(s.name||ticker||'—').replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,'');
  return '<li class="d-row"><button type="button" class="d-row-main'+(pulse?'':' d-row-noring')+'" data-open-stock="'+E(stockKey(s))+'" data-stock-prefer-tr="'+(preferTr?'1':'0')+'">'+(pulse?dRingHtml(pulse.score):'')+
   '<span class="d-row-text"><b>'+E(name)+'</b><small>'+E([ticker,exchange].filter(Boolean).join(' · '))+'</small>'+(ai?'<i class="d-row-ai">✦ '+E(ai)+'</i>':'')+'</span>'+
-  '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b>'+dChipPct(change)+'</span></button></li>';
+  '<span class="d-row-num"><b>'+(price===null?'—':E(price.toLocaleString('es-ES',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:price<1?4:2})))+'</b>'+(()=>{const v=changeOverride!==undefined?{pct:change,tag:''}:dPeriodPct(s,preferTr,change);return dChipPct(v.pct,v.tag)})()+'</span></button></li>';
 }
 function dIndexRowHtml(x){
  const ch=N(x.change);
- return '<li class="d-row"><div class="d-row-main d-row-simple"><span class="d-row-text"><b>'+E(x.name||x.symbol||'Índice')+'</b><small>'+E([x.symbol,x.exchange].filter(Boolean).join(' · '))+'</small></span><span class="d-row-num"><b>'+E(PR(x.price))+'</b>'+dChipPct(ch)+'</span></div></li>';
+ return '<li class="d-row"><div class="d-row-main d-row-simple"><span class="d-row-text"><b>'+E(x.name||x.symbol||'Índice')+'</b><small>'+E([x.symbol,x.exchange].filter(Boolean).join(' · '))+'</small></span><span class="d-row-num"><b>'+E(PR(x.price))+'</b>'+dChipPct(ch,window.ViewInvAIPeriod&&window.ViewInvAIPeriod.get()!=='day'?'1D':'')+'</span></div></li>';
 }
 async function dLoadIndices(){
  if(dMarket.loading||(dMarket.indices&&Date.now()-dMarket.indicesAt<120000))return;
@@ -708,6 +714,13 @@ function renderHomeFeaturedD(box){
  const src=dMarket.source,mv=dMarket.move;
  if(src==='tr'&&typeof seedTradeRepublicMarketBoard==='function')seedTradeRepublicMarketBoard(120);
  let list=mv==='active'?homeActiveStocks(6,src):mv==='high52'||mv==='low52'?dExtremeStocks(mv==='high52',6,src):homeMoveStocks(mv==='gainers',6,src),closeNote='';
+ // Con el botón en semana o mes, «Suben/Bajan» ordena por la variación de ese periodo (la que se enseña).
+ const per=window.ViewInvAIPeriod&&window.ViewInvAIPeriod.get();
+ if((per==='week'||per==='month')&&(mv==='gainers'||mv==='losers')){
+  const P=window.ViewInvAIPeriod;
+  list=homeUniverse(src).map(x=>({s:x,ch:P.stockPct(x,src==='tr',null,per)})).filter(x=>x.ch!==null&&Math.abs(x.ch)<=1000&&(mv==='gainers'?x.ch>0:x.ch<0))
+   .sort((a,b)=>mv==='gainers'?b.ch-a.ch:a.ch-b.ch).slice(0,6).map(x=>x.s);
+ }
  // Antes de que lleguen los cambios de la sesión en curso: los de la última sesión regular, avisándolo.
  if(!list.length&&src==='us'&&mv!=='active'){
   list=homeUniverse('us').map(x=>({s:x,ch:N(x.changePct)})).filter(x=>x.ch!==null&&(mv==='gainers'?x.ch>0:x.ch<0)).sort((a,b)=>mv==='gainers'?b.ch-a.ch:a.ch-b.ch).slice(0,6).map(x=>x.s);
@@ -716,7 +729,7 @@ function renderHomeFeaturedD(box){
  if(src==='tr')list.forEach(s=>{if(typeof ensureTrLiveKey==='function')ensureTrLiveKey(stockKey(s))});
  const chips=[['gainers','Suben'],['losers','Bajan'],['active','Volumen'],['high52','Máx. 52 s'],['low52','Mín. 52 s']].map(([k,l])=>'<button type="button" class="'+(k===mv?'active':'')+'" data-d-move="'+k+'" aria-pressed="'+(k===mv)+'">'+l+'</button>').join('');
  const srcChips=[['us','EE. UU.'],['tr','LSX']].map(([k,l])=>'<button type="button" class="'+(k===src?'active':'')+'" data-d-move-src="'+k+'" aria-pressed="'+(k===src)+'">'+l+'</button>').join('');
- const moves='<section class="d-group"><header><h3>Movimientos fuertes</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
+ const moves='<section class="d-group"><header><h3>Movimientos fuertes'+(per==='week'?' · semana':per==='month'?' · mes':'')+'</h3><button type="button" class="d-more-link" data-market-board="'+mv+'" aria-label="Ver la lista completa">›</button></header>'+
   '<div class="d-pills">'+chips+'<span class="d-pills-sep"></span>'+srcChips+'</div>'+closeNote+'<ul class="d-list">'+
   (list.length?list.map(s=>closeNote?dStockRowHtml(s,src,'',s.changePct):dStockRowHtml(s,src,mv==='high52'||mv==='low52'?dExtremeNote(s,mv==='high52'):'')).join(''):'<li class="d-row d-row-empty">'+(src==='tr'?'Recopilando cotizaciones de LSX…':'Sin datos de mercado ahora mismo.')+'</li>')+'</ul></section>';
  box.innerHTML='<div class="d-featured">'+dPulseHtml()+followed+moves+'</div>';

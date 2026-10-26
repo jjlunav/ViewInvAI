@@ -26,6 +26,7 @@ const files = [
   'favlists.js',
   'backup.js',
   'today.js',
+  'period.js',
   'ai-ask.js',
   'news.js',
   'styles.css',
