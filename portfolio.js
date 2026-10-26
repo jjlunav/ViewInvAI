@@ -741,18 +741,6 @@ document.addEventListener('click',event=>{
   try{localStorage.setItem('viewinvai:position-sort',b.dataset.positionSort)}catch(_){}
   if(state.primaryTab!=='goal')renderApp();
 });
-// Cifra de cada fila en Carteras: «desde la compra» u «hoy», en € y %, solo € o solo %. Se recuerda.
-const PF_METRIC_KEY='viewinvai:pf-metric';
-function pfMetric(){try{const v=JSON.parse(localStorage.getItem(PF_METRIC_KEY)||'{}');return{period:v.period==='day'?'day':'since',unit:['money','pct'].includes(v.unit)?v.unit:'both'}}catch(_){return{period:'since',unit:'both'}}}
-document.addEventListener('click',event=>{
-  const b=event.target.closest&&event.target.closest('[data-pf-metric]');if(!b)return;
-  event.preventDefault();event.stopPropagation();
-  const m=pfMetric();
-  if(b.dataset.pfMetric==='period')m.period=m.period==='since'?'day':'since';
-  else m.unit={both:'money',money:'pct',pct:'both'}[m.unit];
-  try{localStorage.setItem(PF_METRIC_KEY,JSON.stringify(m))}catch(_){}
-  if(state.primaryTab!=='goal')renderApp();
-});
 // ----- Riesgo y dividendos de la cartera (con los datos ya cargados, sin peticiones) -----
 const SECTOR_ES={"Electronic Technology":"Tecnología electrónica","Technology Services":"Servicios tecnológicos","Health Technology":"Tecnología sanitaria","Health Services":"Servicios sanitarios","Finance":"Finanzas","Retail Trade":"Comercio minorista","Consumer Non-Durables":"Consumo básico","Consumer Durables":"Consumo duradero","Consumer Services":"Servicios al consumo","Producer Manufacturing":"Industria","Process Industries":"Industria de procesos","Industrial Services":"Servicios industriales","Energy Minerals":"Energía","Non-Energy Minerals":"Materias primas","Utilities":"Servicios públicos","Transportation":"Transporte","Communications":"Comunicaciones","Commercial Services":"Servicios comerciales","Distribution Services":"Distribución","Miscellaneous":"Otros","Government":"Sector público"};
 const COUNTRY_ES={US:"EEUU",DE:"Alemania",NL:"Países Bajos",IE:"Irlanda",FR:"Francia",ES:"España",GB:"Reino Unido",CA:"Canadá",CH:"Suiza",JP:"Japón",CN:"China",KY:"Islas Caimán",LU:"Luxemburgo",IL:"Israel",TW:"Taiwán",DK:"Dinamarca",SE:"Suecia",IT:"Italia",BE:"Bélgica",AU:"Australia",BR:"Brasil",KR:"Corea del Sur",FI:"Finlandia",NO:"Noruega",BM:"Bermudas",JE:"Jersey",HK:"Hong Kong",IN:"India",SG:"Singapur",AT:"Austria",PT:"Portugal"};
@@ -4352,7 +4340,21 @@ function portfolioDaySummary(){
     const positions=portfolioPositions(pf.id),T=portfolioTotals(pf,positions),cur=T.baseCurrency;
     const eur=v=>portfolioConvertAmount(v,cur,'EUR',T.fxUsdEur);
     const value=T.complete?eur(T.totalValue):eur(T.positionsValue);
-    return{id:pf.id,name:pf.name,value:value??0,cash:eur(T.cashBalance)??0,day:eur(T.day)??0,pnl:eur(T.openPnl)??0,count:positions.length,complete:T.complete&&value!==null,kind:'stocks'};
+    // Semana y mes en €: cada posición con la variación del periodo en euros (las de EE. UU. con el cambio
+    // euro/dólar del BCE). Si a alguna le falta el dato, la cuenta queda sin cifra (null), no a medias.
+    const P=window.ViewInvAIPeriod,period={};
+    for(const m of ['week','month']){
+      let sum=0,ok=!!P;
+      for(const p of positions){
+        const stock=stockByKey(p.stock_key),v=positionSortMetrics(p).value;
+        if(!stock||v===null){ok=false;break}
+        const pct=P.stockPct(stock,true,null,m),amt=P.amountFromPct(v,pct);
+        if(amt===null){ok=false;break}
+        sum+=amt;
+      }
+      period[m]=ok?sum:null;
+    }
+    return{id:pf.id,name:pf.name,value:value??0,cash:eur(T.cashBalance)??0,day:eur(T.day)??0,pnl:eur(T.openPnl)??0,week:period.week,month:period.month,count:positions.length,complete:T.complete&&value!==null,kind:'stocks'};
   });
   // Carteras de fondos (Fondos): mismo valor que sus tarjetas.
   const F=window.ViewInvAIFunds;
@@ -4395,28 +4397,32 @@ function dChip(v,{pct=null,money=true,suffix=""}={}){
   const up=v>0,down=v<0,txt=money?formatMoney(Math.abs(v),"EUR"):formatNumber(Math.abs(v),2)+" %";
   return '<span class="d-chip '+(up?"up":down?"down":"flat")+'">'+(up?"▲ ":down?"▼ ":"")+txt+(pct!==null&&Number.isFinite(pct)?" · "+formatNumber(Math.abs(pct),2)+" %":"")+(suffix?" "+esc(suffix):"")+'</span>';
 }
-// Chip de una fila según la preferencia: periodo (desde la compra / hoy) y unidad (€ y %, €, %).
-function dMetricChip(sinceMoney,sincePct,dayMoney,dayPct){
-  const m=pfMetric(),day=m.period==='day',money=day?dayMoney:sinceMoney,pct=day?dayPct:sincePct,suffix=day?'hoy':'';
-  const okM=money!==null&&money!==undefined&&Number.isFinite(money),okP=pct!==null&&pct!==undefined&&Number.isFinite(pct);
-  if(m.unit==='pct'&&okP)return dChip(pct,{money:false,suffix});
-  if(m.unit==='money'&&okM)return dChip(money,{suffix});
-  if(okM)return dChip(money,{pct:okP?pct:null,suffix});
-  return okP?dChip(pct,{money:false,suffix}):(day?'<small>sin dato de hoy</small>':'');
-}
-function dMetricControlsHtml(){
-  const m=pfMetric();
-  return'<span class="d-metric"><button type="button" data-pf-metric="period" title="Cambiar entre desde la compra y hoy">'+(m.period==='day'?'Hoy':'Desde compra')+'</button>'+
-    '<button type="button" data-pf-metric="unit" title="Cambiar entre € y %">'+({both:'€ · %',money:'€',pct:'%'}[m.unit])+'</button></span>';
+// Chip de una fila según el botón de periodo (1D, 1S, 1M, Σ): importe en la divisa de la posición y %.
+// Si no hay dato fiable para el periodo, «—» con su etiqueta (nunca una cifra inventada).
+function dPeriodChip(r){
+  const P=window.ViewInvAIPeriod,m=P?P.get():"day",cur=r.cur||"EUR";
+  let money=null,pct=null;
+  if(m==="since"){money=r.nPnl;pct=r.nPnlPct}
+  else if(m==="day"){pct=r.dayPct;money=P?P.amountFromPct(r.nValue,pct):null}
+  else{pct=r.stock&&P?P.stockPct(r.stock,r.preferTr,r.dayPct,m):null;money=P?P.amountFromPct(r.nValue,pct):null}
+  const tag=P?P.tag(m):"",ok=v=>v!==null&&v!==undefined&&Number.isFinite(v);
+  if(!ok(money)&&!ok(pct))return'<span class="d-chip flat">—'+(tag?" "+esc(tag):"")+'</span>';
+  const v=ok(money)?money:pct,up=v>0,down=v<0;
+  return'<span class="d-chip '+(up?"up":down?"down":"flat")+'">'+(up?"▲ ":down?"▼ ":"")+(ok(money)?esc(formatMoney(Math.abs(money),cur)):"")+(ok(money)&&ok(pct)?" · ":"")+(ok(pct)?formatNumber(Math.abs(pct),2)+" %":"")+(tag?" "+esc(tag):"")+'</span>';
 }
 // Valor, P&L y cambio del día de una posición, en euros (también las de fuera del catálogo).
 function dPositionRow(p){
   const stock=stockByKey(p.stock_key),qty=num(p.quantity),preferTr=Number(p.prefer_tr)===1;
   const name=String(stock?(stock.name||stock.ticker||p.name):(p.name||p.ticker||positionIsin(p)||"Posición")).replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,"");
   let value=null,pnl=null,pnlPct=null,dayPct=null,score=null,signal=String(p.last_signal||"").toUpperCase(),etf=false,venue="";
+  let cur="EUR",nValue=null,nPnl=null,nPnlPct=null;
   if(stock){
     const m=positionSortMetrics(p),market=currentMarket(stock,preferTr);
     value=m.value;pnl=m.pnlAbs;pnlPct=m.pnlPct;dayPct=market.change;
+    // En la divisa de la posición (LSX/Trade Republic en €, EE. UU. en $): sin mezclar € y $.
+    cur=String(p.currency||(preferTr?"EUR":"USD")).toUpperCase();
+    const unit=marketValueInCurrency(market,cur),avgN=num(p.avg_price),costN=num(p.cost_basis)??(qty!==null&&avgN!==null?qty*avgN:null);
+    nValue=qty!==null&&unit!==null?qty*unit:null;nPnl=nValue!==null&&costN!==null?nValue-costN:null;nPnlPct=nPnl!==null&&costN>0?nPnl/costN*100:null;
     etf=/etf|etc|etp|fund|trust/i.test(String(stock.instrumentType||""));
     venue=preferTr?"LSX":String(stock.exchange||"EE. UU.");
     score=num(p.last_score);
@@ -4432,6 +4438,7 @@ function dPositionRow(p){
     pnl=value!==null&&cost!==null?value-cost:null;pnlPct=pnl!==null&&cost>0?pnl/cost*100:null;
     dayPct=price!==null&&prev>0?(price/prev-1)*100:null;
     etf=/\b(ETC|ETF|ETP|UCITS|ETN)\b/i.test(name);venue="LSX";
+    cur="EUR";nValue=value;nPnl=pnl;nPnlPct=pnlPct;
   }
   // Veredicto: tu decisión, luego la acción del Objetivo, luego la señal de la IA.
   let verdict="";
@@ -4447,7 +4454,7 @@ function dPositionRow(p){
   }
   if(!verdict&&signal){const[label]=signalInfo(signal);verdict=label.charAt(0)+label.slice(1).toLowerCase()}
   const dayEur=value!==null&&dayPct!==null&&dayPct>-100?value-value/(1+dayPct/100):null;
-  return{p,stock,name,qty,value,pnl,pnlPct,dayPct,dayEur,score,signal,verdict,etf,venue,preferTr};
+  return{p,stock,name,qty,value,pnl,pnlPct,dayPct,dayEur,score,signal,verdict,etf,venue,preferTr,cur,nValue,nPnl,nPnlPct};
 }
 function dRing(score,label){
   if(score===null||!Number.isFinite(score))return'<span class="d-ring d-ring-kind">'+esc(label||"")+'</span>';
@@ -4489,14 +4496,14 @@ function dRowHtml(r){
   return'<li class="d-row d-position'+(isOpen?' open':'')+'" data-collapsible data-position-id="'+esc(r.p.id)+'"><button type="button" class="d-row-main"'+open+' aria-label="'+(r.stock?'Abrir ficha de ':'Operaciones de ')+esc(r.name)+'">'+dRing(r.score,r.etf?"ETF":"")+
     '<span class="d-row-text"><b>'+esc(r.name)+'</b><small>'+esc([qtyTxt,r.venue].filter(Boolean).join(" · "))+'</small>'+
     (r.verdict?'<i class="d-row-ai">✦ '+esc(r.verdict)+'</i>':'')+'</span>'+
-    '<span class="d-row-num"><b>'+dMoney(r.value)+'</b>'+(r.pnl===null&&r.dayEur===null?'<small>sin precio</small>':dMetricChip(r.pnl,r.pnlPct,r.dayEur,r.dayPct))+'</span></button>'+
+    '<span class="d-row-num"><b>'+(r.nValue===null?dMoney(r.value):esc(formatMoney(r.nValue,r.cur)))+'</b>'+(r.nValue===null&&r.value===null?'<small>sin precio</small>':dPeriodChip(r))+'</span></button>'+
     '<button type="button" class="d-row-toggle" data-d-row-toggle aria-expanded="'+(isOpen?'true':'false')+'" aria-label="Más datos de '+esc(r.name)+'" title="Precio, coste, comisiones y operaciones">▾</button>'+
     dRowDetailHtml(r,isOpen)+'</li>';
 }
 function dFundRowHtml(f){
   return'<li class="d-row"><button type="button" class="d-row-main" data-portfolio-asset="funds" aria-label="Abrir Fondos">'+dRing(null,f.kind)+
     '<span class="d-row-text"><b>'+esc(f.name)+'</b><small>'+esc(f.kind+" · en Fondos")+'</small>'+(f.dayPct!==null?'<i class="d-row-ai">Hoy '+(f.dayPct>=0?"+":"")+formatNumber(f.dayPct,2)+' %</i>':'')+'</span>'+
-    '<span class="d-row-num"><b>'+dMoney(f.value)+'</b>'+dMetricChip(f.pnl,f.pnlPct,f.value!==null&&f.dayPct!==null&&f.dayPct>-100?f.value-f.value/(1+f.dayPct/100):null,f.dayPct)+'</span></button></li>';
+    '<span class="d-row-num"><b>'+dMoney(f.value)+'</b>'+dPeriodChip({cur:"EUR",nValue:f.value,nPnl:f.pnl,nPnlPct:f.pnlPct,dayPct:f.dayPct,stock:null})+'</span></button></li>';
 }
 function dAccountFunds(portfolio){
   const F=window.ViewInvAIFunds;
@@ -4591,7 +4598,7 @@ function dReadingHtml(label,groups,rows,funds){
 function dGroupHtml(title,items,sortable){
   if(!items.length)return"";
   const key=positionSortKey(),next={value:"pnlPct",pnlPct:"pnlAbs",pnlAbs:"name",name:"value"}[key]||"value";
-  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+dMetricControlsHtml()+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
+  return'<section class="d-group"><header><h3>'+esc(title)+'</h3>'+(sortable?'<button type="button" class="d-sort" data-position-sort="'+next+'" title="Cambiar orden">'+esc(POSITION_SORTS[key]||"Valor")+' ▾</button>':'<span>'+items.length+'</span>')+'</header><ul class="d-list">'+items.join("")+'</ul></section>';
 }
 function dHeroHtml(portfolio,positions){
   const label={tr:"Trade Republic",ibkr:"Interactive Brokers",myinvestor:"MyInvestor"}[portfolioAccountKey(portfolio.broker)||portfolioAccountKey(portfolio.name)]||portfolio.broker||portfolio.name;
@@ -4726,4 +4733,5 @@ window.ViewInvAIPortfolios = {
   getState: () => state
 };
 
+window.addEventListener('viewinvai:period-changed',()=>{try{if(state.primaryTab!=='goal')renderApp()}catch(_){}});
 init();

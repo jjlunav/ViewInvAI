@@ -794,7 +794,11 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 @media (max-width:420px){html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-actions>button {font-size:12.5px!important;gap:4px;padding:0 6px}html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-actions>button .pf-icon {width:14px;height:14px}}
 /* Aviso de operaciones incoherentes bajo «Desde la compra». */
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-stat-warn {display:block;margin-top:4px;padding:0;border:0;background:none;color:#f5b544;font:700 12px "VI Manrope",sans-serif;text-align:left;cursor:pointer;text-decoration:underline}
-/* Interruptores de la cifra de cada fila en Carteras (desde la compra / hoy y € / %). */
-html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-group>header .d-metric {display:flex;gap:6px;margin-left:auto;margin-right:8px}
-html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-metric button {border:1px solid var(--d-hair-2);background:var(--d-surf);color:var(--d-ink);font:700 12px "VI Manrope",sans-serif;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
-html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-metric button:active {transform:scale(.96)}
+/* Botón de periodo de la barra superior: un solo símbolo (1D, 1S, 1M, Σ) y un relleno que crece con el periodo. */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #accountArea .period-button {width:34px!important;height:34px!important;min-width:34px!important;max-width:34px!important;padding:0!important;border-radius:11px!important;display:grid!important;place-items:center!important;box-shadow:none!important;position:relative;overflow:hidden}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button b {position:relative;z-index:1;font:800 12px "VI Grotesk",sans-serif;letter-spacing:-.02em;color:var(--d-ink)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button::before {content:"";position:absolute;left:0;right:0;bottom:0;height:0;background:color-mix(in srgb,var(--d-accent) 28%,transparent);transition:height .25s}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button[data-period="week"]::before {height:34%}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button[data-period="month"]::before {height:66%}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button[data-period="since"]::before {height:100%;background:color-mix(in srgb,var(--d-accent) 38%,transparent)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .period-button[data-period="since"] b {font-size:16px}

@@ -496,6 +496,8 @@ function renderCurrentView(){
  else if(state.currentView==='news'){if(window.ViewInvAINews)window.ViewInvAINews.render()}
  else if(state.currentView==='settings')syncDeviceSettingsUi();
 }
+// Botón de periodo (1D/1S/1M/Σ): se repinta la vista abierta con la variación del nuevo periodo.
+window.addEventListener('viewinvai:period-changed',()=>{try{render()}catch(_){}});
 function render(){
  renderFavorites();
  if(document.body.classList.contains('stock-detail-open')&&state.profileKey){
