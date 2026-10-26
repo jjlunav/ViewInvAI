@@ -711,7 +711,8 @@ function profileHeroHtml(s,isTr=false,opts={}){
  let se=currentMarketSession();
  let ticker=isTr?(s.trTicker||s.ticker):s.ticker;
  let marketTitle=isTr?'Trade Republic / '+(s.trExchange||'LSX'):(s.exchange||'EEUU');
- let company=String(s.name||s.secName||ticker||'—').trim();
+ // Sin «, Inc.», «Corp.»… en la cabecera: con el nombre completo se cortaba en el móvil («Plug Power, I…»).
+ let company=String(s.name||s.secName||ticker||'—').trim().replace(/,?\s+(inc|incorporated|corp|corporation|co|ltd|limited|plc|holdings?|s\.?a|n\.?v|ag|se|asa)\.?$/i,'')||String(s.name||ticker||'—');
  let back='';
  if(opts.backKind==='portfolio')back='<button type="button" class="profile-back-inline" data-portfolio-detail-close>← Atrás</button>';
  else if(opts.backKind==='profile')back='<button type="button" class="profile-back-inline" data-profile-back="'+E(opts.backView||state.currentView)+'">← Atrás</button>';
@@ -803,14 +804,20 @@ function profileValuation(s){
   return null;
  }
  score/=w;
- if(mg!==null&&st.mg!==null)score+=Math.max(-0.25,Math.min(0.25,(mg-st.mg)/100));
- const label=score>0.25?'Barata frente a su sector':score<-0.25?'Cara frente a su sector':'En línea con su sector';
- const tone=score>0.25?'high':score<-0.25?'low':'mid';
+ // El margen solo matiza entre empresas con beneficios. Con pérdidas, un margen muy negativo hacía que
+ // saliera «cara» aunque sus múltiplos estén casi en la media: eso no es caro, es que pierde dinero.
+ const losing=ni!==null&&ni<0;
+ if(!losing&&mg!==null&&st.mg!==null)score+=Math.max(-0.25,Math.min(0.25,(mg-st.mg)/100));
+ let label=score>0.25?'Barata frente a su sector':score<-0.25?'Cara frente a su sector':'En línea con su sector';
+ let tone=score>0.25?'high':score<-0.25?'low':'mid';
+ if(losing){label='Sin beneficios';tone='mid'}
  if(pe!==null&&pe>0&&st.pe)parts.push(['PER',F(pe,1),'sector '+F(st.pe,1)]);
  if(pb!==null&&pb>0&&st.pb)parts.push(['Precio / valor contable',F(pb,2),'sector '+F(st.pb,2)]);
  if(mg!==null&&st.mg!==null)parts.push(['Margen neto',F(mg,1)+' %','sector '+F(st.mg,1)+' %']);
  const sectorName=window.ViewInvAISectorEs?window.ViewInvAISectorEs(s.sector):s.sector;
- return{label,tone,score,rows:parts,text:'Comparada con la mediana de '+st.count+' empresas de '+sectorName+'.'};
+ const vsPb=pb!==null&&pb>0&&st.pb?(pb/st.pb-1)*100:null;
+ const lossText=losing?'Pierde dinero: no se puede valorar por PER.'+(vsPb!==null?' Su precio / valor contable está un '+F(Math.abs(vsPb),0)+' % '+(vsPb>=0?'por encima':'por debajo')+' de la mediana del sector.':'')+' Mira caja, ventas y catalizadores. ':'';
+ return{label,tone,score,rows:parts,text:lossText+'Comparada con la mediana de '+st.count+' empresas de '+sectorName+'.'};
 }
 function profileValuationHtml(s){
  const v=profileValuation(s);if(!v)return'';

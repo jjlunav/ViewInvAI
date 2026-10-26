@@ -188,7 +188,9 @@ function usSessionDisplayData(s,se=currentMarketSession()){
 }
 function currentUsPrimaryHtml(s,se=currentMarketSession()){
  const data=usSessionDisplayData(s,se),r=data.regular,dec=quotePrecision(s,false,r.price);
- let html='<div class="profile-us-regular">'+quoteFreshnessDotHtml(s,false,'profile-price-freshness')+'<strong>'+E(r.price===null?'—':quoteMoney(r.price,'\u0024',dec))+'</strong><span class="'+C(r.pct)+'">'+E(compactSignedMoney(r.abs,'\u0024',dec))+' <b>('+PC(r.pct)+')</b></span></div>';
+ let html='<div class="profile-us-regular">'+quoteFreshnessDotHtml(s,false,'profile-price-freshness')+'<strong>'+E(r.price===null?'—':quoteMoney(r.price,'\u0024',dec))+'</strong>'+(se!=='regular'&&r.price!==null&&Math.abs(N(r.pct)||0)<1e-9?
+  // Antes de la apertura la variación del día está a cero («+0 %»): se dice que es el cierre anterior.
+  '<span class="flat">cierre anterior</span>':'<span class="'+C(r.pct)+'">'+E(compactSignedMoney(r.abs,'\u0024',dec))+' <b>('+PC(r.pct)+')</b></span>')+'</div>';
  if(data.extended){
   const x=data.extended,icon=x.kind==='premarket'?'☀︎':'☾︎',iconClass=x.kind==='premarket'?'session-icon-sun':'session-icon-moon',xdec=quotePrecision(s,false,x.price);
   html+='<div class="profile-us-extended '+C(x.pct)+'"><span class="session-icon '+iconClass+'" aria-hidden="true">'+icon+'</span><small>'+E(x.label)+'</small><strong>'+E(quoteMoney(x.price,'\u0024',xdec))+'</strong><span>'+E(compactSignedMoney(x.abs,'\u0024',xdec))+' <b>('+PC(x.pct)+')</b></span></div>';
@@ -207,6 +209,9 @@ function quotePrecision(s,preferTr=false,fallback=null){
   :[usLivePrice(s),usLiveBid(s),usLiveAsk(s),N(fallback)];
  vals=vals.map(N).filter(v=>v!==null);
  if(!vals.length)return 2;
+ // En EE. UU. las acciones de 1 $ o más cotizan en céntimos: 2 decimales (como cualquier bróker). Los
+ // decimales de más del BID/ASK o de la preapertura (1,3795) solo añadían ruido. Por debajo de 1 $, hasta 4.
+ if(!preferTr)return vals.some(v=>Math.abs(v)<1)?Math.min(4,Math.max(2,...vals.map(v=>decimalPlaces(v,4)))):2;
  let cap=vals.some(v=>Math.abs(v)<1)?6:4;
  return Math.min(cap,Math.max(2,...vals.map(v=>decimalPlaces(v,cap))));
 }
