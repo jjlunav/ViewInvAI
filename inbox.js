@@ -6,14 +6,15 @@
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const CATS=[
-  ['all','Todos'],['unread','Sin leer'],['price','Precio'],['radar','Radar AI'],['news','Eventos'],['portfolio','Cartera']
+  ['all','Todos'],['unread','Sin leer'],['moves','Movimientos'],['price','Precio'],['radar','Radar AI'],['news','Eventos'],['portfolio','Cartera']
  ];
- const ICON={price:'€',radar:'✹',news:'✦',portfolio:'▣',system:'⚙'};
+ const ICON={moves:'⇅',price:'€',radar:'✹',news:'✦',portfolio:'▣',system:'⚙'};
  let rows=[],unread=0,loadedAt=0,loading=null,filter='all',error='';
  const auth=()=>window.ViewInvAIAuth;
  const signedIn=()=>!!(auth()&&typeof auth().getUser==='function'&&auth().getUser());
  function category(type){
   const t=String(type||'');
+  if(/^(market-move|high-52w|low-52w)$/.test(t))return'moves';
   if(/^price-/.test(t))return'price';
   if(/^(radar|pulse)/.test(t))return'radar';
   if(/event|news|catalyst/.test(t))return'news';
@@ -69,12 +70,25 @@
  function visible(){
   return rows.filter(r=>filter==='all'||(filter==='unread'?!r.read_at:category(r.alert_type)===filter));
  }
+ // Movimientos: qué pasa, por qué y cuánto supone en tu posición, en tres piezas (el servidor las escribe
+ // en ese orden: «… hoy. Tu posición (N acc.): ±X € hoy. Por qué: …»).
+ function moveBodyHtml(text){
+  const t=String(text||''),pos=t.match(/Tu posición \(([^)]+)\): ([+−][\d.,]+ [€$]) hoy\./),why=t.match(/Por qué: (.*)$/);
+  const cut=Math.min(...[pos?pos.index:-1,why?why.index:-1].filter(i=>i>=0).concat([t.length]));
+  const head=t.slice(0,cut).trim();
+  return '<small data-i18n-content>'+esc(head)+'</small>'+
+   (why?'<span class="inbox-why" data-i18n-content><em>Por qué</em> '+esc(why[1])+'</span>':'')+
+   (pos?'<span class="inbox-pos '+(pos[2][0]==='+'?'up':'down')+'">Tu posición · '+esc(pos[2])+' hoy <i>'+esc(pos[1])+'</i></span>':'');
+ }
  function rowHtml(r){
   const cat=category(r.alert_type),time=new Date(r.created_at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
   const sev=String(r.severity||'info');
-  return '<button type="button" class="inbox-row'+(r.read_at?'':' unread')+' sev-'+esc(sev)+'" data-inbox-id="'+esc(r.id)+'"'+(r.stock_key?' data-inbox-stock="'+esc(r.stock_key)+'"':'')+'>'+
-   '<span class="inbox-icon cat-'+cat+'" aria-hidden="true">'+ICON[cat]+'</span>'+
-   '<span class="inbox-main"><b>'+esc(r.title||'Aviso')+'</b><small data-i18n-content>'+esc(r.message||'')+'</small></span>'+
+  // Movimientos: la flecha (o «52») hace de icono, con el color de subida o bajada.
+  const title=String(r.title||'Aviso'),arrow=cat==='moves'?(/^[▲▼]/.test(title)?title[0]:r.alert_type==='high-52w'?'▲':r.alert_type==='low-52w'?'▼':''):'';
+  const dir=arrow==='▲'?' up':arrow==='▼'?' down':'',icon=cat==='moves'?(/52w$/.test(r.alert_type)?'52':arrow||ICON.moves):ICON[cat];
+  return '<button type="button" class="inbox-row'+(r.read_at?'':' unread')+' sev-'+esc(sev)+(cat==='moves'?' inbox-move'+dir:'')+'" data-inbox-id="'+esc(r.id)+'"'+(r.stock_key?' data-inbox-stock="'+esc(r.stock_key)+'"':'')+'>'+
+   '<span class="inbox-icon cat-'+cat+dir+'" aria-hidden="true">'+esc(icon)+'</span>'+
+   '<span class="inbox-main"><b>'+esc(title.replace(/^[▲▼]\s*/,''))+'</b>'+(cat==='moves'?moveBodyHtml(r.message):'<small data-i18n-content>'+esc(r.message||'')+'</small>')+'</span>'+
    '<span class="inbox-time">'+esc(time)+(r.read_at?'':'<i class="inbox-dot" aria-label="Sin leer"></i>')+'</span></button>';
  }
  function render(){
