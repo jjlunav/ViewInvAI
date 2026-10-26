@@ -76,7 +76,7 @@
 
 /* ---------- Botones ---------- */
 @ .btn{border-radius:14px!important;font-weight:700!important}
-@ .btn:not(.ghost):not(.secondary):not(.danger){background:var(--d-grad)!important;border:0!important;color:#fff!important}
+@ .btn:not(.ghost):not(.secondary):not(.danger):not(.vi-icon-button):not(.profile-edit-position){background:var(--d-grad)!important;border:0!important;color:#fff!important}
 @ .btn.ghost,@ .btn.secondary{background:var(--d-surf)!important;border:1px solid var(--d-hair-2)!important;color:var(--d-ink)!important}
 @ .vi-icon-button,@ .asset-card-open-icon,@ .shell-icon-button{border-radius:12px!important;background:var(--d-surf)!important;border:1px solid var(--d-hair)!important;color:var(--d-ink)!important;box-shadow:var(--d-shadow)!important}
 @ .account-avatar{border-radius:12px!important;background:var(--d-grad)!important;color:#fff!important;border:0!important}
@@ -688,3 +688,24 @@
 @ .period-button[data-period="month"]::before{height:66%}
 @ .period-button[data-period="since"]::before{height:100%;background:color-mix(in srgb,var(--d-accent) 38%,transparent)}
 @ .period-button[data-period="since"] b{font-size:16px}
+/* Variación por periodo en la ficha. A: chips bajo el precio (desliza en horizontal). B: tarjeta con barras. */
+@ .profile-perf-chips{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:8px 0 2px;padding:0 12px;width:100%;box-sizing:border-box}
+@ .profile-perf-chips::-webkit-scrollbar{display:none}
+@ .profile-perf-chips>span{display:grid;gap:0;justify-items:center;min-width:0;padding:4px 2px;border-radius:9px;border:1px solid var(--d-hair);background:var(--d-surf-2)}
+@ .profile-perf-chips small{font:700 10px "VI Manrope",sans-serif;color:var(--d-mut);letter-spacing:.02em}
+@ .profile-perf-chips b{font:800 11.5px "VI Grotesk",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em}
+@ .profile-perf-chips .up b{color:var(--d-up)}
+@ .profile-perf-chips .down b{color:var(--d-down)}
+@ .profile-perf-chips .flat b{color:var(--d-mut)}
+@ .profile-perf-bars{margin:0 0 12px;padding:14px 16px;border-radius:18px;background:var(--d-surf);border:1px solid var(--d-hair);display:grid;gap:8px}
+@ .ppb-row{display:grid;grid-template-columns:38px 1fr 72px;align-items:center;gap:10px}
+@ .ppb-row small{font:700 12px "VI Manrope",sans-serif;color:var(--d-mut)}
+@ .ppb-row b{font:800 13px "VI Grotesk",sans-serif;text-align:right;font-variant-numeric:tabular-nums}
+@ .ppb-track{position:relative;height:8px;border-radius:99px;background:var(--d-surf-2)}
+@ .ppb-track::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--d-hair-2)}
+@ .ppb-track i{position:absolute;top:0;bottom:0;border-radius:99px}
+@ .ppb-row.up i{background:var(--d-up)}
+@ .ppb-row.up b{color:var(--d-up)}
+@ .ppb-row.down i{background:var(--d-down)}
+@ .ppb-row.down b{color:var(--d-down)}
+@ .ppb-row.flat b{color:var(--d-mut)}

@@ -651,8 +651,9 @@ async function ecbSeries(s){
 // Euro/dólar del BCE hoy, hace una semana y hace un mes: para pasar a € la variación semanal y mensual de
 // las acciones de EE. UU. que se miran en LS Exchange. Si el BCE no responde, no se inventa nada.
 async function fxHistory(){
-  return edgeCachedJson("fx-history/v1/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
-    const r=await fetch("https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=40&format=jsondata",{headers:{"Accept":"application/json"}});
+  return edgeCachedJson("fx-history/v2/"+Math.floor(Date.now()/(3*3600e3)),3*3600,async()=>{
+    // ~1 año y medio de fijos diarios: cubre 1S, 1M, 3M, 6M, inicio de año y 1 año.
+    const r=await fetch("https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=390&format=jsondata",{headers:{"Accept":"application/json"}});
     if(!r.ok)return{error:"BCE HTTP "+r.status};
     const d=await r.json(),series=d&&d.dataSets&&d.dataSets[0]&&d.dataSets[0].series||{},first=series[Object.keys(series)[0]];
     const times=(((d.structure||{}).dimensions||{}).observation||[]).find(x=>x.id==="TIME_PERIOD");
@@ -663,8 +664,12 @@ async function fxHistory(){
     const last=obs[obs.length-1];
     // El último fijo publicado en o antes de la fecha pedida (fines de semana y festivos no tienen fijo).
     const at=days=>{const t=new Date(Date.parse(last.date+"T12:00:00Z")-days*864e5).toISOString().slice(0,10);const o=obs.filter(x=>x.date<=t).pop();return o||null};
-    const w=at(7),m=at(30);
-    return{now:last.value,nowDate:last.date,week:w&&w.value,weekDate:w&&w.date,month:m&&m.value,monthDate:m&&m.date,source:"Banco Central Europeo",fetchedAt:new Date().toISOString()};
+    const w=at(7),m=at(30),q=at(91),h=at(182),y=at(365);
+    // Inicio de año: el último fijo del año anterior (la variación «YTD» parte de ese cierre).
+    const ytd=obs.filter(x=>x.date<last.date.slice(0,4)+"-01-01").pop()||null;
+    return{now:last.value,nowDate:last.date,week:w&&w.value,weekDate:w&&w.date,month:m&&m.value,monthDate:m&&m.date,
+      quarter:q&&q.value,quarterDate:q&&q.date,half:h&&h.value,halfDate:h&&h.date,year:y&&y.value,yearDate:y&&y.date,ytd:ytd&&ytd.value,ytdDate:ytd&&ytd.date,
+      source:"Banco Central Europeo",fetchedAt:new Date().toISOString()};
   });
 }
 async function macroIndicators(env){

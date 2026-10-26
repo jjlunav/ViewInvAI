@@ -9,6 +9,8 @@
  const KEY='viewinvai:period',MODES=['day','week','month','since'];
  const SYM={day:'1D',week:'1S',month:'1M',since:'Σ'};
  const LABEL={day:'Hoy',week:'Esta semana',month:'Este mes',since:'Desde la compra'};
+ // Variación de TradingView para cada periodo (en la divisa de la bolsa de origen).
+ const PERF_FIELD={week:'perfWeek',month:'perfMonth',quarter:'perf3M',half:'perf6M',ytd:'perfYtd',year:'perf1Y'};
  const N=v=>{const n=Number(v);return v===null||v===undefined||v===''||!Number.isFinite(n)?null:n};
  let mode=(()=>{try{const v=localStorage.getItem(KEY);return MODES.includes(v)?v:'day'}catch(_){return'day'}})();
  let fx=null,fxAt=0,fxLoading=false;
@@ -29,7 +31,8 @@
  // Devuelve null si no hay dato fiable (nunca se inventa: mejor «—» que una cifra mala).
  function stockPct(s,preferTr,dayPct,m=mode){
   if(m==='day'||m==='since')return N(dayPct);
-  const raw=N(m==='week'?s&&s.perfWeek:s&&s.perfMonth);if(raw===null||raw<=-100||raw>1000)return null;   // >1.000 %: contrasplit o dato roto
+  const field=PERF_FIELD[m];if(!field)return null;
+  const raw=N(s&&s[field]);if(raw===null||raw<=-100||raw>1000)return null;   // >1.000 %: contrasplit o dato roto
   const listingCur=String(s&&s.currency||'USD').toUpperCase();
   if(!preferTr||listingCur==='EUR')return raw;
   if(listingCur!=='USD')return null;
