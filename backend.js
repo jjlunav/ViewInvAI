@@ -7871,13 +7871,23 @@ const NEWS_FINANCE=/\b(bolsas?|burs[aá]til|mercados?|acci[oó]n(es)?|[ií]ndice
 // «Bolsa» suelta (bolso, saco) o «inversión», «empresa», «dólar»… colaban sucesos y loterías («la cabeza de una
 // tiktoker dentro de una bolsa», resultados del Powerball). Ahora entra si nombra un mercado o dato claro, o si
 // reúne al menos dos términos económicos distintos, y nunca si es claramente un suceso, deporte o lotería.
-const NEWS_MARKET=/\b(burs[aá]til|ibex|wall street|nasdaq|dow jones|s&p ?500|stoxx|dax|nikkei|cac 40|ftse|bce|reserva federal|banco central|tipos? de inter[eé]s|ipc|pmi|pib|prima de riesgo|cotiza\w*|opa|dividendos?|bitcoin|ethereum|cripto\w*|(la|en|a|las) bolsas?|bolsas? (de|europeas?|asi[aá]ticas?|mundiales|espa[ñn]olas?|americanas?|estadounidenses?)|salida a bolsa|acciones de|parqu[eé]|mercados? (de valores|burs[aá]til|financieros?)|bonos? (del tesoro|soberanos?|a \d+ a[ñn]os))\b/i;
+const NEWS_MARKET=/\b(burs[aá]til|ibex|wall street|nasdaq|dow jones|s&p ?500|stoxx|dax|nikkei|cac 40|ftse|bce|reserva federal|banco central|tipos? de inter[eé]s|ipc|pmi|pib|prima de riesgo|cotiza\w*|opa|dividendos?|bitcoin|ethereum|cripto\w*|bolsas? (de valores|china|europeas?|asi[aá]ticas?|mundiales|espa[ñn]olas?|americanas?|estadounidenses?|argentina|mexicana|brasile[ñn]a|japonesa)|acciones de|parqu[eé]|mercados? (de valores|burs[aá]til|financieros?)|bonos? (del tesoro|soberanos?|a \d+ a[ñn]os))\b/i;
 const NEWS_NOISE=/\b(loter[ií]a|powerball|sorteo|primitiva|euromillones|f[uú]tbol|liga|champions|asesinad[oa]s?|asesinato|cad[aá]ver|cabeza de|crimen|homicidio|tiktoker|influencer|hor[oó]scopo|receta)\b/i;
+// «Bolsa» como mercado: «la Bolsa»/«LA BOLSA», «bolsa de» + plaza con mayúscula («de Milán», «de Santiago»),
+// «cotizar/salir/saldrá… a/en bolsa» o «salidas a bolsa»; nunca un envase («bolsa de plástico», «de calor»).
+const NEWS_BAG=/\bbolsas? de (pl[aá]stico|papel|basura|calor|agua|mano|viaje|deporte|aseo|tela|regalo|congelaci[oó]n|hielo|patatas|pipas|chuches|golosinas|dormir|aire|valores de (ropa|comida))\b/i;
+function newsBolsaIsMarket(t){
+  if(NEWS_BAG.test(t))return false;
+  return /\b(?:[Ll]as?|LAS?|[Ee]n|EN|[Aa])\s+(?:Bolsas?|BOLSAS?)\b/.test(t)
+    ||/\b[Bb]olsas? de [A-ZÁÉÍÓÚÑ][a-záéíóúñ]+/.test(t)
+    ||/\b(cotiza\w*|sal(?:ir|e|en|dr[aá]n?|i[oó]|ieron|ida|idas)|debut\w*|estren\w*|vuelta|regreso)\s+(?:a|en)\s+bolsa\b/i.test(t);
+}
 function newsIsFinance(text){
   const t=String(text||"");
   if(NEWS_NOISE.test(t))return false;
-  if(NEWS_MARKET.test(t))return true;
-  const hits=new Set((t.match(new RegExp(NEWS_FINANCE.source,"gi"))||[]).map(x=>x.toLowerCase()));
+  if(NEWS_MARKET.test(t)||newsBolsaIsMarket(t))return true;
+  // «bolsa» suelta no suma (bolso, saco, «bolsa de calor»): solo cuenta como mercado en las expresiones de arriba.
+  const hits=new Set((t.match(new RegExp(NEWS_FINANCE.source,"gi"))||[]).map(x=>x.toLowerCase()).filter(x=>!/^bolsas?$/.test(x)));
   return hits.size>=2;
 }
 // Páginas de cotización o fichas («Cours Spero Therapeutics», «AAPL Stock Price & Quote»): no son noticias.
