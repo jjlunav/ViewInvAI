@@ -565,28 +565,28 @@
    const groups=new Map();
    for(const r of rows.slice(1)){const k=r[refid]||Math.random();if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}
    for(const g of groups.values()){
-    const type=norm(g[0][kType]),eur=g.filter(r=>krakenAsset(r[kAsset])==='EUR').reduce((t,r)=>t+(parseNum(r[kAmount])||0),0);
-    const cryptos=g.filter(r=>known.has(krakenAsset(r[kAsset])));
+    const type=norm(g[0][kType]),eur=g.filter(r=>code(krakenAsset(r[kAsset]))==='EUR').reduce((t,r)=>t+(parseNum(r[kAmount])||0),0);
+    const cryptos=g.filter(r=>known.has(code(krakenAsset(r[kAsset]))));
     if(!cryptos.length){skipped+=g.length;continue}
     const outs=cryptos.filter(r=>(parseNum(r[kAmount])||0)<0),ins=cryptos.filter(r=>(parseNum(r[kAmount])||0)>0);
     let carried=null;
-    for(const r of outs){const c=B.sell(krakenAsset(r[kAsset]),Math.abs(parseNum(r[kAmount])));carried=carried===null?c:carried+(c||0)}
-    for(const r of ins){const u=parseNum(r[kAmount]);B.buy(krakenAsset(r[kAsset]),u,REWARD_RE.test(type)?0:eur<0?-eur/ins.length:outs.length?carried:null)}
+    for(const r of outs){const c=B.sell(code(krakenAsset(r[kAsset])),Math.abs(parseNum(r[kAmount])));carried=carried===null?c:carried+(c||0)}
+    for(const r of ins){const u=parseNum(r[kAmount]);B.buy(code(krakenAsset(r[kAsset])),u,REWARD_RE.test(type)?0:eur<0?-eur/ins.length:outs.length?carried:null)}
     used+=g.length;
    }
-   return{positions:B.positions(),used,skipped,format:'Kraken · libro mayor'};
+   return{positions:B.positions(),used,skipped,format:'Kraken · libro mayor',unknown:[...unknown.entries()]};
   }
   // Binance · historial de operaciones: Pair (BTCEUR), Side, Executed (0.01BTC), Amount (50EUR).
   const bPair=findCol(head,[/^pair$|^market$|^par$/]),bSide=findCol(head,[/^side$|^lado$/]),bExec=findCol(head,[/^executed$|^ejecutado$/]),bAmt=findCol(head,[/^amount$|^importe$|^total$/]);
   if(bPair>=0&&bSide>=0&&bExec>=0){
-   const split=v=>{const m=String(v||'').replace(/,/g,'').match(/^([\d.]+)\s*([A-Z0-9]+)$/i);return m?{n:Number(m[1]),c:m[2].toUpperCase()}:null};
+   const split=v=>{const m=String(v||'').replace(/,/g,'').match(/^([\d.]+)\s*([A-Z0-9]+)$/i);return m?{n:Number(m[1]),c:code(m[2])}:null};
    for(const r of rows.slice(1)){
     const e=split(r[bExec]),a=split(r[bAmt]),buy=/buy|compra/i.test(r[bSide]);
     if(!e||!known.has(e.c)){skipped++;continue}
     if(buy)B.buy(e.c,e.n,a&&a.c==='EUR'?a.n:null);else B.sell(e.c,e.n);
     used++;
    }
-   return{positions:B.positions(),used,skipped,format:'Binance · operaciones'};
+   return{positions:B.positions(),used,skipped,format:'Binance · operaciones',unknown:[...unknown.entries()]};
   }
   const col={
    type:findCol(head,[/^tipo|type|operacion|movimiento|concepto/]),
@@ -601,7 +601,7 @@
   };
   for(const r of rows.slice(1)){
    const v=i=>i>=0?r[i]:'',type=norm(v(col.type));
-   const fc=String(v(col.fromCur)).trim().toUpperCase(),fa=Math.abs(parseNum(v(col.fromAmt))||0),tc=String(v(col.toCur)).trim().toUpperCase(),ta=Math.abs(parseNum(v(col.toAmt))||0);
+   const fc=code(v(col.fromCur)),fa=Math.abs(parseNum(v(col.fromAmt))||0),tc=code(v(col.toCur)),ta=Math.abs(parseNum(v(col.toAmt))||0);
    if(col.fromCur>=0&&col.toCur>=0&&(fc||tc)){
     // Formato de intercambio: «paga X de A, recibe Y de B». Una permuta hereda el coste.
     const fCrypto=known.has(fc),tCrypto=known.has(tc);
@@ -610,14 +610,14 @@
     if(fCrypto||tCrypto)used++;else skipped++;
     continue;
    }
-   const sym=String(v(col.cur)).trim().toUpperCase(),amount=parseNum(v(col.amt)),total=parseNum(v(col.eurTotal));
+   const sym=code(v(col.cur)),amount=parseNum(v(col.amt)),total=parseNum(v(col.eurTotal));
    const eurPriced=col.priceCur<0||String(v(col.priceCur)).trim().toUpperCase()==='EUR';
    if(!known.has(sym)||amount===null||amount===0){skipped++;continue}
    if(OUT_RE.test(type)||amount<0)B.sell(sym,Math.abs(amount));
    else B.buy(sym,Math.abs(amount),REWARD_RE.test(type)?0:total!==null&&eurPriced?Math.abs(total):null);
    used++;
   }
-  return{positions:B.positions(),used,skipped,format:col.fromCur>=0&&col.toCur>=0?'Intercambios (origen → destino)':'Movimientos por moneda'};
+  return{positions:B.positions(),used,skipped,format:col.fromCur>=0&&col.toCur>=0?'Intercambios (origen → destino)':'Movimientos por moneda',unknown:[...unknown.entries()]};
  }
  const parseBit2me=text=>parseStatement(text,'bit2me');
  let importPlatform='bit2me',pendingImport=null;
