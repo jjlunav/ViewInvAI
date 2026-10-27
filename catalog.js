@@ -16,7 +16,6 @@ const CATALOG_COLUMNS={
   {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>'<span class="catalog-name-cell" title="'+E(s.name||'')+'">'+E(s.name||'—')+'</span>'},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.trExchange||'LSX',cell:s=>E(s.trExchange||'LSX')},
   {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).eur,cell:(s,se)=>trPriceCell(s,'eur',se)},
-  {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>trPriceValues(s,SP(s,se)).usd,cell:(s,se)=>trPriceCell(s,'usd',se)},
   {id:'change',label:'%',type:'number',value:s=>trLiveChange(s),cell:s=>liveChangeHtml(s,null,true)},
   {id:'bid',label:'Bid €',type:'number',value:s=>N(s.trLiveBid),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveBidDirection)+'" data-tr-bid-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveBid,'€',quotePrecision(s,true))+'</span>'},
   {id:'ask',label:'Ask €',type:'number',value:s=>N(s.trLiveAsk),cell:s=>'<span class="table-live-number '+quoteDirClass(s.trLiveAskDirection)+'" data-tr-ask-key="'+E(stockKey(s))+'">'+quoteMoney(s.trLiveAsk,'€',quotePrecision(s,true))+'</span>'},
@@ -25,8 +24,8 @@ const CATALOG_COLUMNS={
   {id:'relVolume',label:'Vol. rel. EEUU',type:'number',value:(s,se)=>RV(s,se),cell:(s,se)=>RV(s,se)===null?'—':F(RV(s,se),2)+'×'},
   {id:'rsi',label:'RSI',type:'number',value:s=>N(s.rsi),cell:s=>F(s.rsi,1)},
   {id:'adx',label:'ADX',type:'number',value:s=>N(s.adx),cell:s=>F(s.adx,1)},
-  {id:'ema20',label:'EMA20',type:'number',value:s=>N(s.ema20),cell:s=>PR(s.ema20)},
-  {id:'ema50',label:'EMA50',type:'number',value:s=>N(s.ema50),cell:s=>PR(s.ema50)},
+  {id:'ema20',label:'EMA20 orig.',type:'number',value:s=>N(s.ema20),cell:s=>catalogOrigMoney(s,s.ema20)},
+  {id:'ema50',label:'EMA50 orig.',type:'number',value:s=>N(s.ema50),cell:s=>catalogOrigMoney(s,s.ema50)},
   // En LSX, semana y mes en € (las de EE. UU. pasadas con el euro/dólar del BCE de cada fecha).
   {id:'week',label:'1 sem. €',type:'number',value:s=>trPeriodPct(s,'week'),cell:s=>'<span class="'+C(trPeriodPct(s,'week'))+'">'+PC(trPeriodPct(s,'week'))+'</span>'},
   {id:'month',label:'1 mes €',type:'number',value:s=>trPeriodPct(s,'month'),cell:s=>'<span class="'+C(trPeriodPct(s,'month'))+'">'+PC(trPeriodPct(s,'month'))+'</span>'},
@@ -41,7 +40,6 @@ const CATALOG_COLUMNS={
   {id:'name',label:'Empresa',type:'text',value:s=>s.name||'',cell:s=>'<span class="catalog-name-cell" title="'+E(s.name||'')+'">'+E(s.name||'—')+'</span>'},
   {id:'exchange',label:'Mercado',type:'text',value:s=>s.exchange||'',cell:s=>E(s.exchange||'—')},
   {id:'priceUsd',label:'Precio USD',type:'number',value:(s,se)=>usLivePrice(s)??SP(s,se),cell:(s,se)=>usPriceCell(s,'usd',se)},
-  {id:'priceEur',label:'Precio €',type:'number',value:(s,se)=>usPriceValues(s,SP(s,se)).eur,cell:(s,se)=>usPriceCell(s,'eur',se)},
   {id:'change',label:'%',type:'number',value:(s,se)=>usLiveChange(s)??SC(s,se),cell:(s,se)=>liveChangeHtml(s,SC(s,se),false)},
   {id:'bid',label:'Bid USD',type:'number',value:s=>usLiveBid(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveBidDirection)+'" data-us-bid-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveBid(s),'\u0024',quotePrecision(s,false))+'</span>'},
   {id:'ask',label:'Ask USD',type:'number',value:s=>usLiveAsk(s),cell:s=>'<span class="'+quoteDirClass(s.usLiveAskDirection)+'" data-us-ask-key="'+E(stockKey(s))+'">'+quoteMoney(usLiveAsk(s),'\u0024',quotePrecision(s,false))+'</span>'},
@@ -194,6 +192,9 @@ function catalogFilterMatch(value,filter,type){
  let terms=filter.toLocaleLowerCase('es').split('|').map(x=>x.trim()).filter(Boolean);
  return terms.length?terms.some(term=>hay.includes(term)):true;
 }
+// Cada catálogo en su divisa (LSX en €, EE. UU. en $): sin columnas de precio convertidas a la otra. Las EMA del
+// catálogo LSX vienen de la cotización de origen y llevan su divisa para no confundirlas con el precio en €.
+function catalogOrigMoney(s,v){const n=N(v);if(n===null)return'—';const c=String(s&&s.currency||'USD').toUpperCase();return PR(n)+' '+(c==='EUR'?'€':c==='USD'?'$':c)}
 function catalogSortValue(v,type){if(v===null||v===undefined||v===''||(type!=='text'&&!Number.isFinite(Number(v))))return null;return type==='text'?String(v).toLowerCase():Number(v)}
 function catalogActiveFilterCount(mode){return Object.values(catalogState[mode]?.filters||{}).filter(v=>String(v||'').trim()).length}
 function catalogMobileGroup(mode){
