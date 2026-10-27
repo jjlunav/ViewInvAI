@@ -856,6 +856,7 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-profile-select {width:auto!important;min-width:0;max-width:230px;min-height:40px}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-ai-form {display:flex;gap:8px;flex:1 1 320px;min-width:0}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-ai-form .input {flex:1;min-width:0;min-height:40px;font-size:14px}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-ai-form .btn {flex:0 0 auto!important;width:auto!important;min-width:0!important}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-seg {display:inline-flex;gap:3px;padding:3px;border-radius:12px;background:var(--d-segbg);border:1px solid var(--d-hair-2)}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-seg button {border:0;background:none;color:var(--d-mut);font-weight:700;font-size:12.5px;line-height:1;font-family:inherit;padding:8px 11px;border-radius:9px;cursor:pointer;white-space:nowrap}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-seg button.on {background:var(--d-accent);color:#fff}

@@ -737,6 +737,7 @@
 @ .scr-profile-select{width:auto!important;min-width:0;max-width:230px;min-height:40px}
 @ .scr-ai-form{display:flex;gap:8px;flex:1 1 320px;min-width:0}
 @ .scr-ai-form .input{flex:1;min-width:0;min-height:40px;font-size:14px}
+@ .scr-ai-form .btn{flex:0 0 auto!important;width:auto!important;min-width:0!important}
 @ .scr-seg{display:inline-flex;gap:3px;padding:3px;border-radius:12px;background:var(--d-segbg);border:1px solid var(--d-hair-2)}
 @ .scr-seg button{border:0;background:none;color:var(--d-mut);font-weight:700;font-size:12.5px;line-height:1;font-family:inherit;padding:8px 11px;border-radius:9px;cursor:pointer;white-space:nowrap}
 @ .scr-seg button.on{background:var(--d-accent);color:#fff}
