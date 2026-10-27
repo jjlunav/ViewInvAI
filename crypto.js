@@ -516,7 +516,9 @@
   const FIAT=/^(EUR|USD|GBP|CHF|JPY|EURO|EUROS)$/,unknown=new Map();
   const code=raw=>{const c=String(raw||'').trim().toUpperCase();if(!c||known.has(c))return c;
    const base=c.replace(/\s*\(.*\)$/,'').replace(/[-_.\s](BSC|BEP20|ERC20|TRC20|SPL|SOL|ETH|POLYGON|ARB|S|M|F)$/,'').trim();
-   const hit=known.has(base)?base:byName.get(c)||byName.get(base)||'';
+   // SOL2, ETH2…: la versión en staking de Bit2Me/Kraken es la misma moneda.
+   const staked=/^([A-Z]{2,6})2$/.test(base)&&known.has(base.slice(0,-1))?base.slice(0,-1):'';
+   const hit=known.has(base)?base:staked||byName.get(c)||byName.get(base)||'';
    if(hit)return hit;if(!FIAT.test(c))unknown.set(c,(unknown.get(c)||0)+1);return c};
   // El coste medio depende del orden: los movimientos se procesan del más antiguo al más reciente.
   const dateCol=findCol(head,[/^(fecha|date|time|timestamp|hora|fecha y hora|fecha de la operacion|created at|date utc|date\(utc\))/]);
@@ -563,28 +565,28 @@
    const groups=new Map();
    for(const r of rows.slice(1)){const k=r[refid]||Math.random();if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}
    for(const g of groups.values()){
-    const type=norm(g[0][kType]),eur=g.filter(r=>krakenAsset(r[kAsset])==='EUR').reduce((t,r)=>t+(parseNum(r[kAmount])||0),0);
-    const cryptos=g.filter(r=>known.has(krakenAsset(r[kAsset])));
+    const type=norm(g[0][kType]),eur=g.filter(r=>code(krakenAsset(r[kAsset]))==='EUR').reduce((t,r)=>t+(parseNum(r[kAmount])||0),0);
+    const cryptos=g.filter(r=>known.has(code(krakenAsset(r[kAsset]))));
     if(!cryptos.length){skipped+=g.length;continue}
     const outs=cryptos.filter(r=>(parseNum(r[kAmount])||0)<0),ins=cryptos.filter(r=>(parseNum(r[kAmount])||0)>0);
     let carried=null;
-    for(const r of outs){const c=B.sell(krakenAsset(r[kAsset]),Math.abs(parseNum(r[kAmount])));carried=carried===null?c:carried+(c||0)}
-    for(const r of ins){const u=parseNum(r[kAmount]);B.buy(krakenAsset(r[kAsset]),u,REWARD_RE.test(type)?0:eur<0?-eur/ins.length:outs.length?carried:null)}
+    for(const r of outs){const c=B.sell(code(krakenAsset(r[kAsset])),Math.abs(parseNum(r[kAmount])));carried=carried===null?c:carried+(c||0)}
+    for(const r of ins){const u=parseNum(r[kAmount]);B.buy(code(krakenAsset(r[kAsset])),u,REWARD_RE.test(type)?0:eur<0?-eur/ins.length:outs.length?carried:null)}
     used+=g.length;
    }
-   return{positions:B.positions(),used,skipped,format:'Kraken · libro mayor'};
+   return{positions:B.positions(),used,skipped,format:'Kraken · libro mayor',unknown:[...unknown.entries()]};
   }
   // Binance · historial de operaciones: Pair (BTCEUR), Side, Executed (0.01BTC), Amount (50EUR).
   const bPair=findCol(head,[/^pair$|^market$|^par$/]),bSide=findCol(head,[/^side$|^lado$/]),bExec=findCol(head,[/^executed$|^ejecutado$/]),bAmt=findCol(head,[/^amount$|^importe$|^total$/]);
   if(bPair>=0&&bSide>=0&&bExec>=0){
-   const split=v=>{const m=String(v||'').replace(/,/g,'').match(/^([\d.]+)\s*([A-Z0-9]+)$/i);return m?{n:Number(m[1]),c:m[2].toUpperCase()}:null};
+   const split=v=>{const m=String(v||'').replace(/,/g,'').match(/^([\d.]+)\s*([A-Z0-9]+)$/i);return m?{n:Number(m[1]),c:code(m[2])}:null};
    for(const r of rows.slice(1)){
     const e=split(r[bExec]),a=split(r[bAmt]),buy=/buy|compra/i.test(r[bSide]);
     if(!e||!known.has(e.c)){skipped++;continue}
     if(buy)B.buy(e.c,e.n,a&&a.c==='EUR'?a.n:null);else B.sell(e.c,e.n);
     used++;
    }
-   return{positions:B.positions(),used,skipped,format:'Binance · operaciones'};
+   return{positions:B.positions(),used,skipped,format:'Binance · operaciones',unknown:[...unknown.entries()]};
   }
   const col={
    type:findCol(head,[/^tipo|type|operacion|movimiento|concepto/]),
@@ -599,7 +601,7 @@
   };
   for(const r of rows.slice(1)){
    const v=i=>i>=0?r[i]:'',type=norm(v(col.type));
-   const fc=String(v(col.fromCur)).trim().toUpperCase(),fa=Math.abs(parseNum(v(col.fromAmt))||0),tc=String(v(col.toCur)).trim().toUpperCase(),ta=Math.abs(parseNum(v(col.toAmt))||0);
+   const fc=code(v(col.fromCur)),fa=Math.abs(parseNum(v(col.fromAmt))||0),tc=code(v(col.toCur)),ta=Math.abs(parseNum(v(col.toAmt))||0);
    if(col.fromCur>=0&&col.toCur>=0&&(fc||tc)){
     // Formato de intercambio: «paga X de A, recibe Y de B». Una permuta hereda el coste.
     const fCrypto=known.has(fc),tCrypto=known.has(tc);
@@ -608,14 +610,14 @@
     if(fCrypto||tCrypto)used++;else skipped++;
     continue;
    }
-   const sym=String(v(col.cur)).trim().toUpperCase(),amount=parseNum(v(col.amt)),total=parseNum(v(col.eurTotal));
+   const sym=code(v(col.cur)),amount=parseNum(v(col.amt)),total=parseNum(v(col.eurTotal));
    const eurPriced=col.priceCur<0||String(v(col.priceCur)).trim().toUpperCase()==='EUR';
    if(!known.has(sym)||amount===null||amount===0){skipped++;continue}
    if(OUT_RE.test(type)||amount<0)B.sell(sym,Math.abs(amount));
    else B.buy(sym,Math.abs(amount),REWARD_RE.test(type)?0:total!==null&&eurPriced?Math.abs(total):null);
    used++;
   }
-  return{positions:B.positions(),used,skipped,format:col.fromCur>=0&&col.toCur>=0?'Intercambios (origen → destino)':'Movimientos por moneda'};
+  return{positions:B.positions(),used,skipped,format:col.fromCur>=0&&col.toCur>=0?'Intercambios (origen → destino)':'Movimientos por moneda',unknown:[...unknown.entries()]};
  }
  const parseBit2me=text=>parseStatement(text,'bit2me');
  let importPlatform='bit2me',pendingImport=null;
@@ -632,14 +634,20 @@
  }
  // Lee uno o varios ficheros (Bit2Me exporta un Excel por año) y los une en una sola tabla.
  async function readStatementRows(files){
-  let head=null,body=[];
+  // El mismo Excel elegido dos veces (o dos años que se solapan) duplicaba saldos: una fila idéntica que ya vino
+  // en otro fichero se cuenta una sola vez. Dentro de un mismo fichero se respetan todas.
+  let head=null,body=[];const seen=new Map();readStatementRows.dupes=0;readStatementRows.sameFiles=0;
   for(const file of files){
    const isXlsx=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
    let rows=isXlsx?await xlsxRows(await file.arrayBuffer()):splitCsv(await file.text());
    const at=rows.findIndex(r=>r.filter(x=>String(x).trim()).length>=3);if(at<0)continue;rows=rows.slice(at);
    if(!head)head=rows[0];
    else if(rows[0].map(norm).join('|')!==head.map(norm).join('|'))throw Error('«'+file.name+'» tiene otras columnas: importa los ficheros de la misma plataforma y del mismo tipo de informe.');
-   body.push(...rows.slice(1));
+   // Por cada fila se guardan tantas copias como el fichero que más tenga (no la suma): el orden de selección da igual
+   // y las repeticiones legítimas dentro de un fichero se respetan.
+   let dup=0;const rest=rows.slice(1),inFile=new Map();
+   for(const r of rest){const k=r.map(x=>String(x).trim()).join('\u0001'),n=(inFile.get(k)||0)+1;inFile.set(k,n);if(n<=(seen.get(k)||0)){dup++;continue}seen.set(k,n);body.push(r)}
+   readStatementRows.dupes+=dup;if(rest.length&&dup===rest.length)readStatementRows.sameFiles++;
   }
   if(!head)throw Error('Los ficheros están vacíos.');
   return[head,...body];
@@ -676,19 +684,20 @@
    }).sort((x,y)=>x.symbol.localeCompare(y.symbol));
    // Extracto que empieza el 1 de enero: casi seguro es un Excel anual y faltan los años anteriores.
    const first=(()=>{const head=rows[0].map(norm),c=findCol(head,[/^(fecha|date|time|timestamp|hora|fecha y hora|fecha de la operacion|created at|date utc)/]);if(c<0)return null;const ts=rows.slice(1).map(x=>rowTime(x[c])).filter(t=>t!==null);return ts.length?new Date(Math.min(...ts)):null})();
-   importMeta={r,period,dust,files:files.length,platform,first,yearStart:!!(first&&first.getUTCMonth()===0&&first.getUTCDate()<=7)};
+   importMeta={r,period,dust,files:files.length,dupes:readStatementRows.dupes||0,sameFiles:readStatementRows.sameFiles||0,platform,first,yearStart:!!(first&&first.getUTCMonth()===0&&first.getUTCDate()<=7)};
    paintImport();
   }catch(error){box.innerHTML='<p class="crypto-form-error">'+esc(error.message)+'</p>'}
  }
  function paintImport(){
   const box=q('#cryptoImportPreview');if(!box||!importMeta||!pendingImport)return;
-  const {r,period,dust,files,platform,first,yearStart}=importMeta;
+  const {r,period,dust,files,dupes,sameFiles,platform,first,yearStart}=importMeta;
   const types=r.types?Object.entries(r.types).sort((a,b)=>b[1]-a[1]).map(([k,n])=>k+' '+n).join(' · '):'';
   const kept=pendingImport.filter(x=>x.keep).length;
   const fmtU=v=>v===null||v===undefined?'—':Number(v).toLocaleString('es-ES',{maximumFractionDigits:8});
   const unknown=(r.unknown||[]).sort((a,b)=>b[1]-a[1]);
   const opts=state.assets.map(a=>'<option value="'+esc(a.symbol)+'">'+esc(a.name||'')+'</option>').join('');
   box.innerHTML='<p class="crypto-note">Formato detectado: <b>'+esc(r.format)+'</b>'+(period?' · '+esc(period):'')+' · '+files+' '+(files===1?'fichero':'ficheros')+(types?'<br><small>'+esc(types)+'</small>':'')+'</p>'+
+   (sameFiles?'<p class="crypto-form-error crypto-import-warn"><b>Has elegido '+(sameFiles===1?'un fichero repetido':sameFiles+' ficheros repetidos')+'.</b> Sus movimientos ya estaban en otro de los elegidos y se cuentan una sola vez. Para completar el historial elige los Excel de <b>años distintos</b> (2025, 2024…).</p>':dupes?'<p class="crypto-note">'+dupes+' movimientos repetidos entre ficheros se cuentan una sola vez.</p>':'')+
    (yearStart?'<p class="crypto-form-error crypto-import-warn"><b>Puede faltar historial:</b> el extracto empieza el '+esc(first.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}))+'. Si ya tenías criptos antes, añade también el Excel de '+(first.getUTCFullYear()-1)+' (y de los años anteriores) seleccionándolos a la vez. Sin ellos, lo que compraste antes sale de menos o no sale (por ejemplo, una moneda que solo tienes en Earn desde el año pasado).</p>':'')+
    (unknown.length?'<p class="crypto-form-error crypto-import-warn"><b>Monedas no reconocidas en el extracto:</b> '+unknown.map(([c,n])=>esc(c)+' ('+n+')').join(', ')+'. Si es una de las tuyas, añádela abajo con sus unidades.</p>':'')+
    (platform.id==='bit2me'?'<p class="crypto-note crypto-alpha-note"><b>Bit2Me exporta un Excel por año.</b> Selecciona a la vez los de todos los años en que operaste: si falta alguno, los saldos y precios medios salen mal. Compara con tu Wallet (incluido lo que está en <b>Earn</b>) y corrige las unidades aquí antes de guardar.</p>':'')+
@@ -696,7 +705,8 @@
    // Monedas que el extracto no trae (p. ej. compradas en un año que no has subido): se añaden aquí con sus unidades.
    '<div class="crypto-import-add"><input list="cryptoImportSyms" id="cryptoImportAddSym" placeholder="Moneda (ASTER…)" autocomplete="off" aria-label="Moneda que falta"><input id="cryptoImportAddUnits" type="number" step="any" min="0" inputmode="decimal" placeholder="Unidades" aria-label="Unidades"><button type="button" class="btn ghost" data-crypto-import-add>+ Añadir</button><datalist id="cryptoImportSyms">'+opts+'</datalist></div>'+
    '<p class="crypto-note">'+r.used+' movimientos leídos'+(r.skipped?', '+r.skipped+' sin cripto reconocida':'')+(dust?', '+dust+' '+(dust===1?'resto':'restos')+' de menos de 1 céntimo descartados':'')+'.'+(kept?' <b>'+kept+' '+(kept===1?'moneda conserva':'monedas conservan')+' lo que tenías</b> porque el extracto no la trae o da menos (marcadas).':'')+' Se guarda la columna «Guardar»: pon 0 en lo que ya no tengas. Si cambias unidades, el precio medio se mantiene.</p>'+
-   '<button type="button" class="btn" data-crypto-import-save'+(pendingImport.length?'':' disabled')+'>Guardar '+pendingImport.length+' '+(pendingImport.length===1?'moneda':'monedas')+'</button><p class="crypto-form-error" hidden></p>';
+   // Siempre visible abajo: en el móvil la tabla es larga y el botón quedaba fuera de la vista.
+   '<div class="crypto-import-actions"><p class="crypto-form-error" hidden></p><button type="button" class="btn" data-crypto-import-save'+(pendingImport.length?'':' disabled')+'>Guardar '+pendingImport.length+' '+(pendingImport.length===1?'moneda':'monedas')+'</button></div>';
  }
  function addImportRow(){
   if(!pendingImport)return;
