@@ -2471,3 +2471,19 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.cr
 /* Importar extracto: unidades editables antes de guardar. */
 .crypto-import-table input.crypto-import-units{width:100%;min-width:90px;max-width:140px;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text)}
 .crypto-summary .crypto-cost-note{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+/* Comparativa de fondos en el móvil: el formato compacto/detallado de las listas (más arriba, muy específico) pisaba la
+   rejilla de columnas y la rentabilidad caía en una columna de 22 px, un carácter por línea. Se reafirma aquí. */
+@container compact-card (max-width:500px){
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row[data-end="chevron"]{grid-template-columns:24px repeat(var(--fund-cols),minmax(0,1fr))!important;grid-template-areas:none!important;grid-template-rows:auto auto!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row>.asset-card-marker{grid-area:1/1/2/2!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row>.asset-card-identity{grid-area:1/2/2/-1!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row>.asset-card-end-actions{grid-area:1/-2/3/-1!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row>.asset-card-quote-slot{grid-area:2/2/3/3!important;justify-self:start!important;text-align:left!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row :is(.asset-card-quote-cell,.asset-card-context-cell){justify-self:start!important;text-align:left!important;align-items:flex-start!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row>.asset-card-context-slot,
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-grid{display:contents!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell{grid-row:2!important;min-width:0}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell:nth-child(1){grid-column:3!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell:nth-child(2){grid-column:4!important}
+ html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell:nth-child(3){grid-column:5!important}
+}
