@@ -4418,6 +4418,8 @@ const PROVIDERS=[
   {id:"cohere",label:"Cohere (clave de prueba)",kind:"IA",secret:"COHERE_API_KEY",free:"1.000 llamadas/mes",dashboard:"https://dashboard.cohere.com/api-keys",base:"https://api.cohere.ai/compatibility/v1",probe:"https://api.cohere.ai/v1/models",models:["command-a-03-2025","command-r-plus"]},
   {id:"sambanova",label:"SambaNova Cloud",kind:"IA",secret:"SAMBANOVA_API_KEY",free:"Plan gratuito con límites por minuto",dashboard:"https://cloud.sambanova.ai/apis",base:"https://api.sambanova.ai/v1",models:["Meta-Llama-3.3-70B-Instruct","DeepSeek-V3-0324"]},
   {id:"nvidia",label:"NVIDIA NIM",kind:"IA",secret:"NVIDIA_API_KEY",free:"Gratis sin tarjeta; ~40 consultas/minuto",dashboard:"https://build.nvidia.com/",base:"https://integrate.api.nvidia.com/v1",models:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b","deepseek-ai/deepseek-v3.1"]},
+  // DeepSeek: saldo de regalo al darse de alta (sin tarjeta). Cuando se gasta responde 402 y se pasa al siguiente servicio.
+  {id:"deepseek",label:"DeepSeek",kind:"IA",secret:"DEEPSEEK_API_KEY",free:"Saldo de regalo al registrarse (sin tarjeta); después, de pago",dashboard:"https://platform.deepseek.com/usage",base:"https://api.deepseek.com/v1",models:["deepseek-chat"]},
   {id:"ollama",label:"Ollama Cloud",kind:"IA",secret:"OLLAMA_API_KEY",free:"Plan gratuito con límites de uso",dashboard:"https://ollama.com/settings/keys",base:"https://ollama.com/v1",models:["gpt-oss:120b","gpt-oss:20b"]},
   {id:"githubmodels",label:"GitHub Models",kind:"IA",secret:"GITHUB_MODELS_TOKEN",free:"Gratis con cuenta de GitHub: ~50 consultas/día en modelos grandes y ~150 en los pequeños",dashboard:"https://github.com/marketplace/models",base:"https://models.github.ai/inference",probe:"https://models.github.ai/catalog/models",models:["openai/gpt-4.1","openai/gpt-4o-mini"]},
   {id:"workersai",label:"Cloudflare Workers AI",kind:"IA",secret:"",free:"10.000 neuronas/día",dashboard:"https://dash.cloudflare.com/?to=/:account/ai/workers-ai"},
@@ -4478,7 +4480,7 @@ async function openRouterFreeModels(key){
 }
 // Modelos que «piensan» antes de contestar (gpt-oss, qwen3, deepseek-r1…): con poco margen de tokens
 // gastan todo en razonar y devuelven la respuesta vacía. Se les pide razonar poco y se da más margen.
-const REASONING_MODEL=/gpt-oss|qwen3|deepseek-r1|reason|thinking|magistral/i;
+const REASONING_MODEL=/gpt-oss|qwen3|deepseek-r1|deepseek-reasoner|reason|thinking|magistral/i;
 async function openAiCompatible(id,url,key,model,prompt,maxTokens){
   const reasoning=REASONING_MODEL.test(model),body={model,messages:[{role:"user",content:prompt}],max_tokens:reasoning?maxTokens+1200:maxTokens,temperature:0.2};
   if(reasoning&&(id==="groq"||id==="ollama"||id==="sambanova"))body.reasoning_effort="low";
@@ -4497,7 +4499,7 @@ async function openAiCompatible(id,url,key,model,prompt,maxTokens){
 const PROVIDER_PROFILE={
   gemini:{decision:95,light:80,daily:1000},groq:{decision:86,light:95,daily:1000},sambanova:{decision:86,light:70,daily:400},
   nvidia:{decision:86,light:78,daily:1000},openrouter:{decision:80,light:60,daily:50},ollama:{decision:80,light:84,daily:300},
-  githubmodels:{decision:90,light:76,daily:50},
+  githubmodels:{decision:90,light:76,daily:50},deepseek:{decision:90,light:74,daily:300},
   cohere:{decision:70,light:62,daily:33},workersai:{decision:52,light:70,daily:100000},
   tavily:{search:90,daily:30},serper:{search:94,daily:40},exa:{search:86,daily:80},langsearch:{search:74,daily:100},firecrawl:{search:76,daily:33},jina:{search:66,daily:100}
 };
@@ -4525,7 +4527,7 @@ async function orderProviders(env,ids,task){
 // Catálogo real de modelos de cada servicio (se consulta cada 12 h): si retiran un modelo (HTTP 404/410)
 // se descarta y se usa otro que siga existiendo, sin tener que tocar el código.
 const MODEL_CATALOG_URL={groq:"https://api.groq.com/openai/v1/models",nvidia:"https://integrate.api.nvidia.com/v1/models",
-  sambanova:"https://api.sambanova.ai/v1/models",ollama:"https://ollama.com/v1/models",cohere:"https://api.cohere.ai/compatibility/v1/models"};
+  sambanova:"https://api.sambanova.ai/v1/models",deepseek:"https://api.deepseek.com/models",ollama:"https://ollama.com/v1/models",cohere:"https://api.cohere.ai/compatibility/v1/models"};
 const providerModelMemo=new Map(),goneModels=new Map();
 const NON_CHAT_MODEL=/embed|whisper|guard|tts|vision|rerank|audio|ocr|safety|moderation|retriev|parse|reward|clip|speech|transcri|image|vl\b|-vl-|nemotron-.*-(?:nano|mini)-.*instruct-v|playai|prompt-guard|compound/i;
 const MODEL_RANK=m=>/gpt-oss-120b|llama-3\.3-70b|deepseek-v3|llama-4-maverick|kimi-k2|qwen3-235b|glm-4/i.test(m)?0:/qwen3|llama-4|gpt-oss|mistral-large|command-a/i.test(m)?1:2;
@@ -4549,6 +4551,8 @@ const TASK_MODELS={
   groq:{decision:["openai/gpt-oss-120b","qwen/qwen3-32b","openai/gpt-oss-20b"],light:["openai/gpt-oss-20b","qwen/qwen3-32b","openai/gpt-oss-120b"]},
   nvidia:{decision:["deepseek-ai/deepseek-v3.1","openai/gpt-oss-120b","meta/llama-3.3-70b-instruct"],light:["meta/llama-3.3-70b-instruct","openai/gpt-oss-120b"]},
   sambanova:{decision:["DeepSeek-V3-0324","Meta-Llama-3.3-70B-Instruct"],light:["Meta-Llama-3.3-70B-Instruct"]},
+  // Solo el modelo de chat: el «reasoner» gasta muchos más tokens del saldo de regalo y tarda más.
+  deepseek:{decision:["deepseek-chat"],light:["deepseek-chat"]},
   ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]},
   githubmodels:{decision:["openai/gpt-4.1","openai/gpt-4o"],light:["openai/gpt-4o-mini","openai/gpt-4.1-mini"]}
 };
@@ -4590,7 +4594,7 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=n
       catch(error){tried.push(id+":"+model+":"+(error.status||error.message));
         // Modelo retirado o inexistente: fuera durante un día (se elige otro del catálogo) y sin penalizar al servicio.
         if(error.status===404||error.status===410){goneModels.set(id+":"+model,Date.now()+24*3600e3);providerModelMemo.delete(id);continue}
-        providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===403)break}
+        providerFail(id,error.status||0);await recordProviderUse(env,id,false,String(error.message||error));if(error.status===429||error.status===401||error.status===402||error.status===403)break}
     }
     return null;
   };
