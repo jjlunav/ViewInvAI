@@ -62,7 +62,8 @@ function renderSectionSwitcher(){
  document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
  const view=document.querySelector('.view.active');if(!view)return;
  // Escritorio (diseño ViewInvAI): el menú lateral ya lista cada sección, así que no se repiten en pestañas.
- if(isDesignD()&&!mobileSwitcherMq.matches){if(window.ViewInvAIScreener&&window.ViewInvAIScreener.placePicker)window.ViewInvAIScreener.placePicker();return}
+ // La app nativa nunca muestra el menú lateral (tampoco en tableta o en horizontal): ahí siguen las pestañas.
+ if(isDesignD()&&!mobileSwitcherMq.matches&&document.documentElement.dataset.nativeApp!=='1'){if(window.ViewInvAIScreener&&window.ViewInvAIScreener.placePicker)window.ViewInvAIScreener.placePicker();return}
  // Caídas bruscas es ahora un perfil del Screener IA, no una pestaña aparte.
  const group=(navGroups()[navGroupOf(state.currentView)]||[]).filter(v=>v!=='entry'&&!(isDesignD()&&v==='crash'));
  if(group.length<2)return;

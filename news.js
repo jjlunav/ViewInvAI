@@ -9,7 +9,8 @@
  const CATS=[['foryou','Para ti'],['mine','Mis valores'],['latest','Última hora'],['macro','Macro'],['crypto','Cripto']];
  const TOPIC_ICON={latest:'▤',macro:'◎',crypto:'₿',mine:'★'};
  const CLIENT_TTL=5*60000;
- const S={cat:'foryou',data:{},loading:{},error:{}};
+ // gen cambia al entrar o salir de la cuenta: una respuesta pedida con la sesión anterior se descarta.
+ const S={cat:'foryou',data:{},loading:{},error:{},gen:0};
  try{const c=localStorage.getItem('viewinvai:news-cat');if(CATS.some(([k])=>k===c))S.cat=c}catch(_){}
  const auth=()=>window.ViewInvAIAuth;
  const signedIn=()=>{try{return!!(auth()&&auth().getUser&&auth().getUser())}catch(_){return false}};
@@ -21,16 +22,18 @@
   if(!signedIn()&&cat==='mine')return;
   const hit=S.data[cat];
   if(!force&&hit&&Date.now()-hit.at<CLIENT_TTL)return;
+  const gen=S.gen;
   S.loading[cat]=true;S.error[cat]='';
   if(isActive())render();
   try{
    const path='/api/news?cat='+encodeURIComponent(cat);
    const res=signedIn()?await auth().apiFetch(path):await fetch(path);
    const d=await res.json().catch(()=>({}));
+   if(gen!==S.gen)return;
    if(!res.ok)throw new Error(d.error||'No se pudieron cargar las noticias.');
    S.data[cat]={at:Date.now(),items:Array.isArray(d.items)?d.items:[]};
-  }catch(e){S.error[cat]=e.message||'No se pudieron cargar las noticias.'}
-  finally{S.loading[cat]=false;if(isActive())render();window.dispatchEvent(new CustomEvent('viewinvai:news-updated',{detail:{cat}}))}
+  }catch(e){if(gen===S.gen)S.error[cat]=e.message||'No se pudieron cargar las noticias.'}
+  finally{if(gen===S.gen){S.loading[cat]=false;if(isActive())render();window.dispatchEvent(new CustomEvent('viewinvai:news-updated',{detail:{cat}}))}}
  }
 
  // Valores del usuario (posiciones y favoritos) para marcar los que cita cada titular.
@@ -294,7 +297,7 @@
   if(o){S.cat=o.dataset.newsOpen;if(typeof show==='function')show('news');return}
  });
  window.addEventListener('viewinvai:view-changed',e=>{if(e.detail&&e.detail.view==='news')render()});
- ['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{S.data={};if(isActive())setTimeout(render,300)}));
+ ['viewinvai:auth-changed','viewinvai:account-ready'].forEach(n=>window.addEventListener(n,()=>{S.gen++;S.data={};S.loading={};S.error={};if(isActive())setTimeout(render,300)}));
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReader()});
  // Para «Pregunta a AI»: valores que nombra el texto del usuario (nombre, «(TICK)» o un ticker de
  // EE. UU. escrito en mayúsculas, como «PLUG»), más los tuyos que cite por nombre.
