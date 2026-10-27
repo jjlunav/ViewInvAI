@@ -21,6 +21,9 @@ function migrateLegacyBrandStorage(){
 }
 migrateLegacyBrandStorage();
 let db={stocks:[],events:[],meta:{}}, loading=false, lastDataStamp='';
+// Acciones internacionales sin ticker de LS Exchange: no cotizan ni en EE. UU. ni en Trade Republic, así que la app no
+// tiene un precio válido para ellas (se leía su precio en € como si fuera en $). No entran en ninguna pantalla.
+function usableStocks(list){return(Array.isArray(list)?list:[]).filter(s=>!(s&&s.region==='intl'&&!String(s.trTicker||'').trim()))}
 let stockIndexByKey=new Map(),stockIndexByTickerExchange=new Map(),stockIndexByIsin=new Map(),eventIndexByRef=new Map();
 
 function tickerRef(ticker,exchange='*'){
@@ -532,7 +535,7 @@ async function load(force=false){
    try{
     const lr=await RT0.loadOffline('market'),lj=lr?await lr.json():null;
     if(lj&&Array.isArray(lj.stocks)&&lj.stocks.length){
-     db={stocks:lj.stocks,events:Array.isArray(lj.events)?lj.events:[],meta:lj.meta||{}};
+     db={stocks:usableStocks(lj.stocks),events:Array.isArray(lj.events)?lj.events:[],meta:lj.meta||{}};
      lastDataStamp=String((lj.meta&&lj.meta.updatedAt)||'');
      const SY=window.ViewInvAISync;if(SY&&SY.active){SY.set('connect',1);SY.set('market',1);SY.set('prepare',1)}
      rebuildMarketIndexes();
@@ -591,7 +594,7 @@ async function load(force=false){
    ['trLivePrice','trLiveLast','trLivePreRaw','trLiveMidAt','trLiveBid','trLiveAsk','trLivePre','trLiveOpen','trLiveChangePct','trLiveQuality','trLiveUpdatedAt','trLiveReceivedAt','trLiveLastAt','trLiveBidAt','trLiveAskAt','trLiveDirection','trLiveDirectionAt','trLiveBidDirection','trLiveAskDirection','usLivePrice','usLiveBid','usLiveAsk','usLiveBidSize','usLiveAskSize','usLiveVolume','usLiveDayHigh','usLiveDayLow','usLiveOpen','usLivePreviousClose','usLiveChangePct','usLiveTimestamp','usLiveMarketStatus','usLiveIsRealTime','usLiveSource','usLiveReceivedAt','usLiveDirection','usLiveDirectionAt','usLiveBidDirection','usLiveAskDirection'].forEach(k=>{if(old[k]!==undefined)s[k]=old[k]});
   }
   if(SYNC){SYNC.set('connect',1);SYNC.set('market',1);SYNC.set('prepare',0.4)}
-  db={stocks:j.stocks,events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
+  db={stocks:usableStocks(j.stocks),events:Array.isArray(j.events)?j.events:[],meta:j.meta||{}};
   rebuildMarketIndexes();
   if(typeof reapplyMarketLive==='function')reapplyMarketLive();
   render();

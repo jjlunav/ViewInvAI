@@ -7531,7 +7531,8 @@ function goalServerKey(stock){
   return trimText(stock&&stock.tvSymbol||((stock&&stock.exchange||"")+":"+(stock&&stock.ticker||"")),120).toUpperCase();
 }
 function goalServerAllowed(stock,scope){
-  if(scope==="tr")return stock&&(stock.tradeRepublicTradable===true||(stock.tradeRepublicVerified&&stock.trTicker));
+  // Solo lo que tiene ticker de LS Exchange se puede comprar en Trade Republic (antes entraban internacionales sin él).
+  if(scope==="tr")return !!(stock&&String(stock.trTicker||"").trim()&&(stock.tradeRepublicTradable===true||stock.tradeRepublicVerified)&&stock.trActive!==false);
   return stock&&["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(stock.exchange||"").toUpperCase());
 }
 function goalServerUsdToEur(snapshot){
