@@ -677,7 +677,7 @@ function renderPositionRow(p, index = 0) {
 }
 
 // Decisión tomada ante un aviso de venta («mantener», «decidir más tarde», «venderé»).
-function positionDecisionChip(p, avg, currency) {
+function positionDecisionChip(p, avg, currency, price = null) {
   const d = window.ViewInvAIDecisions && typeof window.ViewInvAIDecisions.forPosition === "function" ? window.ViewInvAIDecisions.forPosition(p.id) : null;
   if (!d) return "";
   const until = d.hold_until ? new Date(d.hold_until + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "";
@@ -686,7 +686,8 @@ function positionDecisionChip(p, avg, currency) {
     : d.hold_mode === "better" ? "Mantienes hasta un cambio mejor"
     : d.hold_mode === "date" ? "En pausa hasta el " + until
     : d.decision === "hold"
-    ? "Mantienes · objetivo " + formatMoney(avg, currency)
+    // Mantener sin más condición = esperar a recuperar el precio medio (no es un precio objetivo de análisis).
+    ? "Mantienes hasta recuperar tu precio medio " + formatMoney(avg, currency) + (num(price) > 0 && num(avg) > num(price) ? " · le falta +" + formatNumber((num(avg) / num(price) - 1) * 100, 1) + " %" : "")
     : d.decision === "later" ? "Decidir el " + new Date(d.review_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "Vas a vender";
   return '<div class="position-decision-chip is-' + esc(d.decision) + '"><span>' + esc(label) + '</span>' +
     '<button type="button" data-decision-clear="' + esc(p.id) + '" aria-label="Quitar decisión" title="Quitar decisión">×</button></div>';
@@ -769,7 +770,9 @@ function portfolioInsightsHtml(portfolio){
   if(!d||d.count<1)return'';
   const top=d.positions[0],topSector=d.sectors[0];
   const alerts=[];
-  if(d.count>1&&top.pct>=25)alerts.push(esc(top.k)+' pesa el '+formatNumber(top.pct,0)+'% de la cartera');
+  // Una sola posición es la máxima concentración (antes salía «Diversificada» con el 100 % en un valor).
+  if(d.count===1)alerts.push('Una sola posición: '+esc(top.k)+' es el 100% de la cartera');
+  else if(top.pct>=25)alerts.push(esc(top.k)+' pesa el '+formatNumber(top.pct,0)+'% de la cartera');
   if(d.count>2&&topSector.pct>=45)alerts.push(esc(topSector.k)+' concentra el '+formatNumber(topSector.pct,0)+'%');
   const shock=-0.10*d.beta*d.total;
   let open=false;try{open=localStorage.getItem('viewinvai:pf-insights-open')==='1'}catch(_){}
@@ -4426,7 +4429,9 @@ function dPeriodChip(r){
   if(!ok(money)&&!ok(pct))return'<span class="d-chip flat">—'+(tag?" "+esc(tag):"")+'</span>';
   const v=ok(money)?money:pct,up=v>0,down=v<0;
   const approx=basis==="approx"?"≈ ":"",title=basis==="since"?' title="Comprada dentro del periodo: cuenta desde tu compra"':basis==="approx"?' title="Añadiste acciones dentro del periodo: cifra aproximada"':"";
-  return'<span class="d-chip '+(up?"up":down?"down":"flat")+'"'+title+'>'+(up?"▲ ":down?"▼ ":"")+approx+(ok(money)?esc(formatMoney(Math.abs(money),cur)):"")+(ok(money)&&ok(pct)?" · ":"")+(ok(pct)?formatNumber(Math.abs(pct),2)+" %":"")+(tag?" "+esc(tag):"")+'</span>';
+  // Con signo (como el precio por acción de debajo): «▼ −1,35 US$ · −3,78 %», no dos cifras sin signo.
+  const sg=x=>x>0?"+":x<0?"−":"";
+  return'<span class="d-chip '+(up?"up":down?"down":"flat")+'"'+title+'>'+(up?"▲ ":down?"▼ ":"")+approx+(ok(money)?sg(money)+esc(formatMoney(Math.abs(money),cur)):"")+(ok(money)&&ok(pct)?" · ":"")+(ok(pct)?sg(pct)+formatNumber(Math.abs(pct),2)+" %":"")+(tag?" "+esc(tag):"")+'</span>';
 }
 // Valor, P&L y cambio del día de una posición, en euros (también las de fuera del catálogo).
 function dPositionRow(p){
@@ -4484,25 +4489,32 @@ const dOpenRows=new Set();
 function dRowDetailHtml(r,open=false){
   const p=r.p,avg=num(p.avg_price),qty=r.qty,cur=String(p.currency||(r.preferTr?"EUR":"USD")).toUpperCase();
   const fee=brokerFeeInCurrency(p.broker,qty,avg,cur,"BUY",p.exchange||"");
-  const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(fee.fee??0):null),fees=num(p.fees_total)??(fee.fee??0);
-  let quote="",vsAvg=null;
+  const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg+(fee.fee??0):null);
+  // Comisiones coherentes con el coste: si no hay total guardado, lo que el coste lleva por encima de acciones × precio
+  // medio (antes salía la tarifa teórica del bróker aunque el coste no la incluyera).
+  const fees=num(p.fees_total)??(num(p.cost_basis)!==null&&qty!==null&&avg!==null?Math.max(0,num(p.cost_basis)-qty*avg):(fee.fee??0));
+  let quote="",vsAvg=null,unitNow=null;
   if(r.stock){
-    quote=typeof compactInvestingQuoteHtml==="function"?compactInvestingQuoteHtml(r.stock,r.preferTr):"";
-    const unit=marketValueInCurrency(currentMarket(r.stock,r.preferTr),cur);
+    const unit=marketValueInCurrency(currentMarket(r.stock,r.preferTr),cur);unitNow=unit;
     if(unit!==null&&avg)vsAvg=(unit/avg-1)*100;
+    // Cotización compartida (se actualiza en vivo y muestra pre/post); el rótulo «Precio por acción» la distingue
+    // de la cabecera, que es la posición entera.
+    quote=typeof compactInvestingQuoteHtml==="function"?compactInvestingQuoteHtml(r.stock,r.preferTr):"";
   }else{
     const isin=positionIsin(p),F=window.ViewInvAIFunds,q=isin&&F&&typeof F.getLiveQuote==="function"?F.getLiveQuote(isin):null,price=q&&cur==="EUR"?num(q.price):null;
     quote='<span class="portfolio-isin-quote">'+(price===null?"Cotización de Trade Republic…":"<b>"+esc(formatMoney(price,cur))+"</b>"+(r.dayPct!==null?" · hoy "+(r.dayPct>=0?"+":"")+formatNumber(r.dayPct,2)+" %":""))+'</span>';
     if(price!==null&&avg)vsAvg=(price/avg-1)*100;
+    unitNow=price;
   }
   const cell=(label,value,cls="")=>'<div'+(cls?' class="'+cls+'"':'')+'><small>'+label+'</small><b>'+value+'</b></div>';
   return '<div class="d-row-detail"'+(open?'':' hidden')+'>'+
-    '<div class="d-row-quote">'+quote+'</div>'+
+    // Arriba, la posición entera (valor y cambio de hoy); aquí, el precio de UNA acción: se rotula para no confundirlos.
+    '<div class="d-row-quote"><small class="d-row-quote-h">Precio por '+(r.etf?'participación':'acción')+'</small>'+quote+'</div>'+
     '<div class="d-row-cells">'+
       cell("Precio medio",esc(formatMoney(avg,cur)))+cell("Coste",esc(formatMoney(cost,cur)))+cell("Comisiones",esc(formatMoney(fees,cur)))+
       cell("Precio vs. media",vsAvg===null?"—":(vsAvg>0?"+":"")+formatNumber(vsAvg,2)+" %",vsAvg===null?"":vsAvg>=0?"d-pos":"d-neg")+
       (String(p.broker||"").trim()?cell("Bróker",esc(String(p.broker).trim())):"")+
-    '</div>'+positionDecisionChip(p,avg,cur)+
+    '</div>'+positionDecisionChip(p,avg,cur,unitNow)+
     '<div class="d-row-actions"><button type="button" class="portfolio-register-operation-icon" data-position-transactions="'+esc(p.id)+'">⇄ Registrar operación</button>'+
       (r.stock?'<button type="button" data-portfolio-stock-profile="'+esc(p.stock_key)+'" data-profile-prefer-tr="'+(r.preferTr?"1":"0")+'">Ver ficha ›</button>':'')+'</div>'+
   '</div>';

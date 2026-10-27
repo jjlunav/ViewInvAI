@@ -368,6 +368,9 @@
 @ .d-row-detail{flex:1 0 100%;display:grid;gap:10px;padding:2px 0 12px}
 @ .d-row-detail[hidden]{display:none}
 @ .d-row-quote{font-size:13px}
+@ .d-row-quote .asset-investing-main{display:flex!important;flex-wrap:wrap;align-items:baseline;gap:4px 8px;justify-content:flex-start!important;text-align:left!important}
+@ .d-row-quote .asset-investing-main>strong{order:0}
+@ .d-row-quote-h{display:block;margin-bottom:2px;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--d-ink-3,var(--muted))}
 @ .d-row-cells{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 @ .d-row-cells>div{display:grid;gap:1px;padding:7px 9px;border-radius:12px;background:var(--d-surf-2);min-width:0}
 @ .d-row-cells small{font-size:11px;color:var(--d-mut);font-weight:700}
