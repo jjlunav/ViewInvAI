@@ -68,7 +68,9 @@ function trIsin(s){return String((s&&s.trIsin)||(s&&s.tradeRepublicVerified&&s&&
 function intlListing(s){return !!s&&s.region==='intl'}
 function trTradable(s){
  if(!s)return false;
- if(intlListing(s))return !!(trIsin(s)&&s.trActive!==false);
+ // Sin ticker de LS Exchange no hay cotización en Trade Republic (LUS1, SWC, ALNRG… no responden en LSX):
+ // no se ofrecen como «de Trade Republic» con el precio vacío.
+ if(intlListing(s))return !!(trIsin(s)&&String(s.trTicker||'').trim()&&s.trActive!==false);
  if(s.tradeRepublicTradable===true)return true;
  if(s.tradeRepublicTradable===false)return false;
  return !!(s.tradeRepublicVerified&&trIsin(s)&&String(s.trTicker||'').trim()&&s.trActive!==false);

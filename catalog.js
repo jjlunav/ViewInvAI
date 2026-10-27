@@ -194,7 +194,7 @@ function catalogFilterMatch(value,filter,type){
  let terms=filter.toLocaleLowerCase('es').split('|').map(x=>x.trim()).filter(Boolean);
  return terms.length?terms.some(term=>hay.includes(term)):true;
 }
-function catalogSortValue(v,type){if(v===null||v===undefined||v==='')return type==='text'?'':-Infinity;return type==='text'?String(v).toLowerCase():Number(v)}
+function catalogSortValue(v,type){if(v===null||v===undefined||v===''||(type!=='text'&&!Number.isFinite(Number(v))))return null;return type==='text'?String(v).toLowerCase():Number(v)}
 function catalogActiveFilterCount(mode){return Object.values(catalogState[mode]?.filters||{}).filter(v=>String(v||'').trim()).length}
 function catalogMobileGroup(mode){
  let key=catalogState[mode]?.mobileGroup||'general';
@@ -317,7 +317,9 @@ function openCatalogColumnFilterMenu(button){
 function catalogTable(mode,rows,se){
  let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
  rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type)));
- rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
+ // Los valores sin dato van siempre al final, en los dos sentidos: antes, al ordenar por ticker, salían primero
+ // cientos de filas con «—» y parecía que el catálogo no tenía precios.
+ rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(av===null||bv===null)return av===bv?0:av===null?1:-1;if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
  let step=catalogPageSize();
  if(!Number.isFinite(st.limit)||st.limit<step)st.limit=step;
  let total=rows.length,limit=st.limit,shown=rows.slice(0,limit);
