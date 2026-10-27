@@ -2496,3 +2496,5 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.cr
 .crypto-import-table{width:100%;table-layout:fixed}
 .crypto-import-table th:nth-child(1){width:30%}.crypto-import-table th:nth-child(3){width:38%}
 .crypto-import-table input.crypto-import-units{max-width:none}
+.crypto-import-add{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;margin:8px 0}
+.crypto-import-add input{min-width:0;font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text)}
