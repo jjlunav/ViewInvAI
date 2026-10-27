@@ -199,39 +199,42 @@
   const cited=citedStocks(it,holdings()),mine=cited.some(s=>s.held);
   const ai=reader.loading?'<p class="ai-brief-muted">Analizando la noticia…</p>':reader.ai?(reader.ai.error?'<p class="ai-brief-muted">'+esc(reader.ai.error)+'</p>':'<p>'+esc(reader.ai.answer)+'</p>'+(reader.ai.keyPoints&&reader.ai.keyPoints.length?'<ul>'+reader.ai.keyPoints.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')+(typeof window.ViewInvAIVerifyHtml==='function'?window.ViewInvAIVerifyHtml(reader.ai.verification):'')):'<button type="button" class="btn small" data-news-ai>✦ ¿Qué significa para mi cartera?</button>';
   el.innerHTML='<div class="ai-ask-handle" aria-hidden="true"></div>'+
-   '<header class="news-reader-head"><small>'+esc([it.publisher,ago(it.time)].filter(Boolean).join(' · '))+'</small><button type="button" data-news-close aria-label="Cerrar">×</button></header>'+
+   '<header class="news-reader-head"><small>'+esc([srcName(it),ago(it.time)].filter(Boolean).join(' · '))+'</small><button type="button" data-news-close aria-label="Cerrar">×</button></header>'+
    '<div class="news-reader-body">'+
-    '<h2 data-i18n-content>'+esc(it.title)+'</h2>'+
+    // Titular: el que escribe la IA en español al leer la noticia; mientras, el del medio traducido.
+    (fullOk()&&reader.full.title?'<h2>'+esc(reader.full.title)+'</h2>':'<h2 data-i18n-content>'+esc(it.title)+'</h2>')+
     (cited.length?'<div class="news-meta">'+cited.map(stockChip).join('')+(mine?'<span class="news-mine">✦ En tu cartera</span>':'')+'</div>':'')+
     fullHtml(it)+
     '<section class="news-reader-ai"><div class="ai-brief-head"><span>✦ Lectura AI</span></div>'+ai+'</section>'+
-    '<a class="btn news-reader-source" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">Leer el artículo completo en '+esc(it.publisher||'el medio')+' ↗</a>'+
-    '<p class="ai-ask-note">'+(reader.full&&reader.full.ok?'Resumen del artículo hecho por IA con el texto completo del medio':'Resumen orientativo con el titular y el extracto')+': no es asesoramiento financiero.</p>'+
+    // Al final, la noticia real: medio, titular original y enlace.
+    '<section class="news-reader-origin"><small>NOTICIA ORIGINAL</small><b>'+esc(it.title)+'</b><span>'+esc([srcName(it),it.time?new Date(it.time).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · '))+'</span></section>'+
+    '<a class="btn news-reader-source" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">Leer la noticia original en '+esc(srcName(it)||'el medio')+' ↗</a>'+
+    '<p class="ai-ask-note">'+(fullOk()?(reader.full.basis==='snippet'?'Resumen hecho por IA con el titular y el extracto del medio (no deja leer el artículo entero)':'Resumen hecho por IA con el artículo completo del medio'):'Titular y extracto del medio traducidos')+': no es asesoramiento financiero.</p>'+
    '</div>';
  }
- // Muchos medios cortan el extracto del RSS a media frase («— un ...»). Entonces se lee el artículo completo en
- // el servidor y se enseña su resumen en frases enteras; si no se puede, el extracto acaba en la última frase completa.
- const cutSnippet=t=>/(\.\.\.|…|\[…\]|\[\.\.\.\])\s*$/.test(String(t||'').trim());
+ // La noticia la cuenta la IA en español leyendo el medio (el artículo entero si se deja; si no, el titular y el
+ // extracto), en vez de traducirla tal cual: las traducciones literales salían cortadas y con cifras mal leídas.
+ // Si la IA no puede, se enseña el extracto traducido y se dice.
+ const fullOk=()=>!!(reader.full&&reader.full.ok);
+ const srcName=it=>{const f=reader.item===it&&fullOk()?reader.full.source:'';const p=String(it.publisher||'');return f&&f.toLowerCase()!==p.toLowerCase()&&!/^[\x00-\x7f\u00c0-\u024f\s.&'-]+$/.test(p)?f+' ('+p+')':p||f};
  function fullHtml(it){
   const f=reader.full;
-  if(f&&f.ok)return '<div class="news-reader-full"><small class="news-full-tag">✦ Resumen del artículo completo'+(f.verified?' · cifras comprobadas':'')+'</small><p data-i18n-content>'+esc(f.summary)+'</p>'+
-   (f.keyFacts&&f.keyFacts.length?'<ul>'+f.keyFacts.map(k=>'<li data-i18n-content>'+esc(k)+'</li>').join('')+'</ul>':'')+
-   (f.verified===false?'<p class="ai-brief-muted">⚠ Algunas cifras no se han podido contrastar con el artículo: '+esc((f.unverified||[]).join(', '))+'.</p>':'')+'</div>';
-  // El extracto va tal cual (así reutiliza la traducción ya hecha en la lista); si viene cortado, se avisa.
-  const snip=it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(it.snippet)+'</p>':'<p class="news-reader-snippet muted">El medio no publica extracto.</p>';
-  if(reader.fullLoading)return snip+'<p class="ai-brief-muted">Leyendo el artículo completo…</p>';
-  if(f&&!f.ok&&(cutSnippet(it.snippet)||!it.snippet))return snip+'<p class="ai-brief-muted">'+esc(f.reason||'El medio solo publica este extracto.')+(f.retry?' <button type="button" class="d-chip" data-news-full-retry>Reintentar</button>':'')+'</p>';
-  return snip;
+  if(f&&f.ok)return '<div class="news-reader-full"><small class="news-full-tag">✦ '+(f.basis==='snippet'?'Resumen IA del extracto':'Resumen IA de la noticia')+(f.verified?' · cifras comprobadas':'')+'</small><p>'+esc(f.summary)+'</p>'+
+   (f.keyFacts&&f.keyFacts.length?'<ul>'+f.keyFacts.map(k=>'<li>'+esc(k)+'</li>').join('')+'</ul>':'')+
+   (f.verified===false?'<p class="ai-brief-muted">⚠ Algunas cifras no se han podido contrastar con la noticia: '+esc((f.unverified||[]).join(', '))+'.</p>':'')+'</div>';
+  if(reader.fullLoading||!f)return '<p class="ai-brief-muted news-reader-reading">✦ Leyendo la noticia y preparando el resumen en español…</p>';
+  const snip=it.snippet?'<p class="news-reader-snippet" data-i18n-content>'+esc(it.snippet)+'</p>':'';
+  return snip+'<p class="ai-brief-muted">'+esc(f.reason||'No se ha podido resumir la noticia.')+(f.retry?' <button type="button" class="d-chip" data-news-full-retry>Reintentar</button>':'')+'</p>';
  }
  async function loadFull(it){
-  if(!it.url||!(cutSnippet(it.snippet)||String(it.snippet||'').length<140))return;
-  const A=auth();if(!A||typeof A.apiFetch!=='function')return;
+  const A=auth();
+  if(!it.url||!A||typeof A.apiFetch!=='function'){reader.full={ok:false,reason:'Inicia sesión para leer el resumen.'};return}
   reader.fullLoading=true;paintReader();
   // Como mucho 50 s esperando: si el medio o la IA tardan más, se dice y se puede reintentar.
   const slow=new Promise((_,no)=>setTimeout(()=>no(new Error('slow')),50000));
-  try{const r=await Promise.race([A.apiFetch('/api/ai/article',{method:'POST',body:JSON.stringify({url:it.url,title:it.title,publisher:it.publisher})}),slow]);
+  try{const r=await Promise.race([A.apiFetch('/api/ai/article',{method:'POST',body:JSON.stringify({url:it.url,title:it.title,snippet:it.snippet||'',publisher:it.publisher})}),slow]);
    const d=await Promise.race([r.json().catch(()=>({})),slow]);if(reader.item===it)reader.full=r.ok?d:{ok:false,reason:d.error||'',retry:true}}
-  catch(e){if(reader.item===it)reader.full={ok:false,retry:true,reason:e&&e.message==='slow'?'El artículo está tardando demasiado en leerse.':'No se ha podido leer el artículo ahora.'}}
+  catch(e){if(reader.item===it)reader.full={ok:false,retry:true,reason:e&&e.message==='slow'?'La noticia está tardando demasiado en leerse.':'No se ha podido leer la noticia ahora.'}}
   finally{if(reader.item===it){reader.fullLoading=false;paintReader()}}
  }
  function openReader(it){
