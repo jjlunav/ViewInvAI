@@ -6686,6 +6686,10 @@ export async function handleBackendApi(request, env, services = {}) {
   }
 
   if (url.pathname === "/api/translate") return handleTranslate(request, env, json);
+  // Noticias sin sesión: actualidad general (última hora, macro, cripto). Sin cuenta no hay cartera que cruzar.
+  if (url.pathname === "/api/news" && !request.headers.get("Authorization")) {
+    try { return await handleNews(request, env, null, json, url); } catch (_) { return json({ error: "No se pudieron cargar las noticias." }, 502); }
+  }
 
   const auth = await verifyFirebaseUser(request, env);
   if (auth.error) return json({ error: auth.error }, auth.status || 401);
@@ -7993,7 +7997,7 @@ async function handleNews(request,env,user,json,url){
   const cat=["foryou","mine","latest","macro","crypto"].includes(url.searchParams.get("cat"))?url.searchParams.get("cat"):"foryou";
   const topic=async t=>(await newsCached(env,"topic:"+t,()=>newsSearch(env,NEWS_TOPICS[t]))).map(newsClean)
     .filter(x=>!newsIsQuotePage(x)&&(t==="crypto"||NEWS_FINANCE.test(x.title+" "+x.snippet))).map(x=>({...x,topic:t}));
-  const mine=()=>newsForHoldings(env,user.id);
+  const mine=async()=>user?newsForHoldings(env,user.id):[];
   let items=[];
   if(cat==="mine")items=await mine();
   else if(cat==="foryou"){
@@ -8003,7 +8007,7 @@ async function handleNews(request,env,user,json,url){
   const seen=new Set();
   items=items.filter(x=>{const k=x.title.toLowerCase().slice(0,80);if(seen.has(k))return false;seen.add(k);return true})
     .sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,40);
-  return json({cat,items,updatedAt:nowIso()},200,{"Cache-Control":"private, max-age=120"});
+  return json({cat,items,personal:!!user,updatedAt:nowIso()},200,{"Cache-Control":"private, max-age=120"});
 }
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);

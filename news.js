@@ -16,13 +16,16 @@
  const isActive=()=>typeof state!=='undefined'&&state.currentView==='news';
 
  async function load(cat,force=false){
-  if(!signedIn()||S.loading[cat])return;
+  if(S.loading[cat])return;
+  // Sin sesión también hay noticias: las generales. «Mis valores» necesita saber tu cartera.
+  if(!signedIn()&&cat==='mine')return;
   const hit=S.data[cat];
   if(!force&&hit&&Date.now()-hit.at<CLIENT_TTL)return;
   S.loading[cat]=true;S.error[cat]='';
   if(isActive())render();
   try{
-   const res=await auth().apiFetch('/api/news?cat='+encodeURIComponent(cat));
+   const path='/api/news?cat='+encodeURIComponent(cat);
+   const res=signedIn()?await auth().apiFetch(path):await fetch(path);
    const d=await res.json().catch(()=>({}));
    if(!res.ok)throw new Error(d.error||'No se pudieron cargar las noticias.');
    S.data[cat]={at:Date.now(),items:Array.isArray(d.items)?d.items:[]};
@@ -175,14 +178,14 @@
  }
  function render(){
   const box=document.getElementById('newsResults');if(!box)return;
-  if(!signedIn()){
-   box.innerHTML='<section class="tax-card today-signin"><div><small>NOTICIAS</small><strong>Inicia sesión para ver tus noticias</strong><span>Las de tus valores, el mercado, la macro y las cripto, en español.</span></div><button type="button" class="btn portfolio-google-login">Entrar con Google</button></section>';
-   return;
-  }
+  // Sin sesión: noticias generales (sin «Mis valores» ni la lectura de tu cartera) y una invitación discreta.
+  const anon=!signedIn();
+  if(anon&&S.cat==='mine')S.cat='foryou';
   load(S.cat);
-  const tabs='<div class="d-pills news-tabs" role="tablist" aria-label="Categorías de noticias">'+CATS.map(([k,l])=>'<button type="button" role="tab" class="'+(k===S.cat?'active':'')+'" data-news-cat="'+k+'" aria-selected="'+(k===S.cat)+'">'+l+'</button>').join('')+'</div>';
+  const tabs='<div class="d-pills news-tabs" role="tablist" aria-label="Categorías de noticias">'+CATS.filter(([k])=>!anon||k!=='mine').map(([k,l])=>'<button type="button" role="tab" class="'+(k===S.cat?'active':'')+'" data-news-cat="'+k+'" aria-selected="'+(k===S.cat)+'">'+(anon&&k==='foryou'?'Portada':l)+'</button>').join('')+'</div>';
   const d=S.data[S.cat];
-  box.innerHTML=tabs+headHtml()+listHtml(S.cat)+(d?'<p class="tax-hint news-foot">Google News y Bing News · actualizado '+esc(new Date(d.at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+'. Toca una noticia para leerla traducida y con la lectura de la IA.</p>':'');
+  const invite=anon?'<p class="news-signin-hint">Noticias generales del mercado. <button type="button" class="link-btn portfolio-google-login">Inicia sesión</button> para ver también las de tus valores.</p>':'';
+  box.innerHTML=tabs+invite+(anon?'':headHtml())+listHtml(S.cat)+(d?'<p class="tax-hint news-foot">Google News y Bing News · actualizado '+esc(new Date(d.at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}))+'. Toca una noticia para leerla traducida'+(anon?'':' y con la lectura de la IA')+'.</p>':'');
  }
  // Lector dentro de la app: titular y extracto del medio traducidos (data-i18n-content), los valores
  // citados y la lectura de la IA. El artículo completo sigue en su medio (tiene derechos de autor).
@@ -228,7 +231,7 @@
  }
  async function loadFull(it){
   const A=auth();
-  if(!it.url||!A||typeof A.apiFetch!=='function'){reader.full={ok:false,reason:'Inicia sesión para leer el resumen.'};return}
+  if(!it.url||!A||typeof A.apiFetch!=='function'||!signedIn()){reader.full={ok:false,reason:'El resumen hecho por IA necesita iniciar sesión. Mientras, tienes el titular, el extracto y el enlace a la noticia original.'};return}
   reader.fullLoading=true;paintReader();
   // Como mucho 50 s esperando: si el medio o la IA tardan más, se dice y se puede reintentar.
   const slow=new Promise((_,no)=>setTimeout(()=>no(new Error('slow')),50000));

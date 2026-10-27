@@ -790,3 +790,8 @@
  @ .scr-asset-menu>button{padding:13px 12px}
  @ .scr-asset-menu>button b{font-size:15px}
 }
+/* Noticias sin sesión: invitación discreta en una línea, sin tapar las noticias. */
+@ .news-signin-hint{margin:2px 0 10px;font-size:13px;color:var(--d-ink-2,var(--muted))}
+@ .news-signin-hint .link-btn{background:none!important;box-shadow:none!important;border:0!important;padding:0!important;min-height:0!important;font-family:inherit;font-size:inherit;font-weight:700;color:var(--d-accent)!important;-webkit-text-fill-color:var(--d-accent)!important;text-decoration:underline;cursor:pointer}
+/* Screener IA en escritorio: el selector de activo a la derecha del título (ya no hay fila de pestañas). */
+@ .page-heading>.scr-asset-inline{margin-left:auto;align-self:center}

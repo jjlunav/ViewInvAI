@@ -44,6 +44,8 @@
   {id:'value',icon:'💎',name:'Valor tipo Graham',desc:'Baratas por beneficios y por libros, con beneficios positivos.',conds:[{f:'peRatio',op:'between',v:0.1,v2:15},{f:'priceBook',op:'between',v:0.01,v2:1.5},{f:'netIncome',op:'>',v:0},LIQ]},
   {id:'dividend',icon:'💶',name:'Dividendo sólido',desc:'Rentabilidad por dividendo alta, con beneficios y sin estar en caída libre.',conds:[{f:'dividendYield',op:'>',v:4},{f:'perf6M',op:'>',v:-10},{f:'netIncome',op:'>',v:0},LIQ]},
   {id:'rebound',icon:'🔄',name:'Rebote o trampa',desc:'Muy castigadas (RSI bajo) que hoy reaccionan con volumen. Pide a la IA que separe rebotes de trampas.',conds:[{f:'rsi',op:'<',v:35},{f:'changePct',op:'>',v:1.5},{f:'relVolume',op:'>',v:1.3},LIQ]},
+  // Mismo umbral que el antiguo apartado «Caídas bruscas» (score-engine: CRASH_MIN −25 % y fuera las de menos de 20 M).
+  {id:'crash',icon:'⇣',name:'Caídas bruscas',desc:'Caen un 25 % o más hoy de golpe: ¿sobrerreacción con rebote o motivo de fondo? Ábrelas para ver la causa.',conds:[{f:'changePct',op:'<',v:-25},{f:'marketCap',op:'>',v:20}]},
   {id:'catalyst',icon:'📅',name:'Catalizador cerca',desc:'Resultados en las próximas dos semanas, con tendencia a favor y volumen.',conds:[{f:'earningsDays',op:'between',v:0,v2:14},{f:'perfMonth',op:'>',v:3},{f:'relVolume',op:'>',v:1},LIQ]},
   {id:'smallhot',icon:'⚡',name:'Pequeñas en ebullición',desc:'Pequeña capitalización con volumen inusual: más recorrido y más riesgo.',conds:[{f:'marketCap',op:'<',v:2000},{f:'relVolume',op:'>',v:2},{f:'changePct',op:'>',v:3}]},
   {id:'highs',icon:'🏔️',name:'Cerca de máximos',desc:'A menos de un 5 % de su máximo anual con tendencia fuerte (ADX).',conds:[{f:'fromHigh',op:'>',v:-5},{f:'adx',op:'>',v:25},{f:'perf6M',op:'>',v:10},LIQ]},
@@ -117,7 +119,7 @@
  // El Screener IA es del diseño ViewInvAI; en el clásico los catálogos siguen como antes (sin panel ni selector).
  const isD=()=>document.documentElement.dataset.design!=='classic';
  const isMobile=()=>window.matchMedia&&window.matchMedia('(max-width:820px)').matches;
- // Selector de activo: en escritorio, desplegable al principio de la barra; en móvil, botón bajo el título que abre
+ // Selector de activo: en escritorio, desplegable a la derecha del título; en móvil, botón bajo el título que abre
  // una hoja desde abajo (más cómoda con el pulgar). Cada clase en su divisa; fondos y ETFs sin distinguir plataforma.
  const ASSETS=[['catalog','Acciones LSX','€','Trade Republic · LS Exchange'],['catalogUS','Acciones EE. UU.','$','Nasdaq, NYSE y AMEX'],['funds:fund','Fondos de inversión','','Registrados para la venta en España'],['funds:exchange','ETFs y ETPs','','Cotizados en bolsas europeas'],['crypto','Cripto','€','Precio de consenso']];
  function assetKey(){
@@ -264,8 +266,8 @@
   else if(t.dataset.scrSuggest){askAi(mode,t.dataset.scrSuggest);return}
   save();rerender(mode);
  });
- // Dónde va el selector, sin gastar una fila: en escritorio, al final de la fila de secciones (Mercado · Screener IA ·
- // Noticias); en móvil, el propio título de la barra superior se convierte en el selector.
+ // Dónde va el selector, sin gastar una fila: en escritorio, a la derecha del título (el menú lateral ya lleva las
+ // secciones); en móvil, el propio título de la barra superior se convierte en el selector.
  function placePicker(){
   if(typeof state==='undefined')return;
   document.querySelectorAll('.scr-asset').forEach(x=>x.remove());
@@ -280,8 +282,9 @@
    const h1=head.querySelector('h1');head.classList.add('has-scr-picker');
    if(h1)h1.after(picker);else head.prepend(picker);
   }else{
-   const sw=view.querySelector(':scope>.section-switcher');
-   if(sw){picker.classList.add('scr-asset-inline');sw.appendChild(picker)}
+   // Escritorio: a la derecha del título (no hay fila de pestañas; el menú lateral ya lleva las secciones).
+   const head=view.querySelector(':scope>.page-heading');
+   if(head){picker.classList.add('scr-asset-inline');head.appendChild(picker)}
   }
   // Mapa de calor: volver a la tabla, en la misma fila que el selector (escritorio) o arriba (móvil).
   let back=view.querySelector(':scope>.scr-map-back');
