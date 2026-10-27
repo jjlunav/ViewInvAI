@@ -42,24 +42,40 @@ const NAV_GROUPS={
  admin:['admin']
 };
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
-const SECTION_LABELS={home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',crash:'Caídas',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={screener:'Screener IA',portfolios:'Carteras',tax:'Fiscal',home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',crash:'Caídas',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 // Diseño D: Mercados agrupa la portada y los catálogos (LSX, EE. UU., fondos, cripto, mapa).
 const isDesignD=()=>document.documentElement.dataset.design!=='classic';
-const D_NAV_GROUPS=Object.assign({},NAV_GROUPS,{home:['home','news','catalog','catalogUS','funds','crypto','heatmap'],catalogs:[]});
-const D_MORE_VIEWS=['news','inbox','future','favorites','tax','catalog','catalogUS','funds','crypto','heatmap','settings'];
+// Estructura (2026-10): Hoy · Mercados (Mercado · Screener IA · Noticias) · Radar AI (Radar · Caídas · Futuro) ·
+// Carteras (Carteras · Fiscal). El Screener IA reúne lo que antes eran cinco menús: catálogos LSX y EE. UU., fondos
+// y ETFs, cripto y mapa de calor, con sus propias pestañas dentro. Avisos y Configuración, en la barra superior.
+const SCREENER_VIEWS=['catalog','catalogUS','funds','crypto','heatmap'];
+const SCREENER_TABS=[['catalog','Acciones LSX','€'],['catalogUS','Acciones EE. UU.','$'],['funds','Fondos y ETFs',''],['crypto','Cripto','€']];
+function lastScreenerView(){try{const v=localStorage.getItem('viewinvai:screener-last');return SCREENER_VIEWS.includes(v)?v:'catalog'}catch(_){return'catalog'}}
+const D_NAV_GROUPS={today:['today'],home:['home','screener','news'],recommendation:['recommendation','crash','entry','future'],portfolios:['portfolios','tax'],inbox:['inbox'],settings:['settings'],admin:['admin']};
+const D_MORE_VIEWS=['inbox','settings','admin'];
 const navGroups=()=>isDesignD()?D_NAV_GROUPS:NAV_GROUPS;
-function navGroupOf(v){for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
+function navGroupOf(v){if(isDesignD()&&(SCREENER_VIEWS.includes(v)||v==='screener'))return 'home';if(v==='favorites')return 'portfolios';for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
- document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
+ document.querySelectorAll('.section-switcher,.screener-bar').forEach(el=>el.remove());
  const view=document.querySelector('.view.active');if(!view)return;
- const group=navGroups()[navGroupOf(state.currentView)]||[];
+ const group=(navGroups()[navGroupOf(state.currentView)]||[]).filter(v=>v!=='entry');
  if(group.length<2)return;
+ const inScreener=isDesignD()&&SCREENER_VIEWS.includes(state.currentView);
  const nav=document.createElement('nav');
  nav.className='section-switcher';nav.setAttribute('aria-label','Secciones');
- nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(v===state.currentView?' active':'')+'" data-section-view="'+E(v)+'" title="'+E((V[v]||v).replace(/^\d+\s*/,''))+'" aria-current="'+(v===state.currentView?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
+ const on=v=>v===state.currentView||(v==='screener'&&inScreener)||(v==='recommendation'&&state.currentView==='entry');
+ nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(on(v)?' active':'')+'" data-section-view="'+E(v)+'" title="'+E(v==='screener'?'Screener IA':(V[v]||v).replace(/^\d+\s*/,''))+'" aria-current="'+(on(v)?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
  const heading=view.querySelector(':scope>.page-heading');
  if(heading)heading.after(nav);else view.prepend(nav);
+ // Dentro del Screener IA: la clase de activo (cada una en su divisa) y, en acciones de EE. UU., el mapa de calor.
+ if(inScreener){
+  const cur=state.currentView,tabOf=cur==='heatmap'?'catalogUS':cur;
+  const bar=document.createElement('div');bar.className='screener-bar';
+  bar.innerHTML='<div class="screener-tabs" role="tablist" aria-label="Clase de activo">'+SCREENER_TABS.map(([v,l,c])=>'<button type="button" role="tab" class="'+(v===tabOf?'active':'')+'" data-section-view="'+v+'" aria-selected="'+(v===tabOf)+'">'+E(l)+(c?' <i>'+c+'</i>':'')+'</button>').join('')+'</div>'+
+   (tabOf==='catalogUS'?'<div class="screener-mode" role="group" aria-label="Vista"><button type="button" class="'+(cur==='catalogUS'?'active':'')+'" data-section-view="catalogUS">▤ Tabla</button><button type="button" class="'+(cur==='heatmap'?'active':'')+'" data-section-view="heatmap">▦ Mapa S&amp;P 500</button></div>':'');
+  nav.after(bar);
+ }
  const active=nav.querySelector('.active');
  if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center'}));
 }
@@ -70,7 +86,15 @@ let navigationRendered=false;
 function renderNavigation(){
  if(navigationRendered){syncMobileNavigation();return}
  let order=navigationOrder(),side=$('#sidebar .nav');
- if(side){
+ if(side&&isDesignD()){
+  // Menú lateral agrupado igual que la barra del móvil: cada grupo con sus secciones.
+  const it=(v,label,icon,extra='')=>'<button class="nav-item'+extra+'" data-view="'+E(v)+'"><span>'+(icon||navigationIconHtml(v))+'</span>'+E(label)+'</button>';
+  const h=t=>'<div class="nav-group-h">'+E(t)+'</div>';
+  side.innerHTML=it('today','Hoy')+
+   h('Mercados')+it('home','Mercado')+it('screener','Screener IA','⧩',' nav-screener')+it('news','Noticias')+
+   h('Ideas IA')+it('recommendation','Radar AI','✹',' ai-nav-item')+it('crash','Caídas bruscas','⇣')+it('future','Potencial futuro','✦')+
+   h('Tu dinero')+it('portfolios','Carteras')+it('favorites','Favoritos','★')+it('tax','Fiscal (IRPF)','§');
+ }else if(side){
   let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }
@@ -106,7 +130,7 @@ function renderNavigation(){
    '<button type="button" class="mobile-more-item d-more-ai" data-ai-ask="1"><span aria-hidden="true">✦</span><b>Pregunta a la IA</b><small>Sobre tus carteras y el mercado</small></button>'+
    '<button type="button" class="mobile-more-item" data-mobile-view="portfolios" data-portfolio-asset="goal"><span aria-hidden="true">◎</span><b>Objetivo</b><small>Plan de la IA para tu meta</small></button>'+
    tile('future')+
-   head('Explorar')+tile('news')+tile('catalog','', 'Catálogo LSX')+tile('catalogUS','','EE. UU.')+tile('funds','','Fondos y ETF')+tile('crypto','','Cripto')+tile('heatmap','','Mapa de calor')+tile('favorites')+
+   head('Explorar')+'<button type="button" class="mobile-more-item" data-mobile-view="screener"><span aria-hidden="true">⧩</span><b>Screener IA</b><small>Acciones LSX y EE. UU., fondos, cripto y mapa</small></button>'+tile('news')+tile('favorites')+
    head('Gestión')+
    '<button type="button" class="mobile-more-item" data-broker-import><span aria-hidden="true">⇅</span><b>Importar extracto</b><small>Trade Republic, IBKR o CSV</small></button>'+
    tile('tax','','Fiscal (IRPF)')+tile('inbox','','Avisos')+tile('settings');
@@ -119,6 +143,7 @@ function renderNavigation(){
 function rebuildNavigation(){navigationRendered=false;renderNavigation()}
 function syncMobileNavigation(){
  const group=navGroupOf(state.currentView);
+ if(isDesignD()){const cur=state.currentView;$$('#sidebar .nav-item').forEach(x=>{const v=x.dataset.view,on=v===cur||(v==='screener'&&SCREENER_VIEWS.includes(cur))||(v==='recommendation'&&cur==='entry');x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')})}
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
  const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
  const more=$('[data-mobile-more]');if(more)more.classList.toggle('active',(isDesignD()?D_MORE_VIEWS:MORE_VIEWS).includes(state.currentView));
@@ -276,6 +301,7 @@ function initNativeBackHandling(){
 }
 function show(v,preserveProfile=false,recordHistory=true){
  if(v==='alerts')v='home';
+ if(v==='screener')v=lastScreenerView();
  // Favoritos vive ahora como pestaña de Carteras.
  if(v==='favorites'){v='portfolios';setTimeout(()=>window.ViewInvAIFunds?.setPortfolioAssetMode?.('favorites',false),0)}
  if(!V[v])return;
@@ -291,7 +317,7 @@ function show(v,preserveProfile=false,recordHistory=true){
  if(recordHistory)pushCurrentAppHistory();
 }
 
-document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
+document.addEventListener('click',e=>{const x=e.target.closest&&e.target.closest('#sidebar .nav-item');if(x&&x.dataset.view){e.preventDefault();show(x.dataset.view)}});
 document.addEventListener('click',e=>{
  const shellView=e.target.closest&&e.target.closest('[data-shell-view]');
  if(shellView){e.preventDefault();const v=shellView.dataset.shellView;if(v)show(v);return}
@@ -300,9 +326,9 @@ document.addEventListener('click',e=>{
  if(mobileView&&(mobileView.classList.contains('mobile-nav-item')||mobileView.classList.contains('mobile-more-item')||mobileView.classList.contains('d-more-gear'))){
   e.preventDefault();let v=mobileView.dataset.mobileView;
   if(v&&mobileView.classList.contains('mobile-nav-item')){
-   const group=NAV_GROUPS[v]||[v];
-   if(group.includes(state.currentView)&&!document.body.classList.contains('stock-detail-open')){v=group[0]}
-   else{try{const last=localStorage.getItem('viewinvai:nav-last:'+v);if(last&&group.includes(last))v=last}catch(_){}}
+   const group=navGroups()[v]||[v];
+   if(navGroupOf(state.currentView)===v&&!document.body.classList.contains('stock-detail-open')){v=group[0]}
+   else{try{const last=localStorage.getItem('viewinvai:nav-last:'+v);if(last&&navGroupOf(last)===v)v=last}catch(_){}}
   }
   if(v)show(v);return;
  }
@@ -315,7 +341,7 @@ document.addEventListener('click',e=>{
  const sw=e.target.closest&&e.target.closest('[data-section-view]');
  if(sw){e.preventDefault();show(sw.dataset.sectionView)}
 });
-window.addEventListener('viewinvai:view-changed',()=>{try{localStorage.setItem('viewinvai:nav-last:'+navGroupOf(state.currentView),state.currentView)}catch(_){}});
+window.addEventListener('viewinvai:view-changed',()=>{try{localStorage.setItem('viewinvai:nav-last:'+navGroupOf(state.currentView),state.currentView);if(SCREENER_VIEWS.includes(state.currentView))localStorage.setItem('viewinvai:screener-last',state.currentView)}catch(_){}});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 

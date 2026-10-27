@@ -32,7 +32,12 @@ const CATALOG_COLUMNS={
   {id:'wkn',label:'WKN',type:'text',value:s=>s.trWkn||'',cell:s=>E(s.trWkn||'—')},
   {id:'isin',label:'ISIN',type:'text',value:s=>s.trIsin||s.isin||'',cell:s=>E(s.trIsin||s.isin||'—')},
   {id:'feed',label:'Feed',type:'text',value:s=>s.trLiveQuality||'LSX',cell:s=>E(s.trLiveQuality||'LSX')},
-  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
+  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'},
+  {id:'why',label:'✦ Por qué entra',type:'text',value:s=>window.ViewInvAIScreener?window.ViewInvAIScreener.why('tr',s):'',cell:s=>'<span class="scr-why">'+E(window.ViewInvAIScreener?window.ViewInvAIScreener.why('tr',s):'')+'</span>'},
+  {id:'mcap',label:'Cap. orig.',type:'number',value:s=>N(s.marketCap),cell:s=>catalogOrigCap(s)},
+  {id:'pe',label:'PER',type:'number',value:s=>N(s.peRatio),cell:s=>N(s.peRatio)===null?'—':F(s.peRatio,1)},
+  {id:'pb',label:'P/VC',type:'number',value:s=>N(s.priceBook),cell:s=>N(s.priceBook)===null?'—':F(s.priceBook,2)},
+  {id:'divy',label:'Dividendo',type:'number',value:s=>N(s.dividendYield),cell:s=>N(s.dividendYield)===null?'—':F(s.dividendYield,2)+' %'}
  ],
  us:[
   {id:'fav',label:'★',type:'html',value:s=>favorites.has(stockKey(s))?1:0,cell:s=>favButton(s)},
@@ -64,7 +69,12 @@ const CATALOG_COLUMNS={
   {id:'isin',label:'ISIN',type:'text',value:s=>s.usIsin||s.isin||'',cell:s=>E(s.usIsin||s.isin||'—')},
   {id:'feed',label:'Feed',type:'text',value:s=>s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||''),cell:s=>'<span class="'+(s.usLiveIsRealTime?'feed-live':'feed-delayed')+'">'+E(s.usLiveIsRealTime?'Nasdaq realtime':(s.updateMode||'—'))+'</span>'},
   {id:'updated',label:'Último dato',type:'text',value:s=>s.usLiveTimestamp||s.lastBarUpdateTime||'',cell:s=>E(s.usLiveTimestamp||'—')},
-  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'}
+  {id:'earnings',label:'Resultados',type:'date',value:s=>s.earningsDate?new Date(s.earningsDate).getTime():null,cell:s=>s.earningsDate?DF(s.earningsDate):'—'},
+  {id:'why',label:'✦ Por qué entra',type:'text',value:s=>window.ViewInvAIScreener?window.ViewInvAIScreener.why('us',s):'',cell:s=>'<span class="scr-why">'+E(window.ViewInvAIScreener?window.ViewInvAIScreener.why('us',s):'')+'</span>'},
+  {id:'mcap',label:'Capitalización',type:'number',value:s=>N(s.marketCap),cell:s=>catalogOrigCap(s)},
+  {id:'pe',label:'PER',type:'number',value:s=>N(s.peRatio),cell:s=>N(s.peRatio)===null?'—':F(s.peRatio,1)},
+  {id:'pb',label:'P/VC',type:'number',value:s=>N(s.priceBook),cell:s=>N(s.priceBook)===null?'—':F(s.priceBook,2)},
+  {id:'divy',label:'Dividendo',type:'number',value:s=>N(s.dividendYield),cell:s=>N(s.dividendYield)===null?'—':F(s.dividendYield,2)+' %'}
  ]
 };
 const CATALOG_MOBILE_GROUPS=[
@@ -80,7 +90,7 @@ const catalogState={
  us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'}
 };
 const CATALOG_DEFAULT_WIDTHS={
- fav:42,tickerTr:92,tickerUs:92,ticker:92,name:320,exchange:90,priceEur:108,priceUsd:108,change:82,bid:92,ask:92,
+ fav:42,why:300,mcap:118,pe:72,pb:72,divy:92,tickerTr:92,tickerUs:92,ticker:92,name:320,exchange:90,priceEur:108,priceUsd:108,change:82,bid:92,ask:92,
  volume:105,avgVolume:118,relVolume:110,rsi:72,adx:72,ema20:92,ema50:92,week:82,month:82,wkn:96,isin:132,feed:118,
  earnings:104,premarketPrice:102,premarketChange:82,premarketVolume:100,regularPrice:108,regularChange:88,postmarketPrice:102,
  postmarketChange:82,postmarketVolume:100,tr:118,updated:132
@@ -137,7 +147,7 @@ function catalogSaveLayout(mode){
  window.ViewInvAIUiPreferences?.save?.(catalogPrefScope(mode),catalogLayoutPreferences(mode));
 }
 function catalogSaveOrder(mode){catalogSaveLayout(mode)}
-function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
+function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));const list=catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean);return window.ViewInvAIScreener?window.ViewInvAIScreener.columns(mode,list):list}
 function catalogSession(mode){
  if(mode==='tr')return 'regular';
  let v=$('#catalogUSSession')?.value||'auto';
@@ -194,6 +204,7 @@ function catalogFilterMatch(value,filter,type){
 }
 // Cada catálogo en su divisa (LSX en €, EE. UU. en $): sin columnas de precio convertidas a la otra. Las EMA del
 // catálogo LSX vienen de la cotización de origen y llevan su divisa para no confundirlas con el precio en €.
+function catalogOrigCap(s){const n=N(s.marketCap);if(n===null)return'—';const c=String(s&&s.currency||'USD').toUpperCase(),sym=c==='EUR'?'€':c==='USD'?'$':c;return(n>=1e9?F(n/1e9,1)+' mil M':F(n/1e6,0)+' M')+' '+sym}
 function catalogOrigMoney(s,v){const n=N(v);if(n===null)return'—';const c=String(s&&s.currency||'USD').toUpperCase();return PR(n)+' '+(c==='EUR'?'€':c==='USD'?'$':c)}
 function catalogSortValue(v,type){if(v===null||v===undefined||v===''||(type!=='text'&&!Number.isFinite(Number(v))))return null;return type==='text'?String(v).toLowerCase():Number(v)}
 function catalogActiveFilterCount(mode){return Object.values(catalogState[mode]?.filters||{}).filter(v=>String(v||'').trim()).length}
@@ -317,7 +328,7 @@ function openCatalogColumnFilterMenu(button){
 }
 function catalogTable(mode,rows,se){
  let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
- rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type)));
+ rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type))&&(!window.ViewInvAIScreener||window.ViewInvAIScreener.match(mode,s)));
  // Los valores sin dato van siempre al final, en los dos sentidos: antes, al ordenar por ticker, salían primero
  // cientos de filas con «—» y parecía que el catálogo no tenía precios.
  rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(av===null||bv===null)return av===bv?0:av===null?1:-1;if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
@@ -345,6 +356,7 @@ function renderCatalogTable(mode){
  let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
  let st=catalogState[mode];
  let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(typeof window.ViewInvAISectorEs==='function'&&s.sector?window.ViewInvAISectorEs(s.sector):'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
+ if(window.ViewInvAIScreener)window.ViewInvAIScreener.renderPanel(mode);
  let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogColumns(mode));
  let count=$(isTr?'#catalogCount':'#catalogUSCount');if(count)count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
