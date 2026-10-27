@@ -637,15 +637,16 @@
   // El mismo Excel elegido dos veces (o dos años que se solapan) duplicaba saldos: una fila idéntica que ya vino
   // en otro fichero se cuenta una sola vez. Dentro de un mismo fichero se respetan todas.
   let head=null,body=[];const seen=new Map();readStatementRows.dupes=0;readStatementRows.sameFiles=0;
-  let fileNo=0;
-  for(const file of files){fileNo++;
+  for(const file of files){
    const isXlsx=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
    let rows=isXlsx?await xlsxRows(await file.arrayBuffer()):splitCsv(await file.text());
    const at=rows.findIndex(r=>r.filter(x=>String(x).trim()).length>=3);if(at<0)continue;rows=rows.slice(at);
    if(!head)head=rows[0];
    else if(rows[0].map(norm).join('|')!==head.map(norm).join('|'))throw Error('«'+file.name+'» tiene otras columnas: importa los ficheros de la misma plataforma y del mismo tipo de informe.');
-   let dup=0;const rest=rows.slice(1);
-   for(const r of rest){const k=r.map(x=>String(x).trim()).join('\u0001'),f=seen.get(k);if(f!==undefined&&f!==fileNo){dup++;continue}seen.set(k,fileNo);body.push(r)}
+   // Por cada fila se guardan tantas copias como el fichero que más tenga (no la suma): el orden de selección da igual
+   // y las repeticiones legítimas dentro de un fichero se respetan.
+   let dup=0;const rest=rows.slice(1),inFile=new Map();
+   for(const r of rest){const k=r.map(x=>String(x).trim()).join('\u0001'),n=(inFile.get(k)||0)+1;inFile.set(k,n);if(n<=(seen.get(k)||0)){dup++;continue}seen.set(k,n);body.push(r)}
    readStatementRows.dupes+=dup;if(rest.length&&dup===rest.length)readStatementRows.sameFiles++;
   }
   if(!head)throw Error('Los ficheros están vacíos.');
