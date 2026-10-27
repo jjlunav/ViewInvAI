@@ -7231,7 +7231,7 @@ function marketMoveFacts(snapshot,stock,events,pct,nowMs){
   const news=(events||[]).filter(e=>{const t=new Date(e.date).getTime();return e.eventKind==="news"&&nowMs-t<36*3600e3&&nowMs-t>-3600e3}).sort((a,b)=>(own(b)-own(a))||(new Date(b.date)-new Date(a.date)));
   const earnings=(events||[]).find(e=>e.type==="earnings"&&Math.abs(new Date(e.date).getTime()-nowMs)<36*3600e3);
   if(earnings)facts.push({k:"earnings",t:"Resultados: "+trimText(earnings.title||earnings.fact||"publica o acaba de publicar resultados",180)});
-  for(const n of news.slice(0,2))facts.push({k:"news",t:"Noticia ("+Math.max(0,Math.round((nowMs-new Date(n.date).getTime())/3600e3))+" h): "+trimText(n.title||n.fact||"",200)});
+  for(const n of news.slice(0,2)){const h=Math.max(0,Math.round((nowMs-new Date(n.date).getTime())/3600e3)),title=trimText(n.title||n.fact||"",200);facts.push({k:"news",h,title,t:"Noticia ("+h+" h): "+title})}
   const rel=finiteNumber(stock.relVolume)??(finiteNumber(stock.volume)&&finiteNumber(stock.avgVolume)?finiteNumber(stock.volume)/finiteNumber(stock.avgVolume):null);
   if(rel!==null)facts.push({k:"volume",t:"Volumen ×"+moveNum(rel,1)+" sobre su media",rel});
   const stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[];
@@ -7244,12 +7244,37 @@ function marketMoveFacts(snapshot,stock,events,pct,nowMs){
 function marketMoveFallbackWhy(facts,pct){
   const up=pct>0,f=k=>facts.find(x=>x.k===k);
   if(f("earnings"))return"Se mueve por sus resultados.";
-  if(f("news"))return"Tras la noticia: "+f("news").t.replace(/^Noticia \(\d+ h\): /,"")+".";
+  // Nunca un titular en otro idioma: si no se pudo traducir, se cita la noticia sin copiarla.
+  if(f("news"))return f("news").es===false?"Tras una noticia de hace "+(f("news").h<1?"menos de 1 h":f("news").h+" h")+" (la tienes en la ficha).":"Tras la noticia: "+f("news").title.replace(/[.\s]+$/,"")+".";
   const sec=f("sector");
   if(sec&&Math.abs(sec.med)>=1&&Math.sign(sec.med)===Math.sign(pct))return"Sin noticia propia: "+(up?"sube":"cae")+" con su sector ("+(sec.med>=0?"+":"")+moveNum(sec.med,1)+" %).";
   const vol=f("volume");
   if(vol&&vol.rel>=2)return"Sin noticia registrada, pero con volumen alto (×"+moveNum(vol.rel,1)+"): hay movimiento de dinero real.";
   return"Sin noticia registrada: puede responder a flujos, rumores o al mercado.";
+}
+// Titulares en inglés → español antes de explicar el movimiento: primero la traducción común de la app
+// (IA, con caché), y si no responde, MyMemory (gratuito, sin clave). Lo que no se traduzca queda marcado
+// para no copiarlo en inglés.
+async function marketMoveTranslateFacts(env,facts){
+  const todo=facts.filter(f=>(f.k==="news"||f.k==="earnings")&&quickLang(f.title||f.t)==="en");
+  if(!todo.length)return facts;
+  const src=todo.map(f=>f.title||f.t.replace(/^Resultados: /,""));
+  let out=src.map(()=>null);
+  try{out=await Promise.race([translateTexts(env,"es",src),new Promise(r=>setTimeout(()=>r(src.map(()=>null)),12000))])}catch(_){}
+  for(let i=0;i<src.length;i++){
+    if(out[i]&&quickLang(out[i])!=="en")continue;
+    out[i]=null;
+    try{
+      const r=await fetch("https://api.mymemory.translated.net/get?langpair=en%7Ces&q="+encodeURIComponent(src[i].slice(0,450)),{signal:AbortSignal.timeout(6000)});
+      const d=r.ok?await r.json():null,t=trimText(d&&d.responseData&&d.responseData.translatedText||"",240);
+      if(Number(d&&d.responseStatus)===200&&t&&quickLang(t)!=="en"&&!/MYMEMORY WARNING|QUERY LENGTH/i.test(t))out[i]=t;
+    }catch(_){}
+  }
+  todo.forEach((f,i)=>{
+    if(out[i]){if(f.k==="news"){f.title=out[i];f.t="Noticia ("+f.h+" h): "+out[i]}else f.t="Resultados: "+out[i];f.es=true}
+    else f.es=false;
+  });
+  return facts;
 }
 // Frase de la IA solo con los hechos dados; si mete una cifra que no está en ellos, se descarta.
 async function marketMoveWhy(env,stock,pct,facts){
@@ -7329,7 +7354,7 @@ export async function scanMarketMoves(env,services,positionRows=[],watchRows=[],
       if(!kind&&!ext)continue;
       let events=recentEvents(snapshot,stock,18);
       if(services.loadNews)try{events=mergeEventRows(events,await services.loadNews(stock,target),24)}catch(_){}
-      const why=await marketMoveWhy(env,stock,pct,marketMoveFacts(snapshot,stock,events,pct,nowMs));
+      const why=await marketMoveWhy(env,stock,pct,await marketMoveTranslateFacts(env,marketMoveFacts(snapshot,stock,events,pct,nowMs)));
       const posLine=marketMovePositionLine(target,price,pct,cur),name=String(stock.name||target.name||target.ticker||"").replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,"");
       const signed=(pct>=0?"+":"−")+moveNum(Math.abs(pct),1)+" %",ticker=target.ticker||stock.ticker;
       let type,severity,title,message;
