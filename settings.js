@@ -210,6 +210,7 @@ function renderAnalysisSettings(settings=null){
  const enabled=accountAnalysisSettings?Number(accountAnalysisSettings.notifications_enabled)===1:false;
  const newsEvents=accountAnalysisSettings?Number(accountAnalysisSettings.notify_news_events)===1:false;
  const catalystEve=accountAnalysisSettings?Number(accountAnalysisSettings.notify_catalyst_eve)===1:false;
+ const moves=accountAnalysisSettings?Number(accountAnalysisSettings.notify_moves)===1:false;
  const radarHigh=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_high)===1:false;
  const radarOpportunity=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_opportunity)===1:false;
  const radarWatch=accountAnalysisSettings?Number(accountAnalysisSettings.notify_radar_watch)===1:false;
@@ -219,7 +220,7 @@ function renderAnalysisSettings(settings=null){
  const portfolio=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio)===1:false;
  const portfolioGoal=accountAnalysisSettings?Number(accountAnalysisSettings.notify_portfolio_goal)===1:false;
  const dailyDigest=accountAnalysisSettings?Number(accountAnalysisSettings.daily_digest_enabled)!==0:false;
- const toggles={globalDailyDigest:dailyDigest,globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyCatalystEve:catalystEve,globalNotifyRadarHigh:radarHigh,globalNotifyRadarOpportunity:radarOpportunity,globalNotifyRadarWatch:radarWatch,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
+ const toggles={globalDailyDigest:dailyDigest,globalNotificationsEnabled:enabled,globalNotifyNewsEvents:newsEvents,globalNotifyCatalystEve:catalystEve,globalNotifyMoves:moves,globalNotifyRadarHigh:radarHigh,globalNotifyRadarOpportunity:radarOpportunity,globalNotifyRadarWatch:radarWatch,globalNotifyPrice:price,globalNotifyPortfolio:portfolio,globalNotifyPortfolioGoal:portfolioGoal};
  for(const [id,checked] of Object.entries(toggles)){
   const el=$('#'+id);if(!el)continue;
   el.checked=checked;
@@ -252,6 +253,7 @@ async function saveAnalysisSettings(){
   notificationsEnabled:$('#globalNotificationsEnabled')?.checked===true,
   notifyNewsEvents:$('#globalNotifyNewsEvents')?.checked===true,
   notifyCatalystEve:$('#globalNotifyCatalystEve')?.checked===true,
+  notifyMoves:$('#globalNotifyMoves')?.checked===true,
   notifyRadarHigh:$('#globalNotifyRadarHigh')?.checked===true,
   notifyRadarOpportunity:$('#globalNotifyRadarOpportunity')?.checked===true,
   notifyRadarWatch:$('#globalNotifyRadarWatch')?.checked===true,
@@ -387,7 +389,7 @@ function initSettings(){
   if(event.target.checked)await retryPushRegistration();
   renderPushSettingsStatus();
  });
- ['globalNotifyNewsEvents','globalNotifyCatalystEve','globalNotifyRadarHigh','globalNotifyRadarOpportunity','globalNotifyRadarWatch','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal','globalDailyDigest','digestMorningTime','digestEveningTime'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
+ ['globalNotifyNewsEvents','globalNotifyCatalystEve','globalNotifyMoves','globalNotifyRadarHigh','globalNotifyRadarOpportunity','globalNotifyRadarWatch','globalNotifyPrice','globalNotifyPortfolio','globalNotifyPortfolioGoal','globalDailyDigest','digestMorningTime','digestEveningTime'].forEach(id=>$('#'+id)?.addEventListener('change',saveAnalysisSettings));
  $('#sendDigestNow')?.addEventListener('click',sendDigestNow);
 
  window.addEventListener('viewinvai:push-status',e=>renderPushSettingsStatus(e.detail||null));

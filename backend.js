@@ -1326,6 +1326,7 @@ async function handleMe(request, env, user, json) {
     notifications_enabled: notifications.enabled ? 1 : 0,
     notify_news_events: notifications.newsEvents ? 1 : 0,
     notify_catalyst_eve: notifications.catalystEve ? 1 : 0,
+    notify_moves: notifications.moves ? 1 : 0,
     notify_radar: notifications.radar ? 1 : 0,
     notify_radar_high: notifications.radarHigh ? 1 : 0,
     notify_radar_opportunity: notifications.radarOpportunity ? 1 : 0,
@@ -4070,6 +4071,16 @@ async function ensureGlobalNotificationSettingsSchema(env){
       if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
     }
   }
+  // «Movimientos fuertes y 52 semanas» (2026-10): en la primera migración queda activado para quien
+  // ya tenía los avisos activados (el antispam limita a 8 al día).
+  if(!names.has("moves_enabled")){
+    try{
+      await env.DB.prepare("ALTER TABLE user_notification_settings ADD COLUMN moves_enabled INTEGER NOT NULL DEFAULT 0").run();
+      await env.DB.prepare("UPDATE user_notification_settings SET moves_enabled=notifications_enabled").run();
+    }catch(error){
+      if(!/duplicate column/i.test(String(error&&error.message||error)))throw error;
+    }
+  }
   // Resumen diario de carteras y objetivos (2026-10): activado por defecto a las 08:00 y 22:00
   // (hora de España). Una franja vacía no se envía.
   for(const [column,type] of [["daily_digest_enabled","INTEGER NOT NULL DEFAULT 1"],["digest_morning","TEXT NOT NULL DEFAULT '08:00'"],["digest_evening","TEXT NOT NULL DEFAULT '22:00'"]]){
@@ -4086,7 +4097,7 @@ async function ensureGlobalNotificationSettingsSchema(env){
 async function globalNotificationSettingsForUser(env,userId){
   await ensureGlobalNotificationSettingsSchema(env);
   const row=await env.DB.prepare(
-    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,daily_digest_enabled,digest_morning,digest_evening FROM user_notification_settings WHERE user_id=?"
+    "SELECT opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,moves_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,daily_digest_enabled,digest_morning,digest_evening FROM user_notification_settings WHERE user_id=?"
   ).bind(userId).first();
   const optedIn=!!row&&Number(row.opted_in_explicitly)===1;
   const radarHigh=optedIn&&Number(row.radar_high_enabled)===1;
@@ -4097,6 +4108,7 @@ async function globalNotificationSettingsForUser(env,userId){
     enabled: optedIn&&Number(row.notifications_enabled)===1,
     newsEvents: optedIn&&Number(row.news_events_enabled)===1,
     catalystEve: optedIn&&Number(row.catalyst_eve_enabled)===1,
+    moves: optedIn&&Number(row.moves_enabled)===1,
     radarAi: radar,
     pulseAi: false,
     radar,radarHigh,radarOpportunity,radarWatch,
@@ -5465,6 +5477,7 @@ async function handleSettings(request, env, user, json) {
     notifications_enabled:notifications.enabled?1:0,
     notify_news_events:notifications.newsEvents?1:0,
     notify_catalyst_eve:notifications.catalystEve?1:0,
+    notify_moves:notifications.moves?1:0,
     notify_radar:notifications.radar?1:0,
     notify_radar_high:notifications.radarHigh?1:0,
     notify_radar_opportunity:notifications.radarOpportunity?1:0,
@@ -5490,6 +5503,7 @@ async function handleSettings(request, env, user, json) {
     enabled: body.notificationsEnabled === undefined ? Number(current.notifications_enabled)!==0 : booleanInt(body.notificationsEnabled)===1,
     newsEvents: body.notifyNewsEvents === undefined ? Number(current.notify_news_events)!==0 : booleanInt(body.notifyNewsEvents)===1,
     catalystEve: body.notifyCatalystEve === undefined ? Number(current.notify_catalyst_eve)!==0 : booleanInt(body.notifyCatalystEve)===1,
+    moves: body.notifyMoves === undefined ? Number(current.notify_moves)!==0 : booleanInt(body.notifyMoves)===1,
     radarHigh: body.notifyRadarHigh === undefined ? Number(current.notify_radar_high)!==0 : booleanInt(body.notifyRadarHigh)===1,
     radarOpportunity: body.notifyRadarOpportunity === undefined ? Number(current.notify_radar_opportunity)!==0 : booleanInt(body.notifyRadarOpportunity)===1,
     radarWatch: body.notifyRadarWatch === undefined ? Number(current.notify_radar_watch)!==0 : booleanInt(body.notifyRadarWatch)===1,
@@ -5511,8 +5525,8 @@ async function handleSettings(request, env, user, json) {
       "INSERT INTO user_notification_settings (user_id,opted_in_explicitly,notifications_enabled,news_events_enabled,catalyst_eve_enabled,pulse_ai_enabled,radar_enabled,radar_high_enabled,radar_opportunity_enabled,radar_watch_enabled,price_enabled,portfolio_enabled,portfolio_goal_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
       "ON CONFLICT(user_id) DO UPDATE SET opted_in_explicitly=1,notifications_enabled=excluded.notifications_enabled,news_events_enabled=excluded.news_events_enabled,catalyst_eve_enabled=excluded.catalyst_eve_enabled,pulse_ai_enabled=0,radar_enabled=excluded.radar_enabled,radar_high_enabled=excluded.radar_high_enabled,radar_opportunity_enabled=excluded.radar_opportunity_enabled,radar_watch_enabled=excluded.radar_watch_enabled,price_enabled=excluded.price_enabled,portfolio_enabled=excluded.portfolio_enabled,portfolio_goal_enabled=excluded.portfolio_goal_enabled,updated_at=excluded.updated_at"
     ).bind(user.id,1,next.enabled?1:0,next.newsEvents?1:0,next.catalystEve?1:0,0,next.radar?1:0,next.radarHigh?1:0,next.radarOpportunity?1:0,next.radarWatch?1:0,next.price?1:0,next.portfolio?1:0,next.portfolioGoal?1:0,now,now),
-    env.DB.prepare("UPDATE user_notification_settings SET daily_digest_enabled=?,digest_morning=?,digest_evening=? WHERE user_id=?")
-      .bind(next.dailyDigest?1:0,next.digestMorning,next.digestEvening,user.id)
+    env.DB.prepare("UPDATE user_notification_settings SET daily_digest_enabled=?,digest_morning=?,digest_evening=?,moves_enabled=? WHERE user_id=?")
+      .bind(next.dailyDigest?1:0,next.digestMorning,next.digestEvening,next.moves?1:0,user.id)
   ]);
   const saved=await env.DB.prepare(
     "SELECT analysis_positions_minutes,analysis_watchlist_minutes,min_buy_confidence,min_sell_confidence,notify_score_change FROM user_settings WHERE user_id=?"
@@ -5521,6 +5535,7 @@ async function handleSettings(request, env, user, json) {
     notifications_enabled:next.enabled?1:0,
     notify_news_events:next.newsEvents?1:0,
     notify_catalyst_eve:next.catalystEve?1:0,
+    notify_moves:next.moves?1:0,
     notify_radar:next.radar?1:0,
     notify_radar_high:next.radarHigh?1:0,
     notify_radar_opportunity:next.radarOpportunity?1:0,
@@ -7179,6 +7194,194 @@ function madridDay(ms){
 function madridHour(ms){
   return Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Madrid",hour:"2-digit",hour12:false}).format(new Date(ms)))%24;
 }
+// «Movimientos fuertes» y «Máximos y mínimos de 52 semanas» (estilo Investing, mejorado):
+// cada aviso dice cuánto se mueve, POR QUÉ (noticias, resultados, volumen y sector; frase de la IA
+// solo con esos datos y con las cifras comprobadas) y cuánto supone en TU posición.
+// Antispam: umbral según la volatilidad propia del valor (ATR), un aviso por escalón y día, 45 min
+// entre avisos del mismo valor y como mucho 8 al día por usuario. Precio siempre del mercado en que
+// lo sigues: LS Exchange (€) para Trade Republic, Nasdaq ($) para EE. UU.
+const MOVE_DAILY_CAP=8,MOVE_GAP_MS=45*60000;
+let marketMoveSchemaReady=false;
+async function ensureMarketMoveSchema(env){
+  if(marketMoveSchemaReady)return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS market_move_state (user_id TEXT NOT NULL,stock_key TEXT NOT NULL,prefer_tr INTEGER NOT NULL DEFAULT 0,day TEXT,up_tier INTEGER NOT NULL DEFAULT 0,down_tier INTEGER NOT NULL DEFAULT 0,last_at TEXT,hi52_at TEXT,lo52_at TEXT,PRIMARY KEY(user_id,stock_key,prefer_tr))").run();
+  marketMoveSchemaReady=true;
+}
+function moveNum(v,d=2){return Number(v).toLocaleString("es-ES",{minimumFractionDigits:d,maximumFractionDigits:d})}
+function movePrice(v,cur){const n=Number(v);return moveNum(n,Math.abs(n)<1?4:2)+(cur==="EUR"?" €":" $")}
+// Escalones del día: el primero es 1,5 × la variación diaria típica (ATR), entre el 4 % y el 10 %.
+export function marketMoveTiers(stock){
+  const atr=finiteNumber(stock&&stock.atr),px=finiteNumber(stock&&stock.price);
+  const atrPct=atr!==null&&px>0?atr/px*100:null;
+  const base=Math.max(4,Math.min(10,atrPct!==null?Math.round(atrPct*1.5):4));
+  return [base,base*2,Math.round(base*3.5),base*6];
+}
+export function marketMoveTier(pct,tiers){let t=0;for(let i=0;i<tiers.length;i++)if(Math.abs(pct)>=tiers[i])t=i+1;return t}
+function marketMoveWindowOpen(preferTr,nowMs){
+  const part=(tz)=>{const f=new Intl.DateTimeFormat("en-GB",{timeZone:tz,weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(nowMs));const g=k=>(f.find(x=>x.type===k)||{}).value;return{wd:g("weekday"),m:(Number(g("hour"))%24)*60+Number(g("minute"))}};
+  const p=preferTr?part("Europe/Madrid"):part("America/New_York");
+  if(p.wd==="Sat"||p.wd==="Sun")return false;
+  // LS Exchange: 9:00–22:00 (fuera de eso hay poca liquidez y los saltos engañan). EE. UU.: sesión regular.
+  return preferTr?p.m>=540&&p.m<1320:p.m>=575&&p.m<960;
+}
+// Hechos con los que se explica el movimiento (los mismos que «¿Por qué se mueve hoy?» de la ficha).
+function marketMoveFacts(snapshot,stock,events,pct,nowMs){
+  const facts=[],name=String(stock.name||"").split(/[\s,.]+/).find(w=>w.length>=4)||"",ticker=String(stock.ticker||"");
+  const own=e=>{const t=String(e.title||"").toLowerCase();return(name&&t.includes(name.toLowerCase()))||(ticker&&new RegExp("\\b"+ticker.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","i").test(String(e.title||"")))};
+  const news=(events||[]).filter(e=>{const t=new Date(e.date).getTime();return e.eventKind==="news"&&nowMs-t<36*3600e3&&nowMs-t>-3600e3}).sort((a,b)=>(own(b)-own(a))||(new Date(b.date)-new Date(a.date)));
+  const earnings=(events||[]).find(e=>e.type==="earnings"&&Math.abs(new Date(e.date).getTime()-nowMs)<36*3600e3);
+  if(earnings)facts.push({k:"earnings",t:"Resultados: "+trimText(earnings.title||earnings.fact||"publica o acaba de publicar resultados",180)});
+  for(const n of news.slice(0,2)){const h=Math.max(0,Math.round((nowMs-new Date(n.date).getTime())/3600e3)),title=trimText(n.title||n.fact||"",200);facts.push({k:"news",h,title,t:"Noticia ("+h+" h): "+title})}
+  const rel=finiteNumber(stock.relVolume)??(finiteNumber(stock.volume)&&finiteNumber(stock.avgVolume)?finiteNumber(stock.volume)/finiteNumber(stock.avgVolume):null);
+  if(rel!==null)facts.push({k:"volume",t:"Volumen ×"+moveNum(rel,1)+" sobre su media",rel});
+  const stocks=Array.isArray(snapshot&&snapshot.stocks)?snapshot.stocks:[];
+  if(stock.sector&&stocks.length>200){
+    const v=stocks.filter(x=>x.sector===stock.sector&&x!==stock).map(x=>finiteNumber(x.changePct)).filter(c=>c!==null&&Math.abs(c)<40).sort((a,b)=>a-b);
+    if(v.length>=8){const med=v[Math.floor(v.length/2)];facts.push({k:"sector",t:"Su sector va hoy "+(med>=0?"+":"")+moveNum(med,1)+" %",med})}
+  }
+  return facts;
+}
+function marketMoveFallbackWhy(facts,pct){
+  const up=pct>0,f=k=>facts.find(x=>x.k===k);
+  if(f("earnings"))return"Se mueve por sus resultados.";
+  // Nunca un titular en otro idioma: si no se pudo traducir, se cita la noticia sin copiarla.
+  if(f("news"))return f("news").es===false?"Tras una noticia de hace "+(f("news").h<1?"menos de 1 h":f("news").h+" h")+" (la tienes en la ficha).":"Tras la noticia: "+f("news").title.replace(/[.\s]+$/,"")+".";
+  const sec=f("sector");
+  if(sec&&Math.abs(sec.med)>=1&&Math.sign(sec.med)===Math.sign(pct))return"Sin noticia propia: "+(up?"sube":"cae")+" con su sector ("+(sec.med>=0?"+":"")+moveNum(sec.med,1)+" %).";
+  const vol=f("volume");
+  if(vol&&vol.rel>=2)return"Sin noticia registrada, pero con volumen alto (×"+moveNum(vol.rel,1)+"): hay movimiento de dinero real.";
+  return"Sin noticia registrada: puede responder a flujos, rumores o al mercado.";
+}
+// Titulares en inglés → español antes de explicar el movimiento: primero la traducción común de la app
+// (IA, con caché), y si no responde, MyMemory (gratuito, sin clave). Lo que no se traduzca queda marcado
+// para no copiarlo en inglés.
+async function marketMoveTranslateFacts(env,facts){
+  const todo=facts.filter(f=>(f.k==="news"||f.k==="earnings")&&quickLang(f.title||f.t)==="en");
+  if(!todo.length)return facts;
+  const src=todo.map(f=>f.title||f.t.replace(/^Resultados: /,""));
+  let out=src.map(()=>null);
+  try{out=await Promise.race([translateTexts(env,"es",src),new Promise(r=>setTimeout(()=>r(src.map(()=>null)),12000))])}catch(_){}
+  for(let i=0;i<src.length;i++){
+    if(out[i]&&quickLang(out[i])!=="en")continue;
+    out[i]=null;
+    try{
+      const r=await fetch("https://api.mymemory.translated.net/get?langpair=en%7Ces&q="+encodeURIComponent(src[i].slice(0,450)),{signal:AbortSignal.timeout(6000)});
+      const d=r.ok?await r.json():null,t=trimText(d&&d.responseData&&d.responseData.translatedText||"",240);
+      if(Number(d&&d.responseStatus)===200&&t&&quickLang(t)!=="en"&&!/MYMEMORY WARNING|QUERY LENGTH/i.test(t))out[i]=t;
+    }catch(_){}
+  }
+  todo.forEach((f,i)=>{
+    if(out[i]){if(f.k==="news"){f.title=out[i];f.t="Noticia ("+f.h+" h): "+out[i]}else f.t="Resultados: "+out[i];f.es=true}
+    else f.es=false;
+  });
+  return facts;
+}
+// Frase de la IA solo con los hechos dados; si mete una cifra que no está en ellos, se descarta.
+async function marketMoveWhy(env,stock,pct,facts){
+  const fallback=marketMoveFallbackWhy(facts,pct);
+  if(!facts.length)return fallback;
+  const factsText=facts.map(f=>"- "+f.t).join("\n");
+  const prompt="Eres un analista bursátil. "+String(stock.name||stock.ticker)+" ("+stock.ticker+") "+(pct>0?"sube":"cae")+" un "+moveNum(Math.abs(pct),1)+" % hoy.\n"+
+    "Hechos verificados:\n"+factsText+"\n\nExplica en UNA frase en español (máx. 140 caracteres) la causa más probable del movimiento usando SOLO estos hechos. "+
+    "Si ninguno lo explica, dilo. No inventes cifras ni noticias. Devuelve JSON {\"why\":\"...\"}.";
+  try{
+    const run=await Promise.race([aiRoute(env,{prompt,maxTokens:160,json:true,task:"light"}),new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),15000))]);
+    const why=trimText(String((extractAiJson(run&&run.text)||{}).why||""),180).trim();
+    if(!why)return fallback;
+    const allowed=(factsText+" "+moveNum(Math.abs(pct),1)).replace(/\./g,"");
+    const nums=why.replace(/\./g,"").match(/\d+(?:,\d+)?/g)||[];
+    if(nums.some(n=>!allowed.includes(n)))return fallback;
+    return /[.!?]$/.test(why)?why:why+".";
+  }catch(_){return fallback}
+}
+function marketMovePositionLine(target,price,pct,cur){
+  const qty=finiteNumber(target.quantity);
+  if(target.subject_type!=="position"||!qty||!(price>0)||pct===null||pct<=-100)return"";
+  const value=qty*price,delta=value-value/(1+pct/100);
+  return" Tu posición ("+qty.toLocaleString("es-ES",{maximumFractionDigits:4})+" acc.): "+(delta>=0?"+":"−")+moveNum(Math.abs(delta),2)+(cur==="EUR"?" €":" $")+" hoy.";
+}
+export async function scanMarketMoves(env,services,positionRows=[],watchRows=[],nowMs=Date.now()){
+  if(!services.loadMarketSnapshot||!services.loadQuote)return{processed:0,alerts:0};
+  // Cada 5 minutos basta: el antispam ya limita los avisos.
+  if(Math.floor(nowMs/60000)%5!==3)return{processed:0,alerts:0,skipped:"cadence"};
+  const seen=new Set(),tracked=[];
+  // Primero las posiciones: si un valor está en cartera y en favoritos, manda la posición (con su impacto).
+  for(const row of [...(positionRows||[]),...(watchRows||[])]){
+    if(!row||!row.user_id||!row.stock_key)continue;
+    const key=row.user_id+"|"+String(row.stock_key).toUpperCase()+"|"+(Number(row.prefer_tr)===1?1:0);
+    if(seen.has(key))continue;seen.add(key);
+    if(marketMoveWindowOpen(Number(row.prefer_tr)===1,nowMs))tracked.push(row);
+  }
+  if(!tracked.length)return{processed:0,alerts:0};
+  await ensureMarketMoveSchema(env);
+  const snapshot=await services.loadMarketSnapshot(env,{targets:tracked.slice(0,60)});
+  const today=madridDay(nowMs),quoteCache=new Map(),globalByUser=new Map(),stateByUser=new Map(),sentToday=new Map();
+  let processed=0,alerts=0;
+  for(const target of tracked.slice(0,60)){
+    try{
+      let global=globalByUser.get(target.user_id);
+      if(!global){global=await globalNotificationSettingsForUser(env,target.user_id);globalByUser.set(target.user_id,global)}
+      if(!global.enabled||!global.moves)continue;
+      const stock=findStock(snapshot,target);if(!stock)continue;
+      const preferTr=Number(target.prefer_tr)===1,cur=preferTr?"EUR":"USD";
+      const qk=String(target.stock_key).toUpperCase()+"|"+(preferTr?1:0);
+      if(!quoteCache.has(qk))quoteCache.set(qk,await services.loadQuote(stock,target).catch(()=>null));
+      const quote=quoteCache.get(qk),price=finiteNumber(quote&&quote.price),pct=finiteNumber(quote&&quote.changePct);
+      if(price===null||pct===null||Math.abs(pct)>300)continue;
+      processed++;
+      if(!stateByUser.has(target.user_id)){
+        const rows=await env.DB.prepare("SELECT * FROM market_move_state WHERE user_id=?").bind(target.user_id).all();
+        stateByUser.set(target.user_id,new Map((rows.results||[]).map(r=>[String(r.stock_key).toUpperCase()+"|"+Number(r.prefer_tr),r])));
+        const c=await env.DB.prepare("SELECT COUNT(*) AS n FROM alert_events WHERE user_id=? AND alert_type IN ('market-move','high-52w','low-52w') AND created_at>=?").bind(target.user_id,new Date(nowMs-20*3600e3).toISOString()).first();
+        sentToday.set(target.user_id,Number(c&&c.n)||0);
+      }
+      if(sentToday.get(target.user_id)>=MOVE_DAILY_CAP)continue;
+      const st=stateByUser.get(target.user_id).get(qk)||{day:"",up_tier:0,down_tier:0,last_at:null,hi52_at:null,lo52_at:null};
+      const sameDay=st.day===today;
+      const upPrev=sameDay?Number(st.up_tier)||0:0,downPrev=sameDay?Number(st.down_tier)||0:0;
+      const tiers=marketMoveTiers(stock),tier=marketMoveTier(pct,tiers);
+      const lastMs=Date.parse(st.last_at||"");
+      const prevTier=pct>0?upPrev:downPrev;
+      // Nuevo escalón; si el último aviso del valor es reciente, solo un salto de dos escalones lo rompe.
+      let kind=null;
+      if(tier>prevTier&&(!Number.isFinite(lastMs)||nowMs-lastMs>=MOVE_GAP_MS||tier-prevTier>=2))kind="move";
+      // 52 semanas: con los datos de su bolsa de origen (el máximo y el mínimo son de esa cotización).
+      const hi=finiteNumber(stock.high52w),lo=finiteNumber(stock.low52w),listPx=preferTr?finiteNumber(stock.price):price;
+      const week=7*864e5,hiMs=Date.parse(st.hi52_at||""),loMs=Date.parse(st.lo52_at||"");
+      let ext=null;
+      if(hi&&listPx&&listPx>hi*1.001&&pct>0&&!(nowMs-hiMs<week))ext="high";
+      else if(lo&&listPx&&listPx<lo*0.999&&pct<0&&!(nowMs-loMs<week))ext="low";
+      if(!kind&&!ext)continue;
+      let events=recentEvents(snapshot,stock,18);
+      if(services.loadNews)try{events=mergeEventRows(events,await services.loadNews(stock,target),24)}catch(_){}
+      const why=await marketMoveWhy(env,stock,pct,await marketMoveTranslateFacts(env,marketMoveFacts(snapshot,stock,events,pct,nowMs)));
+      const posLine=marketMovePositionLine(target,price,pct,cur),name=String(stock.name||target.name||target.ticker||"").replace(/,?\s+(Inc|Corp|Corporation|Ltd|plc|S\.?A|N\.?V|AG|SE)\.?$/i,"");
+      const signed=(pct>=0?"+":"−")+moveNum(Math.abs(pct),1)+" %",ticker=target.ticker||stock.ticker;
+      let type,severity,title,message;
+      if(kind){
+        type="market-move";severity=tier>=3?"high":pct<0?"warning":"info";
+        title=(pct>0?"▲ ":"▼ ")+ticker+" "+signed+" · "+movePrice(price,cur);
+        message=name+" "+(pct>0?"sube":"cae")+" un "+moveNum(Math.abs(pct),1)+" % hoy"+(preferTr?" en LS Exchange":"")+(ext?" y marca "+(ext==="high"?"máximo":"mínimo")+" de 52 semanas":"")+"."+posLine+" Por qué: "+why;
+      }else{
+        const listCur=String(stock.currency||"USD").toUpperCase()==="EUR"?"EUR":"USD",venue=String(stock.exchange||"").toUpperCase()||"su bolsa";
+        type=ext==="high"?"high-52w":"low-52w";severity=ext==="high"?"info":"warning";
+        title=(ext==="high"?"Máximo de 52 semanas · ":"Mínimo de 52 semanas · ")+ticker;
+        message=name+" cotiza a "+movePrice(listPx,listCur)+" en "+venue+", "+(ext==="high"?"por encima de su máximo":"por debajo de su mínimo")+" del último año ("+movePrice(ext==="high"?hi:lo,listCur)+"). Hoy "+signed+"."+posLine+" Por qué: "+why;
+      }
+      const id=uid("al_"),now=nowIso();
+      await env.DB.prepare("INSERT INTO alert_events (id,user_id,stock_key,ticker,name,alert_type,severity,title,message,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id,target.user_id,target.stock_key,ticker||"",stock.name||target.name||"",type,severity,trimText(title,160),trimText(message,600),target.subject_id||null,now).run();
+      const next={day:today,up_tier:kind&&pct>0?tier:upPrev,down_tier:kind&&pct<0?tier:downPrev,last_at:now,hi52_at:ext==="high"?now:st.hi52_at||null,lo52_at:ext==="low"?now:st.lo52_at||null};
+      await env.DB.prepare("INSERT INTO market_move_state (user_id,stock_key,prefer_tr,day,up_tier,down_tier,last_at,hi52_at,lo52_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,stock_key,prefer_tr) DO UPDATE SET day=excluded.day,up_tier=excluded.up_tier,down_tier=excluded.down_tier,last_at=excluded.last_at,hi52_at=excluded.hi52_at,lo52_at=excluded.lo52_at")
+        .bind(target.user_id,String(target.stock_key).toUpperCase(),preferTr?1:0,next.day,next.up_tier,next.down_tier,next.last_at,next.hi52_at,next.lo52_at).run();
+      stateByUser.get(target.user_id).set(qk,next);sentToday.set(target.user_id,sentToday.get(target.user_id)+1);
+      try{await dispatchPushAlert(env,{id,alert_type:type,severity,title,message},target)}
+      catch(error){console.warn("Move push dispatch failed",String(error&&error.message||error))}
+      alerts++;
+    }catch(error){console.warn("Market move scan failed",target&&target.subject_id,String(error&&error.message||error))}
+  }
+  return{processed,alerts};
+}
 async function scanCatalystEve(env,services,positionRows=[],watchRows=[]){
   const nowMs=Date.now();
   if(madridHour(nowMs)<17||!services.loadMarketSnapshot)return{processed:0,alerts:0};
@@ -8609,9 +8812,12 @@ export async function runScheduledPortfolioAnalysis(env, services = {}) {
   let catalystEve={processed:0,alerts:0};
   try{catalystEve=await scanCatalystEve(env,services,positionRows.results||[],watchRows.results||[])}
   catch(error){console.warn("Catalyst eve sweep failed",String(error&&error.message||error))}
+  let marketMoves={processed:0,alerts:0};
+  try{marketMoves=await scanMarketMoves(env,services,positionRows.results||[],watchRows.results||[])}
+  catch(error){console.warn("Market move sweep failed",String(error&&error.message||error))}
   try{preferences=await scanNotificationPreferences(env,services,{allowAi:!budget.paused})}catch(error){console.warn("Notification preference sweep failed",String(error&&error.message||error))}
   try{portfolioGoals=await scanPortfolioGoalNotifications(env,services)}catch(error){console.warn("Portfolio goal notification sweep failed",String(error&&error.message||error))}
   automaticWrites+=(Number(preferences&&preferences.writes)||0)+(Number(portfolioGoals&&portfolioGoals.writes)||0);
   await recordAutomationWrites(env,budget,automaticWrites);
-  return { processed: results.length, results, trackedNews, catalystEve, preferences, portfolioGoals, budget:{paused:budget.paused,estimated:budget.estimated,limit:AUTO_WRITE_BUDGET_LIMIT}, automaticWrites };
+  return { processed: results.length, results, trackedNews, catalystEve, marketMoves, preferences, portfolioGoals, budget:{paused:budget.paused,estimated:budget.estimated,limit:AUTO_WRITE_BUDGET_LIMIT}, automaticWrites };
 }
