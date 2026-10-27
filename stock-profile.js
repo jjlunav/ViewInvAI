@@ -24,8 +24,8 @@ function profileSessionStrip(s){
  const se=currentMarketSession(),data=usSessionDisplayData(s,se),key=stockKey(s),r=data.regular,x=data.extended;
  const regularVolume=se==='regular'?(N(s.usLiveVolume)??N(s.volume)):N(s.volume);
  let regular='<div class="profile-session-cell" data-profile-regular-session-key="'+E(key)+'"><span>EEUU · Regular</span><strong>'+snapshotPricePair(s,r.price,false)+'</strong><b class="'+C(r.pct)+'">'+PC(r.pct)+'</b><small>Variación de la sesión · Vol '+compactVol(regularVolume)+'</small></div>';
- const prePrice=se==='premarket'&&x?x.price:N(s.premarketPrice),prePct=se==='premarket'&&x?x.pct:N(s.premarketChangePct);
- const postPrice=se==='postmarket'&&x?x.price:N(s.postmarketPrice),postPct=se==='postmarket'&&x?x.pct:N(s.postmarketChangePct);
+ const preX=x&&x.kind==='premarket'?x:null,prePrice=preX?preX.price:N(s.premarketPrice),prePct=preX?preX.pct:N(s.premarketChangePct);
+ const postX=x&&x.kind==='postmarket'?x:null,postPrice=postX?postX.price:N(s.postmarketPrice),postPct=postX?postX.pct:N(s.postmarketChangePct);
  let pre='<div class="profile-session-cell"><span>EEUU · Premarket</span><strong>'+snapshotPricePair(s,prePrice,false)+'</strong><b class="'+C(prePct)+'">'+PC(prePct)+'</b><small>Variación de la sesión · Vol '+compactVol(s.premarketVolume)+'</small></div>';
  let post='<div class="profile-session-cell"><span>EEUU · Postmarket</span><strong>'+snapshotPricePair(s,postPrice,false)+'</strong><b class="'+C(postPct)+'">'+PC(postPct)+'</b><small>Variación de la sesión · Vol '+compactVol(s.postmarketVolume)+'</small></div>';
  return '<div class="profile-session-strip">'+pre+regular+post+'</div>';

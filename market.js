@@ -108,6 +108,10 @@ function currentUsQuote(s,se=currentMarketSession(),now=Date.now()){
   const rawStatus=String(s&&s.usLiveMarketStatus||'').toLowerCase();
   let kind=rawStatus.includes('pre')?'premarket':rawStatus.includes('post')||rawStatus.includes('after')?'postmarket':rawStatus.includes('regular')||rawStatus.includes('open')?'regular':se;
   if(!['premarket','regular','postmarket'].includes(kind))kind=se==='previous'?'regular':se;
+  // Nasdaq pasa a «Pre-Market» a las 4:00 de Nueva York, pero hasta la primera operación de la preapertura su
+  // precio sigue siendo la última del posmercado de ayer: por la hora del dato se ve que es del posmercado.
+  const tradeAt=parseMarketTimestamp(s&&s.usLiveTimestamp,'America/New_York');
+  if(kind==='premarket'&&tradeAt&&typeof usQuoteFromToday==='function'&&!usQuoteFromToday(tradeAt,now))kind='postmarket';
   return{
    price:livePrice,
    change:liveChange,
@@ -173,16 +177,20 @@ function usSessionDisplayData(s,se=currentMarketSession()){
  const regularPct=regularPrice!==null&&regularBase!==null&&regularBase>0?(regularPrice/regularBase-1)*100:N(s&&s.changePct);
 
  let extended=null;
- if((se==='premarket'||se==='postmarket')&&kind===se&&current!==null){
-  let base=null;
+ // En la preapertura sin operaciones todavía, lo último es el posmercado de ayer: se enseña como tal.
+ if(((se==='premarket'||se==='postmarket')&&kind===se||se==='premarket'&&kind==='postmarket')&&current!==null){
+  // Base de la preapertura y del posmercado: el último cierre regular, el mismo precio que enseña la cabecera.
+  // Nasdaq, en las primeras horas de la preapertura (desde las 4:00 de Nueva York), aún calcula su porcentaje con
+  // el cierre de la sesión anterior a la última: salía «+9,13 %» con el precio por debajo del cierre de ayer.
+  let base=regularPrice!==null&&regularPrice>0?regularPrice:null;
   const explicitPct=N(q&&q.change)??N(s&&s[se+'ChangePct']);
-  if(explicitPct!==null&&explicitPct>-99.999){
+  if(base===null&&explicitPct!==null&&explicitPct>-99.999){
    base=current/(1+explicitPct/100);
   }
   if(base===null||!Number.isFinite(base)||base<=0)base=usRememberSessionBaseline(s,se,current,N(q&&q.at)||Date.now());
   const abs=base!==null?current-base:null;
   const pct=base!==null&&base>0?(current/base-1)*100:null;
-  extended={kind:se,label:se==='premarket'?'Preapertura':'Posmercado',price:current,base,abs,pct,at:N(q&&q.at)||null};
+  extended={kind,label:kind==='premarket'?'Preapertura':se==='premarket'?'Después del cierre de ayer':'Posmercado',price:current,base,abs,pct,at:N(q&&q.at)||null};
  }
  return{regular:{price:regularPrice,base:regularBase,abs:regularAbs,pct:regularPct},extended};
 }

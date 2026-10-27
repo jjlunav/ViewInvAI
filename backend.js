@@ -6177,8 +6177,20 @@ async function ensureArticleSchema(db){
 }
 function articleTextFromHtml(html){
   const body=String(html||"").replace(/<(script|style|noscript|svg|nav|footer|header|aside|form)[\s\S]*?<\/\1>/gi," ");
-  const paras=[...body.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>decodeHtmlEntities(m[1].replace(/<[^>]+>/g," ")).replace(/\s+/g," ").trim()).filter(t=>t.length>=60);
+  // Párrafos con texto de verdad: 60 letras en alfabeto latino; en chino o japonés 20 caracteres ya son una frase.
+  const long=t=>t.length>=60||(/[぀-ヿ一-鿿]/.test(t)&&t.length>=20);
+  const paras=[...body.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m=>decodeHtmlEntities(m[1].replace(/<[^>]+>/g," ")).replace(/\s+/g," ").trim()).filter(long);
   return paras.join("\n");
+}
+// Página del medio en su codificación (muchos medios chinos siguen en GBK/GB2312): si se lee como UTF-8 sale basura.
+async function articleHtml(r){
+  const buf=await r.arrayBuffer(),ct=String(r.headers.get("content-type")||"");
+  // charset=gbk, charset="GB2312" y <meta http-equiv="Content-Type" content="text/html; charset=gb2312">.
+  const csOf=t=>(String(t||"").match(/charset\s*=\s*["']?\s*([\w-]+)/i)||[])[1];
+  let cs=csOf(ct);
+  if(!cs){const head=new TextDecoder("utf-8").decode(buf.slice(0,4096));cs=csOf((head.match(/<meta[^>]+charset[^>]*>/i)||[])[0])}
+  cs=String(cs||"utf-8").toLowerCase();if(cs==="gb2312"||cs==="gbk")cs="gb18030";
+  try{return new TextDecoder(cs).decode(buf)}catch(_){return new TextDecoder("utf-8").decode(buf)}
 }
 async function articleText(env,url){
   const key=String(env.JINA_API_KEY||"").trim();
@@ -6189,40 +6201,78 @@ async function articleText(env,url){
     catch(error){await recordProviderUse(env,"jina",false,String(error&&error.message||error))}
   }
   try{const r=await providerFetch("article",url,{headers:{...RSS_HEADERS,"Accept":"text/html"},redirect:"follow"},10000);
-    if(r.ok&&/html/i.test(r.headers.get("content-type")||""))return articleTextFromHtml(await r.text())}catch(_){}
+    if(r.ok&&/html/i.test(r.headers.get("content-type")||""))return articleTextFromHtml(await articleHtml(r))}catch(_){}
   return "";
 }
+// Cifras chinas a cifras completas antes de dárselas a la IA: «81.24万» son 812.400 (万 = 10.000, 亿 = 100 millones);
+// leídas tal cual salían traducciones como «81.24 ten USD». Fechas «10月27日» → «27/10».
+export function normalizeCjkFigures(text){
+  return String(text||"")
+    .replace(/(\d+(?:\.\d+)?)\s*(万亿|亿|万)/g,(m,n,u)=>{const v=Number(n)*(u==="万亿"?1e12:u==="亿"?1e8:1e4);return Number.isFinite(v)?String(Math.round(v)):m})
+    .replace(/(\d{1,2})月(\d{1,2})日/g,"$2/$1")
+    .replace(/(\d{4})年/g,"$1 ")
+    .replace(/美元/g," USD").replace(/港元/g," HKD").replace(/人民币|元(?![一-鿿])/g," CNY")
+    // Cifras pegadas a caracteres chinos («报8.53»): con un espacio se reconocen como cifras sueltas.
+    .replace(/([\u3000-\u9fff\uff00-\uffef])(?=[\d-])/g,"$1 ").replace(/(\d%?)(?=[\u3000-\u9fff\uff00-\uffef])/g,"$1 ");
+}
+// La noticia la cuenta la IA en español con lo que dice el medio (el artículo entero si se puede leer; si no,
+// el titular y el extracto), en vez de traducirla palabra por palabra. Todas las cifras se comprueban contra el
+// texto del medio; el enlace a la noticia original va al final en la app.
 async function handleAiArticle(request,env,user,json){
   if(request.method!=="POST")return json({error:"Method not allowed"},405);
   const t0=Date.now(),body=await readJson(request);
-  const url=String(body.url||"").trim(),title=trimText(body.title,220);
+  const url=String(body.url||"").trim(),title=trimText(body.title,220),snippet=trimText(body.snippet,700),publisher=trimText(body.publisher,80);
   let u;try{u=new URL(url)}catch(_){return json({error:"URL no válida"},400)}
   if(!/^https?:$/.test(u.protocol)||/^(localhost|127\.|10\.|192\.168\.|169\.254\.)/.test(u.hostname))return json({error:"URL no válida"},400);
-  const hash=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(u.href)))].slice(0,16).map(x=>x.toString(16).padStart(2,"0")).join("");
+  const hash=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode("v2|"+u.href)))].slice(0,16).map(x=>x.toString(16).padStart(2,"0")).join("");
   try{const hit=await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("SELECT payload,created_at FROM news_article WHERE url_hash=?").bind(hash).first()});
     if(hit&&Date.now()-Date.parse(hit.created_at)<7*864e5)return json({...JSON.parse(hit.payload),cached:true})}catch(_){}
-  const text=trimText(await articleText(env,u.href),9000);
-  if(text.length<400)return json({ok:false,reason:"El medio no deja leer el artículo completo desde aquí."});
-  const prompt=["Resume en español de España este artículo de prensa financiera. Responde SOLO JSON con: summary (4 a 6 frases completas, sin cortar ninguna, sin opinión ni consejo, solo lo que dice el artículo) y keyFacts (hasta 4 datos clave cortos con sus cifras exactas tal como aparecen).",
-    "No inventes nada: si una cifra no está en el texto, no la pongas. Titular: «"+title+"».","Artículo:",text].join("\n");
-  const source=new Set(aiNumbersIn(text).map(n=>n.v));
-  const check=d=>aiNumbersIn([d.summary,...(d.keyFacts||[])].join(" ")).filter(n=>n.v>=2&&!source.has(n.v)).map(n=>n.raw);
-  // Presupuesto de tiempo: el lector espera como mucho 50 s. La segunda IA solo si queda margen.
+  let text=trimText(await articleText(env,u.href),9000),basis="article";
+  if(text.length<400){
+    // Sin artículo: se resume con el titular y el extracto (si hay algo que contar).
+    if((title+" "+snippet).trim().length<80)return json({ok:false,reason:"El medio no deja leer el artículo y no publica extracto."});
+    text=[title,snippet].filter(Boolean).join("\n");basis="snippet";
+  }
+  text=normalizeCjkFigures(text);
+  const prompt=["Eres periodista financiero. Cuenta en español de España esta noticia"+(publisher?" del medio «"+publisher+"»":"")+" con tus palabras (no la traduzcas frase a frase). "+
+    "Responde SOLO JSON con: title (titular claro en español, máx. 110 caracteres), summary ("+(basis==="article"?"4 a 6":"2 a 3")+" frases completas, sin cortar ninguna, sin opinión ni consejo, solo lo que dice el texto), "+
+    "keyFacts (hasta 4 datos clave cortos con sus cifras) y source (nombre del medio en alfabeto latino; si está en chino u otra escritura, su nombre conocido, p. ej. «Sina Finance»).",
+    "Formato español: decimales con coma y miles con punto (0,35 %; 812.400 USD; 3.090 millones). Fechas como «27 de octubre». No inventes nada: si una cifra no está en el texto, no la pongas."+(basis==="snippet"?" El texto es solo el extracto del medio: no supongas lo que no dice.":""),
+    "Titular original: «"+title+"».",basis==="article"?"Artículo:":"Extracto:",text].join("\n");
+  // Cifras permitidas: las del texto, comparadas con su unidad («309 millones» = 309000000; «3,09 mil millones»
+  // = 3090 millones). Sin unidad, solo la misma cifra: un «27» del texto no autoriza «27.000 empleados».
+  const src=articleFigures(text+"\n"+normalizeCjkFigures(title));
+  const near=(a,b)=>Math.abs(a-b)<=Math.max(0.0105,Math.abs(b)*0.006);
+  const allowed=n=>src.some(c=>(n.unit===c.unit&&near(n.v,c.v))||((n.unit||c.unit)&&near(n.abs,c.abs)));
+  const check=d=>articleFigures([d.title,d.summary,...(d.keyFacts||[])].join("\n")).filter(n=>n.v>=2&&!(n.v>=1990&&n.v<=2100&&!n.dec&&!n.unit)&&!allowed(n)).map(n=>n.raw);
   const within=(p,ms)=>Promise.race([p,new Promise((_,no)=>setTimeout(()=>no(new Error("tiempo agotado")),ms))]);
   let out=null,exclude=[];
   for(let i=0;i<2&&!(out&&out.verified)&&Date.now()-t0<32000;i++){
-    try{const a=await within(aiRoute(env,{prompt,maxTokens:700,json:true,task:"light",exclude}),Math.max(8000,44000-(Date.now()-t0)));exclude.push(a.provider);
+    try{const a=await within(aiRoute(env,{prompt,maxTokens:800,json:true,task:"light",exclude}),Math.max(8000,44000-(Date.now()-t0)));exclude.push(a.provider);
       const d=JSON.parse(String(a.text).replace(/^```(?:json)?|```$/g,"").trim());
-      const summary=trimText(String(d.summary||"").trim(),1200);if(summary.length<60)continue;
-      const r={summary,keyFacts:(Array.isArray(d.keyFacts)?d.keyFacts:[]).map(x=>trimText(String(x||""),160)).filter(Boolean).slice(0,4),provider:a.provider};
+      const summary=trimText(String(d.summary||"").trim(),1400);if(summary.length<60)continue;
+      const r={title:trimText(String(d.title||"").trim(),140),summary,keyFacts:(Array.isArray(d.keyFacts)?d.keyFacts:[]).map(x=>trimText(String(x||""),160)).filter(Boolean).slice(0,4),
+        source:trimText(String(d.source||"").trim(),60),basis,provider:a.provider};
       const bad=check(r);r.verified=!bad.length;if(bad.length)r.unverified=bad.slice(0,4);
       if(!out||r.verified)out=r;
     }catch(_){}
   }
-  if(!out)return json({ok:false,retry:true,reason:"La IA no ha podido resumir el artículo ahora."});
+  if(!out)return json({ok:false,retry:true,reason:"La IA no ha podido resumir la noticia ahora."});
   const payload={ok:true,...out,at:nowIso()};
-  if(out.verified){try{await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("INSERT OR REPLACE INTO news_article (url_hash,payload,created_at) VALUES (?,?,?)").bind(hash,JSON.stringify(payload),nowIso()).run()})}catch(_){}}
+  // Solo se guarda (común a todos) lo resumido con el artículo leído por el servidor: el titular y el extracto
+  // los manda la app y no deben quedar como la versión de esa noticia para los demás.
+  if(out.verified&&basis==="article"){try{await withCacheDb(env,async db=>{await ensureArticleSchema(db);return db.prepare("INSERT OR REPLACE INTO news_article (url_hash,payload,created_at) VALUES (?,?,?)").bind(hash,JSON.stringify(payload),nowIso()).run()})}catch(_){}}
   return json(payload);
+}
+// Cifras de un texto con su unidad (miles, millones, miles de millones) y su valor absoluto.
+export function articleFigures(text){
+  const t=String(text||""),out=[];
+  for(const n of aiNumbersIn(t)){
+    const at=t.indexOf(n.raw),after=at>=0?t.slice(at+n.raw.length,at+n.raw.length+22):"";
+    const unit=/^\s*(mil millones|miles de millones|billion|bn\b|bln\b|B\b)/i.test(after)?"b":/^\s*(millones|millón|million|mn\b|M\b)/i.test(after)?"m":/^\s*(mil\b|thousand|k\b)/i.test(after)?"k":null;
+    out.push({...n,unit,abs:n.v*(unit==="b"?1e9:unit==="m"?1e6:unit==="k"?1e3:1)});
+  }
+  return out;
 }
 function aiNumbersIn(text){
   const out=[];
