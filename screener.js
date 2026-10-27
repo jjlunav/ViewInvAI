@@ -36,14 +36,26 @@
   fromHigh:{l:'Desde máx. 52s',u:'%',g:s=>ratio(N(s.price),N(s.high52w))},
   fromLow:{l:'Desde mín. 52s',u:'%',g:s=>ratio(N(s.price),N(s.low52w))},
   earningsDays:{l:'Resultados en',u:' d',d:0,g:s=>{const t=N(s.earningsDate);return t===null?null:(t*1000-Date.now())/864e5}},
-  atrPct:{l:'Volatilidad',u:'%',g:s=>N(s.atr)!==null&&N(s.price)>0?s.atr/s.price*100:null}
+  atrPct:{l:'Volatilidad',u:'%',g:s=>N(s.atr)!==null&&N(s.price)>0?s.atr/s.price*100:null},
+  // Caída brusca: la misma regla que usaba su antiguo apartado (score-engine · crashEligible) con la variación
+  // que se ve en pantalla para ese mercado (LSX en vivo o la sesión de EE. UU.). Solo en el cliente.
+  crash:{l:'Hoy',u:'%',mode:true,g:(s,mode)=>liveChange(s,mode)}
  };
+ function liveChange(s,mode){
+  try{return N(mode==='tr'?trLiveChange(s):marketChange(s,currentMarketSession(),false))}catch(_){return N(s.changePct)}
+ }
+ function crashHit(s,mode){
+  const E=window.ViewInvAIScore;
+  return!!(E&&typeof E.crashEligible==='function'&&E.crashEligible(liveChange(s,mode),s.perfMonth,s.marketCap));
+ }
  const LIQ={f:'liquidity',op:'>',v:1};
  const PROFILES=[
   {id:'momentum',icon:'🚀',name:'Momentum con volumen',desc:'Tendencia alcista de 3 meses, por encima de su media de 50 sesiones y con más volumen del habitual.',conds:[{f:'perf3M',op:'>',v:20},{f:'vsEma50',op:'>',v:0},{f:'relVolume',op:'>',v:1.2},LIQ]},
   {id:'value',icon:'💎',name:'Valor tipo Graham',desc:'Baratas por beneficios y por libros, con beneficios positivos.',conds:[{f:'peRatio',op:'between',v:0.1,v2:15},{f:'priceBook',op:'between',v:0.01,v2:1.5},{f:'netIncome',op:'>',v:0},LIQ]},
   {id:'dividend',icon:'💶',name:'Dividendo sólido',desc:'Rentabilidad por dividendo alta, con beneficios y sin estar en caída libre.',conds:[{f:'dividendYield',op:'>',v:4},{f:'perf6M',op:'>',v:-10},{f:'netIncome',op:'>',v:0},LIQ]},
   {id:'rebound',icon:'🔄',name:'Rebote o trampa',desc:'Muy castigadas (RSI bajo) que hoy reaccionan con volumen. Pide a la IA que separe rebotes de trampas.',conds:[{f:'rsi',op:'<',v:35},{f:'changePct',op:'>',v:1.5},{f:'relVolume',op:'>',v:1.3},LIQ]},
+  // Mismo umbral que el antiguo apartado «Caídas bruscas» (score-engine: CRASH_MIN −25 % y fuera las de menos de 20 M).
+  {id:'crash',icon:'⇣',name:'Caídas bruscas',desc:'Caen un 25 % o más hoy de golpe (no las que ya venían hundiéndose): ¿sobrerreacción con rebote o motivo de fondo? Ábrelas para ver la causa.',conds:[{f:'crash',op:'is'}]},
   {id:'catalyst',icon:'📅',name:'Catalizador cerca',desc:'Resultados en las próximas dos semanas, con tendencia a favor y volumen.',conds:[{f:'earningsDays',op:'between',v:0,v2:14},{f:'perfMonth',op:'>',v:3},{f:'relVolume',op:'>',v:1},LIQ]},
   {id:'smallhot',icon:'⚡',name:'Pequeñas en ebullición',desc:'Pequeña capitalización con volumen inusual: más recorrido y más riesgo.',conds:[{f:'marketCap',op:'<',v:2000},{f:'relVolume',op:'>',v:2},{f:'changePct',op:'>',v:3}]},
   {id:'highs',icon:'🏔️',name:'Cerca de máximos',desc:'A menos de un 5 % de su máximo anual con tendencia fuerte (ADX).',conds:[{f:'fromHigh',op:'>',v:-5},{f:'adx',op:'>',v:25},{f:'perf6M',op:'>',v:10},LIQ]},
@@ -61,14 +73,16 @@
  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(store))}catch(_){}};
  const aiState={tr:{busy:false,msg:''},us:{busy:false,msg:''}};
 
- function test(s,c){
+ function test(s,c,mode){
   if(c.f==='sector')return Array.isArray(c.v)&&c.v.includes(String(s.sector||''));
+  if(c.f==='crash')return crashHit(s,mode);
   const def=F[c.f];if(!def)return true;
-  const v=def.g(s);if(v===null)return false;
+  const v=def.g(s,mode);if(v===null)return false;
   return c.op==='>'?v>c.v:c.op==='<'?v<c.v:c.op==='between'?v>=c.v&&v<=c.v2:true;
  }
- const matchAll=(s,conds)=>conds.every(c=>test(s,c));
+ const matchAll=(s,conds,mode)=>conds.every(c=>test(s,c,mode));
  function condLabel(c){
+  if(c.f==='crash')return 'Caída brusca hoy (−25 % o más)';
   if(c.f==='sector'){const es=typeof window.ViewInvAISectorEs==='function'?window.ViewInvAISectorEs:x=>x;return 'Sector: '+c.v.map(es).join(', ')}
   const d=F[c.f];if(!d)return c.f;const n=v=>fmt(v,Math.abs(v)>=100||d.d===0?0:1)+d.u;
   return d.l+(c.op==='>'?' > '+n(c.v):c.op==='<'?' < '+n(c.v):' '+n(c.v)+' – '+n(c.v2));
@@ -79,7 +93,7 @@
   const parts=[];
   for(const c of conds){
    if(c.f==='sector'||c.f==='liquidity')continue;
-   const d=F[c.f],v=d&&d.g(s);if(v===null||v===undefined)continue;
+   const d=F[c.f],v=d&&d.g(s,mode);if(v===null||v===undefined)continue;
    const val=(d.u==='%'&&v>0&&/^(changePct|perf|vsEma|fromLow)/.test(c.f)?'+':'')+fmt(v,Math.abs(v)>=100||d.d===0?0:1)+d.u;
    parts.push(d.l+' '+val);
   }
@@ -95,7 +109,7 @@
   const stamp=String((typeof db!=='undefined'&&db.meta&&db.meta.updatedAt)||'')+':'+(typeof db!=='undefined'?db.stocks.length:0);
   if(countCache.stamp!==stamp)countCache={stamp,map:{}};
   const k=mode+':'+p.id;
-  if(countCache.map[k]===undefined)countCache.map[k]=universe(mode).filter(s=>matchAll(s,p.conds)).length;
+  if(countCache.map[k]===undefined)countCache.map[k]=universe(mode).filter(s=>matchAll(s,p.conds,mode)).length;
   return countCache.map[k];
  }
  function columns(mode,list){
@@ -110,14 +124,15 @@
  // Parte de las filas que de verdad muestra la lista (búsqueda, sector y filtros de columna incluidos).
  const lastRows={};
  function highlights(mode){
-  const rows=lastRows[mode]||universe(mode).filter(x=>matchAll(x,st(mode).conds));
+  const rows=lastRows[mode]||universe(mode).filter(x=>matchAll(x,st(mode).conds,mode));
   const pick=rows.filter(x=>N(x.rsi)===null||x.rsi<=70).sort((a,b)=>(N(b.relVolume)||0)-(N(a.relVolume)||0)).slice(0,3);
   return{count:rows.length,pick};
  }
  // El Screener IA es del diseño ViewInvAI; en el clásico los catálogos siguen como antes (sin panel ni selector).
  const isD=()=>document.documentElement.dataset.design!=='classic';
- const isMobile=()=>window.matchMedia&&window.matchMedia('(max-width:820px)').matches;
- // Selector de activo: en escritorio, desplegable al principio de la barra; en móvil, botón bajo el título que abre
+ // La app nativa usa siempre la interfaz móvil (también en tableta u horizontal: allí no hay menú lateral).
+ const isMobile=()=>document.documentElement.dataset.nativeApp==='1'||!!(window.matchMedia&&window.matchMedia('(max-width:820px)').matches);
+ // Selector de activo: en escritorio, desplegable a la derecha del título; en móvil, botón bajo el título que abre
  // una hoja desde abajo (más cómoda con el pulgar). Cada clase en su divisa; fondos y ETFs sin distinguir plataforma.
  const ASSETS=[['catalog','Acciones LSX','€','Trade Republic · LS Exchange'],['catalogUS','Acciones EE. UU.','$','Nasdaq, NYSE y AMEX'],['funds:fund','Fondos de inversión','','Registrados para la venta en España'],['funds:exchange','ETFs y ETPs','','Cotizados en bolsas europeas'],['crypto','Cripto','€','Precio de consenso']];
  function assetKey(){
@@ -154,7 +169,7 @@
  const profileChips=mode=>'<div class="scr-pchips">'+PROFILES.map(p=>'<button type="button" class="'+(st(mode).profile===p.id?'on':'')+'" data-scr-profile="'+p.id+'" data-mode="'+mode+'">'+p.icon+' '+esc(p.name)+' <em>'+profileCount(mode,p).toLocaleString('es-ES')+'</em></button>').join('')+'</div>';
  // Escritorio (estilo «pro compacto»): una sola barra con mercado, perfil, pregunta a la IA y vista; debajo, los filtros.
  function desktopHtml(mode){
-  const s=st(mode),a=aiState[mode],n=s.conds.length?universe(mode).filter(x=>matchAll(x,s.conds)).length:null;
+  const s=st(mode),a=aiState[mode],n=s.conds.length?universe(mode).filter(x=>matchAll(x,s.conds,mode)).length:null;
   const opts='<option value="">Perfiles…</option>'+PROFILES.map(p=>'<option value="'+p.id+'"'+(s.profile===p.id?' selected':'')+'>'+p.icon+' '+esc(p.name)+' · '+profileCount(mode,p).toLocaleString('es-ES')+'</option>').join('');
   const views=Object.keys(VIEWS[mode]).concat('all').map(v=>'<button type="button" class="'+(s.view===v?'on':'')+'" data-scr-view="'+v+'" data-mode="'+mode+'">'+VIEW_LABELS[v]+'</button>').join('');
   return '<div class="scr-bar"><select class="select scr-profile-select" data-scr-profile-select="'+mode+'" aria-label="Perfil">'+opts+'</select>'+aiForm(mode,'✦ Pregunta a la IA qué buscas: «tecnológicas medianas que suben con volumen»…')+layoutSeg(mode,s.layout||'table')+'</div>'+
@@ -217,7 +232,7 @@
     if(refine&&s.conds.length){const f=new Set(d.conds.map(c=>c.f));s.conds=s.conds.filter(c=>!f.has(c.f)).concat(d.conds).slice(0,10)}
     else s.conds=d.conds;
     s.profile='';s.label=refine&&s.label?String(s.label+' · '+q).slice(0,90):(d.label||q);save();
-    const n=universe(mode).filter(x=>matchAll(x,s.conds)).length;
+    const n=universe(mode).filter(x=>matchAll(x,s.conds,mode)).length;
     a.msg=(d.note?d.note+' ':'')+'→ '+n.toLocaleString('es-ES')+' valores. Puedes quitar o cambiar cualquier filtro.';
    }else a.msg=d.reason||d.error||'No se ha podido interpretar la búsqueda.';
   }catch(_){a.msg='No se ha podido conectar con la IA. Prueba en un momento.'}
@@ -264,8 +279,8 @@
   else if(t.dataset.scrSuggest){askAi(mode,t.dataset.scrSuggest);return}
   save();rerender(mode);
  });
- // Dónde va el selector, sin gastar una fila: en escritorio, al final de la fila de secciones (Mercado · Screener IA ·
- // Noticias); en móvil, el propio título de la barra superior se convierte en el selector.
+ // Dónde va el selector, sin gastar una fila: en escritorio, a la derecha del título (el menú lateral ya lleva las
+ // secciones); en móvil, el propio título de la barra superior se convierte en el selector.
  function placePicker(){
   if(typeof state==='undefined')return;
   document.querySelectorAll('.scr-asset').forEach(x=>x.remove());
@@ -280,8 +295,9 @@
    const h1=head.querySelector('h1');head.classList.add('has-scr-picker');
    if(h1)h1.after(picker);else head.prepend(picker);
   }else{
-   const sw=view.querySelector(':scope>.section-switcher');
-   if(sw){picker.classList.add('scr-asset-inline');sw.appendChild(picker)}
+   // Escritorio: a la derecha del título (no hay fila de pestañas; el menú lateral ya lleva las secciones).
+   const head=view.querySelector(':scope>.page-heading');
+   if(head){picker.classList.add('scr-asset-inline');head.appendChild(picker)}
   }
   // Mapa de calor: volver a la tabla, en la misma fila que el selector (escritorio) o arriba (móvil).
   let back=view.querySelector(':scope>.scr-map-back');
@@ -292,5 +308,5 @@
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAssetMenu()});
  window.addEventListener('resize',()=>{clearTimeout(placePicker.t);placePicker.t=setTimeout(placePicker,200)});
  document.addEventListener('change',e=>{if(e.target&&e.target.id==='fundType')setTimeout(placePicker,0)});
- window.ViewInvAIScreener={placePicker,match:(mode,s)=>!isD()||matchAll(s,st(mode).conds),setRows:(mode,rows)=>{lastRows[mode]=rows},columns,renderPanel,why,layout,cardsHtml,active:mode=>st(mode).conds.length>0,profiles:PROFILES,fields:F};
+ window.ViewInvAIScreener={placePicker,match:(mode,s)=>!isD()||matchAll(s,st(mode).conds,mode),setRows:(mode,rows)=>{lastRows[mode]=rows},columns,renderPanel,why,layout,cardsHtml,active:mode=>st(mode).conds.length>0,profiles:PROFILES,fields:F};
 })();

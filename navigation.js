@@ -56,10 +56,16 @@ const D_NAV_GROUPS={today:['today'],home:['home','screener','news'],recommendati
 const D_MORE_VIEWS=['inbox','settings','admin'];
 const navGroups=()=>isDesignD()?D_NAV_GROUPS:NAV_GROUPS;
 function navGroupOf(v){if(isDesignD()&&(SCREENER_VIEWS.includes(v)||v==='screener'))return 'home';if(v==='favorites')return 'portfolios';for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
+const mobileSwitcherMq=window.matchMedia('(max-width:820px)');
+if(mobileSwitcherMq.addEventListener)mobileSwitcherMq.addEventListener('change',()=>{try{renderSectionSwitcher()}catch(_){}});
 function renderSectionSwitcher(){
  document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
  const view=document.querySelector('.view.active');if(!view)return;
- const group=(navGroups()[navGroupOf(state.currentView)]||[]).filter(v=>v!=='entry');
+ // Escritorio (diseño ViewInvAI): el menú lateral ya lista cada sección, así que no se repiten en pestañas.
+ // La app nativa nunca muestra el menú lateral (tampoco en tableta o en horizontal): ahí siguen las pestañas.
+ if(isDesignD()&&!mobileSwitcherMq.matches&&document.documentElement.dataset.nativeApp!=='1'){if(window.ViewInvAIScreener&&window.ViewInvAIScreener.placePicker)window.ViewInvAIScreener.placePicker();return}
+ // Caídas bruscas es ahora un perfil del Screener IA, no una pestaña aparte.
+ const group=(navGroups()[navGroupOf(state.currentView)]||[]).filter(v=>v!=='entry'&&!(isDesignD()&&v==='crash'));
  if(group.length<2)return;
  const inScreener=isDesignD()&&SCREENER_VIEWS.includes(state.currentView);
  const nav=document.createElement('nav');
@@ -88,7 +94,7 @@ function renderNavigation(){
   const h=t=>'<div class="nav-group-h">'+E(t)+'</div>';
   side.innerHTML=it('today','Hoy')+
    h('Mercados')+it('home','Mercado')+it('screener','Screener IA','⧩',' nav-screener')+it('news','Noticias')+
-   h('Ideas IA')+it('recommendation','Radar AI','✹',' ai-nav-item')+it('crash','Caídas bruscas','⇣')+it('future','Potencial futuro','✦')+
+   h('Ideas IA')+it('recommendation','Radar AI','✹',' ai-nav-item')+it('future','Potencial futuro','✦')+
    h('Tu dinero')+it('portfolios','Carteras')+it('favorites','Favoritos','★')+it('tax','Fiscal (IRPF)','§');
  }else if(side){
   if(classicSideHtml!==null&&!side.querySelector('.nav-item[data-view="catalog"]'))side.innerHTML=classicSideHtml;
@@ -140,7 +146,7 @@ function renderNavigation(){
 function rebuildNavigation(){navigationRendered=false;renderNavigation()}
 function syncMobileNavigation(){
  const group=navGroupOf(state.currentView);
- if(isDesignD()){const cur=state.currentView;$$('#sidebar .nav-item').forEach(x=>{const v=x.dataset.view,on=v===cur||(v==='screener'&&SCREENER_VIEWS.includes(cur))||(v==='recommendation'&&cur==='entry');x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')})}
+ if(isDesignD()){const cur=state.currentView;$$('#sidebar .nav-item').forEach(x=>{const v=x.dataset.view,on=v===cur||(v==='screener'&&SCREENER_VIEWS.includes(cur))||(v==='recommendation'&&cur==='entry')||(v==='screener'&&cur==='crash');x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')})}
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
  const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
  const more=$('[data-mobile-more]');if(more)more.classList.toggle('active',(isDesignD()?D_MORE_VIEWS:MORE_VIEWS).includes(state.currentView));
