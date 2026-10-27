@@ -2487,3 +2487,14 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.cr
  html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell:nth-child(2){grid-column:4!important}
  html:root:root body:not(#a11y-floor):not(#lv-a):not(#fmc):not(#fmc2) .fund-mobile-compare .asset-card-row .asset-card-context-cell:nth-child(3){grid-column:5!important}
 }
+/* Importar extracto de cripto: extracto · en la app · guardar. Las monedas que conservan tu saldo, marcadas. */
+.crypto-import-table{font-size:12px}
+.crypto-import-table td small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
+.crypto-import-table tr.crypto-import-keep td{background:color-mix(in srgb,#f5b544 12%,transparent)}
+.crypto-import-table tr.crypto-import-keep td:first-child::after{content:" ⚠";color:#f5b544}
+.crypto-import-warn{display:block;margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,currentColor 40%,transparent);line-height:1.45}
+.crypto-import-table{width:100%;table-layout:fixed}
+.crypto-import-table th:nth-child(1){width:30%}.crypto-import-table th:nth-child(3){width:38%}
+.crypto-import-table input.crypto-import-units{max-width:none}
+.crypto-import-add{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;margin:8px 0}
+.crypto-import-add input{min-width:0;font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text)}

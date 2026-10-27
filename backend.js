@@ -7861,13 +7861,25 @@ async function googleNewsRss(env,query,isin){
 // Sin fotos de prensa (tienen derechos): título, medio, hora y los valores que cita. Caché de 20 min.
 const NEWS_TTL_MS=20*60000;
 const NEWS_TOPICS={
-  latest:'bolsa OR "Wall Street" OR Ibex OR Nasdaq OR "S&P 500"',
+  latest:'"la Bolsa" OR "salida a bolsa" OR "Wall Street" OR Ibex OR Nasdaq OR "S&P 500" OR "Euro Stoxx"',
   macro:'BCE OR "Reserva Federal" OR Fed OR inflación OR IPC OR PMI OR "tipos de interés" OR PIB OR "datos de empleo"',
   crypto:'bitcoin OR ethereum OR criptomonedas'
 };
 // Una noticia de tema (no de tus valores) solo entra si es de mercados o economía: Google mezcla
 // sucesos, política o empleo local de medios latinoamericanos cuando la consulta lleva «empleo».
 const NEWS_FINANCE=/\b(bolsas?|burs[aá]til|mercados?|acci[oó]n(es)?|[ií]ndices?|ibex|wall street|nasdaq|dow jones|s&p|stoxx|dax|nikkei|euro ?stoxx|bce|fed|reserva federal|banco central|tipos? de inter[eé]s|inflaci[oó]n|ipc|pmi|pib|recesi[oó]n|deuda|bonos?|rentabilidad|divisas?|euro|d[oó]lar|petr[oó]leo|crudo|brent|oro|materias primas|aranceles?|resultados|beneficios?|ingresos|facturaci[oó]n|dividendos?|opa|cotiza|inversores?|inversi[oó]n|fondos?|etf|bitcoin|ethereum|cripto\w*|empresas?|compañ[ií]as?|sector|banca|bancos?|el[eé]ctricas?|tecnol[oó]gicas?|econom[ií]a|econ[oó]mic[oa]s?|paro|desempleo|empleo en (ee\.? ?uu\.?|estados unidos|la eurozona|españa)|n[oó]minas)\b/i;
+// «Bolsa» suelta (bolso, saco) o «inversión», «empresa», «dólar»… colaban sucesos y loterías («la cabeza de una
+// tiktoker dentro de una bolsa», resultados del Powerball). Ahora entra si nombra un mercado o dato claro, o si
+// reúne al menos dos términos económicos distintos, y nunca si es claramente un suceso, deporte o lotería.
+const NEWS_MARKET=/\b(burs[aá]til|ibex|wall street|nasdaq|dow jones|s&p ?500|stoxx|dax|nikkei|cac 40|ftse|bce|reserva federal|banco central|tipos? de inter[eé]s|ipc|pmi|pib|prima de riesgo|cotiza\w*|opa|dividendos?|bitcoin|ethereum|cripto\w*|(la|en|a|las) bolsas?|bolsas? (de|europeas?|asi[aá]ticas?|mundiales|espa[ñn]olas?|americanas?|estadounidenses?)|salida a bolsa|acciones de|parqu[eé]|mercados? (de valores|burs[aá]til|financieros?)|bonos? (del tesoro|soberanos?|a \d+ a[ñn]os))\b/i;
+const NEWS_NOISE=/\b(loter[ií]a|powerball|sorteo|primitiva|euromillones|f[uú]tbol|liga|champions|asesinad[oa]s?|asesinato|cad[aá]ver|cabeza de|crimen|homicidio|tiktoker|influencer|hor[oó]scopo|receta)\b/i;
+function newsIsFinance(text){
+  const t=String(text||"");
+  if(NEWS_NOISE.test(t))return false;
+  if(NEWS_MARKET.test(t))return true;
+  const hits=new Set((t.match(new RegExp(NEWS_FINANCE.source,"gi"))||[]).map(x=>x.toLowerCase()));
+  return hits.size>=2;
+}
 // Páginas de cotización o fichas («Cours Spero Therapeutics», «AAPL Stock Price & Quote»): no son noticias.
 const NEWS_QUOTE_PAGE=/^(cours|cotizaci[oó]n( de| en tiempo real)?|precio de (la )?acci[oó]n|kurs|quote)\b|\b(stock (price|quote)|share price|price & news|quote & (news|history)|cotizaci[oó]n en tiempo real|historical (prices|data))\b/i;
 function newsIsQuotePage(item){return NEWS_QUOTE_PAGE.test(String(item&&item.title||""))}
@@ -7996,7 +8008,7 @@ async function handleNews(request,env,user,json,url){
   if(request.method!=="GET")return json({error:"Method not allowed"},405);
   const cat=["foryou","mine","latest","macro","crypto"].includes(url.searchParams.get("cat"))?url.searchParams.get("cat"):"foryou";
   const topic=async t=>(await newsCached(env,"topic:"+t,()=>newsSearch(env,NEWS_TOPICS[t]))).map(newsClean)
-    .filter(x=>!newsIsQuotePage(x)&&(t==="crypto"||NEWS_FINANCE.test(x.title+" "+x.snippet))).map(x=>({...x,topic:t}));
+    .filter(x=>!newsIsQuotePage(x)&&(t==="crypto"||newsIsFinance(x.title+" "+x.snippet))).map(x=>({...x,topic:t}));
   const mine=async()=>user?newsForHoldings(env,user.id):[];
   let items=[];
   if(cat==="mine")items=await mine();
