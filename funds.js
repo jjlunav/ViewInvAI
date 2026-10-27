@@ -405,7 +405,7 @@
  function filtered(){
   const needle=state.query.trim().toLowerCase();
   const rows=state.products.filter(p=>{
-   if(state.type!=='all'&&p.type!==state.type)return false;
+   if(state.type==='exchange'?(p.type!=='etf'&&p.type!=='etp'):(state.type!=='all'&&p.type!==state.type))return false;
    if(!matchesPlatform(p))return false;
    if(state.provider!=='all'&&String(p.provider||'')!==state.provider)return false;
    if(state.region!=='all'&&String(p.region||'')!==state.region)return false;

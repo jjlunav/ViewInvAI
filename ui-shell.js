@@ -60,7 +60,7 @@
  // Móvil: el título va siempre en una línea y con el mismo tamaño. Las secciones de nombre
  // largo usan uno corto (data-short), sin medir ni reajustar: antes se medía y reajustaba en
  // bucle y el título cambiaba de tamaño sin parar.
- const SHORT_TITLES={catalog:'Catálogo LSX',catalogUS:'Catálogo EEUU',funds:'Fondos y ETFs',future:'Potencial futuro',entry:'Radar de entrada',heatmap:'Mapa de calor',crypto:'Criptoactivos',crash:'Caídas bruscas'};
+ const SHORT_TITLES={catalog:'Screener IA',catalogUS:'Screener IA',funds:'Screener IA',future:'Potencial futuro',entry:'Radar de entrada',heatmap:'Screener IA',crypto:'Screener IA',crash:'Caídas bruscas'};
  function fitTitle(){
   document.querySelectorAll('.view>.page-heading h1').forEach(h=>{
    const view=h.closest('.view');const id=view&&view.id.replace(/^view-/,'');

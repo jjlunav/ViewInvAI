@@ -48,6 +48,7 @@ const files = [
   'ai-integrations.js',
   'stock-profile.js',
   'catalog.js',
+  'screener.js',
   'heatmap.js',
   'stock-interactions.js',
   'filter-sheet.js',

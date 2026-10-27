@@ -6218,6 +6218,59 @@ export function normalizeCjkFigures(text){
 // La noticia la cuenta la IA en español con lo que dice el medio (el artículo entero si se puede leer; si no,
 // el titular y el extracto), en vez de traducirla palabra por palabra. Todas las cifras se comprueban contra el
 // texto del medio; el enlace a la noticia original va al final en la app.
+// ----- Screener IA: la búsqueda escrita («tecnológicas medianas que suben con volumen…») se convierte en
+// filtros que la app aplica sobre sus propios datos. La IA solo elige campos y umbrales de una lista cerrada;
+// todo lo que no encaje se descarta, así que nunca filtra por algo que la app no puede comprobar.
+export const SCREENER_FIELDS={
+  changePct:"variación de hoy en %",perfWeek:"variación de 1 semana en %",perfMonth:"variación de 1 mes en %",perf3M:"variación de 3 meses en %",
+  perf6M:"variación de 6 meses en %",perfYtd:"variación en lo que va de año en %",rsi:"RSI de 14 sesiones (0-100)",adx:"ADX, fuerza de la tendencia (0-100)",
+  relVolume:"volumen de hoy frente a su media (veces)",liquidity:"importe negociado medio al día, en millones",marketCap:"capitalización en millones",
+  peRatio:"PER",priceBook:"precio / valor contable",dividendYield:"rentabilidad por dividendo en %",netIncome:"beneficio neto anual en millones",
+  revenue:"ingresos anuales en millones",beta:"beta a 1 año",vsEma50:"distancia del precio a su media de 50 sesiones en %",vsEma20:"distancia del precio a su media de 20 sesiones en %",
+  fromHigh:"distancia al máximo de 52 semanas en % (0 = en máximos, negativo = por debajo)",fromLow:"distancia al mínimo de 52 semanas en % (0 = en mínimos)",
+  earningsDays:"días hasta los próximos resultados",atrPct:"volatilidad diaria típica (ATR) en % del precio"
+};
+export function sanitizeScreenerConds(raw,sectors){
+  const out=[],allowedSectors=new Set((sectors||[]).map(String));
+  for(const c of Array.isArray(raw)?raw.slice(0,8):[]){
+    if(!c||typeof c!=="object")continue;
+    const f=String(c.f||c.field||"");
+    if(f==="sector"){
+      const v=(Array.isArray(c.v)?c.v:[c.v]).map(String).filter(x=>allowedSectors.has(x)).slice(0,6);
+      if(v.length)out.push({f,op:"in",v});
+      continue;
+    }
+    if(!SCREENER_FIELDS[f])continue;
+    // null, "" o booleanos no son umbrales: Number() los convertiría en 0 y crearían un filtro que nadie pidió.
+    const num=x=>typeof x==="number"||(typeof x==="string"&&x.trim()!=="")?finiteNumber(x):null;
+    const op=String(c.op||""),v=num(c.v),v2=num(c.v2);
+    if((op===">"||op==="<")&&v!==null)out.push({f,op,v});
+    else if(op==="between"&&v!==null&&v2!==null)out.push({f,op,v:Math.min(v,v2),v2:Math.max(v,v2)});
+  }
+  return out;
+}
+async function handleAiScreener(request,env,user,json){
+  if(request.method!=="POST")return json({error:"Method not allowed"},405);
+  const body=await readJson(request);
+  const q=trimText(body.q,300).trim(),market=body.market==="tr"?"tr":"us";
+  if(q.length<3)return json({error:"Escribe qué buscas."},400);
+  const sectors=(Array.isArray(body.sectors)?body.sectors:[]).map(x=>trimText(x,60)).filter(Boolean).slice(0,40);
+  const current=sanitizeScreenerConds(body.current,sectors);
+  const prompt=["Convierte la búsqueda de un inversor en filtros de un screener de acciones ("+(market==="tr"?"acciones de Trade Republic / LS Exchange":"acciones de EE. UU.")+").",
+    "Campos disponibles (usa SOLO estos ids):",...Object.entries(SCREENER_FIELDS).map(([k,v])=>"- "+k+": "+v),
+    "- sector: lista de sectores, valores posibles: "+sectors.join(" | "),
+    "Responde SOLO JSON: {\"label\":\"título corto en español\",\"conds\":[{\"f\":\"campo\",\"op\":\">\"|\"<\"|\"between\"|\"in\",\"v\":número o lista,\"v2\":número si between}],\"note\":\"una frase en español de cómo lo has interpretado\"}.",
+    "Usa entre 2 y 6 condiciones razonables y realistas (p. ej. «medianas» = marketCap entre 2000 y 20000; «sobrecompradas» = rsi > 70; «con volumen» = relVolume > 1.3; «baratas» = peRatio < 15). Añade liquidity > 1 salvo que pidan valores pequeños o ilíquidos.",
+    ...(current.length?["Filtros que ya tiene (el usuario quiere AFINARLOS): "+JSON.stringify(current),"Devuelve SOLO las condiciones nuevas o las que cambian; las demás se conservan solas. Si cambia un campo existente, devuélvelo con el valor nuevo."]:[]),
+    "Búsqueda: «"+q+"»"].join("\n");
+  try{
+    const run=await Promise.race([aiRoute(env,{prompt,maxTokens:500,json:true,task:"light"}),new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),25000))]);
+    const d=extractAiJson(run&&run.text)||{};
+    const conds=sanitizeScreenerConds(d.conds,sectors);
+    if(!conds.length)return json({ok:false,reason:"No he sabido convertir esa búsqueda en filtros. Prueba con otras palabras o elige un perfil."});
+    return json({ok:true,label:trimText(d.label||q,70),note:trimText(d.note||"",220),conds,provider:run.provider});
+  }catch(_){return json({ok:false,retry:true,reason:"La IA no está disponible ahora. Prueba en un momento o elige un perfil."})}
+}
 async function handleAiArticle(request,env,user,json){
   if(request.method!=="POST")return json({error:"Method not allowed"},405);
   const t0=Date.now(),body=await readJson(request);
@@ -6662,6 +6715,7 @@ export async function handleBackendApi(request, env, services = {}) {
     if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
     if (root === "ai" && parts[1] === "ask") return handleAiAsk(request, env, user, json, services);
     if (root === "ai" && parts[1] === "article") return handleAiArticle(request, env, user, json);
+    if (root === "ai" && parts[1] === "screener") return handleAiScreener(request, env, user, json);
     if (root === "news") return handleNews(request, env, user, json, url);
     if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
     if (root === "alerts") return handleAlerts(request, env, user, json, parts);

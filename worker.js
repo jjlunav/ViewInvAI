@@ -2370,7 +2370,7 @@ export default {
     }
 
     let limited=null;
-    if(url.pathname==="/api/ai/chat"||url.pathname==="/api/ai/ask")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
+    if(url.pathname==="/api/ai/chat"||url.pathname==="/api/ai/ask"||url.pathname==="/api/ai/screener")limited=await enforcedRateLimit(request,env,"ai-chat",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/event-insight")limited=await enforcedRateLimit(request,env,"event-insight",20,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/goal-ideas")limited=await enforcedRateLimit(request,env,"goal-ideas",10,60000,"AI_RATE_LIMITER");
     else if(url.pathname==="/api/radar-check")limited=await enforcedRateLimit(request,env,"radar-check",10,60000,"AI_RATE_LIMITER");
