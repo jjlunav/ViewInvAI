@@ -42,22 +42,22 @@ const NAV_GROUPS={
  admin:['admin']
 };
 // Nombres cortos: el selector de secciones reparte el ancho en partes iguales y debe caber entero.
-const SECTION_LABELS={screener:'Screener IA',portfolios:'Carteras',tax:'Fiscal',home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',crash:'Caídas',entry:'Entrada',future:'Futuro'};
+const SECTION_LABELS={screener:'Screener IA',funds:'Fondos y ETFs',crypto:'Cripto',portfolios:'Carteras',tax:'Fiscal',home:'Mercado',news:'Noticias',favorites:'Favoritos',catalog:'LSX',catalogUS:'EEUU',funds:'Fondos',crypto:'Cripto',heatmap:'Mapa',recommendation:'Radar AI',crash:'Caídas',entry:'Entrada',future:'Futuro'};
 const MOBILE_NAV_LABELS={today:'Inicio',recommendation:'Radar AI',portfolios:'Carteras'};
 // Diseño D: Mercados agrupa la portada y los catálogos (LSX, EE. UU., fondos, cripto, mapa).
 const isDesignD=()=>document.documentElement.dataset.design!=='classic';
 // Estructura (2026-10): Hoy · Mercados (Mercado · Screener IA · Noticias) · Radar AI (Radar · Caídas · Futuro) ·
 // Carteras (Carteras · Fiscal). El Screener IA reúne lo que antes eran cinco menús: catálogos LSX y EE. UU., fondos
 // y ETFs, cripto y mapa de calor, con sus propias pestañas dentro. Avisos y Configuración, en la barra superior.
-const SCREENER_VIEWS=['catalog','catalogUS','funds','crypto','heatmap'];
-const SCREENER_TABS=[['catalog','Acciones LSX','€'],['catalogUS','Acciones EE. UU.','$'],['funds','Fondos y ETFs',''],['crypto','Cripto','€']];
+// El Screener IA reúne acciones (LSX y EE. UU.), fondos, ETFs y cripto: se elige con un único selector.
+const SCREENER_VIEWS=['catalog','catalogUS','heatmap','funds','crypto'];
 function lastScreenerView(){try{const v=localStorage.getItem('viewinvai:screener-last');return SCREENER_VIEWS.includes(v)?v:'catalog'}catch(_){return'catalog'}}
 const D_NAV_GROUPS={today:['today'],home:['home','screener','news'],recommendation:['recommendation','crash','entry','future'],portfolios:['portfolios','tax'],inbox:['inbox'],settings:['settings'],admin:['admin']};
 const D_MORE_VIEWS=['inbox','settings','admin'];
 const navGroups=()=>isDesignD()?D_NAV_GROUPS:NAV_GROUPS;
 function navGroupOf(v){if(isDesignD()&&(SCREENER_VIEWS.includes(v)||v==='screener'))return 'home';if(v==='favorites')return 'portfolios';for(const [g,views] of Object.entries(navGroups()))if(views.includes(v))return g;return 'home'}
 function renderSectionSwitcher(){
- document.querySelectorAll('.section-switcher,.screener-bar').forEach(el=>el.remove());
+ document.querySelectorAll('.section-switcher').forEach(el=>el.remove());
  const view=document.querySelector('.view.active');if(!view)return;
  const group=(navGroups()[navGroupOf(state.currentView)]||[]).filter(v=>v!=='entry');
  if(group.length<2)return;
@@ -68,16 +68,10 @@ function renderSectionSwitcher(){
  nav.innerHTML=group.map(v=>'<button type="button" class="section-switch'+(on(v)?' active':'')+'" data-section-view="'+E(v)+'" title="'+E(v==='screener'?'Screener IA':(V[v]||v).replace(/^\d+\s*/,''))+'" aria-current="'+(on(v)?'page':'false')+'">'+E(SECTION_LABELS[v]||v)+'</button>').join('');
  const heading=view.querySelector(':scope>.page-heading');
  if(heading)heading.after(nav);else view.prepend(nav);
- // Dentro del Screener IA: la clase de activo (cada una en su divisa) y, en acciones de EE. UU., el mapa de calor.
- if(inScreener){
-  const cur=state.currentView,tabOf=cur==='heatmap'?'catalogUS':cur;
-  const bar=document.createElement('div');bar.className='screener-bar';
-  bar.innerHTML='<div class="screener-tabs" role="tablist" aria-label="Clase de activo">'+SCREENER_TABS.map(([v,l,c])=>'<button type="button" role="tab" class="'+(v===tabOf?'active':'')+'" data-section-view="'+v+'" aria-selected="'+(v===tabOf)+'">'+E(l)+(c?' <i>'+c+'</i>':'')+'</button>').join('')+'</div>'+
-   (tabOf==='catalogUS'?'<div class="screener-mode" role="group" aria-label="Vista"><button type="button" class="'+(cur==='catalogUS'?'active':'')+'" data-section-view="catalogUS">▤ Tabla</button><button type="button" class="'+(cur==='heatmap'?'active':'')+'" data-section-view="heatmap">▦ Mapa S&amp;P 500</button></div>':'');
-  nav.after(bar);
- }
+
  const active=nav.querySelector('.active');
  if(active)requestAnimationFrame(()=>active.scrollIntoView({block:'nearest',inline:'center'}));
+ if(window.ViewInvAIScreener&&window.ViewInvAIScreener.placePicker)window.ViewInvAIScreener.placePicker();
 }
 
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
@@ -130,7 +124,7 @@ function renderNavigation(){
    '<button type="button" class="mobile-more-item d-more-ai" data-ai-ask="1"><span aria-hidden="true">✦</span><b>Pregunta a la IA</b><small>Sobre tus carteras y el mercado</small></button>'+
    '<button type="button" class="mobile-more-item" data-mobile-view="portfolios" data-portfolio-asset="goal"><span aria-hidden="true">◎</span><b>Objetivo</b><small>Plan de la IA para tu meta</small></button>'+
    tile('future')+
-   head('Explorar')+'<button type="button" class="mobile-more-item" data-mobile-view="screener"><span aria-hidden="true">⧩</span><b>Screener IA</b><small>Acciones LSX y EE. UU., fondos, cripto y mapa</small></button>'+tile('news')+tile('favorites')+
+   head('Explorar')+'<button type="button" class="mobile-more-item" data-mobile-view="screener"><span aria-hidden="true">⧩</span><b>Screener IA</b><small>Acciones, fondos, ETFs y cripto</small></button>'+tile('news')+tile('favorites')+
    head('Gestión')+
    '<button type="button" class="mobile-more-item" data-broker-import><span aria-hidden="true">⇅</span><b>Importar extracto</b><small>Trade Republic, IBKR o CSV</small></button>'+
    tile('tax','','Fiscal (IRPF)')+tile('inbox','','Avisos')+tile('settings');

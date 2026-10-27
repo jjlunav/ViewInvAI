@@ -337,6 +337,9 @@ function catalogTable(mode,rows,se){
  let total=rows.length,limit=st.limit,shown=rows.slice(0,limit);
  let moreButton=shown.length<total?'<button type="button" class="btn ghost catalog-load-more" data-catalog-mode="'+mode+'">Cargar '+Math.min(step,total-shown.length).toLocaleString('es-ES')+' más</button>':'';
  let footer='<div class="catalog-table-footer"><span><strong>'+total.toLocaleString('es-ES')+'</strong> valores · mostrando <strong>'+shown.length.toLocaleString('es-ES')+'</strong></span>'+moreButton+'</div>';
+ if(window.ViewInvAIScreener&&window.ViewInvAIScreener.layout(mode)==='cards'){
+  return {html:(shown.length?window.ViewInvAIScreener.cardsHtml(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+footer,count:total,shown:shown.length};
+ }
  if(mobile){
   return {html:(shown.length?catalogMobileList(mode,shown,se):'<div class="empty-state">No hay valores con estos filtros.</div>')+footer,count:total,shown:shown.length};
  }

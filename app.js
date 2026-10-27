@@ -71,7 +71,7 @@ if('scrollRestoration' in history)history.scrollRestoration='manual';
 let uiRestoredScroll=false;
 let favorites=readFavorites();
 let state={entryMarket:'tr',session:'auto',preset:'intraday',profileKey:null,profileReason:'',profileOriginView:null,profileOriginScroll:0,profilePreferTr:null,currentView:'home',savedScrollY:0};
-const V={today:'00 Mi día',home:'01 Mercados',recommendation:'02 Radar AI',crash:'02 Caídas bruscas',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Screener IA · Acciones LSX',catalogUS:'08 Screener IA · Acciones EE. UU.',funds:'09 Screener IA · Fondos y ETFs',crypto:'09 Screener IA · Cripto',heatmap:'10 Screener IA · Mapa de calor',tax:'11 Fiscal (IRPF)',news:'01 Noticias',inbox:'13 Avisos',settings:'12 Configuración General',admin:'14 Administración'};
+const V={today:'00 Mi día',home:'01 Mercados',recommendation:'02 Radar AI',crash:'02 Caídas bruscas',entry:'02 Radar AI',alerts:'03 Avisos',future:'04 Potencial futuro',portfolios:'05 Carteras',favorites:'06 Favoritos',catalog:'07 Screener IA · Acciones LSX',catalogUS:'08 Screener IA · Acciones EE. UU.',funds:'09 Fondos y ETFs',crypto:'09 Cripto',heatmap:'10 Screener IA · Mapa de calor',tax:'11 Fiscal (IRPF)',news:'01 Noticias',inbox:'13 Avisos',settings:'12 Configuración General',admin:'14 Administración'};
 const P={
  short:{minChange:1,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:false,illiquid:true,sort:'score'},
  medium:{minChange:0,maxChange:0,minRelVolume:0,minAdx:0,minRsi:0,maxRsi:100,minVolume:0,trend:true,illiquid:true,sort:'score'},

@@ -601,13 +601,15 @@ jobs:
                       if(!(ai.querySelector('[data-ai-ask="chatgpt"]') || ai.querySelector('[data-chatgpt-stock]')) || !ai.querySelector('[data-ai-chat-stock]'))return fail('AI actions missing from AI tab');
                       history.back();
                       setTimeout(()=>{
-                        // Fondos vive dentro del Screener IA: menú «Screener IA» y pestaña «Fondos y ETFs».
+                        // Fondos y ETFs se eligen en el selector del Screener IA (menú «Screener IA» → selector de activo).
                         const screenerNav=document.querySelector('#sidebar [data-view="screener"]');
                         if(!screenerNav)return fail('screener navigation missing');
                         screenerNav.click();
-                        const fundsNav=document.querySelector('.screener-tabs [data-section-view="funds"]');
+                        document.querySelector('[data-scr-asset-toggle]')?.click();
+                        const fundsNav=document.querySelector('[data-scr-asset="funds:fund"]');
                         if(!fundsNav)return fail('funds navigation missing');
                         fundsNav.click();
+                        const fundType=document.querySelector('#fundType');if(fundType){fundType.value='all';fundType.dispatchEvent(new Event('change',{bubbles:true}))}
                         setTimeout(()=>{
                           window.ViewInvAIFunds.load(true).then(()=>{
                             const fundRows=document.querySelectorAll('#fundsApp .fund-table-row');
@@ -732,13 +734,15 @@ jobs:
                   centre.click();
                 }
                 document.querySelector('[data-mobile-more]')?.click();
-                // Fondos vive dentro del Screener IA: «Más» → Screener IA → pestaña «Fondos y ETFs».
+                // En móvil: «Más» → Screener IA → selector de activo (el título) → Fondos.
                 const screenerItem=document.querySelector('.mobile-more-item[data-mobile-view="screener"]');
                 if(!screenerItem)return fail('screener missing from native More menu');
                 screenerItem.click();
-                const fundsItem=document.querySelector('.screener-tabs [data-section-view="funds"]');
-                if(!fundsItem)return fail('funds missing from screener tabs');
+                document.querySelector('[data-scr-asset-toggle]')?.click();
+                const fundsItem=document.querySelector('[data-scr-asset="funds:fund"]');
+                if(!fundsItem)return fail('funds missing from the screener asset picker');
                 fundsItem.click();
+                const fundType=document.querySelector('#fundType');if(fundType){fundType.value='all';fundType.dispatchEvent(new Event('change',{bubbles:true}))}
                 window.ViewInvAIFunds.load(true).then(()=>{
                   const fundView=document.querySelector('#view-funds');
                   if(!fundView?.classList.contains('active'))return fail('native funds view did not open');
