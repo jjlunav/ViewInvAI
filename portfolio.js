@@ -2735,6 +2735,11 @@ async function openTransactionsModal(positionId, preferredSide = null) {
   const preferTr = Number(position.prefer_tr) === 1;
   const market = currentMarket(stock, preferTr);
   const currency = String(position.currency || (preferTr ? 'EUR' : 'USD')).toUpperCase();
+  // Bróker de la operación: el de la posición; si no lo tiene, el de su cartera (no se supone IBKR por
+  // mirar la cotización de EE. UU.). Se puede cambiar: cada operación guarda su bróker y su comisión.
+  const txPortfolio = (state.portfolios || []).find(pf => String(pf.id) === String(position.portfolio_id));
+  const txBroker = String(position.broker || txPortfolio?.broker || (preferTr ? 'Trade Republic' : 'IBKR'));
+  const txBrokerOptions = (brokerRecords().some(r => [r.name, r.canonical_name].some(v => String(v || '').toLowerCase() === txBroker.toLowerCase())) ? '' : '<option value="' + esc(txBroker) + '" selected>' + esc(txBroker) + '</option>') + brokerSelectOptions(txBroker);
 
   openModal('Operaciones · ' + (position.ticker || stock?.ticker || ''),
     '<div class="portfolio-loading compact"><span></span><p>Cargando operaciones…</p></div>'
@@ -2758,7 +2763,7 @@ async function openTransactionsModal(positionId, preferredSide = null) {
             '<label><span>Comisión automática</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" readonly></label>' +
           '</div>' +
           '<div class="portfolio-form-grid">' +
-            '<label><span>Broker</span><input name="broker" value="' + esc(position.broker || (preferTr ? 'Trade Republic' : 'IBKR')) + '" readonly></label>' +
+            '<label><span>Bróker</span><select name="broker">' + txBrokerOptions + '</select></label>' +
             '<label><span>Divisa</span><input name="currency" value="' + esc(currency) + '" readonly></label>' +
           '</div>' +
           '<small class="broker-fee-hint" data-transaction-fee-hint></small>'+
@@ -2777,7 +2782,7 @@ async function openTransactionsModal(positionId, preferredSide = null) {
         const side=String(txForm.querySelector('[name="side"]')?.value||'BUY').toUpperCase();
         const qty=num(txForm.querySelector('[name="quantity"]')?.value)||0;
         const price=num(txForm.querySelector('[name="price"]')?.value)||num(market.price)||0;
-        const broker=String(position.broker||(preferTr?'Trade Republic':'IBKR'));
+        const broker=String(txForm.querySelector('[name="broker"]')?.value||txBroker);
         const fee=brokerFeeInCurrency(broker,qty,price,currency,side,position.exchange||'');
         const input=txForm.querySelector('[name="fees"]'),hint=txForm.querySelector('[data-transaction-fee-hint]'),submit=txForm.querySelector('button[type="submit"]');
         if(input)input.value=fee.fee===null?'':String(Math.round((fee.fee+Number.EPSILON)*1000000)/1000000);
@@ -2787,7 +2792,7 @@ async function openTransactionsModal(positionId, preferredSide = null) {
         }
         if(submit)submit.disabled=fee.fee===null;
       };
-      ['side','quantity','price'].forEach(name=>txForm.querySelector('[name="'+name+'"]')?.addEventListener(name==='side'?'change':'input',refreshFee));
+      ['side','quantity','price','broker'].forEach(name=>txForm.querySelector('[name="'+name+'"]')?.addEventListener(name==='side'||name==='broker'?'change':'input',refreshFee));
       refreshFee();
     }
   } catch (error) {
@@ -2928,7 +2933,7 @@ async function saveTransactionForm(form) {
   const payload = {
     portfolioId: position.portfolio_id,
     positionId: position.id,
-    broker: String(position.broker || fd.get('broker') || (preferTr ? 'Trade Republic' : 'IBKR')),
+    broker: String(fd.get('broker') || position.broker || (preferTr ? 'Trade Republic' : 'IBKR')),
     stockKey: position.stock_key,
     ticker: position.ticker || stock?.ticker || '',
     name: position.name || stock?.name || '',

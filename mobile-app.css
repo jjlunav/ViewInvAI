@@ -494,8 +494,10 @@ html[data-native-app="1"] .settings-save-row .btn{
   min-width:78px!important;
 }
 
+/* Las ventanas (operaciones, posiciones…) van por encima de la barra superior flotante (z 2200): antes la
+   campana y el avatar tapaban la ✕. Ocupan hasta abajo (el fondo ya tapa la barra inferior). */
 html[data-native-app="1"] .app-modal-backdrop{
-  z-index:1830!important;
+  z-index:2210!important;
 }
 
 html[data-native-app="1"] .app-modal{
@@ -503,13 +505,13 @@ html[data-native-app="1"] .app-modal{
   left:8px!important;
   right:8px!important;
   top:auto!important;
-  bottom:calc(var(--native-nav-h) + 8px)!important;
+  bottom:calc(8px + env(safe-area-inset-bottom,0px))!important;
   transform:translateY(16px)!important;
   width:auto!important;
   max-width:none!important;
-  max-height:calc(100dvh - var(--native-safe-top) - var(--native-nav-h) - 24px)!important;
+  max-height:calc(100dvh - var(--native-safe-top) - 16px - env(safe-area-inset-bottom,0px))!important;
   border-radius:16px!important;
-  z-index:1840!important;
+  z-index:2220!important;
 }
 
 html[data-native-app="1"] .app-modal.open{
@@ -518,7 +520,10 @@ html[data-native-app="1"] .app-modal.open{
 
 html[data-native-app="1"] .app-modal-head{
   padding:9px 10px!important;
+  /* La ✕ siempre a mano aunque bajes por el formulario. */
+  position:sticky!important;top:0!important;z-index:3!important;background:#0a1826!important;
 }
+html[data-native-app="1"][data-theme="light"] .app-modal-head{background:#fff!important}
 
 html[data-native-app="1"] .app-modal-body{
   min-width:0!important;
