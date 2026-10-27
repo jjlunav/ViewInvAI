@@ -60,8 +60,8 @@
  async function loadPositions(force=false){
   if(!auth()){state.positions=[];state.positionsLoaded=false;return}
   if(state.positionsLoaded&&!force)return;
-  try{const d=await api('/api/crypto-positions',{method:'GET'});state.positions=d.positions||[];state.positionsLoaded=true;publishTotals()}
-  catch(error){console.warn('Crypto positions',error)}
+  try{const d=await api('/api/crypto-positions',{method:'GET'});state.positions=d.positions||[];state.positionsLoaded=true;publishTotals();return true}
+  catch(error){console.warn('Crypto positions',error);return false}
   render();
  }
 
@@ -659,7 +659,8 @@
   files=[...(files||[])];if(!files.length)return;
   const platform=IMPORT_PLATFORMS.find(x=>x.id===importPlatform)||IMPORT_PLATFORMS[0];
   try{
-   await loadPositions(true);
+   // Sin tus saldos actuales no se puede proteger nada: no se sigue (guardar borraría lo que no venga en el fichero).
+   if(!(await loadPositions(true)))throw Error('No se han podido cargar tus criptos guardadas. Comprueba la conexión y vuelve a elegir el fichero.');
    const rows=await readStatementRows(files),period=statementPeriod(rows),r=parseStatement(rows,platform.id);
    const dust=r.positions.filter(isDust).length;
    // Nunca se pierde un saldo: lo que ya tienes en esta plataforma sale también en la tabla. Si el extracto no
@@ -670,7 +671,7 @@
    const symbols=[...new Set([...fromFile.keys(),...mine.map(x=>x.symbol)])];
    pendingImport=symbols.map(sym=>{
     const f=fromFile.get(sym)||null,a=mine.find(x=>x.symbol===sym)||null,au=a?num(a.units):null,aAvg=a?num(a.avg_price_eur):null;
-    const less=a&&(!f||f.units<au*0.995);
+    const less=a&&(!f||f.units<au-1e-9);
     return{symbol:sym,fileUnits:f?f.units:null,appUnits:au,units:less?au:f.units,avgPriceEur:less?aAvg:f.avgPriceEur,keep:!!less};
    }).sort((x,y)=>x.symbol.localeCompare(y.symbol));
    // Extracto que empieza el 1 de enero: casi seguro es un Excel anual y faltan los años anteriores.
@@ -688,9 +689,9 @@
   const unknown=(r.unknown||[]).sort((a,b)=>b[1]-a[1]);
   const opts=state.assets.map(a=>'<option value="'+esc(a.symbol)+'">'+esc(a.name||'')+'</option>').join('');
   box.innerHTML='<p class="crypto-note">Formato detectado: <b>'+esc(r.format)+'</b>'+(period?' · '+esc(period):'')+' · '+files+' '+(files===1?'fichero':'ficheros')+(types?'<br><small>'+esc(types)+'</small>':'')+'</p>'+
-   (yearStart?'<p class="crypto-form-error crypto-import-warn"><b>Falta historial:</b> el extracto empieza el '+esc(first.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}))+'. Si ya tenías criptos antes, añade también el Excel de '+(first.getUTCFullYear()-1)+' (y de los años anteriores) seleccionándolos a la vez. Sin ellos, lo que compraste antes sale de menos o no sale (por ejemplo, una moneda que solo tienes en Earn desde el año pasado).</p>':'')+
+   (yearStart?'<p class="crypto-form-error crypto-import-warn"><b>Puede faltar historial:</b> el extracto empieza el '+esc(first.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}))+'. Si ya tenías criptos antes, añade también el Excel de '+(first.getUTCFullYear()-1)+' (y de los años anteriores) seleccionándolos a la vez. Sin ellos, lo que compraste antes sale de menos o no sale (por ejemplo, una moneda que solo tienes en Earn desde el año pasado).</p>':'')+
    (unknown.length?'<p class="crypto-form-error crypto-import-warn"><b>Monedas no reconocidas en el extracto:</b> '+unknown.map(([c,n])=>esc(c)+' ('+n+')').join(', ')+'. Si es una de las tuyas, añádela abajo con sus unidades.</p>':'')+
-   (platform.id==='bit2me'?'<p class="crypto-note crypto-alpha-note">Compara con tu Wallet de Bit2Me (incluido lo que está en <b>Earn</b>) y corrige las unidades aquí antes de guardar.</p>':'')+
+   (platform.id==='bit2me'?'<p class="crypto-note crypto-alpha-note"><b>Bit2Me exporta un Excel por año.</b> Selecciona a la vez los de todos los años en que operaste: si falta alguno, los saldos y precios medios salen mal. Compara con tu Wallet (incluido lo que está en <b>Earn</b>) y corrige las unidades aquí antes de guardar.</p>':'')+
    (pendingImport.length?'<table class="crypto-sources crypto-import-table"><thead><tr><th>Moneda</th><th>Extracto · app</th><th>Guardar</th></tr></thead><tbody>'+pendingImport.map((p,i)=>{const qt=state.quotes[p.symbol];return'<tr'+(p.keep?' class="crypto-import-keep"':'')+'><td>'+esc(p.symbol)+(p.avgPriceEur!==null&&p.avgPriceEur!==undefined?'<small>'+esc(eur(p.avgPriceEur))+' medio</small>':'')+'</td><td><span>'+(p.added?'añadida':esc(fmtU(p.fileUnits)))+'</span><small>app: '+esc(fmtU(p.appUnits))+'</small></td><td><input class="crypto-import-units" type="number" step="any" min="0" inputmode="decimal" data-import-units="'+i+'" value="'+esc(String(p.units))+'" aria-label="Unidades de '+esc(p.symbol)+' a guardar"><small data-import-value="'+i+'">'+esc(qt&&qt.price?eur(p.units*qt.price,{decimals:2}):'—')+'</small></td></tr>'}).join('')+'</tbody></table>':'<p class="crypto-form-error">No se reconoció ningún saldo en el extracto. Puedes añadir tus monedas abajo.</p>')+
    // Monedas que el extracto no trae (p. ej. compradas en un año que no has subido): se añaden aquí con sus unidades.
    '<div class="crypto-import-add"><input list="cryptoImportSyms" id="cryptoImportAddSym" placeholder="Moneda (ASTER…)" autocomplete="off" aria-label="Moneda que falta"><input id="cryptoImportAddUnits" type="number" step="any" min="0" inputmode="decimal" placeholder="Unidades" aria-label="Unidades"><button type="button" class="btn ghost" data-crypto-import-add>+ Añadir</button><datalist id="cryptoImportSyms">'+opts+'</datalist></div>'+
