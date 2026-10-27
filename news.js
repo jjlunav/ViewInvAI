@@ -207,7 +207,7 @@
     fullHtml(it)+
     '<section class="news-reader-ai"><div class="ai-brief-head"><span>✦ Lectura AI</span></div>'+ai+'</section>'+
     // Al final, la noticia real: medio, titular original y enlace.
-    '<section class="news-reader-origin"><small>NOTICIA ORIGINAL</small><b>'+esc(it.title)+'</b><span>'+esc([srcName(it),it.time?new Date(it.time).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · '))+'</span></section>'+
+    '<section class="news-reader-origin"><small>NOTICIA ORIGINAL</small><b translate="no" data-no-i18n>'+esc(it.title)+'</b><span>'+esc([srcName(it),it.time?new Date(it.time).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · '))+'</span></section>'+
     '<a class="btn news-reader-source" href="'+esc(it.url)+'" target="_blank" rel="noopener noreferrer">Leer la noticia original en '+esc(srcName(it)||'el medio')+' ↗</a>'+
     '<p class="ai-ask-note">'+(fullOk()?(reader.full.basis==='snippet'?'Resumen hecho por IA con el titular y el extracto del medio (no deja leer el artículo entero)':'Resumen hecho por IA con el artículo completo del medio'):'Titular y extracto del medio traducidos')+': no es asesoramiento financiero.</p>'+
    '</div>';
@@ -253,7 +253,7 @@
   const it=reader.item;if(!it||reader.loading)return;
   reader.loading=true;paintReader();
   const cited=citedStocks(it,holdings()).map(s=>(s.ticker||s.clean)+(s.held?' (en cartera)':'')).join(', ');
-  const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el texto que te doy; si no basta, dilo. Titular: «'+it.title+'».'+(reader.full&&reader.full.ok?' Resumen del artículo completo: «'+reader.full.summary+'».':it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
+  const q=('Explícame en español esta noticia y si afecta a mi cartera. Usa solo el titular y el texto que te doy; si no basta, dilo. Titular: «'+it.title+'».'+(reader.full&&reader.full.ok?(reader.full.basis==='snippet'?' Resumen del extracto del medio (no del artículo completo): «':' Resumen del artículo completo: «')+reader.full.summary+'».':it.snippet?' Extracto: «'+it.snippet+'».':'')+(cited?' Valores citados: '+cited+'.':'')+' Medio: '+(it.publisher||'—')+'.').slice(0,1150);
   try{
    const res=await auth().apiFetch('/api/ai/ask',{method:'POST',body:JSON.stringify({mode:'ask',question:q,view:'news',news:newsForAi([it]),focus:citedStocks(it,holdings()).map(s=>s.key).filter(Boolean).slice(0,4)})});
    const d=await res.json().catch(()=>({}));
