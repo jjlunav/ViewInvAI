@@ -1906,7 +1906,8 @@ def main():
         s["tradeRepublicTradable"] = bool(
             s.get("tradeRepublicVerified")
             and s.get("trIsin")
-            and (s.get("trTicker") or s.get("region") == "intl")
+            # Also for international listings: without an LSX ticker the ISIN does not quote on LSX.
+            and s.get("trTicker")
             and s.get("trActive", True) is not False
         )
         if s["tradeRepublicTradable"]:
