@@ -147,7 +147,10 @@ function catalogSaveLayout(mode){
  window.ViewInvAIUiPreferences?.save?.(catalogPrefScope(mode),catalogLayoutPreferences(mode));
 }
 function catalogSaveOrder(mode){catalogSaveLayout(mode)}
-function catalogColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));const list=catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean);return window.ViewInvAIScreener?window.ViewInvAIScreener.columns(mode,list):list}
+// Todas las columnas (filtros y orden) frente a las que se pintan según la vista del Screener IA: un filtro puesto en
+// una columna que la vista no muestra (p. ej. RSI desde los grupos del móvil) se sigue aplicando.
+function catalogAllColumns(mode){let map=new Map(CATALOG_COLUMNS[mode].map(c=>[c.id,c]));return catalogLoadOrder(mode).map(id=>map.get(id)).filter(Boolean)}
+function catalogColumns(mode){const list=catalogAllColumns(mode);return window.ViewInvAIScreener?window.ViewInvAIScreener.columns(mode,list):list}
 function catalogSession(mode){
  if(mode==='tr')return 'regular';
  let v=$('#catalogUSSession')?.value||'auto';
@@ -327,8 +330,9 @@ function openCatalogColumnFilterMenu(button){
  setTimeout(()=>menu.querySelector('[data-catalog-filter-input]')?.focus(),0);
 }
 function catalogTable(mode,rows,se){
- let cols=catalogColumns(mode),st=catalogState[mode],sortCol=cols.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
- rows=rows.filter(s=>cols.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type))&&(!window.ViewInvAIScreener||window.ViewInvAIScreener.match(mode,s)));
+ let cols=catalogColumns(mode),all=catalogAllColumns(mode),st=catalogState[mode],sortCol=all.find(c=>c.id===st.sort)||cols[0],mobile=catalogIsMobile();
+ rows=rows.filter(s=>all.every(c=>catalogFilterMatch(c.value(s,se),st.filters[c.id],c.type))&&(!window.ViewInvAIScreener||window.ViewInvAIScreener.match(mode,s)));
+ if(window.ViewInvAIScreener&&window.ViewInvAIScreener.setRows)window.ViewInvAIScreener.setRows(mode,rows);
  // Los valores sin dato van siempre al final, en los dos sentidos: antes, al ordenar por ticker, salían primero
  // cientos de filas con «—» y parecía que el catálogo no tenía precios.
  rows.sort((x,y)=>{let av=catalogSortValue(sortCol.value(x,se),sortCol.type),bv=catalogSortValue(sortCol.value(y,se),sortCol.type);if(av===null||bv===null)return av===bv?0:av===null?1:-1;if(typeof av==='string')return av.localeCompare(bv)*st.dir;return ((av===bv)?0:(av>bv?1:-1))*st.dir});
@@ -359,8 +363,10 @@ function renderCatalogTable(mode){
  let q=search.value.trim().toLowerCase(),se=catalogSession(mode);
  let st=catalogState[mode];
  let rows=db.stocks.filter(s=>isTr?trTradable(s):market(s,'us')).filter(s=>!q||(((s.trTicker||'')+' '+(s.ticker||'')+' '+(s.name||'')+' '+(s.isin||'')+' '+(s.trIsin||'')+' '+(s.usIsin||'')+' '+(s.exchange||'')+' '+(s.sector||'')+' '+(typeof window.ViewInvAISectorEs==='function'&&s.sector?window.ViewInvAISectorEs(s.sector):'')+' '+(s.industry||'')).toLowerCase().includes(q))).filter(s=>(st.sector==='all'||String(s.sector||'')===st.sector)&&(st.industry==='all'||String(s.industry||'')===st.industry));
+ let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');
+ // El panel va después de la tabla: sus destacados salen de las mismas filas que la lista (búsqueda, sector y columnas).
  if(window.ViewInvAIScreener)window.ViewInvAIScreener.renderPanel(mode);
- let out=catalogTable(mode,rows,se),box=$(isTr?'#catalogResults':'#catalogUSResults');box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogColumns(mode));
+ box.innerHTML=out.html;renderCatalogFilterPanel(mode,catalogAllColumns(mode).filter(c=>c.id!=='why'));
  let count=$(isTr?'#catalogCount':'#catalogUSCount');if(count)count.textContent=out.count.toLocaleString('es-ES')+(isTr?' valores TR':' valores EEUU')+(out.shown<out.count?' · mostrando '+out.shown.toLocaleString('es-ES'):'');
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }

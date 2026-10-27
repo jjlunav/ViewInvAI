@@ -76,10 +76,12 @@ function renderSectionSwitcher(){
 
 function navigationOrder(){return NAV_ORDER.filter(v=>NAV_META[v])}
 function navigationIconHtml(v){let m=NAV_META[v]||{};return m.iconHtml||E(m.icon||'')}
-let navigationRendered=false;
+let navigationRendered=false,classicSideHtml=null;
 function renderNavigation(){
  if(navigationRendered){syncMobileNavigation();return}
  let order=navigationOrder(),side=$('#sidebar .nav');
+ // El menú agrupado sustituye al original: se guarda para poder volver al diseño clásico sin recargar.
+ if(side&&classicSideHtml===null)classicSideHtml=side.innerHTML;
  if(side&&isDesignD()){
   // Menú lateral agrupado igual que la barra del móvil: cada grupo con sus secciones.
   const it=(v,label,icon,extra='')=>'<button class="nav-item'+extra+'" data-view="'+E(v)+'"><span>'+(icon||navigationIconHtml(v))+'</span>'+E(label)+'</button>';
@@ -89,6 +91,7 @@ function renderNavigation(){
    h('Ideas IA')+it('recommendation','Radar AI','✹',' ai-nav-item')+it('crash','Caídas bruscas','⇣')+it('future','Potencial futuro','✦')+
    h('Tu dinero')+it('portfolios','Carteras')+it('favorites','Favoritos','★')+it('tax','Fiscal (IRPF)','§');
  }else if(side){
+  if(classicSideHtml!==null&&!side.querySelector('.nav-item[data-view="catalog"]'))side.innerHTML=classicSideHtml;
   let nodes=new Map($$('#sidebar .nav .nav-item').map(el=>[el.dataset.view,el]));
   order.forEach(v=>{let el=nodes.get(v);if(el)side.appendChild(el)});
  }

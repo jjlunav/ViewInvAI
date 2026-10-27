@@ -99,6 +99,7 @@
   return countCache.map[k];
  }
  function columns(mode,list){
+  if(!isD())return list.filter(c=>c.id!=='why');
   const s=st(mode),ids=s.view==='all'?null:(VIEWS[mode][s.view]||VIEWS[mode].basic);
   let out=ids?ids.map(id=>list.find(c=>c.id===id)).filter(Boolean):list.slice();
   // La frase «por qué entra» solo tiene sentido con filtros activos.
@@ -106,22 +107,26 @@
   return out;
  }
  // Destacados (móvil): los que más volumen relativo traen sin estar sobrecompradas (RSI ≤ 70). Regla fija y visible.
+ // Parte de las filas que de verdad muestra la lista (búsqueda, sector y filtros de columna incluidos).
+ const lastRows={};
  function highlights(mode){
-  const rows=universe(mode).filter(x=>matchAll(x,st(mode).conds));
+  const rows=lastRows[mode]||universe(mode).filter(x=>matchAll(x,st(mode).conds));
   const pick=rows.filter(x=>N(x.rsi)===null||x.rsi<=70).sort((a,b)=>(N(b.relVolume)||0)-(N(a.relVolume)||0)).slice(0,3);
   return{count:rows.length,pick};
  }
+ // El Screener IA es del diseño ViewInvAI; en el clásico los catálogos siguen como antes (sin panel ni selector).
+ const isD=()=>document.documentElement.dataset.design!=='classic';
  const isMobile=()=>window.matchMedia&&window.matchMedia('(max-width:820px)').matches;
  // Selector de activo: en escritorio, desplegable al principio de la barra; en móvil, botón bajo el título que abre
  // una hoja desde abajo (más cómoda con el pulgar). Cada clase en su divisa; fondos y ETFs sin distinguir plataforma.
- const ASSETS=[['catalog','Acciones LSX','€','Trade Republic · LS Exchange'],['catalogUS','Acciones EE. UU.','$','Nasdaq, NYSE y AMEX'],['funds:fund','Fondos de inversión','','Registrados para la venta en España'],['funds:etf','ETFs y ETPs','','Cotizados en bolsas europeas'],['crypto','Cripto','€','Precio de consenso']];
+ const ASSETS=[['catalog','Acciones LSX','€','Trade Republic · LS Exchange'],['catalogUS','Acciones EE. UU.','$','Nasdaq, NYSE y AMEX'],['funds:fund','Fondos de inversión','','Registrados para la venta en España'],['funds:exchange','ETFs y ETPs','','Cotizados en bolsas europeas'],['crypto','Cripto','€','Precio de consenso']];
  function assetKey(){
   const v=typeof state!=='undefined'?state.currentView:'catalog';
   if(v==='heatmap')return'catalogUS';
-  if(v==='funds'){const t=window.ViewInvAIFunds&&window.ViewInvAIFunds.getState&&window.ViewInvAIFunds.getState().type;return t==='fund'?'funds:fund':t==='etf'||t==='etp'?'funds:etf':'funds:all'}
+  if(v==='funds'){const t=window.ViewInvAIFunds&&window.ViewInvAIFunds.getState&&window.ViewInvAIFunds.getState().type;return t==='fund'?'funds:fund':t==='exchange'||t==='etf'||t==='etp'?'funds:exchange':'funds:all'}
   return v;
  }
- const SHORT={catalog:'Acciones LSX',catalogUS:'Acciones EE. UU.','funds:fund':'Fondos','funds:etf':'ETFs','funds:all':'Fondos y ETFs',crypto:'Cripto'};
+ const SHORT={catalog:'Acciones LSX',catalogUS:'Acciones EE. UU.','funds:fund':'Fondos','funds:exchange':'ETFs','funds:all':'Fondos y ETFs',crypto:'Cripto'};
  function assetPicker(){
   const k=assetKey(),cur=ASSETS.find(a=>a[0]===k),label=isMobile()?SHORT[k]||'Screener':cur?cur[1]+(cur[2]?' · '+cur[2]:''):'Fondos y ETFs';
   return '<div class="scr-asset"><button type="button" class="scr-asset-btn" data-scr-asset-toggle aria-haspopup="listbox" aria-expanded="false" aria-label="Qué buscar: '+esc(label)+'"><span>'+esc(label)+'</span><i aria-hidden="true">▾</i></button></div>';
@@ -145,7 +150,7 @@
   const s=st(mode);
   return s.conds.map((c,i)=>'<span class="scr-chip">'+esc(condLabel(c))+'<button type="button" data-scr-remove="'+i+'" data-mode="'+mode+'" aria-label="Quitar filtro">✕</button></span>').join('');
  }
- const aiForm=(mode,ph)=>{const a=aiState[mode];return '<form class="scr-ai-form" data-scr-ai="'+mode+'"><input class="input" name="q" maxlength="300" autocomplete="off" placeholder="'+esc(ph)+'"'+(a.busy?' disabled':'')+'><button type="submit" class="btn"'+(a.busy?' disabled':'')+'>'+(a.busy?'Pensando…':'✦ Buscar')+'</button></form>'};
+ const aiForm=(mode,ph,refine)=>{const a=aiState[mode];return '<form class="scr-ai-form" data-scr-ai="'+mode+'"'+(refine?' data-scr-refine="1"':'')+'><input class="input" name="q" maxlength="300" autocomplete="off" placeholder="'+esc(ph)+'"'+(a.busy?' disabled':'')+'><button type="submit" class="btn"'+(a.busy?' disabled':'')+'>'+(a.busy?'Pensando…':'✦ Buscar')+'</button></form>'};
  const profileChips=mode=>'<div class="scr-pchips">'+PROFILES.map(p=>'<button type="button" class="'+(st(mode).profile===p.id?'on':'')+'" data-scr-profile="'+p.id+'" data-mode="'+mode+'">'+p.icon+' '+esc(p.name)+' <em>'+profileCount(mode,p).toLocaleString('es-ES')+'</em></button>').join('')+'</div>';
  // Escritorio (estilo «pro compacto»): una sola barra con mercado, perfil, pregunta a la IA y vista; debajo, los filtros.
  function desktopHtml(mode){
@@ -173,7 +178,7 @@
    '<div class="scr-answer"><b>✦ '+h.count.toLocaleString('es-ES')+' valores cumplen estos filtros</b><div class="scr-active">'+chipsHtml(mode)+'<button type="button" class="scr-clear" data-scr-clear="'+mode+'">Empezar de nuevo</button></div>'+
    (a.msg?'<p class="scr-ai-msg">'+esc(a.msg)+'</p>':'')+
    (h.pick.length?'<small>Destacados: más volumen relativo sin estar sobrecompradas (RSI ≤ 70)</small><div class="scr-top">'+h.pick.map(x=>'<button type="button" class="scr-topc stock-open-row"'+open(x)+'><b>'+esc(mode==='tr'?(x.trTicker||x.ticker):x.ticker)+'</b><span>'+price(x)+'</span><small>'+esc(why(mode,x))+'</small></button>').join('')+'</div>':'')+
-   '</div>'+aiForm(mode,'Afinar: «solo tecnológicas», «más baratas»…')+profileChips(mode);
+   '</div>'+aiForm(mode,'Afinar: «solo tecnológicas», «más baratas»…',true)+profileChips(mode);
   return html;
  }
  function panelHtml(mode){return isMobile()?mobileHtml(mode):desktopHtml(mode)}
@@ -187,27 +192,32 @@
    '<div class="scr-kpis"><span>1M<b>'+pct(x.perfMonth)+'</b></span><span>3M<b>'+pct(x.perf3M)+'</b></span><span>Vol. rel.<b>'+(N(x.relVolume)===null?'—':fmt(x.relVolume,1)+'×')+'</b></span><span>RSI<b>'+(N(x.rsi)===null?'—':fmt(x.rsi,0))+'</b></span></div>'+
    range(x)+(st(mode).conds.length?'<p class="scr-why">✦ '+esc(why(mode,x))+'</p>':'')+'</article>').join('')+'</div>';
  }
- const layout=mode=>isMobile()?'list':(st(mode).layout||'table');
+ const layout=mode=>!isD()||isMobile()?'list':(st(mode).layout||'table');
  function renderPanel(mode){
   const browse=document.querySelector(mode==='tr'?'#catalogBrowse':'#catalogUSBrowse');if(!browse)return;
   let host=browse.querySelector(':scope>.scr-panel');
+  if(!isD()){if(host)host.remove();return}
   if(!host){host=document.createElement('div');host.className='scr-panel';browse.prepend(host)}
   const active=document.activeElement,typing=active&&host.contains(active)&&active.name==='q',val=typing?active.value:'';
   host.innerHTML=panelHtml(mode);
   if(typing){const i=host.querySelector('input[name="q"]');if(i){i.value=val;i.focus()}}
  }
  const rerender=mode=>{if(typeof catalogResetLimit==='function')catalogResetLimit(mode);if(typeof renderCatalogTable==='function')renderCatalogTable(mode)};
- async function askAi(mode,q){
+ async function askAi(mode,q,refine){
   const A=window.ViewInvAIAuth,a=aiState[mode];
   if(!A||typeof A.apiFetch!=='function'||!(A.getUser&&A.getUser())){a.msg='Inicia sesión para buscar con la IA. Mientras, puedes usar los perfiles.';rerender(mode);return}
   a.busy=true;a.msg='';rerender(mode);
   try{
    const sectors=[...new Set(universe(mode).map(s=>String(s.sector||'')).filter(Boolean))].sort();
-   const r=await A.apiFetch('/api/ai/screener',{method:'POST',body:JSON.stringify({q,market:mode,sectors})});
+   const r=await A.apiFetch('/api/ai/screener',{method:'POST',body:JSON.stringify({q,market:mode,sectors,current:refine?st(mode).conds:[]})});
    const d=await r.json().catch(()=>({}));
    if(r.ok&&d.ok&&Array.isArray(d.conds)&&d.conds.length){
-    const s=st(mode);s.conds=d.conds;s.profile='';s.label=d.label||q;save();
-    const n=universe(mode).filter(x=>matchAll(x,d.conds)).length;
+    const s=st(mode);
+    // Afinar: lo nuevo sustituye al filtro del mismo campo y el resto de la búsqueda se conserva.
+    if(refine&&s.conds.length){const f=new Set(d.conds.map(c=>c.f));s.conds=s.conds.filter(c=>!f.has(c.f)).concat(d.conds).slice(0,10)}
+    else s.conds=d.conds;
+    s.profile='';s.label=refine&&s.label?String(s.label+' · '+q).slice(0,90):(d.label||q);save();
+    const n=universe(mode).filter(x=>matchAll(x,s.conds)).length;
     a.msg=(d.note?d.note+' ':'')+'→ '+n.toLocaleString('es-ES')+' valores. Puedes quitar o cambiar cualquier filtro.';
    }else a.msg=d.reason||d.error||'No se ha podido interpretar la búsqueda.';
   }catch(_){a.msg='No se ha podido conectar con la IA. Prueba en un momento.'}
@@ -221,7 +231,7 @@
  });
  document.addEventListener('submit',e=>{
   const f=e.target.closest&&e.target.closest('[data-scr-ai]');if(!f)return;
-  e.preventDefault();const q=String(new FormData(f).get('q')||'').trim();if(q)askAi(f.dataset.scrAi,q);
+  e.preventDefault();const q=String(new FormData(f).get('q')||'').trim();if(q)askAi(f.dataset.scrAi,q,f.dataset.scrRefine==='1');
  });
  document.addEventListener('click',e=>{
   const tg=e.target.closest&&e.target.closest('[data-scr-asset-toggle]');
@@ -260,7 +270,9 @@
   if(typeof state==='undefined')return;
   document.querySelectorAll('.scr-asset').forEach(x=>x.remove());
   document.querySelectorAll('.page-heading.has-scr-picker').forEach(x=>x.classList.remove('has-scr-picker'));
-  const v=state.currentView;if(!['catalog','catalogUS','heatmap','funds','crypto'].includes(v))return;
+  const v=state.currentView;
+  if(!isD()){document.querySelectorAll('.scr-map-back').forEach(x=>x.remove());closeAssetMenu();return}
+  if(!['catalog','catalogUS','heatmap','funds','crypto'].includes(v))return;
   const view=document.querySelector('#view-'+v);if(!view)return;
   const tmp=document.createElement('div');tmp.innerHTML=assetPicker();const picker=tmp.firstChild;
   if(isMobile()){
@@ -280,5 +292,5 @@
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAssetMenu()});
  window.addEventListener('resize',()=>{clearTimeout(placePicker.t);placePicker.t=setTimeout(placePicker,200)});
  document.addEventListener('change',e=>{if(e.target&&e.target.id==='fundType')setTimeout(placePicker,0)});
- window.ViewInvAIScreener={placePicker,match:(mode,s)=>matchAll(s,st(mode).conds),columns,renderPanel,why,layout,cardsHtml,active:mode=>st(mode).conds.length>0,profiles:PROFILES,fields:F};
+ window.ViewInvAIScreener={placePicker,match:(mode,s)=>!isD()||matchAll(s,st(mode).conds),setRows:(mode,rows)=>{lastRows[mode]=rows},columns,renderPanel,why,layout,cardsHtml,active:mode=>st(mode).conds.length>0,profiles:PROFILES,fields:F};
 })();

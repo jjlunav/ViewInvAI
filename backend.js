@@ -6241,7 +6241,9 @@ export function sanitizeScreenerConds(raw,sectors){
       continue;
     }
     if(!SCREENER_FIELDS[f])continue;
-    const op=String(c.op||""),v=finiteNumber(c.v),v2=finiteNumber(c.v2);
+    // null, "" o booleanos no son umbrales: Number() los convertiría en 0 y crearían un filtro que nadie pidió.
+    const num=x=>typeof x==="number"||(typeof x==="string"&&x.trim()!=="")?finiteNumber(x):null;
+    const op=String(c.op||""),v=num(c.v),v2=num(c.v2);
     if((op===">"||op==="<")&&v!==null)out.push({f,op,v});
     else if(op==="between"&&v!==null&&v2!==null)out.push({f,op,v:Math.min(v,v2),v2:Math.max(v,v2)});
   }
@@ -6253,11 +6255,13 @@ async function handleAiScreener(request,env,user,json){
   const q=trimText(body.q,300).trim(),market=body.market==="tr"?"tr":"us";
   if(q.length<3)return json({error:"Escribe qué buscas."},400);
   const sectors=(Array.isArray(body.sectors)?body.sectors:[]).map(x=>trimText(x,60)).filter(Boolean).slice(0,40);
+  const current=sanitizeScreenerConds(body.current,sectors);
   const prompt=["Convierte la búsqueda de un inversor en filtros de un screener de acciones ("+(market==="tr"?"acciones de Trade Republic / LS Exchange":"acciones de EE. UU.")+").",
     "Campos disponibles (usa SOLO estos ids):",...Object.entries(SCREENER_FIELDS).map(([k,v])=>"- "+k+": "+v),
     "- sector: lista de sectores, valores posibles: "+sectors.join(" | "),
     "Responde SOLO JSON: {\"label\":\"título corto en español\",\"conds\":[{\"f\":\"campo\",\"op\":\">\"|\"<\"|\"between\"|\"in\",\"v\":número o lista,\"v2\":número si between}],\"note\":\"una frase en español de cómo lo has interpretado\"}.",
     "Usa entre 2 y 6 condiciones razonables y realistas (p. ej. «medianas» = marketCap entre 2000 y 20000; «sobrecompradas» = rsi > 70; «con volumen» = relVolume > 1.3; «baratas» = peRatio < 15). Añade liquidity > 1 salvo que pidan valores pequeños o ilíquidos.",
+    ...(current.length?["Filtros que ya tiene (el usuario quiere AFINARLOS): "+JSON.stringify(current),"Devuelve SOLO las condiciones nuevas o las que cambian; las demás se conservan solas. Si cambia un campo existente, devuélvelo con el valor nuevo."]:[]),
     "Búsqueda: «"+q+"»"].join("\n");
   try{
     const run=await Promise.race([aiRoute(env,{prompt,maxTokens:500,json:true,task:"light"}),new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),25000))]);
