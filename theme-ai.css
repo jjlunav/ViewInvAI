@@ -2498,3 +2498,10 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5) .crypto-card.cr
 .crypto-import-table input.crypto-import-units{max-width:none}
 .crypto-import-add{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;margin:8px 0}
 .crypto-import-add input{min-width:0;font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text)}
+/* Importar extracto: el botón Guardar queda fijo abajo mientras bajas por la tabla. */
+.crypto-import-actions{position:sticky;bottom:-16px;z-index:2;margin:10px -16px -16px;padding:10px 16px 14px;background:inherit;background:var(--panel,#0a1826);border-top:1px solid var(--line);display:grid;gap:6px}
+html[data-native-app="1"] .crypto-import-actions{bottom:-10px;margin:10px -10px -10px;padding:10px 10px calc(12px + env(safe-area-inset-bottom,0px))}
+.crypto-import-actions .btn{width:100%}
+/* App nativa: la ventana de cripto desplaza solo el cuerpo (cabecera y botón Guardar siempre a la vista). */
+html[data-native-app="1"] .app-modal.crypto-modal{display:flex!important;flex-direction:column!important;overflow:hidden!important}
+html[data-native-app="1"] .app-modal.crypto-modal>.app-modal-body{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important}
