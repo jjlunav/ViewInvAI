@@ -187,12 +187,18 @@
  function exportCsv(r){
   const head=['Fecha','Valor','ISIN','Cantidad','Divisa','Precio','Comisión','Tipo BCE','Transmisión EUR','Adquisición EUR','Resultado EUR','Pérdida diferida EUR','Diferida integrada EUR','Computable EUR','Bróker'];
   const n=v=>v===null||v===undefined?'':String(Math.round(Number(v)*100)/100).replace('.',',');
-  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.releasedLossEur),n(s.computableEur),s.broker].map(q).join(';')));
+  // Text fields from imports must stay literal in spreadsheet readers. Keep numeric
+  // fields separate so genuine negative amounts remain usable in calculations.
+  const q=(v,text=false)=>{
+   let value=String(v??'');
+   if(text&&(/^[\s\uFEFF]*[=+\-@＝＋－＠]/u.test(value)||/^[\t\r\n]/.test(value)))value="'\t"+value;
+   return '"'+value.replace(/"/g,'""')+'"';
+  };
+  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.releasedLossEur),n(s.computableEur),s.broker].map((v,i)=>q(v,[0,1,2,4,14].includes(i))).join(';')));
   const divs=(r.dividends&&r.dividends.items)||[];
   if(divs.length){
    lines.push('','Dividendos','Fecha;Valor;ISIN;País;Divisa;Tipo BCE;Bruto EUR;Retención origen EUR;Deducible EUR;Retención España EUR;Neto EUR');
-   divs.forEach(x=>lines.push([x.date,x.ticker||x.name,x.isin,x.country,x.currency,x.fxRate?String(x.fxRate).replace('.',','):'1',n(x.grossEur),n(x.withholdingEur),n(x.deductibleEur),n(x.withholdingEsEur),n(x.netEur)].map(q).join(';')));
+   divs.forEach(x=>lines.push([x.date,x.ticker||x.name,x.isin,x.country,x.currency,x.fxRate?String(x.fxRate).replace('.',','):'1',n(x.grossEur),n(x.withholdingEur),n(x.deductibleEur),n(x.withholdingEsEur),n(x.netEur)].map((v,i)=>q(v,i<5)).join(';')));
   }
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='viewinvai-fiscal-'+r.year+'.csv';
@@ -238,7 +244,7 @@
   if(del){
    if(!confirm('¿Borrar este dividendo?'))return;
    del.disabled=true;
-   window.ViewInvAIAuth.apiFetch('/api/dividends/'+encodeURIComponent(del.dataset.taxDivDel),{method:'DELETE'}).then(()=>{cache={};render(true)}).catch(()=>{del.disabled=false});
+   window.ViewInvAIAuth.apiFetch('/api/dividends/'+encodeURIComponent(del.dataset.taxDivDel),{method:'DELETE'}).then(async res=>{if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.error||'No se pudo borrar el dividendo.')}cache={};render(true)}).catch(err=>{alert(err.message);del.disabled=false});
   }
  });
  document.addEventListener('submit',async e=>{

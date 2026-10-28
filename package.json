@@ -1,6 +1,6 @@
 {
   "name": "viewinvai-android",
-  "version": "0.7.41",
+  "version": "0.7.42",
   "private": true,
   "type": "module",
   "description": "Android application for ViewInvAI with the full frontend packaged locally and shared online market/backend services.",
@@ -13,7 +13,7 @@
     "test:goal": "node scripts/test_goal_engine.mjs",
     "test:tax": "node scripts/test_tax_two_months.mjs",
     "test:reliability": "node scripts/test-reliability.mjs",
-    "test": "node scripts/test-catalog-cache.mjs && node scripts/test-worker-security.mjs && node scripts/test-reliability.mjs && node scripts/test_goal_engine.mjs && node scripts/test_tax_two_months.mjs && node scripts/test-session-quotes.mjs && node scripts/test-crash-scoreboard.mjs",
+    "test": "node scripts/test-tax-export.mjs && node scripts/test-catalog-cache.mjs && node scripts/test-worker-security.mjs && node scripts/test-reliability.mjs && node scripts/test_goal_engine.mjs && node scripts/test_tax_two_months.mjs && node scripts/test-session-quotes.mjs && node scripts/test-crash-scoreboard.mjs",
     "test:worker": "node scripts/test-worker-security.mjs",
     "test:cache": "node scripts/test-catalog-cache.mjs"
   },
