@@ -313,4 +313,15 @@ const input=candidates=>({
   assert.ok(!p.actions.some(x=>x.type==="BUY"),"no buy in defensive mode");
 }
 
+// Otras opciones: informativas, ordenadas por puntuación y sin repetir lo que ya se propone.
+{
+  const a1={...base,key:"NASDAQ:A1",ticker:"A1",earningsDays:2},a2={...base,key:"NASDAQ:A2",ticker:"A2",score:80,quality:80,quoteFresh:false},a3={...base,key:"NASDAQ:A3",ticker:"A3"};
+  const p=G.plan(input([a1,a2,a3]));
+  const alts=p.alternatives||[];
+  assert.ok(alts.length>=1&&alts.every(x=>x.status),"alternatives carry a status");
+  for(let i=1;i<alts.length;i++)assert.ok(alts[i-1].burstScore>=alts[i].burstScore,"alternatives are ordered by score");
+  const proposed=new Set(p.actions.map(x=>x.key));
+  assert.ok(alts.every(x=>!proposed.has(x.key)),"alternatives never repeat a proposed buy");
+}
+
 console.log("Goal engine tests: OK");

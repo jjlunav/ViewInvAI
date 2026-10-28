@@ -2557,3 +2557,9 @@ html body .portfolio-form .goal-fomo .goal-fomo-check input,html[data-native-app
 html body .portfolio-form .goal-fomo .goal-fomo-check span{flex:1 1 auto;line-height:1.4}
 html body .portfolio-form .goal-fomo .goal-fomo-check span,html[data-native-app="1"] body .portfolio-form .goal-fomo .goal-fomo-check span{text-transform:none!important;letter-spacing:0!important;font-size:13px!important;font-weight:500!important;color:var(--text,#e6ecff)!important}
 html[data-theme="light"] body .portfolio-form .goal-fomo .goal-fomo-check span{color:#17303b!important}
+/* Objetivo: otras opciones informativas, ordenadas por puntuación */
+.goal2-alts{padding:8px 12px;border:1px dashed var(--line,#2a4552);border-radius:12px;font-size:13px}
+.goal2-alts>summary{cursor:pointer;font-weight:700}
+.goal2-alts ol{margin:8px 0 6px;padding-left:20px;display:grid;gap:4px}
+.goal2-alts li small{opacity:.8}
+.goal2-alts-note{display:block;opacity:.7;font-size:11.5px}
