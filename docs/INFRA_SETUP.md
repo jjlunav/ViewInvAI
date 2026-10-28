@@ -90,3 +90,11 @@ Nunca guardar en el repositorio:
 
 El workflow `Auditoria de seguridad` revisa código actual e historial para
 detectar credenciales embebidas.
+
+## Preparación del esquema principal
+
+El cron independiente `* * * * 0-6` prepara un grupo de tablas por ejecución, con exclusión mutua y reintento si falla. No sustituye ni borra las migraciones históricas. Hasta que los 14 pasos terminen, se conservan las actualizaciones compatibles al atender peticiones.
+
+La marca de preparación depende de una huella de las funciones de esquema: cambiar una de ellas invalida la marca anterior automáticamente. Cuando está completa, una instancia nueva del backend comprueba la marca y omite el DDL del esquema principal. `/api/backend/status` expone `schema.ready`, `completed` y `total` sin datos de cuenta ni secretos.
+
+Esto cubre tablas principales de cuentas/carteras. Los esquemas de caché de Turso, traducciones y algunos trabajos auxiliares mantienen su inicialización propia; no deben darse por migrados por esta marca.

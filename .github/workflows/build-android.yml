@@ -211,8 +211,13 @@ jobs:
                 }
                 const more=document.querySelector('[data-mobile-more]');
                 more?.click();
-                if(!document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]'))return fail('funds missing from More menu');
-                document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]')?.click();
+                const screener=document.querySelector('#mobileMoreSheet [data-mobile-view="screener"]');
+                if(!screener)return fail('screener missing from More menu');
+                screener.click();
+                document.querySelector('[data-scr-asset-toggle]')?.click();
+                const funds=document.querySelector('[data-scr-asset="funds:fund"]');
+                if(!funds)return fail('funds missing from screener asset picker');
+                funds.click();
                 if(!document.querySelector('#view-funds.active'))return fail('funds view did not open');
                 const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
                 if(!stock)return fail('no usable stock');
