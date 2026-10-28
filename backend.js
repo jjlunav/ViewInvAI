@@ -1,11 +1,31 @@
+import { coreSchemaReady, coreSchemaStatus, advanceCoreSchema } from "./core-schema.js";
 import { orderedTransactions, calculateTransactionLedger, calculatePortfolioTransactionSummary, calculateFundLedger } from "./portfolio-ledger.js";
 export { calculateTransactionLedger, calculatePortfolioTransactionSummary, calculateFundLedger };
 import { exportBackup, restoreBackup } from "./backup-store.js";
-import { financialRevision, financialBatch } from "./financial-store.js";
+import { financialSchema, financialRevision, financialBatch } from "./financial-store.js";
 import "./score-engine.js";
 import "./goal-engine.js";
 import "./market-session.js";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const CORE_SCHEMA_STEPS=[
+  ["ensurePositionBrokerSchema",ensurePositionBrokerSchema],
+  ["ensurePortfolioMarketSchema",ensurePortfolioMarketSchema],
+  ["ensureUserBrokerSchema",ensureUserBrokerSchema],
+  ["ensureFundSchema",ensureFundSchema],
+  ["ensureTransactionsSchema",ensureTransactionsSchema],
+  ["ensureDividendsSchema",ensureDividendsSchema],
+  ["ensureGlobalNotificationSettingsSchema",ensureGlobalNotificationSettingsSchema],
+  ["ensurePositionDecisionsSchema",ensurePositionDecisionsSchema],
+  ["ensurePortfolioGoalSchema",ensurePortfolioGoalSchema],
+  ["ensurePortfolioGoalHistorySchema",ensurePortfolioGoalHistorySchema],
+  ["ensureUiPreferencesSchema",ensureUiPreferencesSchema],
+  ["ensureNotificationPreferenceSchema",ensureNotificationPreferenceSchema],
+  ["ensureCryptoSchema",ensureCryptoSchema],
+  ["financialRevision",async env=>{await financialRevision(env.DB,"")},financialRevision.toString()+financialSchema.toString()]
+];
+export const prepareCoreSchema=env=>advanceCoreSchema(env,CORE_SCHEMA_STEPS);
+export const getCoreSchemaStatus=env=>coreSchemaStatus(env.DB,CORE_SCHEMA_STEPS);
 
 const FIREBASE_JWKS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
@@ -590,6 +610,7 @@ async function verifyFirebaseUser(request, env) {
 
 let positionBrokerSchemaReady=false;
 async function ensurePositionBrokerSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(positionBrokerSchemaReady)return;
   const cols=await env.DB.prepare("PRAGMA table_info(positions)").all();
   const names=new Set((cols.results||[]).map(row=>String(row.name||"")));
@@ -617,6 +638,7 @@ function serverFrozenQty(p){
 
 let portfolioMarketSchemaReady=false;
 async function ensurePortfolioMarketSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(portfolioMarketSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS portfolio_market_settings ("+
@@ -645,6 +667,7 @@ async function onePortfolio(env, userId, portfolioId) {
 
 let userBrokerSchemaReady=false;
 async function ensureUserBrokerSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(userBrokerSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_brokers ("+
@@ -916,6 +939,7 @@ function fundPositionPayload(body) {
 
 let fundSchemaReady = false;
 async function ensureFundSchema(env) {
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if (fundSchemaReady) return;
   await env.DB.batch([
     env.DB.prepare(
@@ -971,6 +995,7 @@ async function oneFundPortfolio(env, userId, id) {
 
 let transactionsSchemaReady = false;
 async function ensureTransactionsSchema(env) {
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if (transactionsSchemaReady) return;
   await env.DB.batch([
     env.DB.prepare(
@@ -1814,6 +1839,7 @@ export async function handleBackup(request,env,user,json){
  */
 let dividendsSchemaReady=false;
 async function ensureDividendsSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(dividendsSchemaReady)return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS dividends (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,portfolio_id TEXT NOT NULL DEFAULT '',external_id TEXT,paid_at TEXT NOT NULL,isin TEXT NOT NULL DEFAULT '',ticker TEXT NOT NULL DEFAULT '',name TEXT NOT NULL DEFAULT '',currency TEXT NOT NULL DEFAULT 'EUR',gross REAL NOT NULL CHECK(gross>0),withholding REAL NOT NULL DEFAULT 0 CHECK(withholding>=0),withholding_es REAL NOT NULL DEFAULT 0 CHECK(withholding_es>=0),origin TEXT NOT NULL DEFAULT 'manual',broker TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
@@ -3733,6 +3759,7 @@ async function aiAssessment(env, target, stock, chart, events, fallback) {
 
 let globalNotificationSettingsSchemaReady=false;
 async function ensureGlobalNotificationSettingsSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(globalNotificationSettingsSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_notification_settings ("+
@@ -4605,6 +4632,7 @@ let positionDecisionsSchemaReady=false;
 // Solo avisos que piden una acción: vender (o vender sin pérdidas al recuperar) y comprar.
 const DECISION_ALERT_TYPES=["position-sell","position-recovered","radar-ai"];
 async function ensurePositionDecisionsSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(positionDecisionsSchemaReady)return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS position_decisions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,position_id TEXT NOT NULL,stock_key TEXT NOT NULL DEFAULT '',ticker TEXT NOT NULL DEFAULT '',subject_type TEXT NOT NULL DEFAULT 'position',decision TEXT NOT NULL CHECK(decision IN ('hold','sell','later','buy','skip')),alert_id TEXT,avg_price REAL,price_at_decision REAL,loss_pct_at_decision REAL,last_risk_loss_pct REAL,review_at TEXT,recovered_notified_at TEXT,average_notified_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
@@ -4986,6 +5014,7 @@ async function subjectForUser(env, userId, subjectType, subjectId) {
 
 let portfolioGoalSchemaReady=false;
 async function ensurePortfolioGoalSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(portfolioGoalSchemaReady)return;
   await ensurePortfolioMarketSchema(env);
   await env.DB.prepare(
@@ -5150,6 +5179,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
 
 let portfolioGoalHistorySchemaReady=false;
 async function ensurePortfolioGoalHistorySchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(portfolioGoalHistorySchemaReady)return;
   await ensurePortfolioGoalSchema(env);
   await env.DB.prepare(
@@ -5297,6 +5327,7 @@ async function handleSettings(request, env, user, json) {
 
 let uiPreferencesSchemaReady=false;
 async function ensureUiPreferencesSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(uiPreferencesSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_ui_preferences ("+
@@ -5337,6 +5368,7 @@ async function handleUiPreferences(request,env,user,json,url){
 
 let notificationSchemaReady=false;
 async function ensureNotificationPreferenceSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(notificationSchemaReady)return;
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS notification_preferences ("+
@@ -5569,6 +5601,7 @@ async function scanNotificationPreferences(env,services,{allowAi=true}={}){
 // Una fila por moneda y plataforma. Las unidades a 0 dejan la moneda «en seguimiento».
 let cryptoSchemaReady=false;
 async function ensureCryptoSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
   if(cryptoSchemaReady)return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS crypto_positions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,symbol TEXT NOT NULL,platform TEXT NOT NULL DEFAULT 'Bit2Me',units REAL NOT NULL DEFAULT 0 CHECK(units>=0),avg_price_eur REAL CHECK(avg_price_eur IS NULL OR avg_price_eur>=0),notes TEXT NOT NULL DEFAULT '',origin TEXT NOT NULL DEFAULT 'manual',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
@@ -6410,6 +6443,7 @@ export async function handleBackendApi(request, env, services = {}) {
     const openFdaKeyConfigured=!!String(env.OPENFDA_API_KEY||"").trim();
     return json({
       d1: !!env.DB,
+      schema: await getCoreSchemaStatus(env),
       ai: !!env.AI,
       firebase: !!String(env.FIREBASE_PROJECT_ID || "").trim(),
       push: pushConfigured,

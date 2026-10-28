@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {isAdminUser,addMonths,calculatePortfolioTransactionSummary,createTransactionRecord,deleteTransactionRecord,createFundTransactionRecord,deleteFundTransactionRecord,handleBackendApi,handleBackup} from '../backend.js';
+import {isAdminUser,addMonths,calculatePortfolioTransactionSummary,createTransactionRecord,deleteTransactionRecord,createFundTransactionRecord,deleteFundTransactionRecord,handleBackendApi,handleBackup,prepareCoreSchema,getCoreSchemaStatus} from '../backend.js';
+import {advanceCoreSchema,coreSchemaStatus} from '../core-schema.js';
 import {financialRevision,financialBatch} from '../financial-store.js';
 import {exportBackup,restoreBackup} from '../backup-store.js';
 
@@ -115,4 +116,25 @@ const newPosition=db.raw.prepare("SELECT id FROM positions WHERE stock_key='NASD
 response=await handleBackendApi(request('positions/'+newPosition,JSON.stringify({quantity:12,avgPrice:11}),'PATCH'),authed);
 assert.equal(response.status,200);assert.equal((await response.json()).position.quantity,12);
 globalThis.fetch=originalFetch;
+// A failed preparation step cannot mark readiness or skip the retry.
+const prepDb=d1();let attempts=0;
+const prepSteps=[['retry',async()=>{if(++attempts===1)throw new Error('injected failure')}],['second',async()=>{}]];
+const priorWarn=console.warn;console.warn=()=>{};
+assert.equal((await advanceCoreSchema({DB:prepDb},prepSteps)).completed,0);
+console.warn=priorWarn;
+assert.equal((await advanceCoreSchema({DB:prepDb},prepSteps)).completed,1);
+assert.equal((await coreSchemaStatus(prepDb,prepSteps)).ready,false);
+assert.equal((await advanceCoreSchema({DB:prepDb},prepSteps)).ready,true);
+assert.equal(attempts,2);
+// Changing preparation code invalidates the stored readiness marker.
+assert.equal((await coreSchemaStatus(prepDb,[['changed',async()=>{}]])).ready,false);
+// Background preparation proves core readiness before request-time DDL is bypassed.
+for(let i=0;i<14;i++)await prepareCoreSchema(env);
+assert.equal((await getCoreSchemaStatus(env)).ready,true);
+const originalPrepare=db.prepare;let ddl=0;
+db.prepare=sql=>{if(/^(?:CREATE|ALTER|DROP)\s/i.test(sql.trim()))ddl++;return originalPrepare(sql)};
+const freshBackend=await import('../backend.js?fresh-isolate');
+await freshBackend.handleBackup(new Request('https://app/api/backup'),env,user,json);
+assert.equal(ddl,0,'Prepared core schema must not be rebuilt by a fresh request handler');
+db.prepare=originalPrepare;
 console.log('Reliability: admin allowlist, calendar, chronological ledger, atomic rollback, concurrency, idempotency, backup round trip: OK');

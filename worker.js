@@ -1,4 +1,5 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, goalScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { CORE_SCHEMA_CRON } from "./core-schema.js";
+import { prepareCoreSchema, handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, goalScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
@@ -2562,6 +2563,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    if(controller?.cron===CORE_SCHEMA_CRON){ctx.waitUntil(prepareCoreSchema(env).catch(error=>console.warn("Core schema preparation failed",String(error?.message||error))));return;}
     // Resumen diario de carteras y objetivos (08:00 y 22:00 en España por defecto): su propia
     // ejecución cada 5 min, con su propio margen de CPU y de peticiones.
     if(controller&&controller.cron===DIGEST_CRON){

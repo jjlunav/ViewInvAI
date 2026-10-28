@@ -24,3 +24,4 @@ backup-store.js
 mobile-shell/
 mobile-loader/
 portfolio-ledger.js
+core-schema.js
