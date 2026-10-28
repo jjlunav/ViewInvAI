@@ -2534,3 +2534,23 @@ html[data-native-app="1"] body #view-portfolios .goal2-action-buttons :is(.goal2
  html body #view-portfolios .goal2-action>em{justify-self:start}
 }
 .goal2-fixed{color:var(--accent,#5cc8e8)!important;font-weight:600}
+.goal2-risk{color:var(--text,#e6ecff)!important;font-weight:600}
+.goal2-proscons{display:grid;gap:2px}
+.goal2-pro{color:#5fd6a1!important}
+.goal2-con{color:#f0a868!important}
+.goal2-facts,.goal2-later-ai{color:var(--muted,#8ea0bf)!important}
+.goal2-disclaimer{margin:8px 0 0;font-size:11.5px;line-height:1.4;color:var(--muted,#8ea0bf)}
+.goal2-scoreboard small{display:block;font-size:12px;line-height:1.45;color:var(--muted,#8ea0bf)}
+html[data-theme="light"] .goal2-pro{color:#178a57!important}
+html[data-theme="light"] .goal2-con{color:#b45f1b!important}
+.goal-fomo{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--line,#2a4552);border-radius:12px}
+.goal-fomo strong{font-size:13px}
+.goal-fomo-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.4;cursor:pointer}
+.goal-fomo-check input{margin-top:2px;flex:0 0 auto}
+html body .portfolio-form .goal-fomo .goal-fomo-check,html[data-native-app="1"] body .portfolio-form .goal-fomo .goal-fomo-check{display:flex!important;flex-direction:row!important;align-items:flex-start!important;gap:10px!important;
+ text-transform:none!important;letter-spacing:0!important;font-size:13px!important;font-weight:500!important;color:var(--text,#e6ecff)!important;margin:0!important}
+html body .portfolio-form .goal-fomo .goal-fomo-check input,html[data-native-app="1"] body .portfolio-form .goal-fomo .goal-fomo-check input{width:20px!important;height:20px!important;min-height:0!important;min-width:20px!important;
+ padding:0!important;margin:1px 0 0!important;flex:0 0 20px!important;accent-color:var(--accent,#5cc8e8)}
+html body .portfolio-form .goal-fomo .goal-fomo-check span{flex:1 1 auto;line-height:1.4}
+html body .portfolio-form .goal-fomo .goal-fomo-check span,html[data-native-app="1"] body .portfolio-form .goal-fomo .goal-fomo-check span{text-transform:none!important;letter-spacing:0!important;font-size:13px!important;font-weight:500!important;color:var(--text,#e6ecff)!important}
+html[data-theme="light"] body .portfolio-form .goal-fomo .goal-fomo-check span{color:#17303b!important}

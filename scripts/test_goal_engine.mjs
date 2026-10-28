@@ -93,7 +93,7 @@ const input=candidates=>({
   let p=G.plan({...input([pricey]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
   let buy=p.actions.find(x=>x.type==="BUY");
   assert.ok(buy&&buy.fractional&&buy.units>0&&buy.units<1,"expensive stock must be bought as a fraction");
-  assert.ok(/fraccionada/.test(buy.text),"fractional buy must say so");
+  assert.ok(/fracci/.test(buy.text),"fractional buy must say so");
   p=G.plan({...input([{...pricey,noFractions:true}]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
   assert.equal(p.actions.filter(x=>x.type==="BUY").length,0,"stock without fractions cannot be bought below one share");
   p=G.plan({...input([pricey]),config:{...cfg,investCapEur:80},cashEur:200,peakValueEur:250,lockedValueEur:50});
@@ -183,6 +183,67 @@ const input=candidates=>({
   assert.ok(!buys(p).includes("NASDAQ:FIX")&&p.notes.some(t=>/retirada/.test(t)),"an AI contradiction withdraws it with a note");
   p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed});
   assert.ok(buys(p).includes("NASDAQ:NEW"),"once the fixed idea is bought, new ideas can appear");
+}
+
+// Filtro antes de publicar: resultados, analistas, mercado y revisión del servidor.
+{
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key).join();
+  assert.equal(buys(G.plan(input([{...base,earningsDays:2,earningsDate:"2026-10-30"}]))),"","no new idea two days before earnings");
+  assert.ok(G.plan(input([{...base,earningsDays:2}])).waits.some(w=>/resultados/.test(w.text)),"earnings wait explains why");
+  assert.equal(buys(G.plan(input([{...base,analystConsensus:"sell"}]))),"","consensus sell blocks");
+  assert.equal(buys(G.plan(input([{...base,downgradeDays:3}]))),"","recent downgrade blocks");
+  const m=G.plan({...input([base]),market:{blocked:true,reason:"VIX en 34"}});
+  assert.equal(buys(m),"","market stress blocks new ideas");
+  assert.equal(m.whyNoBuy[0]&&m.whyNoBuy[0].code,"market");
+  const r=G.plan({...input([base]),requireReview:true});
+  assert.equal(buys(r),"","the app never publishes an unreviewed idea");
+  assert.ok(r.waits.some(w=>w.decision==="EN REVISIÓN"),"unreviewed idea shows as under review");
+  const ok=G.plan(input([{...base,earningsDays:20,analystConsensus:"buy",analystUpsidePct:20,epsBeats:4}]));
+  const buy=ok.actions.find(x=>x.type==="BUY");
+  assert.ok(buy&&buy.riskEur>0&&buy.pros.length,"a published idea carries its risk in € and its reasons");
+  const half=G.plan(input([{...base,lossMaking:true,valuationTone:"high"}])).actions.find(x=>x.type==="BUY");
+  if(half&&buy)assert.ok(half.ticketEur<buy.ticketEur,"expensive and loss-making halves the size");
+}
+// Estabilidad: el mismo escenario con ruido pequeño en los datos durante 30 «refrescos» publica siempre la misma idea.
+{
+  const rows=[0,1,2,3].map(i=>({...base,key:"NASDAQ:Z"+i,ticker:"Z"+i,score:94-i,quality:92-i}));
+  let committed=[];const seen=new Set();
+  for(let t=0;t<30;t++){
+    const noisy=rows.map((r,i)=>({...r,relVolume:r.relVolume*(1+Math.sin(t+i)*.08),dayChangePct:r.dayChangePct+Math.cos(t*2+i)*.6,askEur:r.askEur*(1+Math.sin(t*3+i)*.004)}));
+    const p=G.plan({...input(noisy),committed});
+    const k=p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
+    for(const x of k)seen.add(x);
+    if(!committed.length&&k.length)committed=p.actions.filter(x=>x.type==="BUY").map(x=>({key:x.key,priceEur:x.priceEur,at:"2026-10-28T09:00:00Z"}));
+  }
+  assert.ok(seen.size<=2,"noise must not rotate ideas ("+[...seen].join()+")");
+}
+
+// Órdenes límite: con importe para acciones enteras se proponen enteras con límite; fracción solo si no llega a una.
+{
+  const p=G.plan({...input([{...base,priceEur:20,askEur:20}]),cashEur:1000});
+  const buy=p.actions.find(x=>x.type==="BUY");
+  assert.ok(buy&&buy.orderType==="LIMIT"&&Number.isInteger(buy.units)&&buy.limitPriceEur>=20,"whole shares with a limit order when affordable");
+  const q=G.plan({...input([{...base,priceEur:900,askEur:900}]),cashEur:1000});
+  const f=q.actions.find(x=>x.type==="BUY");
+  if(f)assert.ok(f.units<1&&f.limitPriceEur>=900,"a fraction only when one whole share does not fit, still with a limit price");
+}
+
+// Revisión de Codex: el límite se mantiene, una fase «avoid» no borra la idea y las fijadas se guardan siempre.
+{
+  const weak={...base,key:"NASDAQ:FIX",ticker:"FIX",score:60,quality:70};
+  const strong={...base,key:"NASDAQ:NEW",ticker:"NEW",score:99,quality:95};
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key).join();
+  let p=G.plan({...input([strong,{...weak,askEur:10.2,priceEur:10.2}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t",limited:true}]});
+  assert.equal(buys(p),"","after +3 % the limit holds until the price is back at the limit");
+  assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"&&c.limited),"limit state is carried forward");
+  p=G.plan({...input([strong,{...weak,askEur:10.05,priceEur:10.05}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t",limited:true}]});
+  assert.equal(buys(p),"NASDAQ:FIX","back at the limit it can be bought again");
+  p=G.plan({...input([strong,{...weak,aiScoutPhase:"avoid"}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
+  assert.ok(!buys(p).includes("NASDAQ:NEW")&&p.commitments.some(c=>c.key==="NASDAQ:FIX"),"an avoid phase does not replace a fixed idea");
+  p=G.plan({...input([strong,weak]),cashEur:0,committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
+  assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"),"a fixed idea is kept even when no action is emitted");
+  p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
+  assert.ok(p.consumedCommitments.some(c=>c.key==="NASDAQ:FIX"&&c.reason==="bought"),"a bought idea is consumed");
 }
 
 console.log("Goal engine tests: OK");

@@ -1,4 +1,4 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, goalScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
@@ -2053,6 +2053,7 @@ function overlayMarketLive(snapshot,live){
 // quedaba congelado en el primer resumen calculado.
 const RADAR_SCOREBOARD_KV_KEY="radar:scoreboard:summary:v2";
 const CRASH_SCOREBOARD_KV_KEY="radar:crash-scoreboard:summary:v1";
+const GOAL_SCOREBOARD_KV_KEY="radar:goal-scoreboard:summary:v1";
 const scoreboardMemo=new Map();
 async function scoreboardResponse(env,kvKey,summarize,label){
   try{
@@ -2080,6 +2081,7 @@ async function scoreboardResponse(env,kvKey,summarize,label){
 }
 const radarScoreboardResponse=env=>scoreboardResponse(env,RADAR_SCOREBOARD_KV_KEY,radarScoreboardSummary,"Radar scoreboard");
 const crashScoreboardResponse=env=>scoreboardResponse(env,CRASH_SCOREBOARD_KV_KEY,crashScoreboardSummary,"Crash scoreboard");
+const goalScoreboardResponse=env=>scoreboardResponse(env,GOAL_SCOREBOARD_KV_KEY,goalScoreboardSummary,"Goal scoreboard");
 async function marketLiveResponse(env){
   try{
     const raw=await marketLiveRaw(env);
@@ -2382,6 +2384,7 @@ export default {
     else if(url.pathname==="/api/price-check")limited=await enforcedRateLimit(request,env,"price-check",40,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname.startsWith("/api/crypto/"))limited=await enforcedRateLimit(request,env,"crypto",90,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/radar-scoreboard")limited=await enforcedRateLimit(request,env,"radar-scoreboard",20,60000,"MARKET_RATE_LIMITER");
+    else if(url.pathname==="/api/goal-scoreboard")limited=await enforcedRateLimit(request,env,"goal-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/crash-scoreboard")limited=await enforcedRateLimit(request,env,"crash-scoreboard",20,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/catalysts")limited=await enforcedRateLimit(request,env,"catalysts",30,60000,"MARKET_RATE_LIMITER");
     else if(url.pathname==="/api/market-live")limited=await enforcedRateLimit(request,env,"market-live",12,60000,"MARKET_RATE_LIMITER");
@@ -2415,6 +2418,10 @@ export default {
     if (url.pathname === "/api/social-trending") {
       const guard = requestGuard(request); if (guard) return guard;
       return nativeCorsResponse(request, await socialTrendingResponse());
+    }
+    if (url.pathname === "/api/goal-scoreboard") {
+      const guard = requestGuard(request); if (guard) return guard;
+      return nativeCorsResponse(request, await goalScoreboardResponse(env));
     }
     if (url.pathname === "/api/radar-scoreboard") {
       const guard = requestGuard(request); if (guard) return guard;
@@ -2584,7 +2591,12 @@ export default {
         loadQuote: loadQuoteForBackend,
         loadNews: loadNewsForBackend,
         loadOfficialEvents: (stock,target) => loadAllOfficialEventsForBackend(stock,target,env),
-        loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env })
+        loadCryptoQuotes: symbols => cryptoQuotes(symbols, { env }),
+        // Filtro del Objetivo antes de publicar una idea: analistas, resultados, índices y calendario (todo con caché).
+        loadAnalysts: symbol => analystsResponse(new Request("https://viewinvai.internal/api/analysts?symbol="+encodeURIComponent(symbol))).then(r=>r.json()),
+        loadEarnings: symbol => earningsResponse(new Request("https://viewinvai.internal/api/earnings?symbol="+encodeURIComponent(symbol)),env).then(r=>r.json()),
+        loadIndices: () => indicesLiveResponse().then(r=>r.json()),
+        loadEconCalendar: () => econCalendarResponse().then(r=>r.json())
       })
     ];
     if(minute%5===0)tasks.push(refreshAttentionRankings(env));
@@ -2594,7 +2606,7 @@ export default {
     tasks.push(runRadarScoreboard(env,{loadMarketSnapshot:loadMarketSnapshotForBackend,loadQuantModel:()=>loadQuantModel(env)},scheduledAt).then(async r=>{
       if(r&&r.day){
         scoreboardMemo.clear();
-        if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY);await env.HOT_STATE_KV.delete(CRASH_SCOREBOARD_KV_KEY)}catch(_){}}
+        if(env.HOT_STATE_KV){try{await env.HOT_STATE_KV.delete(RADAR_SCOREBOARD_KV_KEY);await env.HOT_STATE_KV.delete(CRASH_SCOREBOARD_KV_KEY);await env.HOT_STATE_KV.delete(GOAL_SCOREBOARD_KV_KEY)}catch(_){}}
       }
       return r;
     }));
