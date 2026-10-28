@@ -8448,6 +8448,17 @@ function goalStickyBuyKeys(planJson){
     return(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key).map(a=>String(a.key)).slice(0,5);
   }catch(_){return[]}
 }
+// Compras del último plan guardado si es de hoy (hora de Madrid): son las ideas fijadas del día.
+function goalCommittedBuys(planJson){
+  try{
+    const plan=JSON.parse(planJson||"{}"),at=Date.parse(plan.at||"");
+    const day=t=>new Date(t).toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
+    if(!Number.isFinite(at)||day(at)!==day(Date.now()))return[];
+    // Compras de hoy y las ideas fijadas que esperan porque el precio se alejó (siguen fijadas, con su precio original).
+    return[...(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key),...(plan.waits||[]).filter(w=>w&&w.committed&&w.key)]
+      .map(a=>({key:String(a.key),priceEur:finiteNumber(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at})).slice(0,4);
+  }catch(_){return[]}
+}
 function goalPaceText(pc){
   if(!pc)return"";
   if(pc.status==="reached")return"Objetivo alcanzado.";
@@ -8584,7 +8595,10 @@ async function scanPortfolioGoalNotifications(env,services){
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
       const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions});
-      const candidates=idle?[]:radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true)).slice(0,40).map(r=>{
+      // Ideas fijadas hoy (compras del último plan de hoy): siempre se evalúan, aunque hayan salido de las 40 primeras.
+      const committed=goalCommittedBuys(prev&&prev.plan_json),committedKeys=new Set(committed.map(c=>c.key));
+      const pool=radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true));
+      const candidates=idle?[]:[...pool.slice(0,40),...pool.slice(40).filter(r=>committedKeys.has(r.stock_key))].map(r=>{
         const stock=byKey.get(r.stock_key);if(!stock||!goalServerAllowed(stock,scope))return null;
         const priceEur=goalServerPriceEur(stock,preferTr,usdToEur,"BUY")??(finiteNumber(stock.price)!==null&&usdToEur!==null?finiteNumber(stock.price)*usdToEur:null);
         const ticker=String(stock.ticker||stock.trTicker||"").toUpperCase(),cat=goalServerCatalyst(snapshot,stock);
@@ -8624,11 +8638,12 @@ async function scanPortfolioGoalNotifications(env,services){
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
-        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json)};
+        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
-      let buys=plan.actions.filter(a=>a.type==="BUY");
+      // Solo se revisan con IA las compras nuevas: las ideas fijadas ya pasaron esa revisión antes de mostrarse.
+      let buys=plan.actions.filter(a=>a.type==="BUY"&&!a.committed);
       if(buys.length){
         let review=await goalWebReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
         if(!review.reviewed)review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);

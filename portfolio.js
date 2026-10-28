@@ -1542,8 +1542,31 @@ let lastGoalCtx=null;
 // el motor las mantiene salvo que otra candidata las supere con claridad, para que la recomendación no salte sin motivo.
 const goalBuyMemory=new Map();
 function goalRememberBuys(portfolioId,plan){
-  const keys=((plan&&plan.actions)||[]).filter(a=>a.type==="BUY"&&a.key).map(a=>String(a.key));
+  const buys=((plan&&plan.actions)||[]).filter(a=>a.type==="BUY"&&a.key);
+  const keys=buys.map(a=>String(a.key));
   if(keys.length)goalBuyMemory.set(String(portfolioId),{at:Date.now(),keys});
+  // Ideas del día: la primera vez que se muestra una compra queda fijada hasta mañana (ver goalTodayCommitments).
+  const store=goalIdeaStore(),pid=String(portfolioId||""),day=goalIdeaDay(),cur=store[pid]&&store[pid].day===day?store[pid]:{day,items:[]};
+  let changed=false;
+  for(const a of buys)if(!cur.items.some(i=>i.key===String(a.key))){cur.items.push({key:String(a.key),priceEur:num(a.priceEur),at:new Date().toISOString(),ticker:a.ticker||"",name:a.name||"",score:num(a.burstScore)});changed=true}
+  if(changed){store[pid]=cur;try{localStorage.setItem(GOAL_IDEAS_KEY,JSON.stringify(store))}catch(_){}}
+}
+// Ideas fijadas del día por cartera (en este dispositivo y las del último plan revisado por el servidor hoy).
+// Mientras exista una idea fijada, el Objetivo no la cambia por otra: solo se retira si la IA la contradice o si el
+// precio se aleja más de un 3 % (entonces queda como compra límite). Al día siguiente se empieza de cero.
+const GOAL_IDEAS_KEY="viewinvai:goal-ideas:v1";
+function goalIdeaDay(){return new Date().toLocaleDateString("sv-SE")}
+function goalIdeaStore(){try{const s=JSON.parse(localStorage.getItem(GOAL_IDEAS_KEY)||"{}");return s&&typeof s==="object"?s:{}}catch(_){return{}}}
+function goalTodayCommitments(portfolioId,goal){
+  const day=goalIdeaDay(),out=new Map(),entry=goalIdeaStore()[String(portfolioId||"")];
+  try{
+    const plan=JSON.parse(goal&&goal.plan_json||"{}"),at=Date.parse(plan.at||"");
+    if(Number.isFinite(at)&&new Date(at).toLocaleDateString("sv-SE")===day)
+      for(const a of [...(plan.actions||[]).filter(x=>x&&x.type==="BUY"),...(plan.waits||[]).filter(x=>x&&x.committed)])if(a.key)
+        out.set(String(a.key),{key:String(a.key),priceEur:num(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at,ticker:a.ticker||"",name:a.name||"",score:num(a.burstScore)});
+  }catch(_){}
+  if(entry&&entry.day===day)for(const i of entry.items||[])if(i&&i.key&&!out.has(i.key))out.set(i.key,i);
+  return[...out.values()].sort((x,y)=>String(x.at||"").localeCompare(String(y.at||""))).slice(0,4);
 }
 function goalClientStickyKeys(portfolioId,goal){
   const out=new Set(),fresh=at=>Number.isFinite(at)&&Date.now()-at<=2*86400000;
@@ -1600,7 +1623,10 @@ function goalEngineInput(metrics,positionRows){
   const held=new Set(positions.map(p=>p.key));
   // Sin efectivo invertible y todo en «mantener»: no se preparan candidatas ni se piden ideas a la IA.
   const G0=window.ViewInvAIGoal,idle=!!(G0&&G0.isIdle&&G0.isIdle({config:{investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur)},cashEur:num(metrics.cashEur)||0,positions}));
-  const candidates=idle?[]:radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40).map(r=>{
+  // Las ideas fijadas hoy siempre se evalúan, aunque hayan salido de las primeras del Radar.
+  const committed=goalTodayCommitments(metrics.portfolio&&metrics.portfolio.id,goal),inRadar=new Set(radar.map(r=>goalStockKey(r.s)));
+  const fixedRows=committed.filter(c=>!inRadar.has(c.key)).map(c=>{const s=stockByKey(c.key);return s?{s,score:c.score??60,quality:70,tier:"watch",speculative:false}:null}).filter(Boolean);
+  const candidates=idle?[]:[...radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40),...fixedRows.filter(r=>!held.has(goalStockKey(r.s)))].map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
     const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
     // Valor de EE. UU. en LSX con LSX retrasado: se decide con la cotización regular de EE. UU. (en €) y su variación.
@@ -1625,7 +1651,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal)};
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
 function goalNoFractionSet(goal){return new Set(String(goal&&goal.no_fraction_tickers||"").split(",").map(t=>t.trim().toUpperCase()).filter(Boolean))}
@@ -1727,11 +1753,13 @@ function goalActionHtml(a,ctx){
   if(button&&button.indexOf('<div class="goal2-action-buttons">')!==0)button='<div class="goal2-action-buttons">'+button+'</div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
-  const extra=a.type==="BUY"
+  const fixedAt=a.committed&&a.committedAt?new Date(a.committedAt):null;
+  const fixedNote=a.type==="BUY"&&a.committed?'<small class="goal2-fixed">📌 Idea fijada hoy'+(fixedAt&&Number.isFinite(fixedAt.getTime())?' a las '+fixedAt.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}):'')+(num(a.committedPriceEur)!==null?' a '+formatMoney(a.committedPriceEur,"EUR"):'')+': no se cambia por otra durante el día; se retira solo si la IA la contradice o el precio sube más de un 3 %.</small>':'';
+  const extra=fixedNote+(a.type==="BUY"
     ?'<small>'+((a.burstPhase==="early")?'Fase temprana · ':'')+'score temprano '+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' % · stop −'+formatNumber(a.stopPct,1)+' %'+(a.speculative?' · especulativa (peso pequeño)':'')+(a.aiScoutReason?' · '+esc(a.aiScoutReason):'')+'</small>'
     :a.type==="WAIT"
       ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
-      :'';
+      :'');
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+extra+button+'</div></div>';
 }

@@ -2533,3 +2533,4 @@ html[data-native-app="1"] body #view-portfolios .goal2-action-buttons :is(.goal2
  html body #view-portfolios .goal2-action{grid-template-columns:minmax(0,1fr)!important;gap:6px!important}
  html body #view-portfolios .goal2-action>em{justify-self:start}
 }
+.goal2-fixed{color:var(--accent,#5cc8e8)!important;font-weight:600}

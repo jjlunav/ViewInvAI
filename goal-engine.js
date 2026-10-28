@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g9-idle-pause';
+  const VERSION='2026.10.28-g10-fixed-ideas';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -18,7 +18,8 @@
   };
   const BETTER_SCORE=85;
   // STICKY_BONUS: puntos de ventaja de la compra ya recomendada frente a una nueva (score temprano 0-100).
-  const STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
+  // COMMIT_CHASE_PCT: una idea fijada se deja de proponer a mercado si el precio sube más que esto desde que se mostró.
+  const COMMIT_CHASE_PCT=3,STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
     1:{maxCount:1,maxWeight:10,maxTotalWeight:10,minBurstExtra:4,minQualityExtra:3,maxSpread:4,edgeOverNormal:2},
@@ -313,10 +314,19 @@
 
     // 2) Candidatas válidas (antes de decidir rotaciones).
     const held=new Set([...remaining.map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]),specHeldCount=remaining.filter(p=>p.speculative).length;
+    // Ideas fijadas: una compra que ya se mostró hoy se mantiene durante todo el día (no se cambia por otra por
+    // pequeñas variaciones de datos). Solo se retira si la IA la contradice o si el precio se ha alejado demasiado.
+    const commits=new Map((input.committed||[]).map(c=>[String(c.key),c]));
+    const isCommitted=c=>commits.has(String(c.key));
+    const chasePct=c=>{const cm=commits.get(String(c.key)),ask=n(c.askEur)??n(c.priceEur),ref=n(cm&&cm.priceEur);
+      return cm&&ref>0&&ask>ref*(1+COMMIT_CHASE_PCT/100)?(ask/ref-1)*100:null};
+    for(const c of input.candidates||[])if(isCommitted(c)&&!held.has(String(c.key))&&(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block'))
+      notes.push('Idea retirada: '+label(c)+' — '+(c.aiVerdict==='contradice'?'la IA la contradice':'la revisión de la IA la bloquea')+'.');
     const mappedCands=(input.candidates||[]).filter(c=>{
       if(held.has(String(c.key)))return false;
-      if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
+      if(isCommitted(c))return (n(c.askEur)??n(c.priceEur))>0;
+      if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if((n(c.score)??0)<50||(n(c.quality)??0)<minQuality)return false;
       if(c.speculative&&spec.maxCount<=0)return false;
       return (n(c.askEur)??n(c.priceEur))>0;
@@ -339,6 +349,7 @@
       (n(x.spreadPct)??99)-(n(y.spreadPct)??99)||(n(y.relVolume)||0)-(n(x.relVolume)||0)||String(x.ticker||x.key).localeCompare(String(y.ticker||y.key));
     const bestNormalBurst=Math.max(-Infinity,...mappedCands.filter(c=>!c.speculative).map(c=>n(c.burstScore)??0));
     const rankedCands=mappedCands.filter(c=>{
+      if(isCommitted(c))return c.burstPhase!=='avoid';
       if((n(c.score)??0)<minScore&&c.burstScore<b.minBurst+8)return false;
       if(c.burstScore<b.minBurst-4||c.burstPhase==='avoid')return false;
       if(!c.speculative)return true;
@@ -352,7 +363,9 @@
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
     // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
-    const shortlist=rankedCands.length>1&&rankOf(rankedCands[1])>=rankOf(rankedCands[0])-5
+    // Con ideas fijadas hoy, solo cuentan esas: no aparecen otras nuevas hasta que se compren, se retiren o sea otro día.
+    const fixed=rankedCands.filter(isCommitted).sort((x,y)=>String(commits.get(String(x.key)).at||'').localeCompare(String(commits.get(String(y.key)).at||'')));
+    const shortlist=fixed.length?fixed.slice(0,2):rankedCands.length>1&&rankOf(rankedCands[1])>=rankOf(rankedCands[0])-5
       ?rankedCands.slice(0,2):rankedCands.slice(0,1);
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
@@ -362,7 +375,9 @@
     const edge=c=>(n(c.targetPct)||0)*rankOf(c)/100;
     // Si una IA tiene dudas sobre la idea, no se compra ni se cambia a ella: queda en ESPERAR hasta que la revisión la respalde.
     const doubted=c=>c.aiVerdict==='dudas';
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x)||byPriority(x,y));
+    // Una idea fijada no depende de los vaivenes de la entrada: sigue en pie mientras el precio no se aleje.
+    const buyable=c=>isCommitted(c)?chasePct(c)===null:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase);
+    const cands=shortlist.filter(buyable).sort((x,y)=>edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
       if(!(ask>0)||!(amount>0))return 0;
@@ -370,7 +385,15 @@
       return Math.floor(amount/ask);
     };
     if(!defensive){
-      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c)||doubted(c))){
+      for(const c of shortlist.filter(c=>!buyable(c))){
+        const chased=isCommitted(c)?chasePct(c):null;
+        if(chased!==null){
+          const ref=n(commits.get(String(c.key)).priceEur),lim=r2(ref*1.01);
+          waits.push({type:'WAIT',decision:'COMPRA LÍMITE',key:c.key,ticker:c.ticker,name:c.name,limitPriceEur:lim,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
+            burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:['precio alejado de la idea'],committed:true,committedPriceEur:ref,committedAt:String(commits.get(String(c.key)).at||''),
+            text:'Esperar '+label(c)+': el precio ha subido '+pct(chased)+' desde que se mostró la idea ('+money(ref)+'); no se persigue. Solo si vuelve a '+money(lim)+' o menos.'});
+          continue;
+        }
         const isLimit=!stale(c)&&!doubted(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
         waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
@@ -507,7 +530,7 @@
         if(c.speculative){specCount++;specExposure+=ticket}
         const isFraction=fractional&&Math.abs(units-Math.round(units))>1e-9;
         const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:2}):String(units);
-        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
+        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,committed:isCommitted(c),committedAt:isCommitted(c)?String(commits.get(String(c.key)).at||''):'',committedPriceEur:isCommitted(c)?n(commits.get(String(c.key)).priceEur):null,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
           text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones: compra fraccionada, solo a precio de mercado)':'Comprar '+unitsText+' × '+label(c)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});

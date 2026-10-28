@@ -165,4 +165,24 @@ const input=candidates=>({
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"idle");
 }
 
+// Idea fijada: se mantiene aunque aparezca otra mejor o empeore la entrada; se retira si el precio se aleja o la IA la contradice.
+{
+  const weak={...base,key:"NASDAQ:FIX",ticker:"FIX",score:60,quality:70,relVolume:.6,perfWeek:0,dayChangePct:0,catalystDays:null,catalystImpact:0};
+  const strong={...base,key:"NASDAQ:NEW",ticker:"NEW",score:99,quality:95};
+  const committed=[{key:"NASDAQ:FIX",priceEur:10,at:"2026-10-28T09:00:00Z"}];
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
+  let p=G.plan({...input([strong,weak]),committed});
+  assert.equal(buys(p).join(),"NASDAQ:FIX","a fixed idea is kept and no new idea replaces it");
+  assert.equal(p.actions.find(x=>x.type==="BUY").committed,true);
+  p=G.plan({...input([strong,{...weak,quoteFresh:false,aiVerdict:"dudas"}]),committed});
+  assert.equal(buys(p).join(),"NASDAQ:FIX","a stale quote or a later doubt does not flip a fixed idea");
+  p=G.plan({...input([strong,{...weak,askEur:10.5,priceEur:10.5}]),committed});
+  assert.equal(buys(p).length,0,"a fixed idea is not chased after +5 %");
+  assert.ok(p.waits.some(w=>w.key==="NASDAQ:FIX"&&w.decision==="COMPRA LÍMITE"),"a chased idea stays as a limit order");
+  p=G.plan({...input([strong,{...weak,aiVerdict:"contradice"}]),committed});
+  assert.ok(!buys(p).includes("NASDAQ:FIX")&&p.notes.some(t=>/retirada/.test(t)),"an AI contradiction withdraws it with a note");
+  p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed});
+  assert.ok(buys(p).includes("NASDAQ:NEW"),"once the fixed idea is bought, new ideas can appear");
+}
+
 console.log("Goal engine tests: OK");
