@@ -1520,6 +1520,23 @@ function goalNextCatalyst(stock){
   return{date:new Date(next.date).toLocaleDateString("sv-SE"),label};
 }
 let lastGoalCtx=null;
+// Compras que el Objetivo ya recomendó (último plan del servidor y lo mostrado en esta sesión, menos de 2 días):
+// el motor las mantiene salvo que otra candidata las supere con claridad, para que la recomendación no salte sin motivo.
+const goalBuyMemory=new Map();
+function goalRememberBuys(portfolioId,plan){
+  const keys=((plan&&plan.actions)||[]).filter(a=>a.type==="BUY"&&a.key).map(a=>String(a.key));
+  if(keys.length)goalBuyMemory.set(String(portfolioId),{at:Date.now(),keys});
+}
+function goalClientStickyKeys(portfolioId,goal){
+  const out=new Set(),fresh=at=>Number.isFinite(at)&&Date.now()-at<=2*86400000;
+  try{
+    const plan=JSON.parse(goal&&goal.plan_json||"{}");
+    if(fresh(Date.parse(plan.at||"")))for(const a of plan.actions||[])if(a&&a.type==="BUY"&&a.key)out.add(String(a.key));
+  }catch(_){}
+  const mem=goalBuyMemory.get(String(portfolioId||""));
+  if(mem&&fresh(mem.at))for(const k of mem.keys)out.add(k);
+  return[...out].slice(0,5);
+}
 function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
@@ -1583,7 +1600,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null};
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal)};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
 function goalNoFractionSet(goal){return new Set(String(goal&&goal.no_fraction_tickers||"").split(",").map(t=>t.trim().toUpperCase()).filter(Boolean))}
@@ -1740,6 +1757,7 @@ function portfolioGoalViewHtml(){
   const engine=window.ViewInvAIGoal;
   if(!engine)return '<section class="portfolio-goal-view goal2">'+head+'<div class="portfolio-goal-no-action">Cargando el motor del objetivo…</div></section>';
   const input=goalEngineInput(metrics,positionRows),plan=engine.plan(input);
+  goalRememberBuys(metrics.portfolio.id,plan);
   const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur};
   lastGoalCtx=ctx;
   const visibleDecisions=[...plan.actions,...(plan.waits||[])];

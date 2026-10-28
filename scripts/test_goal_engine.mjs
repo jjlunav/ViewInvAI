@@ -123,4 +123,18 @@ const input=candidates=>({
   assert.equal(b.defensive,a.defensive);
 }
 
+// Memoria del plan: con candidatas casi empatadas se mantiene la compra ya recomendada.
+{
+  const rows=[0,1,2].map(i=>({...base,key:"NASDAQ:S"+i,ticker:"S"+i,score:94-i,quality:92-i}));
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
+  const fresh=G.plan(input(rows));
+  assert.ok(!buys(fresh).includes("NASDAQ:S2"),"without memory the lowest-ranked tie is not bought");
+  const kept=G.plan({...input(rows),stickyKeys:["NASDAQ:S2"]});
+  assert.ok(buys(kept).includes("NASDAQ:S2"),"a recently recommended buy must survive a near tie");
+  const strong={...base,key:"NASDAQ:NEW",ticker:"NEW",score:99,quality:95};
+  const weak={...base,key:"NASDAQ:OLDBUY",ticker:"OLDBUY",score:55,quality:70,relVolume:.6,perfWeek:0,dayChangePct:0,catalystDays:null,catalystImpact:0};
+  const swap=G.plan({...input([strong,weak]),stickyKeys:["NASDAQ:OLDBUY"]});
+  assert.ok(buys(swap).includes("NASDAQ:NEW"),"a clearly better candidate still replaces the remembered one");
+}
+
 console.log("Goal engine tests: OK");

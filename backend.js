@@ -8421,6 +8421,14 @@ async function goalAiReviewBuys(env,goal,buys,positions,candidates=[],snapshot=n
     return{reviewed:false,verdicts:new Map()};
   }
 }
+// Compras recomendadas en el último plan guardado (menos de 2 días): el motor las mantiene salvo que otra las supere con claridad.
+function goalStickyBuyKeys(planJson){
+  try{
+    const plan=JSON.parse(planJson||"{}"),at=Date.parse(plan.at||"");
+    if(!Number.isFinite(at)||Date.now()-at>2*86400000)return[];
+    return(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key).map(a=>String(a.key)).slice(0,5);
+  }catch(_){return[]}
+}
 function goalPaceText(pc){
   if(!pc)return"";
   if(pc.status==="reached")return"Objetivo alcanzado.";
@@ -8593,7 +8601,8 @@ async function scanPortfolioGoalNotifications(env,services){
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
-        extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null};
+        extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
+        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json)};
       let plan=engine.plan(input);
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
