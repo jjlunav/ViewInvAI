@@ -2528,3 +2528,8 @@ html[data-native-app="1"] body #view-portfolios .goal2-action-buttons :is(.goal2
  display:inline-flex!important;align-items:center!important;width:auto!important;margin:0!important;height:30px!important;min-height:30px!important;
  padding:0 12px!important;font-size:12.5px!important;font-weight:650!important;line-height:1!important;border-radius:999px!important;white-space:nowrap!important
 }
+/* Móvil: la etiqueta (COMPRAR AHORA, STOP…) va encima y el texto y los botones usan todo el ancho de la tarjeta. */
+@media (max-width:560px){
+ html body #view-portfolios .goal2-action{grid-template-columns:minmax(0,1fr)!important;gap:6px!important}
+ html body #view-portfolios .goal2-action>em{justify-self:start}
+}

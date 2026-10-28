@@ -227,6 +227,17 @@ function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side=
   const converted=portfolioConvertAmount(fee.fee,fee.currency,target);
   return Object.assign({},fee,{sourceFee:fee.fee,sourceCurrency:fee.currency,fee:converted,currency:target,verified:fee.verified&&converted!==null});
 }
+// Cotización de EE. UU. como referencia de una línea de LSX: si la empresa cotiza en un mercado de EE. UU.,
+// durante su sesión regular el precio se forma allí y LSX lo replica con algo de retraso (y con el cambio €/$).
+// Solo sirve para decidir; la orden se ejecuta y se registra con el precio de LSX.
+function goalUsReference(stock,fxUsdEur){
+  if(!stock||typeof currentUsQuote!=="function")return null;
+  if(!/^(NASDAQ|NYSE|AMEX|NYSEARCA|ARCA|BATS|CBOE|NYSEAMERICAN)/i.test(String(stock.exchange||"")))return null;
+  let q=null;try{q=currentUsQuote(stock)}catch(_){q=null}
+  if(!q||!(num(q.price)>0)||q.kind!=="regular")return null;
+  const at=num(q.at),ageMs=at?Math.max(0,Date.now()-at):null,fx=num(fxUsdEur);
+  return{usd:num(q.price),eur:fx!==null?num(q.price)*fx:null,change:num(q.change),ageMs,recent:ageMs!==null&&ageMs<=900000,live:ageMs!==null&&ageMs<=120000};
+}
 function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=1){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
   const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct),now=Date.now();
@@ -240,7 +251,9 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
   // Para decidir el plan basta una cotización en vivo de los últimos 15 min: las de Trade Republic se refrescan
   // cada pocos minutos y con el límite de 2 min una misma compra aparecía y desaparecía del plan sin motivo.
   // Para registrar la orden se sigue exigiendo la cotización reciente (quoteFresh).
-  const quoteRecent=direct&&ageMs!==null&&ageMs<=900000;
+  const usRef=preferTr?goalUsReference(stock,fxUsdEur):null;
+  // En LSX, una acción de EE. UU. con cotización regular reciente allí también cuenta como «en vivo» para decidir.
+  const quoteRecent=direct&&((ageMs!==null&&ageMs<=900000)||!!(usRef&&usRef.recent));
   const actionSide=String(side||"BUY").toUpperCase();
   const bookUsable=actionSide==="SELL"?bid!==null:(bid!==null&&ask!==null&&ask>=bid);
   let price=null,orderType="LIMITE",instruction="",immediate=false;
@@ -271,7 +284,7 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
   const feeEur=feeNative===null?0:(portfolioConvertAmount(feeNative,currency,"EUR",fxUsdEur)??0);
   const executable=quoteFresh&&bookUsable&&unitEur!==null&&feeInfo.verified===true;
   const executionReason=!quoteFresh?"Cotización ejecutable no disponible o desactualizada":!bookUsable?"BID/ASK ejecutable incompleto":feeInfo.verified!==true?"Comisión del broker no verificada":"Cotización ejecutable verificada";
-  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate,updatedAt,ageMs,quoteFresh,quoteRecent,bookUsable,executable,executionReason};
+  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate,updatedAt,ageMs,quoteFresh,quoteRecent,usRef,bookUsable,executable,executionReason};
 }
 
 function portfolioStockKeys() {
@@ -1572,11 +1585,14 @@ function goalEngineInput(metrics,positionRows){
     .filter(row=>row.qty>1e-9&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
     const sell=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,row.qty);
+    // Si LSX va con retraso (>2 min) y la cotización regular de EE. UU. es de ahora, el plan decide (stops, objetivos)
+    // con el precio de EE. UU. convertido a €; la venta se registra luego con el precio real de LSX.
+    const us=sell.usRef,lsxLag=sell.ageMs===null||sell.ageMs>120000,useUs=!!(us&&us.live&&us.eur!==null&&lsxLag);
     const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase(),cat=portfolioGoalCatalyst(row.stock);
     const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
-    return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
+    return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:useUs?us.eur:row.unitEur,bidEur:useUs?us.eur:sell.unitEur,priceSource:useUs?"us":"lsx",score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),aiNewsReason:goalNewsReasonOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
@@ -1587,17 +1603,19 @@ function goalEngineInput(metrics,positionRows){
   const candidates=idle?[]:radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40).map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
     const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
-    let priceEur=q.unitEur??num(market.eur);
+    // Valor de EE. UU. en LSX con LSX retrasado: se decide con la cotización regular de EE. UU. (en €) y su variación.
+    const us=q.usRef,useUs=!!(us&&us.live&&us.eur!==null&&(q.ageMs===null||q.ageMs>120000));
+    let priceEur=useUs?us.eur:q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
     const G=window.ViewInvAIGoal;
     const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
-    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
+    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
-      dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
+      dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),
       ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
