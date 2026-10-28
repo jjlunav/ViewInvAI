@@ -1043,8 +1043,8 @@ function portfolioGoalMetrics(){
   const portfolio=selectedPortfolio();
   if(!portfolio)return{portfolio:null,rows:[],currentValue:null,totalPnl:null,target:null,remaining:null,progress:0,goalPressure:0,requiredMultiple:null,requiredReturnPct:null,marketScope:"auto"};
   const fxUsdEur=portfolioUsdToEurRate(),positions=portfolioPositions(portfolio.id),rows=positions.map(p=>portfolioGoalPositionSnapshot(p,fxUsdEur)).filter(Boolean);
-  let investedValue=0,openPnl=0,currentComplete=true,pnlComplete=true;
-  for(const row of rows){if(row.valueEur===null)currentComplete=false;else investedValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
+  let investedValue=0,openPnl=0,currentComplete=true,pnlComplete=true,investedComplete=true;
+  for(const row of rows){if(row.valueEur===null)currentComplete=investedComplete=false;else investedValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
   const cashEur=portfolioCashEur(portfolio,fxUsdEur);
   if(cashEur===null)currentComplete=false;
   let realizedPnl=0,realizedKnown=true;
@@ -1059,14 +1059,14 @@ function portfolioGoalMetrics(){
   // El progreso hacia la meta cuenta solo lo invertido: el efectivo sin invertir no es avance (sí es capital
   // para las compras). Mi cripto, si el objetivo la incluye, suma al progreso (no al capital de las compras).
   const includeCrypto=goalIncludesCrypto(),cryptoEur=includeCrypto?goalCryptoValueEur():null;
-  const goalValue=currentComplete?investedValue+(cryptoEur||0):null;
+  const goalValue=investedComplete?investedValue+(cryptoEur||0):null;
   const remaining=target!==null&&goalValue!==null?target-goalValue:null;
   const progress=target&&goalValue!==null?Math.max(0,Math.min(100,goalValue/target*100)):0;
   const requiredMultiple=target!==null&&goalValue!==null&&goalValue>0?target/goalValue:null;
   const requiredReturnPct=requiredMultiple!==null?(requiredMultiple-1)*100:null;
   const goalPressure=remaining!==null&&remaining>0&&capital>0?Math.max(0,Math.min(1,remaining/capital)):0;
   const riskBand=portfolioGoalRiskBand(goalConfig.riskProfile);
-  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,investedValue:currentComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
+  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
 function coachPriceLevels(stock,preferTr,score,entryPrice=null,riskBand=null){
@@ -1576,7 +1576,7 @@ function goalEngineInput(metrics,positionRows){
       ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
   }).filter(Boolean);
   refreshGoalIdeas();
-  return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:Number(goal.pace_basis)===1?num(goal.start_value_eur):null,startDate:Number(goal.pace_basis)===1?goal.start_date||goal.created_at:"",
+  return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
@@ -1697,7 +1697,7 @@ function goalPlanHistorySnapshot(metrics,plan){
   const all=[...plan.actions,...(plan.waits||[])];
   const summary=all.length?all.map(a=>a.text).join(" "):"Sin cambios";
   return{portfolioId:portfolio.id,signature:JSON.stringify(all.map(a=>[a.type,a.ticker,a.fractional?"frac":(a.units||a.stopEur||a.limitPriceEur||a.decision)])),summary,
-    plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.currentValue,2),
+    plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.goalValue,2),
       targetEur:goalHistoryRound(metrics.target,2),cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),sells,buys,waits,residualEur:goalHistoryRound(plan.cashLeftEur,2)}};
 }
 // El usuario indica que su bróker no permite fracciones de un valor: se guarda en el objetivo y se recalcula.
