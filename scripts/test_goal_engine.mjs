@@ -153,4 +153,16 @@ const input=candidates=>({
   assert.ok(buys(G.plan(input(backed))).includes("NASDAQ:ZZZ"),"on a tie the AI-backed idea goes first");
 }
 
+// Sin efectivo y todo en «mantener»: plan en pausa (sin candidatas ni IA); con efectivo o sin decisión, no.
+{
+  const held={key:"NASDAQ:H",ticker:"H",name:"H",units:3,avgEur:8,priceEur:7.5,bidEur:7.5,score:50,quality:70,atrPct:2,feeEur:1,hold:{mode:"recover",targetEur:8.02}};
+  assert.equal(G.isIdle({config:{},cashEur:0,positions:[held]}),true);
+  assert.equal(G.isIdle({config:{},cashEur:200,positions:[held]}),false,"cash to invest is not idle");
+  assert.equal(G.isIdle({config:{investReserveEur:200},cashEur:200,positions:[held]}),true,"reserved cash is not investable");
+  assert.equal(G.isIdle({config:{},cashEur:0,positions:[{...held,hold:{mode:"better"}}]}),false,"«cambio mejor» keeps looking");
+  assert.equal(G.isIdle({config:{},cashEur:0,positions:[{...held,hold:null}]}),false,"a position without a decision can rotate");
+  const p=G.plan({...input([]),positions:[held],cashEur:0});
+  assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"idle");
+}
+
 console.log("Goal engine tests: OK");

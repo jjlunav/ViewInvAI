@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g8-ai-doubts-wait';
+  const VERSION='2026.10.28-g9-idle-pause';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -205,6 +205,25 @@
    * input.candidates: [{key,ticker,name,priceEur,askEur,score,quality,tier,speculative,
    *                     atrPct,feeEur,aiVerdict}]
    * input.cashEur, input.peakValueEur, input.wasDefensive, input.nowMs */
+  // Efectivo que el plan puede invertir: el efectivo menos lo apartado (o limitado por cifra / % del objetivo).
+  function usableCash(cfg,cash){
+    const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct),reserveEur=n(cfg.investReserveEur);
+    const all=Math.max(0,n(cash)||0);let usable=all;
+    if(reserveEur!==null&&reserveEur>=0)return Math.max(0,all-reserveEur);
+    if(capEur!==null&&capEur>=0)usable=Math.min(usable,capEur);
+    if(capPct!==null&&capPct>=0&&capPct<100)usable=Math.min(usable,all*capPct/100);
+    return usable;
+  }
+  /* isIdle(input): no hay nada que decidir salvo vigilar precios. Sin efectivo invertible y con todas las
+   * posiciones en «mantener» (salvo «hasta un cambio mejor», que sí busca alternativas), no hace falta buscar
+   * candidatas ni consultar a la IA: el escenario solo cambia si entra efectivo, cambias una decisión o vendes. */
+  function isIdle(input={}){
+    const cfg=input.config||{};
+    if(usableCash(cfg,input.cashEur)>=1)return false;
+    const open=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
+    return open.length>0&&open.every(p=>p.hold&&p.hold.mode&&p.hold.mode!=='better');
+  }
+
   function plan(input={}){
     const cfg=input.config||{},risk=RISK[cfg.risk]?cfg.risk:'aggressive',b=band(risk);
     const maxPositions=clamp(Math.round(n(cfg.maxPositions)||5),1,10),spec=specPolicy(cfg,maxPositions);
@@ -233,13 +252,8 @@
     const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
     // Lo apartado se fija al guardar el límite (investReserveEur), así las compras ya hechas consumen el capital
     // permitido en vez de renovarlo; sin ese dato se calcula con el efectivo actual.
-    const reserveEur=n(cfg.investReserveEur);
-    let usable=cash;
-    if(reserveEur!==null&&reserveEur>=0)usable=Math.max(0,cash-reserveEur);
-    else{
-      if(capEur!==null&&capEur>=0)usable=Math.min(usable,capEur);
-      if(capPct!==null&&capPct>=0&&capPct<100)usable=Math.min(usable,cash*capPct/100);
-    }
+    const usable=usableCash(cfg,cash);
+    const paused=isIdle(input);
     const reserved=Math.max(0,cash-usable);
     const allowFractions=cfg.allowFractions!==false;
 
@@ -506,7 +520,8 @@
       const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       // Lo mínimo que exige comprar alguna candidata: 1 € si admite fracciones, una acción entera si no.
       const cheapest=Math.min(Infinity,...mappedCands.map(c=>{const a=n(c.askEur)??n(c.priceEur);return a>0?(allowFractions&&!c.noFractions?1:a):Infinity}));
-      if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
+      if(paused)whyNoBuy.push({code:'idle',text:'Plan en pausa: no hay efectivo para invertir y todas tus posiciones están en «mantener». Solo se vigilan tus precios objetivo y stops de emergencia; no se buscan compras ni se consulta a la IA hasta que entre efectivo, cambies una decisión o vendas.'});
+      else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
       else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
         if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
         else whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
@@ -530,5 +545,5 @@
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
 })(globalThis);

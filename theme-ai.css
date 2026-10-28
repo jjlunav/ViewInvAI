@@ -2521,3 +2521,10 @@ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5):not(#s6):not(#s
  html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5):not(#s6):not(#s7) #view-portfolios .portfolio-asset-switch>button{padding:0 4px!important}
  html:root:root body #view-portfolios .portfolio-fav-label{display:none!important}
 }
+/* Objetivo: los botones de cada recomendación, pequeños y en una fila (el aviso de cotización va encima). */
+.goal2-action-buttons>.portfolio-goal-execution-blocked{flex-basis:100%;margin:0!important}
+html body #view-portfolios .goal2-action-buttons :is(.goal2-decide,.portfolio-goal-register),
+html[data-native-app="1"] body #view-portfolios .goal2-action-buttons :is(.goal2-decide,.portfolio-goal-register){
+ display:inline-flex!important;align-items:center!important;width:auto!important;margin:0!important;height:30px!important;min-height:30px!important;
+ padding:0 12px!important;font-size:12.5px!important;font-weight:650!important;line-height:1!important;border-radius:999px!important;white-space:nowrap!important
+}

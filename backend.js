@@ -4556,6 +4556,16 @@ const TASK_MODELS={
   ollama:{decision:["gpt-oss:120b","gpt-oss:20b"],light:["gpt-oss:20b","gpt-oss:120b"]},
   githubmodels:{decision:["openai/gpt-4.1","openai/gpt-4o"],light:["openai/gpt-4o-mini","openai/gpt-4.1-mini"]}
 };
+// Motivo legible del fallo de una consulta a la IA a partir de los intentos de aiRoute («servicio:modelo:estado»).
+function aiFailReason(tried,only=null){
+  const rows=(Array.isArray(tried)?tried:[]).map(String).filter(t=>!only||t.startsWith(only+":"));
+  const why=t=>{const m=t.match(/:(\d{3})$/),st=m?Number(m[1]):0,id=t.split(":")[0],label=(PROVIDERS.find(p=>p.id===id)||{}).label||id;
+    const txt=st===429?"límite de uso gratuito alcanzado":st===413?"consulta demasiado larga para su plan gratuito":st===401||st===403?"clave no válida o sin permiso":st===402?"sin saldo":
+      st>=500?"servicio caído o saturado":/abort|timeout|tardado/i.test(t)?"ha tardado demasiado":"sin respuesta";
+    return label+": "+txt};
+  const out=[...new Set(rows.map(why))];
+  return out.length?out.slice(0,4).join(" · "):"ningún servicio disponible";
+}
 async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null}){
   const tried=[],t=task==="light"?"light":"decision";
   // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
@@ -7234,14 +7244,22 @@ async function handleAiIntegration(request,env,user,json,parts,url){
         const system=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.",deep
           ?"Tienes abajo resultados REALES de búsqueda de esta semana: úsalos como fuente principal y sé concreto y prudente."
           :"No tienes búsqueda web: usa los datos actuales que aporta ViewInvAI y no afirmes haber verificado nada fuera de ellos; sé concreto y prudente.");
-        const run=await aiRoute(env,{prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false,pin:{provider:prov.id,model}});
+        const req={prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false};
+        // Si la IA elegida no responde, la consulta pasa sola a otra IA gratuita de la app (y se dice cuál y por qué).
+        let run,fallbackNote="";
+        try{run=await aiRoute(env,{...req,pin:{provider:prov.id,model}})}
+        catch(first){
+          run=await aiRoute(env,{...req,exclude:[prov.id]});
+          fallbackNote=prov.label+" no respondió ("+aiFailReason(first&&first.tried,prov.id)+"); ha respondido otra IA de la app. ";
+        }
         aiEnginesMemo.at=0;
         const parsed=aiParseAnswer(run.text);
-        parsed.summary=trimText(prov.label+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
-        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+prov.id,parsed,evidence.sources))],errors:[]},200,noStore);
+        const runLabel=(PROVIDERS.find(x=>x.id===run.provider)||{}).label||prov.label;
+        parsed.summary=trimText(fallbackNote+runLabel+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
+        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+run.provider,parsed,evidence.sources))],errors:[]},200,noStore);
       }catch(error){
         aiEnginesMemo.at=0;await refund();
-        return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:prov.label+" no ha podido responder ahora"+(model?" con "+model:"")+". Prueba con otra IA o con otro modelo."}]},200,noStore);
+        return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:"Ninguna IA de la app ha podido responder ahora ("+aiFailReason(error&&error.tried)+"). No se ha gastado el uso; inténtalo en unos minutos."}]},200,noStore);
       }
     }
     const today=nowIso().slice(0,10),wanted=aiProviderOf(body.provider);
@@ -8560,7 +8578,12 @@ async function scanPortfolioGoalNotifications(env,services){
       }
       if(incomplete){processed++;continue}
       const held=new Set([...enginePositions.map(p=>p.key),...lockedKeys]);
-      const candidates=radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true)).slice(0,40).map(r=>{
+      let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
+      if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
+      // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
+      // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
+      const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions});
+      const candidates=idle?[]:radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true)).slice(0,40).map(r=>{
         const stock=byKey.get(r.stock_key);if(!stock||!goalServerAllowed(stock,scope))return null;
         const priceEur=goalServerPriceEur(stock,preferTr,usdToEur,"BUY")??(finiteNumber(stock.price)!==null&&usdToEur!==null?finiteNumber(stock.price)*usdToEur:null);
         const ticker=String(stock.ticker||stock.trTicker||"").toUpperCase(),cat=goalServerCatalyst(snapshot,stock);
@@ -8574,23 +8597,21 @@ async function scanPortfolioGoalNotifications(env,services){
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
           extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact,catalystTitle:cat.title}:null;
       }).filter(Boolean);
-      let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
-      if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
       const noFrac=new Set(String(goal.no_fraction_tickers||"").split(",").filter(Boolean));
       for(const c of candidates)if(noFrac.has(String(c.marketTicker||"").toUpperCase())||noFrac.has(String(c.ticker||"").toUpperCase()))c.noFractions=true;
-      const scout=await goalWorkersScout(env,goal,candidates);
+      const scout=idle?{reviewed:false,map:new Map()}:await goalWorkersScout(env,goal,candidates);
       for(const c of candidates){
         const x=scout.map.get(c.ticker);
         if(x){c.aiScoutScore=x.score;c.aiScoutPhase=x.phase;c.aiScoutVerdict=x.verdict;c.aiScoutReason=x.reason}
       }
       // Ideas del analista IA (búsqueda web) y vigilancia de noticias de las posiciones abiertas.
-      const analyst=await goalAnalystIdeas(env);
+      const analyst=idle?{ideas:[]}:await goalAnalystIdeas(env);
       const ideaBy=new Map((analyst.ideas||[]).map(i=>[i.ticker,i]));
       for(const c of candidates){
         const idea=ideaBy.get(String(c.marketTicker||"").toUpperCase())||ideaBy.get(String(c.ticker||"").toUpperCase());
         if(idea){c.aiIdeaConfidence=idea.confidence;c.aiIdeaThesis=idea.thesis+(idea.catalyst?" · "+idea.catalyst:"");c.aiIdeaSources=idea.sources}
       }
-      const posNews=await goalWebReviewPositions(env,goal,enginePositions);
+      const posNews=idle?new Map():await goalWebReviewPositions(env,goal,enginePositions);
       for(const p of enginePositions){
         const v=posNews.get(String(p.ticker||"").toUpperCase());
         if(!v)continue;
