@@ -1674,10 +1674,10 @@ function goalActionHtml(a,ctx){
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};
-    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price??(ctx.preferTr?a.priceEur:null),fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason});
+    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price??portfolioConvertAmount(a.priceEur,"EUR",q.currency||(ctx.preferTr?"EUR":"USD"),ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }else if(a.type==="SELL"&&pos){
     const row=pos.row,q=goalExecutionQuote(row.stock,row.preferTr,"SELL",ctx.fx,row.p.broker,a.units);
-    button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??(row.preferTr?num(pos.bidEur)??num(pos.priceEur):null),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
+    button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
   if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Pulsa solo si tu bróker no deja comprar una parte de acción de este valor: el plan propondrá acciones enteras">Mi bróker no la fracciona</button></div>';
@@ -2900,7 +2900,7 @@ async function saveGoalDecisionForm(form){
     const pos=lastGoalCtx&&lastGoalCtx.positions.find(p=>String(p.positionId)===String(positionId));
     const row=pos&&pos.row;
     const q=row?goalExecutionQuote(row.stock,row.preferTr,"SELL",lastGoalCtx.fx,row.p.broker,pos.units):null;
-    const html=row&&q?goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:pos.units,price:q.price??(row.preferTr?num(pos.bidEur)??num(pos.priceEur):null),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason}):"";
+    const html=row&&q?goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:pos.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",lastGoalCtx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason}):"";
     const holder=document.createElement("div");holder.innerHTML=html;
     const btn=holder.querySelector("[data-register-goal-operation]");
     if(btn)openGoalOperationModal(btn);else toast("La venta se podrá registrar cuando haya cotización ejecutable.");
@@ -3015,6 +3015,8 @@ function openGoalOperationModal(button){
   const exchange=preferTr?(stock.trExchange||"LSX"):(stock.exchange||position?.exchange||"");
   const isin=preferTr?(stock.trIsin||stock.isin||position?.isin||""):(stock.usIsin||stock.isin||position?.isin||"");
   const feeInfo=brokerFeeInCurrency(broker,units,price,currency,side,exchange),fee=feeInfo.fee;
+  // Orden ya ejecutada con un bróker cuya comisión no sabemos calcular: la escribe el usuario (la de su extracto).
+  const manualFee=fee===null&&button.dataset.goalUnverified==="1";
   openModal((side==="BUY"?"Registrar estrategia de compra · ":"Registrar estrategia de venta · ")+ticker,
     '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-position-id="'+esc(position?.id||"")+'" data-broker="'+esc(broker)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
@@ -3027,19 +3029,20 @@ function openGoalOperationModal(button){
         '<label><span>Broker</span><input name="broker" value="'+esc(broker)+'" readonly></label>'+
         '<label><span>Divisa</span><input name="currency" value="'+esc(currency)+'" readonly></label>'+
       '</div>'+
-      '<label><span>Comisión automática</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(fee===null?"":String(fee))+'" readonly></label>'+
-      '<small class="broker-fee-hint'+(fee===null?' pending':'')+'" data-goal-fee-hint>'+(fee===null?'Comisión pendiente de verificación':'Comisión '+esc(formatMoney(fee,currency))+' · '+esc(feeInfo.label||broker))+'</small>'+
+      '<label><span>'+(manualFee?'Comisión de tu orden':'Comisión automática')+'</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(fee===null?"":String(fee))+'"'+(manualFee?' required':' readonly')+'></label>'+
+      '<small class="broker-fee-hint'+(fee===null?' pending':'')+'" data-goal-fee-hint>'+(manualFee?'Escribe la comisión que te cobró el bróker':fee===null?'Comisión pendiente de verificación':'Comisión '+esc(formatMoney(fee,currency))+' · '+esc(feeInfo.label||broker))+'</small>'+
       '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="'+localDateTimeValue()+'" required></label>'+
       '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
       (button.dataset.goalUnverified==="1"?'<p class="portfolio-form-note warn"><strong>Pon el precio real de tu orden.</strong> La app no pudo verificar una cotización ejecutable ahora; el precio de partida es solo de referencia.</p>':'')+
       '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si difiere del límite recomendado; la comisión y el efectivo se recalculan automáticamente.</p>'+
       '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
-      '<button type="submit" class="btn"'+(fee===null?' disabled':'')+'>＋ Registrar estrategia</button>'+
+      '<button type="submit" class="btn"'+(fee===null&&!manualFee?' disabled':'')+'>＋ Registrar estrategia</button>'+
     '</form>'
   );
   const form=$("#goalOperationForm");
   if(form){
     const refreshFee=()=>{
+      if(manualFee)return;
       const qty=Math.max(0,num(form.querySelector('[name="quantity"]')?.value)||0);
       const px=num(form.querySelector('[name="price"]')?.value);
       const info=brokerFeeInCurrency(broker,qty,px,currency,side,exchange);
