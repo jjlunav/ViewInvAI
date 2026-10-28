@@ -8823,6 +8823,10 @@ async function scanPortfolioGoalNotifications(env,services){
           if(finiteNumber(raw.changePct)!==null)c.dayChangePct=finiteNumber(raw.changePct);
           c.openFadePct=engine.openFadePct({market:preferTr?"tr":"us",marketStatus:raw.marketStatus,price:preferTr?(raw.last??raw.price):raw.price,open:raw.open});
         }
+        // Idea fijada sin cotización en vivo verificada ahora: no se guarda ni se avisa «Comprar» con el precio del
+        // paquete; queda como espera fijada hasta que haya precio real.
+        const committedKeys2=new Set(committed.map(c=>c.key));
+        for(const c of candidates)if(committedKeys2.has(c.key)&&targets.has(c.key)&&!c.quoteFresh)c.priceFallback=true;
         plan=engine.plan(input);
         Object.assign(plan,reviewMeta);
       }

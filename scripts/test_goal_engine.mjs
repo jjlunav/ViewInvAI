@@ -281,4 +281,36 @@ const input=candidates=>({
   assert.ok(!fresh.actions.some(x=>x.type==="BUY"),"a new idea is not published right before earnings");
 }
 
+// Idea fijada sin cotización real ahora (solo el último precio): no se compra, se ve como espera fijada y aun así
+// puede pasar a cambio de recomendación.
+{
+  const noQuote={...base,key:"NYSE:EAT",ticker:"EAT",priceFallback:true,quoteFresh:false};
+  let p=G.plan({...input([noQuote]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(!p.actions.some(x=>x.type==="BUY"),"no buy with only the last known price");
+  const w=p.waits.find(x=>x.key==="NYSE:EAT");
+  assert.ok(w&&w.committed&&/no hay cotización en vivo/.test(w.text),"the fixed idea stays visible waiting for a quote");
+  p=G.plan({...input([{...noQuote,earningsDays:0}]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(p.actions.some(x=>x.type==="CHANGE"&&x.key==="NYSE:EAT"),"earnings still turn it into a recommendation change");
+  p=G.plan({...input([{...noQuote,priceEur:5,askEur:5}]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(!p.actions.some(x=>x.type==="CHANGE"),"a stale last price never triggers the stop-based change");
+}
+
+// Un cambio de recomendación ya mostrado hoy se mantiene aunque la revisión actual no traiga sus datos.
+{
+  const fx={...base,key:"NYSE:EAT",ticker:"EAT",priceFallback:true,quoteFresh:false};
+  const p=G.plan({...input([fx]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120,changed:"rebaja de analistas hace 2 días"}]});
+  const ch=p.actions.find(x=>x.type==="CHANGE");
+  assert.ok(ch&&/rebaja/.test(ch.reason),"a persisted change stays a change for the day");
+  assert.ok(!p.waits.some(x=>x.key==="NYSE:EAT"),"it does not become an ordinary wait again");
+}
+// Modo defensivo: la idea fijada sigue visible como espera (no desaparece).
+{
+  const fx={...base,key:"NYSE:EAT",ticker:"EAT"};
+  const p=G.plan({...input([fx]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}],peakValueEur:5000,wasDefensive:true});
+  assert.equal(p.defensive,true,"fixture is in defensive mode");
+  const w=p.waits.find(x=>x.key==="NYSE:EAT");
+  assert.ok(w&&w.committed&&/modo defensivo/.test(w.text),"the fixed idea stays visible in defensive mode");
+  assert.ok(!p.actions.some(x=>x.type==="BUY"),"no buy in defensive mode");
+}
+
 console.log("Goal engine tests: OK");

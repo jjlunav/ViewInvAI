@@ -1551,7 +1551,7 @@ function goalRememberBuys(portfolioId,plan){
   const before=JSON.stringify(cur);
   for(const c of (plan&&plan.commitments)||[]){
     const old=cur.items.find(i=>i.key===c.key);
-    if(old){old.limited=!!(old.limited||c.limited);if(num(old.ticketEur)===null)old.ticketEur=num(c.ticketEur)}else cur.items.push({key:c.key,priceEur:num(c.priceEur),at:c.at||new Date().toISOString(),ticker:c.ticker||"",name:c.name||"",limited:!!c.limited,ticketEur:num(c.ticketEur)});
+    if(old){old.limited=!!(old.limited||c.limited);if(num(old.ticketEur)===null)old.ticketEur=num(c.ticketEur);if(c.changed&&!old.changed)old.changed=String(c.changed)}else cur.items.push({key:c.key,priceEur:num(c.priceEur),at:c.at||new Date().toISOString(),ticker:c.ticker||"",name:c.name||"",limited:!!c.limited,ticketEur:num(c.ticketEur),changed:String(c.changed||"")});
   }
   cur.consumed=[...new Set([...(cur.consumed||[]),...((plan&&plan.consumedCommitments)||[]).map(c=>String(c.key))])];
   cur.items=cur.items.filter(i=>!cur.consumed.includes(i.key));
@@ -1570,7 +1570,8 @@ function goalTodayCommitments(portfolioId,goal){
     // Se conserva la primera vez que se vio la idea (su precio y su hora marcan el límite de persecución).
     if(!old){out.set(c.key,c);return}
     const first=String(c.at||"")&&String(c.at||"")<String(old.at||"")?c:old,other=first===c?old:c;
-    out.set(c.key,{...other,...first,limited:!!(old.limited||c.limited),ticketEur:num(first.ticketEur)??num(other.ticketEur),reviewVerdict:old.reviewVerdict||c.reviewVerdict||"",facts:old.facts||c.facts||null,pros:(old.pros||[]).length?old.pros:(c.pros||[]),cons:(old.cons||[]).length?old.cons:(c.cons||[])});
+    // Un cambio de recomendación ya mostrado (en el servidor o aquí) se conserva el resto del día.
+    out.set(c.key,{...other,...first,limited:!!(old.limited||c.limited),changed:String(old.changed||c.changed||""),ticketEur:num(first.ticketEur)??num(other.ticketEur),reviewVerdict:old.reviewVerdict||c.reviewVerdict||"",facts:old.facts||c.facts||null,pros:(old.pros||[]).length?old.pros:(c.pros||[]),cons:(old.cons||[]).length?old.cons:(c.cons||[])});
   };
   const consumed=new Set(entry&&entry.day===day?entry.consumed||[]:[]);
   try{
@@ -1580,7 +1581,7 @@ function goalTodayCommitments(portfolioId,goal){
       const detail=new Map([...(plan.actions||[]).filter(x=>x&&x.type==="BUY"),...(plan.waits||[]).filter(x=>x&&x.committed)].map(a=>[String(a.key),a]));
       const base=Array.isArray(plan.commitments)?plan.commitments:[...detail.values()].map(a=>({key:String(a.key),priceEur:num(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at,limited:a.type==="WAIT"}));
       for(const c of base){const a=detail.get(String(c.key))||{};
-        put({key:String(c.key),priceEur:num(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticketEur:num(c.ticketEur),ticker:c.ticker||a.ticker||"",name:c.name||a.name||"",score:num(a.burstScore),
+        put({key:String(c.key),priceEur:num(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticketEur:num(c.ticketEur),changed:String(c.changed||""),ticker:c.ticker||a.ticker||"",name:c.name||a.name||"",score:num(a.burstScore),
           reviewVerdict:a.aiVerdict||"",facts:a.facts||null,pros:a.pros||[],cons:a.cons||[]})}
     }
   }catch(_){}
@@ -1658,21 +1659,31 @@ function goalEngineInput(metrics,positionRows){
   // Sin efectivo invertible y todo en «mantener»: no se preparan candidatas ni se piden ideas a la IA.
   const G0=window.ViewInvAIGoal,idle=!!(G0&&G0.isIdle&&G0.isIdle({config:{investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur)},cashEur:num(metrics.cashEur)||0,positions}));
   // Las ideas fijadas hoy siempre se evalúan, aunque hayan salido de las primeras del Radar.
-  const committed=goalTodayCommitments(metrics.portfolio&&metrics.portfolio.id,goal),inRadar=new Set(radar.map(r=>goalStockKey(r.s)));
-  const fixedRows=committed.filter(c=>!inRadar.has(c.key)).map(c=>{const s=stockByKey(c.key);return s?{s,score:c.score??60,quality:70,tier:"watch",speculative:false}:null}).filter(Boolean);
-  const candidates=idle?[]:[...radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40),...fixedRows.filter(r=>!held.has(goalStockKey(r.s)))].map(r=>{
+  // Solo cuentan como «ya incluidas» las fijadas que entran en las 40 primeras del Radar; las demás se añaden aparte.
+  const committed=goalTodayCommitments(metrics.portfolio&&metrics.portfolio.id,goal),topRadar=radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40);
+  const inTop=new Set(topRadar.map(r=>goalStockKey(r.s)));
+  const fixedRows=committed.filter(c=>!inTop.has(c.key)).map(c=>{const hit=radarByKey.get(c.key);if(hit)return hit;const s=stockByKey(c.key);return s?{s,score:c.score??60,quality:70,tier:"watch",speculative:false}:null}).filter(Boolean);
+  const candidates=idle?[]:[...topRadar,...fixedRows.filter(r=>!held.has(goalStockKey(r.s)))].map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
     const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
     // Valor de EE. UU. en LSX con LSX retrasado: se decide con la cotización regular de EE. UU. (en €) y su variación.
     const us=q.usRef,useUs=!!(us&&us.live&&us.eur!==null&&(q.ageMs===null||q.ageMs>120000));
     let priceEur=useUs?us.eur:q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
+    // Idea fijada sin cotización ahora: se sigue evaluando con el último precio conocido (marcado como tal) para que
+    // pueda pasar a «cambio de recomendación» o quedar en «esperar cotización»; nunca se propone comprar con él.
+    let priceFallback=false;
+    if(!(priceEur>0)){
+      const cm=committed.find(c=>c.key===goalStockKey(r.s)),fx=num(metrics.fxUsdEur);
+      const last=String(r.s.currency||"").toUpperCase()==="USD"&&num(r.s.price)>0&&fx>0?num(r.s.price)*fx:String(r.s.currency||"").toUpperCase()==="EUR"?num(r.s.price):null;
+      if(cm&&(last>0||num(cm.priceEur)>0)){priceEur=last>0?last:num(cm.priceEur);priceFallback=true}
+    }
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
     const G=window.ViewInvAIGoal;
     const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
-    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
+    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:priceFallback?false:q.quoteRecent===true,priceFallback,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),...goalEarningsIn(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",
