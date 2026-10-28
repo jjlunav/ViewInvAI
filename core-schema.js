@@ -1,7 +1,7 @@
 // Prepare core account schema in a dedicated invocation, one bounded step at a
 // time. Existing request-time upgrades remain available until readiness is proven.
 const keys=new WeakMap(),memo=new WeakMap(),initialized=new WeakSet();
-export const CORE_SCHEMA_CRON='* * * * 0-6';
+export const CORE_SCHEMA_CRON='* * * * 1-7';
 async function schemaKey(steps){
  if(!keys.has(steps))keys.set(steps,crypto.subtle.digest('SHA-256',new TextEncoder().encode(steps.map(([name,fn,dependencies=''])=>name+':'+fn.toString()+':'+dependencies).join('\n'))).then(hash=>'core-v1-'+Array.from(new Uint8Array(hash)).map(n=>n.toString(16).padStart(2,'0')).join('').slice(0,24)));
  return keys.get(steps);
