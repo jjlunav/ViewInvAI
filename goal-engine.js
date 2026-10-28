@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.07-g5-spec-modes';
+  const VERSION='2026.10.28-g6-no-cash-progress';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -218,7 +218,9 @@
     // Mi cripto (si el objetivo la incluye) cuenta en el progreso y el ritmo, pero no en el tamaño
     // de las compras ni en el modo defensivo: la volatilidad de la cripto no debe mover el plan de acciones.
     const extraValue=Math.max(0,n(input.extraValueEur)||0);
-    const pc=pace(cfg,valueEur+extraValue,input.nowMs);
+    // El efectivo sin invertir no cuenta como avance hacia el objetivo: solo lo invertido (y Mi cripto).
+    const goalValue=valueEur-cash+extraValue;
+    const pc=pace(cfg,goalValue,input.nowMs);
     // Ir retrasado NO autoriza a comprar señales peores ni a sobredimensionar: eso aumenta
     // la probabilidad de alejarse aún más del objetivo. Solo reducimos algo el riesgo si vamos adelantados.
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
@@ -510,7 +512,7 @@
       ...waits,
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
-    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 

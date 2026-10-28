@@ -5293,9 +5293,16 @@ async function ensurePortfolioGoalSchema(env){
     ["no_fraction_tickers","ALTER TABLE portfolio_goals ADD COLUMN no_fraction_tickers TEXT NOT NULL DEFAULT ''"],
     ["invest_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN invest_reserve_eur REAL"],
     // Mi cripto cuenta en el progreso y el ritmo del objetivo (no en el tamaño de las compras de acciones).
-    ["include_crypto","ALTER TABLE portfolio_goals ADD COLUMN include_crypto INTEGER NOT NULL DEFAULT 0"]
+    ["include_crypto","ALTER TABLE portfolio_goals ADD COLUMN include_crypto INTEGER NOT NULL DEFAULT 0"],
+    // 1 = el punto de partida del ritmo se midió sin el efectivo (los anteriores lo incluían y se rehacen).
+    ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"]
   ]){
-    if(!goalColumnNames.has(name))await env.DB.prepare(sql).run();
+    if(!goalColumnNames.has(name)){
+      await env.DB.prepare(sql).run();
+      // Una sola vez: los puntos de partida antiguos incluían el efectivo; se borran y el ritmo empieza de nuevo
+      // con el valor invertido (lo rellena la siguiente revisión del objetivo o el siguiente guardado).
+      if(name==="pace_basis")await env.DB.prepare("UPDATE portfolio_goals SET start_value_eur=NULL,start_date=NULL,pace_basis=1").run();
+    }
   }
   try{
     const legacy=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_portfolio_goals'").first();
@@ -5314,7 +5321,7 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
@@ -5342,7 +5349,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
     if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
     const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
     const existing=await env.DB.prepare(
-      "SELECT portfolio_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
+      "SELECT portfolio_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto,pace_basis FROM portfolio_goals WHERE portfolio_id=? AND user_id=?"
     ).bind(portfolioId,user.id).first();
     const rawDate=body.targetDate!==undefined?trimText(body.targetDate,10):(existing&&existing.target_date||"");
     let targetDate=rawDate||null;
@@ -5385,14 +5392,14 @@ async function handlePortfolioGoal(request,env,user,json,url){
     const noFractionTickers=[...noFrac].slice(-100).join(",");
     const includeCrypto=body.includeCrypto!==undefined?(body.includeCrypto===true?1:0):(existing&&Number(existing.include_crypto)===1?1:0);
     // El ritmo se mide desde que se fija (o cambia) el objetivo, su fecha o lo que cuenta en el valor.
-    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto;
+    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto||Number(existing.pace_basis)!==1;
     const startValue=restart?finiteNumber(body.currentValueEur):finiteNumber(existing.start_value_eur);
     const startDate=restart?now:existing.start_date;
     await env.DB.prepare(
-      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "+
+      "INSERT INTO portfolio_goals (portfolio_id,user_id,target_value_eur,target_date,monthly_contribution_eur,risk_profile,max_positions,allow_spec,start_value_eur,start_date,invest_cap_eur,invest_cap_pct,invest_reserve_eur,allow_fractions,no_fraction_tickers,include_crypto,pace_basis,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) "+
       "ON CONFLICT(portfolio_id) DO UPDATE SET target_value_eur=excluded.target_value_eur,target_date=excluded.target_date,monthly_contribution_eur=excluded.monthly_contribution_eur,risk_profile=excluded.risk_profile,"+
       "max_positions=excluded.max_positions,allow_spec=excluded.allow_spec,start_value_eur=excluded.start_value_eur,start_date=excluded.start_date,"+
-      "invest_cap_eur=excluded.invest_cap_eur,invest_cap_pct=excluded.invest_cap_pct,invest_reserve_eur=excluded.invest_reserve_eur,allow_fractions=excluded.allow_fractions,no_fraction_tickers=excluded.no_fraction_tickers,include_crypto=excluded.include_crypto,updated_at=excluded.updated_at"
+      "invest_cap_eur=excluded.invest_cap_eur,invest_cap_pct=excluded.invest_cap_pct,invest_reserve_eur=excluded.invest_reserve_eur,allow_fractions=excluded.allow_fractions,no_fraction_tickers=excluded.no_fraction_tickers,include_crypto=excluded.include_crypto,pace_basis=1,updated_at=excluded.updated_at"
     ).bind(portfolioId,user.id,target,targetDate,monthlyContribution,riskProfile,maxPositions,allowSpec,startValue!==null&&startValue>0?Math.round(startValue*100)/100:null,startDate,investCapEur,investCapPct,investReserveEur,allowFractions,noFractionTickers,includeCrypto,now,now).run();
     const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
     return json({goal:await goalWithPositionState(env,user.id,goal)},existing?200:201);
@@ -8426,15 +8433,17 @@ function goalPaceText(pc){
 // Valor de Mi cripto por usuario (precio de consenso). Sin cotización de alguna moneda no se suma
 // nada: un valor incompleto haría parecer que el objetivo va peor de lo que va.
 async function goalCryptoValues(env,services,userIds){
-  const out=new Map(),ids=[...new Set(userIds)].slice(0,40);
-  if(!ids.length||!services.loadCryptoQuotes)return out;
+  // out.broken: usuarios cuya cripto no se pudo valorar entera (no es lo mismo que no tener cripto).
+  const all=[...new Set(userIds)],out=new Map(),ids=all.slice(0,40);out.broken=new Set(all.slice(40));
+  if(!ids.length)return out;
+  if(!services.loadCryptoQuotes){out.broken=new Set(all);return out}
   let rows=[];
   try{rows=(await env.DB.prepare("SELECT user_id,symbol,units FROM crypto_positions WHERE units>0 AND user_id IN ("+ids.map(()=>"?").join(",")+")").bind(...ids).all()).results||[]}
-  catch(_){return out}
+  catch(_){out.broken=new Set(all);return out}
   if(!rows.length)return out;
   let quotes={};
-  try{quotes=(await services.loadCryptoQuotes([...new Set(rows.map(r=>r.symbol))])).quotes||{}}catch(_){return out}
-  const broken=new Set();
+  try{quotes=(await services.loadCryptoQuotes([...new Set(rows.map(r=>r.symbol))])).quotes||{}}catch(_){out.broken=new Set(rows.map(r=>r.user_id));return out}
+  const broken=out.broken;
   for(const r of rows){
     const price=finiteNumber(quotes[r.symbol]&&quotes[r.symbol].price);
     if(!(price>0)){broken.add(r.user_id);continue}
@@ -8449,7 +8458,7 @@ async function scanPortfolioGoalNotifications(env,services){
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -8580,7 +8589,7 @@ async function scanPortfolioGoalNotifications(env,services){
         if(v.verdict==="contradice"){p.aiVerdict="contradice";p.aiNewsReason=v.reason||"noticia desfavorable"}
         else if(!p.aiVerdict)p.aiVerdict=v.verdict;
       }
-      const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
+      const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:finiteNumber(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
@@ -8627,8 +8636,10 @@ async function scanPortfolioGoalNotifications(env,services){
       const goalStateChanged=(nextPeak!==oldPeak)||nextDefensive!==Number(goal.defensive)||
         goal.start_value_eur===null||goal.start_value_eur===undefined||!goal.start_date;
       if(goalStateChanged){
+        // Punto de partida sin efectivo; si el objetivo incluye Mi cripto y falta su valoración, se espera a tenerla.
+        const startReady=Number(goal.include_crypto)!==1||!(cryptoByUser.broken&&cryptoByUser.broken.has(goal.user_id));
         await env.DB.prepare("UPDATE portfolio_goals SET peak_value_eur=?,defensive=?,start_value_eur=COALESCE(start_value_eur,?),start_date=COALESCE(start_date,?) WHERE portfolio_id=? AND user_id=?")
-          .bind(nextPeak,nextDefensive,plan.valueEur,now,goal.portfolio_id,goal.user_id).run();
+          .bind(nextPeak,nextDefensive,startReady?plan.goalValueEur:null,startReady?now:null,goal.portfolio_id,goal.user_id).run();
         automaticWrites++;
       }
       for(const p of enginePositions){

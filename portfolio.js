@@ -1043,8 +1043,8 @@ function portfolioGoalMetrics(){
   const portfolio=selectedPortfolio();
   if(!portfolio)return{portfolio:null,rows:[],currentValue:null,totalPnl:null,target:null,remaining:null,progress:0,goalPressure:0,requiredMultiple:null,requiredReturnPct:null,marketScope:"auto"};
   const fxUsdEur=portfolioUsdToEurRate(),positions=portfolioPositions(portfolio.id),rows=positions.map(p=>portfolioGoalPositionSnapshot(p,fxUsdEur)).filter(Boolean);
-  let investedValue=0,openPnl=0,currentComplete=true,pnlComplete=true;
-  for(const row of rows){if(row.valueEur===null)currentComplete=false;else investedValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
+  let investedValue=0,openPnl=0,currentComplete=true,pnlComplete=true,investedComplete=true;
+  for(const row of rows){if(row.valueEur===null)currentComplete=investedComplete=false;else investedValue+=row.valueEur;if(row.pnlEur===null)pnlComplete=false;else openPnl+=row.pnlEur}
   const cashEur=portfolioCashEur(portfolio,fxUsdEur);
   if(cashEur===null)currentComplete=false;
   let realizedPnl=0,realizedKnown=true;
@@ -1056,16 +1056,17 @@ function portfolioGoalMetrics(){
     }
   }
   const totalPnl=pnlComplete&&realizedKnown?openPnl+realizedPnl:null,goalConfig=portfolioGoalConfig(),target=goalConfig.target,capital=currentComplete?investedValue+(cashEur||0):null;
-  // Mi cripto, si el objetivo la incluye, suma al progreso hacia la meta (no al capital de las compras de acciones).
+  // El progreso hacia la meta cuenta solo lo invertido: el efectivo sin invertir no es avance (sí es capital
+  // para las compras). Mi cripto, si el objetivo la incluye, suma al progreso (no al capital de las compras).
   const includeCrypto=goalIncludesCrypto(),cryptoEur=includeCrypto?goalCryptoValueEur():null;
-  const goalValue=capital!==null?capital+(cryptoEur||0):null;
+  const goalValue=investedComplete?investedValue+(cryptoEur||0):null;
   const remaining=target!==null&&goalValue!==null?target-goalValue:null;
   const progress=target&&goalValue!==null?Math.max(0,Math.min(100,goalValue/target*100)):0;
   const requiredMultiple=target!==null&&goalValue!==null&&goalValue>0?target/goalValue:null;
   const requiredReturnPct=requiredMultiple!==null?(requiredMultiple-1)*100:null;
   const goalPressure=remaining!==null&&remaining>0&&capital>0?Math.max(0,Math.min(1,remaining/capital)):0;
   const riskBand=portfolioGoalRiskBand(goalConfig.riskProfile);
-  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,investedValue:currentComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
+  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
 function coachPriceLevels(stock,preferTr,score,entryPrice=null,riskBand=null){
@@ -1404,7 +1405,7 @@ function buildGoalHistorySnapshot(metrics,positionRows,candidates,rotationRows,r
   const plan={
     portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,
     riskProfile:metrics.goalConfig&&metrics.goalConfig.riskProfile||"aggressive",
-    currentValueEur:goalHistoryRound(metrics.currentValue,2),targetEur:goalHistoryRound(metrics.target,2),
+    currentValueEur:goalHistoryRound(metrics.goalValue,2),targetEur:goalHistoryRound(metrics.target,2),
     cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),
     sells,buys,residualEur:goalHistoryRound(residual,2)
   };
@@ -1575,7 +1576,7 @@ function goalEngineInput(metrics,positionRows){
       ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
   }).filter(Boolean);
   refreshGoalIdeas();
-  return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:goal.start_date||goal.created_at,
+  return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
@@ -1634,10 +1635,13 @@ function goalPaceHtml(pc,metrics){
   const cls={reached:"ok",ahead:"ok",on:"ok",behind:"warn",overdue:"bad",nodate:""}[pc.status]||"";
   const bits=[];
   if(pc.daysLeft!==null&&pc.daysLeft!==undefined&&pc.status!=="reached")bits.push(pc.daysLeft+" días");
-  if(pc.requiredMonthlyPct!==null&&pc.requiredMonthlyPct!==undefined&&pc.status!=="reached")bits.push("hace falta "+formatNumber(pc.requiredMonthlyPct,1)+" % al mes");
+  // Con más del 100 % al mes la cifra mensual deja de ser legible: se muestra cuántas veces hay que multiplicar lo invertido.
+  const mult=num(metrics.goalValue)>0&&num(metrics.target)>0?metrics.target/metrics.goalValue:null;
+  if(pc.requiredMonthlyPct!==null&&pc.requiredMonthlyPct!==undefined&&pc.status!=="reached")bits.push(pc.requiredMonthlyPct>100&&mult!==null&&pc.daysLeft?"hace falta multiplicar ×"+formatNumber(mult,1)+" lo invertido":"hace falta "+formatNumber(pc.requiredMonthlyPct,1)+" % al mes");
   if(pc.expectedEur!==null&&pc.expectedEur!==undefined&&pc.status!=="reached")bits.push("hoy deberías ir por "+formatMoney(pc.expectedEur,"EUR"));
   const progress=Math.max(0,Math.min(100,num(metrics.progress)||0));
   const shown=metrics.goalValue??metrics.currentValue;
+  if(num(metrics.cashEur)>0)bits.unshift("sin contar el efectivo ("+formatMoney(metrics.cashEur,"EUR")+")");
   if(metrics.includeCrypto)bits.unshift(metrics.cryptoEur===null?"Mi cripto: esperando cotización":"incluye Mi cripto ("+formatMoney(metrics.cryptoEur,"EUR")+")");
   return '<div class="goal2-progress"><div class="goal2-progress-head"><strong>'+formatMoney(shown,"EUR")+'</strong><span>→ '+formatMoney(metrics.target,"EUR")+'</span>'+
     (label?'<b class="goal2-pace goal2-pace-'+cls+'">'+esc(label)+'</b>':'')+'</div>'+
@@ -1693,7 +1697,7 @@ function goalPlanHistorySnapshot(metrics,plan){
   const all=[...plan.actions,...(plan.waits||[])];
   const summary=all.length?all.map(a=>a.text).join(" "):"Sin cambios";
   return{portfolioId:portfolio.id,signature:JSON.stringify(all.map(a=>[a.type,a.ticker,a.fractional?"frac":(a.units||a.stopEur||a.limitPriceEur||a.decision)])),summary,
-    plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.currentValue,2),
+    plan:{portfolioId:portfolio.id,portfolioName:portfolio.name,marketScope:metrics.marketScope,riskProfile:plan.band&&plan.band.risk,currentValueEur:goalHistoryRound(metrics.goalValue,2),
       targetEur:goalHistoryRound(metrics.target,2),cashEur:goalHistoryRound(metrics.cashEur,2),remainingEur:goalHistoryRound(metrics.remaining,2),sells,buys,waits,residualEur:goalHistoryRound(plan.cashLeftEur,2)}};
 }
 // El usuario indica que su bróker no permite fracciones de un valor: se guarda en el objetivo y se recalcula.
@@ -1776,7 +1780,7 @@ let goalWizard=null;
 function goalWizardSteps(){return["target","date","risk","positions","capital","spec","summary"]}
 function openGoalWizard(){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;if(!portfolio)return;
-  const goal=selectedPortfolioGoal()||state.goal||{},stockCur=num(metrics.currentValue),cryptoNow=goalCryptoValueEur(),includeCrypto=goalIncludesCrypto(goal);
+  const goal=selectedPortfolioGoal()||state.goal||{},stockCur=num(metrics.investedValue),cryptoNow=goalCryptoValueEur(),includeCrypto=goalIncludesCrypto(goal);
   const cur=stockCur!==null&&includeCrypto?stockCur+(cryptoNow||0):stockCur;
   const in6=new Date(Date.now()+182*86400000).toISOString().slice(0,10);
   goalWizard={step:0,portfolioId:portfolio.id,name:portfolio.name,current:cur,
@@ -1801,11 +1805,11 @@ function goalWizardStepHtml(id){
   if(id==="target"){
     const quick=cur?[1.25,1.5,2].map(f=>Math.round(cur*f)):[];
     const hasCrypto=num(w.cryptoEur)>0||v.crypto===1;
-    return '<h2>¿A cuánto quieres llevar «'+esc(w.name)+'»?</h2><p>Hoy vale '+(cur!==null?formatMoney(cur,"EUR"):"—")+(v.crypto===1?' (incluida Mi cripto)':'')+'. Indica el valor total que quieres alcanzar.</p>'+
+    return '<h2>¿A cuánto quieres llevar «'+esc(w.name)+'»?</h2><p>Hoy tienes invertido '+(cur!==null?formatMoney(cur,"EUR"):"—")+(v.crypto===1?' (incluida Mi cripto)':'')+'. Indica el valor invertido que quieres alcanzar: el efectivo sin invertir no cuenta como avance.</p>'+
       '<label class="goal-wizard-input"><input type="number" min="1" step="1" inputmode="decimal" data-gw-input="target" value="'+esc(v.target??"")+'"><b>€</b></label>'+
       (quick.length?'<div class="goal-wizard-chips">'+quick.map(q=>'<button type="button" class="goal-wizard-chip" data-gw-set="target" data-gw-value="'+q+'">'+formatMoney(q,"EUR")+' <small>(+'+Math.round((q/cur-1)*100)+' %)</small></button>').join('')+'</div>':'')+
       (hasCrypto?'<h3>¿Cuenta Mi cripto?</h3><div class="goal-wizard-choices">'+
-        goalWizardChoice("crypto","0","Solo esta cartera","El objetivo mide acciones y efectivo de «"+w.name+"».",v.crypto!==1)+
+        goalWizardChoice("crypto","0","Solo esta cartera","El objetivo mide lo invertido en acciones de «"+w.name+"».",v.crypto!==1)+
         goalWizardChoice("crypto","1","Sumar también Mi cripto",(num(w.cryptoEur)!==null?"Hoy "+formatMoney(w.cryptoEur,"EUR")+". ":"")+"Cuenta en el progreso y el ritmo; el plan de acciones no la compra ni la vende y no cambia el tamaño de sus compras.",v.crypto===1)+'</div>':'');
   }
   if(id==="date"){
