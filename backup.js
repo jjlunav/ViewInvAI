@@ -34,6 +34,20 @@
   let b;
   try{b=JSON.parse(await file.text())}catch(_){status('El archivo no es una copia válida.',true);return}
   if(!b||b.app!=='ViewInvAI'||b.kind!=='backup'){status('El archivo no es una copia de ViewInvAI.',true);return}
+  if(b.version===2){
+   if(!confirm('Restaurar la copia completa del '+new Date(b.exportedAt).toLocaleDateString('es-ES')+'? Los registros existentes se conservan.'))return;
+   try{
+    status('Restaurando la copia completa…');
+    const r=await api('/api/backup',{method:'POST',body:JSON.stringify(b)});
+    if(Array.isArray(b.deviceFavorites))window.ViewInvAI?.mergeFavoriteKeys?.(b.deviceFavorites);
+    await window.ViewInvAIPortfolios?.reload?.();
+    window.ViewInvAITax?._invalidate?.();
+    window.dispatchEvent(new CustomEvent('viewinvai:fund-portfolios-changed'));
+    window.dispatchEvent(new CustomEvent('viewinvai:favorite-lists-changed'));
+    status('Copia restaurada: '+r.restored+' registros recuperados y '+r.skipped+' ya existentes.');
+   }catch(e){status(esc(e.message||'No se pudo restaurar la copia.'),true)}
+   return;
+  }
   const txs=(b.transactions||[]).filter(t=>t.origin!=='position-adjustment');
   const adjustments=(b.transactions||[]).length-txs.length;
   if(!confirm('Restaurar '+(b.portfolios||[]).length+' carteras, '+txs.length+' operaciones y '+(b.dividends||[]).length+' dividendos de la copia del '+new Date(b.exportedAt).toLocaleDateString('es-ES')+'? Lo que ya tengas se mantiene.'))return;

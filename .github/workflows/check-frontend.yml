@@ -398,7 +398,7 @@ jobs:
           for required in ("goalExecutionQuote", "spreadPenalty", "portfolioOperationFee", "data-register-goal-operation", "goalOperationForm"):
               if required not in portfolio:
                   raise SystemExit("Falta disciplina operativa en Objetivo IA: " + required)
-          for required in ("cash_delta", "cash_currency", "adjustPortfolioCashForTransaction", "brokerFeeForTrade", "Trade Republic"):
+          for required in ("cash_delta", "cash_currency", "cashChange", "financialBatch", "brokerFeeForTrade", "Trade Republic"):
               if required not in backend:
                   raise SystemExit("El efectivo automático o la comisión TR no están protegidos: " + required)
           for required in ("profileCompanyIdentityHtml", "profileCompanySummary", "ISIN", "data-profile-edit-position"):

@@ -43,3 +43,7 @@ credentials.*
 data/market-catalog-delta.json
 __pycache__/
 .quant-cache/
+
+# Packaged frontend is rebuilt by the Android workflow
+mobile-shell/*
+!mobile-shell/index.html

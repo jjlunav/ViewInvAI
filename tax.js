@@ -13,6 +13,11 @@
  const tone=v=>!Number.isFinite(+v)||v===null||Math.abs(v)<0.005?'':v>0?'positive':'negative';
  const qty=v=>Number(v).toLocaleString('es-ES',{maximumFractionDigits:4});
  const day=d=>{const x=new Date(String(d).slice(0,10)+'T12:00:00Z');return isNaN(x)?'—':x.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})};
+ function twoMonthsAfter(value){
+  const d=new Date(value),day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+2);
+  d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));
+  d.setHours(0,0,0,0);d.setDate(d.getDate()+1);return d;
+ }
  const LIMIT_720=50000;
  const thisYear=new Date().getFullYear();
  let year=thisYear,cache={},loading=null;
@@ -76,14 +81,14 @@
 
  function beforeSellHtml(){
   if(year!==thisYear||typeof P().getPositionsDetail!=='function')return'';
-  const now=Date.now(),rows=P().getPositionsDetail().filter(p=>p.pnlEur!==null&&p.pnlEur<0&&p.lastBuyAt&&now-new Date(p.lastBuyAt).getTime()<61*864e5);
+  const now=Date.now(),rows=P().getPositionsDetail().filter(p=>p.pnlEur!==null&&p.pnlEur<0&&p.lastBuyAt&&now<twoMonthsAfter(p.lastBuyAt).getTime());
   if(!rows.length)return'';
   const item=p=>{
-   const free=new Date(new Date(p.lastBuyAt).getTime()+61*864e5);
-   return '<div class="tax-row" data-open-stock="'+esc(p.stockKey)+'" data-stock-prefer-tr="'+(p.preferTr?'1':'0')+'" role="button" tabindex="0"><div><b>'+esc(p.ticker)+'</b><small>'+esc(p.name)+'</small></div><div class="tax-row-num"><span class="negative">'+signed(p.pnlEur)+'</span><small>sin bloqueo desde '+esc(free.toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</small></div></div>';
+   const free=twoMonthsAfter(p.lastBuyAt);
+   return '<div class="tax-row" data-open-stock="'+esc(p.stockKey)+'" data-stock-prefer-tr="'+(p.preferTr?'1':'0')+'" role="button" tabindex="0"><div><b>'+esc(p.ticker)+'</b><small>'+esc(p.name)+'</small></div><div class="tax-row-num"><span class="negative">'+signed(p.pnlEur)+'</span><small>revisar desde '+esc(free.toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</small></div></div>';
   };
   return '<section class="tax-card tax-before-sell"><header><small>ANTES DE VENDER</small><h2>Regla de los dos meses</h2></header>'+
-   '<p class="tax-hint">Compraste estos valores hace menos de dos meses y ahora van en pérdidas. Si los vendes antes de la fecha indicada, esa pérdida no se podrá compensar este año.</p>'+
+   '<p class="tax-hint">Compraste estos valores hace menos de dos meses y ahora van en pérdidas. La fecha indica cuándo revisar la ventana de compras anteriores; el tratamiento depende de los títulos que conserves y de las recompras posteriores.</p>'+
    rows.map(item).join('')+'</section>';
  }
 

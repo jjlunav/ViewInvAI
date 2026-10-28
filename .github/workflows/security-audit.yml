@@ -38,8 +38,12 @@ jobs:
         run: python -m pip_audit -r requirements.txt --strict
       - name: CVEs de dependencias JavaScript
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
+      - name: Regresiones de seguridad, contabilidad y copias
+        run: |
+          npm run test:reliability
+          npm run test:worker
       - name: Historial de caídas bruscas (rebotes a 1/5/20 sesiones)
         run: node scripts/test-crash-scoreboard.mjs
       - name: Validar contabilidad determinista de carteras
