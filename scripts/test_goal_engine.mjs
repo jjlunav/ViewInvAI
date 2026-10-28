@@ -295,4 +295,22 @@ const input=candidates=>({
   assert.ok(!p.actions.some(x=>x.type==="CHANGE"),"a stale last price never triggers the stop-based change");
 }
 
+// Un cambio de recomendación ya mostrado hoy se mantiene aunque la revisión actual no traiga sus datos.
+{
+  const fx={...base,key:"NYSE:EAT",ticker:"EAT",priceFallback:true,quoteFresh:false};
+  const p=G.plan({...input([fx]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120,changed:"rebaja de analistas hace 2 días"}]});
+  const ch=p.actions.find(x=>x.type==="CHANGE");
+  assert.ok(ch&&/rebaja/.test(ch.reason),"a persisted change stays a change for the day");
+  assert.ok(!p.waits.some(x=>x.key==="NYSE:EAT"),"it does not become an ordinary wait again");
+}
+// Modo defensivo: la idea fijada sigue visible como espera (no desaparece).
+{
+  const fx={...base,key:"NYSE:EAT",ticker:"EAT"};
+  const p=G.plan({...input([fx]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}],peakValueEur:5000,wasDefensive:true});
+  assert.equal(p.defensive,true,"fixture is in defensive mode");
+  const w=p.waits.find(x=>x.key==="NYSE:EAT");
+  assert.ok(w&&w.committed&&/modo defensivo/.test(w.text),"the fixed idea stays visible in defensive mode");
+  assert.ok(!p.actions.some(x=>x.type==="BUY"),"no buy in defensive mode");
+}
+
 console.log("Goal engine tests: OK");
