@@ -1781,6 +1781,20 @@ function goalPositionLink(ctx,key,label){
   const p=key?ctx.positions.find(x=>x.key===key):null;
   return p&&label?{label,key:p.row.p.stock_key,preferTr:p.row.preferTr}:null;
 }
+// Etiqueta de una espera con su motivo concreto (la decisión interna sigue siendo «COMPRA LÍMITE» / «ESPERAR»).
+function goalWaitTag(a){
+  if(a.decision==="COMPRA LÍMITE")return num(a.limitPriceEur)!==null?"ENTRADA MÁX. "+formatMoney(a.limitPriceEur,"EUR"):"SOLO CON LÍMITE";
+  if(a.decision==="EN REVISIÓN")return"EN REVISIÓN";
+  const t=String((a.reasons||[]).join(" ")+" "+(a.text||""));
+  const ed=t.match(/presenta resultados (hoy|mañana|en \d+ días)/);
+  if(ed)return"RESULTADOS "+ed[1].toUpperCase();
+  if(/modo defensivo/i.test(t))return"MODO DEFENSIVO";
+  if(/no hay cotización en vivo|sin cotización/i.test(t))return"SIN PRECIO EN VIVO";
+  if(/IA tiene dudas/i.test(t))return"IA CON DUDAS";
+  if(/consenso de analistas|rebaja de analistas/i.test(t))return"ANALISTAS EN CONTRA";
+  if(/volatilidad|S&P 500|dato macro/i.test(t))return"MERCADO EN TENSIÓN";
+  return"ESPERAR ENTRADA";
+}
 function goalActionHtml(a,ctx){
   const cand=(a.type==="BUY"||a.type==="WAIT")?ctx.candidates.find(c=>c.key===a.key):null,pos=(a.type!=="BUY"&&a.type!=="WAIT")?ctx.positions.find(p=>p.key===a.key):null;
   const C=window.ViewInvAIContrast;
@@ -1789,7 +1803,7 @@ function goalActionHtml(a,ctx){
   const later=C&&C.tickerVerdict?C.tickerVerdict(a.ticker,a.key):null;
   const ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(commit&&commit.reviewVerdict?{verdict:commit.reviewVerdict}:later):"";
   const laterNote=commit&&later&&later.verdict&&later.verdict!==commit.reviewVerdict&&later.verdict!=="contradice"?'<small class="goal2-later-ai">Una consulta posterior a la IA dice «'+esc(later.verdict)+'»; no cambia la idea fijada (solo la retiraría si la contradice).</small>':'';
-  const tag={CHANGE:"CAMBIO DE RECOMENDACIÓN",BUY:"CUMPLE TUS REGLAS",WAIT:a.decision||"ESPERAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
+  const tag={CHANGE:"CAMBIO DE RECOMENDACIÓN",BUY:"CUMPLE TUS REGLAS",WAIT:goalWaitTag(a),SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};

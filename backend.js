@@ -8875,7 +8875,7 @@ async function scanPortfolioGoalNotifications(env,services){
         // Una idea fijada cuyo precio se ha escapado («no se persigue») no se avisa: no pide hacer nada.
         for(const a of fresh.filter(a=>a.type!=="WAIT"||(a.decision==="COMPRA LÍMITE"&&!a.committed)).slice(0,4)){
           const sev=a.type==="SELL"?"high":a.type==="BUY"?"high":"info";
-          const title=(a.type==="BUY"?"Comprar ahora":a.type==="WAIT"?(a.decision==="COMPRA LÍMITE"?"Orden límite opcional":"Esperar"):a.type==="SELL"?(a.reason==="stop"?"Stop alcanzado":"Vender"):"Subir stop")+" · "+goal.name;
+          const title=(a.type==="BUY"?"Comprar ahora":a.type==="WAIT"?(a.decision==="COMPRA LÍMITE"?"Entrada máx. (orden límite opcional)":"Esperar"):a.type==="SELL"?(a.reason==="stop"?"Stop alcanzado":"Vender"):"Subir stop")+" · "+goal.name;
           if(await pushGoal(goal,{title,message:trimText(a.text+(a.type==="BUY"&&plan.aiReviewed?" Contrastado con IA.":""),500),severity:sev,stockKey:a.key,ticker:a.ticker,preferTr:preferTr?1:0}))alerts++;
         }
       }
