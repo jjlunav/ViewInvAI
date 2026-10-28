@@ -18,7 +18,7 @@
     "test:cache": "node scripts/test-catalog-cache.mjs"
   },
   "dependencies": {
-    "@capacitor/android": "8.5.2",
+    "@capacitor/android": "8.5.3",
     "@capacitor/core": "8.5.2",
     "@capacitor/app": "^8.0.0",
     "jose": "6.2.12",
