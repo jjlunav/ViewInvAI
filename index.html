@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-app-version="0.7.29">
+<html lang="es" data-app-version="0.7.30">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -33,7 +33,7 @@
   <link rel="stylesheet" href="mobile-app.css?v=20261027a1">
   <link rel="stylesheet" href="ui-density.css?v=20261008b1">
   <link rel="stylesheet" href="asset-card.css?v=20261008b1">
-  <link rel="stylesheet" href="theme-ai.css?v=20261027m1">
+  <link rel="stylesheet" href="theme-ai.css?v=20261028a1">
   <link rel="stylesheet" href="theme-d.css?v=20261027j1">
   <script src="security.js?v=20261002f9"></script>
   <script src="sync-screen.js?v=20261002L1"></script>
@@ -277,7 +277,7 @@
         <button type="button" class="tab" role="tab" id="portfolioFundsTab" aria-selected="false" aria-controls="fundPortfolioApp" tabindex="-1" data-portfolio-asset="funds" title="Fondos y ETFs">Fondos</button>
         <button type="button" class="tab" role="tab" id="portfolioCryptoTab" aria-selected="false" aria-controls="portfolioCryptoApp" tabindex="-1" data-portfolio-asset="crypto" title="Criptoactivos">Cripto</button>
         <button type="button" class="tab" role="tab" id="portfolioGoalTab" aria-selected="false" aria-controls="portfolioGoalApp" tabindex="-1" data-portfolio-asset="goal">Objetivo</button>
-        <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span> Favoritos</button>
+        <button type="button" class="tab portfolio-fav-tab" role="tab" id="portfolioFavoritesTab" aria-selected="false" aria-controls="portfolioFavoritesApp" tabindex="-1" data-portfolio-asset="favorites" aria-label="Favoritos"><span aria-hidden="true">★</span><span class="portfolio-fav-label"> Favoritos</span></button>
       </div>
       <div id="portfolioApp" class="portfolio-app" role="tabpanel" aria-labelledby="portfolioStocksTab" data-portfolio-asset-panel="stocks">
         <div class="portfolio-empty-state">Inicia sesión con Google para sincronizar tus carteras y seguimiento.</div>
@@ -795,12 +795,12 @@
       <button type="button" class="mobile-nav-item" data-mobile-more="1" aria-expanded="false"><span>•••</span><small>Más</small></button>
     </nav>
 
-    <footer>ViewInvAI · v0.7.29 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
+    <footer>ViewInvAI · v0.7.30 · datos de mercado de proveedores externos · no ejecuta órdenes.</footer>
   </main>
 </div>
 <script src="market-session.js?v=20261001r7"></script>
 <script src="score-engine.js?v=20261024c1"></script>
-<script src="goal-engine.js?v=20261021d1"></script>
+<script src="goal-engine.js?v=20261028a1"></script>
 <script src="period.js?v=20261026i1"></script>
 <script src="app.js?v=20261027f1"></script>
 <script src="settings.js?v=20261026k1"></script>
@@ -842,6 +842,6 @@
 <script src="alerts.js?v=20261001r4"></script>
 <script src="stock-notifications.js?v=20261002s1"></script>
 <script type="module" src="auth.js?v=20261009n1"></script>
-<script type="module" src="portfolio.js?v=20261027j1"></script>
+<script type="module" src="portfolio.js?v=20261028a1"></script>
 </body>
 </html>

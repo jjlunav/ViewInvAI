@@ -2505,3 +2505,14 @@ html[data-native-app="1"] .crypto-import-actions{bottom:-10px;margin:10px -10px 
 /* App nativa: la ventana de cripto desplaza solo el cuerpo (cabecera y botón Guardar siempre a la vista). */
 html[data-native-app="1"] .app-modal.crypto-modal{display:flex!important;flex-direction:column!important;overflow:hidden!important}
 html[data-native-app="1"] .app-modal.crypto-modal>.app-modal-body{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important}
+/* Carteras: las pestañas toman el ancho de su texto (sin «Accio…» ni «Objeti…»); en móvil Favoritos queda solo como ★. */
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5):not(#s6):not(#s7) #view-portfolios .portfolio-asset-switch{
+ grid-auto-columns:auto!important;justify-content:stretch!important
+}
+html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5):not(#s6):not(#s7) #view-portfolios .portfolio-asset-switch>button{
+ text-overflow:clip!important;padding:0 8px!important
+}
+@media (max-width:560px){
+ html:root:root body:not(#s1):not(#s2):not(#s3):not(#s4):not(#s5):not(#s6):not(#s7) #view-portfolios .portfolio-asset-switch>button{padding:0 4px!important}
+ html:root:root body #view-portfolios .portfolio-fav-label{display:none!important}
+}
