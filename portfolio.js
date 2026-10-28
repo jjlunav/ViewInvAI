@@ -1465,8 +1465,9 @@ async function openGoalHistory(portfolioId){
 // ----- Objetivo «rápido» con el motor común (goal-engine.js): «Hoy toca» + progreso -----
 function goalStockKey(stock){return String(stock&&stock.tvSymbol||((stock&&stock.exchange||"")+":"+(stock&&stock.ticker||""))).toUpperCase()}
 function goalAtrPct(stock){const a=num(stock&&stock.atr),p=num(stock&&stock.price);return a!==null&&p>0?a/p*100:null}
-function goalAiOf(ticker){
-  const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker):null;
+// Mismo veredicto que la etiqueta «IA …» de la tarjeta (por ticker y, si se da, por clave del valor).
+function goalAiOf(ticker,key){
+  const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker,key):null;
   return v&&v.verdict||"";
 }
 // Motivo de la vigilancia de noticias (IA de la app + búsqueda web) cuando invalida una posición.
@@ -1588,7 +1589,7 @@ function goalEngineInput(metrics,positionRows){
     const openFadePct=q.quoteFresh===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
     return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteFresh===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
-      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
+      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),

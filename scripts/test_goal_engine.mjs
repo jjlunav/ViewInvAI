@@ -137,4 +137,11 @@ const input=candidates=>({
   assert.ok(buys(swap).includes("NASDAQ:NEW"),"a clearly better candidate still replaces the remembered one");
 }
 
+// IA con dudas: la idea no se compra; queda en ESPERAR.
+{
+  const p=G.plan(input([{...base,aiVerdict:"dudas"}]));
+  assert.equal(p.actions.filter(x=>x.type==="BUY").length,0,"an idea the AI doubts must not be bought");
+  assert.ok(p.waits.some(w=>w.key===base.key&&/dudas/.test(w.text)),"a doubted idea should stay visible as a wait");
+}
+
 console.log("Goal engine tests: OK");

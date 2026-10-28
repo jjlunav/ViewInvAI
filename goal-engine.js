@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g7-sticky-buys';
+  const VERSION='2026.10.28-g8-ai-doubts-wait';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -340,7 +340,9 @@
     // Primero la candidata con más rendimiento esperado (recorrido previsto ponderado por la oportunidad); el mismo
     // orden sirve para elegir a qué se cambia una posición y qué se compra con el efectivo.
     const edge=c=>(n(c.targetPct)||0)*rankOf(c)/100;
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
+    // Si una IA tiene dudas sobre la idea, no se compra ni se cambia a ella: queda en ESPERAR hasta que la revisión la respalde.
+    const doubted=c=>c.aiVerdict==='dudas';
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
       if(!(ask>0)||!(amount>0))return 0;
@@ -348,14 +350,15 @@
       return Math.floor(amount/ask);
     };
     if(!defensive){
-      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c))){
-        const isLimit=!stale(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
+      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c)||doubted(c))){
+        const isLimit=!stale(c)&&!doubted(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
         waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
           burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
           text:isLimit
             ?'Esperar '+label(c)+': oportunidad válida, pero no comprar por encima de '+money(c.limitPriceEur)+'. La entrada actual está demasiado extendida.'
             :stale(c)?'Esperar '+label(c)+': no hay cotización en vivo; antes de comprar hay que ver cómo cotiza ahora.'
+            :doubted(c)?'Esperar '+label(c)+': la IA tiene dudas sobre esta idea; no se compra hasta que una revisión la respalde.'
             :'Esperar '+label(c)+': '+((c.entryReasons||[]).join(', ')||'el punto de entrada no es suficientemente limpio')+'.'});
       }
     }
