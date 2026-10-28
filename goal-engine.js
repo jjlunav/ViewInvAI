@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g14-fixed-safe';
+  const VERSION='2026.10.28-g15-limit-clear';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -439,6 +439,14 @@
     };
     // Una idea fijada con solo el último precio conocido (priceFallback) espera; nunca se compra con ese precio.
     // Una cotización algo antigua en la app no la hace saltar; el servidor marca priceFallback si no la verifica en vivo.
+    // Otras opciones (informativas): las siguientes candidatas que pasan tus filtros, ordenadas por puntuación, con
+    // el motivo por el que hoy no se proponen. No son ideas publicadas ni llevan botón de compra.
+    const alternativesOf=exclude=>rankedCands.filter(c=>!exclude.has(String(c.key))&&!isCommitted(c)).sort((x,y)=>(n(y.burstScore)||0)-(n(x.burstScore)||0)||byPriority(x,y)).slice(0,5).map(c=>{
+      const g=gateOf(c);
+      const status=g&&g!=='review'?g:stale(c)?'sin cotización en vivo verificada':doubted(c)?'la IA tiene dudas':['late','avoid'].includes(c.burstPhase)?'el movimiento parece agotado':
+        c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null?'solo con orden límite ≤ '+money(c.limitPriceEur):!c.entryEligible?((c.entryReasons||[])[0]||'entrada poco limpia'):g==='review'?'pendiente de la revisión completa del servidor':'cumple tus reglas; pendiente de hueco o efectivo';
+      return{key:c.key,ticker:c.marketTicker||c.ticker,name:c.name,burstScore:r2(c.burstScore),targetPct:r2(c.targetPct),moveRangePct:n(c.moveRangePct),status};
+    });
     const buyable=c=>isCommitted(c)?chasePct(c)===null&&!c.priceFallback:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)&&!gateOf(c);
     const cands=shortlist.filter(buyable).sort((x,y)=>(isCommitted(y)?1:0)-(isCommitted(x)?1:0)||edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
@@ -461,7 +469,7 @@
           const ref=n(commits.get(String(c.key)).priceEur),lim=r2(ref*1.01);
           waits.push({type:'WAIT',decision:'COMPRA LÍMITE',key:c.key,ticker:c.ticker,name:c.name,limitPriceEur:lim,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
             burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:['precio alejado de la idea'],committed:true,committedPriceEur:ref,committedAt:String(commits.get(String(c.key)).at||''),
-            text:'Esperar '+label(c)+': el precio ha subido '+pct(chased)+' desde que se mostró la idea ('+money(ref)+'); no se persigue. Solo si vuelve a '+money(lim)+' o menos.'});
+            text:'Esperar '+label(c)+': el precio ha subido '+pct(chased)+' desde que se mostró la idea ('+money(ref)+'); no se persigue. Si quieres, deja en tu bróker una orden límite de compra a '+money(lim)+' como máximo (válida hoy); si no vuelve a ese precio, no se compra y no pasa nada.'});
           continue;
         }
         const gate=isCommitted(c)?null:gateOf(c);
@@ -476,7 +484,7 @@
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
           burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
           text:isLimit
-            ?'Esperar '+label(c)+': oportunidad válida, pero no comprar por encima de '+money(c.limitPriceEur)+'. La entrada actual está demasiado extendida.'
+            ?'Esperar '+label(c)+': oportunidad válida, pero hoy ya ha subido demasiado para comprar a mercado. Si quieres, deja una orden límite de compra a '+money(c.limitPriceEur)+' como máximo (válida hoy); solo se ejecuta si retrocede.'
             :stale(c)?'Esperar '+label(c)+': no hay cotización en vivo; antes de comprar hay que ver cómo cotiza ahora.'
             :doubted(c)?'Esperar '+label(c)+': la IA tiene dudas sobre esta idea; no se compra hasta que una revisión la respalde.'
             :'Esperar '+label(c)+': '+((c.entryReasons||[]).join(', ')||'el punto de entrada no es suficientemente limpio')+'.'});
@@ -653,7 +661,8 @@
       else if(!mappedCands.length)whyNoBuy.push({code:'filtered',text:'Las '+(input.candidates||[]).length+' candidatas del Radar no pasan el primer filtro: ya las tienes, la IA las contradice o su puntuación o calidad no llega ('+minQuality+').'});
       else if(!rankedCands.length||shortlist.every(c=>!(c.burstScore>=b.minBurst)))whyNoBuy.push({code:'weak',text:'Ninguna candidata tiene ahora una oportunidad suficiente (mínimo '+b.minBurst+'/100 con perfil '+b.label+').'});
       else if(!cands.length&&waits.some(w=>w.review))whyNoBuy.push({code:'review',text:'Ninguna idea revisada todavía: antes de mostrar una se comprueban la cotización real, los resultados, los analistas, las noticias y la IA en el servidor (tarda unos minutos). No cambia mientras tanto.'});
-      else if(!cands.length)whyNoBuy.push({code:'timing',text:shortlist.some(stale)?'La mejor candidata no tiene cotización en vivo ahora mismo (mercado cerrado o antes de la apertura).':'La mejor candidata no tiene un buen punto de entrada ahora: queda en espera.'});
+      else if(!cands.length&&waits.filter(w=>!w.review).length&&waits.filter(w=>!w.review).every(w=>w.decision==='COMPRA LÍMITE'))whyNoBuy.push({code:'limit',text:'Las candidatas ya han subido hoy más de lo que permiten tus reglas para comprar a mercado (se detectan cuando empiezan a moverse y, a veces, el movimiento ya está hecho). Comprar persiguiendo el precio suele salir caro; por eso solo se propone una orden límite con un precio máximo. Si no baja a ese precio, no se compra.'});
+      else if(!cands.length)whyNoBuy.push({code:'timing',text:shortlist.some(stale)?'La mejor candidata no tiene ahora una cotización en vivo verificada; sin precio real no se propone comprar.':'La mejor candidata no tiene un buen punto de entrada ahora: queda en espera.'});
       else whyNoBuy.push({code:'size',text:'El tamaño permitido o las comisiones no dan para una compra que compense.'});
     }
     // Cada propuesta lleva la etiqueta (ticker del mercado + nombre) de la acción a la que se refiere.
@@ -678,7 +687,8 @@
       return{key:x.key,priceEur:n(x.priceEur),at:String(x.at||''),limited:!!x.limited,changed:x.changed||'',ticketEur:a?n(a.ticketEur):n(x.ticketEur),ticker:x.ticker||'',name:x.name||''}});
     for(const a of actions.filter(y=>y.type==='BUY'&&!y.committed))commitments.push({key:String(a.key),priceEur:n(a.priceEur),at:nowIso,limited:false,changed:'',ticketEur:n(a.ticketEur),ticker:a.ticker||'',name:a.name||''});
     const consumedCommitments=commitState.filter(x=>x.gone).map(x=>({key:x.key,reason:x.gone}));
-    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,commitments,consumedCommitments,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
+    const alternatives=defensive||paused?[]:alternativesOf(new Set([...actions,...waits.filter(w=>!w.review)].map(x=>String(x.key||''))));
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,alternatives,commitments,consumedCommitments,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
