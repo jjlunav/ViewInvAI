@@ -63,10 +63,11 @@ const sum=calculatePortfolioTransactionSummary([{position_id:'p1',stock_key:'AAA
 assert.equal(sum.currencies.EUR.buyGross,10);assert.equal(sum.currencies.USD.buyGross,12);
 // Complete backup, including cash, fund history/plans and crypto; restore twice.
 db.raw.exec("INSERT INTO fund_portfolios(id,user_id,name,created_at,updated_at) VALUES('fp','u','Funds','x','x'); INSERT INTO fund_positions(id,fund_portfolio_id,user_id,isin,name,units,avg_price,created_at,updated_at) VALUES('fpos','fp','u','US0000000002','Fund',2,20,'x','x'); INSERT INTO fund_transactions(id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,executed_at,created_at,updated_at) VALUES('ft','fp','fpos','u','US0000000002','BUY',2,20,'2026-01-01','x','x'); INSERT INTO fund_contribution_plans(id,fund_portfolio_id,fund_position_id,user_id,isin,label,amount,created_at,updated_at) VALUES('plan','fp','fpos','u','US0000000002','Monthly',50,'x','x');");
+db.raw.exec("INSERT INTO crypto_positions(id,user_id,symbol,platform,units,avg_price_eur,notes,origin,created_at,updated_at) VALUES('coin','u','BTC','Test',0.1,50000,'','manual','x','x')");
 const b=await exportBackup(db,'u');assert.equal(b.portfolios[0].cash_balance,1005);assert.equal(b.fundTransactions.length,1);assert.equal(b.fundPlans.length,1);
 const restored=await restoreBackup(db,'other',b);assert.ok(restored.restored>0);
 const again=await restoreBackup(db,'other',b);assert.equal(again.restored,0);
-const copy=await exportBackup(db,'other');assert.equal(copy.portfolios[0].cash_balance,1005);assert.equal(copy.fundPositions[0].units,2);assert.equal(copy.fundPlans[0].amount,50);
+const copy=await exportBackup(db,'other');assert.equal(copy.portfolios[0].cash_balance,1005);assert.equal(copy.fundPositions[0].units,2);assert.equal(copy.fundPlans[0].amount,50);assert.equal(copy.cryptoPositions[0].units,0.1);
 // Fund history enforces the same date/order and delete constraints.
 let f=await createFundTransactionRecord(env,user,{positionId:'fpos',side:'SELL',units:1,price:21,fees:0,currency:'EUR',executedAt:'2025-12-01'});
 assert.equal(f.status,400);
@@ -103,5 +104,14 @@ response=await handleBackendApi(request('admin?lite=1',undefined,'GET'),authed);
 response=await handleBackendApi(request('admin?lite=1',undefined,'GET'),{...authed,ADMIN_EMAILS:'u@example.com'});assert.equal(response.status,200);
 response=await handleBackendApi(request('positions',JSON.stringify({...trade({stockKey:'NASDAQ:NEW',ticker:'NEW'}),avgPrice:10,openedAt:'2026-02-01'})),authed);
 assert.equal(response.status,201);assert.equal((await response.json()).position.quantity,10);
+response=await handleBackendApi(request('fund-transactions/import',JSON.stringify({fundPortfolioId:'fp',source:'csv',replaceManual:true,rows:[
+ {externalId:'fund-history-buy',isin:'US0000000002',side:'BUY',units:3,price:5,fees:0,currency:'EUR',executedAt:'2026-01-01'},
+ {externalId:'fund-history-sell',isin:'US0000000002',side:'SELL',units:1,price:6,fees:0,currency:'EUR',executedAt:'2026-02-01'}]})),authed);
+assert.equal(response.status,200);const fundImport=await response.json();assert.equal(fundImport.imported,2);assert.equal(fundImport.errors.length,0);
+assert.equal(db.raw.prepare("SELECT units FROM fund_positions WHERE id='fpos'").get().units,2);
+assert.equal(db.raw.prepare("SELECT avg_price FROM fund_positions WHERE id='fpos'").get().avg_price,5);
+const newPosition=db.raw.prepare("SELECT id FROM positions WHERE stock_key='NASDAQ:NEW' AND user_id='u'").get().id;
+response=await handleBackendApi(request('positions/'+newPosition,JSON.stringify({quantity:12,avgPrice:11}),'PATCH'),authed);
+assert.equal(response.status,200);assert.equal((await response.json()).position.quantity,12);
 globalThis.fetch=originalFetch;
 console.log('Reliability: admin allowlist, calendar, chronological ledger, atomic rollback, concurrency, idempotency, backup round trip: OK');
