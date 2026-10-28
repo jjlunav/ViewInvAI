@@ -528,9 +528,9 @@ async function load(force=false){
  if(loading)return;
  loading=true;
  try{
-  const RT0=window.ViewInvAIRuntime;
-  if(!force&&!db.stocks.length&&RT0&&RT0.isPackagedNative){
-   // APK: arranca al instante con la copia guardada en el móvil; a continuación solo se
+  const RT0=window.ViewInvAIRuntime?.isPackagedNative?window.ViewInvAIRuntime:window.ViewInvAICatalogCache;
+  if(!force&&!db.stocks.length&&RT0){
+   // Arranca con la última copia válida guardada; a continuación solo se
    // descarga del servidor si hay una versión más nueva.
    try{
     const lr=await RT0.loadOffline('market'),lj=lr?await lr.json():null;
@@ -555,7 +555,7 @@ async function load(force=false){
   }
   let url=force?DATA+'?v='+Date.now():DATA;
   let r,j,copy=null;
-  const RT=window.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative);
+  const RT=window.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative),catalogCache=native?RT:window.ViewInvAICatalogCache;
   const SYNC=window.ViewInvAISync&&window.ViewInvAISync.active?window.ViewInvAISync:null;
   try{
    let total=0;
@@ -566,7 +566,7 @@ async function load(force=false){
    }
    r=await fetch(url,{cache:force?'reload':'no-cache'});
    if(!r.ok)throw Error(String(r.status));
-   if(native)copy=r.clone();
+   if(catalogCache)copy=r.clone();
    if(SYNC){
     const est=total||20e6,mb=n=>(n/1048576).toLocaleString('es-ES',{maximumFractionDigits:1});
     j=await readJsonWithProgress(r,est,(got)=>SYNC.set('market',Math.min(0.99,got/est),{bytes:'('+mb(got)+(total?' de '+mb(total):'')+' MB)'}));
@@ -574,12 +574,10 @@ async function load(force=false){
    }else j=await r.json();
    if(!Array.isArray(j.stocks))throw Error('formato');
   }catch(remoteError){
-   if(SYNC&&!native){SYNC.fail('No se han podido descargar los datos de mercado.');throw remoteError}
-   if(!native)throw remoteError;
-   // APK sin conexión: última copia descargada en este móvil.
+   // Sin conexión: última copia válida, tanto en navegador como en la APK.
    console.warn('Remote market snapshot unavailable; using last downloaded copy',remoteError);
    copy=null;
-   r=await RT.loadOffline('market');
+   r=catalogCache?await catalogCache.loadOffline('market'):null;
    if(!r){if(SYNC)SYNC.fail('No hay conexión y todavía no hay datos guardados.');throw Error('Sin conexión y sin datos guardados todavía')}
    j=await r.json();
    if(!Array.isArray(j.stocks))throw Error('copia local con formato no válido');
@@ -587,7 +585,7 @@ async function load(force=false){
   let stamp=String((j.meta&&j.meta.updatedAt)||'');
   if(!force&&stamp&&stamp===lastDataStamp)return;
   lastDataStamp=stamp;
-  if(copy)RT.saveOffline('market',copy);
+  if(copy)catalogCache.saveOffline('market',copy);
   let previous=new Map((db.stocks||[]).map(s=>[stockKey(s),s]));
   for(let s of j.stocks){
    let old=previous.get(stockKey(s));if(!old)continue;

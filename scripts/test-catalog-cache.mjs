@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const entries=new Map();let unavailable=false;
+const window={caches:{open:async()=>{if(unavailable)throw Error('Offline storage unavailable');return{put:async(k,v)=>entries.set(k,v.clone()),match:async k=>entries.get(k)?.clone()}}}};
+vm.runInNewContext(fs.readFileSync(new URL('../catalog-cache.js',import.meta.url),'utf8'),{window,Set,Object,String});
+const cache=window.ViewInvAICatalogCache;
+assert.equal(await cache.saveOffline('market',Response.json({stocks:[{ticker:'ABC'}]})),true);
+assert.equal((await(await cache.loadOffline('market')).json()).stocks[0].ticker,'ABC');
+assert.equal(await cache.saveOffline('market',new Response('<html>error</html>',{headers:{'Content-Type':'text/html'}})),false);
+assert.equal(await cache.saveOffline('account',Response.json({token:'never-store'})),false);
+assert.equal((await(await cache.loadOffline('market')).json()).stocks[0].ticker,'ABC');
+unavailable=true;assert.equal(await cache.loadOffline('market'),null);assert.equal(await cache.saveOffline('funds',Response.json({products:[]})),false);
+console.log('Public catalogue caching: offline recovery, rejected HTML/account data, storage failure: OK');

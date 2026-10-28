@@ -33,3 +33,23 @@ def calibration_summary(score, y):
                          "observed": round(float(y[mask].mean()), 4)})
     return {"brier": round(float(np.mean((score-y)**2)), 6),
             "constantBrier": round(float(np.mean((y-y.mean())**2)), 6), "reliability": bins}
+
+
+def period_summary(days, score, y, excess):
+    days,score,y,excess=map(np.asarray,(days,score,y,excess))
+    out=[]
+    for year in sorted(set(str(d)[:4] for d in days)):
+        mask=np.char.startswith(days.astype(str),year)
+        p,t,e=score[mask],y[mask],excess[mask]
+        top=np.argsort(p)[-max(1,int(np.ceil(len(p)*.1))):]
+        out.append({'year':year,'n':int(mask.sum()),'auc':auc(p,t),
+                    'calibration':calibration_summary(p,t),
+                    'topDecileMeanExcess':round(float(e[top].mean()),4)})
+    return out
+
+
+def cost_scenarios(score, excess):
+    score,excess=map(np.asarray,(score,excess))
+    top=np.argsort(score)[-max(1,int(np.ceil(len(score)*.1))):]
+    return [{'roundTripBps':cost,'topDecileMeanExcessNetPct':round(float(excess[top].mean())-cost/100,4)}
+            for cost in (0,25,100,200)]
