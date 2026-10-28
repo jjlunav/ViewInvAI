@@ -7249,7 +7249,8 @@ async function handleAiIntegration(request,env,user,json,parts,url){
         let run,fallbackNote="";
         try{run=await aiRoute(env,{...req,pin:{provider:prov.id,model}})}
         catch(first){
-          run=await aiRoute(env,{...req,exclude:[prov.id]});
+          try{run=await aiRoute(env,{...req,exclude:[prov.id]})}
+          catch(second){const e=new Error("Ninguna IA disponible");e.tried=[...((first&&first.tried)||[]),...((second&&second.tried)||[])];throw e}
           fallbackNote=prov.label+" no respondió ("+aiFailReason(first&&first.tried,prov.id)+"); ha respondido otra IA de la app. ";
         }
         aiEnginesMemo.at=0;

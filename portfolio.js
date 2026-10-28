@@ -1912,8 +1912,9 @@ function goalWizardUsable(v,cash){
   // Límite sin cambios: lo apartado al guardarlo sigue apartado (las compras ya hechas gastaron capital permitido).
   if(goalWizard&&goalWizard.reserveInit!==null&&!goalWizardCapChanged(v))return Math.max(0,cash-goalWizard.reserveInit);
   let u=Math.max(0,cash);
-  if(num(v.capEur)!==null&&num(v.capEur)>=0)u=Math.min(u,num(v.capEur));
-  if(num(v.capPct)!==null&&num(v.capPct)>=0&&num(v.capPct)<100)u=Math.min(u,cash*num(v.capPct)/100);
+  // Cuenta el límite que puso el usuario; el otro campo es solo su equivalente redondeado.
+  if(v.capSource!=="capPct"&&num(v.capEur)!==null&&num(v.capEur)>=0)u=Math.min(u,num(v.capEur));
+  if(v.capSource!=="capEur"&&num(v.capPct)!==null&&num(v.capPct)>=0&&num(v.capPct)<100)u=Math.min(u,cash*num(v.capPct)/100);
   return u;
 }
 function goalWizardUsableText(usable,cash){
@@ -1951,6 +1952,7 @@ function goalWizardValid(){
 function goalWizardSyncCap(changed){
   const v=goalWizard&&goalWizard.v,cash=num(goalWizard&&goalWizard.cash);
   if(!v||!(cash>0))return;
+  v.capSource=changed;
   if(changed==="capPct"){const p=num(v.capPct);v.capEur=p===null?null:Math.round(cash*Math.max(0,Math.min(100,p)))/100}
   else if(changed==="capEur"){const e=num(v.capEur);v.capPct=e===null?null:Math.round(Math.max(0,Math.min(100,e/cash*100))*10)/10}
 }
@@ -1959,7 +1961,8 @@ async function saveGoalWizard(){
   const btn=document.querySelector("#goalWizard [data-gw-save]");if(btn)btn.disabled=true;
   try{
     const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,specMode:w.v.specMode,allowSpec:w.v.specMode>0,currentValueEur:w.current,
-      investCapEur:num(w.v.capEur),investCapPct:num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null,allowFractions:w.v.fractions!==0,
+      // Solo se guarda el límite que puso el usuario: el otro es un cálculo redondeado y no debe recortarlo.
+      investCapEur:w.v.capSource==="capPct"?null:num(w.v.capEur),investCapPct:w.v.capSource==="capEur"?null:(num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null),allowFractions:w.v.fractions!==0,
       fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1};
     // Lo que queda apartado se fija al cambiar el límite: las compras que registres después gastan del capital
     // permitido. Si el límite no cambia, se conserva lo apartado (guardar otra vez no renueva el capital).
