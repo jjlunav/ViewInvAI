@@ -1551,7 +1551,7 @@ function goalRememberBuys(portfolioId,plan){
   const before=JSON.stringify(cur);
   for(const c of (plan&&plan.commitments)||[]){
     const old=cur.items.find(i=>i.key===c.key);
-    if(old){old.limited=!!(old.limited||c.limited)}else cur.items.push({key:c.key,priceEur:num(c.priceEur),at:c.at||new Date().toISOString(),ticker:c.ticker||"",name:c.name||"",limited:!!c.limited});
+    if(old){old.limited=!!(old.limited||c.limited);if(num(old.ticketEur)===null)old.ticketEur=num(c.ticketEur)}else cur.items.push({key:c.key,priceEur:num(c.priceEur),at:c.at||new Date().toISOString(),ticker:c.ticker||"",name:c.name||"",limited:!!c.limited,ticketEur:num(c.ticketEur)});
   }
   cur.consumed=[...new Set([...(cur.consumed||[]),...((plan&&plan.consumedCommitments)||[]).map(c=>String(c.key))])];
   cur.items=cur.items.filter(i=>!cur.consumed.includes(i.key));
@@ -1570,7 +1570,7 @@ function goalTodayCommitments(portfolioId,goal){
     // Se conserva la primera vez que se vio la idea (su precio y su hora marcan el límite de persecución).
     if(!old){out.set(c.key,c);return}
     const first=String(c.at||"")&&String(c.at||"")<String(old.at||"")?c:old,other=first===c?old:c;
-    out.set(c.key,{...other,...first,limited:!!(old.limited||c.limited),reviewVerdict:old.reviewVerdict||c.reviewVerdict||"",facts:old.facts||c.facts||null,pros:(old.pros||[]).length?old.pros:(c.pros||[]),cons:(old.cons||[]).length?old.cons:(c.cons||[])});
+    out.set(c.key,{...other,...first,limited:!!(old.limited||c.limited),ticketEur:num(first.ticketEur)??num(other.ticketEur),reviewVerdict:old.reviewVerdict||c.reviewVerdict||"",facts:old.facts||c.facts||null,pros:(old.pros||[]).length?old.pros:(c.pros||[]),cons:(old.cons||[]).length?old.cons:(c.cons||[])});
   };
   const consumed=new Set(entry&&entry.day===day?entry.consumed||[]:[]);
   try{
@@ -1580,12 +1580,20 @@ function goalTodayCommitments(portfolioId,goal){
       const detail=new Map([...(plan.actions||[]).filter(x=>x&&x.type==="BUY"),...(plan.waits||[]).filter(x=>x&&x.committed)].map(a=>[String(a.key),a]));
       const base=Array.isArray(plan.commitments)?plan.commitments:[...detail.values()].map(a=>({key:String(a.key),priceEur:num(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at,limited:a.type==="WAIT"}));
       for(const c of base){const a=detail.get(String(c.key))||{};
-        put({key:String(c.key),priceEur:num(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticker:c.ticker||a.ticker||"",name:c.name||a.name||"",score:num(a.burstScore),
+        put({key:String(c.key),priceEur:num(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticketEur:num(c.ticketEur),ticker:c.ticker||a.ticker||"",name:c.name||a.name||"",score:num(a.burstScore),
           reviewVerdict:a.aiVerdict||"",facts:a.facts||null,pros:a.pros||[],cons:a.cons||[]})}
     }
   }catch(_){}
   if(entry&&entry.day===day)for(const i of entry.items||[])if(i&&i.key)put(i);
-  return[...out.values()].filter(c=>!consumed.has(c.key)).sort((x,y)=>String(x.at||"").localeCompare(String(y.at||""))).slice(0,4);
+  const discarded=new Set(goalTodayDiscarded(portfolioId,goal));
+  return[...out.values()].filter(c=>!consumed.has(c.key)&&!discarded.has(c.key)).sort((x,y)=>String(x.at||"").localeCompare(String(y.at||""))).slice(0,4);
+}
+// Ideas nuevas descartadas hoy tras un cambio de recomendación (servidor y este dispositivo): liberan su efectivo.
+function goalTodayDiscarded(portfolioId,goal){
+  const day=goalIdeaDay(),out=new Set(),entry=goalIdeaStore()[String(portfolioId||"")];
+  try{const d=JSON.parse(goal&&goal.discarded_ideas||"{}");if(d&&d.day===day&&Array.isArray(d.keys))for(const k of d.keys)out.add(String(k))}catch(_){}
+  if(entry&&entry.day===day)for(const k of entry.discarded||[])out.add(String(k));
+  return[...out];
 }
 function goalClientStickyKeys(portfolioId,goal){
   const out=new Set(),fresh=at=>Number.isFinite(at)&&Date.now()-at<=2*86400000;
@@ -1670,7 +1678,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,requireReview:true,
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
@@ -1763,7 +1771,7 @@ function goalActionHtml(a,ctx){
   const later=C&&C.tickerVerdict?C.tickerVerdict(a.ticker,a.key):null;
   const ai=(a.type==="BUY"||a.type==="WAIT")&&C?C.badgeHtml(commit&&commit.reviewVerdict?{verdict:commit.reviewVerdict}:later):"";
   const laterNote=commit&&later&&later.verdict&&later.verdict!==commit.reviewVerdict&&later.verdict!=="contradice"?'<small class="goal2-later-ai">Una consulta posterior a la IA dice «'+esc(later.verdict)+'»; no cambia la idea fijada (solo la retiraría si la contradice).</small>':'';
-  const tag={BUY:"CUMPLE TUS REGLAS",WAIT:a.decision||"ESPERAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
+  const tag={CHANGE:"CAMBIO DE RECOMENDACIÓN",BUY:"CUMPLE TUS REGLAS",WAIT:a.decision||"ESPERAR",SELL:a.reason==="stop"?"STOP":"VENDER",RAISE_STOP:"SUBIR STOP",HOLD:"MANTENER"}[a.type]||a.type;
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};
@@ -1775,6 +1783,7 @@ function goalActionHtml(a,ctx){
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
   if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Mi bróker no la fracciona: pulsa solo si tu bróker no deja comprar una parte de acción de este valor; el plan propondrá acciones enteras" aria-label="Mi bróker no la fracciona">Sin fracciones</button></div>';
   if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir</button></div>';
+  if(a.type==="CHANGE")button='<div class="goal2-action-buttons"><button type="button" class="goal2-decide" data-goal-discard="'+esc(String(a.key||""))+'" data-goal-discard-ticker="'+esc(String(a.ticker||""))+'" title="Descartar la idea y liberar su efectivo para hoy">Descartar</button></div>';
   if(button&&button.indexOf('<div class="goal2-action-buttons">')!==0)button='<div class="goal2-action-buttons">'+button+'</div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
@@ -1826,6 +1835,26 @@ async function goalMarkNoFraction(ticker){
 document.addEventListener("click",event=>{
   const b=event.target.closest&&event.target.closest("[data-goal-no-fraction]");if(!b)return;
   event.preventDefault();event.stopPropagation();b.disabled=true;goalMarkNoFraction(b.dataset.goalNoFraction);
+});
+// Idea nueva que dejó de cumplir las reglas sin haberse ejecutado: se descarta hoy y su efectivo vuelve al objetivo.
+async function goalDiscardIdea(key,ticker){
+  const goal=selectedPortfolioGoal()||state.goal,portfolioId=state.selectedPortfolioId;
+  if(!goal||!portfolioId||!key)return;
+  const store=goalIdeaStore(),pid=String(portfolioId),day=goalIdeaDay(),cur=store[pid]&&store[pid].day===day?store[pid]:{day,items:[],consumed:[]};
+  cur.discarded=[...new Set([...(cur.discarded||[]),String(key)])];cur.items=(cur.items||[]).filter(i=>i.key!==String(key));
+  store[pid]=cur;try{localStorage.setItem(GOAL_IDEAS_KEY,JSON.stringify(store))}catch(_){}
+  try{
+    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId,discardIdea:String(key)})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo guardar en el servidor.");
+    if(data.goal){state.goals[String(portfolioId)]=data.goal;state.goal=data.goal}
+    toast((ticker||"Idea")+" descartada: su efectivo vuelve a estar disponible.");
+  }catch(error){toast((error.message||"No se pudo guardar en el servidor.")+" Queda descartada en este dispositivo.",true)}
+  goalPlanCache=null;renderGoalApp();
+}
+document.addEventListener("click",event=>{
+  const b=event.target.closest&&event.target.closest("[data-goal-discard]");if(!b)return;
+  event.preventDefault();event.stopPropagation();b.disabled=true;goalDiscardIdea(b.dataset.goalDiscard,b.dataset.goalDiscardTicker);
 });
 // Por qué el plan no propone comprar (efectivo, modo defensivo, cartera llena, filtros o momento de entrada).
 // Marcador de las ideas del Objetivo (servidor, caché de 10 min): cuántas se publicaron y cómo fueron frente al SPY.

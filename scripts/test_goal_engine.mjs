@@ -172,15 +172,18 @@ const input=candidates=>({
   const committed=[{key:"NASDAQ:FIX",priceEur:10,at:"2026-10-28T09:00:00Z"}];
   const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
   let p=G.plan({...input([strong,weak]),committed});
-  assert.equal(buys(p).join(),"NASDAQ:FIX","a fixed idea is kept and no new idea replaces it");
+  assert.equal(buys(p)[0],"NASDAQ:FIX","a fixed idea is kept and goes first; a new one only uses the cash left");
   assert.equal(p.actions.find(x=>x.type==="BUY").committed,true);
   p=G.plan({...input([strong,{...weak,quoteFresh:false,aiVerdict:"dudas"}]),committed});
-  assert.equal(buys(p).join(),"NASDAQ:FIX","a stale quote or a later doubt does not flip a fixed idea");
+  assert.equal(buys(p)[0],"NASDAQ:FIX","a stale quote or a later doubt does not flip a fixed idea");
   p=G.plan({...input([strong,{...weak,askEur:10.5,priceEur:10.5}]),committed});
-  assert.equal(buys(p).length,0,"a fixed idea is not chased after +5 %");
+  assert.ok(!buys(p).includes("NASDAQ:FIX"),"a fixed idea is not chased after +5 %");
   assert.ok(p.waits.some(w=>w.key==="NASDAQ:FIX"&&w.decision==="COMPRA LÍMITE"),"a chased idea stays as a limit order");
-  p=G.plan({...input([strong,{...weak,aiVerdict:"contradice"}]),committed});
-  assert.ok(!buys(p).includes("NASDAQ:FIX")&&p.notes.some(t=>/retirada/.test(t)),"an AI contradiction withdraws it with a note");
+  p=G.plan({...input([strong,{...weak,aiVerdict:"contradice"}]),committed:[{...committed[0],ticketEur:400}]});
+  assert.ok(!buys(p).includes("NASDAQ:FIX")&&p.actions.some(a=>a.type==="CHANGE"&&a.key==="NASDAQ:FIX"),"an AI contradiction becomes a change of recommendation");
+  assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"&&c.changed),"its cash stays reserved until discarded");
+  p=G.plan({...input([strong,{...weak,aiVerdict:"contradice"}]),committed:[{...committed[0],ticketEur:400}],discarded:["NASDAQ:FIX"]});
+  assert.ok(!p.actions.some(a=>a.type==="CHANGE")&&p.consumedCommitments.some(c=>c.key==="NASDAQ:FIX"&&c.reason==="discarded"),"discarding frees it");
   p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed});
   assert.ok(buys(p).includes("NASDAQ:NEW"),"once the fixed idea is bought, new ideas can appear");
 }
@@ -234,16 +237,27 @@ const input=candidates=>({
   const strong={...base,key:"NASDAQ:NEW",ticker:"NEW",score:99,quality:95};
   const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key).join();
   let p=G.plan({...input([strong,{...weak,askEur:10.2,priceEur:10.2}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t",limited:true}]});
-  assert.equal(buys(p),"","after +3 % the limit holds until the price is back at the limit");
+  assert.ok(!buys(p).includes("NASDAQ:FIX"),"after +3 % the limit holds until the price is back at the limit");
   assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"&&c.limited),"limit state is carried forward");
   p=G.plan({...input([strong,{...weak,askEur:10.05,priceEur:10.05}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t",limited:true}]});
-  assert.equal(buys(p),"NASDAQ:FIX","back at the limit it can be bought again");
+  assert.ok(buys(p).startsWith("NASDAQ:FIX"),"back at the limit it can be bought again");
   p=G.plan({...input([strong,{...weak,aiScoutPhase:"avoid"}]),committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
-  assert.ok(!buys(p).includes("NASDAQ:NEW")&&p.commitments.some(c=>c.key==="NASDAQ:FIX"),"an avoid phase does not replace a fixed idea");
+  assert.ok(buys(p).startsWith("NASDAQ:FIX")&&p.commitments.some(c=>c.key==="NASDAQ:FIX"),"an avoid phase does not replace a fixed idea");
   p=G.plan({...input([strong,weak]),cashEur:0,committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
   assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"),"a fixed idea is kept even when no action is emitted");
   p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed:[{key:"NASDAQ:FIX",priceEur:10,at:"t"}]});
   assert.ok(p.consumedCommitments.some(c=>c.key==="NASDAQ:FIX"&&c.reason==="bought"),"a bought idea is consumed");
+}
+
+// Ideas ligadas al efectivo del objetivo: lo reservado por una idea en espera no se gasta en otra.
+{
+  const a={...base,key:"NASDAQ:A",ticker:"A"},nb={...base,key:"NASDAQ:B",ticker:"B",score:99,quality:95};
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
+  const free=G.plan({...input([nb]),cashEur:300}).actions.find(x=>x.type==="BUY");
+  const held=G.plan({...input([{...a,askEur:12,priceEur:12},nb]),cashEur:300,committed:[{key:"NASDAQ:A",priceEur:10,at:"t",ticketEur:250}]});
+  const b=held.actions.find(x=>x.type==="BUY"&&x.key==="NASDAQ:B");
+  assert.ok(!buys(held).includes("NASDAQ:A"),"the fixed idea is waiting at its limit");
+  assert.ok(!b||!free||b.ticketEur<free.ticketEur,"the new idea only uses cash not reserved by the waiting one");
 }
 
 console.log("Goal engine tests: OK");

@@ -4450,6 +4450,7 @@ const PROVIDERS=[
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
   {id:"googlenews",label:"Google News (RSS)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; noticias de cualquier país e idioma",dashboard:"https://news.google.com/"},
+  {id:"gdelt",label:"GDELT (prensa mundial)",kind:"Búsqueda",secret:"",free:"Sin clave; artículos de todo el mundo cada 15 min",dashboard:"https://www.gdeltproject.org/"},
   {id:"bingnews",label:"Bing News (RSS, respaldo)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; entra si Google News falla",dashboard:"https://www.bing.com/news"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
@@ -4588,7 +4589,7 @@ function aiFailReason(tried,only=null){
   const out=[...new Set(rows.map(why))];
   return out.length?out.slice(0,4).join(" · "):"ningún servicio disponible";
 }
-async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null}){
+async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null,grounded=false}){
   const tried=[],t=task==="light"?"light":"decision";
   // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
   const pinModels=list=>pin&&pin.model?[pin.model]:list;
@@ -4603,11 +4604,17 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=n
       for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
-          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
+          // Con grounded (y sin JSON forzado, que Google no permite a la vez) Gemini busca en Google en tiempo real.
+          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],...(grounded&&!json?{tools:[{google_search:{}}]}:{}),generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
         // Un 503 de Google es saturación pasajera de ese modelo: se prueba el siguiente sin penalizar todavía.
         if(!r.ok){tried.push("gemini:"+model+":"+r.status);lastErr="HTTP "+r.status+" ("+model+")";if(r.status!==503)providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
         const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
-        if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
+        if(text){
+          await recordProviderUse(env,"gemini",true);
+          const gm=d.candidates&&d.candidates[0]&&d.candidates[0].groundingMetadata,chunks=gm&&Array.isArray(gm.groundingChunks)?gm.groundingChunks:[];
+          const sources=chunks.map(c=>c&&c.web).filter(w=>w&&w.uri).slice(0,8).map(w=>({url:String(w.uri),title:trimText(w.title||"",160)}));
+          return{text,provider:"gemini",model,grounded:!!(gm&&(chunks.length||gm.webSearchQueries)),sources};
+        }
         lastErr="respuesta vacía ("+model+")";
       }
       // Un solo fallo por consulta (no uno por cada modelo probado).
@@ -5327,7 +5334,9 @@ async function ensurePortfolioGoalSchema(env){
     // Mi cripto cuenta en el progreso y el ritmo del objetivo (no en el tamaño de las compras de acciones).
     ["include_crypto","ALTER TABLE portfolio_goals ADD COLUMN include_crypto INTEGER NOT NULL DEFAULT 0"],
     // 1 = el punto de partida del ritmo se midió sin el efectivo (los anteriores lo incluían y se rehacen).
-    ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"]
+    ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"],
+    // Ideas nuevas que el usuario descartó hoy tras un cambio de recomendación: {"day":"YYYY-MM-DD","keys":[...]}.
+    ["discarded_ideas","ALTER TABLE portfolio_goals ADD COLUMN discarded_ideas TEXT NOT NULL DEFAULT ''"]
   ]){
     if(!goalColumnNames.has(name)){
       await env.DB.prepare(sql).run();
@@ -5353,7 +5362,7 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
@@ -5377,6 +5386,17 @@ async function handlePortfolioGoal(request,env,user,json,url){
   if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
     const body=await readJson(request),portfolioId=trimText(body.portfolioId,80);
     if(!portfolioId||!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    // Descartar una idea nueva que cambió de recomendación: libera su efectivo hoy y no toca el resto del objetivo.
+    if(body.discardIdea!==undefined){
+      const key=trimText(body.discardIdea,120);
+      if(!key)return json({error:"discardIdea required"},400);
+      const row=await env.DB.prepare("SELECT discarded_ideas FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+      if(!row)return json({error:"Goal not found"},404);
+      const keys=[...new Set([...goalDiscardedToday(row.discarded_ideas),key])].slice(-12);
+      await env.DB.prepare("UPDATE portfolio_goals SET discarded_ideas=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify({day:madridDay(Date.now()),keys}),portfolioId,user.id).run();
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal)});
+    }
     const raw=finiteNumber(body.targetValueEur!==undefined?body.targetValueEur:body.targetProfitEur);
     if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
     const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
@@ -7246,9 +7266,11 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       const refund=async()=>{try{await env.DB.prepare("DELETE FROM ai_pick_uses WHERE id=?").bind(useId).run()}catch(_){}};
       const done=async row=>{try{await env.DB.prepare("UPDATE ai_pick_uses SET contrast_id=? WHERE id=?").bind(row.id,useId).run();
         await env.DB.prepare("DELETE FROM ai_pick_uses WHERE user_id=? AND day<?").bind(user.id,new Date(Date.now()-3*86400000).toISOString().slice(0,10)).run()}catch(_){}return row};
-      const evidence=deep?await aiDeepEvidence(env,targets):{text:"",sources:[]};
+      // Siempre con noticias reales de los valores (fuentes gratuitas y en caché): sin ellas la IA solo opinaría de memoria.
+      const evidence=targets.length?await aiDeepEvidence(env,targets):{text:"",sources:[]};
       const fullPrompt=prompt+(deep?"\n\nBÚSQUEDA EXHAUSTIVA · NOTICIAS Y RESULTADOS REALES DE ESTA SEMANA (úsalos como fuente principal, cita el dato y la fecha):\n"+(evidence.text||"sin resultados")+
-        "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":"");
+        "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":
+        evidence.text?"\n\nNOTICIAS REALES DE ESTOS DÍAS (úsalas para contrastar; cita la fecha):\n"+evidence.text:"");
       if(isUser){
         const label=AI_PROVIDERS[p].label,apiKey=await aiDecrypt(env,user.id,p,keyRow);
         if(!apiKey){await refund();return json({contrasts:[],errors:[{provider:p,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla."}]},200,noStore)}
@@ -7265,8 +7287,10 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       try{
         const system=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.",deep
           ?"Tienes abajo resultados REALES de búsqueda de esta semana: úsalos como fuente principal y sé concreto y prudente."
+          :evidence.text?"Tienes abajo noticias REALES de estos días y, si tu servicio lo permite, búsqueda de Google: contrasta con ellas, cita fecha y fuente y sé concreto y prudente."
           :"No tienes búsqueda web: usa los datos actuales que aporta ViewInvAI y no afirmes haber verificado nada fuera de ellos; sé concreto y prudente.");
-        const req={prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false};
+        // grounded: Gemini puede buscar en Google en tiempo real (plan gratuito); el resto de servicios usa las noticias adjuntas.
+        const req={prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false,grounded:true};
         // Si la IA elegida no responde, la consulta pasa sola a otra IA gratuita de la app (y se dice cuál y por qué).
         let run,fallbackNote="";
         try{run=await aiRoute(env,{...req,pin:{provider:prov.id,model}})}
@@ -7278,8 +7302,9 @@ async function handleAiIntegration(request,env,user,json,parts,url){
         aiEnginesMemo.at=0;
         const parsed=aiParseAnswer(run.text);
         const runLabel=(PROVIDERS.find(x=>x.id===run.provider)||{}).label||prov.label;
-        parsed.summary=trimText(fallbackNote+runLabel+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
-        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+run.provider,parsed,evidence.sources))],errors:[]},200,noStore);
+        const webNote=run.grounded?" · con búsqueda de Google":deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":evidence.sources.length?" · con "+evidence.sources.length+" noticias reales":" · sin búsqueda web";
+        parsed.summary=trimText(fallbackNote+runLabel+" · "+run.model+webNote+". "+(parsed.summary||""),800);
+        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+run.provider,parsed,[...(run.sources||[]),...evidence.sources]))],errors:[]},200,noStore);
       }catch(error){
         aiEnginesMemo.at=0;await refund();
         return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:"Ninguna IA de la app ha podido responder ahora ("+aiFailReason(error&&error.tried)+"). No se ha gastado el uso; inténtalo en unos minutos."}]},200,noStore);
@@ -8083,6 +8108,11 @@ async function handleNews(request,env,user,json,url){
     .sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,40);
   return json({cat,items,personal:!!user,updatedAt:nowIso()},200,{"Cache-Control":"private, max-age=120"});
 }
+// Noticias GDELT para contrastar (reutiliza gdeltSearch: gratis, sin clave, prensa mundial cada 15 min).
+async function gdeltNews(env,name){
+  const q=newsCleanName(name);if(q.length<3)return[];
+  return(await gdeltSearch(env,q,8)).slice(0,6).map(a=>({title:a.title,url:a.url,content:a.publisher,date:String(a.time||"").slice(0,10),source:"gdelt"}));
+}
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
@@ -8105,6 +8135,13 @@ async function goalWebNews(env,c){
     for(const r of gn){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
     const gnSource=gn.length?gn[0].source||"googlenews":"";
     if(gn.length)provider=provider?provider+" + "+gnSource:gnSource;
+  }
+  // GDELT (gratis, sin clave, prensa de todo el mundo actualizada cada 15 min) antes de gastar cupos de buscadores.
+  if(results.length<3&&name){
+    const gd=await gdeltNews(env,name);
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of gd){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
+    if(gd.length)provider=provider?provider+" + gdelt":"gdelt";
   }
   if(results.length<3){
     const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
@@ -8151,7 +8188,7 @@ async function goalWebReviewBuys(env,goal,buys,positions,candidates=[],snapshot=
         "\n\nDATOS DEL MOTOR Y NOTICIAS QUE YA TIENE VIEWINVAI:\n"+ctxRows+
         "\n\nRESULTADOS DE BÚSQUEDA WEB DE HOY:\n"+(webParts.join("\n")||"sin resultados")+
         "\n\nPara cada valor decide respalda, dudas o contradice citando el dato concreto (noticia, evento o cifra). Si la web no aporta nada relevante, dilo y usa «dudas» solo si hay un riesgo real.";
-      const run=await aiRoute(env,{prompt,maxTokens:1400,json:false});
+      const run=await aiRoute(env,{prompt,maxTokens:1400,json:false,grounded:true});
       const parsed=aiParseAnswer(run.text);
       if(!parsed.items.length)return{reviewed:false,verdicts:new Map()};
       parsed.summary=trimText("IA "+run.provider+" · "+run.model+" + búsqueda web. "+(parsed.summary||""),800);
@@ -8244,7 +8281,7 @@ async function goalWebReviewPositions(env,goal,positions){
       const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo resultados REALES de búsqueda web: úsalos como fuente principal.")+"\n\n"+
         "Son las posiciones ABIERTAS de una cartera que busca crecer en 1-5 sesiones. Para cada una: «respalda» si las noticias mantienen o mejoran la tesis, "+
         "«dudas» si hay riesgo pero no motivo claro de salida, «contradice» SOLO si hay un hecho nuevo que invalida mantenerla (ampliación de capital, ensayo fallido, rechazo regulatorio, rebaja de guía, fraude, delisting).\n\n"+parts.join("\n");
-      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false});
+      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false,grounded:true});
       const parsed=aiParseAnswer(run.text);
       if(!parsed.items.length)return new Map();
       parsed.summary=trimText("Vigilancia de posiciones · IA "+run.provider+" + búsqueda web. "+(parsed.summary||""),800);
@@ -8402,7 +8439,7 @@ async function handleRadarCheck(request,env,user,json,services){
       "Son las acciones que el Radar AI de ViewInvAI propone hoy para operaciones de 1-5 sesiones. Para cada una: «respalda» si las noticias apoyan comprar ahora, "+
       "«dudas» si hay riesgos (ampliación, ya subió demasiado, noticia ambigua), «contradice» si un hecho nuevo invalida la compra. Sin noticias relevantes, decide por los datos y dilo.\n\n"+parts.join("\n");
     try{
-      const run=await aiRoute(env,{prompt,maxTokens:1300,json:false,task:"decision"});
+      const run=await aiRoute(env,{prompt,maxTokens:1300,json:false,task:"decision",grounded:true});
       const parsed=aiParseAnswer(run.text);
       const rows=[];
       for(const i of parsed.items||[]){
@@ -8524,6 +8561,10 @@ async function goalMarketContext(services){
   }
   return out;
 }
+// Ideas descartadas hoy (hora de Madrid) tras un cambio de recomendación; las de otro día ya no cuentan.
+function goalDiscardedToday(raw){
+  try{const d=JSON.parse(raw||"{}");return d&&d.day===madridDay(Date.now())&&Array.isArray(d.keys)?d.keys.map(String).filter(Boolean).slice(0,12):[]}catch(_){return[]}
+}
 // Compras del último plan guardado si es de hoy (hora de Madrid): son las ideas fijadas del día.
 function goalCommittedBuys(planJson){
   try{
@@ -8535,7 +8576,7 @@ function goalCommittedBuys(planJson){
     const consumed=new Set((plan.consumedCommitments||[]).map(c=>String(c.key)));
     const list=Array.isArray(plan.commitments)?plan.commitments:[...(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key),...(plan.waits||[]).filter(w=>w&&w.committed&&w.key)]
       .map(a=>({key:String(a.key),priceEur:finiteNumber(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at,limited:!!(a.type==="WAIT"&&a.committed)}));
-    return list.filter(c=>c&&c.key&&!consumed.has(String(c.key))).map(c=>({key:String(c.key),priceEur:finiteNumber(c.priceEur),at:c.at||plan.at,limited:!!c.limited})).slice(0,4);
+    return list.filter(c=>c&&c.key&&!consumed.has(String(c.key))).map(c=>({key:String(c.key),priceEur:finiteNumber(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticketEur:finiteNumber(c.ticketEur),changed:String(c.changed||"")})).slice(0,4);
   }catch(_){return[]}
 }
 function goalPaceText(pc){
@@ -8575,7 +8616,7 @@ async function scanPortfolioGoalNotifications(env,services){
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -8725,7 +8766,7 @@ async function scanPortfolioGoalNotifications(env,services){
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
-        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed};
+        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
       if(!idle&&candidates.length){if(!marketCtx)marketCtx=await goalMarketContext(services);input.market=marketCtx}
       let plan=engine.plan(input);

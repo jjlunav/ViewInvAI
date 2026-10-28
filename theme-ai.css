@@ -1605,6 +1605,9 @@ html[data-theme="light"] .goal2-action{background:#fff;border-color:#dfe3f3}
 .goal2-action>em{font-style:normal;font-size:10.5px;font-weight:850;letter-spacing:.06em;padding:3px 7px;border-radius:7px;background:rgba(157,140,255,.16);color:#b9adff;white-space:nowrap}
 .goal2-buy>em{background:rgba(47,211,154,.15);color:#2fd39a}
 .goal2-sell>em{background:rgba(255,107,107,.14);color:#ff8a8a}
+.goal2-change>em{background:rgba(245,177,66,.16);color:#f5b142}
+.goal2-change{border-color:rgba(245,177,66,.45)}
+html[data-theme="light"] .goal2-action.goal2-change{border-color:rgba(214,140,20,.5)}
 .goal2-stop{border-color:rgba(255,107,107,.45)}
 .goal2-action>div{display:grid;gap:3px;min-width:0}
 .goal2-action strong{font-size:14px}
