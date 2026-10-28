@@ -284,3 +284,4 @@ jobs:
         run: |
           python -m pip install -r scripts/quant/requirements.txt
           python scripts/quant/test_validation.py
+          python scripts/quant/test_corporate_actions.py

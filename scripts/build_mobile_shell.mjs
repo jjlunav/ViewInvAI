@@ -38,6 +38,7 @@ const files = [
   'score-engine.js',
   'goal-engine.js',
   'app.js',
+  'catalog-cache.js',
   'settings.js',
   'market.js',
   'stock-charts.js',

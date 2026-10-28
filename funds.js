@@ -715,11 +715,11 @@
   requestAnimationFrame(()=>observeFundLive(box));
  }
  async function fetchFundCatalogue(url,cache){
-  const RT=root.ViewInvAIRuntime,native=!!(RT&&RT.isPackagedNative);
+  const RT=root.ViewInvAIRuntime?.isPackagedNative?root.ViewInvAIRuntime:root.ViewInvAICatalogCache;
   let r;
-  if(url===null){r=native?await RT.loadOffline('funds'):null;if(!r)throw Error('Sin conexión y sin catálogo guardado todavía')}
+  if(url===null){r=RT?await RT.loadOffline('funds'):null;if(!r)throw Error('Sin conexión y sin catálogo guardado todavía')}
   else{r=await fetch(url,{cache});if(!r.ok)throw Error(String(r.status))}
-  const copy=url!==null&&native?r.clone():null;
+  const copy=url!==null&&RT?r.clone():null;
   const data=await r.json();
   const products=Array.isArray(data&&data.products)?data.products:[];
   if(!products.length)throw Error('Catálogo de fondos vacío');
@@ -738,8 +738,7 @@
    try{
     data=await fetchFundCatalogue(DATA+(force?'?v='+Date.now():''),force?'reload':'no-cache');
    }catch(remoteError){
-    const native=!!(root.ViewInvAIRuntime&&root.ViewInvAIRuntime.isPackagedNative);
-    if(!native)throw remoteError;
+    if(!root.ViewInvAIRuntime?.isPackagedNative&&!root.ViewInvAICatalogCache)throw remoteError;
     console.warn('Remote funds catalogue unavailable; using last downloaded copy',remoteError);
     data=await fetchFundCatalogue(null,'no-store');
    }
@@ -753,7 +752,7 @@
   }catch(e){
    ok=false;
    console.warn('Funds catalogue loading failed',e);
-   state.products=[];state.meta={};
+   if(!state.loaded){state.products=[];state.meta={}}
   }finally{state.loading=false;render();if(SYNC)SYNC.set('funds',1)}
   return ok;
  }

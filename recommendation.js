@@ -635,7 +635,8 @@ function quantCardHtml(){
   (()=>{const t=quant.modelTr,v=t&&t.validation;if(!v||!v.topDecile)return'';
    return '<p>✦ <b>Trade Republic / LSX</b> ('+Number(t.universe).toLocaleString('es-ES')+' valores internacionales, 5 años, medido en '+E(String(v.test[0]).slice(0,4))+'–'+E(String(v.test[1]).slice(0,7))+'): su 10 % mejor bate a la mediana de LSX el '+F(v.topDecile.beatRate,0)+' % de las veces y su 10 % peor, el '+F(v.bottomDecile.beatRate,0)+' % (AUC '+F(v.auc,3)+').'+
     (()=>{const b=(t.byChange||[]),dn=b.find(x=>x.bucket==='< -8 %'),up=b.find(x=>x.bucket==='> 30 %');return dn&&up?' Los que caen más de un 8 % en el día la baten el '+F(dn.beatRate,0)+' % de las veces; los que suben más de un 30 %, solo el '+F(up.beatRate,0)+' %.':''})()+'</p>'})()+
-  '<p class="radar-scoreboard-method">Fuente: '+E(quant.report.source||'')+'. Sin comisiones. Solo valores que cotizan hoy. Rentabilidades pasadas no garantizan resultados futuros.</p></div>';
+  (quant.report.corporateActions?'<p>Datos corporativos: '+Number(quant.report.corporateActions.verifiedSplits||0)+' splits contrastados con eventos del proveedor; '+Number(quant.report.corporateActions.ambiguousJumps||0)+' saltos sin confirmar excluidos de las ventanas de cálculo. Ese filtro también puede excluir caídas reales.</p>':'')+
+  '<p class="radar-scoreboard-method">Fuente: '+E(quant.report.source||'')+'. Las observaciones a cinco sesiones se solapan; no equivalen a operaciones independientes. Solo valores que cotizan hoy. Rentabilidades pasadas no garantizan resultados futuros.</p></div>';
  return '<section class="d-group quant-group"><header><h3>Modelo cuantitativo</h3><span>'+E(m.version||'')+'</span></header>'+(typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('quant-card','Probado con 10 años de datos',preview,html):html)+'</section>';
 }
 // Tasa histórica de rebote para una caída de este tamaño (pruebas retrospectivas).
