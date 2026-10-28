@@ -1,3 +1,5 @@
+import { exportBackup, restoreBackup } from "./backup-store.js";
+import { financialRevision, financialBatch } from "./financial-store.js";
 import "./score-engine.js";
 import "./goal-engine.js";
 import "./market-session.js";
@@ -513,14 +515,15 @@ function apiGuard(request) {
   return null;
 }
 
-async function readJson(request) {
-  const len = Number(request.headers.get("Content-Length") || 0);
-  if (Number.isFinite(len) && len > MAX_BODY_BYTES) throw new Error("Payload too large");
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) throw new Error("Payload too large");
-  if (!text) return {};
-  const parsed = JSON.parse(text);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid JSON object");
+async function readJson(request,maxBytes=MAX_BODY_BYTES) {
+  if(Number(request.headers.get("Content-Length")||0)>maxBytes)throw Object.assign(new Error("Payload too large"),{status:413});
+  const reader=request.body?.getReader(),chunks=[];let size=0;
+  if(reader){for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>maxBytes){await reader.cancel();throw Object.assign(new Error("Payload too large"),{status:413})}chunks.push(value)}}
+  const bytes=new Uint8Array(size);let at=0;for(const c of chunks){bytes.set(c,at);at+=c.length}
+  const text=new TextDecoder().decode(bytes);
+  if(!text)return {};
+  const parsed=JSON.parse(text);
+  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw Object.assign(new Error("Invalid JSON object"),{status:400});
   return parsed;
 }
 
@@ -872,30 +875,6 @@ function transactionCashDelta(side,quantity,price,fees){
   return String(side||"").toUpperCase()==="SELL" ? gross-commission : -(gross+commission);
 }
 
-async function adjustPortfolioCashForTransaction(env,userId,portfolioId,currency,side,quantity,price,fees,multiplier=1,recordedDelta=null,cashFxRate=null){
-  const portfolio=await onePortfolio(env,userId,portfolioId);
-  if(!portfolio)return{adjusted:false,reason:"portfolio-not-found"};
-  const base=String(portfolio.base_currency||"EUR").toUpperCase();
-  const txCurrency=String(currency||base).toUpperCase();
-  const before=Math.max(0,finiteNumber(portfolio.cash_balance)||0);
-  let baseDelta=recordedDelta===null?transactionCashDelta(side,quantity,price,fees):(finiteNumber(recordedDelta)||0);
-  if(recordedDelta===null&&base!==txCurrency){
-    const rate=finiteNumber(cashFxRate);
-    if(rate===null||rate<=0){
-      return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:txCurrency,cashBalance:before};
-    }
-    baseDelta*=rate;
-  }
-  const rawDelta=baseDelta*(multiplier<0?-1:1);
-  const unclamped=before+rawDelta,next=Math.max(0,Math.round((unclamped+Number.EPSILON)*1000000)/1000000);
-  const shortfall=Math.max(0,-unclamped);
-  const updatedAt=nowIso();
-  await env.DB.prepare(
-    "INSERT INTO portfolio_market_settings (portfolio_id,user_id,market_scope,cash_balance,updated_at) VALUES (?,?,?,?,?) "+
-    "ON CONFLICT(portfolio_id) DO UPDATE SET cash_balance=excluded.cash_balance,updated_at=excluded.updated_at"
-  ).bind(portfolioId,userId,normalizedMarketScope(portfolio.market_scope),next,updatedAt).run();
-  return{adjusted:true,before,cashBalance:next,delta:next-before,requestedDelta:rawDelta,shortfall,baseCurrency:base};
-}
 
 
 function fundPortfolioPayload(body) {
@@ -1041,6 +1020,10 @@ async function transactionRows(env, userId, portfolioId, stockKey, positionId=""
   return rows.results || [];
 }
 
+function orderedTransactions(rows){
+  return [...(rows||[])].sort((a,b)=>String(a.executed_at||"").localeCompare(String(b.executed_at||"")) || String(a.created_at||"").localeCompare(String(b.created_at||"")) || (a.side===b.side?0:a.side==="BUY"?-1:1) || String(a.id||"").localeCompare(String(b.id||"")));
+}
+
 export function calculateTransactionLedger(rows) {
   let quantity = 0;
   let grossCostBasis = 0;
@@ -1055,7 +1038,7 @@ export function calculateTransactionLedger(rows) {
     bucket[key] = (bucket[key] || 0) + value;
   };
 
-  for (const row of rows || []) {
+  for (const row of orderedTransactions(rows)) {
     const side = String(row.side || "").toUpperCase();
     const origin = String(row.origin || "");
     const qty = finiteNumber(row.quantity);
@@ -1153,12 +1136,19 @@ export function calculatePortfolioTransactionSummary(rows) {
       else if (side === "SELL") { currencies[currency].sellGross += qty * price; sells++; }
       currencies[currency].fees += fees;
     }
-    const key = String(row.stock_key || row.ticker || "");
+    const key = row.position_id || [row.stock_key || row.ticker || "",row.broker || "",row.prefer_tr || 0,row.exchange || ""].join("|");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
 
-  for (const groupRows of groups.values()) {
+  const ledgerGroups=[];
+  for(const groupRows of groups.values()){
+    if(groupRows.some(r=>r.origin==="position-adjustment")){ledgerGroups.push(groupRows);continue}
+    const byCurrency=new Map();
+    for(const row of groupRows){const c=String(row.currency||"EUR").toUpperCase();if(!byCurrency.has(c))byCurrency.set(c,[]);byCurrency.get(c).push(row)}
+    ledgerGroups.push(...byCurrency.values());
+  }
+  for (const groupRows of ledgerGroups) {
     const ledger = calculateTransactionLedger(groupRows);
     const realized = ledger.realizedByCurrency && typeof ledger.realizedByCurrency === "object"
       ? ledger.realizedByCurrency
@@ -1175,128 +1165,9 @@ export function calculatePortfolioTransactionSummary(rows) {
       value[key] = Math.round((value[key] + Number.EPSILON) * 1000000) / 1000000;
     }
   }
-  return { total: sorted.length, buys, sells, adjustments, stocks: groups.size, currencies };
+  return { total: sorted.length, buys, sells, adjustments, stocks: new Set(sorted.map(r=>r.stock_key||r.ticker||" ")).size, currencies };
 }
 
-async function ensureOpeningTransaction(env, userId, position) {
-  if (!position || finiteNumber(position.quantity) === null || finiteNumber(position.quantity) <= 0 || finiteNumber(position.avg_price) === null) return null;
-  await ensureTransactionsSchema(env);
-  const existing = await env.DB.prepare(
-    "SELECT id,fees FROM transactions WHERE user_id=? AND position_id=? LIMIT 1"
-  ).bind(userId, position.id).first();
-  if (existing) return {id:existing.id,created:false,fee:finiteNumber(existing.fees)||0};
-
-  const now = nowIso();
-  const executed = trimText(position.opened_at, 40);
-  const d = executed ? new Date(executed) : new Date(now);
-  const executedAt = Number.isFinite(d.getTime()) ? d.toISOString() : now;
-  const broker=trimText(position.broker,80);
-  const explicitFee=finiteNumber(position.opening_fee);
-  const feeInfo=explicitFee===null?await brokerFeeForTrade(env,userId,broker,position.quantity,position.avg_price,position.currency,"BUY",position.exchange):null;
-  const fee=explicitFee!==null?Math.max(0,explicitFee):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:0);
-  const txId=uid("tx_");
-  await env.DB.prepare(
-    "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'position-seed',?,?)"
-  ).bind(
-    txId, position.portfolio_id, userId, position.id, broker, position.stock_key, position.ticker, position.name || "",
-    position.exchange || "", position.isin || "", booleanInt(position.prefer_tr),
-    finiteNumber(position.quantity), finiteNumber(position.avg_price), fee, String(position.currency || "EUR").toUpperCase(),
-    executedAt, "Posición inicial importada", now, now
-  ).run();
-  return {id:txId,created:true,fee};
-}
-
-async function appendPositionAdjustment(env, userId, position, data) {
-  if (!position || data.quantity === null || data.quantity <= 0 || data.avgPrice === null || data.avgPrice < 0) return false;
-  await ensureTransactionsSchema(env);
-  await ensureOpeningTransaction(env, userId, position);
-  const rows = await transactionRows(env, userId, position.portfolio_id, position.stock_key, position.id);
-  const ledger = calculateTransactionLedger(rows);
-  const targetCurrency = String(data.currency || position.currency || ledger.currency || "EUR").toUpperCase();
-  const changed =
-    Math.abs((ledger.quantity || 0) - data.quantity) > 1e-8 ||
-    ledger.avgPrice === null ||
-    Math.abs((ledger.avgPrice || 0) - data.avgPrice) > 1e-8 ||
-    String(ledger.currency || targetCurrency).toUpperCase() !== targetCurrency;
-  if (!changed) return false;
-
-  const now = nowIso();
-  await env.DB.prepare(
-    "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,0,?,?,?,'position-adjustment',?,?)"
-  ).bind(
-    uid("tx_"), position.portfolio_id, userId, position.id, trimText(position.broker||data.broker,80), position.stock_key,
-    data.ticker || position.ticker || "", data.name || position.name || "",
-    data.exchange || position.exchange || "", data.isin || position.isin || "",
-    data.preferTr, data.quantity, data.avgPrice, targetCurrency, now,
-    "Ajuste manual desde Gestionar cartera", now, now
-  ).run();
-  return true;
-}
-
-async function recalculatePositionFromTransactions(env, userId, portfolioId, stockKey, positionId="") {
-  const pid=trimText(positionId,80);
-  const rows = await transactionRows(env, userId, portfolioId, stockKey, pid);
-  if (!rows.length) return null;
-  const ledger = calculateTransactionLedger(rows);
-  const first = rows[0];
-  const now = nowIso();
-  let existing=pid
-    ? await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(pid,userId).first()
-    : null;
-  if(!existing){
-    existing=await env.DB.prepare(
-      "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
-    ).bind(
-      userId,portfolioId,stockKey,trimText(first.broker,80),String(first.currency||"EUR").toUpperCase(),
-      booleanInt(first.prefer_tr),trimText(first.exchange,40).toUpperCase()
-    ).first();
-  }
-  const resolvedId=existing&&existing.id?existing.id:(pid||uid("pos_"));
-  const analysisChanged=!existing||
-    Math.abs((finiteNumber(existing.quantity)||0)-(finiteNumber(ledger.quantity)||0))>1e-8||
-    Math.abs((finiteNumber(existing.avg_price)||0)-(finiteNumber(ledger.avgPrice)||0))>1e-8||
-    String(existing.currency||"").toUpperCase()!==String(ledger.currency||"").toUpperCase()||
-    Number(existing.active)!==(ledger.quantity>1e-8?1:0);
-  if(existing){
-    await env.DB.prepare(
-      "UPDATE positions SET ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,cost_basis=?,fees_total=?,currency=?,broker=?,opened_at=?,active=?,updated_at=? WHERE id=? AND user_id=?"
-    ).bind(
-      existing.ticker||first.ticker||"",existing.name||first.name||"",existing.exchange||first.exchange||"",
-      existing.isin||first.isin||"",booleanInt(existing.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,
-      existing.broker||first.broker||"",existing.opened_at||ledger.firstBuyAt,ledger.quantity>1e-8?1:0,now,resolvedId,userId
-    ).run();
-    // Si baja la cantidad, la congelación no puede pasar de lo que queda (y se borra al cerrar la posición):
-    // así una recompra posterior no hereda una congelación antigua.
-    if(!(ledger.quantity>1e-8)){
-      try{await env.DB.prepare("DELETE FROM position_decisions WHERE user_id=? AND position_id=?").bind(userId,resolvedId).run()}catch(_){}
-    }
-    const frozenNow=finiteNumber(existing.frozen_qty)??0;
-    if(frozenNow>0&&ledger.quantity<frozenNow-1e-9){
-      const keep=ledger.quantity>1e-8?Math.round(ledger.quantity*1e8)/1e8:0;
-      await env.DB.prepare("UPDATE positions SET frozen_qty=?,frozen_until=CASE WHEN ?>0 THEN frozen_until ELSE NULL END WHERE id=? AND user_id=?")
-        .bind(keep,keep,resolvedId,userId).run();
-    }
-  }else{
-    await env.DB.prepare(
-      "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-    ).bind(
-      resolvedId,portfolioId,userId,stockKey,first.ticker||"",first.name||"",first.exchange||"",first.isin||"",
-      booleanInt(first.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,first.broker||"",ledger.firstBuyAt||now,"",
-      ledger.quantity>1e-8?1:0,now,now
-    ).run();
-  }
-  if(analysisChanged){
-    await env.DB.prepare(
-      "UPDATE positions SET last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL WHERE id=? AND user_id=?"
-    ).bind(resolvedId,userId).run();
-  }
-  return {
-    position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(resolvedId,userId).first(),
-    ledger
-  };
-}
 
 function watchPayload(body) {
   return {
@@ -1372,6 +1243,7 @@ async function handlePortfolios(request, env, user, json, parts) {
   }
 
   if (!id) return json({ error: "Portfolio id required" }, 400);
+  const portfolioRevision=request.method==="PATCH"?await financialRevision(env.DB,user.id):null;
   const existing = await onePortfolio(env, user.id, id);
   if (!existing) return json({ error: "Portfolio not found" }, 404);
   if (request.method === "POST" && parts[2] === "dedupe") {
@@ -1399,7 +1271,7 @@ async function handlePortfolios(request, env, user, json, parts) {
       }
     }
     const updatedAt=nowIso();
-    await env.DB.batch([
+    await financialBatch(env.DB,user.id,portfolioRevision,[
       env.DB.prepare(
         "UPDATE portfolios SET name=?,broker=?,base_currency=?,sort_order=?,updated_at=? WHERE id=? AND user_id=?"
       ).bind(data.name,data.broker,data.baseCurrency,data.sortOrder,updatedAt,id,user.id),
@@ -1467,55 +1339,10 @@ async function handlePositions(request, env, user, json, parts, url) {
     const existing = await env.DB.prepare(
       "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
     ).bind(user.id,data.portfolioId,data.stockKey,data.broker,data.currency,data.preferTr,data.exchange).first();
-    const now = nowIso();
-    let row=null;
-    if(existing){
-      // POST on an existing broker/listing is a new purchase, never a destructive overwrite.
-      await ensureOpeningTransaction(env,user.id,existing);
-      if(data.quantity===null||data.quantity<=0||data.avgPrice===null||data.avgPrice<0){
-        return json({error:"quantity and avgPrice are required to add to an existing position"},400);
-      }
-      const txId=uid("tx_");
-      const feeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY",data.exchange):null;
-      const fee=data.fees!==null?Math.max(0,data.fees):(feeInfo&&feeInfo.fee!==null?feeInfo.fee:null);
-      if(fee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
-      await env.DB.prepare(
-        "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'BUY',?,?,?,?,?,?,'manual',?,?)"
-      ).bind(
-        txId,data.portfolioId,user.id,existing.id,data.broker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,
-        data.preferTr,data.quantity,data.avgPrice,fee,data.currency,data.openedAt?new Date(data.openedAt).toISOString():now,data.notes||"",now,now
-      ).run();
-      const cashAdjustment=await adjustPortfolioCashForTransaction(
-        env,user.id,data.portfolioId,data.currency,"BUY",data.quantity,data.avgPrice,fee,1,null,data.cashFxRate
-      );
-      await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
-        .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
-      const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,existing.id);
-      row=recalculated&&recalculated.position||existing;
-    }else{
-      const initialFeeInfo=data.fees===null?await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.avgPrice,data.currency,"BUY"):null;
-      const initialFee=data.fees!==null?Math.max(0,data.fees):(initialFeeInfo&&initialFeeInfo.fee!==null?initialFeeInfo.fee:null);
-      if(initialFee===null)return json({error:"No se ha podido verificar todavía la comisión de este broker."},409);
-      const idNew=uid("pos_");
-      await env.DB.prepare(
-        "INSERT INTO positions (id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)"
-      ).bind(
-        idNew,data.portfolioId,user.id,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
-        data.quantity,data.avgPrice,data.quantity*data.avgPrice+initialFee,initialFee,data.currency,data.broker,data.openedAt,data.notes,now,now
-      ).run();
-      row=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(idNew,user.id).first();
-      row.opening_fee=initialFee;
-      const seed=await ensureOpeningTransaction(env,user.id,row);
-      if(seed&&seed.created){
-        const cashAdjustment=await adjustPortfolioCashForTransaction(
-          env,user.id,data.portfolioId,data.currency,"BUY",data.quantity,data.avgPrice,seed.fee,1,null,data.cashFxRate
-        );
-        await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
-          .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),seed.id,user.id).run();
-      }
-      const recalculated=await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,idNew);
-      row=recalculated&&recalculated.position||row;
-    }
+    if(!(data.quantity>0)||data.avgPrice===null||data.avgPrice<0)return json({error:"quantity and avgPrice are required"},400);
+    const result=await createTransactionRecord(env,user,transactionPayload({...body,...data,price:data.avgPrice,side:"BUY",executedAt:data.openedAt||nowIso(),positionId:existing?.id||""}),{externalId:manualRequestId(request)});
+    if(result.status>=400)return json(result.body,result.status);
+    const row=result.body.position;
     if(!existing||Number(existing.active)===0){
       try{await notifyPortfolioMembershipChange(env,user.id,portfolio,row,"added")}catch(error){console.warn("Portfolio entry notification failed",String(error&&error.message||error))}
     }
@@ -1523,6 +1350,8 @@ async function handlePositions(request, env, user, json, parts, url) {
   }
 
   if (!id) return json({ error: "Position id required" }, 400);
+  if(request.method==="PATCH"){await ensureTransactionsSchema(env);await ensurePositionDecisionsSchema(env)}
+  const positionRevision=request.method==="PATCH"?await financialRevision(env.DB,user.id):null;
   const existing = await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first();
   if (!existing) return json({ error: "Position not found" }, 404);
 
@@ -1566,19 +1395,24 @@ async function handlePositions(request, env, user, json, parts, url) {
     const targetScope=normalizedMarketScope(targetPortfolio.market_scope);
     if(targetScope==="tr"&&data.preferTr!==1)return json({error:"Esta cartera está configurada para Trade Republic / LSX."},409);
     if(targetScope==="us"&&data.preferTr===1)return json({error:"Esta cartera está configurada para mercado EEUU."},409);
-    const adjusted=await appendPositionAdjustment(env,user.id,existing,data);
-    const recalculated=adjusted
-      ?await recalculatePositionFromTransactions(env,user.id,existing.portfolio_id,existing.stock_key,existing.id)
-      :null;
-    const ledger=recalculated&&recalculated.ledger;
-    await env.DB.prepare(
-      "UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,quantity=?,avg_price=?,cost_basis=?,fees_total=?,currency=?,broker=?,opened_at=?,notes=?,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?"
-    ).bind(
-      data.portfolioId,data.ticker,data.name,data.exchange,data.isin,data.preferTr,data.quantity,
-      data.avgPrice,ledger?ledger.invested:(finiteNumber(existing.cost_basis)??data.quantity*data.avgPrice),
-      ledger?(ledger.totalFees||0):(finiteNumber(existing.fees_total)||0),
-      data.currency,data.broker,data.openedAt,data.notes,nowIso(),id,user.id
-    ).run();
+    if(!(data.quantity>0)||data.avgPrice===null||data.avgPrice<0)return json({error:"quantity and avgPrice are required"},400);
+    const now=nowIso(),statements=[];
+    let rows=(await env.DB.prepare("SELECT * FROM transactions WHERE user_id=? AND position_id=?").bind(user.id,id).all()).results||[];
+    if(!rows.length&&existing.quantity>0&&existing.avg_price!==null){
+      const seed={...existing,id:uid("tx_"),position_id:id,side:"BUY",price:existing.avg_price,fees:0,origin:"position-seed",external_id:"",cash_delta:0,cash_currency:"",executed_at:existing.opened_at||existing.created_at||now,created_at:now,updated_at:now};
+      rows.push(seed);statements.push(transactionStatement(env,seed));
+    }
+    const before=calculateTransactionLedger(rows);
+    if(Math.abs(before.quantity-data.quantity)>1e-8||Math.abs((before.avgPrice||0)-data.avgPrice)>1e-8||before.currency!==data.currency){
+      const adjustment={id:uid("tx_"),portfolio_id:existing.portfolio_id,user_id:user.id,position_id:id,broker:data.broker,stock_key:existing.stock_key,ticker:data.ticker,name:data.name,exchange:data.exchange,isin:data.isin,prefer_tr:data.preferTr,side:"BUY",quantity:data.quantity,price:data.avgPrice,fees:0,currency:data.currency,executed_at:now,notes:"Ajuste manual desde Gestionar cartera",origin:"position-adjustment",external_id:"",cash_delta:0,cash_currency:"",created_at:now,updated_at:now};
+      rows.push(adjustment);statements.push(transactionStatement(env,adjustment));
+    }
+    const ledger=calculateTransactionLedger(rows);
+    statements.push(...positionLedgerStatements(env,user.id,existing.portfolio_id,existing.stock_key,id,existing,ledger,rows[0]||existing,now));
+    statements.push(env.DB.prepare("UPDATE positions SET portfolio_id=?,ticker=?,name=?,exchange=?,isin=?,prefer_tr=?,broker=?,opened_at=?,notes=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(data.portfolioId,data.ticker,data.name,data.exchange,data.isin,data.preferTr,data.broker,data.openedAt,data.notes,now,id,user.id));
+    if(data.portfolioId!==existing.portfolio_id)statements.push(env.DB.prepare("UPDATE transactions SET portfolio_id=?,updated_at=? WHERE position_id=? AND user_id=?").bind(data.portfolioId,now,id,user.id));
+    await financialBatch(env.DB,user.id,positionRevision,statements);
     return json({ position: await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id, user.id).first() });
   }
 
@@ -1598,52 +1432,26 @@ async function handlePositions(request, env, user, json, parts, url) {
 // same value in the same portfolio (manual buys, the initial «position seed», manual
 // adjustments) describes the same shares twice. Retire it: delete those transactions,
 // deactivate positions left empty and recalculate the rest.
-async function retireManualEntries(env, userId, portfolioId, refs = null) {
-  const rows = (await env.DB.prepare(
-    "SELECT id,stock_key,isin,position_id,origin FROM transactions WHERE user_id=? AND portfolio_id=?"
-  ).bind(userId, portfolioId).all()).results || [];
-  const imported = new Set();
-  for (const r of rows) if (String(r.origin || "").startsWith("import:")) {
-    imported.add("K:" + String(r.stock_key || "").toUpperCase());
-    if (r.isin) imported.add("I:" + String(r.isin).toUpperCase());
+async function retireManualEntries(env,userId,portfolioId,refs=null){
+  await ensurePositionDecisionsSchema(env);
+  const revision=await financialRevision(env.DB,userId);
+  const rows=(await env.DB.prepare("SELECT * FROM transactions WHERE user_id=? AND portfolio_id=?").bind(userId,portfolioId).all()).results||[];
+  const imported=new Set();
+  for(const r of rows)if(String(r.origin||"").startsWith("import:")){imported.add("K:"+r.stock_key);if(r.isin)imported.add("I:"+r.isin)}
+  const wanted=refs?new Set([...refs].map(x=>String(x).toUpperCase())):imported;
+  const victims=rows.filter(r=>!String(r.origin||"").startsWith("import:")&&(wanted.has("K:"+r.stock_key)||(r.isin&&wanted.has("I:"+r.isin))));
+  if(!victims.length)return{removed:0,positions:0};
+  const ids=new Set(victims.map(r=>r.id)),positions=new Set(victims.map(r=>r.position_id).filter(Boolean)),statements=[],now=nowIso();
+  for(let i=0;i<victims.length;i+=80){const chunk=victims.slice(i,i+80);statements.push(env.DB.prepare("DELETE FROM transactions WHERE user_id=? AND id IN ("+chunk.map(()=>"?").join(",")+")").bind(userId,...chunk.map(r=>r.id)))}
+  for(const id of positions){
+    const position=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(id,userId).first();if(!position)continue;
+    const remaining=rows.filter(r=>r.position_id===id&&!ids.has(r.id));
+    let ledger;try{ledger=calculateTransactionLedger(remaining)}catch(_){throw Object.assign(new Error("No se puede retirar la operación manual: hay ventas que dependen de ella."),{status:409})}
+    if(!remaining.length)ledger.currency=position.currency;
+    statements.push(...positionLedgerStatements(env,userId,portfolioId,position.stock_key,id,position,ledger,remaining[0]||position,now));
   }
-  const wanted = refs ? new Set([...refs].map(x => String(x).toUpperCase())) : null;
-  const hit = r => {
-    const k = "K:" + String(r.stock_key || "").toUpperCase(), i = r.isin ? "I:" + String(r.isin).toUpperCase() : "";
-    if (wanted) return wanted.has(k) || (i && wanted.has(i));
-    return imported.has(k) || (i && imported.has(i));
-  };
-  const victims = rows.filter(r => !String(r.origin || "").startsWith("import:") && hit(r));
-  if (!victims.length) return { removed: 0, positions: 0 };
-  for (let i = 0; i < victims.length; i += 50) {
-    await env.DB.batch(victims.slice(i, i + 50).map(v => env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(v.id, userId)));
-  }
-  const touched = new Map();
-  for (const v of victims) touched.set(String(v.position_id || "") + "|" + v.stock_key, v);
-  let positions = 0;
-  const now = nowIso();
-  for (const v of touched.values()) {
-    const left = v.position_id
-      ? await env.DB.prepare("SELECT COUNT(*) AS n FROM transactions WHERE user_id=? AND position_id=?").bind(userId, v.position_id).first()
-      : { n: 1 };
-    if (v.position_id && !(Number(left && left.n) > 0)) {
-      await env.DB.prepare("UPDATE positions SET active=0,quantity=0,updated_at=? WHERE id=? AND user_id=?").bind(now, v.position_id, userId).run();
-      positions++;
-    } else {
-      try { await recalculatePositionFromTransactions(env, userId, portfolioId, v.stock_key, v.position_id || ""); } catch (_) {}
-    }
-  }
-  // Positions created by hand without any transaction row (very old data).
-  const orphan = (await env.DB.prepare(
-    "SELECT p.id,p.stock_key,p.isin FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.user_id=p.user_id AND t.position_id=p.id)"
-  ).bind(userId, portfolioId).all()).results || [];
-  for (const o of orphan) {
-    const covered = imported.has("K:" + String(o.stock_key || "").toUpperCase()) || (o.isin && imported.has("I:" + String(o.isin).toUpperCase()));
-    if (!covered) continue;
-    const has = await env.DB.prepare("SELECT COUNT(*) AS n FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND active=1 AND id<>?").bind(userId, portfolioId, o.stock_key, o.id).first();
-    if (Number(has && has.n) > 0) { await env.DB.prepare("UPDATE positions SET active=0,updated_at=? WHERE id=? AND user_id=?").bind(now, o.id, userId).run(); positions++; }
-  }
-  return { removed: victims.length, positions };
+  await financialBatch(env.DB,userId,revision,statements);
+  return{removed:victims.length,positions:positions.size};
 }
 
 const IMPORT_MAX_ROWS = 80;
@@ -1902,7 +1710,12 @@ function fxLookup(rows){
     return null;
   };
 }
-function addMonths(day,months){const d=new Date(day+"T12:00:00Z");d.setUTCMonth(d.getUTCMonth()+months);return d.toISOString().slice(0,10)}
+export function addMonths(day,months){
+  const d=new Date(day+"T12:00:00Z"),date=d.getUTCDate();
+  d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);
+  d.setUTCDate(Math.min(date,new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()));
+  return d.toISOString().slice(0,10);
+}
 
 export function computeSpanishTax(rows,fxFor,year){
   const securities=new Map();
@@ -2087,7 +1900,7 @@ async function handleTaxReport(request,env,user,json,url){
   const year=Math.max(2000,Math.min(nowYear,Math.round(finiteNumber(url.searchParams.get("year"))||nowYear)));
   // Años cerrados: también los dos meses siguientes, para aplicar bien la regla de los dos meses a las
   // pérdidas de noviembre y diciembre (el informe solo cuenta las ventas del año).
-  const cutoff=year<nowYear?(year+1)+"-03-02T00:00:00.000Z":new Date(Date.now()+864e5).toISOString();
+  const cutoff=year<nowYear?(year+1)+"-03-01T00:00:00.000Z":new Date(Date.now()+864e5).toISOString();
   const res=await env.DB.prepare("SELECT id,ticker,name,isin,stock_key,side,quantity,price,fees,currency,executed_at,origin,broker FROM transactions WHERE user_id=? AND executed_at<? ORDER BY executed_at ASC,created_at ASC").bind(user.id,cutoff).all();
   const rows=res.results||[];
   const needed=new Map();
@@ -2128,28 +1941,16 @@ async function handleTaxReport(request,env,user,json,url){
  * operaciones, dividendos, favoritos sincronizados, avisos por valor y preferencias.
  * Nunca incluye tokens ni credenciales (el token de IBKR vive solo en el dispositivo).
  */
-async function handleBackup(request,env,user,json){
-  if(request.method!=="GET")return json({error:"Method not allowed"},405);
-  await ensureTransactionsSchema(env);
-  await ensureDividendsSchema(env);
-  await ensureNotificationPreferenceSchema(env);
-  await ensureUiPreferencesSchema(env);
-  await ensurePositionBrokerSchema(env);
-  const all=async(sql)=>{try{return(await env.DB.prepare(sql).bind(user.id).all()).results||[]}catch(_){return[]}};
-  await ensureCryptoSchema(env);
-  const [portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences,cryptoPositions]=await Promise.all([
-    all("SELECT id,name,broker,base_currency,cash_balance,sort_order,created_at FROM portfolios WHERE user_id=? ORDER BY sort_order,created_at"),
-    all("SELECT id,portfolio_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,currency,broker,opened_at,active,frozen_qty,frozen_until FROM positions WHERE user_id=?"),
-    all("SELECT id,portfolio_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id FROM transactions WHERE user_id=? ORDER BY executed_at,created_at"),
-    all("SELECT id,portfolio_id,external_id,paid_at,isin,ticker,name,currency,gross,withholding,withholding_es,origin,broker FROM dividends WHERE user_id=? ORDER BY paid_at"),
-    all("SELECT stock_key,ticker,name,exchange,isin,prefer_tr,notes FROM watchlist WHERE user_id=?"),
-    all("SELECT stock_key,ticker,name,prefer_tr,news_enabled,pulse_enabled,radar_enabled,price_up_enabled,price_down_enabled,price_up_step,price_down_step,price_above,price_below FROM notification_preferences WHERE user_id=?"),
-    all("SELECT scope,preferences_json FROM user_ui_preferences WHERE user_id=?"),
-    all("SELECT symbol,platform,units,avg_price_eur,notes,origin FROM crypto_positions WHERE user_id=? ORDER BY symbol")
-  ]);
-  const prefs={};
-  for(const r of uiPreferences){try{prefs[r.scope]=JSON.parse(r.preferences_json||"{}")}catch(_){}}
-  return json({app:"ViewInvAI",kind:"backup",version:1,exportedAt:nowIso(),portfolios,positions,transactions,dividends,watchlist,notificationPreferences,uiPreferences:prefs,cryptoPositions},200,{"Cache-Control":"no-store"});
+export async function handleBackup(request,env,user,json){
+  if(!["GET","POST"].includes(request.method))return json({error:"Method not allowed"},405);
+  await ensureTransactionsSchema(env);await ensureDividendsSchema(env);
+  await ensureNotificationPreferenceSchema(env);await ensureUiPreferencesSchema(env);
+  await ensurePositionBrokerSchema(env);await ensurePortfolioMarketSchema(env);
+  await ensureCryptoSchema(env);await ensureFundSchema(env);await ensurePortfolioGoalSchema(env);
+  await ensurePositionDecisionsSchema(env);await ensureUserBrokerSchema(env);
+  await globalNotificationSettingsForUser(env,user.id);
+  if(request.method==="POST")return json(await restoreBackup(env.DB,user.id,await readJson(request,10*1024*1024)),200,{"Cache-Control":"no-store"});
+  return json(await exportBackup(env.DB,user.id),200,{"Cache-Control":"no-store"});
 }
 
 /* ---------------- Dividendos y retenciones ----------------
@@ -2882,75 +2683,108 @@ export async function crashScoreboardSummary(env){
 }
 
 function txResult(body,status=200){return{status,body}}
+function manualRequestId(request){const key=String(request.headers.get("Idempotency-Key")||"");return /^[a-zA-Z0-9_-]{8,80}$/.test(key)?"manual:"+key:""}
 
 // Shared by the manual form and broker imports. options.origin tags the row
 // ('manual', 'import:tr', 'import:ibkr', 'import:csv'); options.externalId is the
 // broker's execution id, unique per user, so a repeated import is a no-op.
-async function createTransactionRecord(env, user, data, options = {}) {
-  const origin = trimText(options.origin || "manual", 40) || "manual";
-  const externalId = trimText(options.externalId, 120);
-  const adjustCash = options.adjustCash !== false;
-    if (!data.portfolioId || !data.stockKey || !data.ticker) return txResult({ error: "portfolioId, stockKey and ticker are required" }, 400);
-    if (!["BUY","SELL"].includes(data.side)) return txResult({ error: "side must be BUY or SELL" }, 400);
-    if (data.quantity === null || data.quantity <= 0) return txResult({ error: "quantity must be greater than zero" }, 400);
-    if (data.price === null || data.price < 0) return txResult({ error: "price must be zero or greater" }, 400);
-    if(data.fees===null){
-      const autoFee=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side,data.exchange);
-      if(autoFee.fee===null&&options.defaultFees!==undefined){autoFee.fee=options.defaultFees}
-      if(autoFee.fee===null)return txResult({error:autoFee.reason==="currency-mismatch"?"La comisión de este broker se cobra en otra divisa: indícala manualmente en la divisa de la operación.":"No se ha podido verificar todavía la comisión de este broker."},409);
-      data.fees=autoFee.fee;
+function cashChange(portfolio,currency,side,quantity,price,fees,{adjust=true,multiplier=1,recordedDelta=null,rate=null}={}){
+  const base=String(portfolio.base_currency||"EUR").toUpperCase(),before=Math.max(0,finiteNumber(portfolio.cash_balance)||0);
+  if(!adjust)return{adjusted:false};
+  let delta=recordedDelta===null?transactionCashDelta(side,quantity,price,fees):recordedDelta;
+  if(recordedDelta===null&&base!==currency){
+    if(!(rate>0))return{adjusted:false,reason:"currency-mismatch",baseCurrency:base,transactionCurrency:currency,cashBalance:before};
+    delta*=rate;
+  }
+  const requestedDelta=delta*multiplier,cashBalance=Math.max(0,Math.round((before+requestedDelta+Number.EPSILON)*1e6)/1e6);
+  return{adjusted:true,before,cashBalance,delta:cashBalance-before,requestedDelta,shortfall:Math.max(0,-before-requestedDelta),baseCurrency:base};
+}
+function cashStatement(env,userId,portfolio,change,now){
+  return env.DB.prepare("INSERT INTO portfolio_market_settings(portfolio_id,user_id,market_scope,cash_balance,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(portfolio_id) DO UPDATE SET cash_balance=excluded.cash_balance,updated_at=excluded.updated_at")
+    .bind(portfolio.id,userId,normalizedMarketScope(portfolio.market_scope),change.cashBalance,now);
+}
+function transactionStatement(env,row){
+  const cols=["id","portfolio_id","user_id","position_id","broker","stock_key","ticker","name","exchange","isin","prefer_tr","side","quantity","price","fees","currency","executed_at","notes","origin","external_id","cash_delta","cash_currency","created_at","updated_at"];
+  return env.DB.prepare("INSERT INTO transactions ("+cols.join(",")+") VALUES ("+cols.map(()=>"?").join(",")+")").bind(...cols.map(c=>row[c]??""));
+}
+function positionLedgerStatements(env,userId,portfolioId,stockKey,positionId,existing,ledger,first,now){
+  if(!existing){
+    return [env.DB.prepare("INSERT INTO positions(id,portfolio_id,user_id,stock_key,ticker,name,exchange,isin,prefer_tr,quantity,avg_price,cost_basis,fees_total,currency,broker,opened_at,notes,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(positionId,portfolioId,userId,stockKey,first.ticker||"",first.name||"",first.exchange||"",first.isin||"",booleanInt(first.prefer_tr),ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,first.broker||"",ledger.firstBuyAt||now,first.notes||"",ledger.quantity>1e-8?1:0,now,now)];
+  }
+  const frozen=Math.min(finiteNumber(existing.frozen_qty)||0,ledger.quantity);
+  const out=[env.DB.prepare("UPDATE positions SET quantity=?,avg_price=?,cost_basis=?,fees_total=?,currency=?,opened_at=?,active=?,frozen_qty=?,frozen_until=CASE WHEN ?>0 THEN frozen_until ELSE NULL END,last_analysis_at=NULL,last_signal=NULL,last_confidence=NULL,last_score=NULL,last_snapshot_id=NULL,updated_at=? WHERE id=? AND user_id=?")
+    .bind(ledger.quantity,ledger.avgPrice,ledger.invested,ledger.totalFees||0,ledger.currency,ledger.firstBuyAt||existing.opened_at,ledger.quantity>1e-8?1:0,frozen,frozen,now,positionId,userId)];
+  if(ledger.quantity<=1e-8)out.push(env.DB.prepare("DELETE FROM position_decisions WHERE position_id=? AND user_id=?").bind(positionId,userId));
+  return out;
+}
+export async function createTransactionRecord(env,user,data,options={}){
+  await ensurePositionBrokerSchema(env);await ensureTransactionsSchema(env);await ensurePositionDecisionsSchema(env);
+  const origin=trimText(options.origin||"manual",40),externalId=trimText(options.externalId,120);
+  if(!data.portfolioId||!data.stockKey||!data.ticker)return txResult({error:"portfolioId, stockKey and ticker are required"},400);
+  if(!["BUY","SELL"].includes(data.side))return txResult({error:"side must be BUY or SELL"},400);
+  if(!(data.quantity>0)||data.price===null||data.price<0||!data.executedAt)return txResult({error:"Invalid quantity, price or date"},400);
+  if(data.fees===null){
+    const f=await brokerFeeForTrade(env,user.id,data.broker,data.quantity,data.price,data.currency,data.side,data.exchange);
+    data.fees=f.fee??options.defaultFees??null;
+  }
+  if(data.fees===null||data.fees<0)return txResult({error:"No se ha podido verificar la comisión del bróker."},409);
+  const revision=await financialRevision(env.DB,user.id);
+  if(externalId){
+    const prior=await env.DB.prepare("SELECT * FROM transactions WHERE user_id=? AND external_id=?").bind(user.id,externalId).first();
+    if(prior){
+      if(prior.portfolio_id!==data.portfolioId||prior.stock_key!==data.stockKey||prior.side!==data.side||prior.quantity!==data.quantity||prior.price!==data.price||prior.currency!==data.currency)return txResult({error:"La clave de operación ya se usó con otros datos."},409);
+      return txResult({transaction:prior,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(prior.position_id,user.id).first(),replayed:true},200);
     }
-    if (data.fees < 0) return txResult({ error: "fees cannot be negative" }, 400);
-    if (!data.executedAt) return txResult({ error: "executedAt is invalid" }, 400);
-    if (!(await onePortfolio(env, user.id, data.portfolioId))) return txResult({ error: "Portfolio not found" }, 404);
+  }
+  const portfolio=await onePortfolio(env,user.id,data.portfolioId);
+  if(!portfolio)return txResult({error:"Portfolio not found"},404);
+  const scope=normalizedMarketScope(portfolio.market_scope);
+  if((scope==="tr"&&data.preferTr!==1)||(scope==="us"&&data.preferTr===1))return txResult({error:"La operación no coincide con el mercado de la cartera."},409);
+  let position=data.positionId?await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(data.positionId,user.id).first():null;
+  if(data.positionId&&!position)return txResult({error:"Position not found"},404);
+  if(position&&(position.portfolio_id!==data.portfolioId||position.stock_key!==data.stockKey||Number(position.prefer_tr)!==data.preferTr||position.exchange!==data.exchange))return txResult({error:"La operación no coincide con la posición seleccionada."},400);
+  if(!position)position=await env.DB.prepare("SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?")
+    .bind(user.id,data.portfolioId,data.stockKey,trimText(data.broker,80),data.currency,data.preferTr,data.exchange).first();
+  if(position&&position.currency!==data.currency)return txResult({error:"Transaction currency must match the position currency"},400);
+  if(!position&&data.side==="SELL")return txResult({error:"Position not found for sell"},404);
+  const positionId=position?.id||uid("pos_"),now=nowIso();
+  let rows=position?(await env.DB.prepare("SELECT * FROM transactions WHERE user_id=? AND position_id=? ORDER BY executed_at,created_at,id").bind(user.id,positionId).all()).results||[]:[];
+  const statements=[];
+  if(!rows.length&&position&&position.quantity>0&&position.avg_price!==null){
+    const fee=finiteNumber(position.opening_fee)??(await brokerFeeForTrade(env,user.id,position.broker,position.quantity,position.avg_price,position.currency,"BUY",position.exchange)).fee??0;
+    const seed={...position,id:uid("tx_"),position_id:positionId,side:"BUY",price:position.avg_price,fees:fee,origin:"position-seed",external_id:"",cash_delta:0,cash_currency:"",executed_at:position.opened_at||position.created_at||now,created_at:now,updated_at:now};
+    rows=[seed];statements.push(transactionStatement(env,seed));
+  }
+  const cashAdjustment=cashChange(portfolio,data.currency,data.side,data.quantity,data.price,data.fees,{adjust:options.adjustCash!==false,rate:data.cashFxRate});
+  const row={id:uid("tx_"),portfolio_id:data.portfolioId,user_id:user.id,position_id:positionId,broker:trimText(data.broker||position?.broker,80),stock_key:data.stockKey,ticker:data.ticker,name:data.name,exchange:data.exchange,isin:data.isin,prefer_tr:data.preferTr,side:data.side,quantity:data.quantity,price:data.price,fees:data.fees,currency:data.currency,executed_at:data.executedAt,notes:data.notes,origin,external_id:externalId,cash_delta:cashAdjustment.adjusted?cashAdjustment.delta:0,cash_currency:cashAdjustment.adjusted?cashAdjustment.baseCurrency:"",created_at:now,updated_at:now};
+  let ledger;
+  try{ledger=calculateTransactionLedger([...rows,row])}catch(error){return txResult({error:error.message},400)}
+  statements.push(transactionStatement(env,row));
+  if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
+  statements.push(...positionLedgerStatements(env,user.id,data.portfolioId,data.stockKey,positionId,position,ledger,orderedTransactions([...rows,row])[0],now));
+  await financialBatch(env.DB,user.id,revision,statements);
+  return txResult({transaction:row,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId,user.id).first(),summary:ledger,cashAdjustment},201);
+}
 
-    let position=data.positionId
-      ?await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(data.positionId,user.id).first()
-      :null;
-    if(!position){
-      const broker=trimText(data.broker,80);
-      position=await env.DB.prepare(
-        "SELECT * FROM positions WHERE user_id=? AND portfolio_id=? AND stock_key=? AND broker=? AND currency=? AND prefer_tr=? AND exchange=?"
-      ).bind(user.id,data.portfolioId,data.stockKey,broker,data.currency,data.preferTr,data.exchange).first();
-    }
-    if(position){
-      await ensureOpeningTransaction(env,user.id,position);
-      const positionCurrency=String(position.currency||data.currency).toUpperCase();
-      if(positionCurrency!==data.currency)return txResult({error:"Transaction currency must match the position currency"},400);
-    }else if(data.side==="SELL"){
-      return txResult({error:"Position not found for sell"},404);
-    }
-
-    const resolvedPositionId=position&&position.id?position.id:uid("pos_");
-    const beforeRows=position
-      ?await transactionRows(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId)
-      :[];
-    const before=calculateTransactionLedger(beforeRows);
-    if(data.side==="SELL"&&data.quantity>before.quantity+1e-8){
-      return txResult({error:"Sell quantity exceeds current position"},400);
-    }
-
-    const txId = uid("tx_");
-    const now = nowIso();
-    const txBroker=trimText(data.broker||(position&&position.broker),80);
-    await env.DB.prepare(
-      "INSERT INTO transactions (id,portfolio_id,user_id,position_id,broker,stock_key,ticker,name,exchange,isin,prefer_tr,side,quantity,price,fees,currency,executed_at,notes,origin,external_id,created_at,updated_at) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-    ).bind(
-      txId,data.portfolioId,user.id,resolvedPositionId,txBroker,data.stockKey,data.ticker,data.name,data.exchange,data.isin,data.preferTr,
-      data.side,data.quantity,data.price,data.fees,data.currency,data.executedAt,data.notes,origin,externalId,now,now
-    ).run();
-
-    const cashAdjustment = adjustCash
-      ? await adjustPortfolioCashForTransaction(
-        env,user.id,data.portfolioId,data.currency,data.side,data.quantity,data.price,data.fees,1,null,data.cashFxRate
-      )
-      : { adjusted:false };
-    await env.DB.prepare("UPDATE transactions SET cash_delta=?,cash_currency=?,updated_at=? WHERE id=? AND user_id=?")
-      .bind(cashAdjustment.adjusted?(finiteNumber(cashAdjustment.delta)||0):0,cashAdjustment.adjusted?String(cashAdjustment.baseCurrency||data.currency):"",nowIso(),txId,user.id).run();
-    const recalculated = await recalculatePositionFromTransactions(env,user.id,data.portfolioId,data.stockKey,resolvedPositionId);
-    const transaction = await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(txId, user.id).first();
-    return txResult({ transaction, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment }, 201);
+export async function deleteTransactionRecord(env,user,id){
+  await ensurePositionDecisionsSchema(env);
+  const revision=await financialRevision(env.DB,user.id);
+  const existing=await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if(!existing)return txResult({error:"Transaction not found"},404);
+  if(existing.origin==="position-seed")return txResult({error:"The initial imported transaction cannot be deleted directly"},409);
+  const position=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(existing.position_id,user.id).first();
+  if(!position)return txResult({error:"Position not found"},409);
+  const rows=(await env.DB.prepare("SELECT * FROM transactions WHERE position_id=? AND user_id=? AND id<>?").bind(position.id,user.id,id).all()).results||[];
+  let ledger;try{ledger=calculateTransactionLedger(rows)}catch(_){return txResult({error:"No se puede borrar: hay ventas posteriores que dependen de esta compra."},409)}
+  if(!rows.length)ledger.currency=position.currency;
+  const portfolio=await onePortfolio(env,user.id,existing.portfolio_id),now=nowIso();
+  const cashAdjustment=cashChange(portfolio,existing.cash_currency||existing.currency,existing.side,existing.quantity,existing.price,existing.fees,{multiplier:-1,recordedDelta:finiteNumber(existing.cash_delta)||0});
+  const statements=[env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id,user.id)];
+  if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
+  statements.push(...positionLedgerStatements(env,user.id,portfolio.id,existing.stock_key,position.id,position,ledger,rows[0]||existing,now));
+  await financialBatch(env.DB,user.id,revision,statements);
+  return txResult({deleted:true,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger,cashAdjustment});
 }
 
 async function handleTransactions(request, env, user, json, parts, url) {
@@ -3006,7 +2840,7 @@ async function handleTransactions(request, env, user, json, parts, url) {
 
   if (request.method === "POST" && !id) {
     const body = await readJson(request);
-    const result = await createTransactionRecord(env, user, transactionPayload(body));
+    const result = await createTransactionRecord(env, user, transactionPayload(body), {externalId:manualRequestId(request)});
     return json(result.body, result.status);
   }
 
@@ -3015,15 +2849,8 @@ async function handleTransactions(request, env, user, json, parts, url) {
   if (!existing) return json({ error: "Transaction not found" }, 404);
 
   if (request.method === "DELETE") {
-    if (String(existing.origin || "") === "position-seed") {
-      return json({ error: "The initial imported transaction cannot be deleted directly" }, 409);
-    }
-    await env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id, user.id).run();
-    const cashAdjustment = await adjustPortfolioCashForTransaction(
-      env,user.id,existing.portfolio_id,existing.cash_currency||existing.currency,existing.side,existing.quantity,existing.price,existing.fees,-1,finiteNumber(existing.cash_delta)||0
-    );
-    const recalculated = await recalculatePositionFromTransactions(env,user.id,existing.portfolio_id,existing.stock_key,existing.position_id||"");
-    return json({ deleted: true, position: recalculated && recalculated.position, summary: recalculated && recalculated.ledger, cashAdjustment });
+    const result=await deleteTransactionRecord(env,user,id);
+    return json(result.body,result.status);
   }
 
   return json({ error: "Method not allowed" }, 405);
@@ -3257,7 +3084,7 @@ async function handleFundPositions(request, env, user, json, parts, url) {
 
 export function calculateFundLedger(rows) {
   let units=0,costBasis=0,realized=0,currency="EUR",firstBuyAt=null,totalFees=0;
-  for(const row of rows||[]){
+  for(const row of orderedTransactions(rows)){
     const side=String(row.side||"").toUpperCase();
     const qty=finiteNumber(row.units),price=finiteNumber(row.price),fees=Math.max(0,finiteNumber(row.fees)||0);
     const cur=String(row.currency||currency||"EUR").toUpperCase();
@@ -3455,7 +3282,7 @@ async function handleFundTransactionImport(request,env,user,json){
     ? await oneFundPortfolio(env,user.id,trimText(body.fundPortfolioId,80))
     : await fundPortfolioForPlatform(env,user.id,platform);
   if(!portfolio)return json({error:"Fund portfolio not found"},404);
-  let imported=0,skipped=0,plans=0;const errors=[],touched=new Set(),retiredFor=new Set();
+  let imported=0,skipped=0,plans=0;const errors=[],pending=new Map();
   const ordered=rows.slice().sort((a,b)=>(Date.parse(a&&a.executedAt)||0)-(Date.parse(b&&b.executedAt)||0)||(String(a&&a.side).toUpperCase()==="BUY"?-1:1));
   const positionFor=async r=>{
     const isin=trimText(r.isin,12).toUpperCase();
@@ -3487,22 +3314,24 @@ async function handleFundTransactionImport(request,env,user,json){
       continue;
     }
     try{
-      const pos=await positionFor(r);
-      if(body.replaceManual===true&&!retiredFor.has(pos.id)){
-        retiredFor.add(pos.id);
-        await env.DB.prepare("DELETE FROM fund_transactions WHERE user_id=? AND fund_position_id=? AND external_id=''").bind(user.id,pos.id).run();
-      }
-      const now=nowIso();
-      await env.DB.prepare("INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,external_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(uid("ftx_"),portfolio.id,pos.id,user.id,isin,side,units,price,fees,String(r.currency||"EUR").toUpperCase(),when.toISOString(),label,externalId,now,now).run();
-      touched.add(pos.id);imported++;
-      try{await learnFundProduct(env,r,platform)}catch(_){}
-    }catch(error){
-      if(/UNIQUE/i.test(String(error&&error.message)))skipped++;
-      else errors.push({ticker:isin,error:"No se pudo guardar: "+String(error&&error.message||"").slice(0,90)});
-    }
+      const pos=await positionFor(r),now=nowIso();
+      if(!pending.has(pos.id))pending.set(pos.id,{position:pos,rows:[]});
+      pending.get(pos.id).rows.push({id:uid("ftx_"),fund_portfolio_id:portfolio.id,fund_position_id:pos.id,user_id:user.id,isin,side,units,price,fees,currency:String(r.currency||"EUR").toUpperCase(),executed_at:when.toISOString(),notes:label,external_id:externalId,created_at:now,updated_at:now});
+    }catch(error){errors.push({ticker:isin,error:String(error.message||error).slice(0,120)})}
   }
-  for(const id of touched){try{await recalculateFundPosition(env,user.id,id)}catch(_){}}
+  for(const {position,rows} of pending.values()){
+    try{
+      const revision=await financialRevision(env.DB,user.id),now=nowIso();
+      let before=await fundTransactionRows(env,user.id,position.id),statements=[];
+      if(body.replaceManual===true){before=before.filter(r=>r.external_id);statements.push(env.DB.prepare("DELETE FROM fund_transactions WHERE user_id=? AND fund_position_id=? AND external_id='' ").bind(user.id,position.id))}
+      else{const seed=await fundSeedRows(env,user.id,position,before,now);before=seed.rows;statements.push(...seed.statements)}
+      const seen=new Set(before.map(r=>r.external_id).filter(Boolean)),fresh=[];
+      for(const row of rows){if(seen.has(row.external_id)){skipped++;continue}seen.add(row.external_id);fresh.push(row)}
+      const ledger=calculateFundLedger([...before,...fresh]);
+      statements.push(...fresh.map(r=>fundTransactionStatement(env,r)),fundLedgerStatement(env,user.id,position,ledger,now));
+      await financialBatch(env.DB,user.id,revision,statements);imported+=fresh.length;
+    }catch(error){errors.push({ticker:position.isin,error:"No se pudo guardar el historial: "+String(error.message||error).slice(0,120)})}
+  }
   // Planes: los que la app ya ha confirmado contigo (body.plans) o, de clientes antiguos,
   // los detectados aquí. El importe vigente es el de la última ejecución.
   const explicitPlans=Array.isArray(body.plans);
@@ -3535,6 +3364,50 @@ async function handleFundTransactionImport(request,env,user,json){
   return json({imported,skipped,plans,errors:errors.slice(0,20),fundPortfolioId:portfolio.id});
 }
 
+function fundLedgerStatement(env,userId,position,ledger,now){
+  return env.DB.prepare("UPDATE fund_positions SET units=?,avg_price=?,currency=?,opened_at=?,active=?,updated_at=? WHERE id=? AND user_id=?")
+    .bind(ledger.units,ledger.avgPrice,ledger.currency,ledger.firstBuyAt||position.opened_at,ledger.units>1e-8?1:0,now,position.id,userId);
+}
+function fundTransactionStatement(env,row){
+  const cols=["id","fund_portfolio_id","fund_position_id","user_id","isin","side","units","price","fees","currency","executed_at","notes","external_id","created_at","updated_at"];
+  return env.DB.prepare("INSERT INTO fund_transactions("+cols.join(",")+") VALUES("+cols.map(()=>"?").join(",")+")").bind(...cols.map(c=>row[c]??""));
+}
+async function fundSeedRows(env,userId,position,rows,now){
+  if(rows.length||!(position.units>0)||position.avg_price===null)return{rows,statements:[]};
+  const seed={id:uid("ftx_seed_"),fund_portfolio_id:position.fund_portfolio_id,fund_position_id:position.id,user_id:userId,isin:position.isin,side:"BUY",units:position.units,price:position.avg_price,fees:0,currency:position.currency,executed_at:position.opened_at||position.created_at||now,notes:"Saldo inicial importado",external_id:"",created_at:now,updated_at:now};
+  return{rows:[seed],statements:[fundTransactionStatement(env,seed)]};
+}
+export async function createFundTransactionRecord(env,user,body,externalId=""){
+  await ensureFundSchema(env);
+  const side=String(body.side||"").toUpperCase(),units=finiteNumber(body.units),price=finiteNumber(body.price),fees=finiteNumber(body.fees)??0;
+  const date=new Date(body.executedAt||nowIso()),currency=String(body.currency||"EUR").toUpperCase();
+  if(!["BUY","SELL"].includes(side)||!(units>0)||price===null||price<0||fees<0||!Number.isFinite(date.getTime())||!(/^[A-Z]{3}$/.test(currency)))return txResult({error:"Invalid fund transaction"},400);
+  const revision=await financialRevision(env.DB,user.id);
+  const position=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(trimText(body.positionId,80),user.id).first();
+  if(!position)return txResult({error:"Fund position not found"},404);
+  if(externalId){const prior=await env.DB.prepare("SELECT * FROM fund_transactions WHERE user_id=? AND external_id=?").bind(user.id,externalId).first();if(prior){
+    if(prior.fund_position_id!==position.id||prior.side!==side||prior.units!==units||prior.price!==price||prior.currency!==currency)return txResult({error:"La clave de operación ya se usó con otros datos."},409);
+    return txResult({transaction:prior,position,replayed:true});
+  }}
+  const now=nowIso(),seed=await fundSeedRows(env,user.id,position,await fundTransactionRows(env,user.id,position.id),now);
+  const row={id:uid("ftx_"),fund_portfolio_id:position.fund_portfolio_id,fund_position_id:position.id,user_id:user.id,isin:position.isin,side,units,price,fees,currency,executed_at:date.toISOString(),notes:trimText(body.notes,1000),external_id:externalId,created_at:now,updated_at:now};
+  let ledger;try{ledger=calculateFundLedger([...seed.rows,row])}catch(error){return txResult({error:error.message},400)}
+  await financialBatch(env.DB,user.id,revision,[...seed.statements,fundTransactionStatement(env,row),fundLedgerStatement(env,user.id,position,ledger,now)]);
+  return txResult({transaction:row,position:await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger},201);
+}
+export async function deleteFundTransactionRecord(env,user,id){
+  await ensureFundSchema(env);
+  const revision=await financialRevision(env.DB,user.id);
+  const row=await env.DB.prepare("SELECT * FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if(!row)return txResult({error:"Fund transaction not found"},404);
+  const position=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(row.fund_position_id,user.id).first();
+  const rows=(await fundTransactionRows(env,user.id,position.id)).filter(t=>t.id!==id);
+  let ledger;try{ledger=calculateFundLedger(rows)}catch(_){return txResult({error:"No se puede borrar: hay ventas posteriores que dependen de esta compra."},409)}
+  if(!rows.length)ledger.currency=position.currency;
+  await financialBatch(env.DB,user.id,revision,[env.DB.prepare("DELETE FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id),fundLedgerStatement(env,user.id,position,ledger,nowIso())]);
+  return txResult({deleted:true,position:await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger});
+}
+
 async function handleFundTransactions(request,env,user,json,parts,url){
   await ensureFundSchema(env);
   const id=parts[1]||"";
@@ -3555,36 +3428,11 @@ async function handleFundTransactions(request,env,user,json,parts,url){
     return json({transactions:rows.results||[]});
   }
   if(request.method==="POST"&&!id){
-    const body=await readJson(request);
-    const positionId=trimText(body.positionId,80);
-    const side=String(body.side||"").toUpperCase();
-    const units=finiteNumber(body.units),price=finiteNumber(body.price),fees=Math.max(0,finiteNumber(body.fees)||0);
-    const currency=/^[A-Z]{3}$/.test(String(body.currency||"EUR").toUpperCase())?String(body.currency||"EUR").toUpperCase():"EUR";
-    const dateRaw=trimText(body.executedAt,40),date=dateRaw?new Date(dateRaw):new Date();
-    if(!["BUY","SELL"].includes(side))return json({error:"side must be BUY or SELL"},400);
-    if(units===null||units<=0)return json({error:"units must be greater than zero"},400);
-    if(price===null||price<0)return json({error:"price must be zero or greater"},400);
-    if(!Number.isFinite(date.getTime()))return json({error:"executedAt is invalid"},400);
-    const position=await env.DB.prepare("SELECT * FROM fund_positions WHERE id=? AND user_id=?").bind(positionId,user.id).first();
-    if(!position)return json({error:"Fund position not found"},404);
-    await ensureFundOpeningTransaction(env,user.id,position);
-    const before=calculateFundLedger(await fundTransactionRows(env,user.id,positionId));
-    if(side==="SELL"&&units>before.units+1e-8)return json({error:"Sell units exceed current fund position"},400);
-    if(before.units>1e-8&&before.currency!==currency)return json({error:"Transaction currency must match the fund position"},400);
-    const txId=uid("ftx_"),now=nowIso();
-    await env.DB.prepare(
-      "INSERT INTO fund_transactions (id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,fees,currency,executed_at,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-    ).bind(txId,position.fund_portfolio_id,position.id,user.id,position.isin,side,units,price,fees,currency,date.toISOString(),trimText(body.notes,1000),now,now).run();
-    const recalculated=await recalculateFundPosition(env,user.id,position.id);
-    return json({transaction:await env.DB.prepare("SELECT * FROM fund_transactions WHERE id=? AND user_id=?").bind(txId,user.id).first(),position:recalculated&&recalculated.position,summary:recalculated&&recalculated.ledger},201);
+    const r=await createFundTransactionRecord(env,user,await readJson(request),manualRequestId(request));
+    return json(r.body,r.status);
   }
-  if(!id)return json({error:"Fund transaction id required"},400);
-  const existing=await env.DB.prepare("SELECT * FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
-  if(!existing)return json({error:"Fund transaction not found"},404);
-  if(request.method==="DELETE"){
-    await env.DB.prepare("DELETE FROM fund_transactions WHERE id=? AND user_id=?").bind(id,user.id).run();
-    const recalculated=await recalculateFundPosition(env,user.id,existing.fund_position_id);
-    return json({deleted:true,position:recalculated&&recalculated.position,summary:recalculated&&recalculated.ledger});
+  if(request.method==="DELETE"&&id){
+    const r=await deleteFundTransactionRecord(env,user,id);return json(r.body,r.status);
   }
   return json({error:"Method not allowed"},405);
 }
@@ -4707,10 +4555,9 @@ async function searchRoute(env,query){
   return{ok:false,provider:"",reason:tried.join(" · ")||"not-configured",results:[]};
 }
 // --- Administración: inventario, uso y pruebas -------------------------------------------------
-async function isAdminUser(env,user){
+export async function isAdminUser(env,user){
   const list=String(env.ADMIN_EMAILS||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
-  if(list.length)return list.includes(String(user.email||"").toLowerCase());
-  try{const first=await env.DB.prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1").first();return !!first&&first.id===user.id}catch(_){return false}
+  return list.includes(String(user?.email||"").trim().toLowerCase());
 }
 async function providerProbe(env,p){
   const key=providerKey(env,p);
@@ -6767,47 +6614,48 @@ export async function handleBackendApi(request, env, services = {}) {
   const root = parts[0] || "";
 
   try {
-    if (root === "me") return handleMe(request, env, user, json);
-    if (root === "portfolios") return handlePortfolios(request, env, user, json, parts);
-    if (root === "brokers") return handleBrokers(request, env, user, json, parts);
-    if (root === "positions") return handlePositions(request, env, user, json, parts, url);
-    if (root === "transactions") return handleTransactions(request, env, user, json, parts, url);
-    if (root === "broker-sync") return handleBrokerSync(request, env, user, json, parts);
-    if (root === "tax-report") return handleTaxReport(request, env, user, json, url);
-    if (root === "dividends") return handleDividends(request, env, user, json, parts, url);
-    if (root === "backup") return handleBackup(request, env, user, json);
-    if (root === "portfolio-performance") return handlePortfolioPerformance(request, env, user, json, url, services);
-    if (root === "fund-portfolios") return handleFundPortfolios(request, env, user, json, parts);
-    if (root === "fund-positions") return handleFundPositions(request, env, user, json, parts, url);
-    if (root === "fund-transactions") return handleFundTransactions(request, env, user, json, parts, url);
-    if (root === "fund-plans") return handleFundPlans(request, env, user, json, parts, url);
-    if (root === "fund-catalog-extra") return handleFundCatalogExtra(request, env, user, json);
-    if (root === "watchlist") return handleWatchlist(request, env, user, json, parts);
-    if (root === "analysis" && parts[1] === "run") return handleManualAnalysis(request, env, user, json, services);
-    if (root === "analysis") return handleAnalysisList(request, env, user, json, url);
-    if (root === "ai" && parts[1] === "chat") return handleAiChat(request, env, user, json, services);
-    if (root === "ai" && parts[1] === "ask") return handleAiAsk(request, env, user, json, services);
-    if (root === "ai" && parts[1] === "article") return handleAiArticle(request, env, user, json);
-    if (root === "ai" && parts[1] === "screener") return handleAiScreener(request, env, user, json);
-    if (root === "news") return handleNews(request, env, user, json, url);
-    if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return handleAiIntegration(request, env, user, json, parts, url);
-    if (root === "alerts") return handleAlerts(request, env, user, json, parts);
-    if (root === "position-decisions") return handlePositionDecisions(request, env, user, json, parts);
-    if (root === "event-insight") return handleEventInsight(request, env, user, json, url, services);
-    if (root === "admin") return handleAdmin(request, env, user, json, url);
-    if (root === "radar-check") { if (url.pathname !== "/api/radar-check") return json({ error: "Not found" }, 404); return handleRadarCheck(request, env, user, json, services); }
+    if (root === "me") return await handleMe(request, env, user, json);
+    if (root === "portfolios") return await handlePortfolios(request, env, user, json, parts);
+    if (root === "brokers") return await handleBrokers(request, env, user, json, parts);
+    if (root === "positions") return await handlePositions(request, env, user, json, parts, url);
+    if (root === "transactions") return await handleTransactions(request, env, user, json, parts, url);
+    if (root === "broker-sync") return await handleBrokerSync(request, env, user, json, parts);
+    if (root === "tax-report") return await handleTaxReport(request, env, user, json, url);
+    if (root === "dividends") return await handleDividends(request, env, user, json, parts, url);
+    if (root === "backup") return await handleBackup(request, env, user, json);
+    if (root === "portfolio-performance") return await handlePortfolioPerformance(request, env, user, json, url, services);
+    if (root === "fund-portfolios") return await handleFundPortfolios(request, env, user, json, parts);
+    if (root === "fund-positions") return await handleFundPositions(request, env, user, json, parts, url);
+    if (root === "fund-transactions") return await handleFundTransactions(request, env, user, json, parts, url);
+    if (root === "fund-plans") return await handleFundPlans(request, env, user, json, parts, url);
+    if (root === "fund-catalog-extra") return await handleFundCatalogExtra(request, env, user, json);
+    if (root === "watchlist") return await handleWatchlist(request, env, user, json, parts);
+    if (root === "analysis" && parts[1] === "run") return await handleManualAnalysis(request, env, user, json, services);
+    if (root === "analysis") return await handleAnalysisList(request, env, user, json, url);
+    if (root === "ai" && parts[1] === "chat") return await handleAiChat(request, env, user, json, services);
+    if (root === "ai" && parts[1] === "ask") return await handleAiAsk(request, env, user, json, services);
+    if (root === "ai" && parts[1] === "article") return await handleAiArticle(request, env, user, json);
+    if (root === "ai" && parts[1] === "screener") return await handleAiScreener(request, env, user, json);
+    if (root === "news") return await handleNews(request, env, user, json, url);
+    if (root === "ai" && (parts[1] === "keys" || parts[1] === "contrast" || parts[1] === "engines")) return await handleAiIntegration(request, env, user, json, parts, url);
+    if (root === "alerts") return await handleAlerts(request, env, user, json, parts);
+    if (root === "position-decisions") return await handlePositionDecisions(request, env, user, json, parts);
+    if (root === "event-insight") return await handleEventInsight(request, env, user, json, url, services);
+    if (root === "admin") return await handleAdmin(request, env, user, json, url);
+    if (root === "radar-check") { if (url.pathname !== "/api/radar-check") return json({ error: "Not found" }, 404); return await handleRadarCheck(request, env, user, json, services); }
     if (root === "goal-ideas") { if (url.pathname !== "/api/goal-ideas") return json({ error: "Not found" }, 404); if (request.method !== "GET") return json({ error: "Method not allowed" }, 405); return json(await goalAnalystIdeas(env), 200, { "Cache-Control": "no-store" }); }
-    if (root === "notification-preferences") return handleNotificationPreferences(request, env, user, json, url);
-    if (root === "portfolio-goal") return handlePortfolioGoal(request, env, user, json, url);
-    if (root === "portfolio-goal-history") return handlePortfolioGoalHistory(request, env, user, json, url);
-    if (root === "settings") return handleSettings(request, env, user, json);
-    if (root === "ui-preferences") return handleUiPreferences(request, env, user, json, url);
-    if (root === "devices") return handleDevices(request, env, user, json, parts, services);
-    if (root === "crypto-positions") return handleCryptoPositions(request, env, user, json, parts);
+    if (root === "notification-preferences") return await handleNotificationPreferences(request, env, user, json, url);
+    if (root === "portfolio-goal") return await handlePortfolioGoal(request, env, user, json, url);
+    if (root === "portfolio-goal-history") return await handlePortfolioGoalHistory(request, env, user, json, url);
+    if (root === "settings") return await handleSettings(request, env, user, json);
+    if (root === "ui-preferences") return await handleUiPreferences(request, env, user, json, url);
+    if (root === "devices") return await handleDevices(request, env, user, json, parts, services);
+    if (root === "crypto-positions") return await handleCryptoPositions(request, env, user, json, parts);
     return json({ error: "Unknown backend endpoint" }, 404);
   } catch (error) {
-    console.error("Backend API error", String(error && error.stack || error));
+    if(!(error instanceof SyntaxError)&&![400,409,413].includes(error.status))console.error("Backend API error", String(error && error.stack || error));
     if (String(error && error.message || "").includes("Payload too large")) return json({ error: "Payload too large" }, 413);
+    if ([400,409,413].includes(error.status)) return json({ error: error.message }, error.status);
     if (error instanceof SyntaxError) return json({ error: "Invalid JSON" }, 400);
     return json({ error: "Backend request failed" }, 500);
   }

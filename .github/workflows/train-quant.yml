@@ -31,6 +31,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+      - name: Probar validación temporal y calibración
+        run: |
+          pip install -r scripts/quant/requirements.txt
+          python scripts/quant/test_validation.py
       - name: Recuperar caché de históricos
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
