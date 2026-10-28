@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g11-ideas-cash';
+  const VERSION='2026.10.28-g12-real-target';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -332,8 +332,18 @@
     const discarded=new Set((input.discarded||[]).map(String));
     const allCommits=new Map((input.committed||[]).filter(c=>c&&c.key&&!discarded.has(String(c.key))).map(c=>[String(c.key),c]));
     const candByKey=new Map((input.candidates||[]).map(c=>[String(c.key),c]));
+    // Datos de la acción que impiden abrir (o mantener sin comprar) una idea: resultados en ≤ 5 días (riesgo de
+    // hueco), consenso «vender» o una rebaja de analistas en los últimos 7 días.
+    const factGate=c=>{
+      const ed=n(c.earningsDays);
+      if(ed!==null&&ed>=0&&ed<=5)return'presenta resultados '+(ed===0?'hoy':ed===1?'mañana':'en '+ed+' días')+(c.earningsDate?' ('+c.earningsDate+')':'')+': riesgo de hueco';
+      if(String(c.analystConsensus||'')==='sell')return'el consenso de analistas es «vender»';
+      const dd=n(c.downgradeDays);if(dd!==null&&dd>=0&&dd<=7)return'rebaja de analistas hace '+(dd===0?'hoy':dd+' días')+(c.downgradeFirm?' ('+c.downgradeFirm+')':'');
+      return'';
+    };
     const changeOf=(cm,c)=>{
       if(!c)return'';
+      const g=factGate(c);if(g)return g;
       if(c.aiVerdict==='contradice')return'la IA la contradice'+(c.aiNewsReason?': '+c.aiNewsReason:'');
       if(c.aiScoutVerdict==='block')return'la revisión de la IA la bloquea';
       const ask=n(c.askEur)??n(c.priceEur),ref=n(cm.priceEur),sp=stopPctFor(c.atrPct,risk);
@@ -364,10 +374,13 @@
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
+      // Movimiento típico en 5 sesiones (ATR diario × √5). El recorrido previsto no puede pasar de 1,5 veces eso:
+      // un +18 % en una acción que suele moverse un ±10 % por semana sería una expectativa irreal.
+      const moveRangePct=n(c.atrPct)>0?r2(n(c.atrPct)*Math.sqrt(5)):null,rawTarget=targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk);
       return{...c,burstScore:burst.score,rawBurst:burst.rawScore,burstPhase:burst.phase,burstReasons:burst.parts,
         entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryDecision:burst.entryDecision,entryReasons:burst.entryReasons,
         limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
-        stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
+        stopPct,moveRangePct,targetPct:moveRangePct!==null?r2(Math.min(rawTarget,moveRangePct*1.5)):rawTarget};
     });
     // Memoria del plan: la idea que ya se recomendó hace poco solo se sustituye si otra la supera con claridad.
     // Sin esto, con varias candidatas empatadas (p. ej. a 100/100), la primera cambiaba con cada pequeña variación de datos.
@@ -416,10 +429,7 @@
     // · en la app, una idea solo se muestra como compra cuando el servidor la ha revisado entera (requireReview).
     const market=input.market||{};
     const gateOf=c=>{
-      const ed=n(c.earningsDays);
-      if(ed!==null&&ed>=0&&ed<=5)return'presenta resultados '+(ed===0?'hoy':ed===1?'mañana':'en '+ed+' días')+(c.earningsDate?' ('+c.earningsDate+')':'')+': riesgo de hueco, no se abre una idea nueva antes';
-      if(String(c.analystConsensus||'')==='sell')return'el consenso de analistas es «vender»';
-      const dd=n(c.downgradeDays);if(dd!==null&&dd>=0&&dd<=7)return'rebaja de analistas hace '+(dd===0?'hoy':dd+' días')+(c.downgradeFirm?' ('+c.downgradeFirm+')':'');
+      const g=factGate(c);if(g)return /^presenta/.test(g)?g+', no se abre una idea nueva antes':g;
       if(market.blocked)return market.reason||'mercado en tensión';
       if(input.requireReview&&!isCommitted(c))return'review';
       return null;
@@ -599,7 +609,7 @@
         const limitEur=r2(ask*1.003);
         const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:2}):String(units);
         actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,committed:isCommitted(c),committedAt:isCommitted(c)?String(commits.get(String(c.key)).at||''):'',committedPriceEur:isCommitted(c)?n(commits.get(String(c.key)).priceEur):null,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
-          stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
+          stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),moveRangePct:n(c.moveRangePct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
           // Lo que se arriesga si salta el stop (importe × stop + comisiones) y los argumentos a favor y en contra.
           riskEur:r2(ticket*c.stopPct/100+feeB+feeS),riskPct:r2(c.stopPct),

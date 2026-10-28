@@ -1595,6 +1595,13 @@ function goalTodayDiscarded(portfolioId,goal){
   if(entry&&entry.day===day)for(const k of entry.discarded||[])out.add(String(k));
   return[...out];
 }
+// Días (de Madrid) hasta los próximos resultados; el paquete de mercado los trae en segundos Unix o en texto.
+function goalEarningsIn(stock){
+  const raw=stock&&stock.earningsDate,v=num(raw),ms=v!==null?(v>1e12?v:v*1000):Date.parse(String(raw||"").slice(0,10)+"T12:00:00Z");
+  if(!Number.isFinite(ms)||ms<=0)return{};
+  const day=goalMadridDay(ms),d=Math.round((Date.parse(day+"T12:00:00Z")-Date.parse(goalIdeaDay()+"T12:00:00Z"))/864e5);
+  return d>=0&&d<=60?{earningsDays:d,earningsDate:day}:{};
+}
 function goalClientStickyKeys(portfolioId,goal){
   const out=new Set(),fresh=at=>Number.isFinite(at)&&Date.now()-at<=2*86400000;
   try{
@@ -1666,7 +1673,7 @@ function goalEngineInput(metrics,positionRows){
     const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
     return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
-      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
+      atrPct:goalAtrPct(r.s),...goalEarningsIn(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
@@ -1798,7 +1805,7 @@ function goalActionHtml(a,ctx){
     if(num(f.epsBeats)!==null)factBits.push("Superó el BPA "+formatNumber(f.epsBeats,0)+" de 4");
     if(f.fundamentalsChecked===false||(f.fundamentalsChecked===true&&!f.analystConsensus&&num(f.epsBeats)===null))factBits.push("sin datos de analistas ni BPA para este valor");
   }
-  const riskLine=a.type==="BUY"&&num(a.riskEur)!==null?'<small class="goal2-risk">Si salta el stop perderías ≈ '+formatMoney(a.riskEur,"EUR")+' (−'+formatNumber(a.riskPct,1)+' % y comisiones). Recorrido previsto +'+formatNumber(a.targetPct,1)+' %, no garantizado.</small>':'';
+  const riskLine=a.type==="BUY"&&num(a.riskEur)!==null?'<small class="goal2-risk">Si salta el stop perderías ≈ '+formatMoney(a.riskEur,"EUR")+' (−'+formatNumber(a.riskPct,1)+' % y comisiones). Recorrido previsto +'+formatNumber(a.targetPct,1)+' %'+(num(a.moveRangePct)!==null?' (en 5 sesiones suele moverse ±'+formatNumber(a.moveRangePct,1)+' %)':'')+', no garantizado.</small>':'';
   const prosCons=a.type==="BUY"&&(pros.length||cons.length)?'<div class="goal2-proscons">'+(pros.length?'<small class="goal2-pro">A favor: '+esc(pros.join(" · "))+'</small>':'')+(cons.length?'<small class="goal2-con">En contra: '+esc(cons.join(" · "))+'</small>':'')+'</div>':'';
   const factsLine=factBits.length?'<small class="goal2-facts">'+esc(factBits.join(" · "))+'</small>':'';
   const extra=fixedNote+laterNote+riskLine+prosCons+factsLine+(a.type==="BUY"
@@ -1868,7 +1875,7 @@ function goalScoreboardHtml(){
   const d=goalScoreboard.data,s5=d&&d.stats&&d.stats.all&&d.stats.all["5d"],s1=d&&d.stats&&d.stats.all&&d.stats.all["1d"];
   const n=num(d&&d.signals)||0;
   const body=!d?'<small>Cargando el historial…</small>':!n?'<small>Aún no hay ideas medidas. Cada idea publicada se guarda y se mide a 1, 5 y 20 sesiones frente al S&P 500.</small>':
-    '<small>'+formatNumber(n,0)+' ideas desde '+esc(d.since||"")+'.'+
+    '<small>'+formatNumber(n,0)+(n===1?' idea':' ideas')+' desde '+esc(d.since||"")+'.'+
       (s1&&s1.n?' A 1 sesión: '+formatNumber(s1.hitRate,0)+' % en positivo, media '+(s1.avgReturn>0?'+':'')+formatNumber(s1.avgReturn,1)+' %.':'')+
       (s5&&s5.n?' A 5 sesiones: '+formatNumber(s5.hitRate,0)+' % en positivo, media '+(s5.avgReturn>0?'+':'')+formatNumber(s5.avgReturn,1)+' %'+(s5.avgExcess!==null&&s5.avgExcess!==undefined?' ('+(s5.avgExcess>0?'+':'')+formatNumber(s5.avgExcess,1)+' % frente al S&P 500)':'')+'.':'')+
       (n<30?' Todavía son pocas para sacar conclusiones.':'')+' Sin comisiones; el pasado no garantiza nada.</small>';
