@@ -227,6 +227,17 @@ function brokerFeeInCurrency(brokerName,quantity,price,transactionCurrency,side=
   const converted=portfolioConvertAmount(fee.fee,fee.currency,target);
   return Object.assign({},fee,{sourceFee:fee.fee,sourceCurrency:fee.currency,fee:converted,currency:target,verified:fee.verified&&converted!==null});
 }
+// Cotización de EE. UU. como referencia de una línea de LSX: si la empresa cotiza en un mercado de EE. UU.,
+// durante su sesión regular el precio se forma allí y LSX lo replica con algo de retraso (y con el cambio €/$).
+// Solo sirve para decidir; la orden se ejecuta y se registra con el precio de LSX.
+function goalUsReference(stock,fxUsdEur){
+  if(!stock||typeof currentUsQuote!=="function")return null;
+  if(!/^(NASDAQ|NYSE|AMEX|NYSEARCA|ARCA|BATS|CBOE|NYSEAMERICAN)/i.test(String(stock.exchange||"")))return null;
+  let q=null;try{q=currentUsQuote(stock)}catch(_){q=null}
+  if(!q||!(num(q.price)>0)||q.kind!=="regular")return null;
+  const at=num(q.at),ageMs=at?Math.max(0,Date.now()-at):null,fx=num(fxUsdEur);
+  return{usd:num(q.price),eur:fx!==null?num(q.price)*fx:null,change:num(q.change),ageMs,recent:ageMs!==null&&ageMs<=900000,live:ageMs!==null&&ageMs<=120000};
+}
 function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=1){
   const market=currentMarket(stock,preferTr),currency=String(market.currency||(preferTr?"EUR":"USD")).toUpperCase();
   const bid=num(market.bid),ask=num(market.ask),last=num(market.price),spread=num(market.spreadPct),now=Date.now();
@@ -237,6 +248,12 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
     ?num(stock&&stock.trLivePrice)!==null
     :num(stock&&stock.usLivePrice)!==null&&!market.fallback;
   const quoteFresh=direct&&ageMs!==null&&ageMs<=120000;
+  // Para decidir el plan basta una cotización en vivo de los últimos 15 min: las de Trade Republic se refrescan
+  // cada pocos minutos y con el límite de 2 min una misma compra aparecía y desaparecía del plan sin motivo.
+  // Para registrar la orden se sigue exigiendo la cotización reciente (quoteFresh).
+  const usRef=preferTr?goalUsReference(stock,fxUsdEur):null;
+  // En LSX, una acción de EE. UU. con cotización regular reciente allí también cuenta como «en vivo» para decidir.
+  const quoteRecent=direct&&((ageMs!==null&&ageMs<=900000)||!!(usRef&&usRef.recent));
   const actionSide=String(side||"BUY").toUpperCase();
   const bookUsable=actionSide==="SELL"?bid!==null:(bid!==null&&ask!==null&&ask>=bid);
   let price=null,orderType="LIMITE",instruction="",immediate=false;
@@ -267,7 +284,7 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
   const feeEur=feeNative===null?0:(portfolioConvertAmount(feeNative,currency,"EUR",fxUsdEur)??0);
   const executable=quoteFresh&&bookUsable&&unitEur!==null&&feeInfo.verified===true;
   const executionReason=!quoteFresh?"Cotización ejecutable no disponible o desactualizada":!bookUsable?"BID/ASK ejecutable incompleto":feeInfo.verified!==true?"Comisión del broker no verificada":"Cotización ejecutable verificada";
-  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate,updatedAt,ageMs,quoteFresh,bookUsable,executable,executionReason};
+  return{market,currency,bid,ask,spreadPct:spread,price,unitEur,feeEur,feeNative,feeVerified:feeInfo.verified,broker,orderType,instruction,immediate,updatedAt,ageMs,quoteFresh,quoteRecent,usRef,bookUsable,executable,executionReason};
 }
 
 function portfolioStockKeys() {
@@ -1334,7 +1351,7 @@ function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stock
   // en tu bróker puedes registrarla con el precio real (el formulario parte del precio de referencia).
   const unverified=!executable;
   return (unverified?'<small class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Cotización ejecutable sin verificar</small>':'')+
-    '<button type="button" class="'+(unverified?'goal2-decide':'btn ghost compact')+' portfolio-goal-register"'+(unverified?' data-goal-unverified="1"':'')+' data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">'+(unverified?'✓ Ya la he ejecutado':'＋ Registrar estrategia')+'</button>';
+    '<button type="button" class="'+(unverified?'goal2-decide':'btn ghost compact')+' portfolio-goal-register"'+(unverified?' data-goal-unverified="1" title="Ya la he ejecutado: registra la orden con su precio real"':'')+' data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">'+(unverified?'✓ Ya ejecutada':'＋ Registrar estrategia')+'</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1568,35 +1585,42 @@ function goalEngineInput(metrics,positionRows){
     .filter(row=>row.qty>1e-9&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
     const sell=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,row.qty);
+    // Si LSX va con retraso (>2 min) y la cotización regular de EE. UU. es de ahora, el plan decide (stops, objetivos)
+    // con el precio de EE. UU. convertido a €; la venta se registra luego con el precio real de LSX.
+    const us=sell.usRef,lsxLag=sell.ageMs===null||sell.ageMs>120000,useUs=!!(us&&us.live&&us.eur!==null&&lsxLag);
     const ticker=String(row.stock.ticker||row.stock.trTicker||row.p.ticker||"").toUpperCase(),cat=portfolioGoalCatalyst(row.stock);
     const openedAt=new Date(row.p.last_buy_at||row.p.opened_at||row.p.created_at||"").getTime();
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
-    return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:row.unitEur,bidEur:sell.unitEur,score:row.score,quality:row.quality,
+    return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:useUs?us.eur:row.unitEur,bidEur:useUs?us.eur:sell.unitEur,priceSource:useUs?"us":"lsx",score:row.score,quality:row.quality,
       tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),aiNewsReason:goalNewsReasonOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
   });
   const held=new Set(positions.map(p=>p.key));
-  const candidates=radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40).map(r=>{
+  // Sin efectivo invertible y todo en «mantener»: no se preparan candidatas ni se piden ideas a la IA.
+  const G0=window.ViewInvAIGoal,idle=!!(G0&&G0.isIdle&&G0.isIdle({config:{investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur)},cashEur:num(metrics.cashEur)||0,positions}));
+  const candidates=idle?[]:radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40).map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
     const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
-    let priceEur=q.unitEur??num(market.eur);
+    // Valor de EE. UU. en LSX con LSX retrasado: se decide con la cotización regular de EE. UU. (en €) y su variación.
+    const us=q.usRef,useUs=!!(us&&us.live&&us.eur!==null&&(q.ageMs===null||q.ageMs>120000));
+    let priceEur=useUs?us.eur:q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
     const G=window.ViewInvAIGoal;
-    const openFadePct=q.quoteFresh===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
+    const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
-    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteFresh===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
+    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
-      dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
+      dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),
       ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
   }).filter(Boolean);
-  refreshGoalIdeas();
+  if(!idle)refreshGoalIdeas();
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
@@ -1698,8 +1722,9 @@ function goalActionHtml(a,ctx){
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
-  if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Pulsa solo si tu bróker no deja comprar una parte de acción de este valor: el plan propondrá acciones enteras">Mi bróker no la fracciona</button></div>';
-  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir qué hacer</button></div>';
+  if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Mi bróker no la fracciona: pulsa solo si tu bróker no deja comprar una parte de acción de este valor; el plan propondrá acciones enteras" aria-label="Mi bróker no la fracciona">Sin fracciones</button></div>';
+  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir</button></div>';
+  if(button&&button.indexOf('<div class="goal2-action-buttons">')!==0)button='<div class="goal2-action-buttons">'+button+'</div>';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
   const extra=a.type==="BUY"
@@ -1850,7 +1875,7 @@ function goalWizardStepHtml(id){
     [3,4,5].map(nn=>goalWizardChoice("positions",nn,String(nn),nn===3?"Más concentrado":nn===5?"Más repartido":"Equilibrado",v.positions===nn)).join('')+'</div>';
   if(id==="capital"){
     const cash=w.cash,usable=goalWizardUsable(v,cash);
-    return '<h2>¿Cuánto efectivo puede invertir?</h2><p>Hoy tienes '+(cash!==null?formatMoney(cash,"EUR"):"—")+' en efectivo. El plan solo invierte la parte que indiques; el resto queda apartado. Puedes poner una cifra, un porcentaje o ambos (se usa lo menor).</p>'+
+    return '<h2>¿Cuánto efectivo puede invertir?</h2><p>Hoy tienes '+(cash!==null?formatMoney(cash,"EUR"):"—")+' en efectivo. El plan solo invierte la parte que indiques; el resto queda apartado. Pon una cifra o un porcentaje: el otro se calcula solo.</p>'+
       '<div class="goal-wizard-pair"><label class="goal-wizard-input"><input type="number" min="0" step="any" inputmode="decimal" placeholder="Sin límite" aria-label="Máximo en euros" data-gw-input="capEur" value="'+esc(v.capEur??"")+'"><b>€</b></label>'+
       '<label class="goal-wizard-input"><input type="number" min="0" max="100" step="any" inputmode="decimal" placeholder="100" aria-label="Porcentaje del efectivo" data-gw-input="capPct" value="'+esc(v.capPct??"")+'"><b>%</b></label></div>'+
       '<div class="goal-wizard-chips">'+[25,50,75,100].map(q=>'<button type="button" class="goal-wizard-chip'+((v.capPct??100)===q?' on':'')+'" data-gw-set="capPct" data-gw-value="'+q+'">'+q+' %</button>').join('')+'</div>'+
@@ -1887,8 +1912,9 @@ function goalWizardUsable(v,cash){
   // Límite sin cambios: lo apartado al guardarlo sigue apartado (las compras ya hechas gastaron capital permitido).
   if(goalWizard&&goalWizard.reserveInit!==null&&!goalWizardCapChanged(v))return Math.max(0,cash-goalWizard.reserveInit);
   let u=Math.max(0,cash);
-  if(num(v.capEur)!==null&&num(v.capEur)>=0)u=Math.min(u,num(v.capEur));
-  if(num(v.capPct)!==null&&num(v.capPct)>=0&&num(v.capPct)<100)u=Math.min(u,cash*num(v.capPct)/100);
+  // Cuenta el límite que puso el usuario; el otro campo es solo su equivalente redondeado.
+  if(v.capSource!=="capPct"&&num(v.capEur)!==null&&num(v.capEur)>=0)u=Math.min(u,num(v.capEur));
+  if(v.capSource!=="capEur"&&num(v.capPct)!==null&&num(v.capPct)>=0&&num(v.capPct)<100)u=Math.min(u,cash*num(v.capPct)/100);
   return u;
 }
 function goalWizardUsableText(usable,cash){
@@ -1922,12 +1948,21 @@ function goalWizardValid(){
   if(id==="capital"&&num(v.capPct)!==null&&(num(v.capPct)<0||num(v.capPct)>100))return"El porcentaje debe estar entre 0 y 100.";
   return"";
 }
+// Capital invertible: la cifra y el porcentaje del efectivo se mantienen sincronizados (al cambiar uno se recalcula el otro).
+function goalWizardSyncCap(changed){
+  const v=goalWizard&&goalWizard.v,cash=num(goalWizard&&goalWizard.cash);
+  if(!v||!(cash>0))return;
+  v.capSource=changed;
+  if(changed==="capPct"){const p=num(v.capPct);v.capEur=p===null?null:Math.round(cash*Math.max(0,Math.min(100,p)))/100}
+  else if(changed==="capEur"){const e=num(v.capEur);v.capPct=e===null?null:Math.round(Math.max(0,Math.min(100,e/cash*100))*10)/10}
+}
 async function saveGoalWizard(){
   const w=goalWizard;if(!w)return;
   const btn=document.querySelector("#goalWizard [data-gw-save]");if(btn)btn.disabled=true;
   try{
     const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,specMode:w.v.specMode,allowSpec:w.v.specMode>0,currentValueEur:w.current,
-      investCapEur:num(w.v.capEur),investCapPct:num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null,allowFractions:w.v.fractions!==0,
+      // Solo se guarda el límite que puso el usuario: el otro es un cálculo redondeado y no debe recortarlo.
+      investCapEur:w.v.capSource==="capPct"?null:num(w.v.capEur),investCapPct:w.v.capSource==="capEur"?null:(num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null),allowFractions:w.v.fractions!==0,
       fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1};
     // Lo que queda apartado se fija al cambiar el límite: las compras que registres después gastan del capital
     // permitido. Si el límite no cambia, se conserva lo apartado (guardar otra vez no renueva el capital).
@@ -1955,6 +1990,7 @@ document.addEventListener("click",event=>{
     const k=t.dataset.gwSet,val=t.dataset.gwValue;
     goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto"].includes(k)?Number(val):val;
     // El valor de partida (y los atajos +25 %…) cambia según cuente o no Mi cripto.
+    if(k==="capPct")goalWizardSyncCap("capPct");
     if(k==="crypto"&&goalWizard.stockCurrent!==null)goalWizard.current=goalWizard.stockCurrent+(goalWizard.v.crypto===1?(num(goalWizard.cryptoEur)||0):0);
     goalWizardMsg("");paintGoalWizard();return;
   }
@@ -1969,7 +2005,12 @@ document.addEventListener("click",event=>{
 document.addEventListener("input",event=>{
   const t=event.target.closest&&event.target.closest("#goalWizard [data-gw-input]");if(!t||!goalWizard)return;
   const k=t.dataset.gwInput;goalWizard.v[k]=["target","capEur","capPct"].includes(k)?(t.value===""?null:num(t.value)):t.value;goalWizardMsg("");
-  if(k==="capEur"||k==="capPct"){const h=document.querySelector("#goalWizard [data-gw-usable]");if(h)h.innerHTML=goalWizardUsableText(goalWizardUsable(goalWizard.v,goalWizard.cash),goalWizard.cash)}
+  if(k==="capEur"||k==="capPct"){
+    goalWizardSyncCap(k);
+    const other=k==="capEur"?"capPct":"capEur",o=document.querySelector('#goalWizard [data-gw-input="'+other+'"]');
+    if(o)o.value=goalWizard.v[other]??"";
+    document.querySelectorAll('#goalWizard [data-gw-set="capPct"]').forEach(c=>c.classList.toggle("on",num(goalWizard.v.capPct)===Number(c.dataset.gwValue)));
+    const h=document.querySelector("#goalWizard [data-gw-usable]");if(h)h.innerHTML=goalWizardUsableText(goalWizardUsable(goalWizard.v,goalWizard.cash),goalWizard.cash)}
   if(k==="date"){const body=document.querySelector("#goalWizard .goal-wizard-body");if(body){paintGoalWizard()}}
 });
 document.addEventListener("keydown",event=>{if(event.key==="Escape"&&goalWizard)closeGoalWizard()});
@@ -4485,7 +4526,7 @@ function dPositionRow(p){
   }else{
     const isin=positionIsin(p),F=window.ViewInvAIFunds,q=isin&&F&&typeof F.getLiveQuote==="function"?F.getLiveQuote(isin):null;
     if(isin&&F&&typeof F.subscribeIsin==="function")F.subscribeIsin(isin);
-    const cur=String(p.currency||"EUR").toUpperCase(),price=q&&cur==="EUR"?num(q.price):null,prev=q?num(q.prev):null,avg=num(p.avg_price);
+    const fundCur=String(p.currency||"EUR").toUpperCase(),price=q&&fundCur==="EUR"?num(q.price):null,prev=q?num(q.prev):null,avg=num(p.avg_price);
     value=qty!==null&&price!==null?qty*price:null;
     const cost=num(p.cost_basis)??(qty!==null&&avg!==null?qty*avg:null);
     pnl=value!==null&&cost!==null?value-cost:null;pnlPct=pnl!==null&&cost>0?pnl/cost*100:null;
