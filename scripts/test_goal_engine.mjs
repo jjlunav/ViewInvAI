@@ -144,4 +144,13 @@ const input=candidates=>({
   assert.ok(p.waits.some(w=>w.key===base.key&&/dudas/.test(w.text)),"a doubted idea should stay visible as a wait");
 }
 
+// Empate total: el resultado no depende del orden de entrada.
+{
+  const rows=["ZZZ","AAA","MMM"].map(t=>({...base,key:"NASDAQ:"+t,ticker:t}));
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key).join(",");
+  assert.equal(buys(G.plan(input(rows))),buys(G.plan(input([...rows].reverse()))),"ties must resolve the same regardless of input order");
+  const backed=rows.map(r=>r.ticker==="ZZZ"?{...r,aiVerdict:"respalda"}:r);
+  assert.ok(buys(G.plan(input(backed))).includes("NASDAQ:ZZZ"),"on a tie the AI-backed idea goes first");
+}
+
 console.log("Goal engine tests: OK");

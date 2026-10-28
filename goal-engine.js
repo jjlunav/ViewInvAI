@@ -317,6 +317,12 @@
     // Sin esto, con varias candidatas empatadas (p. ej. a 100/100), la primera cambiaba con cada pequeña variación de datos.
     const sticky=new Set((input.stickyKeys||[]).map(String));
     const rankOf=c=>(n(c.burstScore)||0)+(sticky.has(String(c.key))?STICKY_BONUS:0);
+    // Desempate fijo (el resultado no depende del orden en que llegan los datos): oportunidad, la ya recomendada,
+    // respaldo de la IA, score general, calidad, horquilla más estrecha, más volumen relativo y, al final, el ticker.
+    const aiRank=c=>c.aiVerdict==='respalda'?1:0;
+    const byPriority=(x,y)=>rankOf(y)-rankOf(x)||(sticky.has(String(y.key))?1:0)-(sticky.has(String(x.key))?1:0)||
+      aiRank(y)-aiRank(x)||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0)||
+      (n(x.spreadPct)??99)-(n(y.spreadPct)??99)||(n(y.relVolume)||0)-(n(x.relVolume)||0)||String(x.ticker||x.key).localeCompare(String(y.ticker||y.key));
     const bestNormalBurst=Math.max(-Infinity,...mappedCands.filter(c=>!c.speculative).map(c=>n(c.burstScore)??0));
     const rankedCands=mappedCands.filter(c=>{
       if((n(c.score)??0)<minScore&&c.burstScore<b.minBurst+8)return false;
@@ -328,7 +334,7 @@
       if(spec.maxSpread!==null&&n(c.spreadPct)!==null&&n(c.spreadPct)>spec.maxSpread)return false;
       if(Number.isFinite(bestNormalBurst)&&c.burstScore<bestNormalBurst+spec.edgeOverNormal)return false;
       return true;
-    }).sort((x,y)=>rankOf(y)-rankOf(x)||(sticky.has(String(y.key))?1:0)-(sticky.has(String(x.key))?1:0)||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
+    }).sort(byPriority);
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
     // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
@@ -342,7 +348,7 @@
     const edge=c=>(n(c.targetPct)||0)*rankOf(c)/100;
     // Si una IA tiene dudas sobre la idea, no se compra ni se cambia a ella: queda en ESPERAR hasta que la revisión la respalde.
     const doubted=c=>c.aiVerdict==='dudas';
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
       if(!(ask>0)||!(amount>0))return 0;
