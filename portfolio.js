@@ -1330,8 +1330,11 @@ function goalOperationUnits(side,value){
 }
 function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason=""}){
   if(!(num(units)>0)||num(price)===null)return"";
-  if(!executable)return '<span class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Esperar cotización ejecutable</span>';
-  return '<button type="button" class="btn ghost compact portfolio-goal-register" data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">＋ Registrar estrategia</button>';
+  // Sin cotización ejecutable verificada la app no la propone como precio, pero si ya ejecutaste la orden
+  // en tu bróker puedes registrarla con el precio real (el formulario parte del precio de referencia).
+  const unverified=!executable;
+  return (unverified?'<small class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Cotización ejecutable sin verificar</small>':'')+
+    '<button type="button" class="'+(unverified?'goal2-decide':'btn ghost compact')+' portfolio-goal-register"'+(unverified?' data-goal-unverified="1"':'')+' data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'">'+(unverified?'✓ Ya la he ejecutado':'＋ Registrar estrategia')+'</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1462,8 +1465,9 @@ async function openGoalHistory(portfolioId){
 // ----- Objetivo «rápido» con el motor común (goal-engine.js): «Hoy toca» + progreso -----
 function goalStockKey(stock){return String(stock&&stock.tvSymbol||((stock&&stock.exchange||"")+":"+(stock&&stock.ticker||""))).toUpperCase()}
 function goalAtrPct(stock){const a=num(stock&&stock.atr),p=num(stock&&stock.price);return a!==null&&p>0?a/p*100:null}
-function goalAiOf(ticker){
-  const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker):null;
+// Mismo veredicto que la etiqueta «IA …» de la tarjeta (por ticker y, si se da, por clave del valor).
+function goalAiOf(ticker,key){
+  const C=window.ViewInvAIContrast,v=C&&C.tickerVerdict?C.tickerVerdict(ticker,key):null;
   return v&&v.verdict||"";
 }
 // Motivo de la vigilancia de noticias (IA de la app + búsqueda web) cuando invalida una posición.
@@ -1517,6 +1521,23 @@ function goalNextCatalyst(stock){
   return{date:new Date(next.date).toLocaleDateString("sv-SE"),label};
 }
 let lastGoalCtx=null;
+// Compras que el Objetivo ya recomendó (último plan del servidor y lo mostrado en esta sesión, menos de 2 días):
+// el motor las mantiene salvo que otra candidata las supere con claridad, para que la recomendación no salte sin motivo.
+const goalBuyMemory=new Map();
+function goalRememberBuys(portfolioId,plan){
+  const keys=((plan&&plan.actions)||[]).filter(a=>a.type==="BUY"&&a.key).map(a=>String(a.key));
+  if(keys.length)goalBuyMemory.set(String(portfolioId),{at:Date.now(),keys});
+}
+function goalClientStickyKeys(portfolioId,goal){
+  const out=new Set(),fresh=at=>Number.isFinite(at)&&Date.now()-at<=2*86400000;
+  try{
+    const plan=JSON.parse(goal&&goal.plan_json||"{}");
+    if(fresh(Date.parse(plan.at||"")))for(const a of plan.actions||[])if(a&&a.type==="BUY"&&a.key)out.add(String(a.key));
+  }catch(_){}
+  const mem=goalBuyMemory.get(String(portfolioId||""));
+  if(mem&&fresh(mem.at))for(const k of mem.keys)out.add(k);
+  return[...out].slice(0,5);
+}
 function goalEngineInput(metrics,positionRows){
   const goal=selectedPortfolioGoal()||state.goal||{},cfg=metrics.goalConfig||portfolioGoalConfig();
   const states=new Map((goal.position_state||[]).map(r=>[String(r.stock_key||"").toUpperCase(),r]));
@@ -1568,7 +1589,7 @@ function goalEngineInput(metrics,positionRows){
     const openFadePct=q.quoteFresh===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
     return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteFresh===true,openFadePct,priceEur,askEur:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
-      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker),stock:r.s,quote:q,
+      atrPct:goalAtrPct(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
@@ -1580,7 +1601,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null};
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal)};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
 function goalNoFractionSet(goal){return new Set(String(goal&&goal.no_fraction_tickers||"").split(",").map(t=>t.trim().toUpperCase()).filter(Boolean))}
@@ -1671,10 +1692,10 @@ function goalActionHtml(a,ctx){
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};
-    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason});
+    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price??portfolioConvertAmount(a.priceEur,"EUR",q.currency||(ctx.preferTr?"EUR":"USD"),ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }else if(a.type==="SELL"&&pos){
     const row=pos.row,q=goalExecutionQuote(row.stock,row.preferTr,"SELL",ctx.fx,row.p.broker,a.units);
-    button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
+    button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
   if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
   if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Pulsa solo si tu bróker no deja comprar una parte de acción de este valor: el plan propondrá acciones enteras">Mi bróker no la fracciona</button></div>';
@@ -1737,6 +1758,7 @@ function portfolioGoalViewHtml(){
   const engine=window.ViewInvAIGoal;
   if(!engine)return '<section class="portfolio-goal-view goal2">'+head+'<div class="portfolio-goal-no-action">Cargando el motor del objetivo…</div></section>';
   const input=goalEngineInput(metrics,positionRows),plan=engine.plan(input);
+  goalRememberBuys(metrics.portfolio.id,plan);
   const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur};
   lastGoalCtx=ctx;
   const visibleDecisions=[...plan.actions,...(plan.waits||[])];
@@ -2897,7 +2919,7 @@ async function saveGoalDecisionForm(form){
     const pos=lastGoalCtx&&lastGoalCtx.positions.find(p=>String(p.positionId)===String(positionId));
     const row=pos&&pos.row;
     const q=row?goalExecutionQuote(row.stock,row.preferTr,"SELL",lastGoalCtx.fx,row.p.broker,pos.units):null;
-    const html=row&&q?goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:pos.units,price:q.price,fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason}):"";
+    const html=row&&q?goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:pos.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",lastGoalCtx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason}):"";
     const holder=document.createElement("div");holder.innerHTML=html;
     const btn=holder.querySelector("[data-register-goal-operation]");
     if(btn)openGoalOperationModal(btn);else toast("La venta se podrá registrar cuando haya cotización ejecutable.");
@@ -3012,6 +3034,8 @@ function openGoalOperationModal(button){
   const exchange=preferTr?(stock.trExchange||"LSX"):(stock.exchange||position?.exchange||"");
   const isin=preferTr?(stock.trIsin||stock.isin||position?.isin||""):(stock.usIsin||stock.isin||position?.isin||"");
   const feeInfo=brokerFeeInCurrency(broker,units,price,currency,side,exchange),fee=feeInfo.fee;
+  // Orden ya ejecutada con un bróker cuya comisión no sabemos calcular: la escribe el usuario (la de su extracto).
+  const manualFee=fee===null&&button.dataset.goalUnverified==="1";
   openModal((side==="BUY"?"Registrar estrategia de compra · ":"Registrar estrategia de venta · ")+ticker,
     '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-position-id="'+esc(position?.id||"")+'" data-broker="'+esc(broker)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
@@ -3024,18 +3048,20 @@ function openGoalOperationModal(button){
         '<label><span>Broker</span><input name="broker" value="'+esc(broker)+'" readonly></label>'+
         '<label><span>Divisa</span><input name="currency" value="'+esc(currency)+'" readonly></label>'+
       '</div>'+
-      '<label><span>Comisión automática</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(fee===null?"":String(fee))+'" readonly></label>'+
-      '<small class="broker-fee-hint'+(fee===null?' pending':'')+'" data-goal-fee-hint>'+(fee===null?'Comisión pendiente de verificación':'Comisión '+esc(formatMoney(fee,currency))+' · '+esc(feeInfo.label||broker))+'</small>'+
+      '<label><span>'+(manualFee?'Comisión de tu orden':'Comisión automática')+'</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="'+esc(fee===null?"":String(fee))+'"'+(manualFee?' required':' readonly')+'></label>'+
+      '<small class="broker-fee-hint'+(fee===null?' pending':'')+'" data-goal-fee-hint>'+(manualFee?'Escribe la comisión que te cobró el bróker':fee===null?'Comisión pendiente de verificación':'Comisión '+esc(formatMoney(fee,currency))+' · '+esc(feeInfo.label||broker))+'</small>'+
       '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="'+localDateTimeValue()+'" required></label>'+
       '<label><span>Nota</span><input name="notes" maxlength="1000" value="'+esc("Objetivo IA · "+(side==="BUY"?"compra":"venta")+" recomendada")+'"></label>'+
+      (button.dataset.goalUnverified==="1"?'<p class="portfolio-form-note warn"><strong>Pon el precio real de tu orden.</strong> La app no pudo verificar una cotización ejecutable ahora; el precio de partida es solo de referencia.</p>':'')+
       '<p class="portfolio-form-note">Registra la operación cuando se haya ejecutado. Corrige el precio si difiere del límite recomendado; la comisión y el efectivo se recalculan automáticamente.</p>'+
       '<div class="portfolio-form-status" data-goal-operation-status aria-live="polite"></div>'+
-      '<button type="submit" class="btn"'+(fee===null?' disabled':'')+'>＋ Registrar estrategia</button>'+
+      '<button type="submit" class="btn"'+(fee===null&&!manualFee?' disabled':'')+'>＋ Registrar estrategia</button>'+
     '</form>'
   );
   const form=$("#goalOperationForm");
   if(form){
     const refreshFee=()=>{
+      if(manualFee)return;
       const qty=Math.max(0,num(form.querySelector('[name="quantity"]')?.value)||0);
       const px=num(form.querySelector('[name="price"]')?.value);
       const info=brokerFeeInCurrency(broker,qty,px,currency,side,exchange);

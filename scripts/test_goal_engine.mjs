@@ -123,4 +123,34 @@ const input=candidates=>({
   assert.equal(b.defensive,a.defensive);
 }
 
+// Memoria del plan: con candidatas casi empatadas se mantiene la compra ya recomendada.
+{
+  const rows=[0,1,2].map(i=>({...base,key:"NASDAQ:S"+i,ticker:"S"+i,score:94-i,quality:92-i}));
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key);
+  const fresh=G.plan(input(rows));
+  assert.ok(!buys(fresh).includes("NASDAQ:S2"),"without memory the lowest-ranked tie is not bought");
+  const kept=G.plan({...input(rows),stickyKeys:["NASDAQ:S2"]});
+  assert.ok(buys(kept).includes("NASDAQ:S2"),"a recently recommended buy must survive a near tie");
+  const strong={...base,key:"NASDAQ:NEW",ticker:"NEW",score:99,quality:95};
+  const weak={...base,key:"NASDAQ:OLDBUY",ticker:"OLDBUY",score:55,quality:70,relVolume:.6,perfWeek:0,dayChangePct:0,catalystDays:null,catalystImpact:0};
+  const swap=G.plan({...input([strong,weak]),stickyKeys:["NASDAQ:OLDBUY"]});
+  assert.ok(buys(swap).includes("NASDAQ:NEW"),"a clearly better candidate still replaces the remembered one");
+}
+
+// IA con dudas: la idea no se compra; queda en ESPERAR.
+{
+  const p=G.plan(input([{...base,aiVerdict:"dudas"}]));
+  assert.equal(p.actions.filter(x=>x.type==="BUY").length,0,"an idea the AI doubts must not be bought");
+  assert.ok(p.waits.some(w=>w.key===base.key&&/dudas/.test(w.text)),"a doubted idea should stay visible as a wait");
+}
+
+// Empate total: el resultado no depende del orden de entrada.
+{
+  const rows=["ZZZ","AAA","MMM"].map(t=>({...base,key:"NASDAQ:"+t,ticker:t}));
+  const buys=p=>p.actions.filter(x=>x.type==="BUY").map(x=>x.key).join(",");
+  assert.equal(buys(G.plan(input(rows))),buys(G.plan(input([...rows].reverse()))),"ties must resolve the same regardless of input order");
+  const backed=rows.map(r=>r.ticker==="ZZZ"?{...r,aiVerdict:"respalda"}:r);
+  assert.ok(buys(G.plan(input(backed))).includes("NASDAQ:ZZZ"),"on a tie the AI-backed idea goes first");
+}
+
 console.log("Goal engine tests: OK");

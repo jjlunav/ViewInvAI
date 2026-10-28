@@ -10,14 +10,15 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g6-no-cash-progress';
+  const VERSION='2026.10.28-g8-ai-doubts-wait';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
     aggressive:{label:'Alto',minScore:66,minQuality:55,minBurst:70,maxWeight:40,riskPerTradePct:2.5,maxRoundTripFeePct:2,maxSpreadPct:5,maxExtensionPct:7,maxDayChangePct:10,maxWeekPerfPct:20,minTiming:68,stopK:2.5,rr:1.8,minHoldDays:1,stagnantDays:4,maxHoldDays:6}
   };
   const BETTER_SCORE=85;
-  const STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
+  // STICKY_BONUS: puntos de ventaja de la compra ya recomendada frente a una nueva (score temprano 0-100).
+  const STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
     1:{maxCount:1,maxWeight:10,maxTotalWeight:10,minBurstExtra:4,minQualityExtra:3,maxSpread:4,edgeOverNormal:2},
@@ -312,6 +313,16 @@
         limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
         stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
     });
+    // Memoria del plan: la idea que ya se recomendó hace poco solo se sustituye si otra la supera con claridad.
+    // Sin esto, con varias candidatas empatadas (p. ej. a 100/100), la primera cambiaba con cada pequeña variación de datos.
+    const sticky=new Set((input.stickyKeys||[]).map(String));
+    const rankOf=c=>(n(c.burstScore)||0)+(sticky.has(String(c.key))?STICKY_BONUS:0);
+    // Desempate fijo (el resultado no depende del orden en que llegan los datos): oportunidad, la ya recomendada,
+    // respaldo de la IA, score general, calidad, horquilla más estrecha, más volumen relativo y, al final, el ticker.
+    const aiRank=c=>c.aiVerdict==='respalda'?1:0;
+    const byPriority=(x,y)=>rankOf(y)-rankOf(x)||(sticky.has(String(y.key))?1:0)-(sticky.has(String(x.key))?1:0)||
+      aiRank(y)-aiRank(x)||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0)||
+      (n(x.spreadPct)??99)-(n(y.spreadPct)??99)||(n(y.relVolume)||0)-(n(x.relVolume)||0)||String(x.ticker||x.key).localeCompare(String(y.ticker||y.key));
     const bestNormalBurst=Math.max(-Infinity,...mappedCands.filter(c=>!c.speculative).map(c=>n(c.burstScore)??0));
     const rankedCands=mappedCands.filter(c=>{
       if((n(c.score)??0)<minScore&&c.burstScore<b.minBurst+8)return false;
@@ -323,19 +334,21 @@
       if(spec.maxSpread!==null&&n(c.spreadPct)!==null&&n(c.spreadPct)>spec.maxSpread)return false;
       if(Number.isFinite(bestNormalBurst)&&c.burstScore<bestNormalBurst+spec.edgeOverNormal)return false;
       return true;
-    }).sort((x,y)=>y.burstScore-x.burstScore||(n(y.score)||0)-(n(x.score)||0)||(n(y.quality)||0)-(n(x.quality)||0));
+    }).sort(byPriority);
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
     // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
-    const shortlist=rankedCands.length>1&&rankedCands[1].burstScore>=rankedCands[0].burstScore-5
+    const shortlist=rankedCands.length>1&&rankOf(rankedCands[1])>=rankOf(rankedCands[0])-5
       ?rankedCands.slice(0,2):rankedCands.slice(0,1);
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
     const stale=c=>c.quoteFresh===false;
     // Primero la candidata con más rendimiento esperado (recorrido previsto ponderado por la oportunidad); el mismo
     // orden sirve para elegir a qué se cambia una posición y qué se compra con el efectivo.
-    const edge=c=>(n(c.targetPct)||0)*(n(c.burstScore)||0)/100;
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x));
+    const edge=c=>(n(c.targetPct)||0)*rankOf(c)/100;
+    // Si una IA tiene dudas sobre la idea, no se compra ni se cambia a ella: queda en ESPERAR hasta que la revisión la respalde.
+    const doubted=c=>c.aiVerdict==='dudas';
+    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
       if(!(ask>0)||!(amount>0))return 0;
@@ -343,14 +356,15 @@
       return Math.floor(amount/ask);
     };
     if(!defensive){
-      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c))){
-        const isLimit=!stale(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
+      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c)||doubted(c))){
+        const isLimit=!stale(c)&&!doubted(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
         waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
           burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
           text:isLimit
             ?'Esperar '+label(c)+': oportunidad válida, pero no comprar por encima de '+money(c.limitPriceEur)+'. La entrada actual está demasiado extendida.'
             :stale(c)?'Esperar '+label(c)+': no hay cotización en vivo; antes de comprar hay que ver cómo cotiza ahora.'
+            :doubted(c)?'Esperar '+label(c)+': la IA tiene dudas sobre esta idea; no se compra hasta que una revisión la respalde.'
             :'Esperar '+label(c)+': '+((c.entryReasons||[]).join(', ')||'el punto de entrada no es suficientemente limpio')+'.'});
       }
     }
