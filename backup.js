@@ -44,7 +44,7 @@
     window.ViewInvAITax?._invalidate?.();
     window.dispatchEvent(new CustomEvent('viewinvai:fund-portfolios-changed'));
     window.dispatchEvent(new CustomEvent('viewinvai:favorite-lists-changed'));
-    status('Copia restaurada: '+r.restored+' registros recuperados y '+r.skipped+' ya existentes.');
+    status('Copia restaurada: '+r.restored+' registros recuperados y '+r.skipped+' ya existentes.'+(r.detachedHistory?' '+r.detachedHistory+' registros históricos conservados sin su cartera o posición eliminada.':''));
    }catch(e){status(esc(e.message||'No se pudo restaurar la copia.'),true)}
    return;
   }

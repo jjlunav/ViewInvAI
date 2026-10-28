@@ -48,7 +48,7 @@ export async function restoreBackup(db,userId,backup){
     }
   }
   const schemas=await db.batch(Object.values(TABLES).map(table=>db.prepare(`PRAGMA table_info(${table})`)));
-  let schemaIndex=0;
+  let schemaIndex=0,detachedHistory=0;
   for(const [key,table] of Object.entries(TABLES)){
     const cols=schemas[schemaIndex++].results.map(c=>c.name),groups=new Map();
     for(const raw of backup[key]||[]){
@@ -56,6 +56,7 @@ export async function restoreBackup(db,userId,backup){
       if(row.id)row.id=maps[key].get(String(row.id));
       for(const [column,target] of Object.entries(REFS))if(row[column]){
         const id=maps[target].get(String(row[column]));
+        if(!id&&((key==='dividends'&&column==='portfolio_id')||(key==='positionDecisions'&&column==='position_id'))){row[column]='';detachedHistory++;continue}
         if(!id)throw Object.assign(new Error('Falta una relación en la copia: '+column),{status:400});
         row[column]=id;
       }
@@ -76,5 +77,5 @@ export async function restoreBackup(db,userId,backup){
   const results=await financialBatch(db,userId,revision,statements);
   const inserted=results.slice(1).reduce((n,r)=>n+Number(r.meta?.changes||0),0);
   const total=Object.keys(TABLES).reduce((n,k)=>n+(backup[k]||[]).length,0);
-  return{restored:inserted,skipped:total-inserted,total};
+  return{restored:inserted,skipped:total-inserted,total,detachedHistory};
 }

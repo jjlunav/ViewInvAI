@@ -64,10 +64,11 @@ assert.equal(sum.currencies.EUR.buyGross,10);assert.equal(sum.currencies.USD.buy
 // Complete backup, including cash, fund history/plans and crypto; restore twice.
 db.raw.exec("INSERT INTO fund_portfolios(id,user_id,name,created_at,updated_at) VALUES('fp','u','Funds','x','x'); INSERT INTO fund_positions(id,fund_portfolio_id,user_id,isin,name,units,avg_price,created_at,updated_at) VALUES('fpos','fp','u','US0000000002','Fund',2,20,'x','x'); INSERT INTO fund_transactions(id,fund_portfolio_id,fund_position_id,user_id,isin,side,units,price,executed_at,created_at,updated_at) VALUES('ft','fp','fpos','u','US0000000002','BUY',2,20,'2026-01-01','x','x'); INSERT INTO fund_contribution_plans(id,fund_portfolio_id,fund_position_id,user_id,isin,label,amount,created_at,updated_at) VALUES('plan','fp','fpos','u','US0000000002','Monthly',50,'x','x');");
 db.raw.exec("INSERT INTO crypto_positions(id,user_id,symbol,platform,units,avg_price_eur,notes,origin,created_at,updated_at) VALUES('coin','u','BTC','Test',0.1,50000,'','manual','x','x')");
+db.raw.exec("INSERT INTO dividends(id,user_id,portfolio_id,paid_at,ticker,gross,created_at) VALUES('historic','u','deleted-portfolio','2026-01-01','OLD',10,'x')");
 const b=await exportBackup(db,'u');assert.equal(b.portfolios[0].cash_balance,1005);assert.equal(b.fundTransactions.length,1);assert.equal(b.fundPlans.length,1);
-const restored=await restoreBackup(db,'other',b);assert.ok(restored.restored>0);
+const restored=await restoreBackup(db,'other',b);assert.ok(restored.restored>0);assert.equal(restored.detachedHistory,1);
 const again=await restoreBackup(db,'other',b);assert.equal(again.restored,0);
-const copy=await exportBackup(db,'other');assert.equal(copy.portfolios[0].cash_balance,1005);assert.equal(copy.fundPositions[0].units,2);assert.equal(copy.fundPlans[0].amount,50);assert.equal(copy.cryptoPositions[0].units,0.1);
+const copy=await exportBackup(db,'other');assert.equal(copy.portfolios[0].cash_balance,1005);assert.equal(copy.fundPositions[0].units,2);assert.equal(copy.fundPlans[0].amount,50);assert.equal(copy.cryptoPositions[0].units,0.1);assert.equal(copy.dividends[0].gross,10);assert.equal(copy.dividends[0].portfolio_id,'');
 // Fund history enforces the same date/order and delete constraints.
 let f=await createFundTransactionRecord(env,user,{positionId:'fpos',side:'SELL',units:1,price:21,fees:0,currency:'EUR',executedAt:'2025-12-01'});
 assert.equal(f.status,400);
