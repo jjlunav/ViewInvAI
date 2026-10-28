@@ -4589,6 +4589,7 @@ function aiFailReason(tried,only=null){
   const out=[...new Set(rows.map(why))];
   return out.length?out.slice(0,4).join(" · "):"ningún servicio disponible";
 }
+let geminiSearchPausedUntil=0;
 async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null,grounded=false}){
   const tried=[],t=task==="light"?"light":"decision";
   // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
@@ -4601,11 +4602,16 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=n
       if(t==="light")models=[...models.filter(m=>/lite/i.test(m)),...models.filter(m=>!/lite/i.test(m))];
       models=pinModels(models);
       let lastErr="";
+      // Con grounded (y sin JSON forzado, que Google no permite a la vez) Gemini busca en Google en tiempo real.
+      // La búsqueda tiene su propio cupo gratuito: si se agota o el modelo no la admite, se repite sin ella
+      // (y no se vuelve a pedir en 1 h) en vez de dar a Gemini por agotado.
+      let search=grounded&&!json&&Date.now()>geminiSearchPausedUntil;
       for(const model of models.slice(0,3)){
-        const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
+        const ask=withSearch=>providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
-          // Con grounded (y sin JSON forzado, que Google no permite a la vez) Gemini busca en Google en tiempo real.
-          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],...(grounded&&!json?{tools:[{google_search:{}}]}:{}),generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
+          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],...(withSearch?{tools:[{google_search:{}}]}:{}),generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
+        let r=await ask(search);
+        if(search&&!r.ok&&[400,403,429].includes(r.status)){tried.push("gemini:"+model+":búsqueda "+r.status);geminiSearchPausedUntil=Date.now()+3600e3;search=false;r=await ask(false)}
         // Un 503 de Google es saturación pasajera de ese modelo: se prueba el siguiente sin penalizar todavía.
         if(!r.ok){tried.push("gemini:"+model+":"+r.status);lastErr="HTTP "+r.status+" ("+model+")";if(r.status!==503)providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
         const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
@@ -7119,18 +7125,20 @@ async function aiAppEngines(env){
   return out;
 }
 // Búsqueda exhaustiva: noticias recientes (Finnhub, Google News, buscadores) de cada valor citado.
-async function aiDeepEvidence(env,targets){
+// compact: contraste normal; 4 valores × 3 titulares sin enlaces, para no agotar el cupo de tokens de las IA gratuitas.
+async function aiDeepEvidence(env,targets,compact=false){
   const parts=[],sources=[];
-  for(const t of (Array.isArray(targets)?targets:[]).slice(0,6)){
+  for(const t of (Array.isArray(targets)?targets:[]).slice(0,compact?4:6)){
     const ticker=trimText(t&&t.ticker,16).toUpperCase().replace(/[^A-Z0-9.\-]/g,"");if(!ticker)continue;
     const c={ticker,name:trimText(t.name,80),isin:trimText(t.isin,12).toUpperCase().replace(/[^A-Z0-9]/g,""),usTicker:trimText(t.usTicker,12).toUpperCase().replace(/[^A-Z0-9.\-]/g,"")};
     let web={results:[],provider:""};
     try{web=await goalWebNews(env,c)}catch(_){}
     if(!web.results.length){parts.push(ticker+": la búsqueda no ha devuelto noticias recientes.");continue}
-    parts.push(ticker+" (fuentes: "+web.provider+"):\n"+web.results.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+" — "+r.content+" ("+r.url+")").join("\n"));
-    web.results.forEach(r=>sources.push({url:r.url,title:r.title}));
+    const rows=compact?web.results.slice(0,3):web.results;
+    parts.push(ticker+" (fuentes: "+web.provider+"):\n"+rows.map((r,i)=>"  ["+(i+1)+"] "+(r.date?r.date+" · ":"")+r.title+(compact?"":" — "+r.content+" ("+r.url+")")).join("\n"));
+    rows.forEach(r=>sources.push({url:r.url,title:r.title}));
   }
-  return{text:parts.join("\n"),sources};
+  return{text:compact?trimText(parts.join("\n"),2600):parts.join("\n"),sources};
 }
 async function handleAiIntegration(request,env,user,json,parts,url){
   await ensureAiIntegrationSchema(env);
@@ -7267,7 +7275,7 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       const done=async row=>{try{await env.DB.prepare("UPDATE ai_pick_uses SET contrast_id=? WHERE id=?").bind(row.id,useId).run();
         await env.DB.prepare("DELETE FROM ai_pick_uses WHERE user_id=? AND day<?").bind(user.id,new Date(Date.now()-3*86400000).toISOString().slice(0,10)).run()}catch(_){}return row};
       // Siempre con noticias reales de los valores (fuentes gratuitas y en caché): sin ellas la IA solo opinaría de memoria.
-      const evidence=targets.length?await aiDeepEvidence(env,targets):{text:"",sources:[]};
+      const evidence=targets.length?await aiDeepEvidence(env,targets,!deep):{text:"",sources:[]};
       const fullPrompt=prompt+(deep?"\n\nBÚSQUEDA EXHAUSTIVA · NOTICIAS Y RESULTADOS REALES DE ESTA SEMANA (úsalos como fuente principal, cita el dato y la fecha):\n"+(evidence.text||"sin resultados")+
         "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":
         evidence.text?"\n\nNOTICIAS REALES DE ESTOS DÍAS (úsalas para contrastar; cita la fecha):\n"+evidence.text:"");
@@ -8281,7 +8289,7 @@ async function goalWebReviewPositions(env,goal,positions){
       const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo resultados REALES de búsqueda web: úsalos como fuente principal.")+"\n\n"+
         "Son las posiciones ABIERTAS de una cartera que busca crecer en 1-5 sesiones. Para cada una: «respalda» si las noticias mantienen o mejoran la tesis, "+
         "«dudas» si hay riesgo pero no motivo claro de salida, «contradice» SOLO si hay un hecho nuevo que invalida mantenerla (ampliación de capital, ensayo fallido, rechazo regulatorio, rebaja de guía, fraude, delisting).\n\n"+parts.join("\n");
-      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false,grounded:true});
+      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false});
       const parsed=aiParseAnswer(run.text);
       if(!parsed.items.length)return new Map();
       parsed.summary=trimText("Vigilancia de posiciones · IA "+run.provider+" + búsqueda web. "+(parsed.summary||""),800);
@@ -8511,8 +8519,10 @@ function goalStickyBuyKeys(planJson){
 // Datos de la propia foto del mercado (gratis, todas las candidatas): fecha de resultados y si está en pérdidas.
 function goalCandidateBasics(stock){
   const out={};
-  const ed=Date.parse(String(stock&&stock.earningsDate||"").slice(0,10)+"T12:00:00Z");
-  if(Number.isFinite(ed)){const d=Math.round((ed-Date.now())/864e5);if(d>=-1&&d<=60){out.earningsDays=Math.max(0,d);out.earningsDate=new Date(ed).toISOString().slice(0,10)}}
+  // El paquete de mercado trae la fecha de resultados en segundos Unix (a veces en texto): se cuentan días de Madrid.
+  const raw=stock&&stock.earningsDate,num=finiteNumber(raw);
+  const ed=num!==null?(num>1e12?num:num*1000):Date.parse(String(raw||"").slice(0,10)+"T12:00:00Z");
+  if(Number.isFinite(ed)&&ed>0){const day=madridDay(ed),d=Math.round((Date.parse(day+"T12:00:00Z")-Date.parse(madridDay(Date.now())+"T12:00:00Z"))/864e5);if(d>=0&&d<=60){out.earningsDays=d;out.earningsDate=day}}
   const ni=finiteNumber(stock&&stock.netIncomeTtm),pe=finiteNumber(stock&&stock.peRatio),cap=finiteNumber(stock&&stock.marketCap),rev=finiteNumber(stock&&stock.revenueTtm);
   if(ni!==null)out.lossMaking=ni<0;
   out.valuationTone=(pe!==null&&pe>60)||(ni!==null&&ni<0&&cap>0&&rev>0&&cap/rev>10)?"high":(pe!==null&&pe>0&&pe<12?"low":"");
@@ -8772,9 +8782,11 @@ async function scanPortfolioGoalNotifications(env,services){
       let plan=engine.plan(input);
       // Antes de publicar una idea nueva: analistas y resultados de esa acción (solo las nuevas, con caché).
       const newIdeas=plan.actions.filter(a=>a.type==="BUY"&&!a.committed).slice(0,3);
-      if(newIdeas.length){
+      // También las ideas fijadas (con caché de 12 h): si aparecen resultados o una rebaja, pasan a «cambio de recomendación».
+      const factKeys=[...newIdeas,...committed.map(c=>({key:c.key}))];
+      if(factKeys.length){
         let changed=false;
-        for(const a of newIdeas){const c=candidates.find(x=>x.key===a.key),st=c&&byKey.get(c.key);if(!st)continue;Object.assign(c,await goalCandidateFundamentals(services,st,fundMemo));changed=true}
+        for(const a of factKeys.slice(0,7)){const c=candidates.find(x=>x.key===a.key),st=c&&byKey.get(c.key);if(!st)continue;Object.assign(c,await goalCandidateFundamentals(services,st,fundMemo));changed=true}
         if(changed)plan=engine.plan(input);
       }
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";

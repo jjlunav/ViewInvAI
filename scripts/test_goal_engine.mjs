@@ -12,7 +12,7 @@ assert.ok(G&&typeof G.plan==="function","Goal engine must load");
 
 const base={
   key:"NASDAQ:TEST",ticker:"TEST",name:"Test Corp",score:92,quality:90,tier:"high",speculative:false,
-  priceEur:10,askEur:10,atrPct:2,feeEur:1,relVolume:2,rsi:58,adx:24,technicalPrice:10,
+  priceEur:10,askEur:10,atrPct:4,feeEur:1,relVolume:2,rsi:58,adx:24,technicalPrice:10,
   ema20:9.8,ema50:9.5,perfWeek:5,spreadPct:.5,avgVolume:1_000_000,extensionPct:2,nearHighPct:1,
   dayChangePct:2,catalystDays:2,catalystImpact:80
 };
@@ -81,7 +81,9 @@ const input=candidates=>({
 
 // Cartera pequeña con efectivo: el dinero no se reserva para huecos que ninguna candidata va a llenar.
 {
-  const pricey={...base,key:"LSX:FJE",ticker:"FJE",priceEur:58,askEur:58,technicalPrice:58,ema20:56.8,ema50:55};
+  // Volatilidad realista para un objetivo agresivo (ATR 4 %/día): con 2 % el recorrido previsto (≤ 1,5 × ATR × √5)
+  // no compensa 2 € de comisiones en un ticket de 48 € y lo correcto es no comprar.
+  const pricey={...base,key:"LSX:FJE",ticker:"FJE",priceEur:58,askEur:58,technicalPrice:58,ema20:56.8,ema50:55,atrPct:4,feeEur:.5};
   const p=G.plan({...input([pricey]),config:{...input([]).config,target:500,startValue:197},cashEur:197,peakValueEur:197});
   assert.equal(p.actions.filter(x=>x.type==="BUY").length,1,"small account must still buy one share it can afford");
 }
@@ -258,6 +260,25 @@ const input=candidates=>({
   const b=held.actions.find(x=>x.type==="BUY"&&x.key==="NASDAQ:B");
   assert.ok(!buys(held).includes("NASDAQ:A"),"the fixed idea is waiting at its limit");
   assert.ok(!b||!free||b.ticketEur<free.ticketEur,"the new idea only uses cash not reserved by the waiting one");
+}
+
+// Recorrido previsto realista: nunca más de 1,5 × el movimiento típico de 5 sesiones (ATR × √5).
+{
+  const calm={...base,key:"NYSE:EAT",ticker:"EAT",atrPct:4.6};
+  const p=G.plan(input([calm])),b=p.actions.find(x=>x.type==="BUY");
+  assert.ok(b,"a calm stock with a clean setup can still be bought");
+  assert.ok(b.targetPct<=4.6*Math.sqrt(5)*1.5+0.01,"target is capped by the typical 5-session move");
+  assert.ok(Math.abs(b.moveRangePct-4.6*Math.sqrt(5))<0.02,"the typical 5-session move is reported");
+}
+// Resultados hoy de una idea fijada sin comprar: pasa a cambio de recomendación y no se propone comprar.
+{
+  const fixed={...base,key:"NYSE:EAT",ticker:"EAT",earningsDays:0,earningsDate:"2026-10-06"};
+  const p=G.plan({...input([fixed]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  const ch=p.actions.find(x=>x.type==="CHANGE");
+  assert.ok(ch&&/resultados hoy/.test(ch.reason),"earnings today turn a fixed idea into a recommendation change");
+  assert.ok(!p.actions.some(x=>x.type==="BUY"&&x.key==="NYSE:EAT"),"no buy is proposed right before earnings");
+  const fresh=G.plan(input([{...fixed,key:"NYSE:NEW",ticker:"NEW"}]));
+  assert.ok(!fresh.actions.some(x=>x.type==="BUY"),"a new idea is not published right before earnings");
 }
 
 console.log("Goal engine tests: OK");
