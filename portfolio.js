@@ -1903,13 +1903,14 @@ setInterval(async()=>{
   }catch(_){}
 },120000);
 // Otras opciones que pasan tus filtros, por puntuación y con su estado. Solo información: no son ideas publicadas.
-function goalAlternativesHtml(plan,ctx){
-  const list=(plan&&plan.alternatives)||[];if(!list.length)return'';
+function goalAlternativesHtml(plan,ctx,shown){
+  // Sin repetir lo que ya aparece en «Hoy toca» (también las esperas del servidor).
+  const list=((plan&&plan.alternatives)||[]).filter(a=>!(shown&&shown.has(String(a.key))));if(!list.length)return'';
   return '<details class="goal2-alts" open><summary>Otras opciones ('+list.length+') · ordenadas por puntuación</summary><ol>'+list.map(a=>{
     const label=String(a.ticker||"")+(a.name&&a.name!==a.ticker?' ('+a.name+')':'');
     return '<li>'+goalLinkedText(label,[goalCandidateLink(ctx,a.key,label)])+' <small>'+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' %'+
       (num(a.moveRangePct)!==null?' (suele moverse ±'+formatNumber(a.moveRangePct,1)+' % en 5 sesiones)':'')+' · '+esc(a.status||"")+'</small></li>'}).join('')+
-    '</ol><small class="goal2-alts-note">Informativo: no han pasado la revisión completa (cotización real, resultados, analistas, noticias e IA) y por eso no tienen botón de compra. Solo una idea revisada aparece arriba como «Cumple tus reglas».</small></details>';
+    '</ol><small class="goal2-alts-note">Informativo: no han pasado la revisión completa (cotización real, resultados, analistas, noticias e IA) y por eso no tienen botón de compra. Las ideas ya revisadas aparecen arriba, en «Hoy toca».</small></details>';
 }
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
@@ -1958,7 +1959,7 @@ function portfolioGoalViewHtml(){
   return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     goalPaceHtml(plan.pace,metrics)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx)+holds+frozenNote+
+    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+holds+frozenNote+
       '<p class="goal2-disclaimer">Información, no asesoramiento: aplica las reglas que fijaste con datos reales, que pueden fallar. Decides tú y puedes perder dinero.</p></section>'+
     goalScoreboardHtml()+
     (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+

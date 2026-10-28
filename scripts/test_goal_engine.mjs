@@ -324,4 +324,12 @@ const input=candidates=>({
   assert.ok(alts.every(x=>!proposed.has(x.key)),"alternatives never repeat a proposed buy");
 }
 
+// «Por qué no hay compras» solo culpa a la subida cuando todas las esperas visibles son de orden límite.
+{
+  const ext={...base,key:"NASDAQ:EXT2",ticker:"EXT2",technicalPrice:10.8,priceEur:10.8,askEur:10.8,ema20:10,extensionPct:8,dayChangePct:5,perfWeek:10,rsi:64};
+  const old={...base,key:"NASDAQ:OLD",ticker:"OLD",quoteFresh:false};
+  const p=G.plan(input([ext,old]));
+  if(p.waits.some(w=>w.decision==='COMPRA LÍMITE')&&p.waits.some(w=>w.decision!=='COMPRA LÍMITE'))assert.ok(!p.whyNoBuy.some(w=>w.code==='limit'),"mixed reasons do not use the limit-only explanation");
+}
+
 console.log("Goal engine tests: OK");
