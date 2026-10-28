@@ -42,6 +42,7 @@ jobs:
           npm audit --omit=dev --audit-level=high
       - name: Regresiones de seguridad, contabilidad y copias
         run: |
+          node scripts/test-tax-export.mjs
           npm run test:reliability
           npm run test:worker
       - name: Historial de caídas bruscas (rebotes a 1/5/20 sesiones)
