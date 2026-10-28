@@ -1667,12 +1667,20 @@ function goalEngineInput(metrics,positionRows){
     const us=q.usRef,useUs=!!(us&&us.live&&us.eur!==null&&(q.ageMs===null||q.ageMs>120000));
     let priceEur=useUs?us.eur:q.unitEur??num(market.eur);
     if(priceEur===null&&String(market.currency||"").toUpperCase()==="EUR")priceEur=num(market.price);
+    // Idea fijada sin cotización ahora: se sigue evaluando con el último precio conocido (marcado como tal) para que
+    // pueda pasar a «cambio de recomendación» o quedar en «esperar cotización»; nunca se propone comprar con él.
+    let priceFallback=false;
+    if(!(priceEur>0)){
+      const cm=committed.find(c=>c.key===goalStockKey(r.s)),fx=num(metrics.fxUsdEur);
+      const last=String(r.s.currency||"").toUpperCase()==="USD"&&num(r.s.price)>0&&fx>0?num(r.s.price)*fx:String(r.s.currency||"").toUpperCase()==="EUR"?num(r.s.price):null;
+      if(cm&&(last>0||num(cm.priceEur)>0)){priceEur=last>0?last:num(cm.priceEur);priceFallback=true}
+    }
     const ticker=String(r.s.ticker||r.s.trTicker||"").toUpperCase();
     const marketTicker=String((preferTr?r.s.trTicker:r.s.ticker)||ticker).toUpperCase();
     const G=window.ViewInvAIGoal;
     const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
-    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:q.quoteRecent===true,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
+    return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:priceFallback?false:q.quoteRecent===true,priceFallback,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
       atrPct:goalAtrPct(r.s),...goalEarningsIn(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",

@@ -281,4 +281,18 @@ const input=candidates=>({
   assert.ok(!fresh.actions.some(x=>x.type==="BUY"),"a new idea is not published right before earnings");
 }
 
+// Idea fijada sin cotización real ahora (solo el último precio): no se compra, se ve como espera fijada y aun así
+// puede pasar a cambio de recomendación.
+{
+  const noQuote={...base,key:"NYSE:EAT",ticker:"EAT",priceFallback:true,quoteFresh:false};
+  let p=G.plan({...input([noQuote]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(!p.actions.some(x=>x.type==="BUY"),"no buy with only the last known price");
+  const w=p.waits.find(x=>x.key==="NYSE:EAT");
+  assert.ok(w&&w.committed&&/no hay cotización en vivo/.test(w.text),"the fixed idea stays visible waiting for a quote");
+  p=G.plan({...input([{...noQuote,earningsDays:0}]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(p.actions.some(x=>x.type==="CHANGE"&&x.key==="NYSE:EAT"),"earnings still turn it into a recommendation change");
+  p=G.plan({...input([{...noQuote,priceEur:5,askEur:5}]),committed:[{key:"NYSE:EAT",priceEur:10,at:"t",ticketEur:120}]});
+  assert.ok(!p.actions.some(x=>x.type==="CHANGE"),"a stale last price never triggers the stop-based change");
+}
+
 console.log("Goal engine tests: OK");

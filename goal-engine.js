@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g12-real-target';
+  const VERSION='2026.10.28-g13-fixed-noquote';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -347,7 +347,7 @@
       if(c.aiVerdict==='contradice')return'la IA la contradice'+(c.aiNewsReason?': '+c.aiNewsReason:'');
       if(c.aiScoutVerdict==='block')return'la revisión de la IA la bloquea';
       const ask=n(c.askEur)??n(c.priceEur),ref=n(cm.priceEur),sp=stopPctFor(c.atrPct,risk);
-      if(ask!==null&&ref>0&&ask<ref*(1-sp/100))return'el precio ha caído por debajo de su stop ('+money(ref*(1-sp/100))+') antes de comprarla';
+      if(!c.priceFallback&&ask!==null&&ref>0&&ask<ref*(1-sp/100))return'el precio ha caído por debajo de su stop ('+money(ref*(1-sp/100))+') antes de comprarla';
       return'';
     };
     const commitState=[...allCommits.values()].map(cm=>{
@@ -434,7 +434,8 @@
       if(input.requireReview&&!isCommitted(c))return'review';
       return null;
     };
-    const buyable=c=>isCommitted(c)?chasePct(c)===null:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)&&!gateOf(c);
+    // Una idea fijada sin cotización real (solo el último precio conocido) espera; nunca se compra con ese precio.
+    const buyable=c=>isCommitted(c)?chasePct(c)===null&&!c.priceFallback:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)&&!gateOf(c);
     const cands=shortlist.filter(buyable).sort((x,y)=>(isCommitted(y)?1:0)-(isCommitted(x)?1:0)||edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
@@ -444,7 +445,7 @@
     };
     if(!defensive){
       for(const c of shortlist.filter(c=>!buyable(c))){
-        const chased=isCommitted(c)?chasePct(c):null;
+        const chased=isCommitted(c)&&!c.priceFallback?chasePct(c):null;
         if(chased!==null){
           const st=commitState.find(x=>x.key===String(c.key));if(st)st.limited=true;
           const ref=n(commits.get(String(c.key)).priceEur),lim=r2(ref*1.01);
@@ -461,7 +462,7 @@
           continue;
         }
         const isLimit=!stale(c)&&!doubted(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
-        waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
+        waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,...(isCommitted(c)?{committed:true,committedPriceEur:n(commits.get(String(c.key)).priceEur),committedAt:String(commits.get(String(c.key)).at||'')}:{}),
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
           burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:c.entryReasons||[],
           text:isLimit
