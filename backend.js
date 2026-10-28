@@ -2562,7 +2562,10 @@ async function ensureRadarScoreboardSchema(env){
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_radar_signals_day ON radar_signals(day)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS radar_bench (day TEXT PRIMARY KEY,price REAL NOT NULL CHECK(price>0),created_at TEXT NOT NULL)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS crash_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',score REAL NOT NULL,change_pct REAL NOT NULL,prior_pct REAL,price REAL NOT NULL CHECK(price>0),bench_price REAL,tr_tradable INTEGER NOT NULL DEFAULT 0,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)")
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_crash_signals_day ON crash_signals(day)"),
+    // Ideas que publicó el Objetivo (sin datos personales: solo el valor, el precio y la fecha) para medir si aciertan.
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS goal_signals (id TEXT PRIMARY KEY,day TEXT NOT NULL,stock_key TEXT NOT NULL,ticker TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',market TEXT NOT NULL DEFAULT '',score REAL,price REAL NOT NULL CHECK(price>0),bench_price REAL,ret_1d REAL,ret_5d REAL,ret_20d REAL,bench_1d REAL,bench_5d REAL,bench_20d REAL,created_at TEXT NOT NULL,UNIQUE(day,stock_key))"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_goal_signals_day ON goal_signals(day)")
   ]);
   // Columnas añadidas después (factores en el momento de la señal); si ya existen, SQLite avisa y se sigue.
   for(const col of ["change_pct REAL","rel_volume REAL","rsi REAL","perf_week REAL","quant_prob REAL","cat_dir REAL"]){
@@ -2743,7 +2746,8 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
   const benchDays=((await env.DB.prepare("SELECT day FROM radar_bench ORDER BY day ASC").all()).results||[]).map(r=>r.day);
   const pending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM radar_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
   const crashPending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM crash_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
-  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],universeStocks:true,prices:[...new Set([...pending,...crashPending].map(r=>String(r.stock_key).toUpperCase()))]});
+  const goalPending=(await env.DB.prepare("SELECT id,day,stock_key,price,bench_price,ret_1d,ret_5d,ret_20d FROM goal_signals WHERE ret_20d IS NULL AND day<?").bind(win.day).all()).results||[];
+  const snapshot=await services.loadMarketSnapshot(env,{universe:["crash","radar"],universeStocks:true,prices:[...new Set([...pending,...crashPending,...goalPending].map(r=>String(r.stock_key).toUpperCase()))]});
   const benchPrice=await (services.loadBenchmark?services.loadBenchmark():fetchBenchmarkPrice());
   const now=nowIso();
   // 1) Evaluate earlier signals with today's live prices.
@@ -2751,7 +2755,7 @@ async function runRadarScoreboardOn(env,services={},nowMs=Date.now()){
     ?new Map(Object.entries(snapshot.prices).map(([k,v])=>[k,finiteNumber(v)]))
     :new Map(snapshot.stocks.map(s=>[String(s.tvSymbol||((s.exchange||"")+":"+(s.ticker||""))).toUpperCase(),finiteNumber(s.price)]));
   const updates=[];
-  for(const [table,list] of [["radar_signals",pending],["crash_signals",crashPending]])for(const sig of list){
+  for(const [table,list] of [["radar_signals",pending],["crash_signals",crashPending],["goal_signals",goalPending]])for(const sig of list){
     const sessions=benchDays.filter(d=>d>sig.day).length+1; // today is one more session after the signal
     const now_px=priceByKey.get(String(sig.stock_key).toUpperCase());
     if(!(now_px>0)||!(sig.price>0))continue;
@@ -2846,6 +2850,24 @@ export async function radarScoreboardSummary(env){
     updatedAt:nowIso()};
 }
 
+// Marcador de las ideas del Objetivo: cada idea cuenta una vez (el día que se publicó), medida desde su precio.
+export async function goalScoreboardSummary(env){
+  try{await onCacheDb(env,ensureRadarScoreboardSchema)}catch(_){}
+  const rows=await historyRows(env,"goal_signals",new Date(Date.now()-400*864e5).toISOString().slice(0,10),(a,b)=>String(b.day).localeCompare(String(a.day)));
+  const stats={all:Object.fromEntries(RADAR_HORIZONS.map(h=>[h+"d",radarStats(rows,h)]))};
+  return{since:rows.length?rows[rows.length-1].day:null,signals:rows.length,stats,
+    recent:rows.slice(0,20).map(r=>({day:r.day,ticker:r.ticker,name:r.name,stockKey:r.stock_key,ret1d:r.ret_1d,ret5d:r.ret_5d,ret20d:r.ret_20d,bench1d:r.bench_1d,bench5d:r.bench_5d,bench20d:r.bench_20d})),
+    method:"Cada idea que publicó el Objetivo, medida desde su precio de ese día 1, 5 y 20 sesiones después frente al SPY. Sin comisiones ni impuestos; resultados pasados, no garantizan nada.",
+    updatedAt:nowIso()};
+}
+// Registra una idea nueva del Objetivo para el marcador (una vez por valor y día).
+async function recordGoalSignal(env,stock,action,market){
+  const price=finiteNumber(stock&&stock.price);if(!(price>0))return;
+  let bench=null;try{bench=await fetchBenchmarkPrice()}catch(_){}
+  await onCacheDb(env,async e=>{await ensureRadarScoreboardSchema(e);
+    await e.DB.prepare("INSERT OR IGNORE INTO goal_signals (id,day,stock_key,ticker,name,market,score,price,bench_price,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .bind(uid("gs_"),nowIso().slice(0,10),String(action.key),trimText(action.ticker||stock.ticker||"",24),trimText(action.name||stock.name||"",160),market,finiteNumber(action.burstScore),price,bench,nowIso()).run()});
+}
 export async function crashScoreboardSummary(env){
   try{await onCacheDb(env,ensureRadarScoreboardSchema)}catch(_){}
   const rows=await historyRows(env,"crash_signals",new Date(Date.now()-400*864e5).toISOString().slice(0,10),(a,b)=>String(b.day).localeCompare(String(a.day))||Number(a.change_pct)-Number(b.change_pct));
@@ -4428,6 +4450,7 @@ const PROVIDERS=[
   {id:"exa",label:"Exa",kind:"Búsqueda",secret:"EXA_API_KEY",free:"10 $ de crédito/mes (~2.500 búsquedas)",dashboard:"https://dashboard.exa.ai/usage"},
   {id:"langsearch",label:"LangSearch",kind:"Búsqueda",secret:"LANGSEARCH_API_KEY",free:"Cupo diario gratuito",dashboard:"https://langsearch.com/dashboard"},
   {id:"googlenews",label:"Google News (RSS)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; noticias de cualquier país e idioma",dashboard:"https://news.google.com/"},
+  {id:"gdelt",label:"GDELT (prensa mundial)",kind:"Búsqueda",secret:"",free:"Sin clave; artículos de todo el mundo cada 15 min",dashboard:"https://www.gdeltproject.org/"},
   {id:"bingnews",label:"Bing News (RSS, respaldo)",kind:"Búsqueda",secret:"",free:"Sin clave ni cupo fijo; entra si Google News falla",dashboard:"https://www.bing.com/news"},
   {id:"firecrawl",label:"Firecrawl",kind:"Búsqueda",secret:"FIRECRAWL_API_KEY",free:"1.000 créditos/mes",dashboard:"https://www.firecrawl.dev/app"},
   {id:"jina",label:"Jina (lector y búsqueda)",kind:"Lectura web",secret:"JINA_API_KEY",free:"10 M de tokens al registrarse",dashboard:"https://jina.ai/api-dashboard"},
@@ -4566,7 +4589,7 @@ function aiFailReason(tried,only=null){
   const out=[...new Set(rows.map(why))];
   return out.length?out.slice(0,4).join(" · "):"ningún servicio disponible";
 }
-async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null}){
+async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=null,exclude=null,grounded=false}){
   const tried=[],t=task==="light"?"light":"decision";
   // pin: {provider, model} elegidos por el usuario; solo se prueba ese servicio (y ese modelo si se indica).
   const pinModels=list=>pin&&pin.model?[pin.model]:list;
@@ -4581,11 +4604,17 @@ async function aiRoute(env,{prompt,maxTokens=900,json=true,task="decision",pin=n
       for(const model of models.slice(0,3)){
         const r=await providerFetch("gemini","https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":key},
-          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
+          // Con grounded (y sin JSON forzado, que Google no permite a la vez) Gemini busca en Google en tiempo real.
+          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],...(grounded&&!json?{tools:[{google_search:{}}]}:{}),generationConfig:{maxOutputTokens:maxTokens,temperature:0.2,...(json?{responseMimeType:"application/json"}:{})}})},45000);
         // Un 503 de Google es saturación pasajera de ese modelo: se prueba el siguiente sin penalizar todavía.
         if(!r.ok){tried.push("gemini:"+model+":"+r.status);lastErr="HTTP "+r.status+" ("+model+")";if(r.status!==503)providerFail("gemini",r.status);if(r.status===429||r.status>=500)continue;break}
         const d=await r.json();const text=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||"").join("");
-        if(text){await recordProviderUse(env,"gemini",true);return{text,provider:"gemini",model}}
+        if(text){
+          await recordProviderUse(env,"gemini",true);
+          const gm=d.candidates&&d.candidates[0]&&d.candidates[0].groundingMetadata,chunks=gm&&Array.isArray(gm.groundingChunks)?gm.groundingChunks:[];
+          const sources=chunks.map(c=>c&&c.web).filter(w=>w&&w.uri).slice(0,8).map(w=>({url:String(w.uri),title:trimText(w.title||"",160)}));
+          return{text,provider:"gemini",model,grounded:!!(gm&&(chunks.length||gm.webSearchQueries)),sources};
+        }
         lastErr="respuesta vacía ("+model+")";
       }
       // Un solo fallo por consulta (no uno por cada modelo probado).
@@ -5305,7 +5334,9 @@ async function ensurePortfolioGoalSchema(env){
     // Mi cripto cuenta en el progreso y el ritmo del objetivo (no en el tamaño de las compras de acciones).
     ["include_crypto","ALTER TABLE portfolio_goals ADD COLUMN include_crypto INTEGER NOT NULL DEFAULT 0"],
     // 1 = el punto de partida del ritmo se midió sin el efectivo (los anteriores lo incluían y se rehacen).
-    ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"]
+    ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"],
+    // Ideas nuevas que el usuario descartó hoy tras un cambio de recomendación: {"day":"YYYY-MM-DD","keys":[...]}.
+    ["discarded_ideas","ALTER TABLE portfolio_goals ADD COLUMN discarded_ideas TEXT NOT NULL DEFAULT ''"]
   ]){
     if(!goalColumnNames.has(name)){
       await env.DB.prepare(sql).run();
@@ -5331,7 +5362,7 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
@@ -5355,6 +5386,17 @@ async function handlePortfolioGoal(request,env,user,json,url){
   if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
     const body=await readJson(request),portfolioId=trimText(body.portfolioId,80);
     if(!portfolioId||!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    // Descartar una idea nueva que cambió de recomendación: libera su efectivo hoy y no toca el resto del objetivo.
+    if(body.discardIdea!==undefined){
+      const key=trimText(body.discardIdea,120);
+      if(!key)return json({error:"discardIdea required"},400);
+      const row=await env.DB.prepare("SELECT discarded_ideas FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+      if(!row)return json({error:"Goal not found"},404);
+      const keys=[...new Set([...goalDiscardedToday(row.discarded_ideas),key])].slice(-12);
+      await env.DB.prepare("UPDATE portfolio_goals SET discarded_ideas=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify({day:madridDay(Date.now()),keys}),portfolioId,user.id).run();
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal)});
+    }
     const raw=finiteNumber(body.targetValueEur!==undefined?body.targetValueEur:body.targetProfitEur);
     if(raw===null||raw<=0)return json({error:"targetValueEur must be greater than zero"},400);
     const target=Math.max(1,Math.min(100000000,Math.round(raw*100)/100)),now=nowIso();
@@ -7224,9 +7266,11 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       const refund=async()=>{try{await env.DB.prepare("DELETE FROM ai_pick_uses WHERE id=?").bind(useId).run()}catch(_){}};
       const done=async row=>{try{await env.DB.prepare("UPDATE ai_pick_uses SET contrast_id=? WHERE id=?").bind(row.id,useId).run();
         await env.DB.prepare("DELETE FROM ai_pick_uses WHERE user_id=? AND day<?").bind(user.id,new Date(Date.now()-3*86400000).toISOString().slice(0,10)).run()}catch(_){}return row};
-      const evidence=deep?await aiDeepEvidence(env,targets):{text:"",sources:[]};
+      // Siempre con noticias reales de los valores (fuentes gratuitas y en caché): sin ellas la IA solo opinaría de memoria.
+      const evidence=targets.length?await aiDeepEvidence(env,targets):{text:"",sources:[]};
       const fullPrompt=prompt+(deep?"\n\nBÚSQUEDA EXHAUSTIVA · NOTICIAS Y RESULTADOS REALES DE ESTA SEMANA (úsalos como fuente principal, cita el dato y la fecha):\n"+(evidence.text||"sin resultados")+
-        "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":"");
+        "\n\nAnaliza a fondo cada valor: catalizadores con fecha, dilución, resultados, guías, rating, sector y técnica. Señala datos contradictorios.":
+        evidence.text?"\n\nNOTICIAS REALES DE ESTOS DÍAS (úsalas para contrastar; cita la fecha):\n"+evidence.text:"");
       if(isUser){
         const label=AI_PROVIDERS[p].label,apiKey=await aiDecrypt(env,user.id,p,keyRow);
         if(!apiKey){await refund();return json({contrasts:[],errors:[{provider:p,error:"No se pudo leer tu clave de "+label+". Vuelve a introducirla."}]},200,noStore)}
@@ -7243,8 +7287,10 @@ async function handleAiIntegration(request,env,user,json,parts,url){
       try{
         const system=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.",deep
           ?"Tienes abajo resultados REALES de búsqueda de esta semana: úsalos como fuente principal y sé concreto y prudente."
+          :evidence.text?"Tienes abajo noticias REALES de estos días y, si tu servicio lo permite, búsqueda de Google: contrasta con ellas, cita fecha y fuente y sé concreto y prudente."
           :"No tienes búsqueda web: usa los datos actuales que aporta ViewInvAI y no afirmes haber verificado nada fuera de ellos; sé concreto y prudente.");
-        const req={prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false};
+        // grounded: Gemini puede buscar en Google en tiempo real (plan gratuito); el resto de servicios usa las noticias adjuntas.
+        const req={prompt:system+"\n\n"+fullPrompt,maxTokens:deep?2400:1400,json:false,grounded:true};
         // Si la IA elegida no responde, la consulta pasa sola a otra IA gratuita de la app (y se dice cuál y por qué).
         let run,fallbackNote="";
         try{run=await aiRoute(env,{...req,pin:{provider:prov.id,model}})}
@@ -7256,8 +7302,9 @@ async function handleAiIntegration(request,env,user,json,parts,url){
         aiEnginesMemo.at=0;
         const parsed=aiParseAnswer(run.text);
         const runLabel=(PROVIDERS.find(x=>x.id===run.provider)||{}).label||prov.label;
-        parsed.summary=trimText(fallbackNote+runLabel+" · "+run.model+(deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":" · sin búsqueda web")+". "+(parsed.summary||""),800);
-        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+run.provider,parsed,evidence.sources))],errors:[]},200,noStore);
+        const webNote=run.grounded?" · con búsqueda de Google":deep?" · búsqueda exhaustiva ("+evidence.sources.length+" fuentes)":evidence.sources.length?" · con "+evidence.sources.length+" noticias reales":" · sin búsqueda web";
+        parsed.summary=trimText(fallbackNote+runLabel+" · "+run.model+webNote+". "+(parsed.summary||""),800);
+        return json({contrasts:[await done(await aiSaveContrast(env,user,type,key,"app-"+run.provider,parsed,[...(run.sources||[]),...evidence.sources]))],errors:[]},200,noStore);
       }catch(error){
         aiEnginesMemo.at=0;await refund();
         return json({contrasts:[],errors:[{provider:"app-"+prov.id,error:"Ninguna IA de la app ha podido responder ahora ("+aiFailReason(error&&error.tried)+"). No se ha gastado el uso; inténtalo en unos minutos."}]},200,noStore);
@@ -8061,6 +8108,11 @@ async function handleNews(request,env,user,json,url){
     .sort((a,b)=>String(b.time).localeCompare(String(a.time))).slice(0,40);
   return json({cat,items,personal:!!user,updatedAt:nowIso()},200,{"Cache-Control":"private, max-age=120"});
 }
+// Noticias GDELT para contrastar (reutiliza gdeltSearch: gratis, sin clave, prensa mundial cada 15 min).
+async function gdeltNews(env,name){
+  const q=newsCleanName(name);if(q.length<3)return[];
+  return(await gdeltSearch(env,q,8)).slice(0,6).map(a=>({title:a.title,url:a.url,content:a.publisher,date:String(a.time||"").slice(0,10),source:"gdelt"}));
+}
 async function goalWebNews(env,c){
   const s=c&&c.stock||{},ticker=String(s.ticker||c.ticker||"").toUpperCase(),name=trimText(s.name||c.name||"",80);
   if(!ticker)return{results:[],provider:""};
@@ -8083,6 +8135,13 @@ async function goalWebNews(env,c){
     for(const r of gn){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
     const gnSource=gn.length?gn[0].source||"googlenews":"";
     if(gn.length)provider=provider?provider+" + "+gnSource:gnSource;
+  }
+  // GDELT (gratis, sin clave, prensa de todo el mundo actualizada cada 15 min) antes de gastar cupos de buscadores.
+  if(results.length<3&&name){
+    const gd=await gdeltNews(env,name);
+    const seen=new Set(results.map(r=>r.url));
+    for(const r of gd){if(results.length>=5)break;if(!seen.has(r.url))results.push(r)}
+    if(gd.length)provider=provider?provider+" + gdelt":"gdelt";
   }
   if(results.length<3){
     const web=await searchRoute(env,name+" ("+ticker+") stock news, catalyst, guidance, offering, FDA or earnings this week");
@@ -8129,7 +8188,7 @@ async function goalWebReviewBuys(env,goal,buys,positions,candidates=[],snapshot=
         "\n\nDATOS DEL MOTOR Y NOTICIAS QUE YA TIENE VIEWINVAI:\n"+ctxRows+
         "\n\nRESULTADOS DE BÚSQUEDA WEB DE HOY:\n"+(webParts.join("\n")||"sin resultados")+
         "\n\nPara cada valor decide respalda, dudas o contradice citando el dato concreto (noticia, evento o cifra). Si la web no aporta nada relevante, dilo y usa «dudas» solo si hay un riesgo real.";
-      const run=await aiRoute(env,{prompt,maxTokens:1400,json:false});
+      const run=await aiRoute(env,{prompt,maxTokens:1400,json:false,grounded:true});
       const parsed=aiParseAnswer(run.text);
       if(!parsed.items.length)return{reviewed:false,verdicts:new Map()};
       parsed.summary=trimText("IA "+run.provider+" · "+run.model+" + búsqueda web. "+(parsed.summary||""),800);
@@ -8222,7 +8281,7 @@ async function goalWebReviewPositions(env,goal,positions){
       const prompt=AI_CONTRAST_SYSTEM.replace("Busca en la web lo necesario y sé concreto y prudente.","Tienes abajo resultados REALES de búsqueda web: úsalos como fuente principal.")+"\n\n"+
         "Son las posiciones ABIERTAS de una cartera que busca crecer en 1-5 sesiones. Para cada una: «respalda» si las noticias mantienen o mejoran la tesis, "+
         "«dudas» si hay riesgo pero no motivo claro de salida, «contradice» SOLO si hay un hecho nuevo que invalida mantenerla (ampliación de capital, ensayo fallido, rechazo regulatorio, rebaja de guía, fraude, delisting).\n\n"+parts.join("\n");
-      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false});
+      const run=await aiRoute(env,{prompt,maxTokens:1200,json:false,grounded:true});
       const parsed=aiParseAnswer(run.text);
       if(!parsed.items.length)return new Map();
       parsed.summary=trimText("Vigilancia de posiciones · IA "+run.provider+" + búsqueda web. "+(parsed.summary||""),800);
@@ -8380,7 +8439,7 @@ async function handleRadarCheck(request,env,user,json,services){
       "Son las acciones que el Radar AI de ViewInvAI propone hoy para operaciones de 1-5 sesiones. Para cada una: «respalda» si las noticias apoyan comprar ahora, "+
       "«dudas» si hay riesgos (ampliación, ya subió demasiado, noticia ambigua), «contradice» si un hecho nuevo invalida la compra. Sin noticias relevantes, decide por los datos y dilo.\n\n"+parts.join("\n");
     try{
-      const run=await aiRoute(env,{prompt,maxTokens:1300,json:false,task:"decision"});
+      const run=await aiRoute(env,{prompt,maxTokens:1300,json:false,task:"decision",grounded:true});
       const parsed=aiParseAnswer(run.text);
       const rows=[];
       for(const i of parsed.items||[]){
@@ -8448,6 +8507,78 @@ function goalStickyBuyKeys(planJson){
     return(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key).map(a=>String(a.key)).slice(0,5);
   }catch(_){return[]}
 }
+// ---- Filtro del Objetivo antes de publicar una idea ----
+// Datos de la propia foto del mercado (gratis, todas las candidatas): fecha de resultados y si está en pérdidas.
+function goalCandidateBasics(stock){
+  const out={};
+  const ed=Date.parse(String(stock&&stock.earningsDate||"").slice(0,10)+"T12:00:00Z");
+  if(Number.isFinite(ed)){const d=Math.round((ed-Date.now())/864e5);if(d>=-1&&d<=60){out.earningsDays=Math.max(0,d);out.earningsDate=new Date(ed).toISOString().slice(0,10)}}
+  const ni=finiteNumber(stock&&stock.netIncomeTtm),pe=finiteNumber(stock&&stock.peRatio),cap=finiteNumber(stock&&stock.marketCap),rev=finiteNumber(stock&&stock.revenueTtm);
+  if(ni!==null)out.lossMaking=ni<0;
+  out.valuationTone=(pe!==null&&pe>60)||(ni!==null&&ni<0&&cap>0&&rev>0&&cap/rev>10)?"high":(pe!==null&&pe>0&&pe<12?"low":"");
+  return out;
+}
+// Analistas y resultados (Nasdaq / FMP, con caché de 12 h): solo para las 1-3 candidatas que van a publicarse.
+async function goalCandidateFundamentals(services,stock,memo){
+  const sym=usTickerOf(stock);if(!sym||!services.loadAnalysts)return{fundamentalsChecked:false};
+  if(memo.has(sym))return memo.get(sym);
+  const out={fundamentalsChecked:true};
+  try{
+    const [a,e]=await Promise.all([services.loadAnalysts(sym).catch(()=>null),services.loadEarnings?services.loadEarnings(sym).catch(()=>null):null]);
+    const price=finiteNumber(stock.price),target=finiteNumber(a&&a.target&&a.target.mean);
+    if(a&&!a.empty){
+      out.analystConsensus=String(a.consensus||"");out.analystCount=finiteNumber(a.analysts);
+      if(price>0&&target>0)out.analystUpsidePct=Math.round((target/price-1)*1000)/10;
+      const down=(a.changes||[]).find(c=>/down/i.test(String(c.action||"")));
+      if(down&&down.date){const d=Math.floor((Date.now()-Date.parse(down.date+"T12:00:00Z"))/864e5);if(d>=0&&d<=30){out.downgradeDays=d;out.downgradeFirm=String(down.firm||"")}}
+    }
+    const past=(e&&Array.isArray(e.past)?e.past:[]).filter(x=>finiteNumber(x.surprisePct)!==null);
+    if(past.length){out.epsBeats=past.filter(x=>finiteNumber(x.surprisePct)>0).length;out.epsLastSurprisePct=finiteNumber(past[0].surprisePct)}
+    if(e&&e.next&&e.next.date){const d=Math.round((Date.parse(e.next.date+"T12:00:00Z")-Date.now())/864e5);if(d>=0&&d<=60){out.earningsDays=d;out.earningsDate=e.next.date}}
+  }catch(_){out.fundamentalsChecked=false}
+  memo.set(sym,out);return out;
+}
+// Contexto de mercado: volatilidad (VIX), caída fuerte del S&P 500 o un dato macro clave (Fed, IPC, empleo…)
+// en las próximas 2 horas. Con tensión no se publican ideas nuevas; lo ya abierto sigue vigilado.
+async function goalMarketContext(services){
+  const out={blocked:false,reason:"",vix:null,spx:null};
+  try{
+    const idx=services.loadIndices?await services.loadIndices():null,list=idx&&Array.isArray(idx.indices)?idx.indices:[];
+    const vix=list.find(x=>/VIX/i.test(String(x.symbol))),spx=list.find(x=>/^SPX$/i.test(String(x.symbol)));
+    out.vix=vix?finiteNumber(vix.price):null;out.spx=spx?finiteNumber(spx.change):null;
+    if(out.vix!==null&&out.vix>=30){out.blocked=true;out.reason="la volatilidad está disparada (VIX "+Math.round(out.vix)+")"}
+    else if(vix&&finiteNumber(vix.change)!==null&&finiteNumber(vix.change)>=15){out.blocked=true;out.reason="la volatilidad sube con fuerza hoy (VIX +"+Math.round(finiteNumber(vix.change))+" %)"}
+    else if(out.spx!==null&&out.spx<=-2){out.blocked=true;out.reason="el S&P 500 cae un "+Math.abs(Math.round(out.spx*10)/10).toLocaleString("es-ES")+" % hoy"}
+  }catch(_){}
+  if(!out.blocked){
+    try{
+      const cal=services.loadEconCalendar?await services.loadEconCalendar():null,now=Date.now();
+      const key=(cal&&cal.events||[]).find(e=>/high/i.test(String(e.impact))&&/EE\. UU\.|Eurozona/.test(String(e.country))&&
+        /(rate|interest|FOMC|CPI|inflation|non-farm|payroll|press conference|GDP)/i.test(String(e.title))&&
+        Date.parse(e.time)>=now-30*60000&&Date.parse(e.time)<=now+2*3600000);
+      if(key){out.blocked=true;out.reason="dato macro clave «"+key.title+"» ("+key.country+") en las próximas horas"}
+    }catch(_){}
+  }
+  return out;
+}
+// Ideas descartadas hoy (hora de Madrid) tras un cambio de recomendación; las de otro día ya no cuentan.
+function goalDiscardedToday(raw){
+  try{const d=JSON.parse(raw||"{}");return d&&d.day===madridDay(Date.now())&&Array.isArray(d.keys)?d.keys.map(String).filter(Boolean).slice(0,12):[]}catch(_){return[]}
+}
+// Compras del último plan guardado si es de hoy (hora de Madrid): son las ideas fijadas del día.
+function goalCommittedBuys(planJson){
+  try{
+    const plan=JSON.parse(planJson||"{}"),at=Date.parse(plan.at||"");
+    const day=t=>new Date(t).toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
+    if(!Number.isFinite(at)||day(at)!==day(Date.now()))return[];
+    // Las ideas fijadas vivas se guardan en cada plan (aunque hoy no generen acción); si el plan es anterior a eso,
+    // se toman de sus compras y de las fijadas que esperan porque el precio se alejó.
+    const consumed=new Set((plan.consumedCommitments||[]).map(c=>String(c.key)));
+    const list=Array.isArray(plan.commitments)?plan.commitments:[...(plan.actions||[]).filter(a=>a&&a.type==="BUY"&&a.key),...(plan.waits||[]).filter(w=>w&&w.committed&&w.key)]
+      .map(a=>({key:String(a.key),priceEur:finiteNumber(a.committedPriceEur??a.priceEur),at:a.committedAt||plan.at,limited:!!(a.type==="WAIT"&&a.committed)}));
+    return list.filter(c=>c&&c.key&&!consumed.has(String(c.key))).map(c=>({key:String(c.key),priceEur:finiteNumber(c.priceEur),at:c.at||plan.at,limited:!!c.limited,ticketEur:finiteNumber(c.ticketEur),changed:String(c.changed||"")})).slice(0,4);
+  }catch(_){return[]}
+}
 function goalPaceText(pc){
   if(!pc)return"";
   if(pc.status==="reached")return"Objetivo alcanzado.";
@@ -8485,7 +8616,7 @@ async function scanPortfolioGoalNotifications(env,services){
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensurePositionBrokerSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -8524,7 +8655,7 @@ async function scanPortfolioGoalNotifications(env,services){
     await dispatchPushAlert(env,{id,alert_type:"portfolio-goal",severity,title,message},{user_id:goal.user_id,route:"portfolio-goal",portfolio_id:goal.portfolio_id,stock_key:stockKey,ticker,prefer_tr:preferTr});
     return true;
   };
-  let processed=0,alerts=0,writes=0;
+  let processed=0,alerts=0,writes=0,marketCtx=null;const fundMemo=new Map();
   for(const goal of goals.results||[]){
     try{
       const positions=(await env.DB.prepare(
@@ -8584,7 +8715,18 @@ async function scanPortfolioGoalNotifications(env,services){
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
       const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions});
-      const candidates=idle?[]:radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true)).slice(0,40).map(r=>{
+      // Ideas fijadas hoy (compras del último plan de hoy): siempre se evalúan, aunque hayan salido de las 40 primeras.
+      const committed=goalCommittedBuys(prev&&prev.plan_json),committedKeys=new Set(committed.map(c=>c.key));
+      const pool=radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true));
+      // Una idea fijada que ya no está en el Radar (bajó de nota o salió del universo) se sigue evaluando: se piden
+      // sus datos y se crea su fila, para que el plan no la olvide ni la sustituya por otra.
+      const inPool=new Set(pool.map(r=>r.stock_key)),lost=idle?[]:[...committedKeys].filter(k=>!inPool.has(k)&&!held.has(k));
+      if(lost.length){
+        const missing=lost.filter(k=>!byKey.has(k));
+        if(missing.length){try{const extra=await services.loadMarketSnapshot(env,{targets:missing.map(k=>({stock_key:k}))});mergeSnapshotInto(snapshot,extra);for(const s of extra.stocks||[])if(!byKey.has(goalServerKey(s)))byKey.set(goalServerKey(s),s)}catch(_){}}
+      }
+      const lostRows=lost.filter(k=>byKey.has(k)).map(k=>{const s=byKey.get(k);return{stock_key:k,name:s.name||s.ticker||k,score:60,quality:70,tier:"watch",speculative:false,tr_tradable:1}});
+      const candidates=idle?[]:[...pool.slice(0,40),...pool.slice(40).filter(r=>committedKeys.has(r.stock_key)),...lostRows].map(r=>{
         const stock=byKey.get(r.stock_key);if(!stock||!goalServerAllowed(stock,scope))return null;
         const priceEur=goalServerPriceEur(stock,preferTr,usdToEur,"BUY")??(finiteNumber(stock.price)!==null&&usdToEur!==null?finiteNumber(stock.price)*usdToEur:null);
         const ticker=String(stock.ticker||stock.trTicker||"").toUpperCase(),cat=goalServerCatalyst(snapshot,stock);
@@ -8624,11 +8766,21 @@ async function scanPortfolioGoalNotifications(env,services){
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
-        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json)};
+        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
+      for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
+      if(!idle&&candidates.length){if(!marketCtx)marketCtx=await goalMarketContext(services);input.market=marketCtx}
       let plan=engine.plan(input);
+      // Antes de publicar una idea nueva: analistas y resultados de esa acción (solo las nuevas, con caché).
+      const newIdeas=plan.actions.filter(a=>a.type==="BUY"&&!a.committed).slice(0,3);
+      if(newIdeas.length){
+        let changed=false;
+        for(const a of newIdeas){const c=candidates.find(x=>x.key===a.key),st=c&&byKey.get(c.key);if(!st)continue;Object.assign(c,await goalCandidateFundamentals(services,st,fundMemo));changed=true}
+        if(changed)plan=engine.plan(input);
+      }
       plan.aiScoutReviewed=scout.reviewed;plan.aiScoutModel=scout.model||"";
       // Compras: precio de compra verificado y contraste de la IA del usuario antes de proponerlas.
-      let buys=plan.actions.filter(a=>a.type==="BUY");
+      // Solo se revisan con IA las compras nuevas: las ideas fijadas ya pasaron esa revisión antes de mostrarse.
+      let buys=plan.actions.filter(a=>a.type==="BUY"&&!a.committed);
       if(buys.length){
         let review=await goalWebReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
         if(!review.reviewed)review=await goalAiReviewBuys(env,goal,buys,enginePositions,candidates,snapshot,services);
@@ -8641,7 +8793,8 @@ async function scanPortfolioGoalNotifications(env,services){
       // También las 1-2 ideas principales que esperan solo por falta de cotización o de spread:
       // sin consultar su precio ahora nunca podrían pasar a «Comprar».
       const quoteWaits=(plan.waits||[]).filter(w=>w.decision!=="COMPRA LÍMITE"&&(w.reasons||[]).every(r=>r==="spread sin verificar")).map(w=>w.key);
-      const targets=new Set([...buys.map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey),...quoteWaits]);
+      // Cotización en vivo de TODAS las compras (también las ideas fijadas, que no se vuelven a revisar con IA).
+      const targets=new Set([...plan.actions.filter(a=>a.type==="BUY").map(b=>b.key),...plan.actions.filter(a=>a.intoKey).map(a=>a.intoKey),...quoteWaits]);
       if(targets.size){
         const reviewMeta={aiScoutReviewed:plan.aiScoutReviewed,aiScoutModel:plan.aiScoutModel,aiReviewed:plan.aiReviewed,aiProvider:plan.aiProvider};
         for(const c of candidates){
@@ -8717,7 +8870,9 @@ async function scanPortfolioGoalNotifications(env,services){
         const msg=trimText([progress,goalPaceText(pc),"Hoy: "+summaryLine].filter(Boolean).join(" · "),500);
         if(!firstRun&&await pushGoal(goal,{title:"Resumen del objetivo · "+goal.name,message:msg,severity:"info"}))alerts++;
       }
-      const planCore={actions:plan.actions,waits:plan.waits||[],holds:plan.holds,notes:plan.notes,pace:plan.pace,defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""};
+      // Ideas nuevas de hoy al marcador de aciertos (una vez por valor y día; sin datos personales).
+      for(const a of plan.actions.filter(x=>x.type==="BUY"&&!x.committed)){try{await recordGoalSignal(env,byKey.get(a.key),a,scope)}catch(error){console.warn("Goal signal record failed",String(error&&error.message||error))}}
+      const planCore={actions:plan.actions,waits:plan.waits||[],holds:plan.holds,notes:plan.notes,pace:plan.pace,whyNoBuy:plan.whyNoBuy||[],market:input.market||null,commitments:plan.commitments||[],consumedCommitments:plan.consumedCommitments||[],defensive:plan.defensive,drawdownPct:plan.drawdownPct,aiReviewed:!!plan.aiReviewed,aiProvider:plan.aiProvider||""};
       const planJson=JSON.stringify({at:now,...planCore}).slice(0,20000);
       const signature=JSON.stringify(planCore.actions||[]).slice(0,4000),summary=trimText(summaryLine,500),notifiedJson=JSON.stringify({day:notified.day,keys:[...seen].slice(-200)});
       let previousCore="";

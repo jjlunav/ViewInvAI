@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g9-idle-pause';
+  const VERSION='2026.10.28-g11-ideas-cash';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -18,7 +18,8 @@
   };
   const BETTER_SCORE=85;
   // STICKY_BONUS: puntos de ventaja de la compra ya recomendada frente a una nueva (score temprano 0-100).
-  const STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
+  // COMMIT_CHASE_PCT: una idea fijada se deja de proponer a mercado si el precio sube más que esto desde que se mostró.
+  const COMMIT_CHASE_PCT=3,STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
     1:{maxCount:1,maxWeight:10,maxTotalWeight:10,minBurstExtra:4,minQualityExtra:3,maxSpread:4,edgeOverNormal:2},
@@ -146,12 +147,22 @@
     // Idea del analista IA respaldada por noticias reales de la web.
     const idea=n(c.aiIdeaConfidence);
     if(idea!==null&&idea>=55&&aiPhase!=='late'&&aiPhase!=='avoid')add('analista IA con noticia',idea>=75?12:7);
+    // Fundamentales (solo si el servidor los ha consultado): resultados frente a lo esperado y opinión de analistas.
+    const beats=n(c.epsBeats),lastSurprise=n(c.epsLastSurprisePct),upside=n(c.analystUpsidePct),cons=String(c.analystConsensus||'');
+    if(lastSurprise!==null&&lastSurprise<=-5)add('falló el BPA del último trimestre',-8);
+    else if(beats!==null&&beats>=3)add('superó el BPA '+beats+' de 4 trimestres',5);
+    if(cons==='sell')add('consenso de analistas: vender',-12);
+    else if(cons==='buy')add('consenso de analistas: comprar',4);
+    if(upside!==null){if(upside>=15)add('precio objetivo de analistas +'+Math.round(upside)+' %',4);else if(upside<0)add('precio objetivo por debajo del actual',-6)}
+    if(c.lossMaking===true&&String(c.valuationTone||'')==='high')add('cara y en pérdidas',-6);
+    // Sin techo para ordenar: muchas candidatas llegaban a 100 y empataban; lo que se enseña sigue en 0-100.
+    const rawScore=score;
     score=clamp(score,0,100);
     const phase=(aiPhase==='late'||aiPhase==='avoid')?aiPhase:
       score>=80&&(ch===null||ch<=5)&&(rsi===null||rsi<=68)?'early':
       score>=b.minBurst&&(ch===null||ch<=10)?'active':
       ch!==null&&ch>10?'late':'watch';
-    return{score:r2(score),phase,parts,entryTiming:timing,entryEligible:entry.eligible,entryDecision:entry.decision,
+    return{score:r2(score),rawScore:r2(rawScore),phase,parts,entryTiming:timing,entryEligible:entry.eligible,entryDecision:entry.decision,
       entryReasons:entry.reasons,limitPriceEur:entry.limitPriceEur,limitDiscountPct:entry.limitDiscountPct};
   }
   // Stop vigente de una posición: el inicial y, si ya gana más que su stop, el que sube detrás
@@ -313,16 +324,47 @@
 
     // 2) Candidatas válidas (antes de decidir rotaciones).
     const held=new Set([...remaining.map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]),specHeldCount=remaining.filter(p=>p.speculative).length;
+    // Ideas fijadas: una compra que ya se mostró hoy se mantiene durante todo el día (no se cambia por otra por
+    // pequeñas variaciones de datos). Solo se retira si la IA la contradice o si el precio se ha alejado demasiado.
+    // Ideas fijadas: cada una reserva su importe del capital del objetivo. Si deja de ser buena antes de comprarla
+    // (la IA la contradice o el precio cae por debajo de su stop) queda como «cambio de recomendación»: su importe
+    // sigue reservado hasta que el usuario la descarte o empiece la siguiente sesión.
+    const discarded=new Set((input.discarded||[]).map(String));
+    const allCommits=new Map((input.committed||[]).filter(c=>c&&c.key&&!discarded.has(String(c.key))).map(c=>[String(c.key),c]));
+    const candByKey=new Map((input.candidates||[]).map(c=>[String(c.key),c]));
+    const changeOf=(cm,c)=>{
+      if(!c)return'';
+      if(c.aiVerdict==='contradice')return'la IA la contradice'+(c.aiNewsReason?': '+c.aiNewsReason:'');
+      if(c.aiScoutVerdict==='block')return'la revisión de la IA la bloquea';
+      const ask=n(c.askEur)??n(c.priceEur),ref=n(cm.priceEur),sp=stopPctFor(c.atrPct,risk);
+      if(ask!==null&&ref>0&&ask<ref*(1-sp/100))return'el precio ha caído por debajo de su stop ('+money(ref*(1-sp/100))+') antes de comprarla';
+      return'';
+    };
+    const commitState=[...allCommits.values()].map(cm=>{
+      const k=String(cm.key),c=candByKey.get(k);
+      return{...cm,key:k,gone:held.has(k)?'bought':'',changed:held.has(k)?'':changeOf(cm,c)};
+    });
+    for(const k of discarded)commitState.push({key:k,gone:'discarded'});
+    const commits=new Map(commitState.filter(x=>!x.gone&&!x.changed).map(x=>[x.key,x]));
+    const isCommitted=c=>commits.has(String(c.key));
+    // Una vez que pasa a compra límite, sigue así hasta que el precio vuelva al límite (precio original +1 %).
+    const chasePct=c=>{const cm=commits.get(String(c.key)),ask=n(c.askEur)??n(c.priceEur),ref=n(cm&&cm.priceEur);
+      if(!cm||!(ref>0)||ask===null)return null;
+      const over=cm.limited?ask>ref*1.01:ask>ref*(1+COMMIT_CHASE_PCT/100);
+      return over?(ask/ref-1)*100:null};
+    // Una idea en «cambio de recomendación» o descartada no vuelve a proponerse hoy.
+    const blockedToday=new Set([...discarded,...commitState.filter(x=>x.changed).map(x=>x.key)]);
     const mappedCands=(input.candidates||[]).filter(c=>{
-      if(held.has(String(c.key)))return false;
-      if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
+      if(held.has(String(c.key))||blockedToday.has(String(c.key)))return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
+      if(isCommitted(c))return (n(c.askEur)??n(c.priceEur))>0;
+      if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
       if((n(c.score)??0)<50||(n(c.quality)??0)<minQuality)return false;
       if(c.speculative&&spec.maxCount<=0)return false;
       return (n(c.askEur)??n(c.priceEur))>0;
     }).map(c=>{
       const burst=candidateBurst(c,risk),stopPct=stopPctFor(c.atrPct,risk);
-      return{...c,burstScore:burst.score,burstPhase:burst.phase,burstReasons:burst.parts,
+      return{...c,burstScore:burst.score,rawBurst:burst.rawScore,burstPhase:burst.phase,burstReasons:burst.parts,
         entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryDecision:burst.entryDecision,entryReasons:burst.entryReasons,
         limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
         stopPct,targetPct:targetPctFor(stopPct,Math.max(n(c.score)||0,burst.score),risk)};
@@ -330,7 +372,7 @@
     // Memoria del plan: la idea que ya se recomendó hace poco solo se sustituye si otra la supera con claridad.
     // Sin esto, con varias candidatas empatadas (p. ej. a 100/100), la primera cambiaba con cada pequeña variación de datos.
     const sticky=new Set((input.stickyKeys||[]).map(String));
-    const rankOf=c=>(n(c.burstScore)||0)+(sticky.has(String(c.key))?STICKY_BONUS:0);
+    const rankOf=c=>(n(c.rawBurst)??n(c.burstScore)??0)+(sticky.has(String(c.key))?STICKY_BONUS:0);
     // Desempate fijo (el resultado no depende del orden en que llegan los datos): oportunidad, la ya recomendada,
     // respaldo de la IA, score general, calidad, horquilla más estrecha, más volumen relativo y, al final, el ticker.
     const aiRank=c=>c.aiVerdict==='respalda'?1:0;
@@ -339,6 +381,7 @@
       (n(x.spreadPct)??99)-(n(y.spreadPct)??99)||(n(y.relVolume)||0)-(n(x.relVolume)||0)||String(x.ticker||x.key).localeCompare(String(y.ticker||y.key));
     const bestNormalBurst=Math.max(-Infinity,...mappedCands.filter(c=>!c.speculative).map(c=>n(c.burstScore)??0));
     const rankedCands=mappedCands.filter(c=>{
+      if(isCommitted(c))return true;
       if((n(c.score)??0)<minScore&&c.burstScore<b.minBurst+8)return false;
       if(c.burstScore<b.minBurst-4||c.burstPhase==='avoid')return false;
       if(!c.speculative)return true;
@@ -352,8 +395,12 @@
     // Objetivo no dispersa el capital entre muchas ideas: una principal y una segunda solo
     // cuando está realmente cerca de la primera. Las buenas ideas con mal precio se conservan
     // como ESPERAR / COMPRA LÍMITE en vez de desaparecer del plan.
-    const shortlist=rankedCands.length>1&&rankOf(rankedCands[1])>=rankOf(rankedCands[0])-5
-      ?rankedCands.slice(0,2):rankedCands.slice(0,1);
+    // Con ideas fijadas hoy, solo cuentan esas: no aparecen otras nuevas hasta que se compren, se retiren o sea otro día.
+    const fixed=rankedCands.filter(isCommitted).sort((x,y)=>String(commits.get(String(x.key)).at||'').localeCompare(String(commits.get(String(y.key)).at||'')));
+    // Las fijadas van primero; si con su importe reservado aún queda capital y hueco, puede entrar una idea nueva.
+    const fresh=rankedCands.filter(c=>!isCommitted(c));
+    const freshPick=fresh.length>1&&rankOf(fresh[1])>=rankOf(fresh[0])-5?fresh.slice(0,2):fresh.slice(0,1);
+    const shortlist=[...fixed,...freshPick].slice(0,Math.max(2,fixed.length));
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
     const stale=c=>c.quoteFresh===false;
@@ -362,7 +409,23 @@
     const edge=c=>(n(c.targetPct)||0)*rankOf(c)/100;
     // Si una IA tiene dudas sobre la idea, no se compra ni se cambia a ella: queda en ESPERAR hasta que la revisión la respalde.
     const doubted=c=>c.aiVerdict==='dudas';
-    const cands=shortlist.filter(c=>c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)).sort((x,y)=>edge(y)-edge(x)||byPriority(x,y));
+    // Una idea fijada no depende de los vaivenes de la entrada: sigue en pie mientras el precio no se aleje.
+    // Filtro antes de publicar una idea nueva (las fijadas ya lo pasaron):
+    // · resultados en ≤ 5 días (riesgo de hueco), consenso «vender» o una rebaja de analistas en los últimos 7 días;
+    // · mercado en tensión (volatilidad disparada, índice cayendo fuerte o un dato macro clave en las próximas horas);
+    // · en la app, una idea solo se muestra como compra cuando el servidor la ha revisado entera (requireReview).
+    const market=input.market||{};
+    const gateOf=c=>{
+      const ed=n(c.earningsDays);
+      if(ed!==null&&ed>=0&&ed<=5)return'presenta resultados '+(ed===0?'hoy':ed===1?'mañana':'en '+ed+' días')+(c.earningsDate?' ('+c.earningsDate+')':'')+': riesgo de hueco, no se abre una idea nueva antes';
+      if(String(c.analystConsensus||'')==='sell')return'el consenso de analistas es «vender»';
+      const dd=n(c.downgradeDays);if(dd!==null&&dd>=0&&dd<=7)return'rebaja de analistas hace '+(dd===0?'hoy':dd+' días')+(c.downgradeFirm?' ('+c.downgradeFirm+')':'');
+      if(market.blocked)return market.reason||'mercado en tensión';
+      if(input.requireReview&&!isCommitted(c))return'review';
+      return null;
+    };
+    const buyable=c=>isCommitted(c)?chasePct(c)===null:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)&&!gateOf(c);
+    const cands=shortlist.filter(buyable).sort((x,y)=>(isCommitted(y)?1:0)-(isCommitted(x)?1:0)||edge(y)-edge(x)||byPriority(x,y));
     // Unidades que se comprarían con un importe: fracciones si se admiten (mínimo 1 €), si no acciones enteras.
     const buyUnits=(c,amount,ask)=>{
       if(!(ask>0)||!(amount>0))return 0;
@@ -370,7 +433,23 @@
       return Math.floor(amount/ask);
     };
     if(!defensive){
-      for(const c of shortlist.filter(c=>!c.entryEligible||stale(c)||doubted(c))){
+      for(const c of shortlist.filter(c=>!buyable(c))){
+        const chased=isCommitted(c)?chasePct(c):null;
+        if(chased!==null){
+          const st=commitState.find(x=>x.key===String(c.key));if(st)st.limited=true;
+          const ref=n(commits.get(String(c.key)).priceEur),lim=r2(ref*1.01);
+          waits.push({type:'WAIT',decision:'COMPRA LÍMITE',key:c.key,ticker:c.ticker,name:c.name,limitPriceEur:lim,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
+            burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:['precio alejado de la idea'],committed:true,committedPriceEur:ref,committedAt:String(commits.get(String(c.key)).at||''),
+            text:'Esperar '+label(c)+': el precio ha subido '+pct(chased)+' desde que se mostró la idea ('+money(ref)+'); no se persigue. Solo si vuelve a '+money(lim)+' o menos.'});
+          continue;
+        }
+        const gate=isCommitted(c)?null:gateOf(c);
+        if(gate&&c.entryEligible&&!stale(c)&&!doubted(c)){
+          waits.push({type:'WAIT',decision:gate==='review'?'EN REVISIÓN':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,limitPriceEur:null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
+            burstScore:r2(c.burstScore),entryTiming:r2(c.entryTiming),reasons:[gate],review:gate==='review',
+            text:gate==='review'?'Revisando '+label(c)+': antes de mostrarla se comprueban la cotización real, los resultados, los analistas, las noticias y la IA (unos minutos).':'Esperar '+label(c)+': '+gate+'.'});
+          continue;
+        }
         const isLimit=!stale(c)&&!doubted(c)&&c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null;
         waits.push({type:'WAIT',decision:isLimit?'COMPRA LÍMITE':'ESPERAR',key:c.key,ticker:c.ticker,name:c.name,
           limitPriceEur:isLimit?r2(c.limitPriceEur):null,currentPriceEur:r2(n(c.askEur)??n(c.priceEur)),
@@ -472,6 +551,10 @@
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
       let spend=Math.max(0,pool-reserved);
+      // Importe reservado por las ideas fijadas que hoy no se compran (en límite o en cambio de recomendación).
+      const buyingNow=new Set(cands.map(c=>String(c.key)));
+      const heldForIdeas=commitState.filter(x=>!x.gone&&!buyingNow.has(x.key)).reduce((s,x)=>s+(n(x.ticketEur)||0),0);
+      spend=Math.max(0,spend-heldForIdeas);
       const ordered=cands;
       for(let ci=0;ci<ordered.length;ci++){
         const c=ordered[ci];
@@ -483,13 +566,18 @@
         // El efectivo se reparte entre los huecos que de verdad se pueden llenar (no hay más candidatas que huecos).
         const fillable=Math.max(1,Math.min(slots,ordered.length-ci));
         const hardCap=Math.min(valueEur*maxW,spend,specCapacity);
-        const share=Math.min(spend/fillable*adj.size,hardCap);
+        // Cara y en pérdidas: se invierte la mitad (un tropiezo en resultados la castiga más).
+        const fundK=c.lossMaking===true&&String(c.valuationTone||'')==='high'?.5:1;
+        const share=Math.min(spend/fillable*adj.size,hardCap)*fundK;
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
         const budget=Math.min(share,riskCap)-feeB;
         // Fracciones: se invierte el importe, no un número entero de acciones (salvo que el valor no las admita).
         const fractional=allowFractions&&!c.noFractions;
         let units=buyUnits(c,budget,ask);
+        // Orden límite siempre que se pueda: en Trade Republic las fracciones solo van a mercado, así que si el importe
+        // da para acciones enteras (sin perder más de un 40 % del importe) se proponen enteras con límite.
+        if(fractional&&units>=1&&Math.floor(units+1e-9)>=units*.6)units=Math.floor(units+1e-9);
         // Sin fracciones, cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso
         // máximo y el efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo del perfil.
         if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
@@ -506,11 +594,23 @@
         spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         const isFraction=fractional&&Math.abs(units-Math.round(units))>1e-9;
+        // Límite de compra: el precio de venta actual (ask) más un margen pequeño para que se ejecute sin perseguir el precio.
+        // También para fracciones: la ayuda de Trade Republic dice que van a mercado, pero si el bróker deja poner límite, mejor.
+        const limitEur=r2(ask*1.003);
         const unitsText=isFraction?units.toLocaleString('es-ES',{maximumFractionDigits:2}):String(units);
-        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
+        actions.push({type:'BUY',decision:'COMPRAR AHORA',key:c.key,ticker:c.ticker,name:c.name,committed:isCommitted(c),committedAt:isCommitted(c)?String(commits.get(String(c.key)).at||''):'',committedPriceEur:isCommitted(c)?n(commits.get(String(c.key)).priceEur):null,units,fractional:isFraction,priceEur:ask,ticketEur:r2(ticket),
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
-          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones: compra fraccionada, solo a precio de mercado)':'Comprar '+unitsText+' × '+label(c)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          // Lo que se arriesga si salta el stop (importe × stop + comisiones) y los argumentos a favor y en contra.
+          riskEur:r2(ticket*c.stopPct/100+feeB+feeS),riskPct:r2(c.stopPct),
+          pros:(c.burstReasons||[]).filter(t=>/ \+\d+$/.test(t)).map(t=>t.replace(/ \+\d+$/,'')).slice(0,5),
+          cons:[...(c.burstReasons||[]).filter(t=>/ -\d+$/.test(t)).map(t=>t.replace(/ -\d+$/,'')),
+            ...(n(c.earningsDays)!==null&&n(c.earningsDays)<=12?['resultados '+(c.earningsDate?'el '+c.earningsDate:'en '+n(c.earningsDays)+' días')]:[]),
+            ...(fundK<1?['cara y en pérdidas: importe a la mitad']:[]),...(c.speculative?['especulativa']:[])].slice(0,5),
+          facts:{earningsDate:c.earningsDate||'',earningsDays:n(c.earningsDays),analystConsensus:c.analystConsensus||'',analystUpsidePct:n(c.analystUpsidePct),analysts:n(c.analystCount),
+            epsBeats:n(c.epsBeats),epsLastSurprisePct:n(c.epsLastSurprisePct),fundamentalsChecked:c.fundamentalsChecked===true},
+          orderType:'LIMIT',limitPriceEur:limitEur,
+          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones, fracción) con límite máximo '+money(limitEur)+' si tu bróker lo permite en fracciones; si solo deja a mercado, revisa la horquilla y evita la apertura':'Comprar '+unitsText+' × '+label(c)+' con orden límite a '+money(limitEur)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
@@ -521,6 +621,7 @@
       // Lo mínimo que exige comprar alguna candidata: 1 € si admite fracciones, una acción entera si no.
       const cheapest=Math.min(Infinity,...mappedCands.map(c=>{const a=n(c.askEur)??n(c.priceEur);return a>0?(allowFractions&&!c.noFractions?1:a):Infinity}));
       if(paused)whyNoBuy.push({code:'idle',text:'Plan en pausa: no hay efectivo para invertir y todas tus posiciones están en «mantener». Solo se vigilan tus precios objetivo y stops de emergencia; no se buscan compras ni se consulta a la IA hasta que entre efectivo, cambies una decisión o vendas.'});
+      else if(market.blocked&&!actions.some(a=>a.type==='BUY'))whyNoBuy.push({code:'market',text:'Sin ideas nuevas por ahora: '+(market.reason||'mercado en tensión')+'. Las posiciones y sus stops siguen vigilados.'});
       else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
       else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
         if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
@@ -530,6 +631,7 @@
       else if(!(input.candidates||[]).length)whyNoBuy.push({code:'nocands',text:'El Radar no tiene candidatas para este mercado en este momento.'});
       else if(!mappedCands.length)whyNoBuy.push({code:'filtered',text:'Las '+(input.candidates||[]).length+' candidatas del Radar no pasan el primer filtro: ya las tienes, la IA las contradice o su puntuación o calidad no llega ('+minQuality+').'});
       else if(!rankedCands.length||shortlist.every(c=>!(c.burstScore>=b.minBurst)))whyNoBuy.push({code:'weak',text:'Ninguna candidata tiene ahora una oportunidad suficiente (mínimo '+b.minBurst+'/100 con perfil '+b.label+').'});
+      else if(!cands.length&&waits.some(w=>w.review))whyNoBuy.push({code:'review',text:'Ninguna idea revisada todavía: antes de mostrar una se comprueban la cotización real, los resultados, los analistas, las noticias y la IA en el servidor (tarda unos minutos). No cambia mientras tanto.'});
       else if(!cands.length)whyNoBuy.push({code:'timing',text:shortlist.some(stale)?'La mejor candidata no tiene cotización en vivo ahora mismo (mercado cerrado o antes de la apertura).':'La mejor candidata no tiene un buen punto de entrada ahora: queda en espera.'});
       else whyNoBuy.push({code:'size',text:'El tamaño permitido o las comisiones no dan para una compra que compense.'});
     }
@@ -541,7 +643,21 @@
       ...waits,
       ...holds.map(h=>({...h,type:'HOLD',decision:'MANTENER'}))
     ];
-    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
+    // Ideas fijadas que siguen vivas (se guardan en cada plan aunque hoy no generen acción) y las que ya se cerraron.
+    // Cambio de recomendación: una idea fijada que dejó de ser buena sin haberse comprado. Su importe sigue reservado
+    // hasta que se descarte (o empiece la siguiente sesión, cuando desaparece sola).
+    for(const x of commitState.filter(x=>!x.gone&&x.changed)){
+      const c=candByKey.get(x.key)||x;
+      actions.push({type:'CHANGE',key:x.key,ticker:c.ticker||x.ticker||'',name:c.name||x.name||'',reason:x.changed,reservedEur:r2(n(x.ticketEur)||0),
+        text:'Cambio de recomendación: '+label({...x,...c})+' ya no cumple — '+x.changed+'. Si no la has comprado, descártala para liberar '+(n(x.ticketEur)?money(n(x.ticketEur)):'su importe')+'; si no, se descarta sola en la próxima sesión.'});
+    }
+    // Ideas fijadas vivas, con su importe reservado; las compras nuevas de este plan quedan fijadas desde ahora.
+    const nowIso=new Date(n(input.nowMs)||Date.now()).toISOString();
+    const commitments=commitState.filter(x=>!x.gone).map(x=>{const a=actions.find(y=>y.type==='BUY'&&y.key===x.key);
+      return{key:x.key,priceEur:n(x.priceEur),at:String(x.at||''),limited:!!x.limited,changed:x.changed||'',ticketEur:a?n(a.ticketEur):n(x.ticketEur),ticker:x.ticker||'',name:x.name||''}});
+    for(const a of actions.filter(y=>y.type==='BUY'&&!y.committed))commitments.push({key:String(a.key),priceEur:n(a.priceEur),at:nowIso,limited:false,changed:'',ticketEur:n(a.ticketEur),ticker:a.ticker||'',name:a.name||''});
+    const consumedCommitments=commitState.filter(x=>x.gone).map(x=>({key:x.key,reason:x.gone}));
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,commitments,consumedCommitments,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
