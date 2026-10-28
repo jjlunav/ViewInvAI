@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
-    "@capacitor/core": "8.5.2",
+    "@capacitor/core": "8.5.3",
     "@capacitor/app": "^8.0.0",
     "jose": "6.2.12",
     "@capacitor-firebase/authentication": "8.5.2",
