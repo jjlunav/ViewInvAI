@@ -23,7 +23,7 @@ vm.createContext(context);vm.runInContext(engine,context);context.window.ViewInv
 vm.runInContext(source.slice(source.indexOf('// ----- Huchas del Objetivo'),source.indexOf('function goalSleeveOperationNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalSleeveOptions('),source.indexOf('// Repartir el efectivo entre las huchas')),context);
 vm.runInContext(source.slice(source.indexOf('// Acciones de la cartera repartidas por hucha'),source.indexOf('function goalSleeveEurPrice(')),context);
-vm.runInContext(source.slice(source.indexOf('// Efectivo que cuenta en el objetivo: nada'),source.indexOf('// Valor de Mi cripto con precio de consenso')),context);
+vm.runInContext(source.slice(source.indexOf('// Efectivo del que salen las huchas'),source.indexOf('// Valor de Mi cripto con precio de consenso')),context);
 vm.runInContext(source.slice(source.indexOf('let goalWizard=null;'),source.indexOf('function goalWizardChoice(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalWizardDemandHtml('),source.indexOf('function goalWizardStepHtml(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalRenewalHtml('),source.indexOf('function goalPaceHtml(')),context);
@@ -66,13 +66,13 @@ assert.deepEqual(goalBody.sleeves.assign,[{positionId:'pos1',sleeve:'alto',value
 handlers.click({preventDefault:()=>{},target:{closest:selector=>selector==='[data-goal-wizard]'?{hasAttribute:()=>false}:null}});
 wizard=vm.runInContext('goalWizard',context);
 wizard.v.goalCash=150;
-assert.equal(context.goalWizardCurrent(),1350,'1200 invested + 150 cash');
+assert.equal(context.goalWizardCurrent(),1200,'Progress counts only what is invested, not the cash for the goal');
 assert.equal(context.goalWizardCountedCash({...wizard.v,goalCash:900}),200,'Never more than the cash there is');
 await context.saveGoalWizard();
 const cashBody=bodies[bodies.length-1];
-assert.equal(cashBody.goalCashMode,'amount');assert.equal(cashBody.goalCashEur,150);assert.equal(cashBody.currentValueEur,1350);
+assert.equal(cashBody.goalCashMode,'amount');assert.equal(cashBody.goalCashEur,150);assert.equal(cashBody.currentValueEur,1200);
 assert.equal(cashBody.goalCashReserveEur,50,'What stays out is sent in euros (USD portfolios store dollars)');
-assert.ok(context.goalWizardTargetChips(1350).includes('1688'),'Target shortcuts follow the value that includes the goal cash');
+assert.ok(context.goalWizardTargetChips(1200).includes('1500'),'Target shortcuts are based on what is invested');
 assert.equal(cashBody.investCapEur,150,'The plan only invests the cash chosen for the goal');assert.equal(cashBody.investReserveEur,50,'The rest of the cash stays out');
 assert.equal(context.goalCountedCashEur({goal_cash_mode:'amount',goal_cash_reserve_eur:50},200),150,'Cash outside the goal is what stays fixed');
 assert.equal(context.goalCountedCashEur({goal_cash_mode:'amount',goal_cash_reserve_eur:50},120),70,'Buying with counted cash lowers it by the same amount the investment rises');

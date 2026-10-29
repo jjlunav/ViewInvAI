@@ -1054,8 +1054,9 @@ function portfolioGoalPositionSnapshot(p,fxUsdEur){
   return{p,stock,qty,preferTr,market,unitEur,avgEur,valueEur,costEur,pnlEur};
 }
 function goalIncludesCrypto(goal){const g=goal||selectedPortfolioGoal()||state.goal||{};return Number(g.include_crypto)===1}
-// Efectivo que cuenta en el objetivo: nada (solo lo invertido) o una cantidad (paso 1 del asistente). Con una cantidad,
-// lo que se guarda es lo que queda fuera: al comprar baja el efectivo y sube lo invertido, y el progreso no salta.
+// Efectivo para el objetivo (paso 1 del asistente): el dinero con el que juega el plan y del que salen las huchas.
+// No cuenta como avance: el progreso solo mide lo invertido. Se guarda lo que queda fuera, así al comprar baja
+// lo disponible para el objetivo en lo mismo que se invierte.
 // Efectivo del que salen las huchas: el elegido para el objetivo (si lo hay) o todo el efectivo.
 function goalSleeveBudgetEur(goal,cashEur){
   return String(goal&&goal.goal_cash_mode)==="amount"?goalCountedCashEur(goal,cashEur):Math.max(0,num(cashEur)||0);
@@ -1090,15 +1091,16 @@ function portfolioGoalMetrics(){
   // El progreso hacia la meta cuenta solo lo invertido: el efectivo sin invertir no es avance (sí es capital
   // para las compras). Mi cripto, si el objetivo la incluye, suma al progreso (no al capital de las compras).
   const includeCrypto=goalIncludesCrypto(),cryptoEur=includeCrypto?goalCryptoValueEur():null;
-  const countedCashEur=goalCountedCashEur(selectedPortfolioGoal()||state.goal,cashEur);
-  const goalValue=investedComplete?investedValue+(cryptoEur||0)+countedCashEur:null;
+  // El progreso solo cuenta lo invertido (y Mi cripto si se incluye); el efectivo para el objetivo es capital, no avance.
+  const budgetCashEur=goalCountedCashEur(selectedPortfolioGoal()||state.goal,cashEur);
+  const goalValue=investedComplete?investedValue+(cryptoEur||0):null;
   const remaining=target!==null&&goalValue!==null?target-goalValue:null;
   const progress=target&&goalValue!==null?Math.max(0,Math.min(100,goalValue/target*100)):0;
   const requiredMultiple=target!==null&&goalValue!==null&&goalValue>0?target/goalValue:null;
   const requiredReturnPct=requiredMultiple!==null?(requiredMultiple-1)*100:null;
   const goalPressure=remaining!==null&&remaining>0&&capital>0?Math.max(0,Math.min(1,remaining/capital)):0;
   const riskBand=portfolioGoalRiskBand(goalConfig.riskProfile);
-  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,countedCashEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
+  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,budgetCashEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
 function coachPriceLevels(stock,preferTr,score,entryPrice=null,riskBand=null){
@@ -1722,7 +1724,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto||metrics.countedCashEur>0?(metrics.includeCrypto?metrics.cryptoEur||0:0)+(metrics.countedCashEur||0):null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
@@ -1793,9 +1795,9 @@ function goalPaceHtml(pc,metrics){
   if(pc.requiredMonthlyPct!==null&&pc.requiredMonthlyPct!==undefined)bits.push("crecimiento necesario, no rentabilidad prevista");
   const progress=Math.max(0,Math.min(100,num(metrics.progress)||0));
   const shown=metrics.goalValue??metrics.currentValue;
-  const counted=num(metrics.countedCashEur)||0,outside=Math.max(0,(num(metrics.cashEur)||0)-counted);
-  if(outside>.005)bits.unshift((counted>0?"sin contar ":"sin contar el efectivo (")+formatMoney(outside,"EUR")+(counted>0?" de efectivo":")"));
-  if(counted>0)bits.unshift("incluye "+formatMoney(counted,"EUR")+" de efectivo");
+  // El efectivo no cuenta como avance; se indica el que está disponible para el objetivo (sin invertir).
+  const goalG=selectedPortfolioGoal()||state.goal,budget=String(goalG&&goalG.goal_cash_mode)==="amount"?num(metrics.budgetCashEur):null;
+  if(num(metrics.cashEur)>0)bits.unshift(budget!==null?"sin contar el efectivo ("+formatMoney(budget,"EUR")+" para el objetivo sin invertir)":"sin contar el efectivo ("+formatMoney(metrics.cashEur,"EUR")+")");
   if(metrics.includeCrypto)bits.unshift(metrics.cryptoEur===null?"Mi cripto: esperando cotización":"incluye Mi cripto ("+formatMoney(metrics.cryptoEur,"EUR")+")");
   return '<div class="goal2-progress"><div class="goal2-progress-head"><strong>'+formatMoney(shown,"EUR")+'</strong><span>→ '+formatMoney(metrics.target,"EUR")+'</span>'+
     (label?'<b class="goal2-pace goal2-pace-'+cls+'">'+esc(label)+'</b>':'')+'</div>'+
@@ -2306,7 +2308,7 @@ function goalWizardSteps(){return["target","date","risk","positions","sleeves","
 function openGoalWizard(options={}){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;if(!portfolio)return;
   const goal=selectedPortfolioGoal()||state.goal||{},stockCur=num(metrics.investedValue),cryptoNow=goalCryptoValueEur(),includeCrypto=goalIncludesCrypto(goal);
-  const cur0=stockCur!==null&&includeCrypto?stockCur+(cryptoNow||0):stockCur,cur=cur0===null?null:cur0+goalCountedCashEur(goal,metrics.cashEur);
+  const cur=stockCur!==null&&includeCrypto?stockCur+(cryptoNow||0):stockCur;
   const in6=new Date(Date.now()+182*86400000).toISOString().slice(0,10);
   goalWizard={step:0,portfolioId:portfolio.id,name:portfolio.name,current:cur,
     v:{target:num(goal.target_value_eur)??num(goal.target_profit_eur)??(cur?Math.round(cur*1.5):null),date:goal.target_date||in6,risk:goal.risk_profile||"aggressive",
@@ -2378,11 +2380,10 @@ function goalWizardCountedCash(v){
 }
 function goalWizardCurrent(){
   const w=goalWizard;if(!w||w.stockCurrent===null||w.stockCurrent===undefined)return w?w.current:null;
-  return w.stockCurrent+(w.v.crypto===1?(num(w.cryptoEur)||0):0)+goalWizardCountedCash(w.v);
+  return w.stockCurrent+(w.v.crypto===1?(num(w.cryptoEur)||0):0);
 }
-function goalWizardCurrentText(cur,v,counted){
-  const parts=[v.crypto===1?'Mi cripto':'',counted>0?formatMoney(counted,"EUR")+' de efectivo para el objetivo':''].filter(Boolean);
-  return 'Hoy cuenta '+esc(cur!==null?formatMoney(cur,"EUR"):"—")+(parts.length?' (lo invertido, '+esc(parts.join(' y '))+')':' (solo lo invertido)')+'. Indica a cuánto quieres llevarlo.';
+function goalWizardCurrentText(cur,v){
+  return 'Hoy tienes invertido '+esc(cur!==null?formatMoney(cur,"EUR"):"—")+(v.crypto===1?' (con Mi cripto)':'')+'. Indica el valor invertido que quieres alcanzar: el efectivo no cuenta como avance.';
 }
 function goalWizardCashHtml(w,v){
   const cash=Math.max(0,num(w.cash)||0);
@@ -2398,7 +2399,7 @@ function goalWizardTargetChips(cur){
 }
 function goalWizardCashLeftText(cash,v){
   const b=goalWizardCountedCash(v),out=Math.max(0,cash-b);
-  return 'Para el objetivo: '+esc(formatMoney(b,"EUR"))+(out>.005?' · fuera del objetivo: '+esc(formatMoney(out,"EUR")):'')+'. Comprar con él no mueve el progreso: solo cambia efectivo por acciones.';
+  return 'Para el objetivo: '+esc(formatMoney(b,"EUR"))+(out>.005?' · fuera del objetivo: '+esc(formatMoney(out,"EUR")):'')+'. No cuenta como avance: el objetivo solo mide lo invertido.';
 }
 function goalWizardStepHtml(id){
   const w=goalWizard,v=w.v,cur=w.current;

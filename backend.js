@@ -5057,16 +5057,21 @@ async function ensurePortfolioGoalSchema(env){
     ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"],
     // Ideas nuevas que el usuario descartó hoy tras un cambio de recomendación: {"day":"YYYY-MM-DD","keys":[...]}.
     ["discarded_ideas","ALTER TABLE portfolio_goals ADD COLUMN discarded_ideas TEXT NOT NULL DEFAULT ''"],
-    // Efectivo que cuenta en el objetivo: 'none' (solo lo invertido) o 'amount' (todo el efectivo, en euros, menos
-    // goal_cash_reserve_eur, lo que el usuario deja fuera; comprar no mueve el progreso).
+    // Efectivo para el objetivo: 'none' (todo el efectivo) o 'amount' (todo el efectivo, en euros, menos
+    // goal_cash_reserve_eur, lo que el usuario deja fuera). Limita lo que invierte el plan y el reparto de las
+    // huchas; no cuenta como avance.
     ["goal_cash_mode","ALTER TABLE portfolio_goals ADD COLUMN goal_cash_mode TEXT NOT NULL DEFAULT 'none'"],
-    ["goal_cash_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN goal_cash_reserve_eur REAL"]
+    ["goal_cash_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN goal_cash_reserve_eur REAL"],
+    // 1 = el punto de partida del ritmo ya no incluye el efectivo para el objetivo (v0.7.47 lo incluía).
+    ["pace_cash_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_cash_basis INTEGER NOT NULL DEFAULT 0"]
   ]){
     if(!goalColumnNames.has(name)){
       await env.DB.prepare(sql).run();
       // Una sola vez: los puntos de partida antiguos incluían el efectivo; se borran y el ritmo empieza de nuevo
       // con el valor invertido (lo rellena la siguiente revisión del objetivo o el siguiente guardado).
       if(name==="pace_basis")await env.DB.prepare("UPDATE portfolio_goals SET start_value_eur=NULL,start_date=NULL,pace_basis=1").run();
+      // Una sola vez: los objetivos con efectivo para el objetivo medían el ritmo con ese efectivo; se reinicia sin él.
+      if(name==="pace_cash_basis")await env.DB.prepare("UPDATE portfolio_goals SET start_value_eur=NULL,start_date=NULL WHERE goal_cash_mode='amount'").run();
     }
   }
   try{
@@ -5189,10 +5194,11 @@ async function handlePortfolioGoal(request,env,user,json,url){
     }
     if(goalCashMode==="amount"&&goalCashReserve===null)goalCashReserve=0;
     if(goalCashMode!=="amount")goalCashReserve=null;
-    const cashChanged=!existing||String(existing.goal_cash_mode||"none")!==goalCashMode||finiteNumber(existing.goal_cash_reserve_eur)!==goalCashReserve;
     // El ritmo se mide desde que se fija (o cambia) el objetivo, su fecha o lo que cuenta en el valor.
-    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto||cashChanged||Number(existing.pace_basis)!==1;
-    const startValue=restart?finiteNumber(body.currentValueEur):finiteNumber(existing.start_value_eur);
+    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto||Number(existing.pace_basis)!==1;
+    // El punto de partida lo calcula el servidor en la siguiente revisión (solo lo invertido y Mi cripto): no se fía del
+    // valor que manda la app, porque una versión anterior aún abierta lo mandaba con el efectivo incluido.
+    const startValue=restart?null:finiteNumber(existing.start_value_eur);
     const startDate=restart?now:existing.start_date;
     // Huchas en la misma petición (asistente): se preparan antes y se guardan en la misma transacción que el objetivo.
     let sleeveStatements=[];
@@ -8722,12 +8728,8 @@ async function scanPortfolioGoalNotifications(env,services){
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
-        extraValueEur:(()=>{
-          // Mi cripto (si cuenta) más el efectivo que el usuario decidió contar en el objetivo.
-          const crypto=Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,mode=String(goal.goal_cash_mode||"none");
-          const counted=mode==="amount"?Math.max(0,cashEur-(finiteNumber(goal.goal_cash_reserve_eur)||0)):0;
-          return crypto===null&&!counted?null:(crypto||0)+counted;
-        })(),
+        // El progreso solo cuenta lo invertido y Mi cripto (si se incluye); el efectivo para el objetivo no es avance.
+        extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
       if(!idle&&candidates.length){if(!marketCtx)marketCtx=await goalMarketContext(services);input.market=marketCtx}
