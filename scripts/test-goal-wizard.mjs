@@ -23,6 +23,7 @@ vm.createContext(context);vm.runInContext(engine,context);context.window.ViewInv
 vm.runInContext(source.slice(source.indexOf('// ----- Huchas del Objetivo'),source.indexOf('function goalSleeveOperationNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalSleeveOptions('),source.indexOf('// Repartir el efectivo entre las huchas')),context);
 vm.runInContext(source.slice(source.indexOf('// Acciones de la cartera repartidas por hucha'),source.indexOf('function goalSleeveEurPrice(')),context);
+vm.runInContext(source.slice(source.indexOf('// Efectivo que cuenta en el objetivo: nada'),source.indexOf('// Valor de Mi cripto con precio de consenso')),context);
 vm.runInContext(source.slice(source.indexOf('let goalWizard=null;'),source.indexOf('function goalWizardChoice(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalWizardDemandHtml('),source.indexOf('function goalWizardStepHtml(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalRenewalHtml('),source.indexOf('function goalPaceHtml(')),context);
@@ -53,11 +54,26 @@ handlers.click({preventDefault:()=>{},target:{closest:selector=>selector==='[dat
 wizard=vm.runInContext('goalWizard',context);
 assert.equal(wizard.v.sleevesOn,0,'An existing goal without sleeves starts as a single plan');
 assert.equal(wizard.posList[0].sleeve,'alto','Held positions default to the high-risk sleeve (bought by the short plan)');
-wizard.v.sleevesOn=1;wizard.v.sl={alto:60,medio:40,bajo:100};wizard.v.strat.bajo='index';
+assert.equal(wizard.v.goalCash,100,'The cash for the goal starts from the old capital limit (200 cash - 100 set aside)');
+wizard.v.sleevesOn=1;wizard.v.sl={alto:30,medio:20,bajo:50};wizard.v.strat.bajo='index';
 const before=requests;await context.saveGoalWizard();
 assert.equal(requests,before+1,'Goal and sleeves are saved in one request (all or nothing)');
 const goalBody=bodies[bodies.length-1];
-assert.equal(goalBody.investCapEur,null);assert.equal(goalBody.investReserveEur,null);
-assert.deepEqual(goalBody.sleeves.cash,{alto:60,medio:40,bajo:100});assert.equal(goalBody.sleeves.strategies.bajo,'index');
+assert.equal(goalBody.investCapEur,100);assert.equal(goalBody.investReserveEur,100);assert.equal(goalBody.goalCashMode,'amount');
+assert.deepEqual(goalBody.sleeves.cash,{alto:30,medio:20,bajo:50});assert.equal(goalBody.sleeves.strategies.bajo,'index');
 assert.deepEqual(goalBody.sleeves.assign,[{positionId:'pos1',sleeve:'alto',valueEur:20}]);
+// Efectivo que cuenta en el objetivo: una cantidad suma al valor de hoy y viaja en el guardado.
+handlers.click({preventDefault:()=>{},target:{closest:selector=>selector==='[data-goal-wizard]'?{hasAttribute:()=>false}:null}});
+wizard=vm.runInContext('goalWizard',context);
+wizard.v.goalCash=150;
+assert.equal(context.goalWizardCurrent(),1350,'1200 invested + 150 cash');
+assert.equal(context.goalWizardCountedCash({...wizard.v,goalCash:900}),200,'Never more than the cash there is');
+await context.saveGoalWizard();
+const cashBody=bodies[bodies.length-1];
+assert.equal(cashBody.goalCashMode,'amount');assert.equal(cashBody.goalCashEur,150);assert.equal(cashBody.currentValueEur,1350);
+assert.equal(cashBody.goalCashReserveEur,50,'What stays out is sent in euros (USD portfolios store dollars)');
+assert.ok(context.goalWizardTargetChips(1350).includes('1688'),'Target shortcuts follow the value that includes the goal cash');
+assert.equal(cashBody.investCapEur,150,'The plan only invests the cash chosen for the goal');assert.equal(cashBody.investReserveEur,50,'The rest of the cash stays out');
+assert.equal(context.goalCountedCashEur({goal_cash_mode:'amount',goal_cash_reserve_eur:50},200),150,'Cash outside the goal is what stays fixed');
+assert.equal(context.goalCountedCashEur({goal_cash_mode:'amount',goal_cash_reserve_eur:50},120),70,'Buying with counted cash lowers it by the same amount the investment rises');
 console.log('Goal wizard: editable renewal, explicit save, deadline demand and preserved risk: OK');
