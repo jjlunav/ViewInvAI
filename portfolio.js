@@ -1054,6 +1054,14 @@ function portfolioGoalPositionSnapshot(p,fxUsdEur){
   return{p,stock,qty,preferTr,market,unitEur,avgEur,valueEur,costEur,pnlEur};
 }
 function goalIncludesCrypto(goal){const g=goal||selectedPortfolioGoal()||state.goal||{};return Number(g.include_crypto)===1}
+// Efectivo que cuenta en el objetivo: nada (solo lo invertido), el de las huchas o una cantidad. Con una cantidad,
+// lo que se guarda es lo que queda fuera: al comprar baja el efectivo y sube lo invertido, y el progreso no salta.
+function goalCountedCashEur(goal,cashEur){
+  const g=goal||{},cash=Math.max(0,num(cashEur)||0),mode=String(g.goal_cash_mode||"none");
+  if(mode==="sleeves"){const S=goalSleeveStateOf(g);return S?Math.min(cash,S.totalCashEur):0}
+  if(mode==="amount")return Math.max(0,cash-(num(g.goal_cash_reserve_eur)||0));
+  return 0;
+}
 // Valor de Mi cripto con precio de consenso; null si falta alguna cotización (no se suma a medias).
 function goalCryptoValueEur(){
   const C=window.ViewInvAICrypto;if(!C||typeof C.totals!=="function")return null;
@@ -1079,14 +1087,15 @@ function portfolioGoalMetrics(){
   // El progreso hacia la meta cuenta solo lo invertido: el efectivo sin invertir no es avance (sí es capital
   // para las compras). Mi cripto, si el objetivo la incluye, suma al progreso (no al capital de las compras).
   const includeCrypto=goalIncludesCrypto(),cryptoEur=includeCrypto?goalCryptoValueEur():null;
-  const goalValue=investedComplete?investedValue+(cryptoEur||0):null;
+  const countedCashEur=goalCountedCashEur(selectedPortfolioGoal()||state.goal,cashEur);
+  const goalValue=investedComplete?investedValue+(cryptoEur||0)+countedCashEur:null;
   const remaining=target!==null&&goalValue!==null?target-goalValue:null;
   const progress=target&&goalValue!==null?Math.max(0,Math.min(100,goalValue/target*100)):0;
   const requiredMultiple=target!==null&&goalValue!==null&&goalValue>0?target/goalValue:null;
   const requiredReturnPct=requiredMultiple!==null?(requiredMultiple-1)*100:null;
   const goalPressure=remaining!==null&&remaining>0&&capital>0?Math.max(0,Math.min(1,remaining/capital)):0;
   const riskBand=portfolioGoalRiskBand(goalConfig.riskProfile);
-  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
+  return{portfolio,rows,fxUsdEur,currentValue:capital,goalValue,includeCrypto,cryptoEur,countedCashEur,investedValue:investedComplete?investedValue:null,cashEur,openPnl:pnlComplete?openPnl:null,realizedPnl,realizedKnown,totalPnl,target,remaining,progress,goalPressure,requiredMultiple,requiredReturnPct,marketScope:portfolioMarketScope(portfolio,positions),goalConfig,riskBand};
 }
 
 function coachPriceLevels(stock,preferTr,score,entryPrice=null,riskBand=null){
@@ -1710,7 +1719,7 @@ function goalEngineInput(metrics,positionRows){
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
+    extraValueEur:metrics.includeCrypto||metrics.countedCashEur>0?(metrics.includeCrypto?metrics.cryptoEur||0:0)+(metrics.countedCashEur||0):null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
@@ -1781,7 +1790,9 @@ function goalPaceHtml(pc,metrics){
   if(pc.requiredMonthlyPct!==null&&pc.requiredMonthlyPct!==undefined)bits.push("crecimiento necesario, no rentabilidad prevista");
   const progress=Math.max(0,Math.min(100,num(metrics.progress)||0));
   const shown=metrics.goalValue??metrics.currentValue;
-  if(num(metrics.cashEur)>0)bits.unshift("sin contar el efectivo ("+formatMoney(metrics.cashEur,"EUR")+")");
+  const counted=num(metrics.countedCashEur)||0,outside=Math.max(0,(num(metrics.cashEur)||0)-counted);
+  if(outside>.005)bits.unshift((counted>0?"sin contar ":"sin contar el efectivo (")+formatMoney(outside,"EUR")+(counted>0?" de efectivo":")"));
+  if(counted>0)bits.unshift("incluye "+formatMoney(counted,"EUR")+" de efectivo");
   if(metrics.includeCrypto)bits.unshift(metrics.cryptoEur===null?"Mi cripto: esperando cotización":"incluye Mi cripto ("+formatMoney(metrics.cryptoEur,"EUR")+")");
   return '<div class="goal2-progress"><div class="goal2-progress-head"><strong>'+formatMoney(shown,"EUR")+'</strong><span>→ '+formatMoney(metrics.target,"EUR")+'</span>'+
     (label?'<b class="goal2-pace goal2-pace-'+cls+'">'+esc(label)+'</b>':'')+'</div>'+
@@ -2292,13 +2303,15 @@ function goalWizardSteps(){return["target","date","risk","positions","sleeves","
 function openGoalWizard(options={}){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;if(!portfolio)return;
   const goal=selectedPortfolioGoal()||state.goal||{},stockCur=num(metrics.investedValue),cryptoNow=goalCryptoValueEur(),includeCrypto=goalIncludesCrypto(goal);
-  const cur=stockCur!==null&&includeCrypto?stockCur+(cryptoNow||0):stockCur;
+  const cur0=stockCur!==null&&includeCrypto?stockCur+(cryptoNow||0):stockCur,cur=cur0===null?null:cur0+goalCountedCashEur(goal,metrics.cashEur);
   const in6=new Date(Date.now()+182*86400000).toISOString().slice(0,10);
   goalWizard={step:0,portfolioId:portfolio.id,name:portfolio.name,current:cur,
     v:{target:num(goal.target_value_eur)??num(goal.target_profit_eur)??(cur?Math.round(cur*1.5):null),date:goal.target_date||in6,risk:goal.risk_profile||"aggressive",
        positions:num(goal.max_positions)??4,specMode:goal.allow_spec===undefined?1:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),
        capEur:num(goal.invest_cap_eur),capPct:num(goal.invest_cap_pct),fractions:goal.allow_fractions===undefined?1:(Number(goal.allow_fractions)===0?0:1),
-       noFrac:[...goalNoFractionSet(goal)],fracRestore:[],crypto:includeCrypto?1:0},
+       noFrac:[...goalNoFractionSet(goal)],fracRestore:[],crypto:includeCrypto?1:0,
+       cashMode:["none","sleeves","amount"].includes(String(goal.goal_cash_mode))?String(goal.goal_cash_mode):"none",
+       goalCash:String(goal.goal_cash_mode)==="amount"?Math.round(goalCountedCashEur(goal,metrics.cashEur)*100)/100:Math.round(Math.max(0,num(metrics.cashEur)||0)*100)/100},
     stockCurrent:stockCur,cryptoEur:cryptoNow,
     cash:num(metrics.cashEur),capInit:[num(goal.invest_cap_eur),num(goal.invest_cap_pct)],reserveInit:num(goal.invest_reserve_eur),fromSummary:false};
   // Huchas: efectivo de cada una (por defecto 30 / 20 / 50 % del efectivo), su estrategia y la hucha de cada acción.
@@ -2345,18 +2358,47 @@ function goalWizardDemandHtml(v,current){
   parts.push("Son requisitos y reglas de dimensionamiento, no una previsión ni una garantía de pérdida máxima. Acortar el plazo eleva la exigencia; no aumenta automáticamente el riesgo permitido. Si no encaja contigo, revisa la meta o el plazo.");
   return '<p class="goal-wizard-hint">'+esc(parts.join(" "))+'</p>';
 }
+// Efectivo que cuenta en el objetivo (paso del importe). Con huchas, lo natural es contar el de las huchas.
+function goalWizardCountedCash(v){
+  const w=goalWizard,cash=Math.max(0,num(w&&w.cash)||0);
+  if(v.cashMode==="sleeves")return Math.min(cash,v.sleevesOn===1?GOAL_SLEEVES.reduce((a,k)=>a+(num(v.sl&&v.sl[k])||0),0):0);
+  if(v.cashMode==="amount")return Math.min(cash,Math.max(0,num(v.goalCash)||0));
+  return 0;
+}
+function goalWizardCurrent(){
+  const w=goalWizard;if(!w||w.stockCurrent===null||w.stockCurrent===undefined)return w?w.current:null;
+  return w.stockCurrent+(w.v.crypto===1?(num(w.cryptoEur)||0):0)+goalWizardCountedCash(w.v);
+}
+function goalWizardCurrentText(cur,v,counted){
+  const parts=[v.crypto===1?'Mi cripto':'',counted>0?formatMoney(counted,"EUR")+' de efectivo':''].filter(Boolean);
+  return 'Hoy cuenta '+esc(cur!==null?formatMoney(cur,"EUR"):"—")+(parts.length?' (incluye '+esc(parts.join(' y '))+')':' (solo lo invertido)')+'. Indica a cuánto quieres llevarlo.';
+}
+function goalWizardCashHtml(w,v){
+  const cash=Math.max(0,num(w.cash)||0);if(!(cash>0)&&v.cashMode==="none")return'';
+  const sleevesPossible=w.eurBase!==false;
+  return '<h3>¿Cuánto efectivo cuenta en el objetivo?</h3><div class="goal-wizard-choices">'+
+    goalWizardChoice("cashMode","none","Nada, solo lo invertido","El efectivo es capital para comprar, pero no avance.",v.cashMode==="none")+
+    (sleevesPossible?goalWizardChoice("cashMode","sleeves","El de las huchas","Cuenta el efectivo de las huchas (alto, medio y bajo); lo sin asignar queda fuera.",v.cashMode==="sleeves"):'')+
+    goalWizardChoice("cashMode","amount","Una cantidad","Tú decides cuánto. Comprar con él no mueve el progreso: solo cambia efectivo por acciones.",v.cashMode==="amount")+'</div>'+
+    (v.cashMode==="amount"?'<div class="goal-wizard-pair"><label class="goal-wizard-input"><input type="number" min="0" step="0.01" inputmode="decimal" data-gw-input="goalCash" value="'+esc(String(v.goalCash??""))+'" aria-label="Euros de efectivo que cuentan"><b>€</b></label>'+
+      '<label class="goal-wizard-input"><input type="number" min="0" max="100" step="0.1" inputmode="decimal" data-gw-input="goalCashPct" value="'+(cash>0&&num(v.goalCash)!==null?esc(String(Math.round(num(v.goalCash)/cash*1000)/10)):'')+'" aria-label="Porcentaje del efectivo que cuenta"><b>%</b></label></div>'+
+      '<div class="goal-wizard-chips">'+[25,50,100].map(q=>'<button type="button" class="goal-wizard-chip" data-gw-cash-pct="'+q+'">'+(q===100?'Todo':q+' %')+'</button>').join('')+'</div>'+
+      '<p class="goal-wizard-hint">De '+esc(formatMoney(cash,"EUR"))+' de efectivo hoy.</p>':'');
+}
 function goalWizardStepHtml(id){
   const w=goalWizard,v=w.v,cur=w.current;
   const months=d=>{const ms=Date.parse(d+"T12:00:00Z")-Date.now();return ms>0?Math.max(1,Math.round(ms/2629800000)):0};
   if(id==="target"){
     const quick=cur?[1.25,1.5,2].map(f=>Math.round(cur*f)):[];
     const hasCrypto=num(w.cryptoEur)>0||v.crypto===1;
-    return '<h2>¿A cuánto quieres llevar «'+esc(w.name)+'»?</h2><p>Hoy tienes invertido '+(cur!==null?formatMoney(cur,"EUR"):"—")+(v.crypto===1?' (incluida Mi cripto)':'')+'. Indica el valor invertido que quieres alcanzar: el efectivo sin invertir no cuenta como avance.</p>'+
+    const counted=goalWizardCountedCash(v);
+    return '<h2>¿A cuánto quieres llevar «'+esc(w.name)+'»?</h2><p data-gw-current>'+goalWizardCurrentText(cur,v,counted)+'</p>'+
       '<label class="goal-wizard-input"><input type="number" min="1" step="1" inputmode="decimal" data-gw-input="target" value="'+esc(v.target??"")+'"><b>€</b></label>'+
       (quick.length?'<div class="goal-wizard-chips">'+quick.map(q=>'<button type="button" class="goal-wizard-chip" data-gw-set="target" data-gw-value="'+q+'">'+formatMoney(q,"EUR")+' <small>(+'+Math.round((q/cur-1)*100)+' %)</small></button>').join('')+'</div>':'')+
       (hasCrypto?'<h3>¿Cuenta Mi cripto?</h3><div class="goal-wizard-choices">'+
         goalWizardChoice("crypto","0","Solo esta cartera","El objetivo mide lo invertido en acciones de «"+w.name+"».",v.crypto!==1)+
-        goalWizardChoice("crypto","1","Sumar también Mi cripto",(num(w.cryptoEur)!==null?"Hoy "+formatMoney(w.cryptoEur,"EUR")+". ":"")+"Cuenta en el progreso y el ritmo; el plan de acciones no la compra ni la vende y no cambia el tamaño de sus compras.",v.crypto===1)+'</div>':'');
+        goalWizardChoice("crypto","1","Sumar también Mi cripto",(num(w.cryptoEur)!==null?"Hoy "+formatMoney(w.cryptoEur,"EUR")+". ":"")+"Cuenta en el progreso y el ritmo; el plan de acciones no la compra ni la vende y no cambia el tamaño de sus compras.",v.crypto===1)+'</div>':'')+
+      goalWizardCashHtml(w,v);
   }
   if(id==="date"){
     const quick=[3,6,12].map(m=>({m,d:new Date(Date.now()+m*30.44*86400000).toISOString().slice(0,10)}));
@@ -2418,6 +2460,7 @@ function goalWizardStepHtml(id){
     row(1,"Fecha",v.date?new Date(v.date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}):"Sin fecha")+
     row(2,"Riesgo",riskLabel)+row(3,"Acciones a la vez",String(v.positions))+
     (num(w.cryptoEur)>0||v.crypto===1?row(0,"Mi cripto",v.crypto===1?"Cuenta en el objetivo":"No cuenta"):'')+
+    row(0,"Efectivo que cuenta",v.cashMode==="amount"?formatMoney(goalWizardCountedCash(v),"EUR"):v.cashMode==="sleeves"&&v.sleevesOn===1?"El de las huchas ("+formatMoney(goalWizardCountedCash(v),"EUR")+")":"Nada, solo lo invertido")+
     row(4,"Huchas",v.sleevesOn===1?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+" "+formatMoney(num(v.sl[k])||0,"EUR")).join(" · "):"Un solo plan")+
     row(5,v.sleevesOn===1?"Fracciones":"Capital para invertir",(v.sleevesOn===1?"":goalWizardCapLabel(v)+" · ")+(v.fractions?"con fracciones":"acciones enteras"))+row(6,"Especulativas",specLabel)+'</div>'+goalWizardDemandHtml(v,cur)+
     '<p class="goal-wizard-hint">Fondos y ETFs van aparte. El plan compra al momento con stop según volatilidad, sube el stop cuando gana y no cambia una acción en pérdidas salvo que la nueva prevea recuperar la pérdida y las comisiones.</p>';
@@ -2488,7 +2531,10 @@ async function saveGoalWizard(){
     const payload={portfolioId:w.portfolioId,targetValueEur:num(w.v.target),targetDate:w.v.date||null,monthlyContributionEur:0,riskProfile:w.v.risk,maxPositions:w.v.positions,specMode:w.v.specMode,allowSpec:w.v.specMode>0,currentValueEur:w.current,
       // Solo se guarda el límite que puso el usuario: el otro es un cálculo redondeado y no debe recortarlo.
       investCapEur:w.v.capSource==="capPct"?null:num(w.v.capEur),investCapPct:w.v.capSource==="capEur"?null:(num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null),allowFractions:w.v.fractions!==0,
-      fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1};
+      fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1,
+      // «El de las huchas» sin huchas no tiene sentido: queda en «solo lo invertido».
+      goalCashMode:w.v.cashMode==="sleeves"&&w.v.sleevesOn!==1?"none":w.v.cashMode,...(w.v.cashMode==="amount"?{goalCashEur:Math.max(0,num(w.v.goalCash)||0)}:{})};
+    payload.currentValueEur=goalWizardCurrent();
     // Lo que queda apartado se fija al cambiar el límite: las compras que registres después gastan del capital
     // permitido. Si el límite no cambia, se conserva lo apartado (guardar otra vez no renueva el capital).
     const usable=goalWizardUsable(w.v,w.cash);
@@ -2515,7 +2561,11 @@ document.addEventListener("click",event=>{
   const open=event.target.closest&&event.target.closest("[data-goal-wizard]");
   if(open){event.preventDefault();openGoalWizard({extend:open.hasAttribute("data-goal-extend")});return}
   const root=event.target.closest&&event.target.closest("#goalWizard");if(!root||!goalWizard)return;
-  const t=event.target.closest("[data-gw-close],[data-gw-next],[data-gw-back],[data-gw-save],[data-gw-set],[data-gw-goto],[data-gw-unfrac]");if(!t)return;
+  const t=event.target.closest("[data-gw-close],[data-gw-next],[data-gw-back],[data-gw-save],[data-gw-set],[data-gw-goto],[data-gw-unfrac],[data-gw-cash-pct]");if(!t)return;
+  if(t.hasAttribute("data-gw-cash-pct")){
+    goalWizard.v.goalCash=Math.round(Math.max(0,num(goalWizard.cash)||0)*Number(t.dataset.gwCashPct))/100;
+    goalWizard.current=goalWizardCurrent();paintGoalWizard();return;
+  }
   if(t.hasAttribute("data-gw-unfrac")){
     const tk=t.dataset.gwUnfrac;goalWizard.v.noFrac=goalWizard.v.noFrac.filter(x=>x!==tk);
     if(!goalWizard.v.fracRestore.includes(tk))goalWizard.v.fracRestore.push(tk);paintGoalWizard();return;
@@ -2527,7 +2577,7 @@ document.addEventListener("click",event=>{
     goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto","sleevesOn"].includes(k)?Number(val):val;
     // El valor de partida (y los atajos +25 %…) cambia según cuente o no Mi cripto.
     if(k==="capPct")goalWizardSyncCap("capPct");
-    if(k==="crypto"&&goalWizard.stockCurrent!==null)goalWizard.current=goalWizard.stockCurrent+(goalWizard.v.crypto===1?(num(goalWizard.cryptoEur)||0):0);
+    if((k==="crypto"||k==="cashMode"||k==="sleevesOn")&&goalWizard.stockCurrent!==null)goalWizard.current=goalWizardCurrent();
     goalWizardMsg("");paintGoalWizard();return;
   }
   if(t.hasAttribute("data-gw-goto")){goalWizard.step=Number(t.dataset.gwGoto)||0;goalWizard.fromSummary=true;paintGoalWizard();return}
@@ -2540,7 +2590,15 @@ document.addEventListener("click",event=>{
 });
 document.addEventListener("input",event=>{
   const t=event.target.closest&&event.target.closest("#goalWizard [data-gw-input]");if(!t||!goalWizard)return;
-  const k=t.dataset.gwInput;goalWizard.v[k]=["target","capEur","capPct"].includes(k)?(t.value===""?null:num(t.value)):t.value;goalWizardMsg("");
+  const k=t.dataset.gwInput;goalWizard.v[k]=["target","capEur","capPct","goalCash","goalCashPct"].includes(k)?(t.value===""?null:num(t.value)):t.value;goalWizardMsg("");
+  if(k==="goalCash"||k==="goalCashPct"){
+    const cash=Math.max(0,num(goalWizard.cash)||0);
+    if(k==="goalCashPct"){const p=num(goalWizard.v.goalCashPct);goalWizard.v.goalCash=p===null?null:Math.round(cash*Math.max(0,Math.min(100,p)))/100;const o=document.querySelector('#goalWizard [data-gw-input="goalCash"]');if(o)o.value=goalWizard.v.goalCash??""}
+    else{const o=document.querySelector('#goalWizard [data-gw-input="goalCashPct"]'),e=num(goalWizard.v.goalCash);if(o)o.value=e===null||!(cash>0)?"":String(Math.round(e/cash*1000)/10)}
+    goalWizard.current=goalWizardCurrent();
+    const h=document.querySelector("#goalWizard [data-gw-current]");if(h)h.innerHTML=goalWizardCurrentText(goalWizard.current,goalWizard.v,goalWizardCountedCash(goalWizard.v));
+    return;
+  }
   if(k==="capEur"||k==="capPct"){
     goalWizardSyncCap(k);
     const other=k==="capEur"?"capPct":"capEur",o=document.querySelector('#goalWizard [data-gw-input="'+other+'"]');
