@@ -89,6 +89,13 @@ db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=10 WHERE portf
 S=await goalSleeveState(env,'u','pf',started);const altoCash=S.sleeves.alto.cashEur;
 await createTransactionRecord(env,user,trade({stockKey:'XETRA:BIO',ticker:'BIO',isin:'US0000000002',quantity:2,price:20,executedAt:later(5000)}));
 S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.alto.cashEur,Math.round((altoCash-41)*100)/100);
+// Con un efectivo para el objetivo, las huchas no pueden pasar de esa cantidad (el resto queda fuera).
+db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=500 WHERE portfolio_id='pf'").run();
+db.raw.prepare("UPDATE portfolio_goals SET goal_cash_mode='amount',goal_cash_reserve_eur=300 WHERE portfolio_id='pf'").run();
+let over=await handleGoalSleeves(env,user,json,'pf',{sleeves:{cash:{alto:100,medio:100,bajo:50}}});
+assert.equal(over.status,409,"250 € no caben en los 200 € para el objetivo");
+assert.match(over.body.error,/efectivo para el objetivo es 200/);
+assert.equal(await handleGoalSleeves(env,user,json,'pf',{sleeves:{cash:{alto:60,medio:40,bajo:100}}}),null);
 // La copia de seguridad incluye las huchas.
 const b=await exportBackup(db,'u');assert.equal(b.goalSleeves.length,3);assert.ok(b.goalSleeveMoves.length>=4);
 // Quitar las huchas no borra operaciones ni posiciones.

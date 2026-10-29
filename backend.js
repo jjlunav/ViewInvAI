@@ -5195,7 +5195,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
     let sleeveStatements=[];
     if(body.sleeves!==undefined){
       const sleeveGoal=existing?await env.DB.prepare("SELECT sleeves_started_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first():null;
-      const prepared=await goalSleeveStatements(env,user,portfolioId,body.sleeves&&typeof body.sleeves==="object"?body.sleeves:{},sleeveGoal);
+      const prepared=await goalSleeveStatements(env,user,portfolioId,body.sleeves&&typeof body.sleeves==="object"?body.sleeves:{},sleeveGoal,{cashReserveEur:goalCashMode==="amount"?goalCashReserve:null});
       if(prepared.error)return json({error:prepared.error},prepared.status||400);
       sleeveStatements=prepared.statements;
     }
@@ -5340,7 +5340,7 @@ async function goalSleeveAssignStatements(env,userId,portfolioId,positionId,slee
 }
 // Prepara (sin escribir) todos los cambios de huchas de una petición: así se guardan en la misma transacción que
 // el objetivo y nunca queda uno sin el otro. goal: la fila del objetivo (o null si se está creando).
-async function goalSleeveStatements(env,user,portfolioId,input,goal){
+async function goalSleeveStatements(env,user,portfolioId,input,goal,{cashReserveEur=null}={}){
   const now=nowIso();
   const clearAll=()=>[
     env.DB.prepare("DELETE FROM goal_sleeve_moves WHERE user_id=? AND portfolio_id=?").bind(user.id,portfolioId),
@@ -5350,7 +5350,8 @@ async function goalSleeveStatements(env,user,portfolioId,input,goal){
     env.DB.prepare("UPDATE portfolio_goals SET sleeves_started_at=NULL WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id)];
   // Quitar las huchas no borra operaciones ni posiciones: solo su reparto.
   if(input.disable===true)return{statements:goal&&goal.sleeves_started_at?clearAll():[]};
-  const portfolio=await onePortfolio(env,user.id,portfolioId),realCash=Math.max(0,finiteNumber(portfolio&&portfolio.cash_balance)||0);
+  // Las huchas se reparten sobre el efectivo para el objetivo (todo el efectivo menos lo que el usuario dejó fuera).
+  const portfolio=await onePortfolio(env,user.id,portfolioId),realCash=Math.max(0,(finiteNumber(portfolio&&portfolio.cash_balance)||0)-(finiteNumber(cashReserveEur)||0));
   if(String(portfolio&&portfolio.base_currency||"EUR").toUpperCase()!=="EUR")return{error:"Las huchas solo están disponibles en carteras en euros.",status:409};
   // Restos de unas huchas anteriores sin fecha de inicio (no debería haberlos): se limpian antes de empezar.
   const fresh=!(goal&&goal.sleeves_started_at),startedAt=fresh?now:goal.sleeves_started_at;
@@ -5369,7 +5370,7 @@ async function goalSleeveStatements(env,user,portfolioId,input,goal){
       if(v===null||v<0||v>100000000)return{error:"Importe no válido en la hucha "+k+".",status:400};
       want[k]=Math.round(v*100)/100;total+=want[k];
     }
-    if(total>realCash+.01)return{error:"Las huchas suman "+total.toFixed(2)+" € y el efectivo de la cartera es "+realCash.toFixed(2)+" €. Actualiza el efectivo o reparte menos.",status:409};
+    if(total>realCash+.01)return{error:"Las huchas suman "+total.toFixed(2)+" € y el efectivo para el objetivo es "+realCash.toFixed(2)+" €. Reparte menos o sube esa cantidad en «Ajustar objetivo».",status:409};
     for(const k of GOAL_SLEEVES){
       const delta=Math.round((want[k]-current.sleeves[k].cashEur)*100)/100;
       if(Math.abs(delta)>=.01)statements.push(env.DB.prepare("INSERT INTO goal_sleeve_moves (id,portfolio_id,user_id,sleeve,kind,amount_eur,units,qty,position_id,note,created_at) VALUES (?,?,?,?,'cash',?,?,NULL,'',?,?)")
@@ -5393,10 +5394,10 @@ async function goalSleeveStatements(env,user,portfolioId,input,goal){
 }
 export async function handleGoalSleeves(env,user,json,portfolioId,body){
   await ensureGoalSleeveSchema(env);
-  const goal=await env.DB.prepare("SELECT portfolio_id,sleeves_started_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+  const goal=await env.DB.prepare("SELECT portfolio_id,sleeves_started_at,goal_cash_mode,goal_cash_reserve_eur FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
   if(!goal)return json({error:"Crea primero el objetivo."},404);
   const input=body.sleeves&&typeof body.sleeves==="object"?body.sleeves:{};
-  const prepared=await goalSleeveStatements(env,user,portfolioId,input,goal);
+  const prepared=await goalSleeveStatements(env,user,portfolioId,input,goal,{cashReserveEur:String(goal.goal_cash_mode)==="amount"?finiteNumber(goal.goal_cash_reserve_eur):null});
   if(prepared.error)return json({error:prepared.error},prepared.status||400);
   if(prepared.statements.length)await env.DB.batch(prepared.statements);
   return null;
