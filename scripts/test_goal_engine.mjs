@@ -497,4 +497,15 @@ const input=candidates=>({
   assert.ok(!p.actions.some(a=>a.type==="BUY"),"below 5 € it never buys (the fee would take most of it)");
 }
 
+// Una idea fijada cuyo precio se escapó no bloquea todo el efectivo: aparta como mucho la mitad (y nunca más del de hoy).
+{
+  const now=Date.parse("2026-10-06T12:00:00Z");
+  const ran={...base,key:"NYSE:RAN",ticker:"RAN",priceEur:110,askEur:110,technicalPrice:110,ema20:108,ema50:104};
+  const fresh={...base,key:"NASDAQ:NEW",ticker:"NEW"};
+  const inp={...input([ran,fresh]),cashEur:100,peakValueEur:100,committed:[{key:"NYSE:RAN",priceEur:100,at:new Date(now-3600e3).toISOString(),ticketEur:167}]};
+  const p=G.plan(inp);
+  assert.ok(p.waits.some(w=>w.key==="NYSE:RAN"&&w.decision==="COMPRA LÍMITE"),"the chased idea waits for a limit order");
+  assert.ok(p.actions.some(a=>a.type==="BUY"&&a.key==="NASDAQ:NEW"),"a new idea can still be bought with the rest of the cash");
+}
+
 console.log("Goal engine tests: OK");

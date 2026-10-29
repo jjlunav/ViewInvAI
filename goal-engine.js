@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g19-small-cash';
+  const VERSION='2026.10.29-g20-held-cap';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -701,6 +701,7 @@
     }
 
     // 4) Compras con el efectivo disponible (no en modo defensivo).
+    let heldEur=0;
     if(defensive){
       notes.push('Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.');
     }else{
@@ -715,8 +716,13 @@
       let spend=Math.max(0,pool-reserved);
       // Importe reservado por las ideas fijadas que hoy no se compran (en límite o en cambio de recomendación).
       const buyingNow=new Set(cands.map(c=>String(c.key)));
-      const heldForIdeas=commitState.filter(x=>!x.gone&&!buyingNow.has(x.key)).reduce((s,x)=>s+(n(x.ticketEur)||0),0);
-      spend=Math.max(0,spend-heldForIdeas);
+      // Cada una aparta como mucho el efectivo de hoy (su importe se calculó con el de cuando se fijó, que puede ser
+      // mayor). Las que solo valen con orden límite (el precio se escapó) apartan entre todas como mucho la mitad, para
+      // que una orden que quizá no se ponga no bloquee las ideas nuevas.
+      const held=commitState.filter(x=>!x.gone&&!buyingNow.has(x.key));
+      const heldOf=list=>list.reduce((s,x)=>s+Math.min(n(x.ticketEur)||0,spend),0);
+      heldEur=Math.min(spend,heldOf(held.filter(x=>!x.limited))+Math.min(heldOf(held.filter(x=>x.limited)),spend*.5));
+      spend=Math.max(0,spend-heldEur);
       const ordered=cands;
       for(let ci=0;ci<ordered.length;ci++){
         const c=ordered[ci];
@@ -794,6 +800,10 @@
       else if(paused)whyNoBuy.push({code:'idle',text:'Plan en pausa: no hay efectivo para invertir y todas tus posiciones están en «mantener». Solo se vigilan tus precios objetivo y stops de emergencia; no se buscan compras ni se consulta a la IA hasta que entre efectivo, cambies una decisión o vendas.'});
       else if(market.blocked&&!actions.some(a=>a.type==='BUY'))whyNoBuy.push({code:'market',text:'Sin ideas nuevas por ahora: '+(market.reason||'mercado en tensión')+'. Las posiciones y sus stops siguen vigilados.'});
       else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
+      else if(heldEur>.5&&spendable-heldEur<Math.max(1,Number.isFinite(cheapest)?cheapest:1)){
+        const names=commitState.filter(x=>!x.gone&&!actions.some(a=>a.type==='BUY'&&a.key===x.key)).map(x=>x.ticker||x.name||x.key).slice(0,3).join(', ');
+        whyNoBuy.push({code:'reserved',text:money(heldEur)+' de '+money(spendable)+' quedan apartados para '+(names?'la idea fijada hoy ('+names+')':'las ideas fijadas hoy')+'; con lo que queda no llega para otra compra. Si no la vas a comprar, descártala o espera a la próxima sesión, cuando se libera sola.'});
+      }
       else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
         if(sleeveMode)whyNoBuy.push({code:'sleeve',text:'La hucha de riesgo alto tiene '+money(usable)+' libres'+(cash>usable+.005?' (el resto del efectivo es de las otras huchas o está sin asignar)':'')+'; '+(usable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiar el reparto en «Ajustar objetivo».'});
         else if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
