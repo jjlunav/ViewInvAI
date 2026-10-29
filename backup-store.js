@@ -11,7 +11,8 @@ const TABLES = {
   fundTransactions:'fund_transactions', fundPlans:'fund_contribution_plans',
   portfolioGoals:'portfolio_goals', positionDecisions:'position_decisions',
   userBrokers:'user_brokers', userSettings:'user_settings',
-  notificationSettings:'user_notification_settings'
+  notificationSettings:'user_notification_settings',
+  goalSleeves:'goal_sleeves', goalSleeveMoves:'goal_sleeve_moves'
 };
 const REFS = {portfolio_id:'portfolios',position_id:'positions',fund_portfolio_id:'fundPortfolios',fund_position_id:'fundPositions'};
 

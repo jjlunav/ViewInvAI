@@ -129,7 +129,7 @@ assert.equal(attempts,2);
 // Changing preparation code invalidates the stored readiness marker.
 assert.equal((await coreSchemaStatus(prepDb,[['changed',async()=>{}]])).ready,false);
 // Background preparation proves core readiness before request-time DDL is bypassed.
-for(let i=0;i<14;i++)await prepareCoreSchema(env);
+for(let i=0;i<15;i++)await prepareCoreSchema(env);
 assert.equal((await getCoreSchemaStatus(env)).ready,true);
 const originalPrepare=db.prepare;let ddl=0;
 db.prepare=sql=>{if(/^(?:CREATE|ALTER|DROP)\s/i.test(sql.trim()))ddl++;return originalPrepare(sql)};

@@ -940,6 +940,7 @@
    if(review.plans.length)task.log('Planes: '+review.plans.map(p=>(job.funds.find(f=>f.isin===p.isin)||{}).name+' '+eur(p.amount)+(p.frequency==='weekly'?'/semana':p.frequency==='quarterly'?'/trimestre':'/mes')).join(' · '));
    task.done('Importación terminada: '+parts.join(' · ')+(errors?' · '+errors+' con error':''));
    if(typeof P().reload==='function')await P().reload();
+   if(job.setCash!==null&&typeof P().promptGoalSleeveCash==='function')P().promptGoalSleeveCash(job.portfolioId);
    if(window.ViewInvAITax)window.ViewInvAITax._invalidate();
    if(job.funds.length&&window.ViewInvAIFunds&&typeof window.ViewInvAIFunds.loadPortfolio==='function'){try{await window.ViewInvAIFunds.loadPortfolio(true)}catch(_){}}
    if(job.source==='ibkr'){const saved=readIbkr();if(saved){saved.lastSyncAt=Date.now();saved.portfolioId=job.portfolioId;writeIbkr(saved)}}

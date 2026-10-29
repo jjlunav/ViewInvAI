@@ -424,4 +424,55 @@ const input=candidates=>({
   assert.equal(mixed.filter(x=>x.riskTier==="alto").length,2,"at most 2 of 5 trend ideas are high risk when others exist");
 }
 
+// Huchas: el plan de ideas cortas solo gasta el efectivo de la hucha de riesgo alto y sin el límite fijo del 30 %.
+{
+  const hi={...base,key:"NASDAQ:HI",ticker:"HI",atrPct:7,marketCap:2e8};
+  let p=G.plan({...input([hi]),sleeves:{alto:{cashEur:120}}});
+  const buy=p.actions.find(a=>a.type==="BUY");
+  assert.ok(buy,"sleeve mode buys from the high-risk sleeve");
+  assert.ok(buy.ticketEur+1<=120+1e-6,"ticket plus fee fits the high sleeve cash");
+  p=G.plan({...input([hi]),sleeves:{alto:{cashEur:0}}});
+  assert.ok(!p.actions.some(a=>a.type==="BUY"),"no buys when the high sleeve is empty");
+  assert.equal(p.whyNoBuy[0].code,"sleeve","explains that the high sleeve has no cash");
+  p=G.plan({...input([hi]),sleeves:{alto:{cashEur:900}},config:{...input([]).config,highRiskPct:0}});
+  assert.ok(p.actions.some(a=>a.type==="BUY"),"the fixed high-risk cap does not apply with sleeves");
+}
+// Calidad (hucha baja): grandes, rentables, PER razonable, poca volatilidad; orden por rentabilidad del beneficio + margen.
+{
+  const st=[
+    {key:"Q1",ticker:"Q1",price:100,marketCap:5e10,revenueTtm:1e10,netIncomeTtm:2e9,enterpriseValue:4e10,peRatio:20,atrPct:1.5,high52w:110,perf6M:5},
+    {key:"Q2",ticker:"Q2",price:100,marketCap:5e10,revenueTtm:1e10,netIncomeTtm:1e9,enterpriseValue:5e10,peRatio:30,atrPct:1.5,high52w:105,perf6M:5},
+    {key:"LOSS",ticker:"LOSS",price:100,marketCap:5e10,revenueTtm:1e10,netIncomeTtm:-1e9,enterpriseValue:5e10,atrPct:1.5,high52w:105},
+    {key:"SMALL",ticker:"SMALL",price:100,marketCap:5e9,revenueTtm:1e9,netIncomeTtm:3e8,enterpriseValue:4e9,peRatio:15,atrPct:1.5,high52w:105},
+    {key:"PRICY",ticker:"PRICY",price:100,marketCap:5e10,revenueTtm:1e10,netIncomeTtm:1e9,enterpriseValue:5e10,peRatio:60,atrPct:1.5,high52w:105},
+    {key:"FALL",ticker:"FALL",price:60,marketCap:5e10,revenueTtm:1e10,netIncomeTtm:2e9,enterpriseValue:4e10,peRatio:12,atrPct:1.5,high52w:100,perf6M:-30}
+  ];
+  const q=G.qualityIdeas(st,{limit:5});
+  assert.equal(q.map(x=>x.key).join(","),"Q1,Q2","quality keeps large, profitable, fairly priced, steady stocks");
+  assert.equal(q[0].netMarginPct,20);
+  assert.equal(q[0].earningsYieldPct,5);
+  assert.equal(G.INDEX_ETFS.length,2);
+  const withRoic=G.qualityIdeas([
+    {...st[0],key:"R1",roicPct:30,debtToEquity:.5,freeCashFlow:1e9},
+    {...st[0],key:"R2",roicPct:5},
+    {...st[0],key:"R3",debtToEquity:3},
+    {...st[0],key:"R4",freeCashFlow:-1},
+    {...st[1],key:"R5",roicPct:12}
+  ]);
+  assert.equal(withRoic.map(x=>x.key).join(","),"R1,R5","ROIC below 10 %, high debt or negative free cash flow are excluded");
+  assert.equal(withRoic[0].returnBasis,"roic");
+}
+// Tamaño por hucha: reparte el efectivo libre con un mínimo por compra; fracciones o acciones enteras.
+{
+  const ideas=[{key:"A",ticker:"A",priceEur:40},{key:"B",ticker:"B",priceEur:250},{key:"C",ticker:"C",priceEur:10}];
+  let z=G.sleeveSizing(ideas,{cashEur:200,minTicketEur:90,slots:3,allowFractions:false});
+  assert.equal(z.count,2,"200 € with a 90 € minimum (+1 € fee) gives two buys");
+  assert.equal(z.ideas[0].units,2,"whole shares that fit 99 €");
+  assert.equal(z.ideas[1].fits,false,"a 250 € share does not fit a 99 € ticket without fractions");
+  z=G.sleeveSizing(ideas,{cashEur:200,minTicketEur:90,slots:3,allowFractions:true});
+  assert.ok(z.ideas[1].fractional&&z.ideas[1].fits,"fractions allow the expensive share");
+  z=G.sleeveSizing(ideas,{cashEur:50,minTicketEur:90,slots:3});
+  assert.equal(z.count,0);assert.equal(z.reason,"cash");
+}
+
 console.log("Goal engine tests: OK");

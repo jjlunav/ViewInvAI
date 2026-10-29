@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g17-risk-tiers';
+  const VERSION='2026.10.29-g18-sleeves';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -71,6 +71,67 @@
     for(const x of out){if(picked.length>=limit)break;if(x.riskTier==='alto'){if(high>=maxHigh)continue;high++}picked.push(x)}
     for(const x of out){if(picked.length>=limit)break;if(!picked.includes(x))picked.push(x)}
     return picked.sort((a,b)=>b.momentumPct-a.momentumPct||String(a.key).localeCompare(String(b.key)));
+  }
+  // Calidad a precio razonable (hucha de riesgo bajo, horizonte de años): la «fórmula mágica» de Greenblatt.
+  // Empresas grandes (≥ 10.000 M), rentables y con caja libre positiva, sin deuda excesiva (deuda/patrimonio ≤ 2),
+  // PER entre 5 y 35, poca volatilidad y sin desplome reciente. Se ordenan por la suma de dos puestos: rentabilidad
+  // del beneficio (beneficio / valor de empresa) y rentabilidad del capital invertido (ROIC; si falta, margen neto).
+  // No hay históricos de fundamentales gratuitos para medirla hacia atrás: se mide en vivo desde que se usa.
+  function qualityIdeas(stocks,opts={}){
+    const limit=Math.max(1,Math.min(10,n(opts.limit)||5)),exclude=new Set((opts.exclude||[]).map(String));
+    const rows=[];
+    for(const s of Array.isArray(stocks)?stocks:[]){
+      if(!s||exclude.has(String(s.key)))continue;
+      const cap=n(s.marketCap),rev=n(s.revenueTtm),ni=n(s.netIncomeTtm),ev=n(s.enterpriseValue),pe=n(s.peRatio),atr=n(s.atrPct),price=n(s.price),hi=n(s.high52w),p6=n(s.perf6M);
+      const roic=n(s.roicPct),roe=n(s.roePct),de=n(s.debtToEquity),fcf=n(s.freeCashFlow);
+      if(cap===null||cap<1e10||!(rev>0)||!(ni>0)||!(price>0))continue;
+      const margin=ni/rev*100;
+      if(margin<8)continue;
+      if(fcf!==null&&fcf<=0)continue;
+      if(de!==null&&de>2)continue;
+      if(roic!==null&&roic<10)continue;
+      if(roic===null&&roe!==null&&roe<12)continue;
+      if(pe!==null&&(pe<5||pe>35))continue;
+      if(atr!==null&&atr>3.5)continue;
+      const fromHigh=hi>0?(price/hi-1)*100:null;
+      if(fromHigh!==null&&fromHigh<-30)continue;
+      if(p6!==null&&p6<-20)continue;
+      const ey=ev>0?ni/ev*100:pe>0?100/pe:null;
+      if(ey===null||ey<=0)continue;
+      rows.push({key:s.key,ticker:s.ticker,name:s.name,earningsYieldPct:r2(ey),netMarginPct:r2(margin),returnPct:r2(roic??margin),returnBasis:roic!==null?'roic':'margin',
+        roicPct:roic===null?null:r2(roic),roePct:roe===null?null:r2(roe),debtToEquity:de===null?null:r2(de),pe:pe===null?null:r2(pe),
+        dividendYieldPct:n(s.dividendYield)===null?null:r2(n(s.dividendYield)),fromHighPct:fromHigh===null?null:r2(fromHigh),riskTier:riskTier(s)});
+    }
+    const rank=(key)=>{const sorted=rows.slice().sort((a,b)=>b[key]-a[key]);const m=new Map();sorted.forEach((x,i)=>m.set(x.key,i));return m};
+    const ry=rank('earningsYieldPct'),rq=rank('returnPct');
+    return rows.map(x=>({...x,rank:ry.get(x.key)+rq.get(x.key)})).sort((a,b)=>a.rank-b.rank||b.earningsYieldPct-a.earningsYieldPct||String(a.key).localeCompare(String(b.key))).slice(0,limit);
+  }
+  // Fondos indexados para la hucha de riesgo bajo: lo que el propio Buffett recomienda a quien no se dedica a
+  // esto. Acumulación, domicilio en Irlanda; en Trade Republic admiten plan de inversión sin comisión.
+  const INDEX_ETFS=Object.freeze([
+    Object.freeze({isin:'IE00BK5BQT80',name:'Vanguard FTSE All-World UCITS ETF (Acc)',note:'Todo el mundo, unas 3.700 empresas'}),
+    Object.freeze({isin:'IE00B4L5Y983',name:'iShares Core MSCI World UCITS ETF (Acc)',note:'Países desarrollados, unas 1.400 empresas'})
+  ]);
+  // Tamaño de las compras de una hucha: el efectivo libre se reparte entre las ideas que caben con un mínimo por
+  // compra (con 1 € de comisión por orden, ir y volver cuesta 2 €: con menos de minTicket la comisión pesa
+  // demasiado). Fracciones si el valor las admite; si no, acciones enteras que quepan.
+  function sleeveSizing(ideas,opts={}){
+    const cash=Math.max(0,n(opts.cashEur)||0),fee=Math.max(0,n(opts.feeEur)??1),minTicket=Math.max(1,n(opts.minTicketEur)||100);
+    const slots=Math.max(0,Math.round(n(opts.slots)??3)),allowFractions=opts.allowFractions!==false,noFrac=new Set((opts.noFractions||[]).map(t=>String(t).toUpperCase()));
+    const list=(Array.isArray(ideas)?ideas:[]).filter(x=>n(x&&x.priceEur)>0);
+    const count=Math.min(slots,list.length,Math.floor(cash/(minTicket+fee)));
+    const out=[];
+    if(count<=0)return{count:0,each:0,ideas:list.map(x=>({...x,ticketEur:0,units:0,fractional:false,fits:false})),reason:!slots?'full':!list.length?'nocands':'cash'};
+    const each=(cash-count*fee)/count;
+    for(const x of list){
+      if(out.filter(y=>y.fits).length>=count){out.push({...x,ticketEur:0,units:0,fractional:false,fits:false});continue}
+      const price=n(x.priceEur),frac=allowFractions&&!noFrac.has(String(x.ticker||'').toUpperCase());
+      let units=frac?Math.floor(each/price*1e4)/1e4:Math.floor(each/price+1e-9);
+      if(frac&&units>=1&&Math.floor(units)>=units*.9)units=Math.floor(units);
+      const ticket=r2(units*price);
+      out.push({...x,ticketEur:ticket,units,fractional:frac&&Math.abs(units-Math.round(units))>1e-9,fits:units>0&&ticket>=minTicket*.5});
+    }
+    return{count,each:r2(each),ideas:out,reason:''};
   }
   function specPolicy(cfg,maxPositions){
     const raw=n(cfg&&cfg.specMode),mode=clamp(Math.round(raw===null?(cfg&&cfg.allowSpec===false?0:1):raw),0,3);
@@ -273,7 +334,8 @@
    * candidatas ni consultar a la IA: el escenario solo cambia si entra efectivo, cambias una decisión o vendes. */
   function isIdle(input={}){
     const cfg=input.config||{};
-    if(usableCash(cfg,input.cashEur)>=1)return false;
+    const sleeveCash=input.sleeves&&input.sleeves.alto?n(input.sleeves.alto.cashEur):null;
+    if((sleeveCash!==null?Math.min(Math.max(0,n(input.cashEur)||0),sleeveCash):usableCash(cfg,input.cashEur))>=1)return false;
     const open=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
     return open.length>0&&open.every(p=>p.hold&&p.hold.mode&&p.hold.mode!=='better');
   }
@@ -306,7 +368,10 @@
     const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
     // Lo apartado se fija al guardar el límite (investReserveEur), así las compras ya hechas consumen el capital
     // permitido en vez de renovarlo; sin ese dato se calcula con el efectivo actual.
-    const usable=usableCash(cfg,cash);
+    // Huchas: el plan de ideas cortas (estrategia de catalizadores) solo gasta el efectivo de la hucha de riesgo alto;
+    // las acciones de las huchas medio y bajo no las toca (llegan como congeladas) y lo que se venda vuelve a la hucha alta.
+    const sleeveMode=!!(input.sleeves&&input.sleeves.alto&&n(input.sleeves.alto.cashEur)!==null);
+    const usable=sleeveMode?Math.min(cash,Math.max(0,n(input.sleeves.alto.cashEur))):usableCash(cfg,cash);
     const paused=isIdle(input);
     const reserved=Math.max(0,cash-usable);
     const allowFractions=cfg.allowFractions!==false;
@@ -629,7 +694,7 @@
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
       // Riesgo alto: como máximo highRiskPct (30 % por defecto) del valor del objetivo, contando lo que ya está invertido.
-      const highRiskPct=clamp(n(cfg.highRiskPct)??30,0,100);
+      const highRiskPct=sleeveMode?100:clamp(n(cfg.highRiskPct)??30,0,100);
       let highExposure=remaining.filter(p=>riskTier(p)==='alto').reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0)+Math.max(0,n(input.lockedHighRiskEur)||0);
       let spend=Math.max(0,pool-reserved);
       // Importe reservado por las ideas fijadas que hoy no se compran (en límite o en cambio de recomendación).
@@ -710,7 +775,8 @@
       else if(market.blocked&&!actions.some(a=>a.type==='BUY'))whyNoBuy.push({code:'market',text:'Sin ideas nuevas por ahora: '+(market.reason||'mercado en tensión')+'. Las posiciones y sus stops siguen vigilados.'});
       else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
       else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
-        if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
+        if(sleeveMode)whyNoBuy.push({code:'sleeve',text:'La hucha de riesgo alto tiene '+money(usable)+' libres'+(cash>usable+.005?' (el resto del efectivo es de las otras huchas o está sin asignar)':'')+'; '+(usable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiar el reparto en «Ajustar objetivo».'});
+        else if(reserved>0&&cash>1)whyNoBuy.push({code:'cap',text:'Has limitado el capital para invertir a '+money(usable)+' del efectivo ('+money(cash)+'); con eso '+(spendable<=1?'no queda importe para comprar':'no llega para una acción entera de las candidatas')+'. Puedes cambiarlo en «Ajustar objetivo».'});
         else whyNoBuy.push({code:'cash',text:'Efectivo disponible en la cartera: '+money(cash)+(Math.abs(Math.max(0,pool)-cash)>=.01?' ('+money(Math.max(0,pool))+' tras las ventas propuestas)':'')+'. '+(cash<=1?'Si has vendido o tienes saldo en el bróker, actualiza el efectivo para que el plan pueda proponer compras.':'No llega para una acción entera de las candidatas.')});
       }
       else if(freeSlots<=0)whyNoBuy.push({code:'full',text:'Cartera completa: ya tienes '+maxPositions+' posiciones, el máximo que fijaste.'});
@@ -751,5 +817,5 @@
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,nextGoal,riskTier,trendIdeas,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,INDEX_ETFS,plan,pace,nextGoal,riskTier,trendIdeas,qualityIdeas,sleeveSizing,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
 })(globalThis);

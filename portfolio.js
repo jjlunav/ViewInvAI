@@ -1348,13 +1348,13 @@ function goalOperationUnits(side,value){
   const v=Math.max(0,num(value)||0);
   return Math.floor(v*1e6+1e-6)/1e6;
 }
-function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason="",riskEur=null,dayChangePct=null}){
+function goalOperationButtonHtml({side,portfolioId,positionId="",broker="",stockKey,units,price,fees,currency,preferTr,executable=false,executionReason="",riskEur=null,dayChangePct=null,sleeve=""}){
   if(!(num(units)>0)||num(price)===null)return"";
   // Sin cotización ejecutable verificada la app no la propone como precio, pero si ya ejecutaste la orden
   // en tu bróker puedes registrarla con el precio real (el formulario parte del precio de referencia).
   const unverified=!executable;
   return (unverified?'<small class="portfolio-goal-execution-blocked" title="'+esc(executionReason||"Cotización no ejecutable")+'">Cotización ejecutable sin verificar</small>':'')+
-    '<button type="button" class="'+(unverified?'goal2-decide':'btn ghost compact')+' portfolio-goal-register"'+(unverified?' data-goal-unverified="1" title="Ya la he ejecutado: registra la orden con su precio real"':'')+' data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'"'+(num(riskEur)!==null?' data-goal-risk="'+esc(String(num(riskEur)))+'"':'')+(num(dayChangePct)!==null?' data-goal-day="'+esc(String(num(dayChangePct)))+'"':'')+'>'+(unverified?'✓ Ya ejecutada':'＋ Registrar estrategia')+'</button>';
+    '<button type="button" class="'+(unverified?'goal2-decide':'btn ghost compact')+' portfolio-goal-register"'+(unverified?' data-goal-unverified="1" title="Ya la he ejecutado: registra la orden con su precio real"':'')+' data-register-goal-operation="'+esc(String(side||"BUY").toUpperCase())+'" data-goal-portfolio="'+esc(portfolioId||"")+'" data-goal-position-id="'+esc(positionId||"")+'" data-goal-broker="'+esc(broker||"")+'" data-goal-stock-key="'+esc(stockKey||"")+'" data-goal-units="'+esc(String(goalOperationUnits(side,units)))+'" data-goal-price="'+esc(String(num(price)))+'" data-goal-fees="'+esc(String(num(fees)||0))+'" data-goal-currency="'+esc(currency||"EUR")+'" data-goal-prefer-tr="'+(preferTr?'1':'0')+'"'+(num(riskEur)!==null?' data-goal-risk="'+esc(String(num(riskEur)))+'"':'')+(num(dayChangePct)!==null?' data-goal-day="'+esc(String(num(dayChangePct)))+'"':'')+(sleeve?' data-goal-sleeve="'+esc(sleeve)+'"':'')+'>'+(unverified?'✓ Ya ejecutada':'＋ Registrar estrategia')+'</button>';
 }
 function goalTradeInstructionHtml(row){
   const sellUnits=Math.max(0,Math.round(num(row.units)||0)),keepUnits=Math.max(0,(num(row.qty)||0)-sellUnits),execution=row.execution||{};
@@ -1635,7 +1635,11 @@ function goalEngineInput(metrics,positionRows){
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
   // Las acciones congeladas suman al valor de la cartera, pero el plan no las vende ni les pone stop.
   let lockedValueEur=0,lockedHoldings=0,lockedHighRiskEur=0;const lockedKeys=[];
+  // Huchas: las ideas cortas solo usan la hucha de riesgo alto. Las acciones de las huchas medio y bajo cuentan en el
+  // valor, pero este plan no las vende ni ocupa sus huecos (tienen su propia estrategia).
+  const sleeveState=goalSleeveStateOf(goal),otherSleeve=row=>!!sleeveState&&["medio","bajo"].includes(String(row.p.sleeve||""));
   for(const row of positionRows){
+    if(otherSleeve(row)){if(row.unitEur!==null){lockedValueEur+=(num(row.qty)||0)*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock))}continue}
     const total=num(row.qty)||0,frozen=Math.min(total,positionFrozenQty(row.p));
     if(frozen>0&&row.unitEur!==null){
       lockedValueEur+=frozen*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock));
@@ -1645,7 +1649,7 @@ function goalEngineInput(metrics,positionRows){
       if(total-frozen<=1e-9)lockedHoldings++;
     }
   }
-  const positions=positionRows.map(row=>({...row,qty:Math.max(0,(num(row.qty)||0)-positionFrozenQty(row.p))}))
+  const positions=positionRows.filter(row=>!otherSleeve(row)).map(row=>({...row,qty:Math.max(0,(num(row.qty)||0)-positionFrozenQty(row.p))}))
     .filter(row=>row.qty>1e-9&&row.unitEur!==null).map(row=>{
     const key=String(row.p.stock_key||"").toUpperCase(),st=states.get(key)||{},rr=radarByKey.get(key)||radarByKey.get(goalStockKey(row.stock));
     const sell=goalExecutionQuote(row.stock,row.preferTr,"SELL",metrics.fxUsdEur,row.p.broker,row.qty);
@@ -1663,7 +1667,8 @@ function goalEngineInput(metrics,positionRows){
   });
   const held=new Set(positions.map(p=>p.key));
   // Sin efectivo invertible y todo en «mantener»: no se preparan candidatas ni se piden ideas a la IA.
-  const G0=window.ViewInvAIGoal,idle=!!(G0&&G0.isIdle&&G0.isIdle({config:{investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur)},cashEur:num(metrics.cashEur)||0,positions}));
+  const sleeveInput=sleeveState?{alto:{cashEur:sleeveState.sleeves.alto.cashEur}}:null;
+  const G0=window.ViewInvAIGoal,idle=!!(G0&&G0.isIdle&&G0.isIdle({config:{investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur)},cashEur:num(metrics.cashEur)||0,positions,sleeves:sleeveInput}));
   // Las ideas fijadas hoy siempre se evalúan, aunque hayan salido de las primeras del Radar.
   // Solo cuentan como «ya incluidas» las fijadas que entran en las 40 primeras del Radar; las demás se añaden aparte.
   const committed=goalTodayCommitments(metrics.portfolio&&metrics.portfolio.id,goal),topRadar=radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40);
@@ -1704,7 +1709,7 @@ function goalEngineInput(metrics,positionRows){
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
+    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
     extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
@@ -1808,9 +1813,14 @@ function goalRiskPill(tier){
 // Ideas a 1-3 meses por momento de 6 meses (señal medida en 10 años). Informativas; caché de 1 minuto.
 let goalTrendCache={at:0,key:"",list:[]};
 function goalTrendHtml(ctx,preferTr,heldKeys){
+  const list=goalTrendList(preferTr,heldKeys);if(!list.length)return'';
+  return goalTrendListHtml(list,preferTr);
+}
+// noHigh: para la hucha de riesgo medio, sin las de riesgo alto (esas van a la hucha alta).
+function goalTrendList(preferTr,heldKeys,{noHigh=false}={}){
   const G=window.ViewInvAIGoal,all=window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==="function"?window.ViewInvAI.getAllStocks():[];
-  if(!G||typeof G.trendIdeas!=="function"||!all.length)return'';
-  const cacheKey=(preferTr?"tr":"us")+"|"+[...heldKeys].sort().join(",");
+  if(!G||typeof G.trendIdeas!=="function"||!all.length)return[];
+  const cacheKey=(preferTr?"tr":"us")+(noHigh?"|nohigh":"")+"|"+[...heldKeys].sort().join(",");
   if(goalTrendCache.key!==cacheKey||Date.now()-goalTrendCache.at>60000){
     const rows=[];
     for(const s of all){
@@ -1821,9 +1831,12 @@ function goalTrendHtml(ctx,preferTr,heldKeys){
       rows.push({key:goalStockKey(s),ticker:String((preferTr?s.trTicker:s.ticker)||s.ticker||"").toUpperCase(),name:s.name||"",price,perf6M:num(s.perf6M),perfMonth:num(s.perfMonth),
         high52w:num(s.high52w),marketCap:num(s.marketCap),atrPct:goalAtrPct(s),tradedUsd:price!==null&&avgVol!==null?price*avgVol:null,sector:s.sector||"",industry:s.industry||"",stock:s});
     }
-    goalTrendCache={at:Date.now(),key:cacheKey,list:G.trendIdeas(rows,{limit:5,exclude:[...heldKeys]}).map(t=>({...t,stock:(rows.find(r=>r.key===t.key)||{}).stock}))};
+    const pool=noHigh?rows.filter(r=>G.riskTier(r)!=="alto"):rows;
+    goalTrendCache={at:Date.now(),key:cacheKey,list:G.trendIdeas(pool,{limit:5,exclude:[...heldKeys]}).map(t=>({...t,stock:(rows.find(r=>r.key===t.key)||{}).stock}))};
   }
-  const list=goalTrendCache.list;if(!list.length)return'';
+  return goalTrendCache.list;
+}
+function goalTrendListHtml(list,preferTr){
   return '<details class="goal2-alts goal2-trend" open><summary>Tendencia 1–3 meses · momento de 6 meses</summary><ol>'+list.map(t=>{
     const label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=t.stock?portfolioStockKey(t.stock):t.key;
     return '<li>'+goalLinkedText(label,[{label,key,preferTr}])+goalRiskPill(t.riskTier)+' <small>6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+
@@ -1855,7 +1868,7 @@ function goalActionHtml(a,ctx){
   let button="";
   if(a.type==="BUY"&&cand){
     const q=cand.quote||{};
-    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price??portfolioConvertAmount(a.priceEur,"EUR",q.currency||(ctx.preferTr?"EUR":"USD"),ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,riskEur:a.riskEur,dayChangePct:cand.dayChangePct});
+    button=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(cand.stock),units:a.units,price:q.price??portfolioConvertAmount(a.priceEur,"EUR",q.currency||(ctx.preferTr?"EUR":"USD"),ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||(ctx.preferTr?"EUR":"USD"),preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,riskEur:a.riskEur,dayChangePct:cand.dayChangePct,sleeve:ctx.sleeves?"alto":""});
   }else if(a.type==="SELL"&&pos){
     const row=pos.row,q=goalExecutionQuote(row.stock,row.preferTr,"SELL",ctx.fx,row.p.broker,a.units);
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
@@ -1977,9 +1990,224 @@ function goalAlternativesHtml(plan,ctx,shown){
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
   const w=why[0];if(w.code==='reached')return '';
-  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':'';
+  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':w.code==='sleeve'?' <button type="button" class="btn small" data-goal-sleeve-cash>Repartir efectivo</button>':'';
   return '<div class="goal2-why" role="note"><b>¿Por qué no hay compras?</b> '+esc(w.text)+cashBtn+'</div>';
 }
+// ----- Huchas del Objetivo: alto / medio / bajo, cada una con su efectivo, sus acciones y su estrategia -----
+// El servidor lleva el libro (lo asignado y las operaciones de cada hucha); aquí se valoran sus acciones con los
+// precios en vivo y se calcula cuánto ha crecido cada una frente a su 100 % (lo que le asignaste).
+const GOAL_SLEEVES=["alto","medio","bajo"];
+const GOAL_SLEEVE_META={
+  alto:{label:"Alto",horizon:"1–5 sesiones",minTicket:50,slots:3,strategies:{catalysts:{name:"Catalizadores y volatilidad",short:"Catalizadores",
+    note:"Resultados, FDA, contratos y subidas tempranas, con stop. Sin ventaja medida en 10 años de históricos: lo que se arriesga se limita al dinero de esta hucha."}}},
+  medio:{label:"Medio",horizon:"1–3 meses",minTicket:100,slots:3,strategies:{momentum:{name:"Momento (O'Neil): las que más suben en 6 meses, cerca de máximos",short:"Momento",
+    note:"La única señal con ventaja medida en 10 años de acciones de EE. UU.: batió al S&P 500 algo más de la mitad de los trimestres, por poco tras comisiones. Sale si pierde el momento o cae un 15 % desde la compra."}}},
+  bajo:{label:"Bajo",horizon:"años",minTicket:100,slots:5,strategies:{quality:{name:"Calidad a buen precio (Buffett / Greenblatt)",short:"Calidad",
+      note:"Grandes, rentables, con caja libre, poca deuda y precio razonable. No se puede medir hacia atrás con datos gratuitos: se mide desde hoy. Se mantiene años; se revisa si deja de ser rentable o se encarece mucho."},
+    index:{name:"Fondo indexado mundial (lo que Buffett recomienda a la mayoría)",short:"Indexado",
+      note:"Lo más sensato para dinero a años: barato, diversificado y sin elegir acciones. En Trade Republic, con plan de inversión sin comisión."}}}
+};
+function goalSleeveStateOf(goal){const s=goal&&goal.sleeves;return s&&s.startedAt&&s.sleeves&&s.sleeves.alto&&s.sleeves.medio&&s.sleeves.bajo?s:null}
+function goalSleevePill(k){return k&&GOAL_SLEEVE_META[k]?'<span class="goal2-sleeve-pill goal2-risk-'+esc(k)+'">HUCHA '+esc(GOAL_SLEEVE_META[k].label.toUpperCase())+'</span>':''}
+function goalSleeveStrategy(S,k){const m=GOAL_SLEEVE_META[k],id=S&&S.sleeves[k]&&S.sleeves[k].strategy;return m.strategies[id]||Object.values(m.strategies)[0]}
+function goalSleeveOperationNote(side,sleeve,position){
+  const k=side==="SELL"?String(position&&position.sleeve||""):String(sleeve||"");
+  if(!GOAL_SLEEVE_META[k])return'';
+  return '<p class="portfolio-form-note">'+goalSleevePill(k)+' '+(side==="SELL"?'Lo que cobres vuelve a la hucha '+esc(GOAL_SLEEVE_META[k].label.toLowerCase())+'.':'Se paga con el efectivo de la hucha '+esc(GOAL_SLEEVE_META[k].label.toLowerCase())+'.')+'</p>';
+}
+// Acciones de la cartera repartidas por hucha, con su valor de hoy.
+function goalSleeveBuckets(positionRows){
+  const out={alto:{rows:[],value:0,cost:0},medio:{rows:[],value:0,cost:0},bajo:{rows:[],value:0,cost:0},none:[]};
+  for(const row of positionRows){
+    const k=String(row.p.sleeve||""),qty=num(row.qty)||0,value=row.unitEur!==null?qty*row.unitEur:null;
+    if(!out[k]||k==="none"){out.none.push({row,value});continue}
+    out[k].rows.push({row,value});out[k].value+=value||0;out[k].cost+=row.avgEur!==null?qty*row.avgEur:0;
+  }
+  return out;
+}
+function goalSleeveEurPrice(stock,preferTr,fx){
+  const q=goalExecutionQuote(stock,preferTr,"BUY",fx,"",1);
+  if(num(q.unitEur)>0)return{priceEur:q.unitEur,q};
+  const cur=String(stock&&stock.currency||"").toUpperCase(),last=num(stock&&stock.price);
+  return{priceEur:last>0?(cur==="EUR"?last:cur==="USD"&&num(fx)>0?last*num(fx):null):null,q};
+}
+let goalQualityCache={at:0,key:"",list:[]};
+function goalQualityList(preferTr,heldKeys){
+  const G=window.ViewInvAIGoal,all=window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==="function"?window.ViewInvAI.getAllStocks():[];
+  if(!G||typeof G.qualityIdeas!=="function"||!all.length)return[];
+  const cacheKey=(preferTr?"tr":"us")+"|"+[...heldKeys].sort().join(",");
+  if(goalQualityCache.key!==cacheKey||Date.now()-goalQualityCache.at>60000){
+    const rows=[];
+    for(const s of all){
+      if(!["NASDAQ","NYSE","AMEX"].includes(String(s.exchange||"").toUpperCase()))continue;
+      if(preferTr&&(s.tradeRepublicTradable===false||s.trActive===false||!(s.tradeRepublicTradable===true||(s.tradeRepublicVerified&&s.trTicker))))continue;
+      rows.push({key:goalStockKey(s),ticker:String((preferTr?s.trTicker:s.ticker)||s.ticker||"").toUpperCase(),name:s.name||"",price:num(s.price),marketCap:num(s.marketCap),
+        revenueTtm:num(s.revenueTtm),netIncomeTtm:num(s.netIncomeTtm),enterpriseValue:num(s.enterpriseValue),peRatio:num(s.peRatio),dividendYield:num(s.dividendYield),
+        roicPct:num(s.roicPct),roePct:num(s.roePct),debtToEquity:num(s.debtToEquity),freeCashFlow:num(s.freeCashFlow),
+        atrPct:goalAtrPct(s),high52w:num(s.high52w),perf6M:num(s.perf6M),sector:s.sector||"",industry:s.industry||"",stock:s});
+    }
+    goalQualityCache={at:Date.now(),key:cacheKey,list:G.qualityIdeas(rows,{limit:6,exclude:[...heldKeys]}).map(t=>({...t,stock:(rows.find(r=>r.key===t.key)||{}).stock}))};
+  }
+  return goalQualityCache.list;
+}
+// Ideas de la hucha con su importe: el efectivo libre de la hucha repartido entre las que caben.
+function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
+  const G=window.ViewInvAIGoal,m=GOAL_SLEEVE_META[k],cash=S.sleeves[k].cashEur;
+  if(!G||!list.length)return'<small class="goal2-alts-note">Ahora no hay ideas que cumplan esta estrategia.</small>';
+  const priced=list.filter(t=>t.stock).map(t=>({...t,...goalSleeveEurPrice(t.stock,ctx.preferTr,ctx.fx)}));
+  if(ctx.preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-"+k,priced.map(t=>portfolioStockKey(t.stock)));
+  const noFrac=[...goalNoFractionSet(goal)];
+  const z=G.sleeveSizing(priced.filter(t=>num(t.priceEur)>0),{cashEur:cash,minTicketEur:m.minTicket,slots:Math.max(0,m.slots-bucket.rows.length),feeEur:portfolioOperationFee(ctx.preferTr),allowFractions:Number(goal.allow_fractions)!==0,noFractions:noFrac});
+  const sized=new Map(z.ideas.map(x=>[x.key,x]));
+  const head=z.count>0?'Con '+formatMoney(cash,"EUR")+' libres: '+z.count+(z.count===1?' compra':' compras')+' de unos '+formatMoney(z.each,"EUR"):
+    z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(m.minTicket,"EUR")+' (la comisión pesaría demasiado).';
+  return '<small class="goal2-sleeve-sizing">'+esc(head)+'</small><ol class="goal2-sleeve-ideas">'+priced.map(t=>{
+    const x=sized.get(t.key),label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=portfolioStockKey(t.stock);
+    const facts=k==="medio"?'6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+(num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo':'')
+      :'rentab. del beneficio '+formatNumber(t.earningsYieldPct,1)+' % · '+(t.returnBasis==="roic"?'ROIC '+formatNumber(t.roicPct,0)+' %':'margen '+formatNumber(t.netMarginPct,0)+' %')+(num(t.pe)!==null?' · PER '+formatNumber(t.pe,0):'')+(num(t.debtToEquity)!==null?' · deuda/patrimonio '+formatNumber(t.debtToEquity,1):'');
+    let buy='';
+    if(x&&x.fits){
+      const q=goalExecutionQuote(t.stock,ctx.preferTr,"BUY",ctx.fx,"",x.units),cur=q.currency||(ctx.preferTr?"EUR":"USD");
+      const price=q.price??portfolioConvertAmount(t.priceEur,"EUR",cur,ctx.fx);
+      buy='<span class="goal2-sleeve-buy">'+(x.fractional?'≈ '+formatNumber(x.units,2)+' acciones (fracción)':x.units+(x.units===1?' acción':' acciones'))+' · '+formatMoney(x.ticketEur,"EUR")+'</span>'+
+        goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k});
+    }
+    return '<li>'+goalLinkedText(label,[{label,key,preferTr:ctx.preferTr}])+goalRiskPill(t.riskTier)+' <small>'+esc(facts)+'</small>'+buy+'</li>'}).join('')+'</ol>';
+}
+// Reglas de salida de las acciones de las huchas medio y bajo (estas no las gestiona el plan de ideas cortas).
+function goalSleeveExitNote(k,row){
+  const s=row.stock||{},ret=row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null;
+  if(k==="medio"){
+    const p6=num(s.perf6M),pm=num(s.perfMonth),mom=p6!==null&&pm!==null?((1+p6/100)/(1+pm/100)-1)*100:null;
+    if(ret!==null&&ret<=-15)return{tag:"SALIR",text:"cae un "+formatNumber(Math.abs(ret),1)+" % desde la compra (límite −15 %)"};
+    if(mom!==null&&mom<=0)return{tag:"REVISAR",text:"ya no tiene momento de 6 meses ("+formatNumber(mom,1)+" %)"};
+    return{tag:"MANTENER",text:mom!==null?"momento de 6 meses +"+formatNumber(mom,1)+" %":"sin datos de momento"};
+  }
+  if(k==="bajo"){
+    const ni=num(s.netIncomeTtm),pe=num(s.peRatio);
+    if(ni!==null&&ni<=0)return{tag:"REVISAR",text:"ha pasado a pérdidas"};
+    if(pe!==null&&pe>45)return{tag:"REVISAR",text:"se ha encarecido mucho (PER "+formatNumber(pe,0)+")"};
+    return{tag:"MANTENER",text:"sigue rentable"+(pe!==null?" · PER "+formatNumber(pe,0):"")};
+  }
+  return null;
+}
+function goalSleevesHtml(metrics,positionRows,goal,ctx){
+  const S=goalSleeveStateOf(goal);if(!S)return'';
+  const B=goalSleeveBuckets(positionRows),realCash=num(metrics.cashEur)||0,diff=Math.round((realCash-S.totalCashEur)*100)/100;
+  const held=new Set(positionRows.map(r=>goalStockKey(r.stock)));
+  const cards=GOAL_SLEEVES.map(k=>{
+    const x=S.sleeves[k],m=GOAL_SLEEVE_META[k],st=goalSleeveStrategy(S,k),b=B[k],total=x.cashEur+b.value;
+    const pct=x.baseEur>0?(total/x.baseEur-1)*100:null;
+    const pos=b.rows.length?'<ul class="goal2-sleeve-pos">'+b.rows.map(({row,value})=>{
+      const ret=row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null,exit=goalSleeveExitNote(k,row);
+      const label=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||"")+(row.stock&&row.stock.name?' ('+row.stock.name+')':'');
+      return '<li>'+goalLinkedText(label,[{label,key:row.p.stock_key,preferTr:row.preferTr}])+' <b class="'+(ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</b>'+
+        ' <small>'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+(exit?' · <i class="goal2-sleeve-exit goal2-sleeve-exit-'+esc(exit.tag.toLowerCase())+'">'+esc(exit.tag)+'</i> '+esc(exit.text):'')+'</small>'+
+        '<select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Cambiar de hucha">'+goalSleeveOptions(k)+'</select></li>'}).join('')+'</ul>':'';
+    let ideas='';
+    if(k==="medio")ideas=goalSleeveIdeasHtml(k,goalTrendList(ctx.preferTr,held,{noHigh:true}),S,b,ctx,goal);
+    else if(k==="bajo"&&x.strategy==="quality")ideas=goalSleeveIdeasHtml(k,goalQualityList(ctx.preferTr,held),S,b,ctx,goal);
+    else if(k==="bajo")ideas='<ul class="goal2-sleeve-ideas">'+((window.ViewInvAIGoal&&window.ViewInvAIGoal.INDEX_ETFS)||[]).map(e=>'<li><b>'+esc(e.name)+'</b> <small translate="no">'+esc(e.isin)+'</small><br><small>'+esc(e.note)+'</small></li>').join('')+'</ul>'+
+      '<small class="goal2-alts-note">Los ETF se siguen en Fondos. Si inviertes en uno el efectivo de esta hucha, bájalo en «Repartir efectivo» para que cuadre con tu cuenta.</small>';
+    else ideas='<small class="goal2-alts-note">Las ideas de esta hucha son las de «Hoy toca».</small>';
+    return '<article class="goal2-sleeve goal2-sleeve-'+esc(k)+'"><header><span>'+goalSleevePill(k)+' <b>'+esc(st.short)+'</b> <small>'+esc(m.horizon)+'</small></span>'+
+      '<strong class="goal2-sleeve-pct'+(pct===null?'':pct>=0?' up':' down')+'">'+(pct===null?'—':(pct>0?'+':'')+formatNumber(pct,1)+' %')+'</strong></header>'+
+      '<div class="goal2-sleeve-grid"><span>Asignado<b>'+esc(formatMoney(x.baseEur,"EUR"))+'</b></span><span>Efectivo<b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>Valor total<b>'+esc(formatMoney(total,"EUR"))+'</b></span></div>'+
+      pos+'<details class="goal2-sleeve-more"'+(k==="alto"?'':' open')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia e ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas+'</details></article>';
+  }).join('');
+  const none=B.none.length?'<div class="goal2-why" role="note"><b>Acciones sin hucha.</b> Indica a qué hucha pertenece cada una: lo comprado desde que empezaron las huchas lo pagó esa hucha y lo que ya tenías se le suma por su valor de hoy.<ul class="goal2-sleeve-pos">'+
+    B.none.map(({row,value})=>'<li>'+esc(String(row.p.ticker||""))+' '+esc(row.stock&&row.stock.name||row.p.name||'')+' <small>'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+'</small><select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Elegir hucha">'+goalSleeveOptions("")+'</select></li>').join('')+'</ul></div>':'';
+  const banner=diff>.5?'<div class="goal2-why" role="note"><b>Efectivo sin asignar: '+esc(formatMoney(diff,"EUR"))+'.</b> No lo usa ninguna hucha. <button type="button" class="btn small" data-goal-sleeve-cash>Repartir efectivo</button></div>'
+    :diff<-.5?'<div class="goal2-why warn" role="alert"><b>Las huchas suman '+esc(formatMoney(S.totalCashEur,"EUR"))+' y tu efectivo es '+esc(formatMoney(realCash,"EUR"))+'.</b> Falta '+esc(formatMoney(-diff,"EUR"))+': puede faltar por registrar una compra, o retiraste dinero. Mientras no cuadre, las compras no pasan del efectivo real. <button type="button" class="btn small" data-goal-sleeve-cash>Ajustar reparto</button></div>':'';
+  const total=GOAL_SLEEVES.reduce((a,k)=>a+S.sleeves[k].cashEur+B[k].value,0),base=GOAL_SLEEVES.reduce((a,k)=>a+S.sleeves[k].baseEur,0);
+  const mix=total>0?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+' '+formatNumber((S.sleeves[k].cashEur+B[k].value)/total*100,0)+' %').join(' · '):'';
+  return '<section class="goal2-section goal2-sleeves"><div class="goal2-sleeves-head"><h3>Tus huchas</h3><button type="button" class="btn small ghost" data-goal-sleeve-cash>Repartir efectivo</button></div>'+banner+
+    '<div class="goal2-sleeve-list">'+cards+'</div>'+none+
+    (base>0?'<small class="goal2-alts-note">En conjunto: '+esc(formatMoney(base,"EUR"))+' → '+esc(formatMoney(total,"EUR"))+' ('+((total/base-1)*100>=0?'+':'')+esc(formatNumber((total/base-1)*100,1))+' %). Reparto de hoy: '+esc(mix)+'. Cada % es frente a lo que asignaste a esa hucha; el dinero nuevo que metas no cuenta como ganancia.</small>':'')+
+  '</section>';
+}
+function goalSleeveOptions(current){
+  return ['<option value=""'+(current?'':' selected')+'>Sin hucha</option>',...GOAL_SLEEVES.map(k=>'<option value="'+k+'"'+(current===k?' selected':'')+'>Hucha '+GOAL_SLEEVE_META[k].label.toLowerCase()+'</option>')].join('');
+}
+async function goalSleevePatch(portfolioId,sleeves){
+  const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId,sleeves})}),data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"No se pudo guardar el reparto.");
+  if(data.goal)state.goals[String(portfolioId)]=data.goal;
+  if(String(state.selectedPortfolioId)===String(portfolioId))state.goal=data.goal||state.goal;
+  goalPlanCache=null;state.goalCandidateCache={at:0,key:"",rows:[]};
+  return data.goal;
+}
+// Repartir el efectivo entre las huchas (al importar el efectivo de Trade Republic, al cambiarlo a mano o cuando se pida).
+function openGoalSleeveCashModal(portfolioId,{reason=""}={}){
+  const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId)),goal=state.goals[String(portfolioId)];
+  const S=goalSleeveStateOf(goal);if(!portfolio||!S)return;
+  const cash=Math.max(0,num(portfolio.cash_balance)||0);
+  openModal("Repartir efectivo · "+portfolio.name,
+    '<form id="goalSleeveCashForm" class="portfolio-form goal2-sleeve-form" data-portfolio-id="'+esc(portfolio.id)+'" data-cash="'+esc(String(cash))+'">'+
+      (reason?'<p class="portfolio-form-note">'+esc(reason)+'</p>':'')+
+      '<p class="goal2-sleeve-form-total">Efectivo en la cartera: <b>'+esc(formatMoney(cash,"EUR"))+'</b></p>'+
+      GOAL_SLEEVES.map(k=>'<div class="goal2-sleeve-form-row"><div class="goal2-sleeve-form-head">'+goalSleevePill(k)+'<small>'+esc(goalSleeveStrategy(S,k).short)+' · ahora '+esc(formatMoney(S.sleeves[k].cashEur,"EUR"))+'</small></div>'+
+        '<label><input name="'+k+'" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(String(S.sleeves[k].cashEur))+'" data-goal-sleeve-eur aria-label="Euros de la hucha '+k+'"><b>€</b></label>'+
+        '<label><input type="number" min="0" max="100" step="0.1" inputmode="decimal" value="'+(cash>0?esc(String(Math.round(S.sleeves[k].cashEur/cash*1000)/10)):'')+'" data-goal-sleeve-pct="'+k+'" aria-label="Porcentaje de la hucha '+k+'"><b>%</b></label></div>').join('')+
+      '<p class="goal2-sleeve-form-left" data-goal-sleeve-left></p>'+
+      '<p class="portfolio-form-note">Lo que subas en una hucha cuenta como dinero nuevo (sube su 100 %); lo que bajes, como retirada. No cambia su rentabilidad.</p>'+
+      '<div class="portfolio-form-status" data-goal-sleeve-status aria-live="polite"></div>'+
+      '<button type="submit" class="btn">Guardar reparto</button>'+
+    '</form>');
+  goalSleeveCashSync();
+}
+function goalSleeveCashSync(changed){
+  const form=document.getElementById("goalSleeveCashForm");if(!form)return;
+  const cash=num(form.dataset.cash)||0;
+  if(changed&&changed.dataset.goalSleevePct){
+    const eur=form.querySelector('[name="'+changed.dataset.goalSleevePct+'"]'),p=num(changed.value);
+    if(eur)eur.value=p===null?"":String(Math.round(cash*Math.max(0,Math.min(100,p)))/100);
+  }else if(changed&&changed.hasAttribute("data-goal-sleeve-eur")){
+    const pct=form.querySelector('[data-goal-sleeve-pct="'+changed.name+'"]'),e=num(changed.value);
+    if(pct)pct.value=e===null||!(cash>0)?"":String(Math.round(e/cash*1000)/10);
+  }
+  const sum=GOAL_SLEEVES.reduce((a,k)=>a+(num(form.querySelector('[name="'+k+'"]').value)||0),0),left=Math.round((cash-sum)*100)/100;
+  const el=form.querySelector("[data-goal-sleeve-left]");
+  if(el){el.textContent=left>=0?"Sin asignar: "+formatMoney(left,"EUR")+(left>0?" (no lo usa ninguna hucha)":""):"Te pasas en "+formatMoney(-left,"EUR")+": las huchas no pueden sumar más que tu efectivo.";el.classList.toggle("bad",left<0)}
+  const submit=form.querySelector('button[type="submit"]');if(submit)submit.disabled=left<-.005;
+}
+async function saveGoalSleeveCash(form){
+  const status=form.querySelector("[data-goal-sleeve-status]"),button=form.querySelector('button[type="submit"]');
+  const cash={};for(const k of GOAL_SLEEVES)cash[k]=Math.max(0,num(form.querySelector('[name="'+k+'"]').value)||0);
+  if(button)button.disabled=true;
+  try{await goalSleevePatch(form.dataset.portfolioId,{cash});closeModal();renderGoalApp();toast("Reparto guardado.")}
+  catch(error){if(status)status.textContent=error.message||"No se pudo guardar.";if(button)button.disabled=false}
+}
+// Tras cambiar el efectivo (a mano o al importar de Trade Republic): si no cuadra con las huchas, se pregunta el reparto.
+function goalSleeveCashPrompt(portfolioId){
+  const portfolio=state.portfolios.find(p=>String(p.id)===String(portfolioId)),S=goalSleeveStateOf(state.goals[String(portfolioId)]);
+  if(!portfolio||!S)return false;
+  const diff=Math.round(((num(portfolio.cash_balance)||0)-S.totalCashEur)*100)/100;
+  if(Math.abs(diff)<=.5)return false;
+  openGoalSleeveCashModal(portfolioId,{reason:diff>0?"Tienes "+formatMoney(diff,"EUR")+" de efectivo nuevo sin asignar. ¿A qué hucha va?":"Tu efectivo es "+formatMoney(-diff,"EUR")+" menor que lo que suman las huchas. ¿De qué hucha sale?"});
+  return true;
+}
+async function goalSleeveAssign(select){
+  const portfolioId=state.selectedPortfolioId,positionId=select.dataset.goalSleeveAssign,sleeve=select.value,valueEur=num(select.dataset.goalSleeveValue);
+  select.disabled=true;
+  try{await goalSleevePatch(portfolioId,{assign:[{positionId,sleeve,valueEur}]});await loadAll();renderGoalApp();toast(sleeve?"Acción asignada a la hucha "+GOAL_SLEEVE_META[sleeve].label.toLowerCase()+".":"Acción sin hucha.")}
+  catch(error){toast(error.message||"No se pudo asignar.",true);select.disabled=false}
+}
+document.addEventListener("click",event=>{
+  const b=event.target.closest&&event.target.closest("[data-goal-sleeve-cash]");
+  if(b){event.preventDefault();openGoalSleeveCashModal(state.selectedPortfolioId)}
+});
+document.addEventListener("input",event=>{
+  const t=event.target.closest&&event.target.closest("#goalSleeveCashForm input");
+  if(t)goalSleeveCashSync(t);
+});
+document.addEventListener("change",event=>{
+  const t=event.target.closest&&event.target.closest("[data-goal-sleeve-assign]");
+  if(t)goalSleeveAssign(t);
+});
+document.addEventListener("submit",event=>{
+  if(event.target&&event.target.id==="goalSleeveCashForm"){event.preventDefault();saveGoalSleeveCash(event.target)}
+});
 function portfolioGoalViewHtml(){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;
   if(!portfolio)return'<div class="portfolio-empty-state">Selecciona o crea una cartera para definir su objetivo.</div>';
@@ -1996,7 +2224,7 @@ function portfolioGoalViewHtml(){
   if(!engine)return '<section class="portfolio-goal-view goal2">'+head+'<div class="portfolio-goal-no-action">Cargando el motor del objetivo…</div></section>';
   const input=goalEngineInput(metrics,positionRows),plan=engine.plan(input);
   goalRememberBuys(metrics.portfolio.id,plan);
-  const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur,committed:input.committed||[]};
+  const ctx={candidates:input.candidates,positions:input.positions,preferTr:input.preferTr,fx:metrics.fxUsdEur,committed:input.committed||[],sleeves:goalSleeveStateOf(goal)};
   lastGoalCtx=ctx;
   // Las candidatas que aún revisa el servidor no se nombran (irían cambiando): solo se dice que hay revisión en curso.
   // Las esperas que se enseñan son las del último plan revisado por el servidor (cambian solo cuando él revisa);
@@ -2021,9 +2249,10 @@ function portfolioGoalViewHtml(){
   state.pendingGoalHistory=goalPlanHistorySnapshot(metrics,plan);
   return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     goalPaceHtml(plan.pace,metrics)+
+    goalSleevesHtml(metrics,positionRows,goal,ctx)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]))+holds+frozenNote+
+    '<section class="goal2-today"><h3>Hoy toca'+(ctx.sleeves?' '+goalSleevePill("alto"):'')+'</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+(ctx.sleeves?'':goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)])))+holds+frozenNote+
       '<p class="goal2-disclaimer">Información, no asesoramiento: aplica las reglas que fijaste con datos reales, que pueden fallar. Decides tú y puedes perder dinero.</p></section>'+
     goalScoreboardHtml()+
     (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+
@@ -2044,7 +2273,7 @@ window.addEventListener("viewinvai:crypto-totals",goalCryptoRefresh);
 window.addEventListener("viewinvai:crypto-quotes",goalCryptoRefresh);
 // ----- Asistente del Objetivo: una pregunta por paso y resumen final editable -----
 let goalWizard=null;
-function goalWizardSteps(){return["target","date","risk","positions","capital","spec","summary"]}
+function goalWizardSteps(){return["target","date","risk","positions","sleeves","capital","spec","summary"]}
 function openGoalWizard(options={}){
   const metrics=portfolioGoalMetrics(),portfolio=metrics.portfolio;if(!portfolio)return;
   const goal=selectedPortfolioGoal()||state.goal||{},stockCur=num(metrics.investedValue),cryptoNow=goalCryptoValueEur(),includeCrypto=goalIncludesCrypto(goal);
@@ -2057,6 +2286,19 @@ function openGoalWizard(options={}){
        noFrac:[...goalNoFractionSet(goal)],fracRestore:[],crypto:includeCrypto?1:0},
     stockCurrent:stockCur,cryptoEur:cryptoNow,
     cash:num(metrics.cashEur),capInit:[num(goal.invest_cap_eur),num(goal.invest_cap_pct)],reserveInit:num(goal.invest_reserve_eur),fromSummary:false};
+  // Huchas: efectivo de cada una (por defecto 30 / 20 / 50 % del efectivo), su estrategia y la hucha de cada acción.
+  const S=goalSleeveStateOf(goal),cash0=Math.max(0,num(metrics.cashEur)||0),def={alto:.3,medio:.2,bajo:.5};
+  goalWizard.sleevesInit=!!S;
+  // Las huchas llevan sus importes en euros: solo en carteras en euros (las de Trade Republic lo son).
+  goalWizard.eurBase=String(portfolio.base_currency||"EUR").toUpperCase()==="EUR";
+  // Un objetivo que ya existía sigue como estaba hasta que el usuario elija repartir en huchas; uno nuevo empieza con huchas.
+  goalWizard.v.sleevesOn=goalWizard.eurBase&&(S||!selectedPortfolioGoal())?1:0;
+  goalWizard.v.sl=Object.fromEntries(GOAL_SLEEVES.map(k=>[k,S?S.sleeves[k].cashEur:Math.floor(cash0*def[k]*100)/100]));
+  goalWizard.v.strat=Object.fromEntries(GOAL_SLEEVES.map(k=>[k,S?S.sleeves[k].strategy:Object.keys(GOAL_SLEEVE_META[k].strategies)[0]]));
+  goalWizard.posList=portfolioCoachPositionRows(metrics).map(row=>{
+    const init=String(row.p.sleeve||""),frozen=positionFrozenQty(row.p)>=(num(row.qty)||0)-1e-9&&positionFrozenQty(row.p)>0;
+    return{id:String(row.p.id),label:String(row.p.ticker||"")+(row.stock&&row.stock.name?' · '+row.stock.name:''),value:row.unitEur!==null?(num(row.qty)||0)*row.unitEur:null,init,sleeve:init||(S||frozen?"":"alto")};
+  });
   if(options.extend){
     const proposed=window.ViewInvAIGoal&&window.ViewInvAIGoal.nextGoal(goalWizard.v.target,cur);
     if(proposed!==null&&proposed!==undefined)goalWizard.v.target=proposed;
@@ -2111,6 +2353,9 @@ function goalWizardStepHtml(id){
     goalWizardChoice("risk","aggressive","Alto","Crecer rápido: más entradas y más tamaño, siempre con stop.",v.risk==="aggressive")+'</div>'+goalWizardDemandHtml(v,cur);
   if(id==="positions")return '<h2>¿Cuántas acciones a la vez?</h2><p>Concentrado para crecer rápido sin depender de una sola acción.</p><div class="goal-wizard-choices row">'+
     [3,4,5].map(nn=>goalWizardChoice("positions",nn,String(nn),nn===3?"Más concentrado":nn===5?"Más repartido":"Equilibrado",v.positions===nn)).join('')+'</div>';
+  if(id==="capital"&&v.sleevesOn===1)return '<h2>Compras fraccionadas</h2><p>Con huchas, cada plan invierte solo el efectivo de su hucha; lo que no asignaste queda apartado.</p><div class="goal-wizard-choices">'+
+      goalWizardChoice("fractions","1","Sí, invertir importes","Compra la parte de acción que permita el efectivo de la hucha (en Trade Republic, orden a mercado).",v.fractions===1)+
+      goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>';
   if(id==="capital"){
     const cash=w.cash,usable=goalWizardUsable(v,cash);
     return '<h2>¿Cuánto efectivo puede invertir?</h2><p>Hoy tienes '+(cash!==null?formatMoney(cash,"EUR"):"—")+' en efectivo. El plan solo invierte la parte que indiques; el resto queda apartado. Pon una cifra o un porcentaje: el otro se calcula solo.</p>'+
@@ -2123,6 +2368,25 @@ function goalWizardStepHtml(id){
       goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>'+
       (v.noFrac.length?'<p class="goal-wizard-hint">Valores en los que tu bróker no deja comprar fracciones (toca para quitar la marca):</p><div class="goal-wizard-chips">'+
         v.noFrac.map(t=>'<button type="button" class="goal-wizard-chip" data-gw-unfrac="'+esc(t)+'" translate="no">'+esc(t)+' ×</button>').join('')+'</div>':'');
+  }
+  if(id==="sleeves"&&!w.eurBase)return '<h2>Reparto y estrategia</h2><p>Las huchas (alto, medio y bajo riesgo) solo están disponibles en carteras en euros. Esta cartera sigue con un solo plan.</p>';
+  if(id==="sleeves"){
+    const cash=Math.max(0,num(w.cash)||0),on=v.sleevesOn===1;
+    const sum=GOAL_SLEEVES.reduce((a,k)=>a+(num(v.sl[k])||0),0),left=Math.round((cash-sum)*100)/100;
+    return '<h2>Reparto y estrategia</h2><p>Separa tu efectivo en tres huchas. Cada una tiene su dinero, su estrategia y su propia rentabilidad; lo que vendas vuelve a su hucha.</p><div class="goal-wizard-choices">'+
+      goalWizardChoice("sleevesOn","1","Repartir en huchas","Alto, medio y bajo riesgo, cada una con su plan.",on)+
+      goalWizardChoice("sleevesOn","0","Un solo plan","Todo el efectivo para las ideas cortas, como hasta ahora.",!on)+'</div>'+
+      (on?'<div class="goal-wizard-sleeves">'+GOAL_SLEEVES.map(k=>{
+        const m=GOAL_SLEEVE_META[k],ids=Object.keys(m.strategies),st=m.strategies[v.strat[k]]||m.strategies[ids[0]];
+        return '<div class="goal-wizard-sleeve">'+goalSleevePill(k)+'<small>'+esc(m.horizon)+'</small>'+
+          '<div class="goal-wizard-pair"><label class="goal-wizard-input"><input type="number" min="0" step="0.01" inputmode="decimal" data-gw-sleeve="'+k+'" value="'+esc(String(v.sl[k]??""))+'" aria-label="Euros de la hucha '+k+'"><b>€</b></label>'+
+          '<label class="goal-wizard-input"><input type="number" min="0" max="100" step="0.1" inputmode="decimal" data-gw-sleeve-pct="'+k+'" value="'+(cash>0?esc(String(Math.round((num(v.sl[k])||0)/cash*1000)/10)):'')+'" aria-label="Porcentaje de la hucha '+k+'"><b>%</b></label></div>'+
+          (ids.length>1?'<select data-gw-strategy="'+k+'" aria-label="Estrategia de la hucha '+k+'">'+ids.map(id=>'<option value="'+id+'"'+(v.strat[k]===id?' selected':'')+'>'+esc(m.strategies[id].name)+'</option>').join('')+'</select>':'<b class="goal-wizard-sleeve-strategy">'+esc(st.name)+'</b>')+
+          '<small class="goal-wizard-hint">'+esc(st.note)+'</small></div>'}).join('')+'</div>'+
+        '<p class="goal-wizard-hint" data-gw-sleeve-left>'+(left>=0?'Efectivo '+esc(formatMoney(cash,"EUR"))+' · sin asignar '+esc(formatMoney(left,"EUR")):'Te pasas en '+esc(formatMoney(-left,"EUR"))+' del efectivo ('+esc(formatMoney(cash,"EUR"))+')')+'</p>'+
+        (w.posList.length?'<h3>¿A qué hucha va cada acción que ya tienes?</h3><div class="goal-wizard-sleeve-pos">'+w.posList.map(p=>'<label><span>'+esc(p.label)+(p.value!==null?' <small>'+esc(formatMoney(p.value,"EUR"))+'</small>':'')+'</span><select data-gw-assign="'+esc(p.id)+'">'+goalSleeveOptions(p.sleeve)+'</select></label>').join('')+'</div>'+
+          '<p class="goal-wizard-hint">Lo comprado desde que empezaron las huchas lo pagó su hucha; lo que ya tenías se suma a su 100 % por su valor de hoy. Las de la hucha alta las gestiona el plan de ideas cortas; las demás siguen la estrategia de su hucha.</p>':'')
+      :(w.sleevesInit?'<p class="goal-wizard-hint">Al guardar se quita el reparto en huchas. No se borra ninguna operación ni posición.</p>':''));
   }
   if(id==="spec")return '<h2>¿Acciones especulativas?</h2><p>Solo entran si el potencial temprano compensa claramente el riesgo. Siempre mantienen stop, control de liquidez, spread y dilución.</p><div class="goal-wizard-choices">'+
     goalWizardChoice("specMode","1","Solo una y pequeña","Máximo 1 posición · hasta 10 % de la cartera.",v.specMode===1)+
@@ -2137,7 +2401,8 @@ function goalWizardStepHtml(id){
     row(1,"Fecha",v.date?new Date(v.date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}):"Sin fecha")+
     row(2,"Riesgo",riskLabel)+row(3,"Acciones a la vez",String(v.positions))+
     (num(w.cryptoEur)>0||v.crypto===1?row(0,"Mi cripto",v.crypto===1?"Cuenta en el objetivo":"No cuenta"):'')+
-    row(4,"Capital para invertir",goalWizardCapLabel(v)+(v.fractions?" · con fracciones":" · acciones enteras"))+row(5,"Especulativas",specLabel)+'</div>'+goalWizardDemandHtml(v,cur)+
+    row(4,"Huchas",v.sleevesOn===1?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+" "+formatMoney(num(v.sl[k])||0,"EUR")).join(" · "):"Un solo plan")+
+    row(5,v.sleevesOn===1?"Fracciones":"Capital para invertir",(v.sleevesOn===1?"":goalWizardCapLabel(v)+" · ")+(v.fractions?"con fracciones":"acciones enteras"))+row(6,"Especulativas",specLabel)+'</div>'+goalWizardDemandHtml(v,cur)+
     '<p class="goal-wizard-hint">Fondos y ETFs van aparte. El plan compra al momento con stop según volatilidad, sube el stop cuando gana y no cambia una acción en pérdidas salvo que la nueva prevea recuperar la pérdida y las comisiones.</p>';
 }
 function goalWizardCapChanged(v){
@@ -2182,6 +2447,11 @@ function goalWizardValid(){
   if(id==="target"&&!(num(v.target)>0))return"Indica un objetivo en euros.";
   if(id==="target"&&w.current!==null&&num(v.target)<=w.current)return"El objetivo debe ser mayor que el valor actual ("+formatMoney(w.current,"EUR")+").";
   if(id==="date"&&(!v.date||Date.parse(v.date+"T23:59:59Z")<=Date.now()))return"Elige una fecha futura.";
+  if(id==="sleeves"&&v.sleevesOn===1){
+    const sum=GOAL_SLEEVES.reduce((a,k)=>a+(num(v.sl[k])||0),0);
+    if(GOAL_SLEEVES.some(k=>num(v.sl[k])!==null&&num(v.sl[k])<0))return"Las cifras no pueden ser negativas.";
+    if(sum>(num(w.cash)||0)+.005)return"Las huchas suman "+formatMoney(sum,"EUR")+" y tu efectivo es "+formatMoney(num(w.cash)||0,"EUR")+". Reparte menos o actualiza el efectivo.";
+  }
   if(id==="capital"&&num(v.capEur)!==null&&num(v.capEur)<0)return"La cifra no puede ser negativa.";
   if(id==="capital"&&num(v.capPct)!==null&&(num(v.capPct)<0||num(v.capPct)>100))return"El porcentaje debe estar entre 0 y 100.";
   return"";
@@ -2206,10 +2476,17 @@ async function saveGoalWizard(){
     // permitido. Si el límite no cambia, se conserva lo apartado (guardar otra vez no renueva el capital).
     const usable=goalWizardUsable(w.v,w.cash);
     if(goalWizardCapChanged(w.v))payload.investReserveEur=usable===null||(payload.investCapEur===null&&payload.investCapPct===null)?null:Math.max(0,(num(w.cash)||0)-usable);
+    // Con huchas no hay límite de capital aparte: lo que invierte cada plan es el efectivo de su hucha.
+    if(w.v.sleevesOn===1){payload.investCapEur=null;payload.investCapPct=null;payload.investReserveEur=null}
     const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
     if(data.goal)state.goals[String(w.portfolioId)]=data.goal;
     state.goal=data.goal||null;state.goalError="";
+    if(w.v.sleevesOn===1){
+      const assign=w.posList.filter(p=>p.sleeve!==p.init).map(p=>({positionId:p.id,sleeve:p.sleeve,valueEur:p.value}));
+      await goalSleevePatch(w.portfolioId,{cash:Object.fromEntries(GOAL_SLEEVES.map(k=>[k,Math.max(0,num(w.v.sl[k])||0)])),strategies:w.v.strat,assign});
+      if(assign.length)await loadAll();
+    }else if(w.sleevesInit)await goalSleevePatch(w.portfolioId,{disable:true});
     closeGoalWizard();renderGoalApp();toast("Objetivo guardado.");
   }catch(error){goalWizardMsg(error.message||"No se pudo guardar.");if(btn)btn.disabled=false}
 }
@@ -2226,7 +2503,7 @@ document.addEventListener("click",event=>{
   if(t.hasAttribute("data-gw-close")){closeGoalWizard();return}
   if(t.hasAttribute("data-gw-set")){
     const k=t.dataset.gwSet,val=t.dataset.gwValue;
-    goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto"].includes(k)?Number(val):val;
+    goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto","sleevesOn"].includes(k)?Number(val):val;
     // El valor de partida (y los atajos +25 %…) cambia según cuente o no Mi cripto.
     if(k==="capPct")goalWizardSyncCap("capPct");
     if(k==="crypto"&&goalWizard.stockCurrent!==null)goalWizard.current=goalWizard.stockCurrent+(goalWizard.v.crypto===1?(num(goalWizard.cryptoEur)||0):0);
@@ -2250,6 +2527,21 @@ document.addEventListener("input",event=>{
     document.querySelectorAll('#goalWizard [data-gw-set="capPct"]').forEach(c=>c.classList.toggle("on",num(goalWizard.v.capPct)===Number(c.dataset.gwValue)));
     const h=document.querySelector("#goalWizard [data-gw-usable]");if(h)h.innerHTML=goalWizardUsableText(goalWizardUsable(goalWizard.v,goalWizard.cash),goalWizard.cash)}
   if(k==="date"){const body=document.querySelector("#goalWizard .goal-wizard-body");if(body){paintGoalWizard()}}
+});
+// Huchas del asistente: euros y % sincronizados, estrategia y hucha de cada acción.
+document.addEventListener("input",event=>{
+  const t=event.target.closest&&event.target.closest("#goalWizard [data-gw-sleeve],#goalWizard [data-gw-sleeve-pct]");if(!t||!goalWizard)return;
+  const v=goalWizard.v,cash=Math.max(0,num(goalWizard.cash)||0);
+  if(t.dataset.gwSleeve){const k=t.dataset.gwSleeve;v.sl[k]=t.value===""?null:num(t.value);const o=document.querySelector('#goalWizard [data-gw-sleeve-pct="'+k+'"]');if(o)o.value=cash>0&&num(v.sl[k])!==null?String(Math.round(num(v.sl[k])/cash*1000)/10):""}
+  else{const k=t.dataset.gwSleevePct,p=num(t.value);v.sl[k]=p===null?null:Math.round(cash*Math.max(0,Math.min(100,p)))/100;const o=document.querySelector('#goalWizard [data-gw-sleeve="'+k+'"]');if(o)o.value=v.sl[k]??""}
+  const sum=GOAL_SLEEVES.reduce((a,k)=>a+(num(v.sl[k])||0),0),left=Math.round((cash-sum)*100)/100,h=document.querySelector("#goalWizard [data-gw-sleeve-left]");
+  if(h)h.textContent=left>=0?"Efectivo "+formatMoney(cash,"EUR")+" · sin asignar "+formatMoney(left,"EUR"):"Te pasas en "+formatMoney(-left,"EUR")+" del efectivo ("+formatMoney(cash,"EUR")+")";
+  goalWizardMsg("");
+});
+document.addEventListener("change",event=>{
+  const t=event.target.closest&&event.target.closest("#goalWizard [data-gw-strategy],#goalWizard [data-gw-assign]");if(!t||!goalWizard)return;
+  if(t.dataset.gwStrategy){goalWizard.v.strat[t.dataset.gwStrategy]=t.value;paintGoalWizard();return}
+  const p=goalWizard.posList.find(x=>x.id===t.dataset.gwAssign);if(p)p.sleeve=t.value;
 });
 document.addEventListener("keydown",event=>{if(event.key==="Escape"&&goalWizard)closeGoalWizard()});
 // Contraste opcional con las IA del usuario: no cambia el plan, añade su opinión.
@@ -3330,8 +3622,9 @@ function openGoalOperationModal(button){
   // Orden ya ejecutada con un bróker cuya comisión no sabemos calcular: la escribe el usuario (la de su extracto).
   const manualFee=fee===null&&button.dataset.goalUnverified==="1";
   openModal((side==="BUY"?"Registrar estrategia de compra · ":"Registrar estrategia de venta · ")+ticker,
-    '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-position-id="'+esc(position?.id||"")+'" data-broker="'+esc(broker)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
+    '<form id="goalOperationForm" class="portfolio-form transaction-form" data-portfolio-id="'+esc(portfolioId)+'" data-sleeve="'+esc(side==="BUY"?String(button.dataset.goalSleeve||""):"")+'" data-position-id="'+esc(position?.id||"")+'" data-broker="'+esc(broker)+'" data-stock-key="'+esc(stockKey)+'" data-prefer-tr="'+(preferTr?'1':'0')+'" data-ticker="'+esc(ticker)+'" data-name="'+esc(name)+'" data-exchange="'+esc(exchange)+'" data-isin="'+esc(isin)+'">'+
       '<div class="transaction-form-head"><strong>'+esc(side==="BUY"?"Compra recomendada":"Venta recomendada")+'</strong><span>'+esc(name)+' · '+esc(portfolio.name)+'</span></div>'+
+      goalSleeveOperationNote(side,button.dataset.goalSleeve,position)+
       '<input name="side" type="hidden" value="'+esc(side)+'">'+
       '<div class="portfolio-form-grid">'+
         '<label><span>Acciones</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0.000001"'+(side==="SELL"&&position?' max="'+esc(String(Math.max(0,(num(position.quantity)||0)-positionFrozenQty(position))))+'"':'')+' value="'+esc(String(units))+'" required></label>'+
@@ -3386,7 +3679,8 @@ async function saveGoalOperationForm(form){
     name:form.dataset.name||"",exchange:form.dataset.exchange||"",isin:form.dataset.isin||"",preferTr,
     side,quantity:goalOperationUnits(side,fd.get("quantity")),price:num(fd.get("price")),
     fees:num(fd.get("fees")),currency:String(fd.get("currency")||(preferTr?"EUR":"USD")).toUpperCase(),
-    executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||"")
+    executedAt:Number.isFinite(executedDate.getTime())?executedDate.toISOString():"",notes:String(fd.get("notes")||""),
+    ...(form.dataset.sleeve?{sleeve:form.dataset.sleeve}:{})
   };
   const portfolio=state.portfolios.find(item=>String(item.id)===String(payload.portfolioId));
   const baseCurrency=String(portfolio&&portfolio.base_currency||payload.currency).toUpperCase(),fxUsdEur=portfolioUsdToEurRate();
@@ -3502,6 +3796,7 @@ async function savePortfolioCash(form){
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"No se pudo guardar el capital líquido.");
   const index=state.portfolios.findIndex(p=>String(p.id)===String(portfolioId));if(index>=0)state.portfolios[index]=data.portfolio;
   state.goalCandidateCache={at:0,key:"",rows:[]};closeModal();renderActivePortfolioPanel();if(portfolioHasGoal(portfolioId))scheduleGoalPortfolioReview(portfolioId,null);toast("Capital líquido actualizado");
+  goalSleeveCashPrompt(portfolioId);
 }
 
 function stockFormPayload(stock, form) {
@@ -5058,6 +5353,8 @@ window.ViewInvAIPortfolios = {
   getGoalPlanFor: goalPlanForStock,
   renderGoal: renderGoalApp,
   reload: () => loadAll(),
+  // Tras importar el efectivo de Trade Republic: si no cuadra con las huchas del Objetivo, pregunta el reparto.
+  promptGoalSleeveCash: portfolioId => goalSleeveCashPrompt(portfolioId),
   openNewPortfolio: openNewPortfolioModal,
   openAddPosition: openAddPositionModal,
   openPositionPicker,

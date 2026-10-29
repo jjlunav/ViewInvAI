@@ -47,6 +47,7 @@ jobs:
           node scripts/test-tax-export.mjs
           npm run test:reliability
           npm run test:worker
+          node scripts/test-goal-sleeves.mjs
       - name: Historial de caídas bruscas (rebotes a 1/5/20 sesiones)
         run: node scripts/test-crash-scoreboard.mjs
       - name: Validar contabilidad determinista de carteras

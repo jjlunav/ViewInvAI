@@ -67,6 +67,8 @@ COLS = [
     "price_earnings_ttm","earnings_per_share_diluted_ttm","dividends_yield_current","beta_1_year",
     "total_shares_outstanding","total_revenue","net_income_ttm","price_book_fq","enterprise_value_fq","fundamental_currency_code",
     "earnings_release_next_date","earnings_release_next_calendar_date","earnings_release_next_time","earnings_release_next_trading_date_fq","update_mode","last_bar_update_time",
+    # Calidad (hucha de riesgo bajo, fórmula de Greenblatt): rentabilidad del capital, deuda, margen y caja libre.
+    "return_on_equity","return_on_invested_capital","debt_to_equity","operating_margin","free_cash_flow",
 ]
 SUFFIX = {
     "inc","incorporated","corp","corporation","co","company","ltd","limited",
@@ -271,7 +273,25 @@ def match_tr_by_own_isin(stocks, idx, previous, limit=1500):
     return matched, looked
 
 
+QUALITY_FIELDS = (
+    ("roePct", "return_on_equity"),
+    ("roicPct", "return_on_invested_capital"),
+    ("debtToEquity", "debt_to_equity"),
+    ("operatingMarginPct", "operating_margin"),
+    ("freeCashFlow", "free_cash_flow"),
+)
+
+
 def tv_row(sym, ex, ticker, d):
+    row = tv_base_row(sym, ex, ticker, d)
+    # Solo si hay dato: la mayoría de valores pequeños no lo tienen y no se publica un null por cada uno.
+    for key, col in QUALITY_FIELDS:
+        if isinstance(d.get(col), (int, float)):
+            row[key] = d.get(col)
+    return row
+
+
+def tv_base_row(sym, ex, ticker, d):
     return {
         "tvSymbol": sym,
         "ticker": ticker,
@@ -400,7 +420,7 @@ TR_WORLD_MARKETS = [
 ]
 EU_COLS = COLS + ["isin", "is_primary"]
 PRICE_FIELDS = ("price", "dayHigh", "dayLow", "ema20", "ema50", "atr", "high52w", "low52w")
-MONEY_FIELDS = ("marketCap", "enterpriseValue", "revenueTtm", "netIncomeTtm")
+MONEY_FIELDS = ("marketCap", "enterpriseValue", "revenueTtm", "netIncomeTtm", "freeCashFlow")
 
 
 def fetch_eur_rates(currencies):

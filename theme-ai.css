@@ -2571,3 +2571,45 @@ html[data-theme="light"] body .portfolio-form .goal-fomo .goal-fomo-check span{c
 html[data-theme="light"] .goal2-risk-alto{color:#c53030}
 html[data-theme="light"] .goal2-risk-medio{color:#a86400}
 html[data-theme="light"] .goal2-risk-bajo{color:#137a55}
+/* Huchas del Objetivo */
+.goal2-sleeve-pill{justify-self:start;width:max-content;display:inline-block;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:800;letter-spacing:.04em;vertical-align:middle;white-space:nowrap}
+.goal2-sleeves-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.goal2-sleeve-list{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.goal2-sleeve{border:1px solid var(--line,#2a4552);border-radius:14px;padding:10px 12px;min-width:0}
+.goal2-sleeve>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.goal2-sleeve>header>span{min-width:0}
+.goal2-sleeve-pct{white-space:nowrap}.goal2-sleeve-pct.up{color:#2fd39a}.goal2-sleeve-pct.down{color:#ff8a8a}
+html[data-theme="light"] .goal2-sleeve-pct.up{color:#137a55}html[data-theme="light"] .goal2-sleeve-pct.down{color:#c53030}
+.goal2-sleeve>header small{opacity:.7;margin-left:4px}
+.goal2-sleeve>header strong{font-size:20px}
+.goal2-sleeve-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;font-size:12px;opacity:.95}
+.goal2-sleeve-grid b{display:block;font-size:14px}
+.goal2-sleeve-pos{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px;font-size:13px}
+.goal2-sleeve-pos li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.goal2-sleeve-pos small{opacity:.8}
+.goal2-sleeve-move{margin-left:auto;font-size:12px;padding:2px 6px;border-radius:8px;background:transparent;color:inherit;border:1px solid var(--line,#2a4552)}
+.goal2-sleeve-exit{font-style:normal;font-weight:800;font-size:10px;letter-spacing:.04em}
+.goal2-sleeve-exit-salir{color:#ff8a8a}.goal2-sleeve-exit-revisar{color:#f5b142}.goal2-sleeve-exit-mantener{color:#2fd39a}
+.goal2-sleeve-more{margin-top:8px;font-size:12.5px}
+.goal2-sleeve-more>summary{cursor:pointer;font-weight:700}
+.goal2-sleeve-more>small{display:block;opacity:.75;margin:4px 0}
+.goal2-sleeve-sizing{display:block;font-weight:600;margin:4px 0}
+.goal2-sleeve-ideas{margin:4px 0;padding-left:18px;display:grid;gap:6px}
+.goal2-sleeve-ideas small{opacity:.8}
+.goal2-sleeve-buy{display:block;font-weight:600;margin:2px 0}
+.goal2-why.warn{border-color:rgba(245,177,66,.5)}
+.goal2-sleeve-form-row{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;align-items:center;margin:12px 0}
+.goal2-sleeve-form-head{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.goal2-sleeve-form-head small{opacity:.75}
+.goal2-sleeve-form-row label{display:flex;align-items:center;gap:6px}
+.goal2-sleeve-form-row input{width:100%}
+.goal2-sleeve-form-left.bad{color:#ff8a8a}
+.goal-wizard-sleeves{display:grid;gap:10px;margin-top:10px}
+.goal-wizard-sleeve{border:1px solid rgba(140,170,255,.25);border-radius:14px;padding:10px 12px;display:grid;gap:6px}
+.goal-wizard-sleeve>small{opacity:.7}
+.goal-wizard-sleeve .goal-wizard-pair{margin-bottom:0}
+.goal-wizard-sleeve select,.goal-wizard-sleeve-pos select{width:100%;padding:6px 8px;border-radius:10px;background:rgba(0,0,0,.18);color:inherit;border:1px solid rgba(140,170,255,.3)}
+.goal-wizard-sleeve-strategy{font-size:13px}
+.goal-wizard-sleeve-pos{display:grid;gap:8px}
+.goal-wizard-sleeve-pos label{display:grid;grid-template-columns:1fr minmax(120px,40%);gap:8px;align-items:center;font-size:13px}
+html[data-theme="light"] .goal-wizard-sleeve select,html[data-theme="light"] .goal-wizard-sleeve-pos select{background:#fff;border-color:#d7dcec}

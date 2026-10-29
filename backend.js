@@ -19,6 +19,7 @@ const CORE_SCHEMA_STEPS=[
   ["ensurePositionDecisionsSchema",ensurePositionDecisionsSchema],
   ["ensurePortfolioGoalSchema",ensurePortfolioGoalSchema],
   ["ensurePortfolioGoalHistorySchema",ensurePortfolioGoalHistorySchema],
+  ["ensureGoalSleeveSchema",ensureGoalSleeveSchema],
   ["ensureUiPreferencesSchema",ensureUiPreferencesSchema],
   ["ensureNotificationPreferenceSchema",ensureNotificationPreferenceSchema],
   ["ensureCryptoSchema",ensureCryptoSchema],
@@ -889,7 +890,8 @@ function transactionPayload(body) {
     executedAt: Number.isFinite(executedDate.getTime()) ? executedDate.toISOString() : "",
     notes: trimText(body.notes, 1000),
     positionId: trimText(body.positionId, 80),
-    broker: trimText(body.broker, 80)
+    broker: trimText(body.broker, 80),
+    sleeve: goalSleeveName(body.sleeve)
   };
 }
 
@@ -1826,7 +1828,7 @@ export async function handleBackup(request,env,user,json){
   await ensureNotificationPreferenceSchema(env);await ensureUiPreferencesSchema(env);
   await ensurePositionBrokerSchema(env);await ensurePortfolioMarketSchema(env);
   await ensureCryptoSchema(env);await ensureFundSchema(env);await ensurePortfolioGoalSchema(env);
-  await ensurePositionDecisionsSchema(env);await ensureUserBrokerSchema(env);
+  await ensurePositionDecisionsSchema(env);await ensureUserBrokerSchema(env);await ensureGoalSleeveSchema(env);
   await globalNotificationSettingsForUser(env,user.id);
   if(request.method==="POST")return json(await restoreBackup(env.DB,user.id,await readJson(request,10*1024*1024)),200,{"Cache-Control":"no-store"});
   return json(await exportBackup(env.DB,user.id),200,{"Cache-Control":"no-store"});
@@ -2585,6 +2587,8 @@ function cashStatement(env,userId,portfolio,change,now){
 }
 function transactionStatement(env,row){
   const cols=["id","portfolio_id","user_id","position_id","broker","stock_key","ticker","name","exchange","isin","prefer_tr","side","quantity","price","fees","currency","executed_at","notes","origin","external_id","cash_delta","cash_currency","created_at","updated_at"];
+  // Hucha del Objetivo: solo si la fila la trae (la columna existe desde ensureGoalSleeveSchema).
+  if(typeof row.sleeve==="string"&&row.sleeve)cols.push("sleeve");
   return env.DB.prepare("INSERT INTO transactions ("+cols.join(",")+") VALUES ("+cols.map(()=>"?").join(",")+")").bind(...cols.map(c=>row[c]??""));
 }
 function positionLedgerStatements(env,userId,portfolioId,stockKey,positionId,existing,ledger,first,now){
@@ -2599,7 +2603,7 @@ function positionLedgerStatements(env,userId,portfolioId,stockKey,positionId,exi
   return out;
 }
 export async function createTransactionRecord(env,user,data,options={}){
-  await ensurePositionBrokerSchema(env);await ensureTransactionsSchema(env);await ensurePositionDecisionsSchema(env);
+  await ensurePositionBrokerSchema(env);await ensureTransactionsSchema(env);await ensurePositionDecisionsSchema(env);await ensureGoalSleeveSchema(env);
   const origin=trimText(options.origin||"manual",40),externalId=trimText(options.externalId,120);
   if(!data.portfolioId||!data.stockKey||!data.ticker)return txResult({error:"portfolioId, stockKey and ticker are required"},400);
   if(!["BUY","SELL"].includes(data.side))return txResult({error:"side must be BUY or SELL"},400);
@@ -2638,11 +2642,16 @@ export async function createTransactionRecord(env,user,data,options={}){
   }
   const cashAdjustment=cashChange(portfolio,data.currency,data.side,data.quantity,data.price,data.fees,{adjust:options.adjustCash!==false,rate:data.cashFxRate});
   const row={id:uid("tx_"),portfolio_id:data.portfolioId,user_id:user.id,position_id:positionId,broker:trimText(data.broker||position?.broker,80),stock_key:data.stockKey,ticker:data.ticker,name:data.name,exchange:data.exchange,isin:data.isin,prefer_tr:data.preferTr,side:data.side,quantity:data.quantity,price:data.price,fees:data.fees,currency:data.currency,executed_at:data.executedAt,notes:data.notes,origin,external_id:externalId,cash_delta:cashAdjustment.adjusted?cashAdjustment.delta:0,cash_currency:cashAdjustment.adjusted?cashAdjustment.baseCurrency:"",created_at:now,updated_at:now};
+  // Hucha: la que indique la operación (compra desde una idea de la hucha) o la de la posición; la venta
+  // devuelve el dinero a la hucha de la posición.
+  const sleeve=data.side==="SELL"?(goalSleeveName(position&&position.sleeve)||goalSleeveName(data.sleeve)):(goalSleeveName(data.sleeve)||goalSleeveName(position&&position.sleeve));
+  if(sleeve)row.sleeve=sleeve;
   let ledger;
   try{ledger=calculateTransactionLedger([...rows,row])}catch(error){return txResult({error:error.message},400)}
   statements.push(transactionStatement(env,row));
   if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
   statements.push(...positionLedgerStatements(env,user.id,data.portfolioId,data.stockKey,positionId,position,ledger,orderedTransactions([...rows,row])[0],now));
+  if(sleeve&&!(position&&goalSleeveName(position.sleeve)))statements.push(env.DB.prepare("UPDATE positions SET sleeve=? WHERE id=? AND user_id=?").bind(sleeve,positionId,user.id));
   await financialBatch(env.DB,user.id,revision,statements);
   return txResult({transaction:row,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId,user.id).first(),summary:ledger,cashAdjustment},201);
 }
@@ -5073,16 +5082,17 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.sleeves_started_at,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
   const {results}=await env.DB.prepare("SELECT stock_key,peak_eur,stop_eur,updated_at FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(userId,goal.portfolio_id).all();
-  return{...goal,position_state:results||[]};
+  return{...goal,position_state:results||[],sleeves:await goalSleeveState(env,userId,goal.portfolio_id,goal.sleeves_started_at||"")};
 }
 async function handlePortfolioGoal(request,env,user,json,url){
   await ensurePortfolioGoalSchema(env);
   await ensurePortfolioGoalNotificationStateSchema(env);
+  await ensureGoalSleeveSchema(env);
   if(request.method==="GET"){
     const portfolioId=trimText(url.searchParams.get("portfolioId"),80);
     if(portfolioId){
@@ -5097,6 +5107,13 @@ async function handlePortfolioGoal(request,env,user,json,url){
   if(request.method==="PUT"||request.method==="PATCH"||request.method==="POST"){
     const body=await readJson(request),portfolioId=trimText(body.portfolioId,80);
     if(!portfolioId||!(await onePortfolio(env,user.id,portfolioId)))return json({error:"Portfolio not found"},404);
+    // Huchas: reparto del efectivo, estrategia de cada una y a qué hucha va cada acción.
+    if(body.sleeves!==undefined){
+      const failed=await handleGoalSleeves(env,user,json,portfolioId,body);
+      if(failed)return failed;
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal)});
+    }
     // Descartar una idea nueva que cambió de recomendación: libera su efectivo hoy y no toca el resto del objetivo.
     if(body.discardIdea!==undefined){
       const key=trimText(body.discardIdea,120);
@@ -5176,6 +5193,134 @@ async function handlePortfolioGoal(request,env,user,json,url){
   return json({error:"Method not allowed"},405);
 }
 
+
+// Huchas del Objetivo (alto / medio / bajo): cada una tiene su efectivo, sus acciones y su rentabilidad.
+// El efectivo de una hucha no se guarda como saldo: es lo asignado (goal_sleeve_moves, kind 'cash') más el
+// efecto en efectivo de sus operaciones desde que empezaron las huchas. Así borrar o reimportar una
+// operación nunca descuadra la hucha. La base (su 100 %) es lo asignado más el valor de las acciones que ya
+// tenías y metiste en ella (kind 'position').
+const GOAL_SLEEVES=["alto","medio","bajo"];
+const GOAL_SLEEVE_STRATEGIES={alto:["catalysts"],medio:["momentum"],bajo:["quality","index"]};
+function goalSleeveName(value){const v=String(value||"").trim().toLowerCase();return GOAL_SLEEVES.includes(v)?v:""}
+let goalSleeveSchemaReady=false;
+async function ensureGoalSleeveSchema(env){
+  if(await coreSchemaReady(env.DB,CORE_SCHEMA_STEPS))return;
+  if(goalSleeveSchemaReady)return;
+  await ensurePortfolioGoalSchema(env);await ensureTransactionsSchema(env);await ensurePositionBrokerSchema(env);
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS goal_sleeves (portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,sleeve TEXT NOT NULL CHECK(sleeve IN ('alto','medio','bajo')),strategy TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"+
+      "PRIMARY KEY(portfolio_id,sleeve),FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS goal_sleeve_moves (id TEXT PRIMARY KEY,portfolio_id TEXT NOT NULL,user_id TEXT NOT NULL,sleeve TEXT NOT NULL CHECK(sleeve IN ('alto','medio','bajo')),kind TEXT NOT NULL CHECK(kind IN ('cash','position')),amount_eur REAL NOT NULL,position_id TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,"+
+      "FOREIGN KEY(portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_goal_sleeve_moves_portfolio ON goal_sleeve_moves(user_id,portfolio_id,sleeve)")
+  ]);
+  for(const [table,col,sql] of [
+    ["transactions","sleeve","ALTER TABLE transactions ADD COLUMN sleeve TEXT NOT NULL DEFAULT ''"],
+    ["positions","sleeve","ALTER TABLE positions ADD COLUMN sleeve TEXT NOT NULL DEFAULT ''"],
+    ["portfolio_goals","sleeves_started_at","ALTER TABLE portfolio_goals ADD COLUMN sleeves_started_at TEXT"]
+  ]){
+    const cols=await env.DB.prepare("PRAGMA table_info("+table+")").all();
+    if(!(cols.results||[]).some(r=>String(r.name)===col))await env.DB.prepare(sql).run();
+  }
+  goalSleeveSchemaReady=true;
+}
+// Efecto en efectivo de una operación de la hucha. Las importaciones con «poner el efectivo» no ajustan el
+// saldo en cada operación (cash_delta 0): entonces se calcula con importe y comisión si va en euros.
+function goalSleeveTxCash(tx){
+  if(String(tx.cash_currency||""))return finiteNumber(tx.cash_delta)||0;
+  const origin=String(tx.origin||"");
+  if(origin==="position-seed"||origin==="position-adjustment")return 0;
+  if(String(tx.currency||"EUR").toUpperCase()!=="EUR")return 0;
+  return transactionCashDelta(tx.side,tx.quantity,tx.price,tx.fees);
+}
+export async function goalSleeveState(env,userId,portfolioId,startedAt){
+  if(!startedAt)return null;
+  const [conf,moves,txs,pos]=await env.DB.batch([
+    env.DB.prepare("SELECT sleeve,strategy FROM goal_sleeves WHERE user_id=? AND portfolio_id=?").bind(userId,portfolioId),
+    env.DB.prepare("SELECT sleeve,kind,SUM(amount_eur) AS amount FROM goal_sleeve_moves WHERE user_id=? AND portfolio_id=? GROUP BY sleeve,kind").bind(userId,portfolioId),
+    env.DB.prepare("SELECT sleeve,side,quantity,price,fees,currency,cash_delta,cash_currency,origin FROM transactions WHERE user_id=? AND portfolio_id=? AND sleeve<>'' AND executed_at>=?").bind(userId,portfolioId,startedAt),
+    env.DB.prepare("SELECT id,sleeve FROM positions WHERE user_id=? AND portfolio_id=? AND active=1 AND sleeve<>''").bind(userId,portfolioId)
+  ]);
+  const out={};
+  for(const name of GOAL_SLEEVES)out[name]={strategy:GOAL_SLEEVE_STRATEGIES[name][0],allocatedCashEur:0,positionBaseEur:0,tradesCashEur:0,cashEur:0,baseEur:0,positionIds:[]};
+  for(const r of conf.results||[]){const x=out[r.sleeve];if(x&&GOAL_SLEEVE_STRATEGIES[r.sleeve].includes(r.strategy))x.strategy=r.strategy}
+  for(const r of moves.results||[]){const x=out[r.sleeve];if(!x)continue;if(r.kind==="cash")x.allocatedCashEur+=finiteNumber(r.amount)||0;else x.positionBaseEur+=finiteNumber(r.amount)||0}
+  for(const r of txs.results||[]){const x=out[r.sleeve];if(x)x.tradesCashEur+=goalSleeveTxCash(r)}
+  for(const r of pos.results||[]){const x=out[r.sleeve];if(x)x.positionIds.push(String(r.id))}
+  const r2=v=>Math.round((v+Number.EPSILON)*100)/100;
+  for(const x of Object.values(out)){x.cashEur=r2(Math.max(0,x.allocatedCashEur+x.tradesCashEur));x.baseEur=r2(x.allocatedCashEur+x.positionBaseEur);x.allocatedCashEur=r2(x.allocatedCashEur);x.positionBaseEur=r2(x.positionBaseEur);x.tradesCashEur=r2(x.tradesCashEur)}
+  return{startedAt,sleeves:out,totalCashEur:r2(GOAL_SLEEVES.reduce((s,k)=>s+out[k].cashEur,0))};
+}
+// Mete una acción que ya tenías en una hucha (o la saca). Lo comprado desde que empezaron las huchas lo pagó
+// la hucha: sus operaciones se le apuntan. Lo que ya tenías antes se le aporta por su valor de hoy.
+async function goalSleeveAssignStatements(env,userId,portfolioId,positionId,sleeve,valueEur,startedAt,now){
+  const pos=await env.DB.prepare("SELECT id,portfolio_id,quantity FROM positions WHERE id=? AND user_id=?").bind(positionId,userId).first();
+  if(!pos||String(pos.portfolio_id)!==String(portfolioId))return[];
+  const txs=(await env.DB.prepare("SELECT side,quantity,executed_at FROM transactions WHERE user_id=? AND position_id=?").bind(userId,positionId).all()).results||[];
+  const qty=Math.max(0,finiteNumber(pos.quantity)||0);
+  let before=0;
+  for(const t of txs)if(String(t.executed_at||"")<startedAt)before+=(String(t.side)==="SELL"?-1:1)*(finiteNumber(t.quantity)||0);
+  if(!txs.length)before=qty;
+  const share=qty>0?Math.max(0,Math.min(1,before/qty)):0,value=Math.max(0,finiteNumber(valueEur)||0)*share;
+  const out=[env.DB.prepare("DELETE FROM goal_sleeve_moves WHERE user_id=? AND portfolio_id=? AND kind='position' AND position_id=?").bind(userId,portfolioId,positionId),
+    env.DB.prepare("UPDATE positions SET sleeve=? WHERE id=? AND user_id=?").bind(sleeve,positionId,userId),
+    env.DB.prepare("UPDATE transactions SET sleeve=? WHERE user_id=? AND position_id=? AND executed_at>=?").bind(sleeve,userId,positionId,startedAt)];
+  if(sleeve&&value>=.01)out.push(env.DB.prepare("INSERT INTO goal_sleeve_moves (id,portfolio_id,user_id,sleeve,kind,amount_eur,position_id,note,created_at) VALUES (?,?,?,?,'position',?,?,?,?)")
+    .bind(uid("gsm_"),portfolioId,userId,sleeve,Math.round(value*100)/100,positionId,"Acción que ya tenías",now));
+  return out;
+}
+export async function handleGoalSleeves(env,user,json,portfolioId,body){
+  await ensureGoalSleeveSchema(env);
+  const goal=await env.DB.prepare("SELECT portfolio_id,sleeves_started_at FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+  if(!goal)return json({error:"Crea primero el objetivo."},404);
+  const now=nowIso(),input=body.sleeves&&typeof body.sleeves==="object"?body.sleeves:{};
+  if(input.disable===true){
+    // Quitar las huchas no borra operaciones ni posiciones: solo su reparto.
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM goal_sleeve_moves WHERE user_id=? AND portfolio_id=?").bind(user.id,portfolioId),
+      env.DB.prepare("DELETE FROM goal_sleeves WHERE user_id=? AND portfolio_id=?").bind(user.id,portfolioId),
+      env.DB.prepare("UPDATE positions SET sleeve='' WHERE user_id=? AND portfolio_id=?").bind(user.id,portfolioId),
+      env.DB.prepare("UPDATE transactions SET sleeve='' WHERE user_id=? AND portfolio_id=?").bind(user.id,portfolioId),
+      env.DB.prepare("UPDATE portfolio_goals SET sleeves_started_at=NULL WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id)
+    ]);
+    return null;
+  }
+  const portfolio=await onePortfolio(env,user.id,portfolioId),realCash=Math.max(0,finiteNumber(portfolio&&portfolio.cash_balance)||0);
+  if(String(portfolio&&portfolio.base_currency||"EUR").toUpperCase()!=="EUR")return json({error:"Las huchas solo están disponibles en carteras en euros."},409);
+  const startedAt=goal.sleeves_started_at||now;
+  const current=await goalSleeveState(env,user.id,portfolioId,startedAt);
+  const statements=[];
+  if(!goal.sleeves_started_at)statements.push(env.DB.prepare("UPDATE portfolio_goals SET sleeves_started_at=? WHERE portfolio_id=? AND user_id=?").bind(startedAt,portfolioId,user.id));
+  // Efectivo deseado en cada hucha ahora: la diferencia con el actual se apunta como aportación o retirada.
+  const cash=input.cash&&typeof input.cash==="object"?input.cash:null;
+  if(cash){
+    const want={};let total=0;
+    for(const k of GOAL_SLEEVES){
+      const v=cash[k]===undefined?current.sleeves[k].cashEur:finiteNumber(cash[k]);
+      if(v===null||v<0||v>100000000)return json({error:"Importe no válido en la hucha "+k+"."},400);
+      want[k]=Math.round(v*100)/100;total+=want[k];
+    }
+    if(total>realCash+.01)return json({error:"Las huchas suman "+total.toFixed(2)+" € y el efectivo de la cartera es "+realCash.toFixed(2)+" €. Actualiza el efectivo o reparte menos."},409);
+    for(const k of GOAL_SLEEVES){
+      const delta=Math.round((want[k]-current.sleeves[k].cashEur)*100)/100;
+      if(Math.abs(delta)>=.01)statements.push(env.DB.prepare("INSERT INTO goal_sleeve_moves (id,portfolio_id,user_id,sleeve,kind,amount_eur,position_id,note,created_at) VALUES (?,?,?,?,'cash',?,'',?,?)")
+        .bind(uid("gsm_"),portfolioId,user.id,k,delta,delta>0?"Aportación":"Retirada",now));
+    }
+  }
+  const strategies=input.strategies&&typeof input.strategies==="object"?input.strategies:{};
+  for(const k of GOAL_SLEEVES){
+    const st=String(strategies[k]||current.sleeves[k].strategy);
+    if(!GOAL_SLEEVE_STRATEGIES[k].includes(st))return json({error:"Estrategia no válida para la hucha "+k+"."},400);
+    statements.push(env.DB.prepare("INSERT INTO goal_sleeves (portfolio_id,user_id,sleeve,strategy,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(portfolio_id,sleeve) DO UPDATE SET strategy=excluded.strategy,updated_at=excluded.updated_at")
+      .bind(portfolioId,user.id,k,st,now,now));
+  }
+  for(const a of (Array.isArray(input.assign)?input.assign:[]).slice(0,60)){
+    const positionId=trimText(a&&a.positionId,80);if(!positionId)continue;
+    statements.push(...await goalSleeveAssignStatements(env,user.id,portfolioId,positionId,goalSleeveName(a.sleeve),a.valueEur,startedAt,now));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return null;
+}
 
 let portfolioGoalHistorySchemaReady=false;
 async function ensurePortfolioGoalHistorySchema(env){
@@ -8336,8 +8481,9 @@ async function scanPortfolioGoalNotifications(env,services){
   if(!services.loadMarketSnapshot||!engine)return{processed:0,alerts:0};
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensurePositionBrokerSchema(env);
+  await ensureGoalSleeveSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.sleeves_started_at,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -8380,7 +8526,7 @@ async function scanPortfolioGoalNotifications(env,services){
   for(const goal of goals.results||[]){
     try{
       const positions=(await env.DB.prepare(
-        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,p.frozen_qty,p.frozen_until,"+
+        "SELECT p.id,p.stock_key,p.ticker,p.name,p.prefer_tr,p.quantity,p.avg_price,p.currency,p.last_score,p.opened_at,p.frozen_qty,p.frozen_until,p.sleeve,"+
         "(SELECT MAX(t.executed_at) FROM transactions t WHERE t.position_id=p.id AND t.user_id=p.user_id AND t.side='BUY') AS last_buy_at "+
         "FROM positions p WHERE p.user_id=? AND p.portfolio_id=? AND p.active=1 ORDER BY p.created_at ASC"
       ).bind(goal.user_id,goal.portfolio_id).all()).results||[];
@@ -8402,6 +8548,9 @@ async function scanPortfolioGoalNotifications(env,services){
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
       const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0,lockedHighRiskEur=0;
+      // Huchas: este plan (ideas cortas) solo gasta la hucha de riesgo alto y no toca las acciones de las huchas medio y bajo.
+      const sleeveState=goal.sleeves_started_at?await goalSleeveState(env,goal.user_id,goal.portfolio_id,goal.sleeves_started_at):null;
+      const sleeveInput=sleeveState?{alto:{cashEur:sleeveState.sleeves.alto.cashEur}}:null;
       // Decisiones «Decidir» vigentes de las posiciones de esta cartera.
       await ensurePositionDecisionsSchema(env);
       const decisionsById=new Map(((await env.DB.prepare("SELECT position_id,decision,hold_mode,hold_pct,target_eur,emergency_eur,hold_until,review_at FROM position_decisions WHERE user_id=? AND subject_type='position'").bind(goal.user_id).all()).results||[])
@@ -8413,6 +8562,7 @@ async function scanPortfolioGoalNotifications(env,services){
         if(!(total>0))continue;
         const ptr=Number(p.prefer_tr)===1,mark=await quoteEur(stock,ptr,"LAST"),bid=await quoteEur(stock,ptr,"SELL");
         if(mark===null){incomplete=true;break}
+        if(sleeveInput&&["medio","bajo"].includes(String(p.sleeve||""))){lockedValueEur+=total*mark;lockedKeys.push(key);continue}
         if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++;
           // Lo congelado de riesgo alto cuenta para el límite de exposición de alto riesgo.
           if(engine.riskTier&&engine.riskTier({atrPct:atrPct(stock),marketCap:finiteNumber(stock&&stock.marketCap),sector:stock&&stock.sector,industry:stock&&stock.industry})==="alto")lockedHighRiskEur+=frozen*mark}
@@ -8437,7 +8587,7 @@ async function scanPortfolioGoalNotifications(env,services){
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
-      const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions});
+      const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions,sleeves:sleeveInput});
       // Ideas fijadas hoy (compras del último plan de hoy): siempre se evalúan, aunque hayan salido de las 40 primeras.
       const committed=goalCommittedBuys(prev&&prev.plan_json),committedKeys=new Set(committed.map(c=>c.key));
       const pool=radar.filter(r=>!held.has(r.stock_key)&&(preferTr?r.tr_tradable===1:true));
@@ -8487,7 +8637,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:finiteNumber(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
