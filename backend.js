@@ -5057,8 +5057,8 @@ async function ensurePortfolioGoalSchema(env){
     ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"],
     // Ideas nuevas que el usuario descartó hoy tras un cambio de recomendación: {"day":"YYYY-MM-DD","keys":[...]}.
     ["discarded_ideas","ALTER TABLE portfolio_goals ADD COLUMN discarded_ideas TEXT NOT NULL DEFAULT ''"],
-    // Efectivo que cuenta en el objetivo: 'none' (solo lo invertido), 'sleeves' (el de las huchas) o 'amount'
-    // (todo el efectivo menos goal_cash_reserve_eur, lo que el usuario deja fuera; comprar no mueve el progreso).
+    // Efectivo que cuenta en el objetivo: 'none' (solo lo invertido) o 'amount' (todo el efectivo, en euros, menos
+    // goal_cash_reserve_eur, lo que el usuario deja fuera; comprar no mueve el progreso).
     ["goal_cash_mode","ALTER TABLE portfolio_goals ADD COLUMN goal_cash_mode TEXT NOT NULL DEFAULT 'none'"],
     ["goal_cash_reserve_eur","ALTER TABLE portfolio_goals ADD COLUMN goal_cash_reserve_eur REAL"]
   ]){
@@ -5177,9 +5177,12 @@ async function handlePortfolioGoal(request,env,user,json,url){
     const includeCrypto=body.includeCrypto!==undefined?(body.includeCrypto===true?1:0):(existing&&Number(existing.include_crypto)===1?1:0);
     // Efectivo que cuenta: con una cantidad se guarda lo que queda fuera (efectivo de hoy menos esa cantidad).
     const cashModeRaw=body.goalCashMode!==undefined?String(body.goalCashMode):String(existing&&existing.goal_cash_mode||"none");
-    const goalCashMode=["none","sleeves","amount"].includes(cashModeRaw)?cashModeRaw:"none";
+    const goalCashMode=["none","amount"].includes(cashModeRaw)?cashModeRaw:"none";
     let goalCashReserve=existing&&goalCashMode==="amount"&&String(existing.goal_cash_mode)==="amount"?finiteNumber(existing.goal_cash_reserve_eur):null;
-    if(goalCashMode==="amount"&&body.goalCashEur!==undefined){
+    // La app manda lo que queda fuera ya en euros (en carteras en dólares el saldo guardado está en dólares).
+    const sentReserve=body.goalCashReserveEur===null||body.goalCashReserveEur===undefined||body.goalCashReserveEur===""?null:finiteNumber(body.goalCashReserveEur);
+    if(goalCashMode==="amount"&&sentReserve!==null&&sentReserve>=0)goalCashReserve=Math.round(Math.min(100000000,sentReserve)*100)/100;
+    else if(goalCashMode==="amount"&&body.goalCashEur!==undefined){
       const want=finiteNumber(body.goalCashEur),portfolioRow=await onePortfolio(env,user.id,portfolioId),cashNow=Math.max(0,finiteNumber(portfolioRow&&portfolioRow.cash_balance)||0);
       if(want===null||want<0)return json({error:"La cantidad de efectivo no es válida."},400);
       goalCashReserve=Math.round(Math.max(0,cashNow-Math.min(want,cashNow))*100)/100;
@@ -8722,7 +8725,7 @@ async function scanPortfolioGoalNotifications(env,services){
         extraValueEur:(()=>{
           // Mi cripto (si cuenta) más el efectivo que el usuario decidió contar en el objetivo.
           const crypto=Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,mode=String(goal.goal_cash_mode||"none");
-          const counted=mode==="sleeves"&&sleeveState?Math.min(cashEur,sleeveState.totalCashEur):mode==="amount"?Math.max(0,cashEur-(finiteNumber(goal.goal_cash_reserve_eur)||0)):0;
+          const counted=mode==="amount"?Math.max(0,cashEur-(finiteNumber(goal.goal_cash_reserve_eur)||0)):0;
           return crypto===null&&!counted?null:(crypto||0)+counted;
         })(),
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};

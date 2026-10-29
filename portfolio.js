@@ -1054,7 +1054,7 @@ function portfolioGoalPositionSnapshot(p,fxUsdEur){
   return{p,stock,qty,preferTr,market,unitEur,avgEur,valueEur,costEur,pnlEur};
 }
 function goalIncludesCrypto(goal){const g=goal||selectedPortfolioGoal()||state.goal||{};return Number(g.include_crypto)===1}
-// Efectivo que cuenta en el objetivo: nada (solo lo invertido), el de las huchas o una cantidad. Con una cantidad,
+// Efectivo que cuenta en el objetivo: nada (solo lo invertido) o una cantidad (paso 1 del asistente). Con una cantidad,
 // lo que se guarda es lo que queda fuera: al comprar baja el efectivo y sube lo invertido, y el progreso no salta.
 // Efectivo del que salen las huchas: el elegido para el objetivo (si lo hay) o todo el efectivo.
 function goalSleeveBudgetEur(goal,cashEur){
@@ -1062,7 +1062,6 @@ function goalSleeveBudgetEur(goal,cashEur){
 }
 function goalCountedCashEur(goal,cashEur){
   const g=goal||{},cash=Math.max(0,num(cashEur)||0),mode=String(g.goal_cash_mode||"none");
-  if(mode==="sleeves"){const S=goalSleeveStateOf(g);return S?Math.min(cash,S.totalCashEur):0}
   if(mode==="amount")return Math.max(0,cash-(num(g.goal_cash_reserve_eur)||0));
   return 0;
 }
@@ -2393,6 +2392,10 @@ function goalWizardCashHtml(w,v){
     '<div class="goal-wizard-chips">'+[25,50,100].map(q=>'<button type="button" class="goal-wizard-chip" data-gw-cash-pct="'+q+'">'+(q===100?'Todo':q+' %')+'</button>').join('')+'</div>'+
     '<p class="goal-wizard-hint" data-gw-cash-left>'+goalWizardCashLeftText(cash,v)+'</p>';
 }
+// Atajos del objetivo (+25 %, +50 %, +100 %) sobre el valor de hoy; se rehacen al cambiar el efectivo del objetivo.
+function goalWizardTargetChips(cur){
+  return cur?[1.25,1.5,2].map(f=>Math.round(cur*f)).map(q=>'<button type="button" class="goal-wizard-chip" data-gw-set="target" data-gw-value="'+q+'">'+formatMoney(q,"EUR")+' <small>(+'+Math.round((q/cur-1)*100)+' %)</small></button>').join(''):'';
+}
 function goalWizardCashLeftText(cash,v){
   const b=goalWizardCountedCash(v),out=Math.max(0,cash-b);
   return 'Para el objetivo: '+esc(formatMoney(b,"EUR"))+(out>.005?' · fuera del objetivo: '+esc(formatMoney(out,"EUR")):'')+'. Comprar con él no mueve el progreso: solo cambia efectivo por acciones.';
@@ -2401,12 +2404,11 @@ function goalWizardStepHtml(id){
   const w=goalWizard,v=w.v,cur=w.current;
   const months=d=>{const ms=Date.parse(d+"T12:00:00Z")-Date.now();return ms>0?Math.max(1,Math.round(ms/2629800000)):0};
   if(id==="target"){
-    const quick=cur?[1.25,1.5,2].map(f=>Math.round(cur*f)):[];
     const hasCrypto=num(w.cryptoEur)>0||v.crypto===1;
     const counted=goalWizardCountedCash(v);
     return '<h2>¿A cuánto quieres llevar «'+esc(w.name)+'»?</h2><p data-gw-current>'+goalWizardCurrentText(cur,v,counted)+'</p>'+
       '<label class="goal-wizard-input"><input type="number" min="1" step="1" inputmode="decimal" data-gw-input="target" value="'+esc(v.target??"")+'"><b>€</b></label>'+
-      (quick.length?'<div class="goal-wizard-chips">'+quick.map(q=>'<button type="button" class="goal-wizard-chip" data-gw-set="target" data-gw-value="'+q+'">'+formatMoney(q,"EUR")+' <small>(+'+Math.round((q/cur-1)*100)+' %)</small></button>').join('')+'</div>':'')+
+      '<div class="goal-wizard-chips" data-gw-target-chips>'+goalWizardTargetChips(cur)+'</div>'+
       (hasCrypto?'<h3>¿Cuenta Mi cripto?</h3><div class="goal-wizard-choices">'+
         goalWizardChoice("crypto","0","Solo esta cartera","El objetivo mide lo invertido en acciones de «"+w.name+"».",v.crypto!==1)+
         goalWizardChoice("crypto","1","Sumar también Mi cripto",(num(w.cryptoEur)!==null?"Hoy "+formatMoney(w.cryptoEur,"EUR")+". ":"")+"Cuenta en el progreso y el ritmo; el plan de acciones no la compra ni la vende y no cambia el tamaño de sus compras.",v.crypto===1)+'</div>':'')+
@@ -2549,7 +2551,7 @@ async function saveGoalWizard(){
       investCapEur:w.v.capSource==="capPct"?null:num(w.v.capEur),investCapPct:w.v.capSource==="capEur"?null:(num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null),allowFractions:w.v.fractions!==0,
       fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1,
       // «El de las huchas» sin huchas no tiene sentido: queda en «solo lo invertido».
-      goalCashMode:"amount",goalCashEur:goalWizardCountedCash(w.v)};
+      goalCashMode:"amount",goalCashEur:goalWizardCountedCash(w.v),goalCashReserveEur:Math.round(Math.max(0,(num(w.cash)||0)-goalWizardCountedCash(w.v))*100)/100};
     // El límite de capital del plan es el mismo efectivo para el objetivo: lo que queda fuera se aparta.
     payload.investCapEur=goalWizardCountedCash(w.v);payload.investCapPct=null;payload.investReserveEur=Math.round(Math.max(0,(num(w.cash)||0)-goalWizardCountedCash(w.v))*100)/100;
     payload.currentValueEur=goalWizardCurrent();
@@ -2614,6 +2616,7 @@ document.addEventListener("input",event=>{
     goalWizard.current=goalWizardCurrent();
     const h=document.querySelector("#goalWizard [data-gw-current]");if(h)h.innerHTML=goalWizardCurrentText(goalWizard.current,goalWizard.v,goalWizardCountedCash(goalWizard.v));
     const l=document.querySelector("#goalWizard [data-gw-cash-left]");if(l)l.innerHTML=goalWizardCashLeftText(cash,goalWizard.v);
+    const c=document.querySelector("#goalWizard [data-gw-target-chips]");if(c)c.innerHTML=goalWizardTargetChips(goalWizard.current);
     return;
   }
   if(k==="capEur"||k==="capPct"){
