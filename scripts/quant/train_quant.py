@@ -27,6 +27,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
+if __package__:
+    from .validation import auc, chronological_masks, calibration_summary, period_summary, cost_scenarios
+    from .corporate_actions import candidates, apply_actions
+else:
+    from validation import auc, chronological_masks, calibration_summary, period_summary, cost_scenarios
+    from corporate_actions import candidates, apply_actions
 import requests
 import websocket
 
@@ -91,7 +97,7 @@ def fetch(ticker, assetclass="stocks"):
         z = np.load(path)
         # Se reutiliza 3 días: para un entrenamiento semanal no cambia nada y evita 25 minutos de descarga.
         if (date.today() - date.fromisoformat(str(z["fetched"]))).days <= 3:
-            return {k: z[k] for k in ("d", "o", "h", "l", "c", "v")}
+            return attach_split_evidence(ticker,{k: z[k] for k in ("d", "o", "h", "l", "c", "v")})
     url = ("https://api.nasdaq.com/api/quote/" + ticker + "/historical?assetclass=" + assetclass +
            "&fromdate=" + FROM + "&todate=" + today + "&limit=9999")
     for attempt in range(4):
@@ -113,39 +119,36 @@ def fetch(ticker, assetclass="stocks"):
                 arr[k] = np.array([num(x.get(f)) for x in rows], dtype=np.float64)
             CACHE.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(path, fetched=today, **arr)
-            return arr
+            return attach_split_evidence(ticker,arr)
         except (requests.RequestException, ValueError, KeyError):
             time.sleep(2 * (attempt + 1))
     return None
 
 
+def attach_split_evidence(ticker,a):
+    a['splitEvents']=[]
+    if not candidates(a):
+        return a
+    path=CACHE/("splits_"+ticker.replace("/","_")+".json")
+    try:
+        cached=json.loads(path.read_text()) if path.exists() else None
+        if cached and (date.today()-date.fromisoformat(cached['fetched'])).days<=3:
+            a['splitEvents']=cached['events'];return a
+        r=requests.get("https://query1.finance.yahoo.com/v8/finance/chart/"+requests.utils.quote(ticker,safe='')+"?interval=1d&range=10y&events=splits",headers=HEADERS,timeout=8)
+        r.raise_for_status()
+        result=(r.json().get('chart',{}).get('result') or [])[0]
+        events=[]
+        for event in (result.get('events',{}).get('splits') or {}).values():
+            events.append({'date':datetime.fromtimestamp(int(event['date']),timezone.utc).strftime('%Y-%m-%d'),'numerator':event['numerator'],'denominator':event['denominator']})
+        a['splitEvents']=events
+        CACHE.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps({'fetched':date.today().isoformat(),'events':events}))
+    except (requests.RequestException,ValueError,KeyError,IndexError,TypeError,OSError):
+        pass  # absence of evidence never authorizes rewriting historical prices
+    return a
+
+
 def fix_splits(a):
-    """Ajusta splits/contrasplits: un salto de cierre a cierre de casi exactamente 1/k o k
-    (k = 2…50) con la apertura ya en el nivel nuevo se trata como split y se reescala lo anterior."""
-    c, o = a["c"], a["o"]
-    factors = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50]
-    n = len(c)
-    adj = np.ones(n)
-    splits = 0
-    for i in range(1, n):
-        if not (c[i - 1] > 0 and c[i] > 0 and o[i] > 0):
-            continue
-        r = c[i] / c[i - 1]
-        ro = o[i] / c[i - 1]
-        for k in factors:
-            for target in (1.0 / k, float(k)):
-                if abs(r / target - 1) < 0.06 and abs(ro / target - 1) < 0.06:
-                    adj[:i] *= target
-                    splits += 1
-                    break
-            else:
-                continue
-            break
-    if splits:
-        for k in ("o", "h", "l", "c"):
-            a[k] = a[k] * adj
-        a["v"] = a["v"] / adj
-    return splits
+    return apply_actions(a,a.get('splitEvents',[]))['verifiedSplits']
 
 
 # ---------- 2. Factores ----------
@@ -206,11 +209,16 @@ def features(a):
     with np.errstate(all="ignore"):
         hi = np.nanmax(win, axis=1)
         lo = np.nanmin(win, axis=1)
-    fwd = lambda k: np.concatenate([c[k:] / c[:-k] - 1, np.full(k, np.nan)]) * 100
+    def fwd(k):
+        out=np.concatenate([c[k:]/c[:-k]-1,np.full(k,np.nan)])*100
+        out[~a.get('forwardValid'+str(k),np.ones(n,dtype=bool))]=np.nan
+        return out
     return {
+        "featureValid": a.get("featureValid",np.ones(n,dtype=bool)),
         "change": ch, "relVolume": relv, "rsi": rsi, "adx": adx, "price": c, "ema20": e20, "ema50": e50,
         "perfWeek": week, "perfMonth": month, "avgVolume": avg10, "atrPct": atr / c * 100,
         "fromHigh": (c / hi - 1) * 100, "fromLow": (c / lo - 1) * 100,
+        "labelEnd": np.array(a["d"])[np.minimum(np.arange(n)+HORIZON,n-1)],
         "fwd1": fwd(1), "fwd5": fwd(5), "fwd20": fwd(20),
     }
 
@@ -262,16 +270,6 @@ def predict(B, b, W):
     z = b + sum(W[j][B[:, j]] for j in range(B.shape[1]))
     return 1 / (1 + np.exp(-z))
 
-
-def auc(score, y):
-    order = np.argsort(score)
-    ranks = np.empty(len(score))
-    ranks[order] = np.arange(1, len(score) + 1)
-    pos = y == 1
-    npos, nneg = pos.sum(), (~pos).sum()
-    if not npos or not nneg:
-        return None
-    return float((ranks[pos].sum() - npos * (npos + 1) / 2) / (npos * nneg))
 
 
 def deciles(score, excess, k=10):
@@ -387,10 +385,9 @@ def tr_history(isins):
     return out
 
 
-def train_model(X, Y, D, EX):
+def train_model(X, Y, D, EX, label_ends):
     """Valida fuera de muestra (hasta SPLIT_AT / después) y reentrena con todo. Devuelve el modelo y su validación."""
-    train = D < SPLIT_AT
-    test = ~train
+    train, test = chronological_masks(D, label_ends, SPLIT_AT)
     edges = fit_bins(X[train])
     b, W = train_logit(to_bins(X[train], edges), Y[train], edges)
     p_test = predict(to_bins(X[test], edges), b, W)
@@ -399,7 +396,7 @@ def train_model(X, Y, D, EX):
     b_all, W_all = train_logit(to_bins(X, edges_all), Y, edges_all)
     return edges_all, b_all, W_all, {"auc": round(auc(p_test, Y[test]), 4), "test": [min(D[test].tolist()), max(D[test].tolist())],
                                      "topDecile": dec[-1], "bottomDecile": dec[0], "baseBeatRate": round(float(Y[test].mean() * 100), 1),
-                                     "deciles": dec}
+                                     "deciles": dec, "purgedLabels": int(((D < SPLIT_AT) & ~train).sum()), "calibration": calibration_summary(p_test, Y[test]), "byYear":period_summary(D[test],p_test,Y[test],EX[test]), "costScenarios":cost_scenarios(p_test,EX[test])}
 
 
 def train_tr():
@@ -425,11 +422,12 @@ def train_tr():
         n = len(a["c"])
         idx = np.arange(n)
         with np.errstate(all="ignore"):
-            k = np.where((idx >= 60) & (idx + HORIZON < n) & np.isfinite(f["fwd5"]) & np.isfinite(f["change"]) & (f["price"] > 0.2))[0]
+            k = np.where(f["featureValid"] & (idx >= 60) & (idx + HORIZON < n) & np.isfinite(f["fwd5"]) & np.isfinite(f["change"]) & (f["price"] > 0.2))[0]
         for i in k:
             rows.setdefault(str(a["d"][i]), []).append((isin, f, i))
     # Objetivo: batir a la mediana del universo LSX ese día (sin ruido de divisa frente al S&P).
-    Xs, EXs, Ds, CHs = [], [], [], []
+    Xs, EXs, Ds, CHs, ENDs = [], [], [], [], []
+    tr_quality={"ambiguousJumps":sum(a["corporateQuality"]["ambiguousJumps"] for a in data.values()),"eventSource":"no independently mapped LSX split events"}
     for day, items in rows.items():
         if len(items) < 30:
             continue
@@ -444,27 +442,30 @@ def train_tr():
             Xs.append(row)
             EXs.append(r - med)
             Ds.append(day)
+            ENDs.append(f["labelEnd"][i])
             CHs.append(f["change"][i])
     X = np.array(Xs, dtype=np.float64)
     # LSX no publica el volumen negociado: los factores que casi nunca existen se quitan del modelo
     # (en la app, un factor que el modelo no tiene simplemente no suma).
-    cols = [j for j in range(X.shape[1]) if np.isfinite(X[:, j]).mean() >= 0.8]
+    train_rows=np.array(Ds) < SPLIT_AT
+    cols = [j for j in range(X.shape[1]) if np.isfinite(X[train_rows, j]).mean() >= 0.8]
     names = [MODEL_FEATURES[j] for j in cols]
     X = X[:, cols]
     ok = np.all(np.isfinite(X), axis=1)
     X = X[ok]
     EX = np.array(EXs)[ok]
     D = np.array(Ds)[ok]
+    label_ends = np.array(ENDs)[ok]
     CHs = list(np.array(CHs)[ok])
     log("LSX: factores usados", names, "· filas", len(X))
     if len(X) < 20000:
         log("::warning::Pocas filas de LSX:", len(X))
         return None
     Y = (EX > 0).astype(np.float64)
-    edges, b, W, val = train_model(X, Y, D, EX)
+    edges, b, W, val = train_model(X, Y, D, EX, label_ends)
     model = {"version": datetime.now(timezone.utc).strftime("%Y.%m.%d"), "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "target": "Probabilidad de batir a la mediana de Trade Republic / LSX en las 5 sesiones siguientes",
-             "market": "tr", "horizon": HORIZON, "intercept": round(b, 5), "baseRate": round(float(Y.mean()), 4),
+             "market": "tr", "corporateActions":tr_quality, "horizon": HORIZON, "intercept": round(b, 5), "baseRate": round(float(Y.mean()), 4),
              "features": [{"name": nme, "edges": [round(float(e), 5) for e in edges[j]], "weights": [round(float(w), 5) for w in W[j]]}
                           for j, nme in enumerate(names)],
              "validation": {k: v for k, v in val.items() if k != "deciles"}, "universe": len(data), "rows": int(len(X)),
@@ -494,12 +495,14 @@ def main():
     log("Históricos descargados:", len(got), "en", round(time.time() - t0), "s")
 
     ENG_KEYS = ["price", "change", "relVolume", "rsi", "adx", "ema20", "ema50", "perfWeek", "perfMonth", "avgVolume"]
-    Xs, EXs, Ds, CHs, ENGs = [], [], [], [], []
+    Xs, EXs, Ds, CHs, ENGs, ENDs = [], [], [], [], [], []
     crashes = []
     splits_total = 0
+    ambiguous_total=0;excluded_total=0
     spy_days = np.array(spy["d"])
     for t, a in got:
         splits_total += fix_splits(a)
+        ambiguous_total+=a["corporateQuality"]["ambiguousJumps"];excluded_total+=a["corporateQuality"]["excludedFeatureRows"]
         f = features(a)
         n = len(a["c"])
         days = a["d"]
@@ -517,7 +520,7 @@ def main():
         idx = np.arange(n)
         with np.errstate(all="ignore"):
             traded = f["price"] * f["avgVolume"]
-            base = (idx >= 60) & (idx < n - 1) & np.isfinite(f["change"]) & np.isfinite(traded) & (traded >= 200000) & (f["price"] >= 0.5)
+            base = f["featureValid"] & (idx >= 60) & (idx < n - 1) & np.isfinite(f["change"]) & np.isfinite(traded) & (traded >= 200000) & (f["price"] >= 0.5)
             # Caídas bruscas: todos los días, sin muestreo.
             prior = ((1 + f["perfMonth"] / 100) / (1 + f["change"] / 100) - 1) * 100
             cm = base & (f["change"] <= -25) & (f["change"] >= -95) & ~(prior <= -25)
@@ -544,19 +547,20 @@ def main():
             Xs.append(M.astype(np.float32))
             EXs.append((f["fwd5"][k] - spy_fwd_arr[HORIZON][k]).astype(np.float32))
             Ds.append(days[k])
+            ENDs.append(f["labelEnd"][k])
             CHs.append(f["change"][k].astype(np.float32))
             ENGs.append(np.column_stack([f[key][k] for key in ENG_KEYS]).astype(np.float32))
     X = np.concatenate(Xs).astype(np.float64)
     EX = np.concatenate(EXs).astype(np.float64)
     Y = (EX > 0).astype(np.float64)
     D = np.concatenate(Ds)
+    label_ends = np.concatenate(ENDs)
     CH = np.concatenate(CHs).astype(np.float64)
     ENG = np.concatenate(ENGs)
     log("Factores calculados en", round(time.time() - t0), "s")
     log("Filas:", len(X), "· caídas bruscas:", len(crashes), "· splits corregidos:", splits_total)
 
-    train = D < SPLIT_AT
-    test = ~train
+    train, test = chronological_masks(D, label_ends, SPLIT_AT)
     edges = fit_bins(X[train])
     Btr, Bte = to_bins(X[train], edges), to_bins(X[test], edges)
     b, W = train_logit(Btr, Y[train], edges)
@@ -572,7 +576,7 @@ def main():
         "period": {"train": [min(D[train].tolist()), max(D[train].tolist())], "test": [min(D[test].tolist()), max(D[test].tolist())]},
         "rows": {"train": int(train.sum()), "test": int(test.sum())},
         "baseBeatRate": round(float(Y[test].mean() * 100), 1),
-        "model": {"auc": round(auc_model, 4), "deciles": deciles(p_test, EX[test])},
+        "model": {"auc": round(auc_model, 4), "deciles": deciles(p_test, EX[test]), "calibration": calibration_summary(p_test,Y[test]), "purgedLabels": int(((D<SPLIT_AT)&~train).sum()), "byYear":period_summary(D[test],p_test,Y[test],EX[test]), "costScenarios":cost_scenarios(p_test,EX[test])},
         "engine": {"auc": round(auc(eng, y_s), 4), "deciles": deciles(eng, ex_s), "aucModelSameSample": round(auc(p_s, y_s), 4)},
         "byChange": bucket_stats(CH[test], EX[test], [-100, -8, 0, 2, 5, 8, 15, 30, 1000],
                                  ["< -8 %", "-8 a 0 %", "0 a 2 %", "2 a 5 %", "5 a 8 %", "8 a 15 %", "15 a 30 %", "> 30 %"]),
@@ -595,7 +599,7 @@ def main():
         "features": [{"name": nme, "edges": [round(float(e), 5) for e in edges_all[j]],
                       "weights": [round(float(w), 5) for w in W_all[j]]} for j, nme in enumerate(MODEL_FEATURES)],
         "validation": {"auc": report_radar["model"]["auc"], "engineAuc": report_radar["engine"]["auc"],
-                       "test": report_radar["period"]["test"], "topDecile": report_radar["model"]["deciles"][-1],
+                       "test": report_radar["period"]["test"], "calibration": report_radar["model"]["calibration"], "purgedLabels": report_radar["model"]["purgedLabels"], "topDecile": report_radar["model"]["deciles"][-1],
                        "bottomDecile": report_radar["model"]["deciles"][0], "baseBeatRate": report_radar["baseBeatRate"]},
         "universe": len(got), "rows": int(len(X)),
     }
@@ -616,10 +620,10 @@ def main():
             ("> 10 M$/día", lambda e: e["traded"] >= 1e7))},
         "byRsi": {lab: crash_stats(sel(fn), lab) for lab, fn in (
             ("RSI < 25", lambda e: not math.isnan(e["rsi"]) and e["rsi"] < 25), ("RSI ≥ 25", lambda e: not math.isnan(e["rsi"]) and e["rsi"] >= 25))},
-        "note": "Solo valores que cotizan hoy: los que quebraron después no están, así que los rebotes reales son algo peores que estos.",
+        "note": "Se excluyen ventanas con saltos corporativos sin confirmar (también puede excluir caídas reales). Solo valores que cotizan hoy: los que quebraron después no están, así que los rebotes reales son algo peores que estos.",
     }
-    report = {"generatedAt": model["trainedAt"], "source": "Nasdaq (histórico diario, gratuito), " + FROM + " a hoy",
-              "universe": len(got), "splitsFixed": splits_total, "radar": report_radar, "crash": report_crash,
+    report = {"limitations":["Current-listed universe only: survivorship bias", "Ambiguous corporate-action windows excluded, including possible real crashes", "Overlapping 5-session labels are not independent trades", "Cost scenarios are constant round-trip basis points, not an executable portfolio backtest"],"generatedAt": model["trainedAt"], "source": "Nasdaq (histórico diario, gratuito), " + FROM + " a hoy",
+              "universe": len(got), "splitsFixed": splits_total, "corporateActions":{"verifiedSplits":splits_total,"ambiguousJumps":ambiguous_total,"excludedFeatureRows":excluded_total,"eventSource":"Yahoo Finance split events"}, "radar": report_radar, "crash": report_crash,
               "seconds": round(time.time() - t0)}
     OUT_MODEL.parent.mkdir(parents=True, exist_ok=True)
     OUT_MODEL.write_text(json.dumps(model, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -628,9 +632,12 @@ def main():
     log(json.dumps({"radar": {k: report_radar[k] for k in ("baseBeatRate", "byChange")}, "crash_all": report_crash["all"]}, ensure_ascii=False))
     if os.environ.get("QUANT_SKIP_TR") != "1":
         try:
-            train_tr()
+            tr_model=train_tr()
+            report["trTraining"]={"status":"completed" if tr_model else "insufficient-data","trainedAt":tr_model.get("trainedAt") if tr_model else None}
         except Exception as error:  # el modelo de EE. UU. ya está guardado: el de LSX no debe tumbarlo
+            report["trTraining"]={"status":"failed","error":str(error)[:180]}
             log("::warning::Modelo LSX no entrenado:", repr(error))
+    OUT_REPORT.write_text(json.dumps(report,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
 
 
 if __name__ == "__main__":

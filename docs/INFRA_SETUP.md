@@ -71,18 +71,13 @@ continúa normalmente.
 
 ## 4. Rate limiting distribuido de Cloudflare
 
-El Worker mantiene limitación en memoria como fallback y ya tiene activos en
-`wrangler.jsonc` dos bindings de Workers Rate Limiting:
+El Worker declara límites distribuidos por ruta y mantiene un limitador en memoria como respaldo. Las rutas públicas utilizan `MARKET_RATE_LIMITER` y variantes para 12, 20, 30, 40 y 60 solicitudes/minuto; las de IA utilizan límites de 10 o 20; el resto de la API, 180.
 
-- `AI_RATE_LIMITER`: 20 solicitudes/minuto.
-- `API_RATE_LIMITER`: 180 solicitudes/minuto.
+Las claves previas a la autenticación usan la IP recibida de Cloudflare. Estos límites son aproximados y por ubicación de Cloudflare; no son una cuota global estricta.
 
-Las rutas autenticadas se agrupan por UID del token Firebase cuando está
-disponible. Las rutas públicas de mercado conservan por ahora el limitador local
-para evitar penalizar a varios móviles que compartan una misma IP/NAT.
+Los administradores se determinan exclusivamente mediante `ADMIN_EMAILS` (correos separados por comas). Si no está configurada o está vacía, ninguna cuenta tiene administración. Las copias de seguridad no incluyen ni modifican esta variable. `keep_vars: true` conserva las variables configuradas en el panel al desplegar.
 
-El código también entiende `MARKET_RATE_LIMITER` si en el futuro se decide
-aplicar un límite distribuido a las cotizaciones públicas.
+La migración `0037_financial_revisions.sql` añade control de concurrencia de las operaciones financieras. Aplicarla con el procedimiento de migraciones existente. El código conserva inicialización compatible para instalaciones actualizadas desde versiones anteriores.
 
 ## 5. Seguridad
 
@@ -95,3 +90,11 @@ Nunca guardar en el repositorio:
 
 El workflow `Auditoria de seguridad` revisa código actual e historial para
 detectar credenciales embebidas.
+
+## Preparación del esquema principal
+
+El cron independiente `* * * * 1-7` prepara un grupo de tablas por ejecución, con exclusión mutua y reintento si falla. No sustituye ni borra las migraciones históricas. Hasta que los 14 pasos terminen, se conservan las actualizaciones compatibles al atender peticiones.
+
+La marca de preparación depende de una huella de las funciones de esquema: cambiar una de ellas invalida la marca anterior automáticamente. Cuando está completa, una instancia nueva del backend comprueba la marca y omite el DDL del esquema principal. `/api/backend/status` expone `schema.ready`, `completed` y `total` sin datos de cuenta ni secretos.
+
+Esto cubre tablas principales de cuentas/carteras. Los esquemas de caché de Turso, traducciones y algunos trabajos auxiliares mantienen su inicialización propia; no deben darse por migrados por esta marca.

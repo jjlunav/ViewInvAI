@@ -13,6 +13,11 @@
  const tone=v=>!Number.isFinite(+v)||v===null||Math.abs(v)<0.005?'':v>0?'positive':'negative';
  const qty=v=>Number(v).toLocaleString('es-ES',{maximumFractionDigits:4});
  const day=d=>{const x=new Date(String(d).slice(0,10)+'T12:00:00Z');return isNaN(x)?'—':x.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})};
+ function twoMonthsAfter(value){
+  const d=new Date(value),day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+2);
+  d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));
+  d.setHours(0,0,0,0);d.setDate(d.getDate()+1);return d;
+ }
  const LIMIT_720=50000;
  const thisYear=new Date().getFullYear();
  let year=thisYear,cache={},loading=null;
@@ -76,14 +81,14 @@
 
  function beforeSellHtml(){
   if(year!==thisYear||typeof P().getPositionsDetail!=='function')return'';
-  const now=Date.now(),rows=P().getPositionsDetail().filter(p=>p.pnlEur!==null&&p.pnlEur<0&&p.lastBuyAt&&now-new Date(p.lastBuyAt).getTime()<61*864e5);
+  const now=Date.now(),rows=P().getPositionsDetail().filter(p=>p.pnlEur!==null&&p.pnlEur<0&&p.lastBuyAt&&now<twoMonthsAfter(p.lastBuyAt).getTime());
   if(!rows.length)return'';
   const item=p=>{
-   const free=new Date(new Date(p.lastBuyAt).getTime()+61*864e5);
-   return '<div class="tax-row" data-open-stock="'+esc(p.stockKey)+'" data-stock-prefer-tr="'+(p.preferTr?'1':'0')+'" role="button" tabindex="0"><div><b>'+esc(p.ticker)+'</b><small>'+esc(p.name)+'</small></div><div class="tax-row-num"><span class="negative">'+signed(p.pnlEur)+'</span><small>sin bloqueo desde '+esc(free.toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</small></div></div>';
+   const free=twoMonthsAfter(p.lastBuyAt);
+   return '<div class="tax-row" data-open-stock="'+esc(p.stockKey)+'" data-stock-prefer-tr="'+(p.preferTr?'1':'0')+'" role="button" tabindex="0"><div><b>'+esc(p.ticker)+'</b><small>'+esc(p.name)+'</small></div><div class="tax-row-num"><span class="negative">'+signed(p.pnlEur)+'</span><small>revisar desde '+esc(free.toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))+'</small></div></div>';
   };
   return '<section class="tax-card tax-before-sell"><header><small>ANTES DE VENDER</small><h2>Regla de los dos meses</h2></header>'+
-   '<p class="tax-hint">Compraste estos valores hace menos de dos meses y ahora van en pérdidas. Si los vendes antes de la fecha indicada, esa pérdida no se podrá compensar este año.</p>'+
+   '<p class="tax-hint">Compraste estos valores hace menos de dos meses y ahora van en pérdidas. La fecha indica cuándo revisar la ventana de compras anteriores; el tratamiento depende de los títulos que conserves y de las recompras posteriores.</p>'+
    rows.map(item).join('')+'</section>';
  }
 
@@ -182,12 +187,18 @@
  function exportCsv(r){
   const head=['Fecha','Valor','ISIN','Cantidad','Divisa','Precio','Comisión','Tipo BCE','Transmisión EUR','Adquisición EUR','Resultado EUR','Pérdida diferida EUR','Diferida integrada EUR','Computable EUR','Bróker'];
   const n=v=>v===null||v===undefined?'':String(Math.round(Number(v)*100)/100).replace('.',',');
-  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.releasedLossEur),n(s.computableEur),s.broker].map(q).join(';')));
+  // Text fields from imports must stay literal in spreadsheet readers. Keep numeric
+  // fields separate so genuine negative amounts remain usable in calculations.
+  const q=(v,text=false)=>{
+   let value=String(v??'');
+   if(text&&(/^[\s\uFEFF]*[=+\-@＝＋－＠]/u.test(value)||/^[\t\r\n]/.test(value)))value="'\t"+value;
+   return '"'+value.replace(/"/g,'""')+'"';
+  };
+  const lines=[head.join(';')].concat((r.sales||[]).map(s=>[s.date,s.ticker,s.isin,String(s.quantity).replace('.',','),s.currency,String(s.price).replace('.',','),n(s.fees),s.fxRate?String(s.fxRate).replace('.',','):'1',n(s.proceedsEur),n(s.costEur),n(s.gainEur),n(s.blockedLossEur),n(s.releasedLossEur),n(s.computableEur),s.broker].map((v,i)=>q(v,[0,1,2,4,14].includes(i))).join(';')));
   const divs=(r.dividends&&r.dividends.items)||[];
   if(divs.length){
    lines.push('','Dividendos','Fecha;Valor;ISIN;País;Divisa;Tipo BCE;Bruto EUR;Retención origen EUR;Deducible EUR;Retención España EUR;Neto EUR');
-   divs.forEach(x=>lines.push([x.date,x.ticker||x.name,x.isin,x.country,x.currency,x.fxRate?String(x.fxRate).replace('.',','):'1',n(x.grossEur),n(x.withholdingEur),n(x.deductibleEur),n(x.withholdingEsEur),n(x.netEur)].map(q).join(';')));
+   divs.forEach(x=>lines.push([x.date,x.ticker||x.name,x.isin,x.country,x.currency,x.fxRate?String(x.fxRate).replace('.',','):'1',n(x.grossEur),n(x.withholdingEur),n(x.deductibleEur),n(x.withholdingEsEur),n(x.netEur)].map((v,i)=>q(v,i<5)).join(';')));
   }
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='viewinvai-fiscal-'+r.year+'.csv';
@@ -233,7 +244,7 @@
   if(del){
    if(!confirm('¿Borrar este dividendo?'))return;
    del.disabled=true;
-   window.ViewInvAIAuth.apiFetch('/api/dividends/'+encodeURIComponent(del.dataset.taxDivDel),{method:'DELETE'}).then(()=>{cache={};render(true)}).catch(()=>{del.disabled=false});
+   window.ViewInvAIAuth.apiFetch('/api/dividends/'+encodeURIComponent(del.dataset.taxDivDel),{method:'DELETE'}).then(async res=>{if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.error||'No se pudo borrar el dividendo.')}cache={};render(true)}).catch(err=>{alert(err.message);del.disabled=false});
   }
  });
  document.addEventListener('submit',async e=>{

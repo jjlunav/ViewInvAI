@@ -433,6 +433,7 @@ async function apiFetch(path, options = {}, retry = true) {
   if (!token) throw new Error("Debes iniciar sesión.");
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", "Bearer " + token);
+  if(String(options.method||"GET").toUpperCase()==="POST"&&/^\/api\/(?:transactions|positions|fund-transactions)$/.test(String(path))&&!headers.has("Idempotency-Key"))headers.set("Idempotency-Key",crypto.randomUUID());
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const target = resolvedApiUrl(path);
   const requestOptions = Object.assign({}, options, { headers });

@@ -1,1 +1,7 @@
-0.6.78 · Todo contrastado con IA externa y noticias de hoy (Radar, Objetivo, posiciones, ficha y chat), Finnhub y Google News, revisión de datos en Fiscal y Administración completa · 2026-10-08T23:04:54Z
+0.7.41 · Release compatible con la firma instalada; caché web/offline y validación de datos · 2026-10-28
+
+Rebuild release APK with current Screener navigation smoke.
+
+Build 0.7.42: literal fiscal CSV text and failed-delete feedback.
+
+Build 0.7.43: goal renewal, deadline demand and fee-inclusive risk limits.

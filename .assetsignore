@@ -15,3 +15,13 @@ package.json
 ANDROID.md
 google-services.json
 firebase/
+
+financial-store.js
+package-lock.json
+node_modules/
+backup-store.js
+.wrangler/
+mobile-shell/
+mobile-loader/
+portfolio-ledger.js
+core-schema.js

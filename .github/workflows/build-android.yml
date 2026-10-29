@@ -108,7 +108,7 @@ jobs:
           keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA1:|SHA256:|Valid from:"
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Build packaged mobile frontend
         run: |
@@ -211,8 +211,13 @@ jobs:
                 }
                 const more=document.querySelector('[data-mobile-more]');
                 more?.click();
-                if(!document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]'))return fail('funds missing from More menu');
-                document.querySelector('#mobileMoreSheet [data-mobile-view="funds"]')?.click();
+                const screener=document.querySelector('#mobileMoreSheet [data-mobile-view="screener"]');
+                if(!screener)return fail('screener missing from More menu');
+                screener.click();
+                document.querySelector('[data-scr-asset-toggle]')?.click();
+                const funds=document.querySelector('[data-scr-asset="funds:fund"]');
+                if(!funds)return fail('funds missing from screener asset picker');
+                funds.click();
                 if(!document.querySelector('#view-funds.active'))return fail('funds view did not open');
                 const stock=window.ViewInvAI.getAllStocks().find(s=>s&&(s.tvSymbol||s.ticker));
                 if(!stock)return fail('no usable stock');
@@ -359,7 +364,7 @@ jobs:
               }
           """
               text = text.replace("    buildTypes {", signing + "\n    buildTypes {", 1)
-              text = text.replace("    buildTypes {\n", "    buildTypes {\n        debug {\n            signingConfig signingConfigs.viewinvaiDebug\n        }\n", 1)
+              text = text.replace("    buildTypes {\n", "    buildTypes {\n        release {\n            signingConfig signingConfigs.viewinvaiDebug\n            debuggable false\n            minifyEnabled false\n        }\n        debug {\n            signingConfig signingConfigs.viewinvaiDebug\n        }\n", 1)
 
           path.write_text(text, encoding="utf-8")
           print(f"Android versionName={version} versionCode={version_code} with stable ViewInvAI signing")
@@ -429,9 +434,9 @@ jobs:
       - name: Apply ViewInvAI Android icon
         run: python3 scripts/apply_android_branding.py
 
-      - name: Build debug APK
+      - name: Build signed release APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
       - name: Verify generated Google OAuth resources
         shell: bash
@@ -471,7 +476,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -x "$AAPT"
           "$AAPT" dump permissions "$APK" | tee /tmp/viewinvai-apk-permissions.txt
@@ -518,13 +523,17 @@ jobs:
             echo "::error::Final APK does not explicitly disable cleartext traffic"
             exit 1
           fi
-          echo "Final APK permission and cleartext audit: OK"
+          if grep -E 'debuggable.*0xffffffff' /tmp/viewinvai-apk-manifest.txt >/dev/null; then
+            echo "::error::Release APK is debuggable"
+            exit 1
+          fi
+          echo "Final APK permission, cleartext and non-debuggable audit: OK"
 
       - name: Verify APK signer
         shell: bash
         run: |
           set -euo pipefail
-          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/apk-signature.txt
@@ -538,14 +547,14 @@ jobs:
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
           mkdir -p dist
-          APK="dist/ViewInvAI-v${VERSION}-build${GITHUB_RUN_NUMBER}-debug.apk"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          APK="dist/ViewInvAI-v${VERSION}-build${GITHUB_RUN_NUMBER}-release.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ViewInvAI-Android-debug
+          name: ViewInvAI-Android-release
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 14

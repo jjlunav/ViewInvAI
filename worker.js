@@ -1,4 +1,5 @@
-import { handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, goalScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
+import { CORE_SCHEMA_CRON } from "./core-schema.js";
+import { prepareCoreSchema, handleBackendApi, runScheduledPortfolioAnalysis, runDailyPortfolioDigest, runScheduledBrokerVerification, runRadarScoreboard, radarScoreboardSummary, crashScoreboardSummary, goalScoreboardSummary, runCatalystReader, catalystReadsFor, stockAttentionRows, fundAttentionCandidates } from "./backend.js";
 import { cryptoQuotes, cryptoChart, cryptoCatalog, alphaTokens, alphaChart } from "./crypto-server.js";
 
 
@@ -80,7 +81,8 @@ function requestActorKey(request){
   return "ip:"+requestIdentity(request);
 }
 async function enforcedRateLimit(request,env,name,limit,windowMs,bindingName){
-  const binding=bindingName&&env&&env[bindingName];
+  const exactName=(bindingName==="MARKET_RATE_LIMITER"&&limit!==90)||(bindingName==="AI_RATE_LIMITER"&&limit===10)?bindingName+"_"+limit:bindingName;
+  const binding=exactName&&env&&env[exactName];
   if(binding&&typeof binding.limit==="function"){
     try{
       const result=await binding.limit({key:name+":"+requestActorKey(request)});
@@ -160,7 +162,7 @@ function nativePreflightResponse(request) {
 }
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com https://bin.bnbstatic.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'sha256-I1CCJ6PcVgzWeenUaz6vA4JeevFlg4q0OUI/8NPimSs=' 'sha256-umdLSd8y/a6gT/VkFrgZSKKiC7PmlyoThlI8JN7OOHg=' https://www.gstatic.com https://s3.tradingview.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.tradingview.com https://s3.tradingview.com https://coin-images.coingecko.com https://assets.coingecko.com https://bin.bnbstatic.com; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com https://firebase.googleapis.com wss://api.traderepublic.com https://*.tradingview.com wss://*.tradingview.com; frame-src https://accounts.google.com https://viewinvai.firebaseapp.com https://*.tradingview.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'self'; media-src 'none'; upgrade-insecure-requests",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -2358,7 +2360,7 @@ export default {
     // aquí: fetch y <script type="module"> exigen CORS. Sin ese origen se sirven tal cual.
     // Las fuentes del diseño se piden en modo CORS: la APK (origen https://localhost) las necesita con permiso.
     if ((NATIVE_LIVE_SHELL_PATHS.has(url.pathname) || url.pathname.startsWith("/fonts/")) && request.method === "GET") {
-      const page = await env.ASSETS.fetch(request);
+      const page = secureResponse(await env.ASSETS.fetch(request), url.pathname);
       return trustedNativeOrigin(request) ? nativeCorsResponse(request, page) : page;
     }
 
@@ -2561,6 +2563,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    if(controller?.cron===CORE_SCHEMA_CRON){ctx.waitUntil(prepareCoreSchema(env).catch(error=>console.warn("Core schema preparation failed",String(error?.message||error))));return;}
     // Resumen diario de carteras y objetivos (08:00 y 22:00 en España por defecto): su propia
     // ejecución cada 5 min, con su propio margen de CPU y de peticiones.
     if(controller&&controller.cron===DIGEST_CRON){

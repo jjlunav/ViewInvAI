@@ -45,21 +45,21 @@ Requisitos:
 Comandos:
 
 ```bash
-npm install
+npm ci
 npx cap add android
 cd android
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
 APK generado:
 
 ```text
-android/app/build/outputs/apk/debug/app-debug.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
 ## GitHub Actions
 
-El workflow `.github/workflows/build-android.yml` genera una APK instalable al cambiar código en `main`, o mediante ejecución manual. El artefacto incluye versión y número de compilación, y el `versionCode` aumenta en cada ejecución. Conserva la firma estable de Firebase. La APK se descarga desde el artefacto `ViewInvAI-Android-debug` de GitHub Actions y debe instalarse en el dispositivo; no se instala silenciosamente.
+El workflow `.github/workflows/build-android.yml` genera una APK instalable al cambiar `.github/apk-build-trigger` en `main`, o mediante ejecución manual. El artefacto incluye versión y número de compilación, y el `versionCode` aumenta en cada ejecución. Conserva la firma estable de Firebase. La APK se descarga desde el artefacto `ViewInvAI-Android-release` de GitHub Actions y debe instalarse en el dispositivo; no se instala silenciosamente.
 
 El workflow de frontend prueba por separado:
 
@@ -83,3 +83,9 @@ Android recibe del mismo servicio que la web:
 - cambios del backend compartido.
 
 Los cambios de la tarjeta compartida se aplican en ambas plataformas. Los cambios específicos de navegación o disposición nativa siguen aislados en sus archivos Android.
+
+## Firma y actualización
+
+La distribución instalable se compila como `release` y se comprueba que no permita depuración. Conserva el certificado que ya tienen las instalaciones y que está registrado en Firebase: cambiarlo rompería las actualizaciones y el inicio de sesión.
+
+El certificado heredado tiene origen de depuración; compilar en release no lo convierte en un certificado de publicación para Google Play. La migración a una clave de distribución y su registro/rotación requieren una operación independiente, compatible con las instalaciones actuales. El workflow admite `ANDROID_DEBUG_KEYSTORE_BASE64` como secreto y mantiene temporalmente la recuperación de la caché existente para no perder la firma. No genera ni publica otra clave.
