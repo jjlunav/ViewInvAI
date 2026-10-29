@@ -253,7 +253,10 @@ function goalExecutionQuote(stock,preferTr,side,fxUsdEur,brokerName="",quantity=
   // Para registrar la orden se sigue exigiendo la cotización reciente (quoteFresh).
   const usRef=preferTr?goalUsReference(stock,fxUsdEur):null;
   // En LSX, una acción de EE. UU. con cotización regular reciente allí también cuenta como «en vivo» para decidir.
-  const quoteRecent=direct&&((ageMs!==null&&ageMs<=900000)||!!(usRef&&usRef.recent));
+  // Una línea de LSX sin operaciones sigue cotizando (horquilla del creador de mercado): basta con que el socket la
+  // tenga suscrita y haya enviado su dato en esta conexión, aunque el último cruce tenga más de 15 minutos.
+  const trSocketFresh=!!(preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.trLiveFresh==="function"&&window.ViewInvAI.trLiveFresh(portfolioStockKey(stock)));
+  const quoteRecent=direct&&((ageMs!==null&&ageMs<=900000)||!!(usRef&&usRef.recent)||trSocketFresh);
   const actionSide=String(side||"BUY").toUpperCase();
   const bookUsable=actionSide==="SELL"?bid!==null:(bid!==null&&ask!==null&&ask>=bid);
   let price=null,orderType="LIMITE",instruction="",immediate=false;
@@ -1663,7 +1666,10 @@ function goalEngineInput(metrics,positionRows){
   const committed=goalTodayCommitments(metrics.portfolio&&metrics.portfolio.id,goal),topRadar=radar.filter(r=>!held.has(goalStockKey(r.s))).slice(0,40);
   const inTop=new Set(topRadar.map(r=>goalStockKey(r.s)));
   const fixedRows=committed.filter(c=>!inTop.has(c.key)).map(c=>{const hit=radarByKey.get(c.key);if(hit)return hit;const s=stockByKey(c.key);return s?{s,score:c.score??60,quality:70,tier:"watch",speculative:false}:null}).filter(Boolean);
-  const candidates=idle?[]:[...topRadar,...fixedRows.filter(r=>!held.has(goalStockKey(r.s)))].map(r=>{
+  const rowsToQuote=idle?[]:[...topRadar,...fixedRows.filter(r=>!held.has(goalStockKey(r.s)))];
+  // Cotización de LSX de todas las candidatas aunque no se pinten (si no, se podaban y salían «sin cotización»).
+  if(preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal",rowsToQuote.map(r=>portfolioStockKey(r.s)));
+  const candidates=rowsToQuote.map(r=>{
     const q=goalExecutionQuote(r.s,preferTr,"BUY",metrics.fxUsdEur,"",1);
     const market=currentMarket(r.s,preferTr),entry=portfolioGoalEntryTiming(r.s,preferTr,q,shortBand),cat=portfolioGoalCatalyst(r.s);
     // Valor de EE. UU. en LSX con LSX retrasado: se decide con la cotización regular de EE. UU. (en €) y su variación.
