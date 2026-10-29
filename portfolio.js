@@ -1781,10 +1781,26 @@ function goalRenewalHtml(plan){
     'Revisa la meta y el plazo; se conservan tu perfil y los límites de capital. Los stops y las revisiones de las posiciones siguen activos. '+
     '<button type="button" class="btn small" data-goal-wizard'+(next!==null?' data-goal-extend':'')+'>'+(next!==null?'Ampliar objetivo':'Revisar objetivo')+'</button></div>';
 }
+// Etiqueta del ritmo. Ir «en la trayectoria» no tranquiliza si lo que queda exige más de un 25 % al mes
+// (la referencia puede haber empezado hoy): entonces se dice que el objetivo es muy exigente.
+function goalPaceLabel(pc){
+  const hard=(pc.status==="on"||pc.status==="ahead")&&num(pc.requiredMonthlyPct)!==null&&pc.requiredMonthlyPct>25;
+  if(hard)return{label:"Muy exigente",short:"Muy exigente",cls:"warn"};
+  return{label:{reached:"Objetivo alcanzado",ahead:"Vas adelantado",on:"En la trayectoria del objetivo",behind:"Vas con retraso",overdue:"La fecha ya pasó",unmeasured:"Sin referencia de ritmo",nodate:"Sin fecha objetivo"}[pc.status]||"",
+    short:{reached:"Alcanzado",ahead:"Adelantado",on:"En camino",behind:"Con retraso",overdue:"Fecha pasada"}[pc.status]||"",
+    cls:{reached:"ok",ahead:"ok",on:"ok",behind:"warn",overdue:"bad",unmeasured:"",nodate:""}[pc.status]||""};
+}
+// Una línea: lo invertido frente a la meta, la barra y el estado. El detalle está en «Progreso y ritmo».
+function goalPaceMiniHtml(pc,metrics){
+  if(!pc)return"";
+  const L=goalPaceLabel(pc),progress=Math.max(0,Math.min(100,num(metrics.progress)||0)),shown=metrics.goalValue??metrics.currentValue;
+  return '<div class="goal2-mini"><strong>'+formatMoney(shown,"EUR")+'</strong><span>/ '+formatMoney(metrics.target,"EUR")+'</span>'+
+    '<div class="goal2-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+Math.round(progress)+'"><i data-goal-progress="'+Math.round(progress)+'"></i></div>'+
+    (L.short?'<b class="goal2-pace goal2-pace-'+L.cls+'">'+esc(L.short)+'</b>':'')+'</div>';
+}
 function goalPaceHtml(pc,metrics){
   if(!pc)return"";
-  const label={reached:"Objetivo alcanzado",ahead:"Vas adelantado",on:"En la trayectoria del objetivo",behind:"Vas con retraso",overdue:"La fecha ya pasó",unmeasured:"Sin referencia de ritmo",nodate:"Sin fecha objetivo"}[pc.status]||"";
-  const cls={reached:"ok",ahead:"ok",on:"ok",behind:"warn",overdue:"bad",unmeasured:"",nodate:""}[pc.status]||"";
+  const {label,cls}=goalPaceLabel(pc);
   const bits=[];
   if(pc.daysLeft!==null&&pc.daysLeft!==undefined&&pc.status!=="reached")bits.push(pc.daysLeft+" días");
   // Con más del 100 % al mes la cifra mensual deja de ser legible: se muestra cuántas veces hay que multiplicar lo invertido.
@@ -1889,20 +1905,30 @@ function goalActionHtml(a,ctx){
     const row=pos.row,q=goalExecutionQuote(row.stock,row.preferTr,"SELL",ctx.fx,row.p.broker,a.units);
     button=goalOperationButtonHtml({side:"SELL",portfolioId:row.p.portfolio_id,positionId:row.p.id,broker:row.p.broker,stockKey:row.p.stock_key,units:a.units,price:q.price??portfolioConvertAmount(num(pos.bidEur)??num(pos.priceEur),"EUR",q.currency||row.p.currency||"EUR",ctx.fx),fees:q.feeNative??q.feeEur,currency:q.currency||row.p.currency||"EUR",preferTr:row.preferTr,executable:q.executable===true,executionReason:q.executionReason});
   }
-  if((a.type==="BUY"||a.type==="SELL")&&!button)button='<span class="portfolio-goal-execution-blocked">Esperar cotización ejecutable para registrarla</span>';
-  if(a.type==="BUY"&&a.fractional)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Mi bróker no la fracciona: pulsa solo si tu bróker no deja comprar una parte de acción de este valor; el plan propondrá acciones enteras" aria-label="Mi bróker no la fracciona">Sin fracciones</button></div>';
-  if(a.type==="SELL"&&pos)button='<div class="goal2-action-buttons">'+button+'<button type="button" class="goal2-decide" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir</button></div>';
-  // Idea fijada cuyo precio se escapó (solo con orden límite): se puede descartar para liberar su efectivo hoy.
-  if(a.type==="WAIT"&&a.committed&&a.decision==="COMPRA LÍMITE")button='<div class="goal2-action-buttons"><button type="button" class="goal2-decide" data-goal-discard="'+esc(String(a.key||""))+'" data-goal-discard-ticker="'+esc(String(a.ticker||""))+'" title="No voy a poner la orden límite: descartar la idea y liberar su efectivo para hoy">Descartar</button></div>';
-  if(a.type==="CHANGE")button='<div class="goal2-action-buttons"><button type="button" class="goal2-decide" data-goal-discard="'+esc(String(a.key||""))+'" data-goal-discard-ticker="'+esc(String(a.ticker||""))+'" title="Descartar la idea y liberar su efectivo para hoy">Descartar</button></div>';
-  if(button&&button.indexOf('<div class="goal2-action-buttons">')!==0)button='<div class="goal2-action-buttons">'+button+'</div>';
+  // Tarjeta simple: quién, qué hacer y botones. Todo el detalle (texto completo, riesgo, a favor/en contra, datos)
+  // queda detrás de «ⓘ Por qué», cerrado por defecto.
+  let note="";
+  if(button){const m=button.match(/^<small class="portfolio-goal-execution-blocked"[^>]*>[^<]*<\/small>/);if(m){note='<small class="goal2-why-note">'+m[0].replace(/<[^>]+>/g,"")+': si ya la ejecutaste en tu bróker, regístrala con su precio real.</small>';button=button.slice(m[0].length)}}
+  if(button)button=button.replace('class="goal2-decide portfolio-goal-register"','class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace('class="btn ghost compact portfolio-goal-register"','class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>(✓ Ya ejecutada|＋ Registrar estrategia)<\/button>$/,'>'+(a.type==="SELL"?'✓ Vendida':'✓ Comprada')+'</button>');
+  if((a.type==="BUY"||a.type==="SELL")&&!button)note+='<small class="goal2-why-note">Esperando una cotización ejecutable para poder registrarla.</small>';
+  const btns=[button];
+  if(a.type==="SELL"&&pos)btns.push('<button type="button" class="goal2-btn" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir</button>');
+  // Toda idea propuesta (compra, idea fijada en espera o cambio de recomendación) se puede descartar: se oculta hoy,
+  // su efectivo queda libre y se puede volver a mostrar desde «Descartadas hoy».
+  if(a.type==="BUY"||a.type==="CHANGE"||(a.type==="WAIT"&&a.committed))btns.push('<button type="button" class="goal2-btn" data-goal-discard="'+esc(String(a.key||""))+'" data-goal-discard-ticker="'+esc(String(a.ticker||""))+'" data-goal-discard-name="'+esc(String(a.name||""))+'" title="No la voy a comprar: ocultarla hoy y liberar su efectivo">Descartar</button>');
+  const whyKey=String(a.type)+":"+String(a.key||""),open=goalOpenWhy.has(whyKey);
+  btns.push('<button type="button" class="goal2-btn goal2-btn-why" data-goal-why="'+esc(whyKey)+'" aria-expanded="'+(open?'true':'false')+'">ⓘ Por qué</button>');
+  const fraction=a.type==="BUY"&&a.fractional?'<button type="button" class="goal2-decide" data-goal-no-fraction="'+esc(String(a.ticker||""))+'" title="Pulsa solo si tu bróker no deja comprar una parte de acción de este valor; el plan propondrá acciones enteras">Mi bróker no la fracciona</button>':'';
   const key=(a.type==="BUY"||a.type==="WAIT")&&cand?portfolioStockKey(cand.stock):pos?pos.row.p.stock_key:a.key;
   const preferTr=(a.type==="BUY"||a.type==="WAIT")?ctx.preferTr:pos?pos.row.preferTr:ctx.preferTr;
   const fixedAt=a.committed&&a.committedAt?new Date(a.committedAt):null;
   const fixedNote=a.type==="BUY"&&a.committed?'<small class="goal2-fixed">📌 Idea fijada hoy'+(fixedAt&&Number.isFinite(fixedAt.getTime())?' a las '+fixedAt.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}):'')+(num(a.committedPriceEur)!==null?' a '+formatMoney(a.committedPriceEur,"EUR"):'')+': no se cambia por otra durante el día; se retira solo si la IA la contradice o el precio sube más de un 3 %.</small>':'';
   // Datos de la revisión del servidor (analistas, BPA, resultados) de la idea fijada; la app no los consulta.
   const f=(commit&&commit.facts)||a.facts||{},factBits=[];
-  const pros=commit&&(commit.pros||[]).length?commit.pros:(a.pros||[]),cons=commit&&(commit.cons||[]).length?commit.cons:(a.cons||[]);
+  const pros=commit&&(commit.pros||[]).length?commit.pros:(a.pros||[]);
+  // La comisión depende del importe de hoy: se toma siempre del plan en vivo, no de la revisión guardada al fijar la idea.
+  const isFee=t=>/^comisión de ida y vuelta/.test(String(t));
+  const cons=commit&&(commit.cons||[]).length?[...commit.cons.filter(t=>!isFee(t)),...(a.cons||[]).filter(isFee)]:(a.cons||[]);
   if(a.type==="BUY"){
     if(f.earningsDate)factBits.push("Resultados "+f.earningsDate);
     if(f.analystConsensus)factBits.push("Analistas: "+({buy:"comprar",hold:"mantener",sell:"vender"}[f.analystConsensus]||f.analystConsensus)+(num(f.analystUpsidePct)!==null?" · objetivo "+(f.analystUpsidePct>0?"+":"")+formatNumber(f.analystUpsidePct,0)+" %":"")+(num(f.analysts)?" ("+formatNumber(f.analysts,0)+")":""));
@@ -1917,8 +1943,21 @@ function goalActionHtml(a,ctx){
     :a.type==="WAIT"
       ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
       :'');
+  // Cantidad tal cual (las fracciones no se redondean) y, en compras, el límite máximo de la orden siempre a la vista.
+  const qty=u=>{const v=num(u)||0;return esc(Math.abs(v-Math.round(v))>1e-9?v.toLocaleString("es-ES",{maximumFractionDigits:6}):formatNumber(v,0))+(v===1?' acción':' acciones')};
+  const limit=num(a.limitPriceEur)!==null?' · límite '+esc(formatMoney(a.limitPriceEur,"EUR"))+(a.fractional?' si tu bróker lo permite':''):'';
+  const what=a.type==="BUY"?(a.fractional?'Comprar <b>'+esc(formatMoney(a.ticketEur,"EUR"))+'</b> (fracción)'+limit:'Comprar '+qty(a.units)+' · <b>'+esc(formatMoney(a.ticketEur,"EUR"))+'</b>'+limit)
+    :a.type==="WAIT"?esc(tag.charAt(0)+tag.slice(1).toLowerCase())
+    :a.type==="SELL"?(a.reason==="stop"?'Saltó el stop: vender ':'Vender ')+qty(a.units)
+    :a.type==="RAISE_STOP"&&num(a.stopEur)!==null?'Subir el stop a '+esc(formatMoney(a.stopEur,"EUR"))
+    :a.type==="CHANGE"?'Cambio de recomendación: ya no cumple tus reglas'
+    :esc(tag.charAt(0)+tag.slice(1).toLowerCase());
+  const nm=String(a.name||a.ticker||""),initials=nm.replace(/[^\p{L}\p{N} ]/gu,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"·";
+  const why='<div class="goal2-why-body"'+(open?'':' hidden')+'><span class="goal2-why-text">'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+note+extra+fraction+'</div>';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+goalRiskPill(a.riskTier)+'</strong><span>'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+extra+button+'</div></div>';
+    '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong><span class="goal2-action-what">'+what+'</span></div>'+
+    '<span class="goal2-action-side">'+goalRiskPill(a.riskTier)+ai+'</span></div>'+
+    '<div class="goal2-action-buttons">'+btns.filter(Boolean).join('')+'</div>'+why+'</div>';
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;
@@ -1948,24 +1987,69 @@ document.addEventListener("click",event=>{
   event.preventDefault();event.stopPropagation();b.disabled=true;goalMarkNoFraction(b.dataset.goalNoFraction);
 });
 // Idea nueva que dejó de cumplir las reglas sin haberse ejecutado: se descarta hoy y su efectivo vuelve al objetivo.
-async function goalDiscardIdea(key,ticker){
+async function goalDiscardIdea(key,ticker,name){
   const goal=selectedPortfolioGoal()||state.goal,portfolioId=state.selectedPortfolioId;
   if(!goal||!portfolioId||!key)return;
   const store=goalIdeaStore(),pid=String(portfolioId),day=goalIdeaDay(),cur=store[pid]&&store[pid].day===day?store[pid]:{day,items:[],consumed:[]};
   cur.discarded=[...new Set([...(cur.discarded||[]),String(key)])];cur.items=(cur.items||[]).filter(i=>i.key!==String(key));
+  // Nombre para la lista «Descartadas hoy» (el servidor solo guarda la clave).
+  cur.discardedInfo={...(cur.discardedInfo||{}),[String(key)]:{ticker:String(ticker||""),name:String(name||"")}};
   store[pid]=cur;try{localStorage.setItem(GOAL_IDEAS_KEY,JSON.stringify(store))}catch(_){}
   try{
     const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId,discardIdea:String(key)})});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo guardar en el servidor.");
     if(data.goal){state.goals[String(portfolioId)]=data.goal;state.goal=data.goal}
-    toast((ticker||"Idea")+" descartada: su efectivo vuelve a estar disponible.");
+    toast((ticker||"Idea")+" descartada hoy: su efectivo queda libre. Puedes volver a mostrarla en «Descartadas hoy».");
   }catch(error){toast((error.message||"No se pudo guardar en el servidor.")+" Queda descartada en este dispositivo.",true)}
   goalPlanCache=null;renderGoalApp();
 }
+// Volver a mostrar una idea descartada: el plan la propone otra vez si sigue cumpliendo tus reglas.
+async function goalRestoreIdea(key,ticker){
+  const portfolioId=state.selectedPortfolioId;if(!portfolioId||!key)return;
+  const store=goalIdeaStore(),pid=String(portfolioId),cur=store[pid];
+  if(cur){cur.discarded=(cur.discarded||[]).filter(k=>k!==String(key));if(cur.discardedInfo)delete cur.discardedInfo[String(key)];try{localStorage.setItem(GOAL_IDEAS_KEY,JSON.stringify(store))}catch(_){}}
+  try{
+    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId,restoreIdea:String(key)})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo guardar en el servidor.");
+    if(data.goal){state.goals[String(portfolioId)]=data.goal;state.goal=data.goal}
+    toast((ticker||"Idea")+" vuelve al plan: se propondrá si sigue cumpliendo tus reglas.");
+  }catch(error){toast(error.message||"No se pudo guardar en el servidor.",true)}
+  goalPlanCache=null;renderGoalApp();
+}
+function goalDiscardedTodayHtml(portfolioId,goal,ctx){
+  const keys=goalTodayDiscarded(portfolioId,goal);if(!keys.length)return'';
+  const entry=goalIdeaStore()[String(portfolioId||"")],info=(entry&&entry.day===goalIdeaDay()&&entry.discardedInfo)||{};
+  const items=keys.map(k=>{
+    const c=(ctx.candidates||[]).find(x=>x.key===k),i=info[k]||{},label=(c&&c.stock&&c.stock.name)||i.name||i.ticker||(c&&c.ticker)||k.split(":").pop();
+    return '<li><span>'+esc(label)+'</span><button type="button" class="goal2-decide" data-goal-restore="'+esc(k)+'" data-goal-restore-ticker="'+esc(i.ticker||label)+'">Volver a mostrar</button></li>';
+  }).join('');
+  return goalFoldHtml("discarded","Descartadas hoy",String(keys.length),'<ul class="goal2-discarded">'+items+'</ul><small class="goal2-alts-note">Mañana el plan puede volver a proponerlas.</small>');
+}
 document.addEventListener("click",event=>{
+  const r=event.target.closest&&event.target.closest("[data-goal-restore]");
+  if(r){event.preventDefault();event.stopPropagation();r.disabled=true;goalRestoreIdea(r.dataset.goalRestore,r.dataset.goalRestoreTicker);return}
   const b=event.target.closest&&event.target.closest("[data-goal-discard]");if(!b)return;
-  event.preventDefault();event.stopPropagation();b.disabled=true;goalDiscardIdea(b.dataset.goalDiscard,b.dataset.goalDiscardTicker);
+  event.preventDefault();event.stopPropagation();
+  b.disabled=true;goalDiscardIdea(b.dataset.goalDiscard,b.dataset.goalDiscardTicker,b.dataset.goalDiscardName);
+});
+// «ⓘ Por qué» de cada idea y desplegables del Objetivo: se recuerdan abiertos entre repintados (el plan se recalcula solo).
+const goalOpenWhy=new Set(),goalOpenFolds=new Set();
+function goalFoldHtml(id,title,hint,body){
+  if(!body)return'';
+  return '<details class="goal2-fold" data-goal-fold="'+esc(id)+'"'+(goalOpenFolds.has(id)?' open':'')+'><summary><span class="goal2-fold-title">'+esc(title)+'</span>'+(hint?'<span class="goal2-fold-hint">'+hint+'</span>':'')+'</summary><div class="goal2-fold-body">'+body+'</div></details>';
+}
+document.addEventListener("toggle",event=>{
+  const d=event.target;if(!d||!d.dataset||!d.dataset.goalFold)return;
+  if(d.open)goalOpenFolds.add(d.dataset.goalFold);else goalOpenFolds.delete(d.dataset.goalFold);
+},true);
+document.addEventListener("click",event=>{
+  const b=event.target.closest&&event.target.closest("[data-goal-why]");if(!b)return;
+  event.preventDefault();event.stopPropagation();
+  const k=b.dataset.goalWhy,box=b.closest(".goal2-action")&&b.closest(".goal2-action").querySelector(".goal2-why-body");
+  if(goalOpenWhy.has(k))goalOpenWhy.delete(k);else goalOpenWhy.add(k);
+  if(box)box.hidden=!goalOpenWhy.has(k);b.setAttribute("aria-expanded",goalOpenWhy.has(k)?"true":"false");
 });
 // Por qué el plan no propone comprar (efectivo, modo defensivo, cartera llena, filtros o momento de entrada).
 // Marcador de las ideas del Objetivo (servidor, caché de 10 min): cuántas se publicaron y cómo fueron frente al SPY.
@@ -1983,7 +2067,7 @@ function goalScoreboardHtml(){
       (s1&&s1.n?' A 1 sesión: '+formatNumber(s1.hitRate,0)+' % en positivo, media '+(s1.avgReturn>0?'+':'')+formatNumber(s1.avgReturn,1)+' %.':'')+
       (s5&&s5.n?' A 5 sesiones: '+formatNumber(s5.hitRate,0)+' % en positivo, media '+(s5.avgReturn>0?'+':'')+formatNumber(s5.avgReturn,1)+' %'+(s5.avgExcess!==null&&s5.avgExcess!==undefined?' ('+(s5.avgExcess>0?'+':'')+formatNumber(s5.avgExcess,1)+' % frente al S&P 500)':'')+'.':'')+
       (n<30?' Todavía son pocas para sacar conclusiones.':'')+' Sin comisiones; el pasado no garantiza nada.</small>';
-  return '<section class="goal2-section goal2-scoreboard" data-goal-scoreboard><h3>¿Aciertan estas ideas?</h3>'+body+'</section>';
+  return '<section class="goal2-section goal2-scoreboard" data-goal-scoreboard>'+body+'</section>';
 }
 // El plan revisado por el servidor se actualiza solo mientras se mira el Objetivo (cada 2 min; lectura ligera).
 setInterval(async()=>{
@@ -1999,11 +2083,11 @@ setInterval(async()=>{
 function goalAlternativesHtml(plan,ctx,shown){
   // Sin repetir lo que ya aparece en «Hoy toca» (también las esperas del servidor).
   const list=((plan&&plan.alternatives)||[]).filter(a=>!(shown&&shown.has(String(a.key))));if(!list.length)return'';
-  return '<details class="goal2-alts" open><summary>Otras opciones ('+list.length+') · ordenadas por puntuación</summary><ol>'+list.map(a=>{
+  return '<div class="goal2-alts"><ol>'+list.map(a=>{
     const label=String(a.ticker||"")+(a.name&&a.name!==a.ticker?' ('+a.name+')':'');
     return '<li>'+goalLinkedText(label,[goalCandidateLink(ctx,a.key,label)])+goalRiskPill(a.riskTier)+' <small>'+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' %'+
       (num(a.moveRangePct)!==null?' (suele moverse ±'+formatNumber(a.moveRangePct,1)+' % en 5 sesiones)':'')+' · '+esc(a.status||"")+'</small></li>'}).join('')+
-    '</ol><small class="goal2-alts-note">Informativo: no han pasado la revisión completa (cotización real, resultados, analistas, noticias e IA) y por eso no tienen botón de compra. Las ideas ya revisadas aparecen arriba, en «Hoy toca».</small></details>';
+    '</ol><small class="goal2-alts-note">Informativo: no han pasado la revisión completa (cotización real, resultados, analistas, noticias e IA) y por eso no tienen botón de compra. Las ideas ya revisadas aparecen arriba, en «Hoy toca».</small></div>';
 }
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
@@ -2148,7 +2232,7 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
       '<strong class="goal2-sleeve-pct'+(pct===null?'':pct>=0?' up':' down')+'">'+(pct===null?'—':(pct>0?'+':'')+formatNumber(pct,1)+' %')+'</strong></header>'+
       '<div class="goal2-sleeve-grid"><span>Aportado<b>'+esc(formatMoney(x.baseEur,"EUR"))+'</b></span><span>Efectivo<b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>Valor total<b>'+esc(formatMoney(total,"EUR"))+'</b></span></div>'+
       (b.unpriced?'':'<small class="goal2-sleeve-gain">'+(total-x.baseEur>=0?'Ganas ':'Pierdes ')+esc(formatMoney(Math.abs(total-x.baseEur),"EUR"))+' sobre lo aportado</small>')+
-      pos+'<details class="goal2-sleeve-more"'+(k==="alto"?'':' open')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia e ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas+'</details></article>';
+      pos+'<details class="goal2-sleeve-more" data-goal-fold="sleeve-'+esc(k)+'"'+(goalOpenFolds.has("sleeve-"+k)?' open':'')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia e ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas+'</details></article>';
   }).join('');
   const none=B.none.length?'<div class="goal2-why" role="note"><b>Acciones sin hucha.</b> Indica a qué hucha pertenece cada una: lo comprado desde que empezaron las huchas lo pagó esa hucha y lo que ya tenías se le suma por su valor de hoy.<ul class="goal2-sleeve-pos">'+
     B.none.map(({row,value})=>'<li>'+esc(String(row.p.ticker||""))+' '+esc(row.stock&&row.stock.name||row.p.name||'')+' <small>'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+'</small><select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Elegir hucha">'+goalSleeveOptions("")+'</select></li>').join('')+'</ul></div>':'';
@@ -2156,8 +2240,11 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
     :diff<-.5?'<div class="goal2-why warn" role="alert"><b>Las huchas suman '+esc(formatMoney(S.totalCashEur,"EUR"))+' y el efectivo para el objetivo es '+esc(formatMoney(realCash,"EUR"))+'.</b> Falta '+esc(formatMoney(-diff,"EUR"))+': puede faltar por registrar una compra, o retiraste dinero. Mientras no cuadre, las compras no pasan del efectivo real. <button type="button" class="btn small" data-goal-sleeve-cash>Ajustar reparto</button></div>':'';
   const total=GOAL_SLEEVES.reduce((a,k)=>a+S.sleeves[k].cashEur+B[k].value,0),base=GOAL_SLEEVES.reduce((a,k)=>a+S.sleeves[k].baseEur,0);
   const mix=total>0?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+' '+formatNumber((S.sleeves[k].cashEur+B[k].value)/total*100,0)+' %').join(' · '):'';
-  return '<section class="goal2-section goal2-sleeves"><div class="goal2-sleeves-head"><h3>Tus huchas</h3><button type="button" class="btn small ghost" data-goal-sleeve-cash>Repartir efectivo</button></div>'+banner+
-    '<div class="goal2-sleeve-list">'+cards+'</div>'+none+
+  // Resumen de una línea para el desplegable cerrado: el % de cada hucha (⚠ si el efectivo no cuadra).
+  ctx.sleeveHint=(diff<-.5||B.none.length?'⚠ revisar · ':'')+GOAL_SLEEVES.map(k=>{const x=S.sleeves[k],t=x.cashEur+B[k].value,u=num(x.units),q=B[k].unpriced?null:u>1e-9?(t/u-1)*100:x.baseEur>0?(t/x.baseEur-1)*100:null;
+    return GOAL_SLEEVE_META[k].label+' '+(q===null?'—':(q>0?'+':'')+formatNumber(q,1)+' %')}).join(' · ');
+  return '<section class="goal2-section goal2-sleeves">'+banner+
+    '<div class="goal2-sleeve-list">'+cards+'</div>'+none+'<div class="goal2-sleeves-actions"><button type="button" class="goal2-btn" data-goal-sleeve-cash>Repartir efectivo</button></div>'+
     (base>0?'<small class="goal2-alts-note">En conjunto: aportado '+esc(formatMoney(base,"EUR"))+' → '+esc(formatMoney(total,"EUR"))+' ('+(total-base>=0?'+':'−')+esc(formatMoney(Math.abs(total-base),"EUR"))+'). Reparto de hoy: '+esc(mix)+'. El % de cada hucha se mide como un fondo: meter o sacar dinero no lo cambia.</small>':'')+
   '</section>';
 }
@@ -2250,8 +2337,8 @@ function portfolioGoalViewHtml(){
   if(!portfolio)return'<div class="portfolio-empty-state">Selecciona o crea una cartera para definir su objetivo.</div>';
   state.pendingGoalHistory=null;
   const goal=selectedPortfolioGoal()||state.goal||null,errorHtml=state.goalError?'<div class="portfolio-goal-error" role="alert">'+esc(state.goalError)+'</div>':'';
-  const head='<div class="goal2-head"><div><h2>Objetivo · '+esc(portfolio.name)+'</h2><small>'+esc(portfolioMarketLabel(metrics.marketScope))+(goal?' · horizonte 1–5 sesiones · riesgo '+esc((window.ViewInvAIGoal&&window.ViewInvAIGoal.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):''):'')+'</small></div>'+
-    '<button type="button" class="btn small'+(goal?' ghost':'')+'" data-goal-wizard>'+(goal?'Ajustar objetivo':'Crear objetivo')+'</button></div>';
+  const head='<div class="goal2-head"><div><h2>Objetivo · '+esc(portfolio.name)+'</h2>'+(goal?'':'<small>'+esc(portfolioMarketLabel(metrics.marketScope))+'</small>')+'</div>'+
+    '<button type="button" class="btn small'+(goal?' ghost':'')+'" data-goal-wizard>'+(goal?'Ajustar':'Crear objetivo')+'</button></div>';
   if(!goal||metrics.target===null)return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     '<div class="portfolio-goal-no-action"><strong>Define tu objetivo.</strong> Te haré unas preguntas: cuánto quieres alcanzar, para cuándo, cuánto riesgo y con cuántas acciones. Después, cada día verás qué toca hacer.</div></section>';
   if(metrics.marketScope==="auto")return '<section class="portfolio-goal-view goal2">'+head+errorHtml+'<div class="portfolio-goal-no-action">Configura el mercado de esta cartera (Trade Republic o EEUU) antes de pedir un plan.</div></section>';
@@ -2279,22 +2366,35 @@ function portfolioGoalViewHtml(){
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
   const posList=input.positions.length?'<div class="goal2-positions">'+input.positions.map(p=>{
       const st=engine.positionStop(p,input.config.risk),ret=p.avgEur>0?(p.priceEur/p.avgEur-1)*100:null;
+      // Con una decisión «mantener» el plan no usa su stop normal: solo vende si salta el stop de emergencia que fijaste.
+      const hold=p.hold&&p.hold.mode?p.hold:null,emergency=hold?num(hold.emergencyEur):null;
       return '<div class="goal2-pos" data-open-stock="'+esc(p.row.p.stock_key)+'" data-position-prefer-tr="'+(p.row.preferTr?'1':'0')+'" role="button" tabindex="0"><b>'+esc(p.ticker)+'</b>'+
         '<span class="'+(ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span>'+
-        '<small>Stop '+(st.stopEur!==null?formatMoney(st.stopEur,"EUR"):'—')+(st.trailing?' · sube con el precio':'')+'</small></div>';
+        '<small>'+(hold?(emergency!==null?'Stop de emergencia '+formatMoney(emergency,"EUR"):'Sin stop: mantener por tu decisión'):'Stop '+(st.stopEur!==null?formatMoney(st.stopEur,"EUR"):'—')+(st.trailing?' · sube con el precio':''))+'</small></div>';
     }).join('')+'</div>':'';
   state.pendingGoalHistory=goalPlanHistorySnapshot(metrics,plan);
-  return '<section class="portfolio-goal-view goal2" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
-    goalPaceHtml(plan.pace,metrics)+
-    goalSleevesHtml(metrics,positionRows,goal,ctx)+
+  // Orden: lo que toca hacer hoy arriba; el resto, en desplegables cerrados con un resumen de una línea.
+  const sleevesBody=goalSleevesHtml(metrics,positionRows,goal,ctx);
+  const alts=goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key)))),altCount=((plan.alternatives||[]).filter(x=>!visibleDecisions.some(d=>String(d.key)===String(x.key)))).length;
+  const trend=ctx.sleeves?'':goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]));
+  const sb=goalScoreboard.data,sbN=num(sb&&sb.signals);
+  const sub='<small class="goal2-sub">'+esc(portfolioMarketLabel(metrics.marketScope))+' · horizonte 1–5 sesiones · riesgo '+esc((engine.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):'')+'</small>';
+  const pc=plan.pace||{},paceHint=[pc.remainingEur>0?'faltan '+formatMoney(pc.remainingEur,"EUR"):'',num(pc.daysLeft)!==null&&pc.status!=="reached"?pc.daysLeft+' días':''].filter(Boolean).join(' · ');
+  const nDec=visibleDecisions.length;
+  return '<section class="portfolio-goal-view goal2 goal2-simple" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
+    goalPaceMiniHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca'+(ctx.sleeves?' '+goalSleevePill("alto"):'')+'</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+(ctx.sleeves?'':goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)])))+holds+frozenNote+
-      '<p class="goal2-disclaimer">Información, no asesoramiento: aplica las reglas que fijaste con datos reales, que pueden fallar. Decides tú y puedes perder dinero.</p></section>'+
-    goalScoreboardHtml()+
-    (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+
-    goalAiContrastPanel(metrics,portfolio,positionRows,plan.actions.filter(a=>a.type==="BUY").map(a=>{const c=input.candidates.find(x=>x.key===a.key);return c?{stock:c.stock,score:c.score,quality:c.quality,entry:{rr:null},levels:{stopPct:a.stopPct,takePct:a.targetPct}}:null}).filter(Boolean),[])+
-    '<p class="portfolio-goal-note compact-note">El plan se recalcula al momento con los precios en vivo. No vende una acción en pérdidas para cambiarla salvo que la nueva prevea recuperar esa pérdida y las comisiones con margen; los stops suben solos cuando la acción gana. Opinión orientativa: decide siempre tú.</p>'+
+    '<section class="goal2-today"><h3><span>Hoy toca'+(ctx.sleeves?' '+goalSleevePill("alto"):'')+'</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
+    '<section class="goal2-more"><h3>Más información</h3>'+
+      goalFoldHtml("sleeves","Tus huchas",esc(ctx.sleeveHint||""),sleevesBody)+
+      goalFoldHtml("positions","Tus posiciones",String(input.positions.length),posList+holds+frozenNote)+
+      goalFoldHtml("alts","Otras opciones",altCount?String(altCount):"",alts+trend)+
+      goalFoldHtml("pace","Progreso y ritmo",esc(paceHint),sub+goalPaceHtml(plan.pace,metrics)+notes+'<p class="portfolio-goal-note compact-note">El plan se recalcula al momento con los precios en vivo. No vende una acción en pérdidas para cambiarla salvo que la nueva prevea recuperar esa pérdida y las comisiones con margen; los stops suben solos cuando la acción gana.</p>')+
+      goalFoldHtml("score","¿Aciertan estas ideas?",sbN?formatNumber(sbN,0)+(sbN===1?' idea':' ideas'):'',goalScoreboardHtml())+
+      goalAiContrastPanel(metrics,portfolio,positionRows,plan.actions.filter(a=>a.type==="BUY").map(a=>{const c=input.candidates.find(x=>x.key===a.key);return c?{stock:c.stock,score:c.score,quality:c.quality,entry:{rr:null},levels:{stopPct:a.stopPct,takePct:a.targetPct}}:null}).filter(Boolean),[])+
+    '</section>'+
+    '<p class="goal2-disclaimer">Información, no asesoramiento. Decides tú y puedes perder dinero.</p>'+
   '</section>';
 }
 // Objetivo con Mi cripto: se repinta cuando llegan cotizaciones o cambian las posiciones de cripto.

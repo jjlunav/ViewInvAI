@@ -241,6 +241,8 @@ const input=candidates=>({
   assert.ok(p.commitments.some(c=>c.key==="NASDAQ:FIX"&&c.changed),"its cash stays reserved until discarded");
   p=G.plan({...input([strong,{...weak,aiVerdict:"contradice"}]),committed:[{...committed[0],ticketEur:400}],discarded:["NASDAQ:FIX"]});
   assert.ok(!p.actions.some(a=>a.type==="CHANGE")&&p.consumedCommitments.some(c=>c.key==="NASDAQ:FIX"&&c.reason==="discarded"),"discarding frees it");
+  p=G.plan({...input([strong,weak]),discarded:["NASDAQ:NEW"]});
+  assert.ok(!buys(p).includes("NASDAQ:NEW")&&buys(p).includes("NASDAQ:FIX"),"a discarded buy is not proposed again today and its cash goes to the next idea");
   p=G.plan({...input([strong]),positions:[{key:"NASDAQ:FIX",ticker:"FIX",name:"Fix",units:5,avgEur:10,priceEur:10,bidEur:10,score:60,quality:70,atrPct:2,feeEur:1}],committed});
   assert.ok(buys(p).includes("NASDAQ:NEW"),"once the fixed idea is bought, new ideas can appear");
 }
