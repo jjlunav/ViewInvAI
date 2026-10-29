@@ -387,4 +387,41 @@ const input=candidates=>({
   if(p.waits.some(w=>w.decision==='COMPRA LÍMITE')&&p.waits.some(w=>w.decision!=='COMPRA LÍMITE'))assert.ok(!p.whyNoBuy.some(w=>w.code==='limit'),"mixed reasons do not use the limit-only explanation");
 }
 
+// Etiquetas de riesgo, límite de exposición de alto riesgo y mezcla de riesgos.
+{
+  assert.equal(G.riskTier({atrPct:7,marketCap:5e9}),"alto","very volatile is high risk");
+  assert.equal(G.riskTier({atrPct:3,marketCap:1e9,industry:"Biotechnology"}),"alto","small biotech is high risk");
+  assert.equal(G.riskTier({atrPct:2,marketCap:5e10}),"bajo","calm large cap is low risk");
+  assert.equal(G.riskTier({atrPct:4,marketCap:5e9}),"medio");
+  const hi={...base,key:"NASDAQ:BIO",ticker:"BIO",marketCap:5e8,industry:"Biotechnology",score:95};
+  const mid={...base,key:"NYSE:MID",ticker:"MID",marketCap:5e9,score:85,quality:85};
+  let p=G.plan(input([hi,mid]));
+  const buys=p.actions.filter(x=>x.type==="BUY");
+  assert.ok(buys.some(b=>b.riskTier==="alto")&&buys.some(b=>b.riskTier!=="alto"),"one high-risk and one lower-risk idea are proposed together");
+  const hiBuy=buys.find(b=>b.riskTier==="alto");
+  assert.ok(hiBuy.ticketEur<=1000*0.30+0.01,"high-risk exposure stays within 30 % of the goal value");
+  // Lo congelado de riesgo alto también cuenta: con 300 € congelados de riesgo alto y un 30 % de 1.000 € no cabe más.
+  p=G.plan({...input([hi]),lockedHighRiskEur:300});
+  assert.ok(!p.actions.some(x=>x.type==="BUY"&&x.riskTier==="alto"),"frozen high-risk holdings count toward the cap");
+  p=G.plan({...input([hi]),config:{...input([]).config,highRiskPct:0}});
+  assert.ok(!p.actions.some(x=>x.type==="BUY"),"with 0 % allowed for high risk no high-risk idea is bought");
+}
+// Tendencia 1-3 meses: momento de 6 meses sin el último, sin volatilidad extrema ni lejos de máximos.
+{
+  const st=[
+    {key:"A",ticker:"A",price:50,perf6M:40,perfMonth:5,high52w:52,marketCap:2e9,atrPct:3,tradedUsd:5e6},
+    {key:"B",ticker:"B",price:20,perf6M:80,perfMonth:2,high52w:21,marketCap:1e9,atrPct:12,tradedUsd:5e6},
+    {key:"C",ticker:"C",price:10,perf6M:30,perfMonth:1,high52w:20,marketCap:1e9,atrPct:3,tradedUsd:5e6},
+    {key:"D",ticker:"D",price:30,perf6M:20,perfMonth:0,high52w:31,marketCap:1e9,atrPct:3,tradedUsd:5e6},
+    {key:"E",ticker:"E",price:30,perf6M:90,perfMonth:0,high52w:31,marketCap:1e8,atrPct:3,tradedUsd:5e6}
+  ];
+  const t=G.trendIdeas(st,{limit:5});
+  assert.equal(t.map(x=>x.key).join(","),"A,D","ranked by 6-1 momentum; extreme volatility, far from high and tiny caps excluded");
+  assert.ok(t[0].riskTier,"trend ideas carry a risk tier");
+  const many=Array.from({length:8},(_,i)=>({key:"H"+i,ticker:"H"+i,price:20,perf6M:200-i,perfMonth:0,high52w:21,marketCap:5e8,industry:"Biotechnology",atrPct:5,tradedUsd:5e6}))
+    .concat(Array.from({length:4},(_,i)=>({key:"M"+i,ticker:"M"+i,price:20,perf6M:50-i,perfMonth:0,high52w:21,marketCap:5e9,atrPct:3,tradedUsd:5e6})));
+  const mixed=G.trendIdeas(many,{limit:5});
+  assert.equal(mixed.filter(x=>x.riskTier==="alto").length,2,"at most 2 of 5 trend ideas are high risk when others exist");
+}
+
 console.log("Goal engine tests: OK");

@@ -8401,7 +8401,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
-      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0;
+      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0,lockedHighRiskEur=0;
       // Decisiones «Decidir» vigentes de las posiciones de esta cartera.
       await ensurePositionDecisionsSchema(env);
       const decisionsById=new Map(((await env.DB.prepare("SELECT position_id,decision,hold_mode,hold_pct,target_eur,emergency_eur,hold_until,review_at FROM position_decisions WHERE user_id=? AND subject_type='position'").bind(goal.user_id).all()).results||[])
@@ -8413,7 +8413,9 @@ async function scanPortfolioGoalNotifications(env,services){
         if(!(total>0))continue;
         const ptr=Number(p.prefer_tr)===1,mark=await quoteEur(stock,ptr,"LAST"),bid=await quoteEur(stock,ptr,"SELL");
         if(mark===null){incomplete=true;break}
-        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++}
+        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++;
+          // Lo congelado de riesgo alto cuenta para el límite de exposición de alto riesgo.
+          if(engine.riskTier&&engine.riskTier({atrPct:atrPct(stock),marketCap:finiteNumber(stock&&stock.marketCap),sector:stock&&stock.sector,industry:stock&&stock.industry})==="alto")lockedHighRiskEur+=frozen*mark}
         if(!(qty>1e-9))continue;
         const avg=finiteNumber(p.avg_price),cur=String(p.currency||(ptr?"EUR":"USD")).toUpperCase();
         const avgEur=avg===null?null:cur==="EUR"?avg:cur==="USD"&&usdToEur!==null?avg*usdToEur:null;
@@ -8425,7 +8427,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
           targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
         enginePositions.push({hold,positionId:p.id,key,ticker,usTicker:usTickerOf(stock),isin:String(stock&&(stock.isin||stock.usIsin||stock.trIsin)||p.isin||"").toUpperCase(),marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
-          quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
+          quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),marketCap:finiteNumber(stock.marketCap),sector:String(stock.sector||""),industry:String(stock.industry||""),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});
       }
@@ -8456,7 +8458,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const nearHighPct=techPrice!==null&&dayHigh>0&&techPrice<=dayHigh?(dayHigh-techPrice)/dayHigh*100:null;
         // En Trade Republic la variación del día es la de LSX; sin ella no se usa la de NYSE/NASDAQ.
         const dayChangePct=finiteNumber(preferTr?stock.trLiveChangePct:(stock.usLiveChangePct??stock.changePct));
-        return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
+        return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),marketCap:finiteNumber(stock.marketCap),sector:String(stock.sector||""),industry:String(stock.industry||""),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
           relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,avgVolume:finiteNumber(stock.avgVolume),
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
           extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact,catalystTitle:cat.title}:null;
@@ -8485,7 +8487,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:finiteNumber(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
