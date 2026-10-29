@@ -42,6 +42,8 @@ jobs:
           npm audit --omit=dev --audit-level=high
       - name: Regresiones de seguridad, contabilidad y copias
         run: |
+          node scripts/test-goal-wizard.mjs
+          npm run test:goal
           node scripts/test-tax-export.mjs
           npm run test:reliability
           npm run test:worker

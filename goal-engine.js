@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.28-g15-limit-clear';
+  const VERSION='2026.10.29-g16-goal-risk';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -185,25 +185,34 @@
     return{stopPct,stopEur:stop,trailing,peakEur:peak};
   }
 
-  // Ritmo hacia la fecha: crecimiento compuesto desde el inicio del objetivo.
+  // Trayectoria matemática del objetivo: expresa lo necesario, no una previsión.
   function pace(cfg,valueEur,nowMs){
-    const target=n(cfg.target),value=n(valueEur),start=n(cfg.startValue)||value;
-    const out={status:'nodate',progressPct:null,expectedEur:null,daysLeft:null,requiredMonthlyPct:null};
-    if(target===null||value===null||!(target>0))return out;
+    const target=n(cfg.target),value=n(valueEur),initial=n(cfg.startValue),start=initial??value;
+    const out={status:'nodate',progressPct:null,expectedEur:null,daysLeft:null,requiredMonthlyPct:null,requiredGrowthPct:null,remainingEur:null};
+    if(target===null||value===null||!(target>0)||value<0)return out;
+    out.remainingEur=Math.max(0,target-value);
+    out.requiredGrowthPct=value>0?n((target/value-1)*100):null;
     out.progressPct=start!==null&&target>start?clamp((value-start)/(target-start)*100,-100,200):value>=target?100:0;
     if(value>=target){out.status='reached';return out}
     const t0=Date.parse(cfg.startDate||''),t1=Date.parse(cfg.deadline||'');
     if(!Number.isFinite(t1))return out;
-    const now=nowMs||Date.now(),daysLeft=Math.max(0,(t1-now)/86400000);
+    const now=n(nowMs)??Date.now(),daysLeft=Math.max(0,(t1-now)/86400000);
     out.daysLeft=Math.ceil(daysLeft);
-    out.requiredMonthlyPct=daysLeft>0&&value>0?(Math.pow(target/value,30/daysLeft)-1)*100:null;
+    out.requiredMonthlyPct=daysLeft>0&&value>0?n(Math.expm1((Math.log(target)-Math.log(value))*30/daysLeft)*100):null;
     if(daysLeft<=0){out.status='overdue';return out}
-    if(Number.isFinite(t0)&&start>0&&t1>t0){
+    if(Number.isFinite(t0)&&now>=t0&&initial>0&&t1>t0){
       const f=clamp((now-t0)/(t1-t0),0,1);
-      out.expectedEur=start*Math.pow(target/start,f);
+      out.expectedEur=Math.exp(Math.log(start)+(Math.log(target)-Math.log(start))*f);
       out.status=value<out.expectedEur*.97?'behind':value>out.expectedEur*1.03?'ahead':'on';
-    }else out.status='on';
+    }else out.status='unmeasured';
     return out;
+  }
+  // Siguiente hito editable (+25 %, igual que el atajo del asistente), no rentabilidad prevista.
+  function nextGoal(target,value){
+    const t=n(target),v=n(value);
+    if(!(t>0)||v===null||v<t)return null;
+    const next=Math.min(100000000,Math.ceil(Math.max(t,v)*1.25));
+    return Number.isFinite(next)&&next>v?next:null;
   }
 
   function feeOf(x,side){const f=n(side==='SELL'?x.sellFeeEur:x.buyFeeEur);return f===null?n(x.feeEur)||0:f}
@@ -251,7 +260,7 @@
     const extraValue=Math.max(0,n(input.extraValueEur)||0);
     // El efectivo sin invertir no cuenta como avance hacia el objetivo: solo lo invertido (y Mi cripto).
     const goalValue=valueEur-cash+extraValue;
-    const pc=pace(cfg,goalValue,input.nowMs);
+    const pc=pace(cfg,goalValue,input.nowMs),goalReached=pc.status==='reached';
     // Ir retrasado NO autoriza a comprar señales peores ni a sobredimensionar: eso aumenta
     // la probabilidad de alejarse aún más del objetivo. Solo reducimos algo el riesgo si vamos adelantados.
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
@@ -355,7 +364,7 @@
     };
     const commitState=[...allCommits.values()].map(cm=>{
       const k=String(cm.key),c=candByKey.get(k);
-      return{...cm,key:k,gone:held.has(k)?'bought':'',changed:held.has(k)?'':changeOf(cm,c)};
+      return{...cm,key:k,gone:held.has(k)?'bought':goalReached?'goal-reached':'',changed:held.has(k)||goalReached?'':changeOf(cm,c)};
     });
     for(const k of discarded)commitState.push({key:k,gone:'discarded'});
     const commits=new Map(commitState.filter(x=>!x.gone&&!x.changed).map(x=>[x.key,x]));
@@ -368,7 +377,7 @@
     // Una idea en «cambio de recomendación» o descartada no vuelve a proponerse hoy.
     const blockedToday=new Set([...discarded,...commitState.filter(x=>x.changed).map(x=>x.key)]);
     const mappedCands=(input.candidates||[]).filter(c=>{
-      if(held.has(String(c.key))||blockedToday.has(String(c.key)))return false;
+      if(goalReached||held.has(String(c.key))||blockedToday.has(String(c.key)))return false;
       if(c.aiVerdict==='contradice'||c.aiScoutVerdict==='block')return false;
       if(isCommitted(c))return (n(c.askEur)??n(c.priceEur))>0;
       if(!['high','opportunity','watch','spec'].includes(c.tier)&&!c.speculative)return false;
@@ -599,8 +608,9 @@
         const fundK=c.lossMaking===true&&String(c.valuationTone||'')==='high'?.5:1;
         const share=Math.min(spend/fillable*adj.size,hardCap)*fundK;
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
-        const riskCap=valueEur*b.riskPerTradePct/100/(c.stopPct/100);
-        const budget=Math.min(share,riskCap)-feeB;
+        const riskBudget=valueEur*b.riskPerTradePct/100;
+        const riskCap=Math.max(0,(riskBudget-feeB-feeS)/(c.stopPct/100));
+        const budget=Math.max(0,Math.min(share-feeB,riskCap));
         // Fracciones: se invierte el importe, no un número entero de acciones (salvo que el valor no las admita).
         const fractional=allowFractions&&!c.noFractions;
         let units=buyUnits(c,budget,ask);
@@ -608,8 +618,8 @@
         // da para acciones enteras (sin perder más de un 40 % del importe) se proponen enteras con límite.
         if(fractional&&units>=1&&Math.floor(units+1e-9)>=units*.6)units=Math.floor(units+1e-9);
         // Sin fracciones, cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso
-        // máximo y el efectivo, y lo que se arriesga hasta el stop no supera en más de la mitad el riesgo del perfil.
-        if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100<=valueEur*b.riskPerTradePct/100*1.5)units=1;
+        // máximo, el efectivo y el riesgo elegido, incluidas las comisiones de entrada y salida.
+        if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100+feeB+feeS<=riskBudget)units=1;
         if(fractional&&units<=0){notes.push(label(c)+': no queda importe suficiente para invertir.');continue}
         if(units<1&&!fractional){
           const why=ask+feeB>spend?'el efectivo disponible ('+money(spend)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
@@ -649,7 +659,8 @@
       const freeSlots=maxPositions-remaining.length-Math.max(0,Math.round(n(input.lockedHoldings)||0));
       // Lo mínimo que exige comprar alguna candidata: 1 € si admite fracciones, una acción entera si no.
       const cheapest=Math.min(Infinity,...mappedCands.map(c=>{const a=n(c.askEur)??n(c.priceEur);return a>0?(allowFractions&&!c.noFractions?1:a):Infinity}));
-      if(paused)whyNoBuy.push({code:'idle',text:'Plan en pausa: no hay efectivo para invertir y todas tus posiciones están en «mantener». Solo se vigilan tus precios objetivo y stops de emergencia; no se buscan compras ni se consulta a la IA hasta que entre efectivo, cambies una decisión o vendas.'});
+      if(goalReached)whyNoBuy.push({code:'reached',text:'Objetivo alcanzado. Puedes proponer una meta mayor y revisar su plazo; el perfil de riesgo se conserva. Mientras la decides, siguen activos los stops y las revisiones de tus posiciones.'});
+      else if(paused)whyNoBuy.push({code:'idle',text:'Plan en pausa: no hay efectivo para invertir y todas tus posiciones están en «mantener». Solo se vigilan tus precios objetivo y stops de emergencia; no se buscan compras ni se consulta a la IA hasta que entre efectivo, cambies una decisión o vendas.'});
       else if(market.blocked&&!actions.some(a=>a.type==='BUY'))whyNoBuy.push({code:'market',text:'Sin ideas nuevas por ahora: '+(market.reason||'mercado en tensión')+'. Las posiciones y sus stops siguen vigilados.'});
       else if(defensive)whyNoBuy.push({code:'defensive',text:'Modo defensivo: la cartera está un '+(Math.round(drawdownPct*10)/10).toLocaleString('es-ES')+' % por debajo de su máximo; no se abren compras hasta que recupere.'});
       else if(spendable<=1||(Number.isFinite(cheapest)&&spendable<cheapest)){
@@ -688,9 +699,9 @@
     for(const a of actions.filter(y=>y.type==='BUY'&&!y.committed))commitments.push({key:String(a.key),priceEur:n(a.priceEur),at:nowIso,limited:false,changed:'',ticketEur:n(a.ticketEur),ticker:a.ticker||'',name:a.name||''});
     const consumedCommitments=commitState.filter(x=>x.gone).map(x=>({key:x.key,reason:x.gone}));
     const alternatives=defensive||paused?[]:alternativesOf(new Set([...actions,...waits.filter(w=>!w.review)].map(x=>String(x.key||''))));
-    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,alternatives,commitments,consumedCommitments,cashEur:r2(cash),pace:pc,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
+    return{version:VERSION,actions,waits,holds,decisions,notes,whyNoBuy,alternatives,commitments,consumedCommitments,cashEur:r2(cash),pace:pc,nextTargetEur:goalReached?nextGoal(cfg.target,goalValue):null,defensive,drawdownPct:r2(Math.max(0,drawdownPct)),valueEur:r2(valueEur),goalValueEur:r2(goalValue),extraValueEur:r2(extraValue),peakValueEur:r2(peak),
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,nextGoal,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
 })(globalThis);

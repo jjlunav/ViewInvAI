@@ -21,6 +21,61 @@ const input=candidates=>({
   positions:[],candidates,cashEur:1000,peakValueEur:1000,wasDefensive:false,nowMs:Date.parse("2026-10-06T12:00:00Z")
 });
 
+// A shorter deadline raises the mathematical hurdle, never the selected risk budget.
+{
+  const now=Date.parse('2026-01-01T00:00:00Z'),cfg={target:2000,startValue:1000,startDate:'2026-01-01'};
+  const short=G.pace({...cfg,deadline:'2026-01-31T00:00:00Z'},1000,now);
+  const long=G.pace({...cfg,deadline:'2026-12-27T00:00:00Z'},1000,now);
+  assert.ok(Math.abs(short.requiredMonthlyPct-100)<1e-8);
+  assert.ok(Math.abs(long.requiredMonthlyPct-(2**(1/12)-1)*100)<1e-8);
+  assert.equal(short.requiredGrowthPct,100);assert.equal(short.remainingEur,1000);
+  for(const startValue of [null,0])assert.equal(G.pace({...cfg,startValue,deadline:'2026-12-31'},1000,now).status,'unmeasured');
+  assert.equal(G.pace({...cfg,startDate:'',deadline:'2026-12-31'},1000,now).status,'unmeasured');
+  const empty=G.pace({...cfg,startValue:0,deadline:'2026-12-31'},0,now);
+  assert.equal(empty.status,'unmeasured');assert.equal(empty.requiredMonthlyPct,null);
+  const huge=G.pace({...cfg,target:1e100,deadline:'2026-01-01T00:00:00.001Z'},1,now);
+  assert.equal(huge.requiredMonthlyPct,null,'An unrepresentable rate must not leak Infinity into the UI');
+  assert.equal(G.pace({...cfg,deadline:'2026-01-31'},1000,0).status,'unmeasured','Epoch zero is a valid evaluation time');
+}
+
+// Reaching the goal retires pending entry ideas and proposes an editable higher milestone.
+{
+  const held={...base,key:'NASDAQ:HELD',ticker:'HELD',units:20,avgEur:10,priceEur:10,bidEur:10,holdingDays:1};
+  const cfg={...input([]).config,target:150,startValue:100};
+  const p=G.plan({...input([base]),config:cfg,positions:[held],committed:[{key:base.key,priceEur:10,ticketEur:100,at:'2026-10-06'}]});
+  assert.equal(p.pace.status,'reached');assert.equal(p.nextTargetEur,250,'Base the next milestone on the current value, including any overshoot');
+  assert.equal(p.whyNoBuy[0].code,'reached');assert.equal(p.commitments.length,0);
+  assert.ok(p.consumedCommitments.some(x=>x.reason==='goal-reached'));
+  assert.ok(!p.actions.some(x=>x.type==='BUY'||x.reason==='rotation'));
+  assert.equal(p.waits.length,0);assert.equal(p.alternatives.length,0);
+  const protectedPlan=G.plan({...input([base]),config:cfg,positions:[{...held,stopEur:11}]});
+  assert.ok(protectedPlan.actions.some(x=>x.reason==='stop'),'Stops stay active after reaching the goal');
+  assert.ok(!protectedPlan.actions.some(x=>x.type==='BUY'),'Stop proceeds do not reopen risk for a completed goal');
+  const news=G.plan({...input([base]),config:cfg,positions:[{...held,aiVerdict:'contradice',aiNewsReason:'Verified adverse news'}]});
+  assert.ok(news.actions.some(x=>x.reason==='news'),'Risk-reducing news exits remain available');
+  const raised=G.plan({...input([base]),config:{...cfg,target:1000},positions:[held]});
+  assert.ok(raised.actions.some(x=>x.type==='BUY'),'Accepting a larger goal allows entries again');
+  assert.equal(raised.band.risk,p.band.risk);assert.equal(cfg.target,150,'The engine never saves or mutates the target');
+  assert.equal(G.nextGoal(100000000,100000000),null,'Do not suggest an amount beyond the backend target limit');
+}
+
+// Fee-inclusive quoted stop risk must fit the profile, even for whole-share fallback orders.
+{
+  let seen=0;
+  for(const risk of Object.keys(G.RISK))for(const cash of [200,500,1000,2500])for(const price of [3,13,58,200])for(const fee of [0,.5,1])for(const allowFractions of [true,false]){
+    const c={...base,priceEur:price,askEur:price,technicalPrice:price,ema20:price*.98,ema50:price*.95,feeEur:fee};
+    const p=G.plan({...input([c]),config:{...input([]).config,risk,allowFractions},cashEur:cash,peakValueEur:cash});
+    for(const a of p.actions.filter(x=>x.type==='BUY')){
+      seen++;assert.ok(a.riskEur<=cash*G.RISK[risk].riskPerTradePct/100+.011,'Fees and whole shares cannot exceed the profile risk budget');
+    }
+  }
+  assert.ok(seen>100,'Exercise feasible purchases across profiles and sizes');
+  const short=G.plan({...input([base]),config:{...input([]).config,risk:'conservative',deadline:'2026-10-07',startDate:'2026-01-01',startValue:10000}});
+  const long=G.plan({...input([base]),config:{...input([]).config,risk:'conservative',deadline:'2028-10-07',startDate:'2026-01-01',startValue:10000}});
+  assert.equal(short.band.risk,long.band.risk);
+  assert.equal(JSON.stringify(short.actions.filter(x=>x.type==='BUY').map(x=>x.units)),JSON.stringify(long.actions.filter(x=>x.type==='BUY').map(x=>x.units)),'Deadline pressure must not silently increase risk');
+}
+
 {
   const p=G.plan(input([base]));
   assert.equal(p.actions.filter(x=>x.type==="BUY").length,1,"clean setup should BUY NOW");
@@ -91,24 +146,24 @@ const input=candidates=>({
 // Capital limitado, fracciones y valores sin fracciones.
 {
   const pricey={...base,key:"LSX:56S1",ticker:"56S1",priceEur:200,askEur:200,technicalPrice:200,ema20:196,ema50:190};
-  const cfg={...input([]).config,target:500,startValue:250};
-  let p=G.plan({...input([pricey]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
+  const cfg={...input([]).config,target:1000,startValue:500};
+  let p=G.plan({...input([pricey]),config:cfg,cashEur:450,peakValueEur:500,lockedValueEur:50});
   let buy=p.actions.find(x=>x.type==="BUY");
   assert.ok(buy&&buy.fractional&&buy.units>0&&buy.units<1,"expensive stock must be bought as a fraction");
   assert.ok(/fracci/.test(buy.text),"fractional buy must say so");
-  p=G.plan({...input([{...pricey,noFractions:true}]),config:cfg,cashEur:200,peakValueEur:250,lockedValueEur:50});
+  p=G.plan({...input([{...pricey,noFractions:true}]),config:cfg,cashEur:450,peakValueEur:500,lockedValueEur:50});
   assert.equal(p.actions.filter(x=>x.type==="BUY").length,0,"stock without fractions cannot be bought below one share");
-  p=G.plan({...input([pricey]),config:{...cfg,investCapEur:80},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  p=G.plan({...input([pricey]),config:{...cfg,investCapEur:80},cashEur:450,peakValueEur:500,lockedValueEur:50});
   buy=p.actions.find(x=>x.type==="BUY");
   assert.ok(buy&&buy.ticketEur+1<=80.01,"capital cap must limit the ticket");
-  p=G.plan({...input([pricey]),config:{...cfg,investCapPct:0},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  p=G.plan({...input([pricey]),config:{...cfg,investCapPct:0},cashEur:450,peakValueEur:500,lockedValueEur:50});
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","zero capital must be reported as the cap");
   // Lo apartado al guardar el límite se respeta aunque baje el efectivo (las compras gastan del capital permitido).
   p=G.plan({...input([pricey]),config:{...cfg,investCapEur:100,investReserveEur:150},cashEur:160,peakValueEur:250,lockedValueEur:90});
   assert.equal(p.reservedEur,150,"saved reserve must stay apart");
   assert.ok(p.investableEur<=10.01,"only cash above the reserve can be invested");
   // Valor sin fracciones y capital que no llega a una acción entera: el motivo es el límite.
-  p=G.plan({...input([{...pricey,noFractions:true}]),config:{...cfg,investCapEur:80},cashEur:200,peakValueEur:250,lockedValueEur:50});
+  p=G.plan({...input([{...pricey,noFractions:true}]),config:{...cfg,investCapEur:80},cashEur:450,peakValueEur:500,lockedValueEur:50});
   assert.equal(p.whyNoBuy[0]&&p.whyNoBuy[0].code,"cap","whole-share candidate above the cap must report the cap");
 }
 
