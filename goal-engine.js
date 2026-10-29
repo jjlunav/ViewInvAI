@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g19-small-tickets';
+  const VERSION='2026.10.29-g19-small-cash';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -19,6 +19,8 @@
   const BETTER_SCORE=85;
   // STICKY_BONUS: puntos de ventaja de la compra ya recomendada frente a una nueva (score temprano 0-100).
   // COMMIT_CHASE_PCT: una idea fijada se deja de proponer a mercado si el precio sube más que esto desde que se mostró.
+  // MIN_TICKET: importe mínimo de una compra (con 1 € por orden, por debajo la comisión es más de la mitad).
+  const MIN_TICKET=5;
   const COMMIT_CHASE_PCT=3,STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
@@ -753,10 +755,9 @@
         // Comisiones: dentro del límite del perfil, o hasta el doble si se comen menos de una cuarta parte de lo previsto
         // (con 1 € por orden, en carteras pequeñas casi ningún ticket bajaría del límite fijo).
         const feePct=(feeB+feeS)/ticket*100,expected=ticket*n(c.targetPct)/100;
-        // Compras pequeñas (lo elige el usuario): desde 10 € aunque la comisión pese mucho; se avisa en los contras.
-        const smallOk=cfg.smallTickets===true&&ticket>=10-1e-9;
-        if(cfg.smallTickets===true&&ticket<10-1e-9){notes.push(label(c)+': el importe ('+money(ticket)+') no llega al mínimo de 10 €.');continue}
-        if(!smallOk&&feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
+        // Con poco efectivo también se propone comprar (el objetivo es hacerlo crecer): la comisión no descarta la idea,
+        // se avisa de cuánto se come en los contras. Solo por debajo de MIN_TICKET la comisión sería más de la mitad.
+        if(ticket<MIN_TICKET-1e-9){notes.push(label(c)+': el importe ('+money(ticket)+') no llega al mínimo de '+money(MIN_TICKET)+' (la comisión se comería casi todo).');continue}
         spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         if(c.riskTier==='alto')highExposure+=ticket;

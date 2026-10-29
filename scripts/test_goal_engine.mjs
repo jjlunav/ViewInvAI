@@ -485,19 +485,16 @@ const input=candidates=>({
   assert.equal(z.count,0,"below the 10 € minimum nothing is bought");
 }
 
-// Compras pequeñas (opción del usuario): desde 10 € aunque la comisión pese, avisando en los contras.
+// Con poco efectivo también se recomienda comprar: la comisión no descarta la idea, se avisa de cuánto se come.
 {
   const c={...base,key:"NASDAQ:SMALL",ticker:"SMALL"};
-  // 200 €: el riesgo por operación (2,5 %, comisiones incluidas) limita cada compra a unos 30 €; 2 € de comisión es un 6,7 %.
-  const tiny={...input([c]),cashEur:200,peakValueEur:200};
-  let p=G.plan(tiny);
-  assert.ok(!p.actions.some(a=>a.type==="BUY"),"by default a ~30 € ticket is rejected for fees");
-  p=G.plan({...tiny,config:{...tiny.config,smallTickets:true}});
+  // 200 €: el riesgo de la operación (comisiones incluidas) deja la compra en unos 30 €; 2 € de comisión es un 6,7 %.
+  let p=G.plan({...input([c]),cashEur:200,peakValueEur:200});
   const buy=p.actions.find(a=>a.type==="BUY");
-  assert.ok(buy&&buy.ticketEur>=10,"with small tickets allowed, it buys from 10 €");
+  assert.ok(buy,"a small portfolio still gets a buy recommendation");
   assert.ok(buy.cons.some(t=>/comisión de ida y vuelta/.test(t)),"and warns how much the fee takes");
-  p=G.plan({...input([c]),cashEur:9,peakValueEur:9,config:{...tiny.config,smallTickets:true}});
-  assert.ok(!p.actions.some(a=>a.type==="BUY"),"below 10 € it never buys");
+  p=G.plan({...input([c]),cashEur:4,peakValueEur:4});
+  assert.ok(!p.actions.some(a=>a.type==="BUY"),"below 5 € it never buys (the fee would take most of it)");
 }
 
 console.log("Goal engine tests: OK");
