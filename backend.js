@@ -5123,13 +5123,24 @@ async function handlePortfolioGoal(request,env,user,json,url){
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
       return json({goal:await goalWithPositionState(env,user.id,goal)});
     }
-    // Descartar una idea nueva que cambió de recomendación: libera su efectivo hoy y no toca el resto del objetivo.
+    // Descartar una idea propuesta: se oculta hoy y libera su efectivo; se puede volver a mostrar (restoreIdea).
     if(body.discardIdea!==undefined){
       const key=trimText(body.discardIdea,120);
       if(!key)return json({error:"discardIdea required"},400);
       const row=await env.DB.prepare("SELECT discarded_ideas FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
       if(!row)return json({error:"Goal not found"},404);
       const keys=[...new Set([...goalDiscardedToday(row.discarded_ideas),key])].slice(-12);
+      await env.DB.prepare("UPDATE portfolio_goals SET discarded_ideas=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify({day:madridDay(Date.now()),keys}),portfolioId,user.id).run();
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal)});
+    }
+    // Volver a mostrar una idea descartada hoy: el plan puede proponerla otra vez si sigue cumpliendo las reglas.
+    if(body.restoreIdea!==undefined){
+      const key=trimText(body.restoreIdea,120);
+      if(!key)return json({error:"restoreIdea required"},400);
+      const row=await env.DB.prepare("SELECT discarded_ideas FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+      if(!row)return json({error:"Goal not found"},404);
+      const keys=goalDiscardedToday(row.discarded_ideas).filter(k=>k!==key);
       await env.DB.prepare("UPDATE portfolio_goals SET discarded_ideas=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify({day:madridDay(Date.now()),keys}),portfolioId,user.id).run();
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
       return json({goal:await goalWithPositionState(env,user.id,goal)});

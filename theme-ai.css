@@ -2616,3 +2616,58 @@ html[data-theme="light"] .goal2-sleeve-fee{color:#a86400}
 .goal-wizard-sleeve-pos{display:grid;gap:8px}
 .goal-wizard-sleeve-pos label{display:grid;grid-template-columns:1fr minmax(120px,40%);gap:8px;align-items:center;font-size:13px}
 html[data-theme="light"] .goal-wizard-sleeve select,html[data-theme="light"] .goal-wizard-sleeve-pos select{background:#fff;border-color:#d7dcec}
+
+/* ----- Objetivo simple: ideas arriba, el resto en desplegables cerrados ----- */
+.goal2-simple{display:grid;gap:12px}
+.goal2-simple .goal2-head{align-items:center}
+.goal2-mini{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:16px;border:1px solid rgba(140,170,255,.18);background:rgba(255,255,255,.03)}
+.goal2-mini strong{font-size:17px;white-space:nowrap}.goal2-mini>span{color:var(--muted,#8ea0bf);font-size:13px;white-space:nowrap}
+.goal2-mini .goal2-bar{flex:1;min-width:40px;margin:0}
+.goal2-mini .goal2-pace{white-space:nowrap}
+.goal2-simple .goal2-today h3,.goal2-simple .goal2-more h3{display:flex;justify-content:space-between;align-items:center;font-size:16px;margin:4px 0 0}
+.goal2-simple .goal2-today h3 small{font-size:13px;color:var(--muted,#8ea0bf);font-weight:600}
+.goal2-simple .goal2-action{display:block;padding:12px 14px;border-radius:18px}
+.goal2-action-top{display:flex;align-items:center;gap:10px;min-width:0}
+.goal2-logo{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:14px;background:rgba(140,190,210,.14);color:var(--text,#eaf4f8)}
+.goal2-action-main{flex:1;min-width:0;display:grid;gap:2px}
+.goal2-simple .goal2-action-main strong{font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal2-simple .goal2-action-what{font-size:14px;line-height:1.35}
+.goal2-action-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.goal2-action-side .goal2-risk-pill{margin:0}
+.goal2-simple .goal2-action-buttons{display:flex;gap:8px;margin-top:12px;flex-wrap:nowrap}
+.goal2-btn{flex:1 1 0;min-width:0;height:40px;padding:0 8px;border-radius:12px;border:1px solid rgba(140,190,210,.22);background:rgba(255,255,255,.04);color:var(--text,#eaf4f8);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.goal2-btn-primary{border:0;background:linear-gradient(135deg,#7c6cff 0%,#5b8cff 48%,#2fd3b0 100%);color:#061018}
+.goal2-btn-why{flex:0 0 auto;padding:0 12px;color:#b9adff}
+html body #view-portfolios .goal2-simple .goal2-action-buttons .goal2-btn{height:40px!important;min-height:40px!important;border-radius:12px!important;font-size:13.5px!important}
+.goal2-why-body{display:grid;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(140,190,210,.16)}
+.goal2-why-body[hidden]{display:none}
+.goal2-why-text{font-size:13.5px;line-height:1.45}
+.goal2-why-body small{font-size:12.5px;line-height:1.4}
+.goal2-why-note{color:var(--muted,#8ea0bf)}
+.goal2-why-body .goal2-decide{justify-self:start}
+.goal2-fold{border:1px solid rgba(140,170,255,.18);border-radius:16px;background:rgba(255,255,255,.03);margin-bottom:8px}
+.goal2-fold>summary{list-style:none;display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;font-weight:700}
+.goal2-fold>summary::-webkit-details-marker{display:none}
+.goal2-fold>summary::after{content:"›";color:var(--muted,#8ea0bf);font-size:18px;line-height:1;transition:transform .15s}
+.goal2-fold[open]>summary::after{transform:rotate(90deg)}
+.goal2-fold-title{flex:none}
+.goal2-fold-hint{flex:1;min-width:0;text-align:right;color:var(--muted,#8ea0bf);font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal2-fold-body{display:grid;gap:10px;padding:0 14px 14px}
+.goal2-fold-body .goal2-section{gap:8px}
+.goal2-sleeves-actions{display:flex}
+.goal2-sleeves-actions .goal2-btn{flex:0 0 auto;padding:0 16px}
+.goal2-discarded{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.goal2-discarded li{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px}
+.goal2-simple .goal2-today .goal2-fold{margin:2px 0 0}
+.goal2-sub{display:block;color:var(--muted,#8ea0bf);font-size:12.5px}
+.goal2-simple .goal2-disclaimer{text-align:center;font-size:12.5px;color:var(--muted,#8ea0bf);margin:0}
+html[data-theme="light"] .goal2-mini,html[data-theme="light"] .goal2-fold{background:#fff;border-color:#dfe3f3}
+html[data-theme="light"] .goal2-btn{background:#f7f9fd;border-color:#dde3ee;color:#0f1e3a}
+html[data-theme="light"] .goal2-btn-primary{background:linear-gradient(135deg,#4f46e5 0%,#3b6fe0 50%,#14b8a6 100%);color:#fff}
+html[data-theme="light"] .goal2-btn-why{color:#4f46e5}
+html[data-theme="light"] .goal2-logo{background:#eef0ff;color:#0f1e3a}
+html body .goal2-simple .goal2-action>.goal2-action-top{display:flex;align-items:center;gap:10px}
+html body .goal2-simple .goal2-action>.goal2-action-buttons{display:flex;gap:8px}
+html body .goal2-simple .goal2-action>.goal2-why-body:not([hidden]){display:grid}
+html body .goal2-simple .goal2-action .goal2-action-main{display:grid;gap:2px}
+html body .goal2-simple .goal2-action .goal2-action-side{display:flex}
