@@ -1654,7 +1654,7 @@ function goalEngineInput(metrics,positionRows){
     const holdingDays=Number.isFinite(openedAt)&&openedAt>0?Math.max(0,(Date.now()-openedAt)/86400000):null;
     const marketTicker=String((row.preferTr?row.stock.trTicker:row.stock.ticker)||ticker).toUpperCase();
     return{hold:goalHoldFor(row.p,row.avgEur),positionId:row.p.id,key,ticker,marketTicker,name:row.stock.name||row.p.name||"",units:row.qty,avgEur:row.avgEur,priceEur:useUs?us.eur:row.unitEur,bidEur:useUs?us.eur:sell.unitEur,priceSource:useUs?"us":"lsx",score:row.score,quality:row.quality,
-      tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
+      tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:goalAtrPct(row.stock),marketCap:num(row.stock&&row.stock.marketCap),sector:String(row.stock&&row.stock.sector||""),industry:String(row.stock&&row.stock.industry||""),peakEur:num(st.peak_eur),stopEur:num(st.stop_eur),
       feeEur:sell.feeEur||portfolioOperationFee(row.preferTr),aiVerdict:goalAiOf(ticker),aiNewsReason:goalNewsReasonOf(ticker),holdingDays,
       catalystDays:num(cat.days),catalystImpact:num(cat.impact),perfWeek:num(row.stock&&row.stock.perfWeek),perfMonth:num(row.stock&&row.stock.perfMonth),row};
   });
@@ -1690,7 +1690,7 @@ function goalEngineInput(metrics,positionRows){
     const openFadePct=q.quoteRecent===true&&G&&G.openFadePct?G.openFadePct({market:preferTr?"tr":"us",marketStatus:r.s.usLiveMarketStatus,
       price:preferTr?(r.s.trLiveLast??r.s.trLivePrice):r.s.usLivePrice,open:preferTr?r.s.trLiveOpen:r.s.usLiveOpen}):null;
     return priceEur>0?{key:goalStockKey(r.s),ticker,marketTicker,name:r.s.name||"",quoteFresh:priceFallback?false:q.quoteRecent===true,priceFallback,openFadePct,priceEur,askEur:useUs?null:q.unitEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,
-      atrPct:goalAtrPct(r.s),...goalEarningsIn(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
+      atrPct:goalAtrPct(r.s),marketCap:num(r.s.marketCap),sector:String(r.s.sector||""),industry:String(r.s.industry||""),...goalEarningsIn(r.s),feeEur:q.feeEur||portfolioOperationFee(preferTr),aiVerdict:goalAiOf(ticker,goalStockKey(r.s)),stock:r.s,quote:q,
       relVolume:num(r.s.relVolume),rsi:num(r.s.rsi),adx:num(r.s.adx),ema20:num(r.s.ema20),ema50:num(r.s.ema50),technicalPrice:num(r.s.price),avgVolume:num(r.s.avgVolume),
       dayChangePct:useUs&&us.change!==null?us.change:num(entry.dayChange),perfWeek:num(entry.weekPerf),perfMonth:num(r.s.perfMonth),spreadPct:num(q.spreadPct),priceSource:useUs?"us":"lsx",
       extensionPct:num(entry.extensionPct),nearHighPct:num(entry.nearHighPct),
@@ -1797,6 +1797,34 @@ function goalPositionLink(ctx,key,label){
   return p&&label?{label,key:p.row.p.stock_key,preferTr:p.row.preferTr}:null;
 }
 // Etiqueta de una espera con su motivo concreto (la decisión interna sigue siendo «COMPRA LÍMITE» / «ESPERAR»).
+// Etiqueta de riesgo de la acción (alto / medio / bajo), calculada en el motor por volatilidad, tamaño y sector.
+function goalRiskPill(tier){
+  const t={alto:"RIESGO ALTO",medio:"RIESGO MEDIO",bajo:"RIESGO BAJO"}[String(tier||"")];
+  return t?' <span class="goal2-risk-pill goal2-risk-'+esc(tier)+'" title="Alto: muy volátil, pequeña o biotecnológica pequeña. Bajo: poco volátil y grande.">'+t+'</span>':'';
+}
+// Ideas a 1-3 meses por momento de 6 meses (señal medida en 10 años). Informativas; caché de 1 minuto.
+let goalTrendCache={at:0,key:"",list:[]};
+function goalTrendHtml(ctx,preferTr,heldKeys){
+  const G=window.ViewInvAIGoal,all=window.ViewInvAI&&typeof window.ViewInvAI.getAllStocks==="function"?window.ViewInvAI.getAllStocks():[];
+  if(!G||typeof G.trendIdeas!=="function"||!all.length)return'';
+  const cacheKey=(preferTr?"tr":"us")+"|"+[...heldKeys].sort().join(",");
+  if(goalTrendCache.key!==cacheKey||Date.now()-goalTrendCache.at>60000){
+    const rows=[];
+    for(const s of all){
+      if(preferTr?!(s.tradeRepublicTradable===true||(s.tradeRepublicVerified&&s.trTicker)):!["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(s.exchange||"").toUpperCase()))continue;
+      const price=num(s.price),avgVol=num(s.avgVolume);
+      rows.push({key:goalStockKey(s),ticker:String((preferTr?s.trTicker:s.ticker)||s.ticker||"").toUpperCase(),name:s.name||"",price,perf6M:num(s.perf6M),perfMonth:num(s.perfMonth),
+        high52w:num(s.high52w),marketCap:num(s.marketCap),atrPct:goalAtrPct(s),tradedUsd:price!==null&&avgVol!==null?price*avgVol:null,sector:s.sector||"",industry:s.industry||"",stock:s});
+    }
+    goalTrendCache={at:Date.now(),key:cacheKey,list:G.trendIdeas(rows,{limit:5,exclude:[...heldKeys]}).map(t=>({...t,stock:(rows.find(r=>r.key===t.key)||{}).stock}))};
+  }
+  const list=goalTrendCache.list;if(!list.length)return'';
+  return '<details class="goal2-alts goal2-trend" open><summary>Tendencia 1–3 meses · momento de 6 meses</summary><ol>'+list.map(t=>{
+    const label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=t.stock?portfolioStockKey(t.stock):t.key;
+    return '<li>'+goalLinkedText(label,[{label,key,preferTr}])+goalRiskPill(t.riskTier)+' <small>6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+
+      (num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo anual':'')+'</small></li>'}).join('')+
+    '</ol><small class="goal2-alts-note">En 10 años de históricos, el 10 % de acciones con más momento de 6 meses batió al S&amp;P 500 en algo más de la mitad de los trimestres, por +1 a +2,6 % de media antes de comisiones. Es una tendencia estadística, no una previsión: puede bajar y no ha pasado la revisión completa del Objetivo.</small></details>';
+}
 function goalWaitTag(a){
   if(a.decision==="COMPRA LÍMITE")return num(a.limitPriceEur)!==null?"ENTRADA MÁX. "+formatMoney(a.limitPriceEur,"EUR"):"SOLO CON LÍMITE";
   if(a.decision==="EN REVISIÓN")return"EN REVISIÓN";
@@ -1854,7 +1882,7 @@ function goalActionHtml(a,ctx){
       ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
       :'');
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
-    '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+'</strong><span>'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+extra+button+'</div></div>';
+    '<em>'+tag+'</em><div><strong>'+esc(a.name||a.ticker)+' '+ai+goalRiskPill(a.riskTier)+'</strong><span>'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+extra+button+'</div></div>';
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;
@@ -1937,7 +1965,7 @@ function goalAlternativesHtml(plan,ctx,shown){
   const list=((plan&&plan.alternatives)||[]).filter(a=>!(shown&&shown.has(String(a.key))));if(!list.length)return'';
   return '<details class="goal2-alts" open><summary>Otras opciones ('+list.length+') · ordenadas por puntuación</summary><ol>'+list.map(a=>{
     const label=String(a.ticker||"")+(a.name&&a.name!==a.ticker?' ('+a.name+')':'');
-    return '<li>'+goalLinkedText(label,[goalCandidateLink(ctx,a.key,label)])+' <small>'+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' %'+
+    return '<li>'+goalLinkedText(label,[goalCandidateLink(ctx,a.key,label)])+goalRiskPill(a.riskTier)+' <small>'+formatNumber(a.burstScore,0)+'/100 · recorrido +'+formatNumber(a.targetPct,1)+' %'+
       (num(a.moveRangePct)!==null?' (suele moverse ±'+formatNumber(a.moveRangePct,1)+' % en 5 sesiones)':'')+' · '+esc(a.status||"")+'</small></li>'}).join('')+
     '</ol><small class="goal2-alts-note">Informativo: no han pasado la revisión completa (cotización real, resultados, analistas, noticias e IA) y por eso no tienen botón de compra. Las ideas ya revisadas aparecen arriba, en «Hoy toca».</small></details>';
 }
@@ -1990,7 +2018,7 @@ function portfolioGoalViewHtml(){
     goalPaceHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+holds+frozenNote+
+    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+goalTrendHtml(ctx,ctx.preferTr,new Set((ctx.positions||[]).map(p=>String(p.key))))+holds+frozenNote+
       '<p class="goal2-disclaimer">Información, no asesoramiento: aplica las reglas que fijaste con datos reales, que pueden fallar. Decides tú y puedes perder dinero.</p></section>'+
     goalScoreboardHtml()+
     (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+

@@ -8425,7 +8425,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const hold=dec?{mode:dec.hold_mode||(dec.decision==="hold"?"recover":"date"),pct:finiteNumber(dec.hold_pct),
           targetEur:finiteNumber(dec.target_eur)??(dec.decision==="hold"&&!dec.hold_mode?avgEur:null),emergencyEur:finiteNumber(dec.emergency_eur),until:dec.hold_until||String(dec.review_at||"").slice(0,10)}:null;
         enginePositions.push({hold,positionId:p.id,key,ticker,usTicker:usTickerOf(stock),isin:String(stock&&(stock.isin||stock.usIsin||stock.trIsin)||p.isin||"").toUpperCase(),marketTicker:String(stock&&(ptr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:p.name||stock&&stock.name||"",units:qty,avgEur,priceEur:mark,bidEur:bid,score:finiteNumber(p.last_score)??(rr?rr.score:50),
-          quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
+          quality:rr?rr.quality:60,tier:rr?rr.tier:"",speculative:!!(rr&&rr.speculative),atrPct:atrPct(stock),marketCap:finiteNumber(stock.marketCap),sector:String(stock.sector||""),industry:String(stock.industry||""),peakEur:finiteNumber(st.peak_eur),stopEur:finiteNumber(st.stop_eur),
           feeEur:ptr?1:1,aiVerdict:ai.get(ticker)||"",preferTr:ptr,holdingDays,catalystDays:cat.days,catalystImpact:cat.impact,
           perfWeek:finiteNumber(stock&&stock.perfWeek),perfMonth:finiteNumber(stock&&stock.perfMonth)});
       }
@@ -8456,7 +8456,7 @@ async function scanPortfolioGoalNotifications(env,services){
         const nearHighPct=techPrice!==null&&dayHigh>0&&techPrice<=dayHigh?(dayHigh-techPrice)/dayHigh*100:null;
         // En Trade Republic la variación del día es la de LSX; sin ella no se usa la de NYSE/NASDAQ.
         const dayChangePct=finiteNumber(preferTr?stock.trLiveChangePct:(stock.usLiveChangePct??stock.changePct));
-        return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
+        return priceEur>0?{key:r.stock_key,ticker,marketTicker:String((preferTr?stock.trTicker:stock.ticker)||ticker).toUpperCase(),name:r.name,priceEur,score:r.score,quality:r.quality,tier:r.speculative?"spec":r.tier,speculative:!!r.speculative,atrPct:atrPct(stock),marketCap:finiteNumber(stock.marketCap),sector:String(stock.sector||""),industry:String(stock.industry||""),feeEur:1,aiVerdict:ai.get(ticker)||"",stock,
           relVolume:finiteNumber(stock.relVolume),rsi:finiteNumber(stock.rsi),adx:finiteNumber(stock.adx),ema20,ema50:finiteNumber(stock.ema50),technicalPrice:techPrice,avgVolume:finiteNumber(stock.avgVolume),
           dayChangePct,perfWeek:finiteNumber(stock.perfWeek),perfMonth:finiteNumber(stock.perfMonth),spreadPct:goalServerSpreadPct(stock,preferTr),
           extensionPct,nearHighPct,catalystDays:cat.days,catalystImpact:cat.impact,catalystTitle:cat.title}:null;

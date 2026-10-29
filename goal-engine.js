@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g16-goal-risk';
+  const VERSION='2026.10.29-g17-risk-tiers';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -38,6 +38,40 @@
   const pct=v=>(v>0?'+':'')+(Math.round(v*10)/10).toLocaleString('es-ES')+' %';
 
   function band(risk){return RISK[risk]||RISK.aggressive}
+  // Nivel de riesgo de una acción (etiqueta informativa y límite de exposición):
+  // alto: muy volátil (ATR ≥ 6 %/día), pequeña (< 300 M), especulativa o biotecnológica/farmacéutica pequeña (< 2.000 M);
+  // bajo: poco volátil (ATR < 2,5 %) y grande (≥ 10.000 M); medio: el resto.
+  function riskTier(c){
+    const atr=n(c&&c.atrPct),cap=n(c&&c.marketCap),ind=String(c&&c.industry||''),sec=String(c&&c.sector||'');
+    const health=/biotech|pharmaceuticals: other|medical specialties/i.test(ind)||/health technology/i.test(sec);
+    if(c&&c.speculative||(atr!==null&&atr>=6)||(cap!==null&&cap<3e8)||(health&&cap!==null&&cap<2e9))return'alto';
+    if(atr!==null&&atr<2.5&&cap!==null&&cap>=1e10)return'bajo';
+    return'medio';
+  }
+  // Ideas a 1-3 meses por momento de 6 meses sin el último (la única señal que batió al S&P 500 en 2017-2022 y en
+  // 2023-hoy en data/signal-research.json). Se descartan las de volatilidad extrema y las lejos de máximos, que en esa
+  // misma prueba eran las peores. Informativo: no pasa por la revisión del Objetivo ni lleva tamaño.
+  function trendIdeas(stocks,opts={}){
+    const limit=Math.max(1,Math.min(10,n(opts.limit)||5)),exclude=new Set((opts.exclude||[]).map(String));
+    const out=[];
+    for(const s of Array.isArray(stocks)?stocks:[]){
+      if(!s||exclude.has(String(s.key)))continue;
+      const p6=n(s.perf6M),pm=n(s.perfMonth),price=n(s.price),cap=n(s.marketCap),atr=n(s.atrPct),hi=n(s.high52w),traded=n(s.tradedUsd);
+      if(p6===null||pm===null||!(price>=1)||cap===null||cap<3e8||(traded!==null&&traded<1e6))continue;
+      if(atr!==null&&atr>8)continue;
+      const fromHigh=hi>0?(price/hi-1)*100:null;
+      if(fromHigh!==null&&fromHigh<-25)continue;
+      const mom=((1+p6/100)/(1+pm/100)-1)*100;
+      if(!(mom>0))continue;
+      out.push({key:s.key,ticker:s.ticker,name:s.name,momentumPct:r2(mom),perf6M:r2(p6),perfMonth:r2(pm),fromHighPct:fromHigh===null?null:r2(fromHigh),riskTier:riskTier(s)});
+    }
+    out.sort((a,b)=>b.momentumPct-a.momentumPct||String(a.key).localeCompare(String(b.key)));
+    // Mezcla de riesgos: como máximo 2 de cada 5 de riesgo alto (si hay de sobra de riesgo medio o bajo).
+    const maxHigh=Math.max(1,Math.round(limit*.4)),picked=[];let high=0;
+    for(const x of out){if(picked.length>=limit)break;if(x.riskTier==='alto'){if(high>=maxHigh)continue;high++}picked.push(x)}
+    for(const x of out){if(picked.length>=limit)break;if(!picked.includes(x))picked.push(x)}
+    return picked.sort((a,b)=>b.momentumPct-a.momentumPct||String(a.key).localeCompare(String(b.key)));
+  }
   function specPolicy(cfg,maxPositions){
     const raw=n(cfg&&cfg.specMode),mode=clamp(Math.round(raw===null?(cfg&&cfg.allowSpec===false?0:1):raw),0,3);
     const base=SPEC_POLICY[mode]||SPEC_POLICY[1];
@@ -392,7 +426,7 @@
       return{...c,burstScore:burst.score,rawBurst:burst.rawScore,burstPhase:burst.phase,burstReasons:burst.parts,
         entryTiming:burst.entryTiming,entryEligible:burst.entryEligible,entryDecision:burst.entryDecision,entryReasons:burst.entryReasons,
         limitPriceEur:burst.limitPriceEur,limitDiscountPct:burst.limitDiscountPct,
-        stopPct,moveRangePct,targetPct:moveRangePct!==null?r2(Math.min(rawTarget,moveRangePct*1.5)):rawTarget};
+        stopPct,moveRangePct,targetPct:moveRangePct!==null?r2(Math.min(rawTarget,moveRangePct*1.5)):rawTarget,riskTier:riskTier(c)};
     });
     // Memoria del plan: la idea que ya se recomendó hace poco solo se sustituye si otra la supera con claridad.
     // Sin esto, con varias candidatas empatadas (p. ej. a 100/100), la primera cambiaba con cada pequeña variación de datos.
@@ -424,7 +458,13 @@
     const fixed=rankedCands.filter(isCommitted).sort((x,y)=>String(commits.get(String(x.key)).at||'').localeCompare(String(commits.get(String(y.key)).at||'')));
     // Las fijadas van primero; si con su importe reservado aún queda capital y hueco, puede entrar una idea nueva.
     const fresh=rankedCands.filter(c=>!isCommitted(c));
-    const freshPick=fresh.length>1&&rankOf(fresh[1])>=rankOf(fresh[0])-5?fresh.slice(0,2):fresh.slice(0,1);
+    let freshPick=fresh.length>1&&rankOf(fresh[1])>=rankOf(fresh[0])-5?fresh.slice(0,2):fresh.slice(0,1);
+    // Mezcla de riesgos: si la mejor es de riesgo alto (o no), la segunda puede ser la mejor del otro grupo si no queda
+    // muy lejos (15 puntos), para proponer una idea de alto riesgo y otra de riesgo medio o bajo.
+    if(freshPick.length===1&&fresh.length>1){
+      const isHigh=fresh[0].riskTier==='alto',other=fresh.find(c=>(c.riskTier==='alto')!==isHigh&&rankOf(c)>=rankOf(fresh[0])-15);
+      if(other)freshPick=[fresh[0],other];
+    }
     const shortlist=[...fixed,...freshPick].slice(0,Math.max(2,fixed.length));
     // Sin cotización en vivo (p. ej. antes de la apertura o con el dato de la sesión anterior) no se
     // propone comprar ni cambiar: el movimiento real del día puede ser el contrario al que indica el dato.
@@ -454,7 +494,7 @@
       const g=gateOf(c);
       const status=g&&g!=='review'?g:stale(c)?'sin cotización en vivo verificada':doubted(c)?'la IA tiene dudas':['late','avoid'].includes(c.burstPhase)?'el movimiento parece agotado':
         c.entryDecision==='BUY_LIMIT'&&n(c.limitPriceEur)!==null?'solo con orden límite ≤ '+money(c.limitPriceEur):!c.entryEligible?((c.entryReasons||[])[0]||'entrada poco limpia'):g==='review'?'pendiente de la revisión completa del servidor':'cumple tus reglas; pendiente de hueco o efectivo';
-      return{key:c.key,ticker:c.marketTicker||c.ticker,name:c.name,burstScore:r2(c.burstScore),targetPct:r2(c.targetPct),moveRangePct:n(c.moveRangePct),status};
+      return{key:c.key,ticker:c.marketTicker||c.ticker,name:c.name,riskTier:c.riskTier||riskTier(c),burstScore:r2(c.burstScore),targetPct:r2(c.targetPct),moveRangePct:n(c.moveRangePct),status};
     });
     const buyable=c=>isCommitted(c)?chasePct(c)===null&&!c.priceFallback:c.entryEligible&&!stale(c)&&!doubted(c)&&c.burstScore>=b.minBurst&&!['late','avoid'].includes(c.burstPhase)&&!gateOf(c);
     const cands=shortlist.filter(buyable).sort((x,y)=>(isCommitted(y)?1:0)-(isCommitted(x)?1:0)||edge(y)-edge(x)||byPriority(x,y));
@@ -588,6 +628,9 @@
       let specCount=remaining.filter(p=>p.speculative).length;
       let specExposure=remaining.filter(p=>p.speculative).reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
+      // Riesgo alto: como máximo highRiskPct (30 % por defecto) del valor del objetivo, contando lo que ya está invertido.
+      const highRiskPct=clamp(n(cfg.highRiskPct)??30,0,100);
+      let highExposure=remaining.filter(p=>riskTier(p)==='alto').reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
       let spend=Math.max(0,pool-reserved);
       // Importe reservado por las ideas fijadas que hoy no se compran (en límite o en cambio de recomendación).
       const buyingNow=new Set(cands.map(c=>String(c.key)));
@@ -601,9 +644,11 @@
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
+        const highCapacity=c.riskTier==='alto'?Math.max(0,valueEur*highRiskPct/100-highExposure):Infinity;
+        if(highCapacity<=1){notes.push(label(c)+': riesgo alto y ya usas el '+highRiskPct+' % del objetivo permitido para ese riesgo.');continue}
         // El efectivo se reparte entre los huecos que de verdad se pueden llenar (no hay más candidatas que huecos).
         const fillable=Math.max(1,Math.min(slots,ordered.length-ci));
-        const hardCap=Math.min(valueEur*maxW,spend,specCapacity);
+        const hardCap=Math.min(valueEur*maxW,spend,specCapacity,highCapacity);
         // Cara y en pérdidas: se invierte la mitad (un tropiezo en resultados la castiga más).
         const fundK=c.lossMaking===true&&String(c.valuationTone||'')==='high'?.5:1;
         const share=Math.min(spend/fillable*adj.size,hardCap)*fundK;
@@ -632,6 +677,7 @@
         if(feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
         spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
+        if(c.riskTier==='alto')highExposure+=ticket;
         const isFraction=fractional&&Math.abs(units-Math.round(units))>1e-9;
         // Límite de compra: el precio de venta actual (ask) más un margen pequeño para que se ejecute sin perseguir el precio.
         // También para fracciones: la ayuda de Trade Republic dice que van a mercado, pero si el bróker deja poner límite, mejor.
@@ -679,6 +725,8 @@
     // Cada propuesta lleva la etiqueta (ticker del mercado + nombre) de la acción a la que se refiere.
     const labels=new Map([...positions,...(input.candidates||[])].map(x=>[String(x.key),label(x)]));
     for(const x of [...actions,...waits,...holds])x.label=labels.get(String(x.key))||label(x);
+    const tierSource=new Map([...positions,...(input.candidates||[])].map(x=>[String(x.key),x]));
+    for(const x of [...actions,...waits,...holds])if(!x.riskTier){const src=tierSource.get(String(x.key));if(src)x.riskTier=riskTier(src)}
     const decisions=[
       ...actions.map(a=>({...a,decision:a.decision||(a.type==='SELL'?'VENDER':a.type==='RAISE_STOP'?'MANTENER / SUBIR STOP':a.type)})),
       ...waits,
@@ -703,5 +751,5 @@
       cashLeftEur:r2(Math.max(0,pool)),investableEur:r2(usable),reservedEur:r2(reserved),allowFractions,band:{risk,label:b.label,minScore,maxPositions,specMode:spec.mode,specMaxCount:spec.maxCount,specMaxWeight:spec.maxWeight,specMaxTotalWeight:spec.maxTotalWeight}};
   }
 
-  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,nextGoal,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
+  root.ViewInvAIGoal=Object.freeze({VERSION,RISK,plan,pace,nextGoal,riskTier,trendIdeas,isIdle,usableCash,positionStop,stopPctFor,targetPctFor,candidateEntry,candidateBurst,openFadePct});
 })(globalThis);

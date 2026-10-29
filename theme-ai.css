@@ -2563,3 +2563,11 @@ html[data-theme="light"] body .portfolio-form .goal-fomo .goal-fomo-check span{c
 .goal2-alts ol{margin:8px 0 6px;padding-left:20px;display:grid;gap:4px}
 .goal2-alts li small{opacity:.8}
 .goal2-alts-note{display:block;opacity:.7;font-size:11.5px}
+/* Objetivo: etiqueta de riesgo de cada idea */
+.goal2-risk-pill{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:800;letter-spacing:.04em;vertical-align:middle;white-space:nowrap}
+.goal2-risk-alto{background:rgba(255,107,107,.16);color:#ff8a8a}
+.goal2-risk-medio{background:rgba(245,177,66,.16);color:#f5b142}
+.goal2-risk-bajo{background:rgba(47,211,154,.15);color:#2fd39a}
+html[data-theme="light"] .goal2-risk-alto{color:#c53030}
+html[data-theme="light"] .goal2-risk-medio{color:#a86400}
+html[data-theme="light"] .goal2-risk-bajo{color:#137a55}
