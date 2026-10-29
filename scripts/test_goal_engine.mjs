@@ -473,6 +473,11 @@ const input=candidates=>({
   assert.ok(z.ideas[1].fractional&&z.ideas[1].fits,"fractions allow the expensive share");
   z=G.sleeveSizing(ideas,{cashEur:50,minTicketEur:90,slots:3});
   assert.equal(z.count,0);assert.equal(z.reason,"cash");
+  // Acciones enteras que no caben: se descartan y el efectivo se reparte entre las que sí.
+  z=G.sleeveSizing([{key:"X",ticker:"X",priceEur:250},{key:"Y",ticker:"Y",priceEur:250}],{cashEur:200,minTicketEur:90,slots:3,allowFractions:false});
+  assert.equal(z.count,0,"two 250 € shares do not fit 200 € without fractions");assert.equal(z.reason,"price");
+  z=G.sleeveSizing([{key:"X",ticker:"X",priceEur:150},{key:"C",ticker:"C",priceEur:10}],{cashEur:200,minTicketEur:90,slots:3,allowFractions:false});
+  assert.equal(z.count,1);assert.equal(z.ideas[1].units,19,"the viable idea gets the whole 199 €, not half");
 }
 
 console.log("Goal engine tests: OK");

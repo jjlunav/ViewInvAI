@@ -22,6 +22,7 @@ vm.createContext(context);vm.runInContext(engine,context);context.window.ViewInv
 // Execute the actual wizard and save functions without starting the whole application.
 vm.runInContext(source.slice(source.indexOf('// ----- Huchas del Objetivo'),source.indexOf('function goalSleeveOperationNote(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalSleeveOptions('),source.indexOf('// Repartir el efectivo entre las huchas')),context);
+vm.runInContext(source.slice(source.indexOf('// Acciones de la cartera repartidas por hucha'),source.indexOf('function goalSleeveEurPrice(')),context);
 vm.runInContext(source.slice(source.indexOf('let goalWizard=null;'),source.indexOf('function goalWizardChoice(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalWizardDemandHtml('),source.indexOf('function goalWizardStepHtml(')),context);
 vm.runInContext(source.slice(source.indexOf('function goalRenewalHtml('),source.indexOf('function goalPaceHtml(')),context);
@@ -53,9 +54,10 @@ wizard=vm.runInContext('goalWizard',context);
 assert.equal(wizard.v.sleevesOn,0,'An existing goal without sleeves starts as a single plan');
 assert.equal(wizard.posList[0].sleeve,'alto','Held positions default to the high-risk sleeve (bought by the short plan)');
 wizard.v.sleevesOn=1;wizard.v.sl={alto:60,medio:40,bajo:100};wizard.v.strat.bajo='index';
-await context.saveGoalWizard();
-const goalBody=bodies[bodies.length-2],sleeveBody=bodies[bodies.length-1];
+const before=requests;await context.saveGoalWizard();
+assert.equal(requests,before+1,'Goal and sleeves are saved in one request (all or nothing)');
+const goalBody=bodies[bodies.length-1];
 assert.equal(goalBody.investCapEur,null);assert.equal(goalBody.investReserveEur,null);
-assert.deepEqual(sleeveBody.sleeves.cash,{alto:60,medio:40,bajo:100});assert.equal(sleeveBody.sleeves.strategies.bajo,'index');
-assert.deepEqual(sleeveBody.sleeves.assign,[{positionId:'pos1',sleeve:'alto',valueEur:20}]);
+assert.deepEqual(goalBody.sleeves.cash,{alto:60,medio:40,bajo:100});assert.equal(goalBody.sleeves.strategies.bajo,'index');
+assert.deepEqual(goalBody.sleeves.assign,[{positionId:'pos1',sleeve:'alto',valueEur:20}]);
 console.log('Goal wizard: editable renewal, explicit save, deadline demand and preserved risk: OK');

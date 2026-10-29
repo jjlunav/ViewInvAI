@@ -2584,6 +2584,7 @@ html[data-theme="light"] .goal2-sleeve-pct.up{color:#137a55}html[data-theme="lig
 .goal2-sleeve>header strong{font-size:20px}
 .goal2-sleeve-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;font-size:12px;opacity:.95}
 .goal2-sleeve-grid b{display:block;font-size:14px}
+.goal2-sleeve-gain{display:block;opacity:.75;margin-top:4px}
 .goal2-sleeve-pos{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px;font-size:13px}
 .goal2-sleeve-pos li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
 .goal2-sleeve-pos small{opacity:.8}

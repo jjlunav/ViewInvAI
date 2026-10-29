@@ -2022,8 +2022,19 @@ function goalSleeveBuckets(positionRows){
     const k=String(row.p.sleeve||""),qty=num(row.qty)||0,value=row.unitEur!==null?qty*row.unitEur:null;
     if(!out[k]||k==="none"){out.none.push({row,value});continue}
     out[k].rows.push({row,value});out[k].value+=value||0;out[k].cost+=row.avgEur!==null?qty*row.avgEur:0;
+    if(value===null)out[k].unpriced=true;
   }
   return out;
+}
+// Valor de mercado de cada hucha ahora (efectivo + acciones): con él, el servidor reparte participaciones al
+// meter o sacar dinero sin cambiar la rentabilidad. Sin precio de alguna acción no se manda (usa el coste).
+function goalSleeveValues(S,positionRows){
+  if(!S)return{};
+  const B=goalSleeveBuckets(positionRows||[]);
+  return Object.fromEntries(GOAL_SLEEVES.filter(k=>!B[k].unpriced).map(k=>[k,Math.round((S.sleeves[k].cashEur+B[k].value)*100)/100]));
+}
+function goalSleeveRowsFor(portfolioId){
+  try{return String(portfolioId)===String(state.selectedPortfolioId)?portfolioCoachPositionRows(portfolioGoalMetrics()):[]}catch(_){return[]}
 }
 function goalSleeveEurPrice(stock,preferTr,fx){
   const q=goalExecutionQuote(stock,preferTr,"BUY",fx,"",1);
@@ -2097,7 +2108,8 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
   const held=new Set(positionRows.map(r=>goalStockKey(r.stock)));
   const cards=GOAL_SLEEVES.map(k=>{
     const x=S.sleeves[k],m=GOAL_SLEEVE_META[k],st=goalSleeveStrategy(S,k),b=B[k],total=x.cashEur+b.value;
-    const pct=x.baseEur>0?(total/x.baseEur-1)*100:null;
+    // Rentabilidad por participaciones: meter o sacar dinero no la cambia (cada participación empezó en 1 €).
+    const units=num(x.units),pct=b.unpriced?null:units>1e-9?(total/units-1)*100:x.baseEur>0?(total/x.baseEur-1)*100:null;
     const pos=b.rows.length?'<ul class="goal2-sleeve-pos">'+b.rows.map(({row,value})=>{
       const ret=row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null,exit=goalSleeveExitNote(k,row);
       const label=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||"")+(row.stock&&row.stock.name?' ('+row.stock.name+')':'');
@@ -2112,7 +2124,8 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
     else ideas='<small class="goal2-alts-note">Las ideas de esta hucha son las de «Hoy toca».</small>';
     return '<article class="goal2-sleeve goal2-sleeve-'+esc(k)+'"><header><span>'+goalSleevePill(k)+' <b>'+esc(st.short)+'</b> <small>'+esc(m.horizon)+'</small></span>'+
       '<strong class="goal2-sleeve-pct'+(pct===null?'':pct>=0?' up':' down')+'">'+(pct===null?'—':(pct>0?'+':'')+formatNumber(pct,1)+' %')+'</strong></header>'+
-      '<div class="goal2-sleeve-grid"><span>Asignado<b>'+esc(formatMoney(x.baseEur,"EUR"))+'</b></span><span>Efectivo<b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>Valor total<b>'+esc(formatMoney(total,"EUR"))+'</b></span></div>'+
+      '<div class="goal2-sleeve-grid"><span>Aportado<b>'+esc(formatMoney(x.baseEur,"EUR"))+'</b></span><span>Efectivo<b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>Valor total<b>'+esc(formatMoney(total,"EUR"))+'</b></span></div>'+
+      (b.unpriced?'':'<small class="goal2-sleeve-gain">'+(total-x.baseEur>=0?'Ganas ':'Pierdes ')+esc(formatMoney(Math.abs(total-x.baseEur),"EUR"))+' sobre lo aportado</small>')+
       pos+'<details class="goal2-sleeve-more"'+(k==="alto"?'':' open')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia e ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas+'</details></article>';
   }).join('');
   const none=B.none.length?'<div class="goal2-why" role="note"><b>Acciones sin hucha.</b> Indica a qué hucha pertenece cada una: lo comprado desde que empezaron las huchas lo pagó esa hucha y lo que ya tenías se le suma por su valor de hoy.<ul class="goal2-sleeve-pos">'+
@@ -2123,7 +2136,7 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
   const mix=total>0?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+' '+formatNumber((S.sleeves[k].cashEur+B[k].value)/total*100,0)+' %').join(' · '):'';
   return '<section class="goal2-section goal2-sleeves"><div class="goal2-sleeves-head"><h3>Tus huchas</h3><button type="button" class="btn small ghost" data-goal-sleeve-cash>Repartir efectivo</button></div>'+banner+
     '<div class="goal2-sleeve-list">'+cards+'</div>'+none+
-    (base>0?'<small class="goal2-alts-note">En conjunto: '+esc(formatMoney(base,"EUR"))+' → '+esc(formatMoney(total,"EUR"))+' ('+((total/base-1)*100>=0?'+':'')+esc(formatNumber((total/base-1)*100,1))+' %). Reparto de hoy: '+esc(mix)+'. Cada % es frente a lo que asignaste a esa hucha; el dinero nuevo que metas no cuenta como ganancia.</small>':'')+
+    (base>0?'<small class="goal2-alts-note">En conjunto: aportado '+esc(formatMoney(base,"EUR"))+' → '+esc(formatMoney(total,"EUR"))+' ('+(total-base>=0?'+':'−')+esc(formatMoney(Math.abs(total-base),"EUR"))+'). Reparto de hoy: '+esc(mix)+'. El % de cada hucha se mide como un fondo: meter o sacar dinero no lo cambia.</small>':'')+
   '</section>';
 }
 function goalSleeveOptions(current){
@@ -2175,7 +2188,8 @@ async function saveGoalSleeveCash(form){
   const status=form.querySelector("[data-goal-sleeve-status]"),button=form.querySelector('button[type="submit"]');
   const cash={};for(const k of GOAL_SLEEVES)cash[k]=Math.max(0,num(form.querySelector('[name="'+k+'"]').value)||0);
   if(button)button.disabled=true;
-  try{await goalSleevePatch(form.dataset.portfolioId,{cash});closeModal();renderGoalApp();toast("Reparto guardado.")}
+  const S=goalSleeveStateOf(state.goals[String(form.dataset.portfolioId)]);
+  try{await goalSleevePatch(form.dataset.portfolioId,{cash,values:goalSleeveValues(S,goalSleeveRowsFor(form.dataset.portfolioId))});closeModal();renderGoalApp();toast("Reparto guardado.")}
   catch(error){if(status)status.textContent=error.message||"No se pudo guardar.";if(button)button.disabled=false}
 }
 // Tras cambiar el efectivo (a mano o al importar de Trade Republic): si no cuadra con las huchas, se pregunta el reparto.
@@ -2189,8 +2203,9 @@ function goalSleeveCashPrompt(portfolioId){
 }
 async function goalSleeveAssign(select){
   const portfolioId=state.selectedPortfolioId,positionId=select.dataset.goalSleeveAssign,sleeve=select.value,valueEur=num(select.dataset.goalSleeveValue);
+  const S=goalSleeveStateOf(state.goals[String(portfolioId)]);
   select.disabled=true;
-  try{await goalSleevePatch(portfolioId,{assign:[{positionId,sleeve,valueEur}]});await loadAll();renderGoalApp();toast(sleeve?"Acción asignada a la hucha "+GOAL_SLEEVE_META[sleeve].label.toLowerCase()+".":"Acción sin hucha.")}
+  try{await goalSleevePatch(portfolioId,{assign:[{positionId,sleeve,valueEur}],values:goalSleeveValues(S,goalSleeveRowsFor(portfolioId))});await loadAll();renderGoalApp();toast(sleeve?"Acción asignada a la hucha "+GOAL_SLEEVE_META[sleeve].label.toLowerCase()+".":"Acción sin hucha.")}
   catch(error){toast(error.message||"No se pudo asignar.",true);select.disabled=false}
 }
 document.addEventListener("click",event=>{
@@ -2295,7 +2310,9 @@ function openGoalWizard(options={}){
   goalWizard.v.sleevesOn=goalWizard.eurBase&&(S||!selectedPortfolioGoal())?1:0;
   goalWizard.v.sl=Object.fromEntries(GOAL_SLEEVES.map(k=>[k,S?S.sleeves[k].cashEur:Math.floor(cash0*def[k]*100)/100]));
   goalWizard.v.strat=Object.fromEntries(GOAL_SLEEVES.map(k=>[k,S?S.sleeves[k].strategy:Object.keys(GOAL_SLEEVE_META[k].strategies)[0]]));
-  goalWizard.posList=portfolioCoachPositionRows(metrics).map(row=>{
+  const wizardRows=portfolioCoachPositionRows(metrics);
+  goalWizard.sleeveValues=goalSleeveValues(S,wizardRows);
+  goalWizard.posList=wizardRows.map(row=>{
     const init=String(row.p.sleeve||""),frozen=positionFrozenQty(row.p)>=(num(row.qty)||0)-1e-9&&positionFrozenQty(row.p)>0;
     return{id:String(row.p.id),label:String(row.p.ticker||"")+(row.stock&&row.stock.name?' · '+row.stock.name:''),value:row.unitEur!==null?(num(row.qty)||0)*row.unitEur:null,init,sleeve:init||(S||frozen?"":"alto")};
   });
@@ -2477,16 +2494,20 @@ async function saveGoalWizard(){
     const usable=goalWizardUsable(w.v,w.cash);
     if(goalWizardCapChanged(w.v))payload.investReserveEur=usable===null||(payload.investCapEur===null&&payload.investCapPct===null)?null:Math.max(0,(num(w.cash)||0)-usable);
     // Con huchas no hay límite de capital aparte: lo que invierte cada plan es el efectivo de su hucha.
-    if(w.v.sleevesOn===1){payload.investCapEur=null;payload.investCapPct=null;payload.investReserveEur=null}
+    // El objetivo y sus huchas viajan en la misma petición: el servidor los guarda juntos o ninguno.
+    let assign=[];
+    if(w.v.sleevesOn===1){
+      payload.investCapEur=null;payload.investCapPct=null;payload.investReserveEur=null;
+      assign=w.posList.filter(p=>p.sleeve!==p.init).map(p=>({positionId:p.id,sleeve:p.sleeve,valueEur:p.value}));
+      const unpriced=w.posList.filter(p=>p.sleeve&&p.sleeve!==p.init&&p.value===null);
+      if(unpriced.length)throw new Error("Aún no hay precio de "+unpriced.map(p=>p.label.split(" · ")[0]).join(", ")+": espera a que coticen para meterlas en una hucha.");
+      payload.sleeves={cash:Object.fromEntries(GOAL_SLEEVES.map(k=>[k,Math.max(0,num(w.v.sl[k])||0)])),strategies:w.v.strat,assign,values:w.sleeveValues||{}};
+    }else if(w.sleevesInit)payload.sleeves={disable:true};
     const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo guardar el objetivo.");
     if(data.goal)state.goals[String(w.portfolioId)]=data.goal;
-    state.goal=data.goal||null;state.goalError="";
-    if(w.v.sleevesOn===1){
-      const assign=w.posList.filter(p=>p.sleeve!==p.init).map(p=>({positionId:p.id,sleeve:p.sleeve,valueEur:p.value}));
-      await goalSleevePatch(w.portfolioId,{cash:Object.fromEntries(GOAL_SLEEVES.map(k=>[k,Math.max(0,num(w.v.sl[k])||0)])),strategies:w.v.strat,assign});
-      if(assign.length)await loadAll();
-    }else if(w.sleevesInit)await goalSleevePatch(w.portfolioId,{disable:true});
+    state.goal=data.goal||null;state.goalError="";goalPlanCache=null;
+    if(assign.length)await loadAll();
     closeGoalWizard();renderGoalApp();toast("Objetivo guardado.");
   }catch(error){goalWizardMsg(error.message||"No se pudo guardar.");if(btn)btn.disabled=false}
 }

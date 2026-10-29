@@ -48,6 +48,16 @@ r=await createTransactionRecord(env,user,trade({stockKey:'XETRA:BIO',ticker:'BIO
 assert.equal(r.status,201);assert.equal(r.body.transaction.sleeve,'alto',"la venta va a la hucha de la posición");
 S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.alto.cashEur,318);assert.equal(S.sleeves.alto.baseEur,300);
 assert.equal(Math.round((S.sleeves.alto.cashEur/S.sleeves.alto.baseEur-1)*10000)/100,6,"+18 € sobre 300 € = +6 %");
+// Meter dinero en una hucha con ganancia no cambia su rentabilidad (participaciones a 1,06 €).
+db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=cash_balance+100 WHERE portfolio_id='pf'").run();
+assert.equal(await handleGoalSleeves(env,user,json,'pf',{sleeves:{cash:{alto:418},values:{alto:318}}}),null);
+S=await goalSleeveState(env,'u','pf',started);
+assert.equal(S.sleeves.alto.baseEur,400,"lo aportado sube");
+assert.equal(Math.round((S.sleeves.alto.cashEur/S.sleeves.alto.units-1)*10000)/100,6,"la rentabilidad sigue en +6 %");
+assert.equal(await handleGoalSleeves(env,user,json,'pf',{sleeves:{cash:{alto:318},values:{alto:418}}}),null);
+db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=cash_balance-100 WHERE portfolio_id='pf'").run();
+S=await goalSleeveState(env,'u','pf',started);
+assert.equal(Math.round((S.sleeves.alto.cashEur/S.sleeves.alto.units-1)*10000)/100,6,"sacar dinero tampoco la cambia");
 // Vender parte de la acción que ya tenías (hucha baja) y borrar esa venta: la hucha vuelve a como estaba.
 r=await createTransactionRecord(env,user,trade({positionId:old,side:'SELL',quantity:5,price:12,executedAt:later(3000)}));
 S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.bajo.cashEur,458);
@@ -64,6 +74,21 @@ S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.medio.cashE
 // Cambiar una acción de hucha mueve su aportación, no la duplica.
 assert.equal(await handleGoalSleeves(env,user,json,'pf',{sleeves:{assign:[{positionId:old,sleeve:'medio',valueEur:120}]}}),null);
 S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.bajo.baseEur,399);assert.equal(S.sleeves.medio.baseEur,420);
+// Sin precio, una acción que ya tenías no entra en una hucha (después parecería ganancia gratis).
+r=await createTransactionRecord(env,user,trade({stockKey:'XETRA:NOPX',ticker:'NOPX',isin:'US0000000009',quantity:2,price:5,executedAt:'2026-01-15T10:00:00Z'}));
+const nopx=r.body.position.id;
+assert.equal((await handleGoalSleeves(env,user,json,'pf',{sleeves:{assign:[{positionId:nopx,sleeve:'bajo',valueEur:null}]}})).status,409);
+assert.equal(db.raw.prepare('SELECT sleeve FROM positions WHERE id=?').get(nopx).sleeve,'');
+// Una compra antigua (de antes de las huchas) importada después sube lo aportado al mismo precio por acción.
+S=await goalSleeveState(env,'u','pf',started);const medioBase=S.sleeves.medio.baseEur;
+await createTransactionRecord(env,user,trade({positionId:old,quantity:10,price:9,executedAt:'2026-01-20T10:00:00Z'}),{origin:'import:tr',adjustCash:false});
+S=await goalSleeveState(env,'u','pf',started);
+assert.equal(S.sleeves.medio.baseEur,Math.round((medioBase+10*12)*100)/100,"10 acciones más a 12 € (120 € por 10 al asignarla)");
+// Compra que el saldo no cubre: la hucha descuenta el importe completo, no solo lo que quedaba en la cartera.
+db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=10 WHERE portfolio_id='pf'").run();
+S=await goalSleeveState(env,'u','pf',started);const altoCash=S.sleeves.alto.cashEur;
+await createTransactionRecord(env,user,trade({stockKey:'XETRA:BIO',ticker:'BIO',isin:'US0000000002',quantity:2,price:20,executedAt:later(5000)}));
+S=await goalSleeveState(env,'u','pf',started);assert.equal(S.sleeves.alto.cashEur,Math.round((altoCash-41)*100)/100);
 // La copia de seguridad incluye las huchas.
 const b=await exportBackup(db,'u');assert.equal(b.goalSleeves.length,3);assert.ok(b.goalSleeveMoves.length>=4);
 // Quitar las huchas no borra operaciones ni posiciones.

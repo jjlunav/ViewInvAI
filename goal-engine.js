@@ -92,7 +92,8 @@
       if(roic!==null&&roic<10)continue;
       if(roic===null&&roe!==null&&roe<12)continue;
       if(pe!==null&&(pe<5||pe>35))continue;
-      if(atr!==null&&atr>3.5)continue;
+      // Solo riesgo bajo de verdad (poca volatilidad medida y grande): esta hucha no se usa para riesgo medio.
+      if(atr===null||riskTier(s)!=='bajo')continue;
       const fromHigh=hi>0?(price/hi-1)*100:null;
       if(fromHigh!==null&&fromHigh<-30)continue;
       if(p6!==null&&p6<-20)continue;
@@ -119,19 +120,29 @@
     const cash=Math.max(0,n(opts.cashEur)||0),fee=Math.max(0,n(opts.feeEur)??1),minTicket=Math.max(1,n(opts.minTicketEur)||100);
     const slots=Math.max(0,Math.round(n(opts.slots)??3)),allowFractions=opts.allowFractions!==false,noFrac=new Set((opts.noFractions||[]).map(t=>String(t).toUpperCase()));
     const list=(Array.isArray(ideas)?ideas:[]).filter(x=>n(x&&x.priceEur)>0);
-    const count=Math.min(slots,list.length,Math.floor(cash/(minTicket+fee)));
-    const out=[];
-    if(count<=0)return{count:0,each:0,ideas:list.map(x=>({...x,ticketEur:0,units:0,fractional:false,fits:false})),reason:!slots?'full':!list.length?'nocands':'cash'};
-    const each=(cash-count*fee)/count;
-    for(const x of list){
-      if(out.filter(y=>y.fits).length>=count){out.push({...x,ticketEur:0,units:0,fractional:false,fits:false});continue}
-      const price=n(x.priceEur),frac=allowFractions&&!noFrac.has(String(x.ticker||'').toUpperCase());
+    const fracOf=x=>allowFractions&&!noFrac.has(String(x.ticker||'').toUpperCase());
+    // Las que no admiten fracciones solo caben si una acción entera entra en su parte: se descartan y se vuelve a
+    // repartir entre las que sí caben, hasta que el reparto no cambie.
+    let viable=list.slice(),count=0,each=0;
+    for(let guard=0;guard<=list.length;guard++){
+      count=Math.min(slots,viable.length,Math.floor(cash/(minTicket+fee)));
+      if(count<=0)break;
+      each=(cash-count*fee)/count;
+      const picked=viable.slice(0,count),drop=picked.filter(x=>!fracOf(x)&&n(x.priceEur)>each);
+      if(!drop.length)break;
+      viable=viable.filter(x=>!drop.includes(x));
+    }
+    if(count<=0)return{count:0,each:0,ideas:list.map(x=>({...x,ticketEur:0,units:0,fractional:false,fits:false})),reason:!slots?'full':!list.length?'nocands':!viable.length?'price':'cash'};
+    const chosen=new Set(viable.slice(0,count));
+    const out=list.map(x=>{
+      if(!chosen.has(x))return{...x,ticketEur:0,units:0,fractional:false,fits:false};
+      const price=n(x.priceEur),frac=fracOf(x);
       let units=frac?Math.floor(each/price*1e4)/1e4:Math.floor(each/price+1e-9);
       if(frac&&units>=1&&Math.floor(units)>=units*.9)units=Math.floor(units);
       const ticket=r2(units*price);
-      out.push({...x,ticketEur:ticket,units,fractional:frac&&Math.abs(units-Math.round(units))>1e-9,fits:units>0&&ticket>=minTicket*.5});
-    }
-    return{count,each:r2(each),ideas:out,reason:''};
+      return{...x,ticketEur:ticket,units,fractional:frac&&Math.abs(units-Math.round(units))>1e-9,fits:units>0};
+    });
+    return{count:out.filter(x=>x.fits).length,each:r2(each),ideas:out,reason:''};
   }
   function specPolicy(cfg,maxPositions){
     const raw=n(cfg&&cfg.specMode),mode=clamp(Math.round(raw===null?(cfg&&cfg.allowSpec===false?0:1):raw),0,3);
