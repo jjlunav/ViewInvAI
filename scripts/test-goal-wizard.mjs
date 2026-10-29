@@ -71,6 +71,7 @@ assert.equal(context.goalWizardCountedCash({...wizard.v,goalCash:900}),200,'Neve
 await context.saveGoalWizard();
 const cashBody=bodies[bodies.length-1];
 assert.equal(cashBody.goalCashMode,'amount');assert.equal(cashBody.goalCashEur,150);assert.equal(cashBody.currentValueEur,1200);
+assert.equal(cashBody.allowSmallTickets,false,'Small tickets stay off unless the user picks them');
 assert.equal(cashBody.goalCashReserveEur,50,'What stays out is sent in euros (USD portfolios store dollars)');
 assert.ok(context.goalWizardTargetChips(1200).includes('1500'),'Target shortcuts are based on what is invested');
 assert.equal(cashBody.investCapEur,150,'The plan only invests the cash chosen for the goal');assert.equal(cashBody.investReserveEur,50,'The rest of the cash stays out');

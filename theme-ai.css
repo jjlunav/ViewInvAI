@@ -2598,6 +2598,8 @@ html[data-theme="light"] .goal2-sleeve-pct.up{color:#137a55}html[data-theme="lig
 .goal2-sleeve-ideas{margin:4px 0;padding-left:18px;display:grid;gap:6px}
 .goal2-sleeve-ideas small{opacity:.8}
 .goal2-sleeve-buy{display:block;font-weight:600;margin:2px 0}
+.goal2-sleeve-fee{display:block;color:#f5b142;margin:2px 0}
+html[data-theme="light"] .goal2-sleeve-fee{color:#a86400}
 .goal2-why.warn{border-color:rgba(245,177,66,.5)}
 .goal2-sleeve-form-row{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;align-items:center;margin:12px 0}
 .goal2-sleeve-form-head{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}

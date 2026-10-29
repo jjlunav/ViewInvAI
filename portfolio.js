@@ -1722,7 +1722,7 @@ function goalEngineInput(metrics,positionRows){
   if(!idle)refreshGoalIdeas();
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
-      investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
+      investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0,smallTickets:Number(goal.allow_small_tickets)===1},
     positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
     extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
@@ -2084,10 +2084,11 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
   const priced=list.filter(t=>t.stock).map(t=>({...t,...goalSleeveEurPrice(t.stock,ctx.preferTr,ctx.fx)}));
   if(ctx.preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-"+k,priced.map(t=>portfolioStockKey(t.stock)));
   const noFrac=[...goalNoFractionSet(goal)];
-  const z=G.sleeveSizing(priced.filter(t=>num(t.priceEur)>0),{cashEur:cash,minTicketEur:m.minTicket,slots:Math.max(0,m.slots-bucket.rows.length),feeEur:portfolioOperationFee(ctx.preferTr),allowFractions:Number(goal.allow_fractions)!==0,noFractions:noFrac});
+  const small=Number(goal.allow_small_tickets)===1,minTicket=small?10:m.minTicket;
+  const z=G.sleeveSizing(priced.filter(t=>num(t.priceEur)>0),{cashEur:cash,minTicketEur:minTicket,targetTicketEur:m.minTicket,slots:Math.max(0,m.slots-bucket.rows.length),feeEur:portfolioOperationFee(ctx.preferTr),allowFractions:Number(goal.allow_fractions)!==0,noFractions:noFrac});
   const sized=new Map(z.ideas.map(x=>[x.key,x]));
   const head=z.count>0?'Con '+formatMoney(cash,"EUR")+' libres: '+z.count+(z.count===1?' compra':' compras')+' de unos '+formatMoney(z.each,"EUR"):
-    z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(m.minTicket,"EUR")+' (la comisión pesaría demasiado).';
+    z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(minTicket,"EUR")+(small?'.':' (la comisión pesaría demasiado). Puedes permitir compras pequeñas en «Ajustar objetivo».');
   return '<small class="goal2-sleeve-sizing">'+esc(head)+'</small><ol class="goal2-sleeve-ideas">'+priced.map(t=>{
     const x=sized.get(t.key),label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=portfolioStockKey(t.stock);
     const facts=k==="medio"?'6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+(num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo':'')
@@ -2096,7 +2097,9 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
     if(x&&x.fits){
       const q=goalExecutionQuote(t.stock,ctx.preferTr,"BUY",ctx.fx,"",x.units),cur=q.currency||(ctx.preferTr?"EUR":"USD");
       const price=q.price??portfolioConvertAmount(t.priceEur,"EUR",cur,ctx.fx);
+      const feePct=x.ticketEur>0?2*portfolioOperationFee(ctx.preferTr)/x.ticketEur*100:null;
       buy='<span class="goal2-sleeve-buy">'+(x.fractional?'≈ '+formatNumber(x.units,2)+' acciones (fracción)':x.units+(x.units===1?' acción':' acciones'))+' · '+formatMoney(x.ticketEur,"EUR")+'</span>'+
+        (feePct!==null&&feePct>2?'<small class="goal2-sleeve-fee">Comisión de ida y vuelta: '+esc(formatNumber(feePct,1))+' % del importe; tiene que subir eso solo para no perder.</small>':'')+
         goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k});
     }
     return '<li>'+goalLinkedText(label,[{label,key,preferTr:ctx.preferTr}])+goalRiskPill(t.riskTier)+' <small>'+esc(facts)+'</small>'+buy+'</li>'}).join('')+'</ol>';
@@ -2315,7 +2318,7 @@ function openGoalWizard(options={}){
        positions:num(goal.max_positions)??4,specMode:goal.allow_spec===undefined?1:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),
        capEur:num(goal.invest_cap_eur),capPct:num(goal.invest_cap_pct),fractions:goal.allow_fractions===undefined?1:(Number(goal.allow_fractions)===0?0:1),
        noFrac:[...goalNoFractionSet(goal)],fracRestore:[],crypto:includeCrypto?1:0,
-       goalCash:goalWizardInitialBudget(goal,metrics.cashEur)},
+       goalCash:goalWizardInitialBudget(goal,metrics.cashEur),smallTickets:Number(goal.allow_small_tickets)===1?1:0},
     stockCurrent:stockCur,cryptoEur:cryptoNow,
     cash:num(metrics.cashEur),capInit:[num(goal.invest_cap_eur),num(goal.invest_cap_pct)],reserveInit:num(goal.invest_reserve_eur),fromSummary:false};
   // Huchas: efectivo de cada una (por defecto 30 / 20 / 50 % del efectivo), su estrategia y la hucha de cada acción.
@@ -2430,7 +2433,10 @@ function goalWizardStepHtml(id){
   // El capital para invertir se elige ya en el paso 1 (efectivo para el objetivo); aquí solo las fracciones.
   if(id==="capital")return '<h2>Compras fraccionadas</h2><p>'+(v.sleevesOn===1?'Cada plan invierte solo el efectivo de su hucha.':'El plan invierte solo los '+esc(formatMoney(goalWizardCountedCash(v),"EUR"))+' que elegiste para el objetivo.')+'</p><div class="goal-wizard-choices">'+
       goalWizardChoice("fractions","1","Sí, invertir importes","Compra la parte de acción que permita el efectivo de la hucha (en Trade Republic, orden a mercado).",v.fractions===1)+
-      goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>';
+      goalWizardChoice("fractions","0","No, solo acciones enteras","Para brókers que no admiten fracciones.",v.fractions===0)+'</div>'+
+      '<h3>¿Compras pequeñas?</h3><div class="goal-wizard-choices">'+
+      goalWizardChoice("smallTickets","0","No, solo si compensa","Cada compra debe ser lo bastante grande para que la comisión (1 € al entrar y 1 € al salir) no se coma la ganancia esperada.",v.smallTickets!==1)+
+      goalWizardChoice("smallTickets","1","Sí, desde 10 €","Con 10 € la comisión de ida y vuelta es un 20 %: la acción tiene que subir eso solo para no perder. Cada compra mostrará cuánto se come la comisión.",v.smallTickets===1)+'</div>';
   if(id==="capital"){
     const cash=w.cash,usable=goalWizardUsable(v,cash);
     return '<h2>¿Cuánto efectivo puede invertir?</h2><p>Hoy tienes '+(cash!==null?formatMoney(cash,"EUR"):"—")+' en efectivo. El plan solo invierte la parte que indiques; el resto queda apartado. Pon una cifra o un porcentaje: el otro se calcula solo.</p>'+
@@ -2479,7 +2485,7 @@ function goalWizardStepHtml(id){
     (num(w.cryptoEur)>0||v.crypto===1?row(0,"Mi cripto",v.crypto===1?"Cuenta en el objetivo":"No cuenta"):'')+
     row(0,"Efectivo para el objetivo",formatMoney(goalWizardCountedCash(v),"EUR")+" de "+formatMoney(num(w.cash)||0,"EUR"))+
     row(4,"Huchas",v.sleevesOn===1?GOAL_SLEEVES.map(k=>GOAL_SLEEVE_META[k].label+" "+formatMoney(num(v.sl[k])||0,"EUR")).join(" · "):"Un solo plan")+
-    row(5,"Fracciones",v.fractions?"con fracciones":"acciones enteras")+row(6,"Especulativas",specLabel)+'</div>'+goalWizardDemandHtml(v,cur)+
+    row(5,"Compras",(v.fractions?"con fracciones":"acciones enteras")+(v.smallTickets===1?" · desde 10 €":""))+row(6,"Especulativas",specLabel)+'</div>'+goalWizardDemandHtml(v,cur)+
     '<p class="goal-wizard-hint">Fondos y ETFs van aparte. El plan compra al momento con stop según volatilidad, sube el stop cuando gana y no cambia una acción en pérdidas salvo que la nueva prevea recuperar la pérdida y las comisiones.</p>';
 }
 function goalWizardCapChanged(v){
@@ -2552,6 +2558,7 @@ async function saveGoalWizard(){
       investCapEur:w.v.capSource==="capPct"?null:num(w.v.capEur),investCapPct:w.v.capSource==="capEur"?null:(num(w.v.capPct)!==null&&num(w.v.capPct)<100?num(w.v.capPct):null),allowFractions:w.v.fractions!==0,
       fractionTickers:w.v.fracRestore,includeCrypto:w.v.crypto===1,
       // «El de las huchas» sin huchas no tiene sentido: queda en «solo lo invertido».
+      allowSmallTickets:w.v.smallTickets===1,
       goalCashMode:"amount",goalCashEur:goalWizardCountedCash(w.v),goalCashReserveEur:Math.round(Math.max(0,(num(w.cash)||0)-goalWizardCountedCash(w.v))*100)/100};
     // El límite de capital del plan es el mismo efectivo para el objetivo: lo que queda fuera se aparta.
     payload.investCapEur=goalWizardCountedCash(w.v);payload.investCapPct=null;payload.investReserveEur=Math.round(Math.max(0,(num(w.cash)||0)-goalWizardCountedCash(w.v))*100)/100;
@@ -2593,7 +2600,7 @@ document.addEventListener("click",event=>{
   if(t.hasAttribute("data-gw-close")){closeGoalWizard();return}
   if(t.hasAttribute("data-gw-set")){
     const k=t.dataset.gwSet,val=t.dataset.gwValue;
-    goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto","sleevesOn"].includes(k)?Number(val):val;
+    goalWizard.v[k]=["positions","target","specMode","capPct","fractions","crypto","sleevesOn","smallTickets"].includes(k)?Number(val):val;
     // El valor de partida (y los atajos +25 %…) cambia según cuente o no Mi cripto.
     if(k==="capPct")goalWizardSyncCap("capPct");
     if((k==="crypto"||k==="sleevesOn")&&goalWizard.stockCurrent!==null)goalWizard.current=goalWizardCurrent();
