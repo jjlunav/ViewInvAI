@@ -1943,9 +1943,12 @@ function goalActionHtml(a,ctx){
     :a.type==="WAIT"
       ?'<small>score temprano '+formatNumber(a.burstScore,0)+'/100 · timing '+formatNumber(a.entryTiming,0)+'/100'+(num(a.limitPriceEur)!==null?' · límite máximo '+formatMoney(a.limitPriceEur,"EUR"):'')+'</small>'
       :'');
-  const what=a.type==="BUY"?(a.fractional?'Comprar '+formatMoney(a.ticketEur,"EUR")+' (fracción)':'Comprar '+formatNumber(a.units,0)+(num(a.units)===1?' acción':' acciones')+' · <b>'+esc(formatMoney(a.ticketEur,"EUR"))+'</b>')
+  // Cantidad tal cual (las fracciones no se redondean) y, en compras, el límite máximo de la orden siempre a la vista.
+  const qty=u=>{const v=num(u)||0;return esc(Math.abs(v-Math.round(v))>1e-9?v.toLocaleString("es-ES",{maximumFractionDigits:6}):formatNumber(v,0))+(v===1?' acción':' acciones')};
+  const limit=num(a.limitPriceEur)!==null?' · límite '+esc(formatMoney(a.limitPriceEur,"EUR"))+(a.fractional?' si tu bróker lo permite':''):'';
+  const what=a.type==="BUY"?(a.fractional?'Comprar <b>'+esc(formatMoney(a.ticketEur,"EUR"))+'</b> (fracción)'+limit:'Comprar '+qty(a.units)+' · <b>'+esc(formatMoney(a.ticketEur,"EUR"))+'</b>'+limit)
     :a.type==="WAIT"?esc(tag.charAt(0)+tag.slice(1).toLowerCase())
-    :a.type==="SELL"?(a.reason==="stop"?'Saltó el stop: vender ':'Vender ')+esc(formatNumber(a.units,0))+(num(a.units)===1?' acción':' acciones')
+    :a.type==="SELL"?(a.reason==="stop"?'Saltó el stop: vender ':'Vender ')+qty(a.units)
     :a.type==="RAISE_STOP"&&num(a.stopEur)!==null?'Subir el stop a '+esc(formatMoney(a.stopEur,"EUR"))
     :a.type==="CHANGE"?'Cambio de recomendación: ya no cumple tus reglas'
     :esc(tag.charAt(0)+tag.slice(1).toLowerCase());

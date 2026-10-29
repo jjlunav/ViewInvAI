@@ -21,10 +21,14 @@ vm.runInContext(slice('function goalDiscardedTodayHtml(','document.addEventListe
 vm.runInContext(slice('const goalOpenWhy=new Set()','document.addEventListener("toggle"'),context);
 const cand={key:'TSE:7203',stock:{key:'TSE:7203',name:'Toyota Motor Corp.'},quote:{price:17.59,feeEur:1,currency:'EUR',executable:false,executionReason:'sin verificar'}};
 const ctx={candidates:[cand],positions:[],preferTr:true,fx:.86,committed:[{key:'TSE:7203',reviewVerdict:'',cons:['resultados el 2026-11-05','comisión de ida y vuelta 4,3 % del importe']}],sleeves:{}};
-const buy={type:'BUY',key:'TSE:7203',ticker:'TOM',name:'Toyota Motor Corp.',label:'TOM (Toyota Motor Corp.)',units:5,ticketEur:87.7,priceEur:17.54,riskEur:7.26,riskPct:6,stopPct:6,targetPct:6.4,burstScore:100,riskTier:'bajo',committed:true,
+const buy={type:'BUY',limitPriceEur:17.59,key:'TSE:7203',ticker:'TOM',name:'Toyota Motor Corp.',label:'TOM (Toyota Motor Corp.)',units:5,ticketEur:87.7,priceEur:17.54,riskEur:7.26,riskPct:6,stopPct:6,targetPct:6.4,burstScore:100,riskTier:'bajo',committed:true,
   text:'Comprar 5 × TOM (Toyota Motor Corp.) con orden límite a 17,59 € (≈ 87,70 €).',pros:['volumen acelera'],cons:['resultados el 2026-11-05','comisión de ida y vuelta 2,3 % del importe']};
 const html=context.goalActionHtml(buy,ctx);
-assert.ok(html.includes('Comprar 5 acciones · <b>87,70 €</b>'),'One short line says what to do');
+assert.ok(html.includes('Comprar 5 acciones · <b>87,70 €</b> · límite 17,59 €'),'One short line says what to do, with the order limit');
+const frac=context.goalActionHtml({...buy,fractional:true,units:4.987,committed:false},{...ctx,committed:[]});
+assert.ok(frac.includes('(fracción) · límite 17,59 € si tu bróker lo permite'));
+const sell=context.goalActionHtml({type:'SELL',reason:'stop',key:'NASDAQ:SPRO',ticker:'SPRO',name:'Spero',units:0.4,text:'Vender'},{...ctx,positions:[]});
+assert.ok(sell.includes('vender 0,4 acciones'),'Fractional sells are not rounded');
 assert.ok(html.includes('✓ Comprada')&&html.includes('data-register-goal-operation="BUY"'),'Bought button registers the order');
 assert.ok(html.includes('data-goal-discard="TSE:7203"')&&!html.includes('data-goal-discard-confirm'),'Every buy can be discarded without a blocking dialog');
 assert.ok(html.includes('data-goal-why=')&&/class="goal2-why-body" hidden/.test(html),'Details stay closed by default');

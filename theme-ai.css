@@ -2671,3 +2671,10 @@ html body .goal2-simple .goal2-action>.goal2-action-buttons{display:flex;gap:8px
 html body .goal2-simple .goal2-action>.goal2-why-body:not([hidden]){display:grid}
 html body .goal2-simple .goal2-action .goal2-action-main{display:grid;gap:2px}
 html body .goal2-simple .goal2-action .goal2-action-side{display:flex}
+/* Botones legibles en pantallas estrechas: nunca más estrechos que su texto; si no caben, bajan de línea. */
+html body .goal2-simple .goal2-action>.goal2-action-buttons{flex-wrap:wrap}
+.goal2-simple .goal2-btn{flex:1 1 auto;min-width:fit-content}
+@media (max-width:380px){
+  html body .goal2-simple .goal2-action>.goal2-action-top{flex-wrap:wrap}
+  html body .goal2-simple .goal2-action .goal2-action-side{order:3;flex-basis:100%;flex-direction:row;justify-content:flex-start;padding-left:50px}
+}
