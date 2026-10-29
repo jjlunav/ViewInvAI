@@ -92,6 +92,8 @@ window.ViewInvAI={
  getDisplayQuote:(stock,preferTr=false)=>verifiedDisplayQuote(stock,preferTr,currentMarketSession()),
  observeLiveQuotes:(root=document)=>{observeTrLivePrices(root||document);setTimeout(pollUsLive,0);},
  ensureTrLiveKey:key=>ensureTrLiveKey(key),
+ pinTrLiveKeys:(scope,keys)=>pinTrLiveKeys(scope,keys),
+ trLiveFresh:key=>trLiveFresh(key),
  renderAssetCard:options=>window.ViewInvAICards.render(options),
  renderStandardStockCard:(stock,options={})=>standardStockCard(stock,Number(options.index)||0,options||{}),
  renderPricePair:(stock,preferTr=false)=>pricePair(stock,SP(stock,currentMarketSession()),preferTr),

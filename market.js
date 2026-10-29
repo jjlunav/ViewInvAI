@@ -16,7 +16,7 @@ function trProxyUrl(){
  return 'wss://viewinvai.sonarlab.workers.dev/api/tr-live';
 }
 
-let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
+let trLive={ws:null,connected:false,connecting:false,seq:1,subByKey:new Map(),keyBySub:new Map(),payloadBySub:new Map(),wanted:new Set(),pinned:new Map(),reconnectTimer:null,reconnectAttempt:0,observer:null,usingDirect:false,proxyFailures:0,lastDataAt:0};
 const TR_CLOSE_CACHE_KEY='viewinvai:trCloseQuotes:v1';
 let trCloseQuotes=(()=>{
  try{
@@ -755,6 +755,22 @@ function dropTrLiveKey(key){
  if(sub){trLive.keyBySub.delete(sub);trLive.payloadBySub.delete(sub)}
  trLive.subByKey.delete(key);
 }
+// Cotizaciones de LSX que un módulo necesita aunque no estén en pantalla (p. ej. las candidatas del Objetivo,
+// que se evalúan sin pintarse). Cada ámbito sustituye su lista; no se podan mientras sigan fijadas.
+function trPinnedKeys(){let out=new Set(),now=Date.now();for(let [scope,p] of trLive.pinned){if(now-p.at>180000){trLive.pinned.delete(scope);continue}for(let k of p.keys)out.add(k)}return out}
+function pinTrLiveKeys(scope,keys){
+ scope=String(scope||'');if(!scope)return;
+ let next=new Set((Array.isArray(keys)?keys:[]).map(String).filter(k=>k&&trStockByKey(k)).slice(0,60));
+ // Caduca a los 3 minutos si el módulo deja de renovarla (p. ej. al salir del Objetivo).
+ trLive.pinned.set(scope,{at:Date.now(),keys:next});
+ for(let key of next)if(!trLive.wanted.has(key))ensureTrLiveKey(key);
+}
+// Hay cotización ejecutable de LSX para la acción: suscrita en el socket abierto y con un dato recibido en esta
+// conexión, con LSX abierto. Una línea sin operaciones mantiene su horquilla aunque el último cruce sea antiguo.
+function trLiveFresh(key){
+ let sub=trLive.subByKey.get(String(key||''));
+ return !!(sub&&trLive.connected&&trLive.payloadBySub.has(sub)&&trMarketOpen());
+}
 function ensureTrLiveKey(key){
  let s=trStockByKey(key);if(!s)return;
  if(trLive.wanted.has(key)){
@@ -762,7 +778,8 @@ function ensureTrLiveKey(key){
   trLive.wanted.add(key);
  }else{
   while(trLive.wanted.size>=MAX_TR_LIVE_SUBSCRIPTIONS){
-   let oldest=trLive.wanted.values().next().value;
+   // Se libera la suscripción más antigua que no esté fijada (las candidatas del Objetivo se conservan).
+   let pinned=trPinnedKeys(),oldest=[...trLive.wanted].find(k=>!pinned.has(k))||trLive.wanted.values().next().value;
    if(!oldest)break;
    dropTrLiveKey(oldest);
   }
@@ -856,7 +873,7 @@ function pruneTrLiveSubscriptions(){
  // quote nodes yet.
  if(state.currentView==='home'&&typeof currentMarketBoardSource==='function'&&currentMarketBoardSource()==='tr')return;
  const selector='[data-compact-quote-key][data-compact-quote-tr="1"],[data-tr-live-key],[data-tr-live-change-key],[data-tr-subscribe-key],[data-tr-spread-key],[data-tr-price-eur-key],[data-tr-price-usd-key]';
- let keep=new Set(),h=window.innerHeight||900;
+ let keep=trPinnedKeys(),h=window.innerHeight||900;
  for(let root of activeLiveRoots())for(let el of root.querySelectorAll(selector)){
   let r=el.getBoundingClientRect();if(r.bottom<-700||r.top>h+700)continue;
   let key=el.dataset.compactQuoteKey||el.dataset.compactQuoteKey||el.dataset.trLiveKey||el.dataset.trLiveChangeKey||el.dataset.trSubscribeKey||el.dataset.trSpreadKey||el.dataset.trPriceEurKey||el.dataset.trPriceUsdKey;
