@@ -1634,11 +1634,14 @@ function goalEngineInput(metrics,positionRows){
   const radar=[...merged.values()].sort((a,b)=>(num(b.score)||0)-(num(a.score)||0)||(num(b.quality)||0)-(num(a.quality)||0));
   const radarByKey=new Map(radar.map(r=>[goalStockKey(r.s),r]));
   // Las acciones congeladas suman al valor de la cartera, pero el plan no las vende ni les pone stop.
-  let lockedValueEur=0,lockedHoldings=0;const lockedKeys=[];
+  let lockedValueEur=0,lockedHoldings=0,lockedHighRiskEur=0;const lockedKeys=[];
   for(const row of positionRows){
     const total=num(row.qty)||0,frozen=Math.min(total,positionFrozenQty(row.p));
     if(frozen>0&&row.unitEur!==null){
       lockedValueEur+=frozen*row.unitEur;lockedKeys.push(String(row.p.stock_key||"").toUpperCase(),goalStockKey(row.stock));
+      // Lo congelado de riesgo alto cuenta para el límite de exposición de alto riesgo.
+      const G1=window.ViewInvAIGoal;
+      if(G1&&typeof G1.riskTier==="function"&&G1.riskTier({atrPct:goalAtrPct(row.stock),marketCap:num(row.stock&&row.stock.marketCap),sector:row.stock&&row.stock.sector,industry:row.stock&&row.stock.industry})==="alto")lockedHighRiskEur+=frozen*row.unitEur;
       if(total-frozen<=1e-9)lockedHoldings++;
     }
   }
@@ -1701,7 +1704,7 @@ function goalEngineInput(metrics,positionRows){
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
+    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
     extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
@@ -1811,7 +1814,9 @@ function goalTrendHtml(ctx,preferTr,heldKeys){
   if(goalTrendCache.key!==cacheKey||Date.now()-goalTrendCache.at>60000){
     const rows=[];
     for(const s of all){
-      if(preferTr?!(s.tradeRepublicTradable===true||(s.tradeRepublicVerified&&s.trTicker)):!["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(s.exchange||"").toUpperCase()))continue;
+      // Solo acciones de EE. UU., el universo medido en la prueba de 10 años; en Trade Republic, además, activas.
+      if(!["NASDAQ","NYSE","AMEX","NYSE ARCA","NYSEARCA"].includes(String(s.exchange||"").toUpperCase()))continue;
+      if(preferTr&&(s.tradeRepublicTradable===false||s.trActive===false||!(s.tradeRepublicTradable===true||(s.tradeRepublicVerified&&s.trTicker))))continue;
       const price=num(s.price),avgVol=num(s.avgVolume);
       rows.push({key:goalStockKey(s),ticker:String((preferTr?s.trTicker:s.ticker)||s.ticker||"").toUpperCase(),name:s.name||"",price,perf6M:num(s.perf6M),perfMonth:num(s.perfMonth),
         high52w:num(s.high52w),marketCap:num(s.marketCap),atrPct:goalAtrPct(s),tradedUsd:price!==null&&avgVol!==null?price*avgVol:null,sector:s.sector||"",industry:s.industry||"",stock:s});
@@ -1823,7 +1828,7 @@ function goalTrendHtml(ctx,preferTr,heldKeys){
     const label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=t.stock?portfolioStockKey(t.stock):t.key;
     return '<li>'+goalLinkedText(label,[{label,key,preferTr}])+goalRiskPill(t.riskTier)+' <small>6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+
       (num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo anual':'')+'</small></li>'}).join('')+
-    '</ol><small class="goal2-alts-note">En 10 años de históricos, el 10 % de acciones con más momento de 6 meses batió al S&amp;P 500 en algo más de la mitad de los trimestres, por +1 a +2,6 % de media antes de comisiones. Es una tendencia estadística, no una previsión: puede bajar y no ha pasado la revisión completa del Objetivo.</small></details>';
+    '</ol><small class="goal2-alts-note">Solo acciones de EE. UU. (las medidas). En 10 años de históricos, el 10 % de acciones con más momento de 6 meses batió al S&amp;P 500 en algo más de la mitad de los trimestres, por +1 a +2,6 % de media antes de comisiones. Es una tendencia estadística, no una previsión: puede bajar y no ha pasado la revisión completa del Objetivo.</small></details>';
 }
 function goalWaitTag(a){
   if(a.decision==="COMPRA LÍMITE")return num(a.limitPriceEur)!==null?"ENTRADA MÁX. "+formatMoney(a.limitPriceEur,"EUR"):"SOLO CON LÍMITE";
@@ -2018,7 +2023,7 @@ function portfolioGoalViewHtml(){
     goalPaceHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+goalTrendHtml(ctx,ctx.preferTr,new Set((ctx.positions||[]).map(p=>String(p.key))))+holds+frozenNote+
+    '<section class="goal2-today"><h3>Hoy toca</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key))))+goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]))+holds+frozenNote+
       '<p class="goal2-disclaimer">Información, no asesoramiento: aplica las reglas que fijaste con datos reales, que pueden fallar. Decides tú y puedes perder dinero.</p></section>'+
     goalScoreboardHtml()+
     (posList?'<section class="goal2-section"><h3>Tus posiciones y sus stops</h3>'+posList+'</section>':'')+notes+

@@ -400,6 +400,9 @@ const input=candidates=>({
   assert.ok(buys.some(b=>b.riskTier==="alto")&&buys.some(b=>b.riskTier!=="alto"),"one high-risk and one lower-risk idea are proposed together");
   const hiBuy=buys.find(b=>b.riskTier==="alto");
   assert.ok(hiBuy.ticketEur<=1000*0.30+0.01,"high-risk exposure stays within 30 % of the goal value");
+  // Lo congelado de riesgo alto también cuenta: con 300 € congelados de riesgo alto y un 30 % de 1.000 € no cabe más.
+  p=G.plan({...input([hi]),lockedHighRiskEur:300});
+  assert.ok(!p.actions.some(x=>x.type==="BUY"&&x.riskTier==="alto"),"frozen high-risk holdings count toward the cap");
   p=G.plan({...input([hi]),config:{...input([]).config,highRiskPct:0}});
   assert.ok(!p.actions.some(x=>x.type==="BUY"),"with 0 % allowed for high risk no high-risk idea is bought");
 }

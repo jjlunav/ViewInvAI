@@ -8401,7 +8401,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const radarByKey=new Map(radar.map(r=>[r.stock_key,r]));
       const ai=await goalAiVerdicts(env,goal.user_id);
       // Posiciones con precio verificado (sin precio, este minuto no se decide nada).
-      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0;
+      const enginePositions=[],lockedKeys=[];let incomplete=false,lockedValueEur=0,lockedHoldings=0,lockedHighRiskEur=0;
       // Decisiones «Decidir» vigentes de las posiciones de esta cartera.
       await ensurePositionDecisionsSchema(env);
       const decisionsById=new Map(((await env.DB.prepare("SELECT position_id,decision,hold_mode,hold_pct,target_eur,emergency_eur,hold_until,review_at FROM position_decisions WHERE user_id=? AND subject_type='position'").bind(goal.user_id).all()).results||[])
@@ -8413,7 +8413,9 @@ async function scanPortfolioGoalNotifications(env,services){
         if(!(total>0))continue;
         const ptr=Number(p.prefer_tr)===1,mark=await quoteEur(stock,ptr,"LAST"),bid=await quoteEur(stock,ptr,"SELL");
         if(mark===null){incomplete=true;break}
-        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++}
+        if(frozen>0){lockedValueEur+=frozen*mark;lockedKeys.push(key);if(total-frozen<=1e-9)lockedHoldings++;
+          // Lo congelado de riesgo alto cuenta para el límite de exposición de alto riesgo.
+          if(engine.riskTier&&engine.riskTier({atrPct:atrPct(stock),marketCap:finiteNumber(stock&&stock.marketCap),sector:stock&&stock.sector,industry:stock&&stock.industry})==="alto")lockedHighRiskEur+=frozen*mark}
         if(!(qty>1e-9))continue;
         const avg=finiteNumber(p.avg_price),cur=String(p.currency||(ptr?"EUR":"USD")).toUpperCase();
         const avgEur=avg===null?null:cur==="EUR"?avg:cur==="USD"&&usdToEur!==null?avg*usdToEur:null;
@@ -8485,7 +8487,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:finiteNumber(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
+        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));

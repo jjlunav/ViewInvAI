@@ -630,7 +630,7 @@
       // Lo que se puede gastar: el efectivo (más lo que liberen las ventas propuestas) menos lo apartado.
       // Riesgo alto: como máximo highRiskPct (30 % por defecto) del valor del objetivo, contando lo que ya está invertido.
       const highRiskPct=clamp(n(cfg.highRiskPct)??30,0,100);
-      let highExposure=remaining.filter(p=>riskTier(p)==='alto').reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0);
+      let highExposure=remaining.filter(p=>riskTier(p)==='alto').reduce((sum,p)=>sum+(n(p.units)||0)*(n(p.priceEur)||0),0)+Math.max(0,n(input.lockedHighRiskEur)||0);
       let spend=Math.max(0,pool-reserved);
       // Importe reservado por las ideas fijadas que hoy no se compran (en límite o en cambio de recomendación).
       const buyingNow=new Set(cands.map(c=>String(c.key)));
