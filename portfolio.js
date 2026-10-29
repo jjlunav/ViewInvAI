@@ -2084,10 +2084,12 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
   const priced=list.filter(t=>t.stock).map(t=>({...t,...goalSleeveEurPrice(t.stock,ctx.preferTr,ctx.fx)}));
   if(ctx.preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-"+k,priced.map(t=>portfolioStockKey(t.stock)));
   const noFrac=[...goalNoFractionSet(goal)];
-  const z=G.sleeveSizing(priced.filter(t=>num(t.priceEur)>0),{cashEur:cash,minTicketEur:m.minTicket,slots:Math.max(0,m.slots-bucket.rows.length),feeEur:portfolioOperationFee(ctx.preferTr),allowFractions:Number(goal.allow_fractions)!==0,noFractions:noFrac});
+  // Sin mínimo artificial: con poco efectivo también se propone comprar (desde 5 €), concentrado en una compra.
+  const minTicket=5;
+  const z=G.sleeveSizing(priced.filter(t=>num(t.priceEur)>0),{cashEur:cash,minTicketEur:minTicket,targetTicketEur:m.minTicket,slots:Math.max(0,m.slots-bucket.rows.length),feeEur:portfolioOperationFee(ctx.preferTr),allowFractions:Number(goal.allow_fractions)!==0,noFractions:noFrac});
   const sized=new Map(z.ideas.map(x=>[x.key,x]));
   const head=z.count>0?'Con '+formatMoney(cash,"EUR")+' libres: '+z.count+(z.count===1?' compra':' compras')+' de unos '+formatMoney(z.each,"EUR"):
-    z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(m.minTicket,"EUR")+' (la comisión pesaría demasiado).';
+    z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(minTicket,"EUR")+' (con 1 € por orden, la comisión sería más de la mitad).';
   return '<small class="goal2-sleeve-sizing">'+esc(head)+'</small><ol class="goal2-sleeve-ideas">'+priced.map(t=>{
     const x=sized.get(t.key),label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=portfolioStockKey(t.stock);
     const facts=k==="medio"?'6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+(num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo':'')
@@ -2096,7 +2098,9 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
     if(x&&x.fits){
       const q=goalExecutionQuote(t.stock,ctx.preferTr,"BUY",ctx.fx,"",x.units),cur=q.currency||(ctx.preferTr?"EUR":"USD");
       const price=q.price??portfolioConvertAmount(t.priceEur,"EUR",cur,ctx.fx);
+      const feePct=x.ticketEur>0?2*portfolioOperationFee(ctx.preferTr)/x.ticketEur*100:null;
       buy='<span class="goal2-sleeve-buy">'+(x.fractional?'≈ '+formatNumber(x.units,2)+' acciones (fracción)':x.units+(x.units===1?' acción':' acciones'))+' · '+formatMoney(x.ticketEur,"EUR")+'</span>'+
+        (feePct!==null&&feePct>2?'<small class="goal2-sleeve-fee">Comisión de ida y vuelta: '+esc(formatNumber(feePct,1))+' % del importe; tiene que subir eso solo para no perder.</small>':'')+
         goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k});
     }
     return '<li>'+goalLinkedText(label,[{label,key,preferTr:ctx.preferTr}])+goalRiskPill(t.riskTier)+' <small>'+esc(facts)+'</small>'+buy+'</li>'}).join('')+'</ol>';

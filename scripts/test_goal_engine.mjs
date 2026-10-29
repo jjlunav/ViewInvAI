@@ -478,6 +478,23 @@ const input=candidates=>({
   assert.equal(z.count,0,"two 250 € shares do not fit 200 € without fractions");assert.equal(z.reason,"price");
   z=G.sleeveSizing([{key:"X",ticker:"X",priceEur:150},{key:"C",ticker:"C",priceEur:10}],{cashEur:200,minTicketEur:90,slots:3,allowFractions:false});
   assert.equal(z.count,1);assert.equal(z.ideas[1].units,19,"the viable idea gets the whole 199 €, not half");
+  // Compras pequeñas: con 60 € no se hacen 3 de 19 € (10 % de comisión cada una) sino una de 59 €.
+  z=G.sleeveSizing([{key:"A",ticker:"A",priceEur:10},{key:"B",ticker:"B",priceEur:10},{key:"C",ticker:"C",priceEur:10}],{cashEur:60,minTicketEur:10,targetTicketEur:100,slots:3});
+  assert.equal(z.count,1);assert.equal(z.each,59);
+  z=G.sleeveSizing([{key:"A",ticker:"A",priceEur:10}],{cashEur:9,minTicketEur:10,targetTicketEur:100,slots:3});
+  assert.equal(z.count,0,"below the 10 € minimum nothing is bought");
+}
+
+// Con poco efectivo también se recomienda comprar: la comisión no descarta la idea, se avisa de cuánto se come.
+{
+  const c={...base,key:"NASDAQ:SMALL",ticker:"SMALL"};
+  // 200 €: el riesgo de la operación (comisiones incluidas) deja la compra en unos 30 €; 2 € de comisión es un 6,7 %.
+  let p=G.plan({...input([c]),cashEur:200,peakValueEur:200});
+  const buy=p.actions.find(a=>a.type==="BUY");
+  assert.ok(buy,"a small portfolio still gets a buy recommendation");
+  assert.ok(buy.cons.some(t=>/comisión de ida y vuelta/.test(t)),"and warns how much the fee takes");
+  p=G.plan({...input([c]),cashEur:4,peakValueEur:4});
+  assert.ok(!p.actions.some(a=>a.type==="BUY"),"below 5 € it never buys (the fee would take most of it)");
 }
 
 console.log("Goal engine tests: OK");

@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g18-sleeves';
+  const VERSION='2026.10.29-g19-small-cash';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -19,6 +19,8 @@
   const BETTER_SCORE=85;
   // STICKY_BONUS: puntos de ventaja de la compra ya recomendada frente a una nueva (score temprano 0-100).
   // COMMIT_CHASE_PCT: una idea fijada se deja de proponer a mercado si el precio sube más que esto desde que se mostró.
+  // MIN_TICKET: importe mínimo de una compra (con 1 € por orden, por debajo la comisión es más de la mitad).
+  const MIN_TICKET=5;
   const COMMIT_CHASE_PCT=3,STICKY_BONUS=8,STOP_MIN=6,STOP_MAX=12,ROTATION_MARGIN=1.25,DEFENSIVE_IN=15,DEFENSIVE_OUT=7.5;
   const SPEC_POLICY={
     0:{maxCount:0,maxWeight:0,maxTotalWeight:0,minBurstExtra:99,minQualityExtra:99,maxSpread:null,edgeOverNormal:99},
@@ -118,6 +120,9 @@
   // demasiado). Fracciones si el valor las admite; si no, acciones enteras que quepan.
   function sleeveSizing(ideas,opts={}){
     const cash=Math.max(0,n(opts.cashEur)||0),fee=Math.max(0,n(opts.feeEur)??1),minTicket=Math.max(1,n(opts.minTicketEur)||100);
+    // Importe al que se quiere llegar en cada compra: con compras pequeñas permitidas (minTicket bajo) no se reparte en
+    // varias de poco dinero; se concentra en las que lleguen a este importe (al menos una), así pesa menos la comisión.
+    const targetTicket=Math.max(minTicket,n(opts.targetTicketEur)||minTicket);
     const slots=Math.max(0,Math.round(n(opts.slots)??3)),allowFractions=opts.allowFractions!==false,noFrac=new Set((opts.noFractions||[]).map(t=>String(t).toUpperCase()));
     const list=(Array.isArray(ideas)?ideas:[]).filter(x=>n(x&&x.priceEur)>0);
     const fracOf=x=>allowFractions&&!noFrac.has(String(x.ticker||'').toUpperCase());
@@ -125,7 +130,7 @@
     // repartir entre las que sí caben, hasta que el reparto no cambie.
     let viable=list.slice(),count=0,each=0;
     for(let guard=0;guard<=list.length;guard++){
-      count=Math.min(slots,viable.length,Math.floor(cash/(minTicket+fee)));
+      count=Math.min(slots,viable.length,cash>=minTicket+fee?Math.max(1,Math.floor(cash/(targetTicket+fee))):0);
       if(count<=0)break;
       each=(cash-count*fee)/count;
       const picked=viable.slice(0,count),drop=picked.filter(x=>!fracOf(x)&&n(x.priceEur)>each);
@@ -750,7 +755,9 @@
         // Comisiones: dentro del límite del perfil, o hasta el doble si se comen menos de una cuarta parte de lo previsto
         // (con 1 € por orden, en carteras pequeñas casi ningún ticket bajaría del límite fijo).
         const feePct=(feeB+feeS)/ticket*100,expected=ticket*n(c.targetPct)/100;
-        if(feePct>b.maxRoundTripFeePct&&!(feePct<=b.maxRoundTripFeePct*2&&expected>0&&feeB+feeS<=expected*.25)){notes.push(label(c)+': las comisiones pesarían demasiado para '+money(ticket)+'.');continue}
+        // Con poco efectivo también se propone comprar (el objetivo es hacerlo crecer): la comisión no descarta la idea,
+        // se avisa de cuánto se come en los contras. Solo por debajo de MIN_TICKET la comisión sería más de la mitad.
+        if(ticket<MIN_TICKET-1e-9){notes.push(label(c)+': el importe ('+money(ticket)+') no llega al mínimo de '+money(MIN_TICKET)+' (la comisión se comería casi todo).');continue}
         spend-=ticket+feeB;pool-=ticket+feeB;slots--;
         if(c.speculative){specCount++;specExposure+=ticket}
         if(c.riskTier==='alto')highExposure+=ticket;
@@ -767,7 +774,9 @@
           pros:(c.burstReasons||[]).filter(t=>/ \+\d+$/.test(t)).map(t=>t.replace(/ \+\d+$/,'')).slice(0,5),
           cons:[...(c.burstReasons||[]).filter(t=>/ -\d+$/.test(t)).map(t=>t.replace(/ -\d+$/,'')),
             ...(n(c.earningsDays)!==null&&n(c.earningsDays)<=12?['resultados '+(c.earningsDate?'el '+c.earningsDate:'en '+n(c.earningsDays)+' días')]:[]),
-            ...(fundK<1?['cara y en pérdidas: importe a la mitad']:[]),...(c.speculative?['especulativa']:[])].slice(0,5),
+            ...(fundK<1?['cara y en pérdidas: importe a la mitad']:[]),...(c.speculative?['especulativa']:[]),
+            ...(feePct>b.maxRoundTripFeePct?['comisión de ida y vuelta '+(Math.round(feePct*10)/10).toLocaleString('es-ES')+' % del importe']:[])].slice(0,6),
+          roundTripFeePct:r2(feePct),
           facts:{earningsDate:c.earningsDate||'',earningsDays:n(c.earningsDays),analystConsensus:c.analystConsensus||'',analystUpsidePct:n(c.analystUpsidePct),analysts:n(c.analystCount),
             epsBeats:n(c.epsBeats),epsLastSurprisePct:n(c.epsLastSurprisePct),fundamentalsChecked:c.fundamentalsChecked===true},
           orderType:'LIMIT',limitPriceEur:limitEur,
