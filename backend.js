@@ -5194,10 +5194,11 @@ async function handlePortfolioGoal(request,env,user,json,url){
     }
     if(goalCashMode==="amount"&&goalCashReserve===null)goalCashReserve=0;
     if(goalCashMode!=="amount")goalCashReserve=null;
-    const cashChanged=!existing||String(existing.goal_cash_mode||"none")!==goalCashMode||finiteNumber(existing.goal_cash_reserve_eur)!==goalCashReserve;
     // El ritmo se mide desde que se fija (o cambia) el objetivo, su fecha o lo que cuenta en el valor.
-    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto||cashChanged||Number(existing.pace_basis)!==1;
-    const startValue=restart?finiteNumber(body.currentValueEur):finiteNumber(existing.start_value_eur);
+    const restart=!existing||body.restartPace===true||Number(existing.target_value_eur)!==target||String(existing.target_date||"")!==String(targetDate||"")||!existing.start_date||(Number(existing.include_crypto)===1?1:0)!==includeCrypto||Number(existing.pace_basis)!==1;
+    // El punto de partida lo calcula el servidor en la siguiente revisión (solo lo invertido y Mi cripto): no se fía del
+    // valor que manda la app, porque una versión anterior aún abierta lo mandaba con el efectivo incluido.
+    const startValue=restart?null:finiteNumber(existing.start_value_eur);
     const startDate=restart?now:existing.start_date;
     // Huchas en la misma petición (asistente): se preparan antes y se guardan en la misma transacción que el objetivo.
     let sleeveStatements=[];
