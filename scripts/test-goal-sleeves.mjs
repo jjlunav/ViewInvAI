@@ -148,5 +148,13 @@ assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,key:'NASDAQ:USD1
   assert.equal(t.status,201);
   assert.equal((await updateTransactionRecord(env,user,txId,{quantity:2})).status,409,'no se puede vender más de lo comprado');
   assert.equal((await updateTransactionRecord(env,user,'nope',{price:1})).status,404);
+  // Sin efectivo suficiente: solo se guarda lo que de verdad salió, y al borrar no aparece dinero de más.
+  db.raw.prepare("UPDATE portfolio_market_settings SET cash_balance=5 WHERE portfolio_id='pf'").run();
+  t=await createTransactionRecord(env,user,trade({stockKey:'XETRA:ZER',ticker:'ZER',isin:'US0000000010',quantity:1,price:4,fees:1,executedAt:later(11000)}));
+  assert.equal(t.status,201);assert.equal(cash(),0);
+  u=await updateTransactionRecord(env,user,t.body.transaction.id,{price:10});
+  assert.equal(u.status,200);assert.equal(cash(),0);
+  assert.equal(db.raw.prepare('SELECT cash_delta d FROM transactions WHERE id=?').get(t.body.transaction.id).d,-5,'cash_delta = lo realmente movido');
+  assert.equal((await deleteTransactionRecord(env,user,t.body.transaction.id)).status,200);assert.equal(cash(),5,'al borrar vuelve exactamente lo que salió');
 }
 console.log('Goal sleeves tests: OK');

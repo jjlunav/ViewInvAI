@@ -2700,15 +2700,18 @@ export async function updateTransactionRecord(env,user,id,patch){
   // Efectivo: solo si la operación lo movió al registrarse; el nuevo importe guarda la misma relación (divisa incluida).
   const recorded=finiteNumber(existing.cash_delta)||0,oldGross=transactionCashDelta(existing.side,existing.quantity,existing.price,existing.fees),newGross=transactionCashDelta(existing.side,quantity,price,fees);
   const newRecorded=recorded&&oldGross?recorded*newGross/oldGross:0;
-  updated.cash_delta=newRecorded;
   const portfolio=await onePortfolio(env,user.id,existing.portfolio_id);
-  const statements=[env.DB.prepare("UPDATE transactions SET quantity=?,price=?,fees=?,executed_at=?,notes=?,cash_delta=?,updated_at=? WHERE id=? AND user_id=?")
-    .bind(quantity,price,fees,executedAt,notes,newRecorded,now,id,user.id)];
-  let cashAdjustment={adjusted:false};
+  let cashAdjustment={adjusted:false},applied=recorded;
   if(portfolio&&Math.abs(newRecorded-recorded)>1e-9){
     cashAdjustment=cashChange(portfolio,existing.cash_currency||existing.currency,existing.side,quantity,price,fees,{recordedDelta:newRecorded-recorded});
-    if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
+    // Se guarda solo lo que de verdad se movió (el efectivo no baja de 0): así un borrado o una corrección
+    // posterior no devuelve dinero que nunca salió.
+    if(cashAdjustment.adjusted)applied=recorded+cashAdjustment.delta;
   }
+  updated.cash_delta=applied;
+  const statements=[env.DB.prepare("UPDATE transactions SET quantity=?,price=?,fees=?,executed_at=?,notes=?,cash_delta=?,updated_at=? WHERE id=? AND user_id=?")
+    .bind(quantity,price,fees,executedAt,notes,applied,now,id,user.id)];
+  if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
   statements.push(...positionLedgerStatements(env,user.id,existing.portfolio_id,existing.stock_key,position.id,position,ledger,orderedTransactions([...others,updated])[0],now));
   await financialBatch(env.DB,user.id,revision,statements);
   return txResult({transaction:{...updated},position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger,cashAdjustment});

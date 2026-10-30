@@ -4170,12 +4170,14 @@ function openTransactionEdit(btn) {
   const row = btn.closest('.transaction-row');if (!row) return;
   const d = btn.dataset,cur = d.currency || 'EUR',adj = d.adjust === '1';
   row.classList.add('editing');
-  row.innerHTML = '<form class="transaction-edit-form portfolio-form" data-transaction-edit-form="' + esc(d.transactionEdit) + '">' +
+  // La fecha solo se envía si se cambia (el control no lleva segundos y moverla podría reordenar operaciones).
+  row.innerHTML = '<form class="transaction-edit-form portfolio-form" data-transaction-edit-form="' + esc(d.transactionEdit) + '" data-at="' + esc(d.at) + '">' +
     '<div class="portfolio-form-grid">' +
       '<label><span>' + (adj ? 'Acciones' : 'Cantidad') + '</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0.00000001" value="' + esc(d.qty) + '" required></label>' +
       '<label><span>' + (adj ? 'Precio medio' : 'Precio') + ' (' + esc(cur) + ')</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="' + esc(d.price) + '" required></label>' +
     '</div><div class="portfolio-form-grid">' +
-      '<label><span>Comisión (' + esc(cur) + ')</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="' + esc(d.fees) + '" required></label>' +
+      // Un ajuste fija acciones y precio medio; su comisión no cuenta en el coste, así que no se edita.
+      (adj ? '<input name="fees" type="hidden" value="' + esc(d.fees) + '">' : '<label><span>Comisión (' + esc(cur) + ')</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="' + esc(d.fees) + '" required></label>') +
       '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="' + esc(d.at) + '" required></label>' +
     '</div>' +
     '<label><span>Nota</span><input name="notes" maxlength="1000" value="' + esc(d.notes) + '" placeholder="Opcional"></label>' +
@@ -4188,9 +4190,10 @@ async function saveTransactionEdit(form) {
   const id = form.dataset.transactionEditForm,fd = new FormData(form);
   const ledger = document.querySelector('[data-transaction-position]'),positionId = ledger && ledger.dataset.transactionPosition;
   const beforePosition = positionId ? transactionPosition(positionId) : null,portfolioId = beforePosition && beforePosition.portfolio_id || null;
-  const when = new Date(String(fd.get('executedAt') || ''));
-  const body = {quantity:num(fd.get('quantity')),price:num(fd.get('price')),fees:num(fd.get('fees')),executedAt:Number.isNaN(when.getTime()) ? '' : when.toISOString(),notes:String(fd.get('notes') || '')};
-  if (!(body.quantity > 0) || body.price === null || body.price < 0 || body.fees === null || body.fees < 0 || !body.executedAt) return toast('Revisa la cantidad, el precio, la comisión y la fecha.', true);
+  const atRaw = String(fd.get('executedAt') || ''),when = new Date(atRaw);
+  const body = {quantity:num(fd.get('quantity')),price:num(fd.get('price')),fees:num(fd.get('fees')),notes:String(fd.get('notes') || '')};
+  if (atRaw !== String(form.dataset.at || '')) { if (Number.isNaN(when.getTime())) return toast('Revisa la fecha.', true); body.executedAt = when.toISOString(); }
+  if (!(body.quantity > 0) || body.price === null || body.price < 0 || body.fees === null || body.fees < 0) return toast('Revisa la cantidad, el precio y la comisión.', true);
   const button = form.querySelector('button[type="submit"]');if (button) button.disabled = true;
   try {
     const response = await api('/api/transactions/' + encodeURIComponent(id), {method:'PATCH',body:JSON.stringify(body)});
