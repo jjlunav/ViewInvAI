@@ -220,8 +220,8 @@ def tr_history(isin: str, venue: str = "LSX"):
             "type": "aggregateHistoryLight",
             "id": isin + "." + venue,
             "range": "max",
-            "resolution": 86400000,
         }
+        # Trade Republic no responde si se envía «resolution» (cada rango trae su intervalo; «max» es semanal).
         ws.send("sub 1 " + json.dumps(payload, separators=(",", ":")))
         deadline = time.time() + 12
         while time.time() < deadline:

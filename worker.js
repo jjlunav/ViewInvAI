@@ -461,17 +461,19 @@ async function fetchTradeRepublicHistory(isin, exchange = "LSX", range = "1d", r
   const safeIsin = String(isin || "").trim().toUpperCase();
   const safeExchange = "LSX";
   if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(safeIsin)) throw new Error("Invalid ISIN");
-  const allowedRanges = new Set(["1d","1w","1m","3m","6m","1y","5y","max"]);
-  const safeRange = allowedRanges.has(range) ? range : "1d";
-  const safeResolution = Math.max(60000, Math.min(86400000, Number(resolution) || 60000));
+  // Rangos que acepta Trade Republic: 1d, 5d, 1m, 3m, 6m, 1y, 5y, max («1w» se pide como «5d»).
+  const allowedRanges = new Set(["1d","5d","1m","3m","6m","1y","5y","max"]);
+  const askedRange = range === "1w" ? "5d" : range;
+  const safeRange = allowedRanges.has(askedRange) ? askedRange : "1d";
   const ws = await openTradeRepublicSocket();
   try {
     const payload = {
       type: "aggregateHistoryLight",
       id: safeIsin + "." + safeExchange,
-      range: safeRange,
-      resolution: safeResolution
+      range: safeRange
     };
+    // Desde octubre de 2026 Trade Republic no responde si la suscripción lleva «resolution»: cada rango trae ya
+    // su propio intervalo (1d: 10 min, 5d: 1 h, 1m: 4 h, 3m/1y: 1 día, 5y/max: 1 semana).
     ws.send("sub 1 " + JSON.stringify(payload));
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
@@ -533,7 +535,10 @@ async function loadDailyHistoryForBackend(inst, range, fromDay) {
   if (inst && inst.isin) {
     try {
       const tr = await fetchTradeRepublicHistory(inst.isin, "LSX", range, 86400000);
-      const rows = (tr && tr.points || []).map(p => ({ date: new Date(p.time).toISOString().slice(0, 10), close: p.close })).filter(r => r.close > 0);
+      // Un cierre por día: en rangos cortos Trade Republic devuelve varias velas por día (se queda la última).
+      const byDay = new Map();
+      for (const p of (tr && tr.points || [])) if (p.close > 0) byDay.set(new Date(p.time).toISOString().slice(0, 10), p.close);
+      const rows = [...byDay].map(([date, close]) => ({ date, close }));
       if (rows.length) return { currency: "EUR", source: "tr", rows };
     } catch (error) {
       console.warn("TR daily history unavailable", inst.isin, String(error && error.message || error));

@@ -888,7 +888,7 @@ function usVisibleKeys(){
  for(let el of nodes){
   let r=el.getBoundingClientRect();
   if(r.bottom<-400||r.top>h+400)continue;
-  let key=(el.dataset.compactQuoteTr==='1'?el.dataset.usPollKey:el.dataset.compactQuoteKey)||el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey;
+  let key=(el.dataset.compactQuoteTr==='1'?el.dataset.usPollKey:el.dataset.compactQuoteKey)||el.dataset.usCurrentHeroKey||el.dataset.usLiveKey||el.dataset.usSpreadKey||el.dataset.usLiveChangeKey||el.dataset.usPriceUsdKey||el.dataset.usPriceEurKey||el.dataset.usBidKey||el.dataset.usAskKey||el.dataset.usHeatKey||el.dataset.usPollKey;
   if(!key||seen.has(key))continue;
   let s=usStockByKey(key);if(!s)continue;
   seen.add(key);out.push(s);
