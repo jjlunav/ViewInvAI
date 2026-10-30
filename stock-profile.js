@@ -493,7 +493,7 @@ function profileWhyMovingHtml(s,isTr=false){
  const head=(up?'Sube':'Cae')+' un '+F(Math.abs(chg),1)+'% '+cause;
  return '<details class="profile-why"'+keepOpenAttr('why')+'><summary><span class="profile-why-icon '+(up?'up':'down')+'">'+(up?'▲':'▼')+'</span><span><small>¿POR QUÉ SE MUEVE HOY?</small><b>'+E(head)+'</b></span></summary>'+
   '<ul>'+reasons.map(r=>'<li><em>'+E(r.k)+'</em><span>'+E(r.t)+'</span></li>').join('')+'</ul>'+
-  (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Pregunta a la IA en la pestaña ✦ IA para un análisis más amplio.</p>')+
+  (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Para un análisis más amplio, usa «Preguntar a AI» más abajo.</p>')+
  '</details>';
 }
 

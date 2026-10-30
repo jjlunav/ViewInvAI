@@ -120,7 +120,9 @@ function initStockInteractions(){
   if(trRange){e.preventDefault();e.stopPropagation();switchTrChartRange(trRange);return}
   let chartToggle=e.target.closest&&e.target.closest('.chart-market-toggle');
   if(chartToggle){e.preventDefault();e.stopPropagation();switchMiniChartMarket(chartToggle);return}
-  let profileTab=e.target.closest&&e.target.closest('[data-profile-tab]');
+  // Solo los botones de pestaña: el contenedor de la ficha también lleva data-profile-tab (la pestaña activa) y
+  // antes cualquier toque dentro de la ficha se tomaba como cambio de pestaña y no abría los desplegables.
+  let profileTab=e.target.closest&&e.target.closest('button[data-profile-tab]');
   if(profileTab){
    e.preventDefault();e.stopPropagation();
    let root=profileDetailRoot(profileTab),tab=profileTab.dataset.profileTab;
