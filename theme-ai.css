@@ -2705,3 +2705,5 @@ html[data-theme="light"] .profile-card-icon{background:#eef0ff}
 html[data-theme="light"] .profile-ai-ring b{background:#fff}
 html[data-theme="light"] .profile-ai-ring{background:conic-gradient(var(--c) calc(var(--p)*1%),#e3e7f2 0)}
 html[data-theme="light"] .profile-ai-overview .profile-why,html[data-theme="light"] .profile-ai-overview .profile-plan{background:#fff;border-color:#dde3ee}
+.goal2-spread-note{display:block;margin-top:8px;font-size:12.5px;line-height:1.4;color:#f5b142}
+html[data-theme="light"] .goal2-spread-note{color:#b26b00}

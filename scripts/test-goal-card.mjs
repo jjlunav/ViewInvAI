@@ -9,7 +9,7 @@ const context={console,Math,Number,String,Array,Object,Set,Map,JSON,RegExp,Date,
   num:v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null,
   formatNumber:(v,d=1)=>Number(v).toFixed(d).replace('.',','),formatMoney:v=>Number(v).toFixed(2).replace('.',',')+' €',
   esc:v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
-  state:{selectedPortfolioId:'pf1'},window:{},portfolioStockKey:s=>s.key,portfolioConvertAmount:v=>v,goalExecutionQuote:()=>({}),
+  state:{selectedPortfolioId:'pf1'},window:{},portfolioStockKey:s=>s.key,portfolioConvertAmount:v=>v,portfolioPriceToEur:v=>v,goalExecutionQuote:()=>({}),
   localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)}},
   document:{addEventListener:()=>{}}};
 vm.createContext(context);
@@ -33,6 +33,9 @@ assert.ok(html.includes('✓ Comprada')&&html.includes('data-register-goal-opera
 assert.ok(html.includes('data-goal-discard="TSE:7203"')&&!html.includes('data-goal-discard-confirm'),'Every buy can be discarded without a blocking dialog');
 assert.ok(html.includes('data-goal-why=')&&/class="goal2-why-body" hidden/.test(html),'Details stay closed by default');
 assert.ok(html.includes('2,3 % del importe')&&!html.includes('4,3 %'),'The fee comes from today\'s plan, not from the stored review');
+const wide=context.goalActionHtml(buy,{...ctx,candidates:[{...cand,quote:{...cand.quote,bid:42.10,ask:42.85}}]});
+assert.ok(wide.includes('Horquilla 42,10 € – 42,85 €')&&wide.indexOf('goal2-spread-note')<wide.indexOf('goal2-why-body'),'A limit below the ask is flagged on the card itself');
+assert.ok(!html.includes('goal2-spread-note'),'No warning when there is no book');
 assert.ok(html.indexOf('Cotización ejecutable sin verificar')>html.indexOf('goal2-why-body'),'The unverified-quote note moves into the details');
 const wait=context.goalActionHtml({type:'WAIT',key:'TSE:8001',ticker:'IOC',name:'Itochu Corporation',committed:true,decision:'ESPERAR',text:'Esperar IOC: momentum de entrada deteriorado.',burstScore:100,entryTiming:93,riskTier:'bajo'},{...ctx,candidates:[]});
 assert.ok(wait.includes('Esperar entrada')&&wait.includes('data-goal-discard="TSE:8001"'),'A fixed waiting idea can be discarded too');
@@ -45,5 +48,5 @@ store['viewinvai:goal-ideas:v2']=JSON.stringify({pf1:{day:today,discarded:['TSE:
 const d=context.goalDiscardedTodayHtml('pf1',{discarded_ideas:''},{candidates:[]});
 assert.ok(d.includes('Descartadas hoy')&&d.includes('Toyota Motor Corp.')&&d.includes('data-goal-restore="TSE:7203"'));
 assert.equal(context.goalDiscardedTodayHtml('pf1',{discarded_ideas:JSON.stringify({day:'2000-01-01',keys:['X']})},{candidates:[]}).includes('X'),false);
-if(process.env.CARD_HTML)fs.writeFileSync(process.env.CARD_HTML,html.replace('class="goal2-why-body"','class="goal2-why-body" data-x')+context.goalActionHtml({...buy,key:'NASDAQ:HAE',name:'Haemonetics',ticker:'HAE',units:1,ticketEur:62.1,riskTier:'medio',committed:false},{...ctx,committed:[]})+wait+d);
+if(process.env.CARD_HTML)fs.writeFileSync(process.env.CARD_HTML,wide.replace('class="goal2-why-body"','class="goal2-why-body" data-x')+context.goalActionHtml({...buy,key:'NASDAQ:HAE',name:'Haemonetics',ticker:'HAE',units:1,ticketEur:62.1,riskTier:'medio',committed:false},{...ctx,committed:[]})+wait+d);
 console.log('Goal card tests: OK');

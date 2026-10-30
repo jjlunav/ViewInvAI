@@ -1927,7 +1927,7 @@ function goalActionHtml(a,ctx){
   const f=(commit&&commit.facts)||a.facts||{},factBits=[];
   const pros=commit&&(commit.pros||[]).length?commit.pros:(a.pros||[]);
   // La comisión depende del importe de hoy: se toma siempre del plan en vivo, no de la revisión guardada al fijar la idea.
-  const isFee=t=>/^comisión de ida y vuelta/.test(String(t));
+  const isFee=t=>/^(comisión|coste) de ida y vuelta/.test(String(t));
   const cons=commit&&(commit.cons||[]).length?[...commit.cons.filter(t=>!isFee(t)),...(a.cons||[]).filter(isFee)]:(a.cons||[]);
   if(a.type==="BUY"){
     if(f.earningsDate)factBits.push("Resultados "+f.earningsDate);
@@ -1935,7 +1935,7 @@ function goalActionHtml(a,ctx){
     if(num(f.epsBeats)!==null)factBits.push("Superó el BPA "+formatNumber(f.epsBeats,0)+" de 4");
     if(f.fundamentalsChecked===false||(f.fundamentalsChecked===true&&!f.analystConsensus&&num(f.epsBeats)===null))factBits.push("sin datos de analistas ni BPA para este valor");
   }
-  const riskLine=a.type==="BUY"&&num(a.riskEur)!==null?'<small class="goal2-risk">Si salta el stop perderías ≈ '+formatMoney(a.riskEur,"EUR")+' (−'+formatNumber(a.riskPct,1)+' % y comisiones). Recorrido previsto +'+formatNumber(a.targetPct,1)+' %'+(num(a.moveRangePct)!==null?' (en 5 sesiones suele moverse ±'+formatNumber(a.moveRangePct,1)+' %)':'')+', no garantizado.</small>':'';
+  const riskLine=a.type==="BUY"&&num(a.riskEur)!==null?'<small class="goal2-risk">Si salta el stop perderías ≈ '+formatMoney(a.riskEur,"EUR")+' (−'+formatNumber(a.riskPct,1)+' %, comisiones'+(num(a.spreadPct)?' y horquilla':'')+'). Recorrido previsto +'+formatNumber(a.targetPct,1)+' %'+(num(a.moveRangePct)!==null?' (en 5 sesiones suele moverse ±'+formatNumber(a.moveRangePct,1)+' %)':'')+', no garantizado.</small>':'';
   const prosCons=a.type==="BUY"&&(pros.length||cons.length)?'<div class="goal2-proscons">'+(pros.length?'<small class="goal2-pro">A favor: '+esc(pros.join(" · "))+'</small>':'')+(cons.length?'<small class="goal2-con">En contra: '+esc(cons.join(" · "))+'</small>':'')+'</div>':'';
   const factsLine=factBits.length?'<small class="goal2-facts">'+esc(factBits.join(" · "))+'</small>':'';
   const extra=fixedNote+laterNote+riskLine+prosCons+factsLine+(a.type==="BUY"
@@ -1953,11 +1953,17 @@ function goalActionHtml(a,ctx){
     :a.type==="CHANGE"?'Cambio de recomendación: ya no cumple tus reglas'
     :esc(tag.charAt(0)+tag.slice(1).toLowerCase());
   const nm=String(a.name||a.ticker||""),initials=nm.replace(/[^\p{L}\p{N} ]/gu,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"·";
+  // Límite por debajo del precio de compra inmediata (horquilla amplia): se avisa de que puede tardar en ejecutarse.
+  let spreadNote="";
+  if(a.type==="BUY"&&cand&&cand.quote){
+    const q=cand.quote,askE=portfolioPriceToEur(num(q.ask),q.currency||"EUR",ctx.fx),bidE=portfolioPriceToEur(num(q.bid),q.currency||"EUR",ctx.fx);
+    if(askE!==null&&num(a.limitPriceEur)!==null&&a.limitPriceEur<askE-1e-9)spreadNote='<small class="goal2-spread-note">Horquilla '+esc(bidE!==null?formatMoney(bidE,"EUR")+' – ':'')+esc(formatMoney(askE,"EUR"))+': el límite queda por debajo del precio de compra y puede tardar en ejecutarse. No lo subas por encima del límite.</small>';
+  }
   const why='<div class="goal2-why-body"'+(open?'':' hidden')+'><span class="goal2-why-text">'+goalLinkedText(a.text,[{label:a.label,key,preferTr},goalCandidateLink(ctx,a.intoKey,a.intoLabel)])+'</span>'+note+extra+fraction+'</div>';
   return '<div class="goal2-action goal2-'+esc(a.type.toLowerCase())+(a.reason==="stop"?' goal2-stop':'')+'" data-open-stock="'+esc(key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong><span class="goal2-action-what">'+what+'</span></div>'+
     '<span class="goal2-action-side">'+goalRiskPill(a.riskTier)+ai+'</span></div>'+
-    '<div class="goal2-action-buttons">'+btns.filter(Boolean).join('')+'</div>'+why+'</div>';
+    spreadNote+'<div class="goal2-action-buttons">'+btns.filter(Boolean).join('')+'</div>'+why+'</div>';
 }
 function goalPlanHistorySnapshot(metrics,plan){
   const portfolio=metrics.portfolio;if(!portfolio||metrics.target===null)return null;

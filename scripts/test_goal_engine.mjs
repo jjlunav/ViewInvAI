@@ -494,7 +494,7 @@ const input=candidates=>({
   let p=G.plan({...input([c]),cashEur:200,peakValueEur:200});
   const buy=p.actions.find(a=>a.type==="BUY");
   assert.ok(buy,"a small portfolio still gets a buy recommendation");
-  assert.ok(buy.cons.some(t=>/comisión de ida y vuelta/.test(t)),"and warns how much the fee takes");
+  assert.ok(buy.cons.some(t=>/coste de ida y vuelta [0-9,]+ % del importe \(comisiones/.test(t)),"and warns how much the fee takes");
   p=G.plan({...input([c]),cashEur:4,peakValueEur:4});
   assert.ok(!p.actions.some(a=>a.type==="BUY"),"below 5 € it never buys (the fee would take most of it)");
 }
@@ -503,7 +503,8 @@ const input=candidates=>({
 {
   const now=Date.parse("2026-10-06T12:00:00Z");
   const ran={...base,key:"NYSE:RAN",ticker:"RAN",priceEur:110,askEur:110,technicalPrice:110,ema20:108,ema50:104};
-  const fresh={...base,key:"NASDAQ:NEW",ticker:"NEW"};
+  // Sin horquilla: con 100 € el importe queda justo en el mínimo y aquí solo se prueba el efectivo apartado.
+  const fresh={...base,key:"NASDAQ:NEW",ticker:"NEW",spreadPct:0};
   const inp={...input([ran,fresh]),cashEur:100,peakValueEur:100,committed:[{key:"NYSE:RAN",priceEur:100,at:new Date(now-3600e3).toISOString(),ticketEur:167}]};
   const p=G.plan(inp);
   assert.ok(p.waits.some(w=>w.key==="NYSE:RAN"&&w.decision==="COMPRA LÍMITE"),"the chased idea waits for a limit order");
@@ -511,3 +512,13 @@ const input=candidates=>({
 }
 
 console.log("Goal engine tests: OK");
+
+// La horquilla cuenta como coste: se suma al riesgo hasta el stop y al coste de ida y vuelta.
+{
+  const run=spreadPct=>G.plan(input([{...base,key:"NASDAQ:SPR",ticker:"SPR",spreadPct}])).actions.find(a=>a.type==="BUY");
+  const tight=run(0.2),wide=run(1.8);
+  assert.ok(tight&&wide,"both spreads still get a buy");
+  assert.ok(wide.riskEur/wide.ticketEur>tight.riskEur/tight.ticketEur,"a wider spread raises the loss to the stop");
+  assert.ok(wide.riskEur<=1000*G.RISK.aggressive.riskPerTradePct/100+1e-6,"spread included, the loss still fits the risk budget");
+  assert.ok(Math.abs(wide.roundTripCostPct-(wide.roundTripFeePct+1.8))<0.02,"round-trip cost = fees + spread");
+}
