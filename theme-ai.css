@@ -2715,3 +2715,13 @@ html[data-theme="light"] .goal2-spread-note{color:#b26b00}
 .goal2-order-status.ok{color:#2fd39a}
 html[data-theme="light"] .goal2-order-pill{background:#eef0ff;color:#4f46e5}
 html[data-theme="light"] .goal2-order-status.ok{color:#0f8a5f}
+.goal2-live{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--muted,#8ea0bf)}
+.goal2-live i{width:7px;height:7px;border-radius:50%;background:#2fd39a;box-shadow:0 0 0 3px rgba(47,211,154,.18);flex:none}
+.goal2-live.stale i{background:#8ea0bf;box-shadow:none}
+.goal2-today-sleeve{display:block;font-size:12.5px;line-height:1.5;color:var(--muted,#8ea0bf)}
+.goal2-today-sleeve .goal2-sleeve-pill{font-size:10px}
+/* Solo el nombre abre la ficha en las tarjetas con botones: el nombre se ve pulsable, el resto no. */
+.goal2-simple .goal2-action[data-open-stock]{cursor:default}
+.goal2-simple .goal2-action-main>strong,.goal2-simple .goal2-logo,.goal2-pos>b{cursor:pointer}
+.goal2-simple .goal2-action-main>strong::after{content:"›";margin-left:6px;color:var(--muted,#8ea0bf);font-weight:700}
+.goal2-simple .goal2-action-main>strong:hover{text-decoration:underline;text-underline-offset:3px}

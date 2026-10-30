@@ -5138,10 +5138,19 @@ async function handlePortfolioGoal(request,env,user,json,url){
       return json({goal:await goalWithPositionState(env,user.id,goal)});
     }
     // Orden límite puesta en el bróker (pendiente de ejecutar) o su cancelación.
-    if(body.pendingOrder!==undefined||body.cancelOrder!==undefined){
+    if(body.pendingOrder!==undefined||body.cancelOrder!==undefined||body.fillOrder!==undefined){
       const row=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
       if(!row)return json({error:"Goal not found"},404);
       let orders=goalPendingOrders(row.pending_orders);
+      if(body.fillOrder!==undefined){
+        // El precio de compra llegó al límite (lo detecta la app con el precio en vivo): se registra la compra.
+        const key=trimText(body.fillOrder,120),order=orders.find(o=>o.key===key);
+        if(!order)return json({goal:await goalWithPositionState(env,user.id,await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first()),filled:false});
+        const result=await goalFillPendingOrder(env,user.id,portfolioId,order,row.pending_orders);
+        if(result.status>=400)return json(result.body,result.status);
+        const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+        return json({goal:await goalWithPositionState(env,user.id,goal),filled:true,transaction:result.body.transaction||null});
+      }
       if(body.cancelOrder!==undefined){
         const key=trimText(body.cancelOrder,120);if(!key)return json({error:"cancelOrder required"},400);
         orders=orders.filter(o=>o.key!==key);
@@ -5149,7 +5158,13 @@ async function handlePortfolioGoal(request,env,user,json,url){
         const o=body.pendingOrder||{},key=trimText(o.key,120),units=finiteNumber(o.units),limitEur=finiteNumber(o.limitEur),feeEur=finiteNumber(o.feeEur)??0;
         if(!key||!(units>0)||!(limitEur>0)||feeEur<0)return json({error:"pendingOrder requires key, units > 0 and limitEur > 0"},400);
         const sleeve=["alto","medio","bajo"].includes(String(o.sleeve||""))?String(o.sleeve):"";
-        orders=[...orders.filter(x=>x.key!==key),{key,ticker:trimText(o.ticker,24),name:trimText(o.name,120),units:Math.round(units*1e6)/1e6,limitEur:Math.round(limitEur*1e4)/1e4,feeEur:Math.round(feeEur*100)/100,sleeve,at:nowIso()}].slice(-8);
+        // Datos para registrar la compra cuando se ejecute: el valor tal como se guarda en la cartera y el límite
+        // en su divisa (el de la orden del bróker).
+        const currency=/^[A-Z]{3}$/.test(String(o.currency||"").toUpperCase())?String(o.currency).toUpperCase():"EUR",limitNative=finiteNumber(o.limitNative)??limitEur;
+        if(!(limitNative>0))return json({error:"limitNative must be greater than zero"},400);
+        orders=[...orders.filter(x=>x.key!==key),{key,ticker:trimText(o.ticker,24),name:trimText(o.name,120),units:Math.round(units*1e6)/1e6,limitEur:Math.round(limitEur*1e4)/1e4,feeEur:Math.round(feeEur*100)/100,sleeve,at:nowIso(),
+          stockKey:trimText(o.stockKey,80).toUpperCase(),txTicker:trimText(o.txTicker,20).toUpperCase(),exchange:trimText(o.exchange,40).toUpperCase(),isin:trimText(o.isin,24).toUpperCase(),preferTr:booleanInt(o.preferTr),
+          currency,limitNative:Math.round(limitNative*1e4)/1e4,broker:trimText(o.broker,80)}].slice(-8);
       }
       await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(orders.length?JSON.stringify(orders):"",portfolioId,user.id).run();
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
@@ -8555,6 +8570,20 @@ function goalPendingOrders(raw){
   try{const list=JSON.parse(raw||"[]"),limit=Date.now()-7*86400e3;
     return Array.isArray(list)?list.filter(o=>o&&o.key&&finiteNumber(o.units)>0&&finiteNumber(o.limitEur)>0&&Date.parse(o.at||"")>limit).slice(-8):[]}catch(_){return[]}
 }
+// Registra la compra de una orden puesta que se ha ejecutado (el precio de compra llegó al límite) y la quita de
+// la lista en el mismo paso. Idempotente: la compra lleva un identificador propio de la orden, así que una segunda
+// detección (app y servidor a la vez) no la duplica. Precio = el límite (una compra límite nunca se paga más cara).
+export async function goalFillPendingOrder(env,userId,portfolioId,order,rawOrders){
+  if(!order.stockKey||!order.txTicker)return{status:409,body:{error:"La orden no tiene los datos para registrar la compra; regístrala a mano."}};
+  const result=await createTransactionRecord(env,{id:userId},{portfolioId,stockKey:order.stockKey,ticker:order.txTicker,name:order.name||order.txTicker,exchange:order.exchange||"",isin:order.isin||"",
+    preferTr:booleanInt(order.preferTr),side:"BUY",quantity:finiteNumber(order.units),price:finiteNumber(order.limitNative),fees:null,currency:order.currency||"EUR",cashFxRate:null,executedAt:nowIso(),
+    notes:"Orden límite ejecutada: el precio de compra llegó a tu límite ("+String(order.limitNative).replace(".",",")+" "+(order.currency||"EUR")+"). Registrada automáticamente al límite; corrige el precio si tu bróker te dio otro.",
+    positionId:"",broker:order.broker||"",sleeve:goalSleeveName(order.sleeve)},{origin:"goal-order",externalId:"goal-order:"+portfolioId+":"+order.key+":"+order.at,defaultFees:finiteNumber(order.feeEur)});
+  if(result.status>=400)return result;
+  const left=goalPendingOrders(rawOrders).filter(o=>o.key!==order.key);
+  await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(left.length?JSON.stringify(left):"",portfolioId,userId).run();
+  return result;
+}
 function goalPendingOrderEur(o){return (finiteNumber(o.units)||0)*(finiteNumber(o.limitEur)||0)+(finiteNumber(o.feeEur)||0)}
 function goalDiscardedToday(raw){
   try{const d=JSON.parse(raw||"{}");return d&&d.day===madridDay(Date.now())&&Array.isArray(d.keys)?d.keys.map(String).filter(Boolean).slice(0,12):[]}catch(_){return[]}
@@ -8713,8 +8742,22 @@ async function scanPortfolioGoalNotifications(env,services){
       const held=new Set([...enginePositions.map(p=>p.key),...lockedKeys]);
       let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
-      // Órdenes puestas: su importe ya está comprometido en el bróker y no se vuelven a proponer.
-      const pendingOrders=goalPendingOrders(goal.pending_orders);
+      // Órdenes puestas: si el precio de compra en vivo (cotización verificada de los últimos 20 min) ya está en el
+      // límite o por debajo, la orden se ha ejecutado: se registra la compra y se avisa. Las demás siguen apartando
+      // su importe y no se vuelven a proponer.
+      let pendingOrders=goalPendingOrders(goal.pending_orders);
+      for(const o of [...pendingOrders]){
+        const st=byKey.get(o.key);if(!st||!services.loadQuote)continue;
+        const ask=await quoteEur(st,Number(o.preferTr)===1,"BUY");
+        const raw=(quoteCache.get((Number(o.preferTr)===1?"tr:":"us:")+goalServerKey(st))||{}).quote||{},ts=Date.parse(raw.timestamp||"");
+        if(ask===null||!(Number.isFinite(ts)&&Date.now()-ts<=20*60e3)||ask>finiteNumber(o.limitEur)+1e-9)continue;
+        const r=await goalFillPendingOrder(env,goal.user_id,goal.portfolio_id,o,JSON.stringify(pendingOrders)).catch(()=>({status:500}));
+        if(r.status>=400)continue;
+        pendingOrders=pendingOrders.filter(x=>x.key!==o.key);
+        cashEur=Math.max(0,cashEur-goalPendingOrderEur(o));
+        if(sleeveInput&&o.sleeve==="alto")sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-goalPendingOrderEur(o));
+        await pushGoal(goal,{title:"Orden ejecutada · "+(o.ticker||o.txTicker),message:"El precio de compra llegó a tu límite: compra de "+o.units+" a "+String(o.limitEur).replace(".",",")+" € registrada en la cartera. Revisa el precio real en tu bróker.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
+      }
       cashEur=Math.max(0,cashEur-pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0));
       if(sleeveInput)sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0));
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta

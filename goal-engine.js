@@ -789,7 +789,7 @@
           facts:{earningsDate:c.earningsDate||'',earningsDays:n(c.earningsDays),analystConsensus:c.analystConsensus||'',analystUpsidePct:n(c.analystUpsidePct),analysts:n(c.analystCount),
             epsBeats:n(c.epsBeats),epsLastSurprisePct:n(c.epsLastSurprisePct),fundamentalsChecked:c.fundamentalsChecked===true},
           orderType:'LIMIT',limitPriceEur:limitEur,
-          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones, fracción) con límite máximo '+money(limitEur)+' si tu bróker lo permite en fracciones; si solo deja a mercado, revisa la horquilla y evita la apertura':'Comprar '+unitsText+' × '+label(c)+' con orden límite a '+money(limitEur)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones, fracción) con límite máximo '+money(limitEur)+' si tu bróker lo permite en fracciones; si solo deja a mercado, revisa la horquilla y evita la apertura':'Comprar '+unitsText+' × '+label(c)+' con orden límite a '+money(limitEur)+' (precio que pones en la orden; pagas como mucho '+money(units*limitEur)+' + comisión)')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.

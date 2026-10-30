@@ -156,12 +156,12 @@ function initStockInteractions(){
   let recoSold=e.target.closest&&e.target.closest('[data-reco-sold]');
   if(recoSold){e.preventDefault();e.stopPropagation();markRecommendationSold(recoSold.dataset.recoSold);return}
 
-  // Pulso IA y Radar de entrada: toda la tarjeta compacta abre la ficha completa.
+  // Pulso IA y Radar de entrada: la tarjeta compacta abre la ficha completa desde su nombre.
   // Los controles internos conservan su acción propia.
   let compactCard=e.target.closest&&e.target.closest('.asset-card[data-card-context="recommendation"],.asset-card[data-card-context="entry"]');
   if(compactCard){
    let control=e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,[data-copy-isin],[data-reco-mobile-group]');
-   if(!control){
+   if(!control&&profileOpenAllowed(e.target,compactCard)){
     let row=compactCard.querySelector('[data-stock-key],[data-open-stock]');
     if(row){
      e.preventDefault();e.stopPropagation();
@@ -193,8 +193,11 @@ function initStockInteractions(){
   // Un botón que lleva su propio data-open-stock (p. ej. el nombre enlazado en «Hoy toca») abre esa ficha.
   const ownButton=e.target.closest&&e.target.closest('button[data-open-stock]');
   if(ownButton)row=ownButton;
+  // Fila de lista entera hecha botón (Radar, Hoy, listas): también solo desde el nombre.
+  if(ownButton&&ownButton.classList.contains('d-row-main')&&!profileOpenAllowed(e.target,ownButton))return;
   if(row){
    if(!ownButton&&e.target.closest&&e.target.closest('button,a,input,select,textarea,summary,label,.external-links,.event-sources,.event-link,.catalog-col-filter'))return;
+   if(!ownButton&&!profileOpenAllowed(e.target,row.closest('.asset-card')||row))return;
    e.preventDefault();e.stopPropagation();
    let key=row.dataset.stockKey||row.dataset.openStock,s=stockByKey(key),pref=row.dataset.stockPreferTr||row.dataset.positionPreferTr;
    if(s)openStock(s,row.dataset.stockReason||'',pref==='1'?true:pref==='0'?false:null);
@@ -209,6 +212,17 @@ function initStockInteractions(){
  });
 }
 
+// Tarjetas y filas compactas: la ficha completa se abre solo desde el nombre (o el logo / icono de ficha), para que un
+// toque que falla un botón no te lleve a otra pantalla. Dentro de la ficha extendida no se aplica: allí sus filas
+// (p. ej. cambiar de mercado si cotiza en varios) siguen funcionando como siempre.
+const PROFILE_NAME_ZONE='[data-open-name],.asset-card-identity,.asset-card-marker,.asset-card-open,.goal2-logo,.goal2-action-main>strong,.goal2-pos>b,.market-sheet-row>span,.tax-row>div:first-child,strong,b,.ticker,.stock-name';
+function profileOpenAllowed(target,container){
+ if(!target||!target.closest)return true;
+ if(target.closest('.stock-profile'))return true;
+ const zone=target.closest(PROFILE_NAME_ZONE);
+ // La zona del nombre tiene que estar dentro de la tarjeta (no un <b> de un importe en otra parte de la fila).
+ return !!(zone&&(!container||container.contains(zone))&&!zone.closest('.goal2-action-what,.goal2-why-body,.asset-card-quote-slot,.asset-card-context-slot,.d-row-num'));
+}
 /* Preserve presentation state only across a render-host replacement.
  * No quote observation, persistent cache, form-value cache or cross-account state.
  */

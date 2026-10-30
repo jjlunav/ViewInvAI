@@ -24,9 +24,10 @@ const ctx={candidates:[cand],positions:[],preferTr:true,fx:.86,committed:[{key:'
 const buy={type:'BUY',limitPriceEur:17.59,key:'TSE:7203',ticker:'TOM',name:'Toyota Motor Corp.',label:'TOM (Toyota Motor Corp.)',units:5,ticketEur:87.7,priceEur:17.54,riskEur:7.26,riskPct:6,stopPct:6,targetPct:6.4,burstScore:100,riskTier:'bajo',committed:true,
   text:'Comprar 5 × TOM (Toyota Motor Corp.) con orden límite a 17,59 € (≈ 87,70 €).',pros:['volumen acelera'],cons:['resultados el 2026-11-05','comisión de ida y vuelta 2,3 % del importe']};
 const html=context.goalActionHtml(buy,ctx);
-assert.ok(html.includes('Comprar 5 acciones · <b>87,70 €</b> · límite 17,59 €'),'One short line says what to do, with the order limit');
+assert.ok(html.includes('Comprar 5 acciones · límite <b>17,59 €</b> · total máx. 87,95 €'),'One price on the card: the order limit, plus the most you would pay');
+assert.ok(context.goalActionHtml({...buy,units:1,ticketEur:42.45,limitPriceEur:42.58},ctx).includes('Comprar 1 acción · límite <b>42,58 €</b></span>'),'With one share only the limit is shown');
 const frac=context.goalActionHtml({...buy,fractional:true,units:4.987,committed:false},{...ctx,committed:[]});
-assert.ok(frac.includes('(fracción) · límite 17,59 € si tu bróker lo permite'));
+assert.ok(frac.includes('(fracción) · límite <b>17,59 €</b> si tu bróker lo permite'));
 const sell=context.goalActionHtml({type:'SELL',reason:'stop',key:'NASDAQ:SPRO',ticker:'SPRO',name:'Spero',units:0.4,text:'Vender'},{...ctx,positions:[]});
 assert.ok(sell.includes('vender 0,4 acciones'),'Fractional sells are not rounded');
 assert.ok(html.includes('✓ Comprada')&&html.includes('data-register-goal-operation="BUY"'),'Bought button registers the order');
@@ -36,6 +37,8 @@ assert.ok(html.includes('2,3 % del importe')&&!html.includes('4,3 %'),'The fee c
 const wide=context.goalActionHtml(buy,{...ctx,candidates:[{...cand,quote:{...cand.quote,bid:42.10,ask:42.85}}]});
 assert.ok(wide.includes('Horquilla 42,10 € – 42,85 €')&&wide.indexOf('goal2-spread-note')<wide.indexOf('goal2-why-body'),'A limit below the ask is flagged on the card itself');
 assert.ok(!html.includes('goal2-spread-note'),'No warning when there is no book');
+const liveCard=context.goalActionHtml(buy,{...ctx,candidates:[{...cand,quote:{...cand.quote,bid:42.10,ask:42.85,ageMs:8000,quoteFresh:true}}]});
+assert.ok(liveCard.includes('En vivo · compra 42,85 € · venta 42,10 € · hace 8 s'),'Each buy card shows the live buy/sell price and its age');
 assert.ok(html.indexOf('Cotización ejecutable sin verificar')>html.indexOf('goal2-why-body'),'The unverified-quote note moves into the details');
 const wait=context.goalActionHtml({type:'WAIT',key:'TSE:8001',ticker:'IOC',name:'Itochu Corporation',committed:true,decision:'ESPERAR',text:'Esperar IOC: momentum de entrada deteriorado.',burstScore:100,entryTiming:93,riskTier:'bajo'},{...ctx,candidates:[]});
 assert.ok(wait.includes('Esperar entrada')&&wait.includes('data-goal-discard="TSE:8001"'),'A fixed waiting idea can be discarded too');
@@ -63,5 +66,5 @@ card=context.goalPendingOrderHtml(order,{preferTr:true,fx:1});
 assert.ok(card.includes('ya está en tu límite o por debajo: puede haberse ejecutado'),'Live ask at or below the limit: it may have filled');
 assert.equal(Math.round(context.goalPendingOrderEur(order)*100)/100,43.61,'An order reserves units × limit + fee');
 assert.equal(context.goalPendingOrders({pending_orders:JSON.stringify([{...order,at:new Date(Date.now()-8*86400e3).toISOString()}])}).length,0,'Orders older than 7 days expire');
-if(process.env.CARD_ORDER){context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});fs.writeFileSync(process.env.CARD_ORDER,'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · 1</small>'+context.goalPendingOrderHtml(order,{preferTr:true,fx:1})+'</div>'+wide)}
+if(process.env.CARD_ORDER){context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});fs.writeFileSync(process.env.CARD_ORDER,'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · 1</small>'+context.goalPendingOrderHtml(order,{preferTr:true,fx:1})+'</div>'+liveCard)}
 console.log('Goal card tests: OK');
