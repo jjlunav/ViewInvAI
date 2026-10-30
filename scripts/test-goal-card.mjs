@@ -9,7 +9,7 @@ const context={console,Math,Number,String,Array,Object,Set,Map,JSON,RegExp,Date,
   num:v=>v===null||v===undefined||v===''?null:Number.isFinite(Number(v))?Number(v):null,
   formatNumber:(v,d=1)=>Number(v).toFixed(d).replace('.',','),formatMoney:v=>Number(v).toFixed(2).replace('.',',')+' €',
   esc:v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
-  state:{selectedPortfolioId:'pf1'},window:{},portfolioStockKey:s=>s.key,portfolioConvertAmount:v=>v,portfolioPriceToEur:v=>v,goalExecutionQuote:()=>({}),
+  state:{selectedPortfolioId:'pf1'},window:{},stockByKey:()=>null,portfolioStockKey:s=>s.key,portfolioConvertAmount:v=>v,portfolioPriceToEur:v=>v,goalExecutionQuote:()=>({}),
   localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)}},
   document:{addEventListener:()=>{}}};
 vm.createContext(context);

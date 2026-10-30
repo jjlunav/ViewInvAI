@@ -532,3 +532,11 @@ console.log("Goal engine tests: OK");
   const spent=p=>p.actions.filter(a=>a.type==="BUY").reduce((s,a)=>s+a.ticketEur,0);
   assert.ok(spent(held)<=100+1e-6&&spent(held)<spent(free),"new buys only use the cash not reserved by pending orders");
 }
+
+// «¿Por qué no hay compras?» en huchas: solo culpa a las órdenes puestas de la hucha alto.
+{
+  const c={...base,key:"NASDAQ:BIG",ticker:"BIG",priceEur:900,askEur:900};
+  const why=extra=>(G.plan({...input([c]),config:{...input([c]).config,allowFractions:false},cashEur:1000,peakValueEur:1000,sleeves:{alto:{cashEur:5,...extra}}}).whyNoBuy||[]).find(w=>w.code==="sleeve");
+  assert.ok(why({})&&!/órdenes puestas/.test(why({}).text),"an order of another sleeve is not blamed");
+  assert.ok(/apartados en tus órdenes puestas/.test(why({ordersEur:40}).text),"an order of the high-risk sleeve is named as the reason");
+}

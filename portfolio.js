@@ -1724,7 +1724,8 @@ function goalEngineInput(metrics,positionRows){
   const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
   // Una orden puesta de un valor que aún no tienes ocupa un hueco de «nº de acciones» hasta que se ejecuta o se cancela.
   const heldNow=new Set([...positions.map(p=>String(p.key)),...lockedKeys.map(String)]),pendingSlots=pending.filter(o=>!heldNow.has(String(o.key))).length;
-  if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0))};
+  const altoOrders=pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0);
+  if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-altoOrders),ordersEur:altoOrders};
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
@@ -2128,7 +2129,7 @@ function goalDiscardedTodayHtml(portfolioId,goal,ctx){
   const keys=goalTodayDiscarded(portfolioId,goal);if(!keys.length)return'';
   const entry=goalIdeaStore()[String(portfolioId||"")],info=(entry&&entry.day===goalIdeaDay()&&entry.discardedInfo)||{};
   const items=keys.map(k=>{
-    const c=(ctx.candidates||[]).find(x=>x.key===k),i=info[k]||{},label=(c&&c.stock&&c.stock.name)||i.name||i.ticker||(c&&c.ticker)||k.split(":").pop();
+    const c=(ctx.candidates||[]).find(x=>x.key===k),i=info[k]||{},st=stockByKey(k),label=(c&&c.stock&&c.stock.name)||i.name||(st&&st.name)||i.ticker||(c&&c.ticker)||(st&&(st.trTicker||st.ticker))||k.split(":").pop();
     return '<li><span>'+esc(label)+'</span><button type="button" class="goal2-decide" data-goal-restore="'+esc(k)+'" data-goal-restore-ticker="'+esc(i.ticker||label)+'">Volver a mostrar</button></li>';
   }).join('');
   return goalFoldHtml("discarded","Descartadas hoy",String(keys.length),'<ul class="goal2-discarded">'+items+'</ul><small class="goal2-alts-note">Mañana el plan puede volver a proponerlas.</small>');
@@ -2202,7 +2203,7 @@ function goalAlternativesHtml(plan,ctx,shown){
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
   const w=why[0];if(w.code==='reached')return '';
-  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':w.code==='sleeve'?' <button type="button" class="btn small" data-goal-sleeve-cash>Repartir efectivo</button>':'';
+  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':w.code==='sleeve'?' <button type="button" class="goal2-btn goal2-why-btn" data-goal-sleeve-cash>Cambiar reparto</button>':'';
   return '<div class="goal2-why" role="note"><b>¿Por qué no hay compras?</b> '+esc(w.text)+cashBtn+'</div>';
 }
 // ----- Huchas del Objetivo: alto / medio / bajo, cada una con su efectivo, sus acciones y su estrategia -----
@@ -2276,7 +2277,7 @@ function goalQualityList(preferTr,heldKeys){
 // Ideas de la hucha con su importe: el efectivo libre de la hucha repartido entre las que caben.
 function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
   const G=window.ViewInvAIGoal,m=GOAL_SLEEVE_META[k],cash=S.sleeves[k].cashEur;
-  if(!G||!list.length)return'<small class="goal2-alts-note">Ahora no hay ideas que cumplan esta estrategia.</small>';
+  if(!G||!list.length)return{next:'',more:'<small class="goal2-alts-note">Ahora no hay ideas que cumplan esta estrategia.</small>'};
   const priced=list.filter(t=>t.stock).map(t=>({...t,...goalSleeveEurPrice(t.stock,ctx.preferTr,ctx.fx)}));
   if(ctx.preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-"+k,priced.map(t=>portfolioStockKey(t.stock)));
   const noFrac=[...goalNoFractionSet(goal)];
@@ -2286,7 +2287,8 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
   const sized=new Map(z.ideas.map(x=>[x.key,x]));
   const head=z.count>0?'Con '+formatMoney(cash,"EUR")+' libres: '+z.count+(z.count===1?' compra':' compras')+' de unos '+formatMoney(z.each,"EUR"):
     z.reason==="full"?'Hucha completa: ya tiene '+bucket.rows.length+' acciones.':'Con '+formatMoney(cash,"EUR")+' libres no llega para una compra de al menos '+formatMoney(minTicket,"EUR")+' (con 1 € por orden, la comisión sería más de la mitad).';
-  return '<small class="goal2-sleeve-sizing">'+esc(head)+'</small><ol class="goal2-sleeve-ideas">'+priced.map(t=>{
+  let next='';
+  const items=priced.map(t=>{
     const x=sized.get(t.key),label=String(t.ticker||"")+(t.name&&t.name!==t.ticker?' ('+t.name+')':''),key=portfolioStockKey(t.stock);
     const facts=k==="medio"?'6 meses sin el último: +'+formatNumber(t.momentumPct,1)+' %'+(num(t.fromHighPct)!==null?' · a '+formatNumber(Math.abs(t.fromHighPct),1)+' % de su máximo':'')
       :'rentab. del beneficio '+formatNumber(t.earningsYieldPct,1)+' % · '+(t.returnBasis==="roic"?'ROIC '+formatNumber(t.roicPct,0)+' %':'margen '+formatNumber(t.netMarginPct,0)+' %')+(num(t.pe)!==null?' · PER '+formatNumber(t.pe,0):'')+(num(t.debtToEquity)!==null?' · deuda/patrimonio '+formatNumber(t.debtToEquity,1):'');
@@ -2297,9 +2299,18 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
       const feePct=x.ticketEur>0?2*portfolioOperationFee(ctx.preferTr)/x.ticketEur*100:null;
       buy='<span class="goal2-sleeve-buy">'+(x.fractional?'≈ '+formatNumber(x.units,2)+' acciones (fracción)':x.units+(x.units===1?' acción':' acciones'))+' · '+formatMoney(x.ticketEur,"EUR")+'</span>'+
         (feePct!==null&&feePct>2?'<small class="goal2-sleeve-fee">Comisión de ida y vuelta: '+esc(formatNumber(feePct,1))+' % del importe; tiene que subir eso solo para no perder.</small>':'')+
-        goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k});
+        // Mismo botón que en «Hoy toca» (la nota de cotización sin verificar, en pequeño debajo).
+        goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k})
+          .replace(/^(<small class="portfolio-goal-execution-blocked"[^>]*>[^<]*<\/small>)(.*)$/,'$2$1').replace(/class="(goal2-decide|btn ghost compact) portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>(✓ Ya ejecutada|＋ Registrar estrategia)<\/button>/,'>✓ Comprada</button>');
     }
-    return '<li>'+goalLinkedText(label,[{label,key,preferTr:ctx.preferTr}])+goalRiskPill(t.riskTier)+' <small>'+esc(facts)+'</small>'+buy+'</li>'}).join('')+'</ol>';
+    // La primera que cabe es la «siguiente compra» de la hucha (a la vista); el resto, en la lista cerrada.
+    if(buy&&!next){
+      next='<div class="goal2-sleeve-next"><small>Siguiente compra</small><div><b data-open-name>'+esc(t.name||t.ticker||"")+'</b>'+goalRiskPill(t.riskTier)+'</div>'+buy+'</div>';
+      return '';
+    }
+    return '<li>'+goalLinkedText(label,[{label,key,preferTr:ctx.preferTr}])+goalRiskPill(t.riskTier)+' <small>'+esc(facts)+'</small>'+buy+'</li>'}).join('');
+  return{next:next?next.replace('<div class="goal2-sleeve-next">','<div class="goal2-sleeve-next" data-open-stock="'+esc(portfolioStockKey((priced.find(t=>sized.get(t.key)&&sized.get(t.key).fits)||{}).stock||{}))+'" data-position-prefer-tr="'+(ctx.preferTr?'1':'0')+'">'):'',
+    more:'<small class="goal2-sleeve-sizing">'+esc(head)+'</small>'+(items?'<ol class="goal2-sleeve-ideas">'+items+'</ol>':'')};
 }
 // Reglas de salida de las acciones de las huchas medio y bajo (estas no las gestiona el plan de ideas cortas).
 function goalSleeveExitNote(k,row){
@@ -2325,24 +2336,28 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
   const cards=GOAL_SLEEVES.map(k=>{
     const x=S.sleeves[k],m=GOAL_SLEEVE_META[k],st=goalSleeveStrategy(S,k),b=B[k],total=x.cashEur+b.value;
     // Rentabilidad por participaciones: meter o sacar dinero no la cambia (cada participación empezó en 1 €).
-    const units=num(x.units),pct=b.unpriced?null:units>1e-9?(total/units-1)*100:x.baseEur>0?(total/x.baseEur-1)*100:null;
-    const pos=b.rows.length?'<ul class="goal2-sleeve-pos">'+b.rows.map(({row,value})=>{
+    const units=num(x.units),pct=b.unpriced?null:units>1e-9?(total/units-1)*100:x.baseEur>0?(total/x.baseEur-1)*100:null,gain=total-x.baseEur;
+    // Una línea por acción: resultado, valor y su estado (stop, «mantener» con «Cambiar», o la regla de salida).
+    const pos=b.rows.length?'<ul class="goal2-poslist">'+b.rows.map(({row,value})=>{
       const ret=row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null,exit=goalSleeveExitNote(k,row);
-      const label=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||"")+(row.stock&&row.stock.name?' ('+row.stock.name+')':'');
-      return '<li>'+goalLinkedText(label,[{label,key:row.p.stock_key,preferTr:row.preferTr}])+' <b class="'+(ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</b>'+
-        ' <small>'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+(exit?' · <i class="goal2-sleeve-exit goal2-sleeve-exit-'+esc(exit.tag.toLowerCase())+'">'+esc(exit.tag)+'</i> '+esc(exit.text):'')+'</small>'+
-        '<select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Cambiar de hucha">'+goalSleeveOptions(k)+'</select></li>'}).join('')+'</ul>':'';
-    let ideas='';
+      const ticker=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||""),name=row.stock&&row.stock.name||row.p.name||"";
+      const status=(ctx.posStatus&&ctx.posStatus.get(String(row.p.id)))||(exit?'<i class="goal2-sleeve-exit goal2-sleeve-exit-'+esc(exit.tag.toLowerCase())+'">'+esc(exit.tag)+'</i> '+esc(exit.text):'');
+      return '<li class="goal2-posrow" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'">'+
+        '<div class="goal2-posrow-head"><b data-open-name role="link" tabindex="0">'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
+        '<span class="'+(ret===null?'':ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span></div>'+
+        '<small class="goal2-posrow-status">'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+(status?' · '+status:'')+'</small>'+
+        '<details class="goal2-sleeve-movebox"><summary>Cambiar de hucha</summary><select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Cambiar de hucha">'+goalSleeveOptions(k)+'</select></details></li>'}).join('')+'</ul>':'';
+    let ideas={next:'',more:''};
     if(k==="medio")ideas=goalSleeveIdeasHtml(k,goalTrendList(ctx.preferTr,held,{noHigh:true}),S,b,ctx,goal);
     else if(k==="bajo"&&x.strategy==="quality")ideas=goalSleeveIdeasHtml(k,goalQualityList(ctx.preferTr,held),S,b,ctx,goal);
-    else if(k==="bajo")ideas='<ul class="goal2-sleeve-ideas">'+((window.ViewInvAIGoal&&window.ViewInvAIGoal.INDEX_ETFS)||[]).map(e=>'<li><b>'+esc(e.name)+'</b> <small translate="no">'+esc(e.isin)+'</small><br><small>'+esc(e.note)+'</small></li>').join('')+'</ul>'+
-      '<small class="goal2-alts-note">Los ETF se siguen en Fondos. Si inviertes en uno el efectivo de esta hucha, bájalo en «Repartir efectivo» para que cuadre con tu cuenta.</small>';
-    else ideas='<small class="goal2-alts-note">Las ideas de esta hucha son las de «Hoy toca».</small>';
+    else if(k==="bajo")ideas={next:'',more:'<ul class="goal2-sleeve-ideas">'+((window.ViewInvAIGoal&&window.ViewInvAIGoal.INDEX_ETFS)||[]).map(e=>'<li><b>'+esc(e.name)+'</b> <small translate="no">'+esc(e.isin)+'</small><br><small>'+esc(e.note)+'</small></li>').join('')+'</ul>'+
+      '<small class="goal2-alts-note">Los ETF se siguen en Fondos. Si inviertes en uno el efectivo de esta hucha, bájalo en «Repartir efectivo» para que cuadre con tu cuenta.</small>'};
+    const alto=k==="alto"?'<small class="goal2-posrow-status">Sus compras salen arriba, en «Hoy toca».</small>':'';
     return '<article class="goal2-sleeve goal2-sleeve-'+esc(k)+'"><header><span>'+goalSleevePill(k)+' <b>'+esc(st.short)+'</b> <small>'+esc(m.horizon)+'</small></span>'+
-      '<strong class="goal2-sleeve-pct'+(pct===null?'':pct>=0?' up':' down')+'">'+(pct===null?'—':(pct>0?'+':'')+formatNumber(pct,1)+' %')+'</strong></header>'+
-      '<div class="goal2-sleeve-grid"><span>Aportado<b>'+esc(formatMoney(x.baseEur,"EUR"))+'</b></span><span>Efectivo<b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>Valor total<b>'+esc(formatMoney(total,"EUR"))+'</b></span></div>'+
-      (b.unpriced?'':'<small class="goal2-sleeve-gain">'+(total-x.baseEur>=0?'Ganas ':'Pierdes ')+esc(formatMoney(Math.abs(total-x.baseEur),"EUR"))+' sobre lo aportado</small>')+
-      pos+'<details class="goal2-sleeve-more" data-goal-fold="sleeve-'+esc(k)+'"'+(goalOpenFolds.has("sleeve-"+k)?' open':'')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia e ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas+'</details></article>';
+      '<strong class="goal2-sleeve-pct'+(pct===null?'':pct>=0?' up':' down')+'">'+(pct===null?'—':(pct>0?'+':'')+formatNumber(pct,1)+' %')+(b.unpriced?'':'<small>'+(gain>=0?'+':'−')+esc(formatMoney(Math.abs(gain),"EUR"))+'</small>')+'</strong></header>'+
+      '<div class="goal2-sleeve-figs"><span>Libre <b>'+esc(formatMoney(x.cashEur,"EUR"))+'</b></span><span>En acciones <b>'+esc(b.unpriced?'—':formatMoney(b.value,"EUR"))+'</b></span></div>'+
+      pos+alto+ideas.next+
+      '<details class="goal2-sleeve-more" data-goal-fold="sleeve-'+esc(k)+'"'+(goalOpenFolds.has("sleeve-"+k)?' open':'')+'><summary>'+(k==="alto"?'Estrategia':'Estrategia y más ideas')+'</summary><small>'+esc(st.note)+'</small>'+ideas.more+'</details></article>';
   }).join('');
   const none=B.none.length?'<div class="goal2-why" role="note"><b>Acciones sin hucha.</b> Indica a qué hucha pertenece cada una: lo comprado desde que empezaron las huchas lo pagó esa hucha y lo que ya tenías se le suma por su valor de hoy.<ul class="goal2-sleeve-pos">'+
     B.none.map(({row,value})=>'<li>'+esc(String(row.p.ticker||""))+' '+esc(row.stock&&row.stock.name||row.p.name||'')+' <small>'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+'</small><select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Elegir hucha">'+goalSleeveOptions("")+'</select></li>').join('')+'</ul></div>':'';
@@ -2355,7 +2370,7 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
     return GOAL_SLEEVE_META[k].label+' '+(q===null?'—':(q>0?'+':'')+formatNumber(q,1)+' %')}).join(' · ');
   return '<section class="goal2-section goal2-sleeves">'+banner+
     '<div class="goal2-sleeve-list">'+cards+'</div>'+none+'<div class="goal2-sleeves-actions"><button type="button" class="goal2-btn" data-goal-sleeve-cash>Repartir efectivo</button></div>'+
-    (base>0?'<small class="goal2-alts-note">En conjunto: aportado '+esc(formatMoney(base,"EUR"))+' → '+esc(formatMoney(total,"EUR"))+' ('+(total-base>=0?'+':'−')+esc(formatMoney(Math.abs(total-base),"EUR"))+'). Reparto de hoy: '+esc(mix)+'. El % de cada hucha se mide como un fondo: meter o sacar dinero no lo cambia.</small>':'')+
+    (base>0?'<small class="goal2-alts-note">Total '+esc(formatMoney(total,"EUR"))+' ('+(total-base>=0?'+':'−')+esc(formatMoney(Math.abs(total-base),"EUR"))+' sobre lo aportado). El % de cada hucha no cambia al meter o sacar dinero.</small>':'')+
   '</section>';
 }
 function goalSleeveOptions(current){
@@ -2474,14 +2489,28 @@ function portfolioGoalViewHtml(){
   const frozenRows=positionRows.map(row=>({row,q:Math.min(num(row.qty)||0,positionFrozenQty(row.p))})).filter(x=>x.q>0);
   const frozenNote=frozenRows.length?'<ul class="goal2-notes muted goal2-frozen">'+frozenRows.map(({row,q})=>'<li>🔒 '+esc(formatNumber(q,6))+' × '+esc(row.stock&&row.stock.name||row.p.name||row.p.ticker||'')+' congeladas hasta el '+esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"}))+': el plan no las toca.</li>').join('')+'</ul>':'';
   const notes=plan.notes.length?'<ul class="goal2-notes muted">'+plan.notes.slice(0,4).map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>':'';
-  const posList=input.positions.length?'<div class="goal2-positions">'+input.positions.map(p=>{
-      const st=engine.positionStop(p,input.config.risk),ret=p.avgEur>0?(p.priceEur/p.avgEur-1)*100:null;
-      // Con una decisión «mantener» el plan no usa su stop normal: solo vende si salta el stop de emergencia que fijaste.
-      const hold=p.hold&&p.hold.mode?p.hold:null,emergency=hold?num(hold.emergencyEur):null;
-      return '<div class="goal2-pos" data-open-stock="'+esc(p.row.p.stock_key)+'" data-position-prefer-tr="'+(p.row.preferTr?'1':'0')+'" role="button" tabindex="0"><b>'+esc(p.ticker)+'</b>'+
-        '<span class="'+(ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span>'+
-        '<small>'+(hold?(emergency!==null?'Stop de emergencia '+formatMoney(emergency,"EUR"):'Sin stop: mantener por tu decisión'):'Stop '+(st.stopEur!==null?formatMoney(st.stopEur,"EUR"):'—')+(st.trailing?' · sube con el precio':''))+'</small></div>';
-    }).join('')+'</div>':'';
+  // Todas las acciones de la cartera, una fila cada una (también las de las huchas medio y bajo y las congeladas):
+  // nombre, resultado y su estado (stop, decisión «mantener» con «Cambiar», hucha o congelada).
+  const statusOf=row=>{
+      const p=input.positions.find(x=>String(x.positionId)===String(row.p.id));
+      const h=p?plan.holds.find(x=>x.holdMode&&(x.positionId!==undefined&&x.positionId!==null&&x.positionId!==""?String(x.positionId)===String(row.p.id):x.key===p.key)):null;
+      if(h)return esc(String(h.text||"").replace(/^Mantener [^:]*: /,"Mantener: "))+' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(row.p.id)+'">Cambiar</button>';
+      const fq=Math.min(num(row.qty)||0,positionFrozenQty(row.p)),until=fq>0?esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short"})):'';
+      // Congelada solo en parte: el stop es del resto y se indica cuántas están congeladas y hasta cuándo.
+      if(p){const st=engine.positionStop(p,input.config.risk);return 'Stop '+(st.stopEur!==null?esc(formatMoney(st.stopEur,"EUR")):'—')+(st.trailing?' · sube con el precio':'')+(fq>0?' · 🔒 '+esc(formatNumber(fq,fq%1?4:0))+' congeladas hasta el '+until:'')}
+      if(fq>0)return '🔒 Congelada hasta el '+until+': el plan no la toca';
+      return '';
+    };
+  ctx.posStatus=new Map(positionRows.map(row=>[String(row.p.id),statusOf(row)]));
+  const posList=positionRows.length?'<ul class="goal2-poslist">'+positionRows.map(row=>{
+      const ret=row.avgEur>0&&row.unitEur!==null?(row.unitEur/row.avgEur-1)*100:null;
+      const ticker=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||""),name=row.stock&&row.stock.name||row.p.name||"";
+      const status=ctx.posStatus.get(String(row.p.id))||"";
+      return '<li class="goal2-posrow" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'">'+
+        '<div class="goal2-posrow-head"><b data-open-name role="link" tabindex="0">'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
+        '<span class="'+(ret===null?'':ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span></div>'+
+        (status?'<small class="goal2-posrow-status">'+status+'</small>':'')+'</li>';
+    }).join('')+'</ul>':'';
   state.pendingGoalHistory=goalPlanHistorySnapshot(metrics,plan);
   // Orden: lo que toca hacer hoy arriba; el resto, en desplegables cerrados con un resumen de una línea.
   const sleevesBody=goalSleevesHtml(metrics,positionRows,goal,ctx);
@@ -2496,10 +2525,10 @@ function portfolioGoalViewHtml(){
     goalPaceMiniHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3><span>Hoy toca</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+(ctx.sleeves&&nDec?'<small class="goal2-today-sleeve">Compras a corto plazo (1–5 sesiones, con stop) con el dinero de la '+goalSleevePill("alto")+'. Medio y bajo tienen sus ideas en «Tus huchas».</small>':'')+pendingHtml+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
+    '<section class="goal2-today"><h3><span>Hoy toca</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+(ctx.sleeves&&nDec?'<small class="goal2-today-sleeve">Corto plazo (1–5 sesiones) con el dinero de la '+goalSleevePill("alto")+'</small>':'')+pendingHtml+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
     '<section class="goal2-more"><h3>Más información</h3>'+
       goalFoldHtml("sleeves","Tus huchas",esc(ctx.sleeveHint||""),sleevesBody)+
-      goalFoldHtml("positions","Tus posiciones",String(input.positions.length),posList+holds+frozenNote)+
+      (ctx.sleeves?'':goalFoldHtml("positions","Tus posiciones",String(positionRows.length),posList))+
       goalFoldHtml("alts","Otras opciones",altCount?String(altCount):"",alts+trend)+
       goalFoldHtml("pace","Progreso y ritmo",esc(paceHint),sub+goalPaceHtml(plan.pace,metrics)+notes+'<p class="portfolio-goal-note compact-note">El plan se recalcula al momento con los precios en vivo. No vende una acción en pérdidas para cambiarla salvo que la nueva prevea recuperar esa pérdida y las comisiones con margen; los stops suben solos cuando la acción gana.</p>')+
       goalFoldHtml("score","¿Aciertan estas ideas?",sbN?formatNumber(sbN,0)+(sbN===1?' idea':' ideas'):'',goalScoreboardHtml())+
