@@ -29,7 +29,7 @@
     "@capgo/capacitor-native-biometric": "8.7.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.2"
+    "@capacitor/cli": "8.5.3"
   },
   "overrides": {
     "@grpc/grpc-js": "1.14.5"
