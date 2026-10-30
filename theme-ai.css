@@ -2725,3 +2725,33 @@ html[data-theme="light"] .goal2-order-status.ok{color:#0f8a5f}
 .goal2-simple .goal2-action-main>strong,.goal2-simple .goal2-logo,.goal2-pos>b{cursor:pointer}
 .goal2-simple .goal2-action-main>strong::after{content:"›";margin-left:6px;color:var(--muted,#8ea0bf);font-weight:700}
 .goal2-simple .goal2-action-main>strong:hover{text-decoration:underline;text-underline-offset:3px}
+.goal2-poslist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.goal2-posrow{padding:10px 12px;border-radius:12px;border:1px solid rgba(140,190,210,.16);background:rgba(255,255,255,.03)}
+.goal2-posrow-head{display:flex;align-items:baseline;gap:8px;min-width:0}
+.goal2-posrow-head b{cursor:pointer}
+.goal2-posrow-head small{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted,#8ea0bf);cursor:pointer}
+.goal2-posrow-head span{font-weight:800;white-space:nowrap}
+.goal2-posrow-status{display:block;margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--muted,#8ea0bf)}
+.goal2-why-btn{display:inline-flex;align-items:center;height:30px;margin-left:8px;flex:0 0 auto;vertical-align:middle}
+html[data-theme="light"] .goal2-posrow{background:#fff;border-color:#dde3ee}
+/* Huchas simples: cifras en una línea, acciones en filas, siguiente compra a la vista y el resto cerrado. */
+.goal2-sleeve-figs{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted,#8ea0bf);margin:6px 0 8px}
+.goal2-sleeve-figs b{color:var(--text,#eaf4f8);font-size:14px;margin-left:4px}
+html[data-theme="light"] .goal2-sleeve-figs b{color:#0f1e3a}
+.goal2-sleeve-pct small{display:block;font-size:12px;font-weight:600;text-align:right;opacity:.8}
+.goal2-sleeve .goal2-poslist{margin:4px 0 8px}
+.goal2-sleeve-movebox{margin-top:4px}
+.goal2-sleeve-movebox>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted,#8ea0bf);text-decoration:underline;text-underline-offset:3px}
+.goal2-sleeve-movebox>summary::-webkit-details-marker{display:none}
+.goal2-sleeve-movebox .goal2-sleeve-move{margin-top:6px}
+.goal2-sleeve-next{display:grid;gap:4px;margin:4px 0 8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(157,140,255,.35);background:rgba(157,140,255,.07)}
+.goal2-sleeve-next>small:first-child{font-size:10.5px;letter-spacing:.1em;font-weight:800;text-transform:uppercase;color:#b9adff}
+.goal2-sleeve-next b{cursor:pointer}
+.goal2-sleeve-next .portfolio-goal-register,.goal2-sleeve-next .portfolio-goal-execution-blocked{justify-self:start}
+html[data-theme="light"] .goal2-sleeve-next{background:#f6f5ff;border-color:#c9c4ff}
+html[data-theme="light"] .goal2-sleeve-next>small:first-child{color:#4f46e5}
+.goal2-sleeve-next .portfolio-goal-execution-blocked{font-size:12px;color:var(--muted,#8ea0bf)}
+.goal2-sleeve-next .goal2-btn{flex:0 0 auto;padding:0 18px;height:38px}
+html body .goal2-simple .goal2-sleeve-next .goal2-btn{height:38px!important;min-height:38px!important;font-size:13.5px!important;padding:0 18px!important;border-radius:12px!important;width:auto!important}
+/* Los botones del Objetivo simple mandan sobre las reglas antiguas de #view-portfolios (botón de registrar diminuto). */
+html body #view-portfolios .goal2-simple .goal2-btn,html[data-native-app="1"] body #view-portfolios .goal2-simple .goal2-btn{height:38px!important;min-height:38px!important;font-size:13.5px!important;padding:0 16px!important;border-radius:12px!important;margin-top:0!important}
