@@ -9,11 +9,13 @@ import re, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PRE = 'html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6)'
 PRE_LIGHT = 'html[data-design="d"][data-theme="light"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6)'
+PRE_SIMPLE = 'html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6)'
 PRE_DARK = 'html[data-design="d"]:not([data-theme="light"]):root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6)'
 src = (ROOT / 'theme-d.src.css').read_text(encoding='utf-8')
 def fix(sel):
     sel = sel.strip()
-    for tok, pre in (('@light', PRE_LIGHT), ('@dark', PRE_DARK), ('@', PRE)):
+    # «@simple»: solo con la vista sencilla (html[data-detail="simple"]), la que ve por defecto quien no es experto.
+    for tok, pre in (('@simple', PRE_SIMPLE), ('@light', PRE_LIGHT), ('@dark', PRE_DARK), ('@', PRE)):
         if sel.startswith(tok):
             rest = sel[len(tok):].strip()
             # «@body» se refiere al propio body.

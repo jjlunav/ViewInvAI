@@ -16,7 +16,7 @@ function profileTabs(){
   '<button type="button" role="tab" aria-selected="false" data-profile-tab="chart">Gráfico</button>'+
   '<button type="button" role="tab" aria-selected="false" data-profile-tab="news">Noticias</button>'+
   '<button type="button" role="tab" aria-selected="false" data-profile-tab="fundamental">Fundamental</button>'+
-  '<button type="button" role="tab" aria-selected="false" data-profile-tab="technical">Técnico</button>'+
+  '<button type="button" role="tab" aria-selected="false" data-profile-tab="technical" class="vi-expert">Técnico</button>'+
   '<button type="button" role="tab" aria-selected="false" class="profile-tab-ai" data-profile-tab="ai">✦ IA ViewInvAI</button>'+
  '</nav>';
 }

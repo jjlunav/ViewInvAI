@@ -129,7 +129,7 @@
    (A?A.briefHtml():'')+
   '</section>'+
   '<section class="d-group"><header><h3>Tus cuentas</h3>'+(window.ViewInvAIPeriod?window.ViewInvAIPeriod.buttonHtml():'')+'<button type="button" class="d-more-link" data-today-go="portfolios" aria-label="Abrir Carteras">›</button></header><ul class="d-list">'+
-   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(()=>{const v=perAccount(p),tag=PER()?PER().tag():'';return v===null?(tag?'<span class="d-chip flat">— '+E(tag)+'</span>':''):Math.abs(v)>=0.005||tag?chip(v,{suffix:tag}):''})()+'</span></button></li>').join('')+
+   sum.portfolios.map(p=>'<li class="d-row"><button type="button" class="d-row-main d-row-simple" data-today-go="'+(p.kind==='crypto'?'crypto':'portfolios')+'"'+(p.kind==='funds'?' data-today-funds="1"':'')+'><span class="d-row-text"><b>'+E(p.name)+(sum.portfolios.filter(o=>o.name===p.name).length>1?' · '+(p.kind==='funds'?'Fondos':p.kind==='crypto'?'Cripto':'Acciones'):'')+'</b><small>'+(p.kind==='funds'?'Fondos y ETF':p.kind==='crypto'?'Cripto':'Acciones')+' · '+p.count+(p.count===1?' posición':' posiciones')+'</small></span><span class="d-row-num"><b>'+money(p.value)+'</b>'+(()=>{const v=perAccount(p),tag=PER()?PER().tag():'';return v===null?(tag?'<span class="d-chip flat">— '+E(tag)+'</span>':''):Math.abs(v)>=0.005||tag?chip(v,{suffix:tag}):''})()+'</span></button></li>').join('')+
   '</ul></section>';
  }
  // Favoritos: acciones (con su mercado preferido, LSX o EE. UU.) y fondos/ETF marcados con ★.
@@ -234,7 +234,7 @@
    return '<div class="d-agenda-card is-macro is-official" title="'+E(x.source)+'"><small>'+E(x.region)+' · '+E(day(x.date))+'</small><b>'+E(x.label)+'</b><span>'+E(fmt(x.value,x))+move+(diff!==null&&move?' <i>ant. '+E(fmt(x.prev,x))+'</i>':'')+'</span></div>';
   };
   const src=[...new Set(official.list.map(x=>/FRED/.test(x.source)?'FRED':'BCE'))].join(' · ');
-  return '<section class="d-group"><header><h3>Indicadores oficiales</h3><span>'+E(src)+'</span></header><div class="d-agenda">'+official.list.map(card).join('')+'</div></section>';
+  return '<section class="d-group vi-expert"><header><h3>Indicadores oficiales</h3><span>'+E(src)+'</span></header><div class="d-agenda">'+official.list.map(card).join('')+'</div></section>';
  }
  function agendaHtmlD(sum){
   // «en tu cartera» solo con posición abierta; lo que solo está en favoritos se dice así.

@@ -907,9 +907,10 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-topc>span {justify-self:end}
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-topc>small {grid-column:1/-1;color:var(--d-mut);font-size:11.5px}
 @media (max-width:820px){
- html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker h1 {display:none!important}
- html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset {min-width:0;flex:0 1 auto}
- html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset-btn {border:0;background:none;padding:0;font-size:20px;font-weight:800;letter-spacing:-.01em;max-width:52vw}
+ /* El título de la pantalla se queda (antes lo sustituía «Acciones LSX ▾» y no sabías dónde estabas);
+    el selector de mercado va a su lado como una etiqueta pequeña. */
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset {min-width:0;flex:0 1 auto;margin-left:8px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset-btn {padding:6px 10px;font-size:12.5px;font-weight:800;max-width:38vw}
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset-btn span {overflow:hidden;text-overflow:ellipsis}
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .page-heading.has-scr-picker .scr-asset-btn i {font-size:15px}
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-asset-menu {left:0!important;right:0;top:auto!important;bottom:0;width:auto;border-radius:22px 22px 0 0;padding:10px 10px calc(14px + env(safe-area-inset-bottom,0px))}
@@ -963,3 +964,71 @@ html[data-design="d"][data-theme="light"]:root:root body:not(#d1):not(#d2):not(#
 
 /* Posiciones de Carteras: la línea de la IA («Mantener · stop …») no se corta: pasa a dos líneas. */
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-position .d-row-ai {white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:block}
+
+/* ===== Usabilidad (v0.7.55): vista sencilla, glosario y arreglos de móvil y escritorio ===== */
+
+/* Vista sencilla: fuera lo que solo entiende un experto. El interruptor está en el menú lateral y en «Más». */
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-expert,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .list-copy-isin,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-tag,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quote-updated,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-extended,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .catalog-mobile-groups,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-views,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-group {display:none!important}
+
+/* Interruptor Sencilla / Experta */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-switch {display:grid;gap:6px;margin:14px 10px 6px;padding:10px;border:1px solid var(--d-hair-2);border-radius:14px;background:var(--d-surf)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-switch>small {font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--d-mut)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-switch>span {font-size:11.5px;line-height:1.35;color:var(--d-mut)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-seg {display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border-radius:10px;background:var(--d-segbg)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-seg button {border:0;border-radius:8px;padding:7px 6px;background:transparent;color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;cursor:pointer}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-seg button[aria-pressed="true"] {background:var(--d-bg);color:var(--d-ink);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .mobile-more-sheet .vi-detail-switch {margin:4px 0 12px}
+
+/* Glosario: «i» junto a los términos; al tocarlo se abre la explicación en lenguaje llano. */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-gloss {display:inline-grid!important;place-items:center;flex:none;width:17px!important;height:17px!important;min-width:0!important;margin-left:6px;padding:0!important;border-radius:50%!important;border:1px solid var(--d-hair-2)!important;background:transparent!important;color:var(--d-mut)!important;font:italic 700 10.5px/1 Georgia,serif!important;vertical-align:middle;cursor:help;text-transform:none!important;letter-spacing:0!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-gloss:hover,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-gloss:focus-visible {color:var(--d-ink)!important;border-color:var(--d-accent)!important}
+
+/* «Por revisar» en lugar de una cifra imposible */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-stats b.d-pending {color:#f3ca52!important;font-size:15px!important}
+
+/* Tamaños mínimos de texto (había etiquetas de 6,5–9 px) */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .list-copy-isin,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-card-copy small,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-tag {font-size:11px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quote-updated {font-size:10.5px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-item-head time,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-sources a,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-sources span {font-size:11px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-title {font-size:13px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-impact,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-impact strong,
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .event-context {font-size:12px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-extended time {font-size:11px!important}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) footer {font-size:11.5px!important}
+
+/* Carruseles horizontales: se difuminan por el lado donde hay más contenido */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-scroll-more {-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-scroll-more.vi-scroll-less {-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-scroll-less:not(.vi-scroll-more) {-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px);mask-image:linear-gradient(90deg,transparent,#000 48px)}
+
+/* Noticias: la cabecera fija medía 1180 px y su fondo se veía como un rectángulo oscuro detrás del título */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #view-news>.page-heading {max-width:none!important}
+
+/* Fiscal: centrado como el resto de pantallas en vez de pegado a la izquierda */
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) #view-tax .tax-results {margin-left:auto!important;margin-right:auto!important;max-width:980px!important}
+
+@media (max-width:820px){
+ /* Chat de la IA: la barra inferior tapaba el campo para escribir */
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6).ai-ask-open .mobile-bottom-nav {display:none!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .ai-ask-sheet {padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))!important;max-height:calc(100dvh - 24px)!important}
+ /* «Más»: no cabía en pantalla y la cabecera con la ✕ quedaba fuera; ahora se desplaza por dentro */
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .mobile-more-sheet {max-height:calc(100dvh - var(--mobile-nav-h,72px) - 24px - env(safe-area-inset-bottom,0px))!important;overflow-y:auto!important;overscroll-behavior:contain}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .mobile-more-head {position:sticky;top:-8px;z-index:2;background:var(--d-bg);margin:-8px -10px 0;padding:10px 12px 8px!important}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .mobile-more-head button {width:40px!important;height:40px!important}
+ /* Botones táctiles de al menos 40 px */
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .shell-icon-button {min-height:40px;min-width:40px}
+ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills button {min-height:34px}
+}

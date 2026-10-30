@@ -760,7 +760,7 @@ function radarAiShellD(rows,mode,counts,visible){
  const list=visible.length?'<ul class="d-list">'+visible.map(radarAiRowD).join('')+'</ul>':'<div class="radar-ai-empty">'+(radarAiTierFilter==='all'?'Sin señales ahora mismo en este mercado.':'Sin valores en «'+RADAR_TIER_LABEL[radarAiTierFilter]+'» ahora mismo.')+'</div>';
  return '<div class="radar-ai-shell radar-list-shell radar-list-'+mode+' d-radar">'+
   '<nav class="market-tabs compact-tabs radar-market-tabs" aria-label="Mercado del Radar AI">'+tab('tr','Trade Republic')+tab('us','EE. UU.')+'</nav>'+
-  '<section class="d-pulse"><small>Radar AI · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(ideas?ideas+(ideas===1?' idea hoy':' ideas hoy'):counts.watch?counts.watch+' en vigilancia':'Sin ideas hoy')+'</h2>'+(ideas?'':'<p class="d-hero-note">Ninguna pasa hoy el filtro de entrada; estas son las que la IA vigila.</p>')+
+  '<section class="d-pulse"><small>Radar AI · '+(isTr?'Trade Republic / LSX':'EE. UU.')+'</small><h2>'+(ideas?ideas+(ideas===1?' idea hoy':' ideas hoy'):counts.watch?counts.watch+' en vigilancia':'Sin ideas hoy')+'</h2>'+(ideas?(counts.watch?'<p class="d-hero-note">y '+counts.watch+' más en vigilancia (aún sin señal de entrada).</p>':''):'<p class="d-hero-note">Ninguna pasa hoy el filtro de entrada; estas son las que la IA vigila.</p>')+
    (()=>{const how='De '+(rows.analyzed||rows.length)+' valores analizados en '+(isTr?'Trade Republic / LSX':'EE. UU.')+', se quedan los que combinan tendencia, volumen, catalizadores y datos fiables. Cada idea se contrasta con noticias y con tu IA antes de enseñarse.';
     const html='<div class="d-reading"><p><span aria-hidden="true">✦</span> '+E(how)+'</p><div class="ai-chips">'+(first?'<button type="button" data-ai-ask-q="'+E('Explícame por qué '+first+' está en el Radar AI hoy y qué riesgo tiene.')+'">Explícame '+E(first)+'</button>':'')+'<button type="button" data-ai-ask-q="Compara las ideas del Radar AI de hoy con mi cartera: ¿alguna encaja?">Compáralas con mi cartera</button></div></div>';
     return typeof window.ViewInvAIFold==='function'?window.ViewInvAIFold('radar-how','Cómo se eligen',how,html):html})()+'</section>'+
@@ -1037,7 +1037,7 @@ async function renderRecommendation(force=false){
  if(state.currentView==='recommendation')seedTradeRepublicMarketBoard(120);
  box.innerHTML=radarAiShell(force?{}:radarAiLastAdvanced);
  let stamp=$('#recommendationUpdated');
- if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · validando alta convicción…';
+ if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+' · validando alta convicción…';
  requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
  if(recommendationRenderPromise&&!force)return recommendationRenderPromise;
  recommendationRenderPromise=(async()=>{
@@ -1047,7 +1047,7 @@ async function renderRecommendation(force=false){
   ]);
   const tr=results&&results[0],us=results&&results[1];
   if($('#recommendationResults'))$('#recommendationResults').innerHTML=radarAiShell({tr,us});
-  if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(stamp)stamp.textContent='Radar actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
   requestAnimationFrame(()=>{observeActiveTrLivePrices();pollUsLive()});
  })().catch(error=>console.warn('Radar AI advanced validation failed',error)).finally(()=>{recommendationRenderPromise=null});
  return recommendationRenderPromise;

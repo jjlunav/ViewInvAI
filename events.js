@@ -6,15 +6,27 @@
 function ET(t){return({news:'Noticia relevante',medical:'Clínico / FDA',earnings:'Resultados',contract:'Contrato / acuerdo',corporate:'Operación corporativa',financing:'Financiación / dilución',analyst:'Analistas / rating',event:'Evento / conferencia',regulatory:'Regulatorio / legal',other:'Otro catalizador'})[t]||'Catalizador'}
 function EL(e){let t=String(e.title||e.fact||'').toLowerCase();if(e.type==='earnings')return 'Resultados trimestrales';if(e.type==='medical'){let m=t.match(/phase\s*([123])/i);if(m)return 'Estudio clínico Fase '+m[1];if(/pdufa/.test(t))return 'PDUFA / FDA';if(/fda|approval|approved/.test(t))return 'Decisión FDA';if(/trial|clinical|study|endpoint|topline/.test(t))return 'Resultados clínicos';return 'Clínico / sanitario'}if(e.type==='financing'){if(/offering|registered direct|private placement/.test(t))return 'Oferta / ampliación';if(/warrant/.test(t))return 'Warrants';if(/convertible/.test(t))return 'Convertibles';return 'Financiación / dilución'}if(e.type==='contract')return /award|order|contract/.test(t)?'Contrato / adjudicación':'Acuerdo / alianza';if(e.type==='corporate'){if(/merger|acquisition|acquire|takeover|buyout/.test(t))return 'Fusión / adquisición';if(/reverse split/.test(t))return 'Reverse split';if(/stock split/.test(t))return 'Split';return 'Operación corporativa'}if(e.type==='analyst')return /upgrade/.test(t)?'Upgrade analista':/downgrade/.test(t)?'Downgrade analista':'Rating / precio objetivo';if(e.type==='regulatory')return 'Regulatorio / legal';if(e.type==='event')return 'Evento / conferencia';return ET(e.type)}
 function safeExternalUrl(value){try{let u=new URL(String(value||''));return u.protocol==='https:'?u.href:''}catch(_){return''}}
+// Horas en hora de España (el usuario es de aquí); los datos llegan en hora de Nueva York.
+const ES_CLOCK=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',hour12:false});
 function eventTime(e){
  let d=e&&e.date?new Date(e.date):null;
  if(d&&!isNaN(d)){
-  let parts=new Intl.DateTimeFormat('es-ES',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
-  let p=Object.fromEntries(parts.map(x=>[x.type,x.value])),utcH=d.getUTCHours(),utcM=d.getUTCMinutes(),utcS=d.getUTCSeconds();
-  if(e.eventKind==='news'||utcH||utcM||utcS)return p.hour+':'+p.minute+' NY';
+  let utcH=d.getUTCHours(),utcM=d.getUTCMinutes(),utcS=d.getUTCSeconds();
+  if(e.eventKind==='news'||utcH||utcM||utcS)return ES_CLOCK.format(d)+' h';
  }
  let code=N(e&&e.timeCode);
- if(code!==null&&code>60&&code<86400){let h=Math.floor(code/3600),m=Math.floor((code%3600)/60);if(h>=0&&h<24)return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' NY'}
+ if(code!==null&&code>60&&code<86400){
+  let h=Math.floor(code/3600),m=Math.floor((code%3600)/60);
+  if(h>=0&&h<24){
+   try{
+    if(d&&!isNaN(d)&&typeof zonedWallTimeToEpoch==='function'){
+     let at=zonedWallTimeToEpoch(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate(),h,m,0,'America/New_York');
+     if(Number.isFinite(at))return ES_CLOCK.format(new Date(at))+' h';
+    }
+   }catch(_){}
+   return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' h NY';
+  }
+ }
  return '';
 }
 function eventWhen(e){

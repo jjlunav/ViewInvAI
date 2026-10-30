@@ -55,6 +55,7 @@ const files = [
   'filter-sheet.js',
   'navigation.js',
   'mobile-app.js',
+  'usability.js',
   'bootstrap.js',
   'alerts.js',
   'stock-notifications.js',

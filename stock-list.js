@@ -143,7 +143,7 @@ function compactQuoteDate(ts){
 function compactQuoteTime(ts){
  ts=N(ts);if(ts===null)return'';
  const d=new Date(ts);if(Number.isNaN(d.getTime()))return'';
- return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+ return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
 }
 function compactSignedMoney(value,symbol,decimals){
  value=N(value);if(value===null)return'—';

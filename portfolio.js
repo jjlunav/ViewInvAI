@@ -798,10 +798,10 @@ function portfolioInsightsHtml(portfolio){
   let open=false;try{open=localStorage.getItem('viewinvai:pf-insights-open')==='1'}catch(_){}
   return '<details class="portfolio-insights"'+(open?' open':'')+' data-pf-insights>'+
     '<summary><span class="insights-title">Riesgo y dividendos</span>'+
-      '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b>β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
+      '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b class="vi-expert">β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
     '<div class="insights-body">'+
       (alerts.length?'<p class="insights-alert">'+alerts.join(' · ')+'.</p>':'')+
-      '<div class="insights-scenario"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
+      '<div class="insights-scenario vi-expert"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
       '<div class="insights-scenario"><small>DIVIDENDOS ESTIMADOS</small><strong>≈ '+formatMoney(d.dividends,'EUR')+' al año</strong><b>'+formatNumber(d.dividends/d.total*100,2)+'%</b><span>Con la rentabilidad por dividendo actual; antes de retenciones.</span></div>'+
       '<div class="insights-group"><small>POR POSICIÓN</small>'+insightBars(d.positions)+'</div>'+
       '<div class="insights-group"><small>POR SECTOR</small>'+insightBars(d.sectors)+'</div>'+
@@ -878,11 +878,19 @@ function portfolioPerformanceHtml(portfolio){
   if(p.empty||!p.days||p.days.length<2)return'';
   const m=perfMetrics(p,range);
   if(!m)return'';
+  // Con operaciones duplicadas o mal importadas la curva sale absurda (−99 %, caída −100 %). En vez de
+  // enseñar un número imposible, pedimos revisar primero: un dato así hace que no te fíes del resto.
+  // perfMetrics devuelve proporciones (−0,99 = −99 %). Los avisos de operaciones son posibles errores, no seguros:
+  // solo se nombran si además el resultado es imposible.
+  const txIssues=Number(state.portfolioTxIssues&&state.portfolioTxIssues[id])||0;
+  if((Number.isFinite(m.dd)&&m.dd<=-0.99)||(Number.isFinite(m.twr)&&m.twr<=-0.95)){
+    return shell('<b class="warn">Pendiente de revisar</b>','<p class="perf-note">No mostramos la rentabilidad porque '+(txIssues?'hay '+txIssues+(txIssues===1?' operación':' operaciones')+' que parecen duplicadas o con un precio erróneo':'el cálculo da un resultado imposible, seguramente por alguna operación mal importada')+'. Revísalas y la calcularemos de nuevo.</p><p><button type="button" class="perf-retry" data-portfolio-history="'+esc(id)+'">Revisar operaciones</button></p>');
+  }
   const labels=p.benchmarkLabels||{msci:'MSCI World',sp500:'S&P 500'};
   const vsMsci=m.twr!==null&&m.bench.msci!=null?m.twr-m.bench.msci:null;
   const chips='<b class="'+perfTone(m.twr)+'">'+perfPct(m.twr)+' · '+esc(PERF_RANGES[range])+'</b>'+
-    (vsMsci!==null?'<b class="'+perfTone(vsMsci)+'">vs MSCI '+perfPp(vsMsci)+'</b>':'')+
-    '<b>Máx. caída '+perfPct(m.dd)+'</b>';
+    (vsMsci!==null?'<b class="vi-expert '+perfTone(vsMsci)+'">vs MSCI '+perfPp(vsMsci)+'</b>':'')+
+    '<b class="vi-expert">Máx. caída '+perfPct(m.dd)+'</b>';
   const tabs='<div class="portfolio-sort-bar perf-ranges" role="group" aria-label="Periodo">'+
     Object.entries(PERF_RANGES).map(([k,l])=>'<button type="button" class="tab'+(k===range?' active':'')+'" data-pf-perf-range="'+k+'" aria-pressed="'+(k===range)+'">'+l+'</button>').join('')+'</div>';
   const legend='<div class="perf-legend"><span class="pf">Cartera</span><span class="msci">'+esc(labels.msci||'MSCI World')+'</span><span class="sp">'+esc(labels.sp500||'S&P 500')+'</span></div>';
@@ -892,12 +900,12 @@ function portfolioPerformanceHtml(portfolio){
   const body=tabs+(m.partial?'<p class="perf-note">Tu primera operación es del '+esc(perfDay(m.from))+': el periodo empieza ahí.</p>':'')+
     perfChartSvg(p,m)+legend+
     '<div class="perf-stats">'+
-      perfStat('Rentabilidad',perfPct(m.twr),perfTone(m.twr),'Ponderada por tiempo')+
+      perfStat('Rentabilidad',perfPct(m.twr),perfTone(m.twr),'Sin contar cuándo metiste o sacaste dinero')+
       perfStat('Ganancia',formatMoney(m.gain,'EUR'),perfTone(m.gain),'Valor final − inicial − aportaciones')+
-      perfStat('Máx. caída',perfPct(m.dd),m.dd<0?'negative':'','Desde el máximo previo')+
+      perfStat('Máx. caída',perfPct(m.dd),m.dd<0?'negative':'','Lo que llegó a bajar desde su punto más alto')+
       perfStat(labels.msci||'MSCI World',perfPct(m.bench.msci),perfTone(m.bench.msci),vsMsci!==null?'Tú '+perfPp(vsMsci):'')+
       perfStat(labels.sp500||'S&P 500',perfPct(m.bench.sp500),perfTone(m.bench.sp500),m.twr!==null&&m.bench.sp500!=null?'Tú '+perfPp(m.twr-m.bench.sp500):'')+
-      perfStat('Divisa',perfPp(m.fx),perfTone(m.fx),'Efecto del EUR/USD en tus valores en dólares')+
+      perfStat('Divisa',perfPp(m.fx),perfTone(m.fx),'Efecto del EUR/USD en tus valores en dólares').replace('class="perf-stat"','class="perf-stat vi-expert"')+
     '</div>'+
     (coverage.length?'<p class="insights-alert">'+esc(coverage.join(' '))+'</p>':'')+
     '<p class="perf-note">Rentabilidad ponderada por tiempo en EUR: tus compras y ventas no la distorsionan, así que se puede comparar con los índices. Índices: ETF de acumulación en EUR (con dividendos). No incluye el efectivo ni los dividendos cobrados.</p>';
@@ -1959,7 +1967,9 @@ function goalActionHtml(a,ctx){
   // Un solo precio a la vista: el límite que se pone en la orden. El importe es el máximo que pagarías (acciones ×
   // límite); antes salía el importe al precio de referencia y, con 1 acción, parecía otro precio.
   const lim=num(a.limitPriceEur),limit=lim!==null?' · límite <b>'+esc(formatMoney(lim,"EUR"))+'</b>'+(a.fractional?' si tu bróker lo permite':''):'';
-  const what=a.type==="BUY"?(a.fractional?'Comprar '+esc(formatMoney(a.ticketEur,"EUR"))+' (fracción)'+limit:'Comprar '+qty(a.units)+limit+(lim!==null&&num(a.units)>1?' · total máx. '+esc(formatMoney(a.units*lim,"EUR")):lim===null?' · '+esc(formatMoney(a.ticketEur,"EUR")):''))
+  // El stop que hay que poner en el bróker, a la vista igual que el límite (se calcula sobre el precio de compra).
+  const stopTxt=lim!==null&&num(a.stopPct)>0?' · stop <b>'+esc(formatMoney(lim*(1-a.stopPct/100),"EUR"))+'</b>':'';
+  const what=a.type==="BUY"?(a.fractional?'Comprar '+esc(formatMoney(a.ticketEur,"EUR"))+' (fracción)'+limit:'Comprar '+qty(a.units)+limit+(lim!==null&&num(a.units)>1?' · total máx. '+esc(formatMoney(a.units*lim,"EUR")):lim===null?' · '+esc(formatMoney(a.ticketEur,"EUR")):''))+stopTxt
     :a.type==="WAIT"?esc(tag.charAt(0)+tag.slice(1).toLowerCase())
     :a.type==="SELL"?(a.reason==="stop"?'Saltó el stop: vender ':'Vender ')+qty(a.units)
     :a.type==="RAISE_STOP"&&num(a.stopEur)!==null?'Subir el stop a '+esc(formatMoney(a.stopEur,"EUR"))
@@ -2202,7 +2212,7 @@ document.addEventListener("toggle",event=>{
 document.addEventListener("click",event=>{
   const b=event.target.closest&&event.target.closest("[data-goal-why]");if(!b)return;
   event.preventDefault();event.stopPropagation();
-  const k=b.dataset.goalWhy,box=b.closest(".goal2-action")&&b.closest(".goal2-action").querySelector(".goal2-why-body");
+  const k=b.dataset.goalWhy,card=b.closest(".goal2-action,.goal2-sleeve-next"),box=card&&card.querySelector(".goal2-why-body");
   if(goalOpenWhy.has(k))goalOpenWhy.delete(k);else goalOpenWhy.add(k);
   if(box)box.hidden=!goalOpenWhy.has(k);b.setAttribute("aria-expanded",goalOpenWhy.has(k)?"true":"false");
 });
@@ -2323,7 +2333,13 @@ function goalQualityList(preferTr,heldKeys){
 }
 // Ideas de la hucha con su importe: el efectivo libre de la hucha repartido entre las que caben.
 function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
-  const G=window.ViewInvAIGoal,m=GOAL_SLEEVE_META[k],cash=S.sleeves[k].cashEur;
+  const G=window.ViewInvAIGoal,m=GOAL_SLEEVE_META[k];
+  // Lo apartado en órdenes puestas de esta hucha no está libre, y esas acciones (y las descartadas hoy) no se
+  // vuelven a proponer.
+  const pending=goalPendingOrders(goal),discarded=new Set(goalTodayDiscarded(state.selectedPortfolioId,goal));
+  const cash=Math.max(0,S.sleeves[k].cashEur-pending.filter(o=>o.sleeve===k).reduce((a,o)=>a+goalPendingOrderEur(o),0));
+  list=list.filter(t=>{const sk=t.stock?portfolioStockKey(t.stock):"";
+    return !discarded.has(String(t.key))&&!(sk&&discarded.has(sk))&&!pending.some(o=>sameStockRef(o.stockKey||o.key,sk||t.key)||sameStockRef(o.key,t.key))});
   if(!G||!list.length){(ctx.sleeveNext=ctx.sleeveNext||{})[k]={why:'sin ideas que cumplan su estrategia'};return{next:'',more:'<small class="goal2-alts-note">Ahora no hay ideas que cumplan esta estrategia.</small>'}}
   const priced=list.filter(t=>t.stock).map(t=>({...t,...goalSleeveEurPrice(t.stock,ctx.preferTr,ctx.fx)}));
   if(ctx.preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-"+k,priced.map(t=>portfolioStockKey(t.stock)));
@@ -2344,11 +2360,28 @@ function goalSleeveIdeasHtml(k,list,S,bucket,ctx,goal){
       const q=goalExecutionQuote(t.stock,ctx.preferTr,"BUY",ctx.fx,"",x.units),cur=q.currency||(ctx.preferTr?"EUR":"USD");
       const price=q.price??portfolioConvertAmount(t.priceEur,"EUR",cur,ctx.fx);
       const feePct=x.ticketEur>0?2*portfolioOperationFee(ctx.preferTr)/x.ticketEur*100:null;
-      buy='<span class="goal2-sleeve-buy">'+(x.fractional?'≈ '+formatNumber(x.units,2)+' acciones (fracción)':x.units+(x.units===1?' acción':' acciones'))+' · '+formatMoney(x.ticketEur,"EUR")+'</span>'+
+      // Mismos botones que las ideas de la hucha alto: comprada, orden puesta (límite al precio de compra de ahora) y descartar.
+      let op=goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k}),blocked='';
+      const bm=op.match(/^<small class="portfolio-goal-execution-blocked"[^>]*>[^<]*<\/small>/);if(bm){blocked=bm[0];op=op.slice(bm[0].length)}
+      op=op.replace(/class="(goal2-decide|btn ghost compact) portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>(✓ Ya ejecutada|＋ Registrar estrategia)<\/button>/,'>✓ Comprada</button>');
+      const limitEur=portfolioPriceToEur(num(q.ask),q.currency||cur,ctx.fx)??portfolioPriceToEur(num(price),cur,ctx.fx)??num(t.priceEur),nm=String(t.name||t.ticker||"");
+      const order=limitEur>0?'<button type="button" class="goal2-btn" data-goal-place-order="'+esc(key)+'" data-ticker="'+esc(String(t.ticker||""))+'" data-name="'+esc(nm)+'" data-units="'+esc(String(x.units))+'" data-limit="'+esc(String(limitEur))+'" data-fee="'+esc(String(num(q.feeEur)||0))+'" data-sleeve="'+esc(k)+'" title="Ya he puesto la orden límite en mi bróker y aún no se ha ejecutado">Orden puesta</button>':'';
+      const discard='<button type="button" class="goal2-btn" data-goal-discard="'+esc(String(t.key))+'" data-goal-discard-ticker="'+esc(String(t.ticker||""))+'" data-goal-discard-name="'+esc(nm)+'" title="No la voy a comprar: ocultarla hoy">Descartar</button>';
+      // Igual que las ideas de la hucha alto: qué comprar con su límite y el stop, precio en vivo y «ⓘ Por qué».
+      const askE=portfolioPriceToEur(num(q.ask),q.currency||cur,ctx.fx),bidE=portfolioPriceToEur(num(q.bid),q.currency||cur,ctx.fx),L=askE??limitEur;
+      const stopE=k==="medio"&&L>0?L*0.85:null;
+      const what=(x.fractional?'Comprar '+esc(formatMoney(x.ticketEur,"EUR"))+' (fracción)':'Comprar '+esc(formatNumber(x.units,0))+(x.units===1?' acción':' acciones'))+
+        (L>0?' · límite <b>'+esc(formatMoney(L,"EUR"))+'</b>'+(x.fractional?' si tu bróker lo permite':!x.fractional&&x.units>1?' · total máx. '+esc(formatMoney(x.units*L,"EUR")):''):'')+
+        (stopE!==null?' · stop <b>'+esc(formatMoney(stopE,"EUR"))+'</b>':k==="bajo"?' · sin stop de precio':'');
+      const age=num(q.ageMs),ageText=age===null?'':age<60000?'hace '+Math.max(1,Math.round(age/1000))+' s':'hace '+Math.round(age/60000)+' min';
+      const live=askE!==null?'<small class="goal2-live'+(q.quoteFresh?'':' stale')+'"><i aria-hidden="true"></i>'+(q.quoteFresh?'En vivo':'Sin precio en vivo')+' · compra '+esc(formatMoney(askE,"EUR"))+(bidE!==null?' · venta '+esc(formatMoney(bidE,"EUR")):'')+(ageText?' · '+esc(ageText):'')+'</small>':'';
+      const exitRule=k==="medio"?'Stop a −15 % del precio de compra'+(stopE!==null?' ('+formatMoney(stopE,"EUR")+')':'')+'. También se vende si pierde el momento de 6 meses.':'Sin stop de precio: es para años. Se revisa si la empresa pasa a pérdidas o su PER sube de 45.';
+      const whyKey="SLEEVE:"+k+":"+String(t.key),open=goalOpenWhy.has(whyKey);
+      const whyBtn='<button type="button" class="goal2-btn goal2-btn-why" data-goal-why="'+esc(whyKey)+'" aria-expanded="'+(open?'true':'false')+'">ⓘ Por qué</button>';
+      buy='<span class="goal2-sleeve-buy">'+what+'</span>'+live+
         (feePct!==null&&feePct>2?'<small class="goal2-sleeve-fee">Comisión de ida y vuelta: '+esc(formatNumber(feePct,1))+' % del importe; tiene que subir eso solo para no perder.</small>':'')+
-        // Mismo botón que en «Hoy toca» (la nota de cotización sin verificar, en pequeño debajo).
-        goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:key,units:x.units,price,fees:q.feeNative??q.feeEur,currency:cur,preferTr:ctx.preferTr,executable:q.executable===true,executionReason:q.executionReason,sleeve:k})
-          .replace(/^(<small class="portfolio-goal-execution-blocked"[^>]*>[^<]*<\/small>)(.*)$/,'$2$1').replace(/class="(goal2-decide|btn ghost compact) portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>(✓ Ya ejecutada|＋ Registrar estrategia)<\/button>/,'>✓ Comprada</button>');
+        '<div class="goal2-action-buttons">'+op+order+discard+whyBtn+'</div>'+
+        '<div class="goal2-why-body"'+(open?'':' hidden')+'><span class="goal2-why-text">'+esc(GOAL_SLEEVE_META[k].strategies[Object.keys(GOAL_SLEEVE_META[k].strategies)[0]].name)+': '+esc(facts)+'. '+esc(exitRule)+'</span>'+(blocked?'<small class="goal2-why-note">'+blocked.replace(/<[^>]+>/g,"")+': si ya la compraste, regístrala con su precio real.</small>':'')+'</div>';
     }
     // La primera que cabe es la «siguiente compra» de la hucha (a la vista); el resto, en la lista cerrada.
     if(buy&&!next){
@@ -5690,8 +5723,11 @@ function dHeroHtml(portfolio,positions){
   const txSummary=state.portfolioTransactionSummaries[String(portfolio.id)]||null;
   let realized=0;if(txSummary&&txSummary.currencies)for(const[code,row]of Object.entries(txSummary.currencies)){const v=portfolioConvertAmount(num(row&&row.realizedPnl)||0,code,"EUR",fx);if(v!==null)realized+=v}
   const openPnl=eur(T.openPnl),fundPnl=funds.reduce((a,f)=>a+(f.pnl||0),0);
-  const sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
+  let sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
   const txIssues=Number(state.portfolioTxIssues[String(portfolio.id)])||0;
+  // Una pérdida mayor que todo lo que hay o se ha invertido, con operaciones pendientes de revisar, es un
+  // error de datos (duplicados, precio en otra divisa): no la enseñamos como si fuera real.
+  const sinceSuspect=txIssues>0&&sinceBuy!==null&&sinceBuy<0&&-sinceBuy>Math.max(invested,total,1);
   const chart=dChartHtml(portfolio),range=dRangeKey();
   const fundDay=funds.reduce((a,f)=>a+(f.value!==null&&f.dayPct!==null?f.value-f.value/(1+f.dayPct/100):0),0);
   const day=(eur(T.day)||0)+fundDay;
@@ -5700,7 +5736,7 @@ function dHeroHtml(portfolio,positions){
     (partial?'<p class="d-hero-note">Parcial: falta el precio de alguna posición.</p>':(chart.gain!==null?'<p class="d-hero-note">Hoy '+(day>=0?"+":"−")+formatMoney(Math.abs(day),"EUR")+(funds.length?' · gráfico de acciones y ETC':'')+'</p>':''))+
     chart.svg+
     '<div class="d-stats"><div><small>Invertido</small><b>'+dMoney(invested)+'</b></div>'+
-      '<div><small>Desde la compra</small><b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>'+(realized?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+
+      '<div><small>Desde la compra</small>'+(sinceSuspect?'<b class="d-pending">Por revisar</b>':'<b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>')+(realized&&!sinceSuspect?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+
         (txIssues?'<button type="button" class="d-stat-warn" data-portfolio-history="'+esc(portfolio.id)+'">⚠ '+txIssues+(txIssues===1?' operación':' operaciones')+' a revisar</button>':'')+'</div>'+
       '<button type="button" data-portfolio-cash-edit="'+esc(portfolio.id)+'" aria-label="Editar capital líquido"><small>Capital líquido ✎</small><b>'+dMoney(cash)+'</b></button></div>'+
   '</section>';
