@@ -6506,12 +6506,14 @@ async function handleAiAsk(request,env,user,json,services){
     "Noticias: «newsTheUserIsAsking» son las que el usuario está leyendo; «newsOfYourStocks», las de sus valores; «stocksMentioned», datos y noticias de los valores que nombra. Si hay noticias en el contexto, úsalas y cita medio y hora; nunca digas que no hay noticias si las hay.",
     "Un valor en «stocksMentioned» tiene datos aunque no esté en cartera: úsalos (precio, variación, rendimiento, 52 semanas, valoración, eventos). «quantModel» es el modelo propio entrenado con 10 años: cítalo como probabilidad, nunca como certeza. «catalystReads» son lecturas de catalizadores hechas por dos IAs (twoAiAgree indica si coinciden)."
   ];
+  // Lenguaje llano: la mayoría de usuarios no son expertos.
+  rules.push("Escribe para alguien sin conocimientos financieros: frases cortas y palabras de todos los días. Evita la jerga (RSI, ADX, EMA, TWR, beta, pp, PER, drawdown, catalizador…); si un término es imprescindible, explícalo entre paréntesis en pocas palabras.");
   // Preguntas sugeridas: las haría el usuario a la app, cortas y completas.
   const FOLLOW_RULE="followUps: 3 preguntas que el USUARIO podría hacer a continuación, escritas por él (p. ej. «¿Subo el stop de TaskUs?»), nunca preguntas tuyas al usuario («¿Quieres…?», «¿Te gustaría…?»), de 45 caracteres como máximo, sin cortar palabras y usando solo nombres o tickers que aparezcan en el contexto.";
   let prompt;
   if(mode==="brief"){
     prompt=rules.concat([
-      "Tarea: escribe el resumen del día de las carteras del usuario en 2 o 3 frases (máximo 320 caracteres): cuánto vale todo y cómo va hoy, qué posición lo explica, y qué toca hacer según el objetivo o los avisos. Menciona nombres y cifras concretas.",
+      "Tarea: escribe el resumen del día de las carteras del usuario en 2 o 3 frases (máximo 320 caracteres): cuánto valen sus inversiones y cómo van hoy (di «tus inversiones», no «tu cartera», y deja claro que es sin el efectivo, porque la pantalla enseña encima el patrimonio total con efectivo), qué posición lo explica, y qué toca hacer según el objetivo o los avisos. Menciona nombres y cifras concretas.",
       "Devuelve JSON con: summary (texto) y followUps.",FOLLOW_RULE,
       "",JSON.stringify({contexto:context})]).join("\n");
   }else{

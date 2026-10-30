@@ -784,9 +784,10 @@
 @ .scr-topc>span{justify-self:end}
 @ .scr-topc>small{grid-column:1/-1;color:var(--d-mut);font-size:11.5px}
 @media (max-width:820px){
- @ .page-heading.has-scr-picker h1{display:none!important}
- @ .page-heading.has-scr-picker .scr-asset{min-width:0;flex:0 1 auto}
- @ .page-heading.has-scr-picker .scr-asset-btn{border:0;background:none;padding:0;font-size:20px;font-weight:800;letter-spacing:-.01em;max-width:52vw}
+ /* El título de la pantalla se queda (antes lo sustituía «Acciones LSX ▾» y no sabías dónde estabas);
+    el selector de mercado va a su lado como una etiqueta pequeña. */
+ @ .page-heading.has-scr-picker .scr-asset{min-width:0;flex:0 1 auto;margin-left:8px}
+ @ .page-heading.has-scr-picker .scr-asset-btn{padding:6px 10px;font-size:12.5px;font-weight:800;max-width:38vw}
  @ .page-heading.has-scr-picker .scr-asset-btn span{overflow:hidden;text-overflow:ellipsis}
  @ .page-heading.has-scr-picker .scr-asset-btn i{font-size:15px}
  @ .scr-asset-menu{left:0!important;right:0;top:auto!important;bottom:0;width:auto;border-radius:22px 22px 0 0;padding:10px 10px calc(14px + env(safe-area-inset-bottom,0px))}
@@ -830,3 +831,58 @@
 
 /* Posiciones de Carteras: la línea de la IA («Mantener · stop …») no se corta: pasa a dos líneas. */
 @ .d-position .d-row-ai{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:block}
+
+/* ===== Usabilidad (v0.7.55): vista sencilla, glosario y arreglos de móvil y escritorio ===== */
+
+/* Vista sencilla: fuera lo que solo entiende un experto. El interruptor está en el menú lateral y en «Más». */
+@simple .vi-expert,@simple .list-copy-isin,@simple .quant-tag,@simple .quote-updated,@simple .asset-investing-extended,
+@simple .catalog-mobile-groups,@simple .scr-views{display:none!important}
+
+/* Interruptor Sencilla / Experta */
+@ .vi-detail-switch{display:grid;gap:6px;margin:14px 10px 6px;padding:10px;border:1px solid var(--d-hair-2);border-radius:14px;background:var(--d-surf)}
+@ .vi-detail-switch>small{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--d-mut)}
+@ .vi-detail-switch>span{font-size:11.5px;line-height:1.35;color:var(--d-mut)}
+@ .vi-detail-seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border-radius:10px;background:var(--d-segbg)}
+@ .vi-detail-seg button{border:0;border-radius:8px;padding:7px 6px;background:transparent;color:var(--d-mut);font:700 12.5px "VI Manrope",sans-serif;cursor:pointer}
+@ .vi-detail-seg button[aria-pressed="true"]{background:var(--d-bg);color:var(--d-ink);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+@ .mobile-more-sheet .vi-detail-switch{margin:4px 0 12px}
+
+/* Glosario: «i» junto a los términos; al tocarlo se abre la explicación en lenguaje llano. */
+@ .vi-gloss{display:inline-grid!important;place-items:center;flex:none;width:17px!important;height:17px!important;min-width:0!important;margin-left:6px;padding:0!important;border-radius:50%!important;border:1px solid var(--d-hair-2)!important;background:transparent!important;color:var(--d-mut)!important;font:italic 700 10.5px/1 Georgia,serif!important;vertical-align:middle;cursor:help;text-transform:none!important;letter-spacing:0!important}
+@ .vi-gloss:hover,@ .vi-gloss:focus-visible{color:var(--d-ink)!important;border-color:var(--d-accent)!important}
+
+/* «Por revisar» en lugar de una cifra imposible */
+@ .d-stats b.d-pending{color:#f3ca52!important;font-size:15px!important}
+
+/* Tamaños mínimos de texto (había etiquetas de 6,5–9 px) */
+@ .list-copy-isin,@ .asset-card-copy small,@ .quant-tag{font-size:11px!important}
+@ .quote-updated{font-size:10.5px!important}
+@ .event-item-head time,@ .event-sources a,@ .event-sources span{font-size:11px!important}
+@ .event-title{font-size:13px!important}
+@ .event-impact,@ .event-impact strong,@ .event-context{font-size:12px!important}
+@ .asset-investing-extended time{font-size:11px!important}
+@ footer{font-size:11.5px!important}
+
+/* Carruseles horizontales: se difuminan por el lado donde hay más contenido */
+@ .vi-scroll-more{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent)}
+@ .vi-scroll-more.vi-scroll-less{-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
+@ .vi-scroll-less:not(.vi-scroll-more){-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px);mask-image:linear-gradient(90deg,transparent,#000 48px)}
+
+/* Noticias: la cabecera fija medía 1180 px y su fondo se veía como un rectángulo oscuro detrás del título */
+@ #view-news>.page-heading{max-width:none!important}
+
+/* Fiscal: centrado como el resto de pantallas en vez de pegado a la izquierda */
+@ #view-tax .tax-results{margin-left:auto!important;margin-right:auto!important;max-width:980px!important}
+
+@media (max-width:820px){
+ /* Chat de la IA: la barra inferior tapaba el campo para escribir */
+ @body.ai-ask-open .mobile-bottom-nav{display:none!important}
+ @ .ai-ask-sheet{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))!important;max-height:calc(100dvh - 24px)!important}
+ /* «Más»: no cabía en pantalla y la cabecera con la ✕ quedaba fuera; ahora se desplaza por dentro */
+ @ .mobile-more-sheet{max-height:calc(100dvh - var(--mobile-nav-h,72px) - 24px - env(safe-area-inset-bottom,0px))!important;overflow-y:auto!important;overscroll-behavior:contain}
+ @ .mobile-more-head{position:sticky;top:-8px;z-index:2;background:var(--d-bg);margin:-8px -10px 0;padding:10px 12px 8px!important}
+ @ .mobile-more-head button{width:40px!important;height:40px!important}
+ /* Botones táctiles de al menos 40 px */
+ @ .shell-icon-button{min-height:40px;min-width:40px}
+ @ .d-pills button{min-height:34px}
+}

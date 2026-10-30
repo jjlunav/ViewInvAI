@@ -86,8 +86,8 @@ const CATALOG_MOBILE_GROUPS=[
  {key:'other',label:'Otros',tr:['exchange','earnings'],us:['exchange','earnings']}
 ];
 const catalogState={
- tr:{sort:'tickerTr',dir:1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'},
- us:{sort:'ticker',dir:1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'}
+ tr:{sort:'volume',dir:-1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'},
+ us:{sort:'volume',dir:-1,filters:{},sector:'all',industry:'all',order:null,widths:null,limit:null,mobileGroup:'general'}
 };
 const CATALOG_DEFAULT_WIDTHS={
  fav:42,why:300,mcap:118,pe:72,pb:72,divy:92,tickerTr:92,tickerUs:92,ticker:92,name:320,exchange:90,priceEur:108,priceUsd:108,change:82,bid:92,ask:92,
@@ -371,7 +371,7 @@ function renderCatalogTable(mode){
  requestAnimationFrame(()=>{observeTrLivePrices(box);pollUsLive()});
 }
 function resetCatalogColumns(mode){
- catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].widths=catalogDefaultWidths(mode);catalogState[mode].filters={};catalogState[mode].sector='all';catalogState[mode].industry='all';catalogState[mode].sort=mode==='tr'?'tickerTr':'ticker';catalogState[mode].dir=1;catalogResetLimit(mode);catalogSaveLayout(mode);renderCatalogTable(mode);
+ catalogState[mode].order=CATALOG_COLUMNS[mode].map(c=>c.id);catalogState[mode].widths=catalogDefaultWidths(mode);catalogState[mode].filters={};catalogState[mode].sector='all';catalogState[mode].industry='all';catalogState[mode].sort='volume';catalogState[mode].dir=-1;catalogResetLimit(mode);catalogSaveLayout(mode);renderCatalogTable(mode);
 }
 function renderCatalog(){renderCatalogTable('tr')}
 function renderCatalogUS(){renderCatalogTable('us')}
@@ -428,7 +428,7 @@ function initCatalogInteractions(){
   let th=e.target.closest&&e.target.closest('.catalog-table thead tr:first-child th[data-catalog-col]');
   if(!th)return;
   let mode=th.dataset.mode,id=th.dataset.catalogCol,st=catalogState[mode];if(!st)return;
-  if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=1}catalogResetLimit(mode);renderCatalogTable(mode);
+  if(st.sort===id)st.dir*=-1;else{st.sort=id;st.dir=(catalogAllColumns(mode).find(c=>c.id===id)||{}).type==='text'?1:-1}catalogResetLimit(mode);renderCatalogTable(mode);
  });
  document.addEventListener('keydown',e=>{
   if(e.key!=='Enter')return;

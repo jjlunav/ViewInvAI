@@ -114,7 +114,9 @@
  }
  function columns(mode,list){
   if(!isD())return list.filter(c=>c.id!=='why');
-  const s=st(mode),ids=s.view==='all'?null:(VIEWS[mode][s.view]||VIEWS[mode].basic);
+  const s=st(mode),simple=window.ViewInvAIDetail&&window.ViewInvAIDetail.simple();
+  // Vista sencilla: solo lo que entiende cualquiera (nombre, precio, cuánto se mueve hoy, semana y mes).
+  const ids=simple?VIEWS[mode].basic.filter(id=>id!=='relVolume'):s.view==='all'?null:(VIEWS[mode][s.view]||VIEWS[mode].basic);
   let out=ids?ids.map(id=>list.find(c=>c.id===id)).filter(Boolean):list.slice();
   // La frase «por qué entra» solo tiene sentido con filtros activos.
   if(!s.conds.length)out=out.filter(c=>c.id!=='why');
@@ -175,7 +177,7 @@
   return '<div class="scr-bar"><select class="select scr-profile-select" data-scr-profile-select="'+mode+'" aria-label="Perfil">'+opts+'</select>'+aiForm(mode,'✦ Pregunta a la IA qué buscas: «tecnológicas medianas que suben con volumen»…')+layoutSeg(mode,s.layout||'table')+'</div>'+
    '<div class="scr-active">'+(s.conds.length?'<b>'+esc(s.label||'Filtros')+'</b>'+chipsHtml(mode)+'<span class="scr-count">'+n.toLocaleString('es-ES')+' valores</span><button type="button" class="scr-clear" data-scr-clear="'+mode+'">Limpiar</button>':'<span class="scr-hint">Elige un perfil o escribe lo que buscas: la IA lo convierte en filtros que puedes tocar.</span>')+'</div>'+
    (a.msg?'<p class="scr-ai-msg">✦ '+esc(a.msg)+'</p>':'')+
-   ((s.layout||'table')==='table'?'<div class="scr-views" role="tablist" aria-label="Columnas">'+views+'</div>':'');
+   ((s.layout||'table')==='table'&&!(window.ViewInvAIDetail&&window.ViewInvAIDetail.simple())?'<div class="scr-views" role="tablist" aria-label="Columnas">'+views+'</div>':'');
  }
  // Móvil (estilo conversación): preguntas o tocas un perfil y la IA te resume lo encontrado y te destaca tres.
  function mobileHtml(mode){

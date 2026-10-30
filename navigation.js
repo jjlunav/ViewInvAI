@@ -146,7 +146,7 @@ function renderNavigation(){
 function rebuildNavigation(){navigationRendered=false;renderNavigation()}
 function syncMobileNavigation(){
  const group=navGroupOf(state.currentView);
- if(isDesignD()){const cur=state.currentView;$$('#sidebar .nav-item').forEach(x=>{const v=x.dataset.view,on=v===cur||(v==='screener'&&SCREENER_VIEWS.includes(cur))||(v==='recommendation'&&cur==='entry')||(v==='screener'&&cur==='crash');x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')})}
+ if(isDesignD()){const cur=state.currentView,favMode=cur==='portfolios'&&$('#view-portfolios')?.dataset.portfolioAssetMode==='favorites';$$('#sidebar .nav-item').forEach(x=>{const v=x.dataset.view,on=favMode?v==='favorites':v===cur||(v==='screener'&&SCREENER_VIEWS.includes(cur))||(v==='recommendation'&&cur==='entry')||(v==='screener'&&cur==='crash');x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')})}
  $$('.mobile-nav-item[data-mobile-view]').forEach(x=>{const on=x.dataset.mobileView===group;x.classList.toggle('active',on);x.setAttribute('aria-current',on?'page':'false')});
  const bump=$('.mobile-nav-bump');if(bump)bump.classList.toggle('active',state.currentView==='home');
  const more=$('[data-mobile-more]');if(more)more.classList.toggle('active',(isDesignD()?D_MORE_VIEWS:MORE_VIEWS).includes(state.currentView));
@@ -330,8 +330,9 @@ document.addEventListener('click',e=>{
   e.preventDefault();let v=mobileView.dataset.mobileView;
   if(v&&mobileView.classList.contains('mobile-nav-item')){
    const group=navGroups()[v]||[v];
-   if(navGroupOf(state.currentView)===v&&!document.body.classList.contains('stock-detail-open')){v=group[0]}
-   else{try{const last=localStorage.getItem('viewinvai:nav-last:'+v);if(last&&navGroupOf(last)===v)v=last}catch(_){}}
+   // Cada pestaña abre siempre su pantalla principal: antes volvía a la última subpantalla (Mercados abría
+   // Noticias, Radar abría Potencial futuro) y el icono de abajo no coincidía con lo que veías.
+   v=group[0];
   }
   if(v)show(v);return;
  }
@@ -346,6 +347,7 @@ document.addEventListener('click',e=>{
 });
 window.addEventListener('viewinvai:view-changed',()=>{try{localStorage.setItem('viewinvai:nav-last:'+navGroupOf(state.currentView),state.currentView);if(SCREENER_VIEWS.includes(state.currentView))localStorage.setItem('viewinvai:screener-last',state.currentView)}catch(_){}});
 $('#mobileMoreClose')?.addEventListener('click',()=>toggleMobileMore(false));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('mobile-more-open'))toggleMobileMore(false)});
 $('#mobileMoreBackdrop')?.addEventListener('click',()=>toggleMobileMore(false));
 
 function toggleMarketQuick(force){
@@ -452,3 +454,7 @@ window.ViewInvAINavigation=Object.assign(window.ViewInvAINavigation||{},{
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#mobileMoreSheet [data-ai-ask],#mobileMoreSheet [data-broker-import]'))setTimeout(closeMobileMore,0)});
 window.addEventListener('viewinvai:auth-changed',()=>{if(isDesignD())setTimeout(rebuildNavigation,50)});
 
+
+// Favoritos vive dentro de Carteras: el menú lateral marca solo la entrada que corresponde a lo que ves.
+(()=>{const view=document.querySelector('#view-portfolios');if(!view||typeof MutationObserver!=='function')return;
+ new MutationObserver(()=>{try{syncMobileNavigation()}catch(_){}}).observe(view,{attributes:true,attributeFilter:['data-portfolio-asset-mode']});})();

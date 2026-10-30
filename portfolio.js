@@ -798,7 +798,7 @@ function portfolioInsightsHtml(portfolio){
   let open=false;try{open=localStorage.getItem('viewinvai:pf-insights-open')==='1'}catch(_){}
   return '<details class="portfolio-insights"'+(open?' open':'')+' data-pf-insights>'+
     '<summary><span class="insights-title">Riesgo y dividendos</span>'+
-      '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b>β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
+      '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b class="vi-expert">β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
     '<div class="insights-body">'+
       (alerts.length?'<p class="insights-alert">'+alerts.join(' · ')+'.</p>':'')+
       '<div class="insights-scenario"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
@@ -878,11 +878,17 @@ function portfolioPerformanceHtml(portfolio){
   if(p.empty||!p.days||p.days.length<2)return'';
   const m=perfMetrics(p,range);
   if(!m)return'';
+  // Con operaciones duplicadas o mal importadas la curva sale absurda (−99 %, caída −100 %). En vez de
+  // enseñar un número imposible, pedimos revisar primero: un dato así hace que no te fíes del resto.
+  const txIssues=Number(state.portfolioTxIssues&&state.portfolioTxIssues[id])||0;
+  if(txIssues||(Number.isFinite(m.dd)&&m.dd<=-99)||(Number.isFinite(m.twr)&&m.twr<=-95)){
+    return shell('<b class="warn">Pendiente de revisar</b>','<p class="perf-note">No mostramos la rentabilidad porque '+(txIssues?'hay '+txIssues+(txIssues===1?' operación':' operaciones')+' que parecen duplicadas o con un precio erróneo':'el cálculo da un resultado imposible, seguramente por alguna operación mal importada')+'. Revísalas y la calcularemos de nuevo.</p><p><button type="button" class="perf-retry" data-portfolio-history="'+esc(id)+'">Revisar operaciones</button></p>');
+  }
   const labels=p.benchmarkLabels||{msci:'MSCI World',sp500:'S&P 500'};
   const vsMsci=m.twr!==null&&m.bench.msci!=null?m.twr-m.bench.msci:null;
   const chips='<b class="'+perfTone(m.twr)+'">'+perfPct(m.twr)+' · '+esc(PERF_RANGES[range])+'</b>'+
-    (vsMsci!==null?'<b class="'+perfTone(vsMsci)+'">vs MSCI '+perfPp(vsMsci)+'</b>':'')+
-    '<b>Máx. caída '+perfPct(m.dd)+'</b>';
+    (vsMsci!==null?'<b class="vi-expert '+perfTone(vsMsci)+'">vs MSCI '+perfPp(vsMsci)+'</b>':'')+
+    '<b class="vi-expert">Máx. caída '+perfPct(m.dd)+'</b>';
   const tabs='<div class="portfolio-sort-bar perf-ranges" role="group" aria-label="Periodo">'+
     Object.entries(PERF_RANGES).map(([k,l])=>'<button type="button" class="tab'+(k===range?' active':'')+'" data-pf-perf-range="'+k+'" aria-pressed="'+(k===range)+'">'+l+'</button>').join('')+'</div>';
   const legend='<div class="perf-legend"><span class="pf">Cartera</span><span class="msci">'+esc(labels.msci||'MSCI World')+'</span><span class="sp">'+esc(labels.sp500||'S&P 500')+'</span></div>';
@@ -892,12 +898,12 @@ function portfolioPerformanceHtml(portfolio){
   const body=tabs+(m.partial?'<p class="perf-note">Tu primera operación es del '+esc(perfDay(m.from))+': el periodo empieza ahí.</p>':'')+
     perfChartSvg(p,m)+legend+
     '<div class="perf-stats">'+
-      perfStat('Rentabilidad',perfPct(m.twr),perfTone(m.twr),'Ponderada por tiempo')+
+      perfStat('Rentabilidad',perfPct(m.twr),perfTone(m.twr),'Sin contar cuándo metiste o sacaste dinero')+
       perfStat('Ganancia',formatMoney(m.gain,'EUR'),perfTone(m.gain),'Valor final − inicial − aportaciones')+
-      perfStat('Máx. caída',perfPct(m.dd),m.dd<0?'negative':'','Desde el máximo previo')+
+      perfStat('Máx. caída',perfPct(m.dd),m.dd<0?'negative':'','Lo que llegó a bajar desde su punto más alto')+
       perfStat(labels.msci||'MSCI World',perfPct(m.bench.msci),perfTone(m.bench.msci),vsMsci!==null?'Tú '+perfPp(vsMsci):'')+
       perfStat(labels.sp500||'S&P 500',perfPct(m.bench.sp500),perfTone(m.bench.sp500),m.twr!==null&&m.bench.sp500!=null?'Tú '+perfPp(m.twr-m.bench.sp500):'')+
-      perfStat('Divisa',perfPp(m.fx),perfTone(m.fx),'Efecto del EUR/USD en tus valores en dólares')+
+      perfStat('Divisa',perfPp(m.fx),perfTone(m.fx),'Efecto del EUR/USD en tus valores en dólares').replace('class="perf-stat"','class="perf-stat vi-expert"')+
     '</div>'+
     (coverage.length?'<p class="insights-alert">'+esc(coverage.join(' '))+'</p>':'')+
     '<p class="perf-note">Rentabilidad ponderada por tiempo en EUR: tus compras y ventas no la distorsionan, así que se puede comparar con los índices. Índices: ETF de acumulación en EUR (con dividendos). No incluye el efectivo ni los dividendos cobrados.</p>';
@@ -5690,8 +5696,11 @@ function dHeroHtml(portfolio,positions){
   const txSummary=state.portfolioTransactionSummaries[String(portfolio.id)]||null;
   let realized=0;if(txSummary&&txSummary.currencies)for(const[code,row]of Object.entries(txSummary.currencies)){const v=portfolioConvertAmount(num(row&&row.realizedPnl)||0,code,"EUR",fx);if(v!==null)realized+=v}
   const openPnl=eur(T.openPnl),fundPnl=funds.reduce((a,f)=>a+(f.pnl||0),0);
-  const sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
+  let sinceBuy=openPnl===null?null:openPnl+fundPnl+realized;
   const txIssues=Number(state.portfolioTxIssues[String(portfolio.id)])||0;
+  // Una pérdida mayor que todo lo que hay o se ha invertido, con operaciones pendientes de revisar, es un
+  // error de datos (duplicados, precio en otra divisa): no la enseñamos como si fuera real.
+  const sinceSuspect=txIssues>0&&sinceBuy!==null&&sinceBuy<0&&-sinceBuy>Math.max(invested,total,1);
   const chart=dChartHtml(portfolio),range=dRangeKey();
   const fundDay=funds.reduce((a,f)=>a+(f.value!==null&&f.dayPct!==null?f.value-f.value/(1+f.dayPct/100):0),0);
   const day=(eur(T.day)||0)+fundDay;
@@ -5700,7 +5709,7 @@ function dHeroHtml(portfolio,positions){
     (partial?'<p class="d-hero-note">Parcial: falta el precio de alguna posición.</p>':(chart.gain!==null?'<p class="d-hero-note">Hoy '+(day>=0?"+":"−")+formatMoney(Math.abs(day),"EUR")+(funds.length?' · gráfico de acciones y ETC':'')+'</p>':''))+
     chart.svg+
     '<div class="d-stats"><div><small>Invertido</small><b>'+dMoney(invested)+'</b></div>'+
-      '<div><small>Desde la compra</small><b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>'+(realized?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+
+      '<div><small>Desde la compra</small>'+(sinceSuspect?'<b class="d-pending">Por revisar</b>':'<b class="'+(sinceBuy===null?"":sinceBuy>=0?"d-pos":"d-neg")+'">'+(sinceBuy===null?"—":(sinceBuy>0?"+":sinceBuy<0?"−":"")+formatMoney(Math.abs(sinceBuy),"EUR"))+'</b>')+(realized&&!sinceSuspect?'<span>'+(realized>0?"+":"−")+formatMoney(Math.abs(realized),"EUR")+' realizado</span>':'')+
         (txIssues?'<button type="button" class="d-stat-warn" data-portfolio-history="'+esc(portfolio.id)+'">⚠ '+txIssues+(txIssues===1?' operación':' operaciones')+' a revisar</button>':'')+'</div>'+
       '<button type="button" data-portfolio-cash-edit="'+esc(portfolio.id)+'" aria-label="Editar capital líquido"><small>Capital líquido ✎</small><b>'+dMoney(cash)+'</b></button></div>'+
   '</section>';

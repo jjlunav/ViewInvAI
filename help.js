@@ -89,8 +89,13 @@ function initHelpSystem(){
   catalog:{title:'Catálogo Trade Republic',text:'Tabla de instrumentos cuya negociación en Trade Republic/LSX está confirmada. Permite buscar, ordenar, filtrar y reorganizar columnas.'},
   catalogUS:{title:'Catálogo EEUU',text:'Tabla del universo estadounidense cargado, con búsqueda, ordenación, filtros por columna y acceso a la ficha detallada de cada acción.'},
   inbox:{title:'Avisos',text:'Aquí se guardan los avisos push que te envía ViewInvAI: precio y niveles, Radar AI, noticias y eventos, carteras y Objetivo IA. Los no leídos llevan un punto morado y el contador sale en «Más». Toca uno para abrir la ficha del valor; ✓ los marca todos como leídos.'},
+  home:{title:'Mercados',text:'Cómo va la bolsa hoy en Europa y EE. UU.: los índices principales (las bolsas en conjunto), los valores que más se mueven y una lectura en una frase de la IA. Toca cualquier fila para ver su ficha.'},
+  news:{title:'Noticias',text:'Noticias económicas y de bolsa. «Para ti» pone primero las que hablan de lo que tienes o sigues; «Mis valores» solo enseña esas. Si una noticia nombra un valor tuyo verás su variación de hoy debajo.'},
+  screener:{title:'Screener IA',text:'Buscador de acciones, fondos, ETFs y cripto. Escribe lo que buscas con tus palabras (por ejemplo «empresas grandes que pagan dividendo») y la IA lo convierte en filtros. Por defecto se ordena por las más negociadas hoy; toca una columna para cambiar el orden.'},
+  favorites:{title:'Favoritos',text:'Los valores que sigues sin tenerlos comprados. Pulsa ☆ en cualquier lista o ficha para añadir uno.'},
   settings:{title:'Configuración General',text:'Preferencias de la aplicación, notificaciones de la cuenta y opciones del dispositivo. Aquí puedes activar los avisos generales, elegir qué tipos de eventos quieres recibir y gestionar funciones locales como mantener la pantalla activa. En la campana 🔔 de cada valor puedes fijar niveles de precio exactos («avisar si sube a» / «si baja a»): avisan una sola vez y se borran. La lupa de arriba (o la tecla /) busca cualquier acción, fondo o ETF por ticker, nombre o ISIN. En «Copia de seguridad» descargas todos tus datos en un archivo y puedes restaurarlos sin duplicar nada. En la APK, «Bloqueo con huella o cara» protege la app al abrirla y al volver a ella.'}
  };
+ window.ViewInvAISectionHelp=sectionHelp;
  $$('.section-help').forEach(el=>{let x=sectionHelp[el.dataset.helpSection];if(x){el.dataset.help=x.text;el.dataset.helpTitle=x.title}});
  $$('.criterion-field').forEach(field=>{let input=field.querySelector('input');if(input)field.dataset.helpKey=input.id});
  let trendLabel=$('#requireTrend')?.closest('.filter-toggle');if(trendLabel)trendLabel.dataset.helpKey='trend';

@@ -330,7 +330,7 @@ function verifiedDisplayQuote(s,preferTr=false,se=SES()){
  return Object.assign({},exact,{fallback:false,requestedMarket:preferTr?'tr':'us'});
 }
 
-const quoteClockFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+const quoteClockFormat=new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',hour:'2-digit',minute:'2-digit',hour12:false});
 const quoteZoneParts=new Map();
 function zonedWallTimeToEpoch(y,mo,d,h,mi,se,tz='America/New_York'){
  let guess=Date.UTC(y,mo-1,d,h,mi,se||0),fmt=quoteZoneParts.get(tz);
@@ -995,7 +995,7 @@ function refreshUsLiveDom(){
  visibleLiveNodes('[data-us-price-eur-key]').forEach(el=>{let s=usStockByKey(el.dataset.usPriceEurKey);if(!s)return;el.textContent=quoteMoney(usPriceValues(s,SP(s,currentMarketSession())).eur,'€',quotePrecision(s,false,SP(s,currentMarketSession())));setQuoteDirection(el,s.usLiveDirection);let t=el.parentElement&&el.parentElement.querySelector('.table-quote-updated');if(t)t.textContent=quoteUpdatedLabel(s,false)});
  visibleLiveNodes('[data-us-live-change-key]').forEach(el=>{let s=usStockByKey(el.dataset.usLiveChangeKey);if(!s)return;let v=usLiveChange(s);if(v===null)return;el.textContent=PC(v);el.classList.toggle('positive',v>=0);el.classList.toggle('negative',v<0)});
  if(state.entryMarket!=='tr'&&$('#entryUpdated')&&usLive.lastFetchAt){
-  $('#entryUpdated').textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  $('#entryUpdated').textContent='NASDAQ LIVE · '+new Date(usLive.lastFetchAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
  }
 }
 let liveViewRefreshTimer=null,liveViewLastRecommendationAt=0;

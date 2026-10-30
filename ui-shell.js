@@ -90,8 +90,16 @@
  function syncGlobalHelp(){
   const help=document.getElementById('globalHelpButton');if(!help)return;
   const src=document.querySelector('.view.active .page-heading [data-help-section]')||document.querySelector('.view.active [data-help-section]');
-  help.hidden=!src;
-  if(!src)return;
+  // Sin «?» propio en la cabecera (Mercados, Noticias…), usamos la ayuda general de la sección: así el
+  // botón está siempre en el mismo sitio en todas las pantallas.
+  if(!src){
+   const key=typeof state!=='undefined'&&state.currentView,map=window.ViewInvAISectionHelp||{},fav=key==='portfolios'&&document.querySelector('#view-portfolios')?.dataset.portfolioAssetMode==='favorites';
+   const x=map[fav?'favorites':key]||map[key&&/^(catalog|catalogUS|funds|crypto|heatmap)$/.test(key)?'screener':'']||null;
+   help.hidden=!x;
+   if(x){help.dataset.helpSection=key;help.dataset.help=x.text;help.dataset.helpTitle=x.title}
+   return;
+  }
+  help.hidden=false;
   // help.js trata cualquier .section-help con data-help como disparador y ancla el globo a él.
   help.dataset.helpSection=src.dataset.helpSection||'';
   if(src.dataset.help)help.dataset.help=src.dataset.help;
