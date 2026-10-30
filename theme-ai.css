@@ -2707,3 +2707,11 @@ html[data-theme="light"] .profile-ai-ring{background:conic-gradient(var(--c) cal
 html[data-theme="light"] .profile-ai-overview .profile-why,html[data-theme="light"] .profile-ai-overview .profile-plan{background:#fff;border-color:#dde3ee}
 .goal2-spread-note{display:block;margin-top:8px;font-size:12.5px;line-height:1.4;color:#f5b142}
 html[data-theme="light"] .goal2-spread-note{color:#b26b00}
+.goal2-orders{display:grid;gap:8px}
+.goal2-orders-title{font-size:11px;letter-spacing:.1em;font-weight:800;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+.goal2-simple .goal2-action.goal2-order{border-color:rgba(157,140,255,.35)}
+.goal2-order-pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(157,140,255,.16);color:#b9adff;white-space:nowrap}
+.goal2-order-status{display:block;margin-top:8px;font-size:12.5px;line-height:1.4;color:var(--muted,#8ea0bf)}
+.goal2-order-status.ok{color:#2fd39a}
+html[data-theme="light"] .goal2-order-pill{background:#eef0ff;color:#4f46e5}
+html[data-theme="light"] .goal2-order-status.ok{color:#0f8a5f}

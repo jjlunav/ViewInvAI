@@ -17,7 +17,7 @@ vm.runInContext(slice('function goalOperationUnits(','function goalTradeInstruct
 vm.runInContext(slice('function goalLinkedText(','// Ideas a 1-3 meses por momento'),context);
 vm.runInContext(slice('function goalWaitTag(','function goalPlanHistorySnapshot('),context);
 vm.runInContext(slice('const GOAL_IDEAS_KEY=','function goalTodayCommitments(')+slice('function goalTodayDiscarded(','\n}\n')+'\n}\n',context);
-vm.runInContext(slice('function goalDiscardedTodayHtml(','document.addEventListener("click"'),context);
+vm.runInContext(slice('function goalPendingOrders(','document.addEventListener("click"'),context);
 vm.runInContext(slice('const goalOpenWhy=new Set()','document.addEventListener("toggle"'),context);
 const cand={key:'TSE:7203',stock:{key:'TSE:7203',name:'Toyota Motor Corp.'},quote:{price:17.59,feeEur:1,currency:'EUR',executable:false,executionReason:'sin verificar'}};
 const ctx={candidates:[cand],positions:[],preferTr:true,fx:.86,committed:[{key:'TSE:7203',reviewVerdict:'',cons:['resultados el 2026-11-05','comisión de ida y vuelta 4,3 % del importe']}],sleeves:{}};
@@ -49,4 +49,19 @@ const d=context.goalDiscardedTodayHtml('pf1',{discarded_ideas:''},{candidates:[]
 assert.ok(d.includes('Descartadas hoy')&&d.includes('Toyota Motor Corp.')&&d.includes('data-goal-restore="TSE:7203"'));
 assert.equal(context.goalDiscardedTodayHtml('pf1',{discarded_ideas:JSON.stringify({day:'2000-01-01',keys:['X']})},{candidates:[]}).includes('X'),false);
 if(process.env.CARD_HTML)fs.writeFileSync(process.env.CARD_HTML,wide.replace('class="goal2-why-body"','class="goal2-why-body" data-x')+context.goalActionHtml({...buy,key:'NASDAQ:HAE',name:'Haemonetics',ticker:'HAE',units:1,ticketEur:62.1,riskTier:'medio',committed:false},{...ctx,committed:[]})+wait+d);
+// «Orden puesta»: botón en las compras con límite y tarjeta que vigila el precio de compra en vivo.
+assert.ok(html.includes('data-goal-place-order="TSE:7203"')&&html.includes('data-limit="17.59"')&&html.includes('data-units="5"'),'Buy cards offer «Orden puesta» with the order data');
+context.stockByKey=k=>k==='TSE:9101'?{key:k,name:'Nippon Yusen'}:null;
+context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});
+const order={key:'TSE:9101',ticker:'NYKA',name:'Nippon Yusen',units:1,limitEur:42.61,feeEur:1,sleeve:'alto',at:new Date(Date.now()-12*60000).toISOString()};
+let card=context.goalPendingOrderHtml(order,{preferTr:true,fx:1});
+assert.ok(card.includes('Orden puesta · 1 acción · límite <b>42,61 €</b>')&&card.includes('hace 12 min'),'Pending order shows what was ordered and when');
+assert.ok(card.includes('Precio de compra ahora 42,85 €')&&card.includes('aún no se ejecuta'),'Live ask above the limit: not filled yet');
+assert.ok(card.includes('✓ Ejecutada')&&card.includes('data-goal-price="42.61"')&&card.includes('data-goal-cancel-order="TSE:9101"'),'Executed registers at the limit; the order can be cancelled');
+context.goalExecutionQuote=()=>({ask:42.5,currency:'EUR'});
+card=context.goalPendingOrderHtml(order,{preferTr:true,fx:1});
+assert.ok(card.includes('ya está en tu límite o por debajo: puede haberse ejecutado'),'Live ask at or below the limit: it may have filled');
+assert.equal(Math.round(context.goalPendingOrderEur(order)*100)/100,43.61,'An order reserves units × limit + fee');
+assert.equal(context.goalPendingOrders({pending_orders:JSON.stringify([{...order,at:new Date(Date.now()-8*86400e3).toISOString()}])}).length,0,'Orders older than 7 days expire');
+if(process.env.CARD_ORDER){context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});fs.writeFileSync(process.env.CARD_ORDER,'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · 1</small>'+context.goalPendingOrderHtml(order,{preferTr:true,fx:1})+'</div>'+wide)}
 console.log('Goal card tests: OK');

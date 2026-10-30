@@ -1720,11 +1720,14 @@ function goalEngineInput(metrics,positionRows){
       ...(()=>{const i=goalIdeaOf(ticker,marketTicker);return i?{aiIdeaConfidence:num(i.confidence),aiIdeaThesis:i.thesis+(i.catalyst?" · "+i.catalyst:""),aiIdeaSources:i.sources||[]}:{}})()}:null;
   }).filter(Boolean);
   if(!idle)refreshGoalIdeas();
+  // Órdenes puestas en el bróker y aún sin ejecutar: su importe ya no está libre y no se vuelven a proponer.
+  const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
+  if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0))};
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:num(metrics.cashEur)||0,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
-    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),requireReview:true,
+    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:Math.max(0,(num(metrics.cashEur)||0)-pendingEur),...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
+    extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:[...new Set([...goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),...pending.map(o=>o.key)])],requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
 // Valores que el usuario marcó como «no admite fracciones» en su bróker.
@@ -1912,6 +1915,8 @@ function goalActionHtml(a,ctx){
   if(button)button=button.replace('class="goal2-decide portfolio-goal-register"','class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace('class="btn ghost compact portfolio-goal-register"','class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>(✓ Ya ejecutada|＋ Registrar estrategia)<\/button>$/,'>'+(a.type==="SELL"?'✓ Vendida':'✓ Comprada')+'</button>');
   if((a.type==="BUY"||a.type==="SELL")&&!button)note+='<small class="goal2-why-note">Esperando una cotización ejecutable para poder registrarla.</small>';
   const btns=[button];
+  // Orden límite lanzada en el bróker pero aún sin ejecutar: se aparta su importe y la tarjeta pasa a vigilarla.
+  if(a.type==="BUY"&&num(a.limitPriceEur)!==null&&num(a.units)>0)btns.push('<button type="button" class="goal2-btn" data-goal-place-order="'+esc(String(a.key||""))+'" data-ticker="'+esc(String(a.ticker||""))+'" data-name="'+esc(String(a.name||""))+'" data-units="'+esc(String(a.units))+'" data-limit="'+esc(String(a.limitPriceEur))+'" data-fee="'+esc(String(cand&&cand.quote?num(cand.quote.feeEur)||0:0))+'" data-sleeve="'+(ctx.sleeves?'alto':'')+'" title="Ya he puesto la orden límite en mi bróker y aún no se ha ejecutado">Orden puesta</button>');
   if(a.type==="SELL"&&pos)btns.push('<button type="button" class="goal2-btn" data-goal-decide="'+esc(pos.row.p.id)+'" title="Vender ahora o mantener con una condición">Decidir</button>');
   // Toda idea propuesta (compra, idea fijada en espera o cambio de recomendación) se puede descartar: se oculta hoy,
   // su efectivo queda libre y se puede volver a mostrar desde «Descartadas hoy».
@@ -2024,6 +2029,43 @@ async function goalRestoreIdea(key,ticker){
   }catch(error){toast(error.message||"No se pudo guardar en el servidor.",true)}
   goalPlanCache=null;renderGoalApp();
 }
+// Órdenes límite puestas en el bróker y pendientes de ejecutar (servidor, como mucho 7 días).
+function goalPendingOrders(goal){
+  try{const list=JSON.parse(goal&&goal.pending_orders||"[]"),limit=Date.now()-7*86400e3;
+    return Array.isArray(list)?list.filter(o=>o&&o.key&&num(o.units)>0&&num(o.limitEur)>0&&Date.parse(o.at||"")>limit):[]}catch(_){return[]}
+}
+function goalPendingOrderEur(o){return (num(o.units)||0)*(num(o.limitEur)||0)+(num(o.feeEur)||0)}
+async function goalPendingPatch(body,okText){
+  const portfolioId=state.selectedPortfolioId;if(!portfolioId)return;
+  try{
+    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId,...body})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo guardar en el servidor.");
+    if(data.goal){state.goals[String(portfolioId)]=data.goal;state.goal=data.goal}
+    if(okText)toast(okText);
+  }catch(error){toast(error.message||"No se pudo guardar en el servidor.",true)}
+  goalPlanCache=null;renderGoalApp();
+}
+// Tarjeta de una orden puesta: cuánto, a qué límite y, con el precio en vivo, si ya puede haberse ejecutado
+// (una compra límite se ejecuta al precio de compra —ASK— en cuanto este llega a tu límite o por debajo).
+function goalPendingOrderHtml(o,ctx){
+  const s=stockByKey(o.key),preferTr=!!ctx.preferTr;
+  const q=s?goalExecutionQuote(s,preferTr,"BUY",ctx.fx,"",o.units):null,askE=q?portfolioPriceToEur(num(q.ask),q.currency||"EUR",ctx.fx):null;
+  const mins=Math.max(0,Math.round((Date.now()-Date.parse(o.at||""))/60000)),ago=mins<60?'hace '+mins+' min':mins<1440?'hace '+Math.round(mins/60)+' h':'hace '+Math.round(mins/1440)+' d';
+  const live=askE===null?'<small class="goal2-order-status">Sin precio de compra en vivo ahora: compruébala en tu bróker.</small>'
+    :askE<=o.limitEur+1e-9?'<small class="goal2-order-status ok">El precio de compra ('+esc(formatMoney(askE,"EUR"))+') ya está en tu límite o por debajo: puede haberse ejecutado. Compruébalo en tu bróker.</small>'
+    :'<small class="goal2-order-status">Precio de compra ahora '+esc(formatMoney(askE,"EUR"))+' (+'+esc(formatNumber((askE/o.limitEur-1)*100,1))+' % sobre tu límite): aún no se ejecuta.</small>';
+  const currency=q&&q.currency||(preferTr?"EUR":"USD"),price=portfolioConvertAmount(o.limitEur,"EUR",currency,ctx.fx)??o.limitEur;
+  let reg=s?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(s),units:o.units,price,fees:num(o.feeEur)||0,currency,preferTr,executable:true,sleeve:o.sleeve||""}):'';
+  reg=reg.replace(/class="[^"]*portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>[^<]*<\/button>$/,'>✓ Ejecutada</button>');
+  const nm=String(o.name||o.ticker||o.key),initials=nm.replace(/[^\p{L}\p{N} ]/gu,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"·";
+  const qty=Math.abs(o.units-Math.round(o.units))>1e-9?o.units.toLocaleString("es-ES",{maximumFractionDigits:6}):formatNumber(o.units,0);
+  return '<div class="goal2-action goal2-order" data-open-stock="'+esc(s?portfolioStockKey(s):o.key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
+    '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong>'+
+    '<span class="goal2-action-what">Orden puesta · '+esc(qty)+(Number(o.units)===1?' acción':' acciones')+' · límite <b>'+esc(formatMoney(o.limitEur,"EUR"))+'</b></span></div>'+
+    '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+
+    '<div class="goal2-action-buttons">'+reg+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
+}
 function goalDiscardedTodayHtml(portfolioId,goal,ctx){
   const keys=goalTodayDiscarded(portfolioId,goal);if(!keys.length)return'';
   const entry=goalIdeaStore()[String(portfolioId||"")],info=(entry&&entry.day===goalIdeaDay()&&entry.discardedInfo)||{};
@@ -2034,6 +2076,11 @@ function goalDiscardedTodayHtml(portfolioId,goal,ctx){
   return goalFoldHtml("discarded","Descartadas hoy",String(keys.length),'<ul class="goal2-discarded">'+items+'</ul><small class="goal2-alts-note">Mañana el plan puede volver a proponerlas.</small>');
 }
 document.addEventListener("click",event=>{
+  const po=event.target.closest&&event.target.closest("[data-goal-place-order]");
+  if(po){event.preventDefault();event.stopPropagation();po.disabled=true;const d=po.dataset;
+    goalPendingPatch({pendingOrder:{key:d.goalPlaceOrder,ticker:d.ticker,name:d.name,units:num(d.units),limitEur:num(d.limit),feeEur:num(d.fee)||0,sleeve:d.sleeve||""}},(d.ticker||"Orden")+": orden puesta. Su importe queda apartado y te aviso cuando el precio de compra llegue a tu límite.");return}
+  const co=event.target.closest&&event.target.closest("[data-goal-cancel-order]");
+  if(co){event.preventDefault();event.stopPropagation();co.disabled=true;goalPendingPatch({cancelOrder:co.dataset.goalCancelOrder},(co.dataset.goalOrderTicker||"Orden")+": orden cancelada; su efectivo vuelve a estar libre.");return}
   const r=event.target.closest&&event.target.closest("[data-goal-restore]");
   if(r){event.preventDefault();event.stopPropagation();r.disabled=true;goalRestoreIdea(r.dataset.goalRestore,r.dataset.goalRestoreTicker);return}
   const b=event.target.closest&&event.target.closest("[data-goal-discard]");if(!b)return;
@@ -2386,12 +2433,13 @@ function portfolioGoalViewHtml(){
   const sb=goalScoreboard.data,sbN=num(sb&&sb.signals);
   const sub='<small class="goal2-sub">'+esc(portfolioMarketLabel(metrics.marketScope))+' · horizonte 1–5 sesiones · riesgo '+esc((engine.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):'')+'</small>';
   const pc=plan.pace||{},paceHint=[pc.remainingEur>0?'faltan '+formatMoney(pc.remainingEur,"EUR"):'',num(pc.daysLeft)!==null&&pc.status!=="reached"?pc.daysLeft+' días':''].filter(Boolean).join(' · ');
-  const nDec=visibleDecisions.length;
+  const nDec=visibleDecisions.length,pendingOrders=goalPendingOrders(goal);
+  const pendingHtml=pendingOrders.length?'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · '+pendingOrders.length+'</small>'+pendingOrders.map(o=>goalPendingOrderHtml(o,ctx)).join('')+'</div>':'';
   return '<section class="portfolio-goal-view goal2 goal2-simple" data-goal-portfolio="'+esc(portfolio.id)+'">'+head+errorHtml+
     goalPaceMiniHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3><span>Hoy toca'+(ctx.sleeves?' '+goalSleevePill("alto"):'')+'</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
+    '<section class="goal2-today"><h3><span>Hoy toca'+(ctx.sleeves?' '+goalSleevePill("alto"):'')+'</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+pendingHtml+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
     '<section class="goal2-more"><h3>Más información</h3>'+
       goalFoldHtml("sleeves","Tus huchas",esc(ctx.sleeveHint||""),sleevesBody)+
       goalFoldHtml("positions","Tus posiciones",String(input.positions.length),posList+holds+frozenNote)+
@@ -2942,8 +2990,10 @@ function portfolioUserBusy(){
 }
 
 function schedulePortfolioQuoteRender(){
-  clearTimeout(renderApp.quoteTimer);
+  // Como mucho un repintado por segundo: con precios llegando sin parar, reiniciar la espera lo aplazaba sin fin.
+  if(renderApp.quoteTimer)return;
   renderApp.quoteTimer = setTimeout(()=>{
+    renderApp.quoteTimer=null;
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
     if(portfolioUserBusy())return schedulePortfolioQuoteRender();
     renderActivePortfolioPanel();
@@ -3915,6 +3965,9 @@ async function saveGoalOperationForm(form){
     state.goalCandidateCache={at:0,key:"",rows:[]};
     const cash=data.cashAdjustment&&data.cashAdjustment.adjusted?(" · efectivo "+formatMoney(data.cashAdjustment.cashBalance,data.cashAdjustment.baseCurrency||"EUR")):"";
     toast((side==="BUY"?"Compra":"Venta")+" registrada"+cash);
+    // Una compra registrada cierra la orden puesta de ese valor (si la había).
+    if(side==="BUY"){const g=state.goals[String(payload.portfolioId)],k=goalStockKey(stockByKey(payload.stockKey))||String(payload.stockKey||"").toUpperCase(),o=goalPendingOrders(g).find(x=>x.key===k||sameStockRef(x.key,payload.stockKey));
+      if(o)api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId:payload.portfolioId,cancelOrder:o.key})}).then(r=>r.json()).then(d=>{if(d&&d.goal){state.goals[String(payload.portfolioId)]=d.goal;if(String(state.selectedPortfolioId)===String(payload.portfolioId))state.goal=d.goal;if(state.primaryTab==="goal")renderGoalApp()}}).catch(()=>null)}
     closeModal();
     if(state.primaryTab==="goal")renderGoalApp();
     if(portfolioHasGoal(payload.portfolioId))scheduleGoalPortfolioReview(payload.portfolioId,data.position&&Number(data.position.active)!==0?data.position.id:null);
@@ -5139,7 +5192,12 @@ function bind() {
   });
 
   window.addEventListener("viewinvai:quote-updated", event => {
-    if (!event.detail || !state.positions.some(p => sameStockRef(p.stock_key, event.detail.key))) return;
+    if (!event.detail) return;
+    // Las ideas de «Hoy toca» y las órdenes puestas también se recalculan con cada precio (no solo las posiciones):
+    // el importe, el límite y el aviso de horquilla tienen que ser los del momento en que pones la orden.
+    const k=String(event.detail.key||"");
+    const inGoal=state.primaryTab==="goal"&&((lastGoalCtx&&(lastGoalCtx.candidates||[]).some(c=>sameStockRef(c.stock&&portfolioStockKey(c.stock)||c.key,k)||sameStockRef(c.key,k)))||goalPendingOrders(selectedPortfolioGoal()).some(o=>sameStockRef(o.key,k)));
+    if (!inGoal && !state.positions.some(p => sameStockRef(p.stock_key, k))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
     schedulePortfolioQuoteRender();

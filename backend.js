@@ -5057,6 +5057,9 @@ async function ensurePortfolioGoalSchema(env){
     ["pace_basis","ALTER TABLE portfolio_goals ADD COLUMN pace_basis INTEGER NOT NULL DEFAULT 0"],
     // Ideas nuevas que el usuario descartó hoy tras un cambio de recomendación: {"day":"YYYY-MM-DD","keys":[...]}.
     ["discarded_ideas","ALTER TABLE portfolio_goals ADD COLUMN discarded_ideas TEXT NOT NULL DEFAULT ''"],
+    // Órdenes límite que el usuario dice haber puesto en su bróker y aún no se han ejecutado:
+    // [{key,ticker,name,units,limitEur,feeEur,sleeve,at}]. Su importe no está disponible para otras compras.
+    ["pending_orders","ALTER TABLE portfolio_goals ADD COLUMN pending_orders TEXT NOT NULL DEFAULT ''"],
     // Efectivo para el objetivo: 'none' (todo el efectivo) o 'amount' (todo el efectivo, en euros, menos
     // goal_cash_reserve_eur, lo que el usuario deja fuera). Limita lo que invierte el plan y el reparto de las
     // huchas; no cuenta como avance.
@@ -5091,7 +5094,7 @@ async function ensurePortfolioGoalSchema(env){
   ).run();
   portfolioGoalSchemaReady=true;
 }
-const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.sleeves_started_at,g.goal_cash_mode,g.goal_cash_reserve_eur,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
+const GOAL_SELECT="SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.monthly_contribution_eur,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.pending_orders,g.sleeves_started_at,g.goal_cash_mode,g.goal_cash_reserve_eur,g.created_at,g.updated_at,s.review_day,s.candidates AS review_candidates,s.plan_json "+
   "FROM portfolio_goals g LEFT JOIN portfolio_goal_notification_state s ON s.portfolio_id=g.portfolio_id AND s.user_id=g.user_id ";
 async function goalWithPositionState(env,userId,goal){
   if(!goal)return null;
@@ -5131,6 +5134,24 @@ async function handlePortfolioGoal(request,env,user,json,url){
       if(!row)return json({error:"Goal not found"},404);
       const keys=[...new Set([...goalDiscardedToday(row.discarded_ideas),key])].slice(-12);
       await env.DB.prepare("UPDATE portfolio_goals SET discarded_ideas=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify({day:madridDay(Date.now()),keys}),portfolioId,user.id).run();
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal)});
+    }
+    // Orden límite puesta en el bróker (pendiente de ejecutar) o su cancelación.
+    if(body.pendingOrder!==undefined||body.cancelOrder!==undefined){
+      const row=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+      if(!row)return json({error:"Goal not found"},404);
+      let orders=goalPendingOrders(row.pending_orders);
+      if(body.cancelOrder!==undefined){
+        const key=trimText(body.cancelOrder,120);if(!key)return json({error:"cancelOrder required"},400);
+        orders=orders.filter(o=>o.key!==key);
+      }else{
+        const o=body.pendingOrder||{},key=trimText(o.key,120),units=finiteNumber(o.units),limitEur=finiteNumber(o.limitEur),feeEur=finiteNumber(o.feeEur)??0;
+        if(!key||!(units>0)||!(limitEur>0)||feeEur<0)return json({error:"pendingOrder requires key, units > 0 and limitEur > 0"},400);
+        const sleeve=["alto","medio","bajo"].includes(String(o.sleeve||""))?String(o.sleeve):"";
+        orders=[...orders.filter(x=>x.key!==key),{key,ticker:trimText(o.ticker,24),name:trimText(o.name,120),units:Math.round(units*1e6)/1e6,limitEur:Math.round(limitEur*1e4)/1e4,feeEur:Math.round(feeEur*100)/100,sleeve,at:nowIso()}].slice(-8);
+      }
+      await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(orders.length?JSON.stringify(orders):"",portfolioId,user.id).run();
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
       return json({goal:await goalWithPositionState(env,user.id,goal)});
     }
@@ -8529,6 +8550,12 @@ async function goalMarketContext(services){
   return out;
 }
 // Ideas descartadas hoy (hora de Madrid) tras un cambio de recomendación; las de otro día ya no cuentan.
+// Órdenes puestas pendientes de ejecutar (como mucho 7 días: después se dan por caducadas).
+function goalPendingOrders(raw){
+  try{const list=JSON.parse(raw||"[]"),limit=Date.now()-7*86400e3;
+    return Array.isArray(list)?list.filter(o=>o&&o.key&&finiteNumber(o.units)>0&&finiteNumber(o.limitEur)>0&&Date.parse(o.at||"")>limit).slice(-8):[]}catch(_){return[]}
+}
+function goalPendingOrderEur(o){return (finiteNumber(o.units)||0)*(finiteNumber(o.limitEur)||0)+(finiteNumber(o.feeEur)||0)}
 function goalDiscardedToday(raw){
   try{const d=JSON.parse(raw||"{}");return d&&d.day===madridDay(Date.now())&&Array.isArray(d.keys)?d.keys.map(String).filter(Boolean).slice(0,12):[]}catch(_){return[]}
 }
@@ -8584,7 +8611,7 @@ async function scanPortfolioGoalNotifications(env,services){
   await ensurePositionBrokerSchema(env);
   await ensureGoalSleeveSchema(env);
   const goals=await env.DB.prepare(
-    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.sleeves_started_at,g.goal_cash_mode,g.goal_cash_reserve_eur,g.created_at,"+
+    "SELECT g.portfolio_id,g.user_id,g.target_value_eur,g.target_date,g.risk_profile,g.max_positions,g.allow_spec,g.start_value_eur,g.start_date,g.peak_value_eur,g.defensive,g.invest_cap_eur,g.invest_cap_pct,g.invest_reserve_eur,g.allow_fractions,g.no_fraction_tickers,g.include_crypto,g.pace_basis,g.discarded_ideas,g.pending_orders,g.sleeves_started_at,g.goal_cash_mode,g.goal_cash_reserve_eur,g.created_at,"+
     "p.name,p.base_currency,COALESCE(m.market_scope,'auto') AS market_scope,COALESCE(m.cash_balance,0) AS cash_balance,"+
     "CASE WHEN n.opted_in_explicitly=1 AND n.notifications_enabled=1 AND n.portfolio_goal_enabled=1 THEN 1 ELSE 0 END AS notify "+
     "FROM portfolio_goals g JOIN portfolios p ON p.id=g.portfolio_id AND p.user_id=g.user_id "+
@@ -8686,6 +8713,10 @@ async function scanPortfolioGoalNotifications(env,services){
       const held=new Set([...enginePositions.map(p=>p.key),...lockedKeys]);
       let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
+      // Órdenes puestas: su importe ya está comprometido en el bróker y no se vuelven a proponer.
+      const pendingOrders=goalPendingOrders(goal.pending_orders);
+      cashEur=Math.max(0,cashEur-pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0));
+      if(sleeveInput)sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0));
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
       const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions,sleeves:sleeveInput});
@@ -8741,7 +8772,7 @@ async function scanPortfolioGoalNotifications(env,services){
         positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         // El progreso solo cuenta lo invertido y Mi cripto (si se incluye); el efectivo para el objetivo no es avance.
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
-        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:goalDiscardedToday(goal.discarded_ideas)};
+        stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:[...new Set([...goalDiscardedToday(goal.discarded_ideas),...pendingOrders.map(o=>o.key)])]};
       for(const c of candidates)Object.assign(c,goalCandidateBasics(byKey.get(c.key)));
       if(!idle&&candidates.length){if(!marketCtx)marketCtx=await goalMarketContext(services);input.market=marketCtx}
       let plan=engine.plan(input);
