@@ -2656,7 +2656,7 @@ export async function createTransactionRecord(env,user,data,options={}){
   return txResult({transaction:row,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(positionId,user.id).first(),summary:ledger,cashAdjustment},201);
 }
 
-export async function deleteTransactionRecord(env,user,id){
+export async function deleteTransactionRecord(env,user,id,{extraStatements=[]}={}){
   await ensurePositionDecisionsSchema(env);
   const revision=await financialRevision(env.DB,user.id);
   const existing=await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
@@ -2672,6 +2672,7 @@ export async function deleteTransactionRecord(env,user,id){
   const statements=[env.DB.prepare("DELETE FROM transactions WHERE id=? AND user_id=?").bind(id,user.id)];
   if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
   statements.push(...positionLedgerStatements(env,user.id,portfolio.id,existing.stock_key,position.id,position,ledger,rows[0]||existing,now));
+  statements.push(...extraStatements);
   await financialBatch(env.DB,user.id,revision,statements);
   return txResult({deleted:true,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger,cashAdjustment});
 }
@@ -5142,13 +5143,13 @@ export async function handlePortfolioGoal(request,env,user,json,url){
       const txId=trimText(body.undoFill,80),o=body.order||{},key=trimText(o.key,120),limitEur=finiteNumber(o.limitEur);
       const tx=txId?await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=? AND portfolio_id=?").bind(txId,user.id,portfolioId).first():null;
       if(!tx||tx.origin!=="goal-order"||tx.side!=="BUY")return json({error:"Solo se pueden deshacer compras registradas por una orden puesta."},409);
-      const del=await deleteTransactionRecord(env,user,txId);
-      if(del.status>=400)return json(del.body,del.status);
+      // Borrar la compra y volver a poner la orden en un solo lote: o se hacen las dos cosas o ninguna.
       const row=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
       const orderKey=key||tx.stock_key,orders=goalPendingOrders(row&&row.pending_orders).filter(x=>x.key!==orderKey);
       orders.push({key:orderKey,ticker:tx.ticker,name:tx.name,units:finiteNumber(tx.quantity),limitEur:limitEur>0?limitEur:finiteNumber(tx.price),feeEur:finiteNumber(tx.fees)||0,sleeve:goalSleeveName(tx.sleeve),at:nowIso(),
         stockKey:tx.stock_key,txTicker:tx.ticker,exchange:tx.exchange||"",isin:tx.isin||"",preferTr:booleanInt(tx.prefer_tr),currency:tx.currency||"EUR",limitNative:finiteNumber(tx.price),broker:tx.broker||""});
-      await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify(orders),portfolioId,user.id).run();
+      const del=await deleteTransactionRecord(env,user,txId,{extraStatements:[env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify(orders),portfolioId,user.id)]});
+      if(del.status>=400)return json(del.body,del.status);
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
       return json({goal:await goalWithPositionState(env,user.id,goal),undone:true});
     }
@@ -8780,8 +8781,14 @@ async function scanPortfolioGoalNotifications(env,services){
         // Nuestro precio no es el «mejor precio» del bróker (que junta varias bolsas): no se da por ejecutada. Se avisa
         // una vez para que el usuario lo confirme en la app; la compra solo se registra con su confirmación.
         if(o.reachedAt)continue;
-        o.reachedAt=nowIso();
-        await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify(pendingOrders),goal.portfolio_id,goal.user_id).run();
+        // Se marca sobre la lista actual (no la leída al empezar la revisión) y solo si no ha cambiado entretanto,
+        // para no resucitar ni borrar órdenes que el usuario acaba de tocar.
+        const cur=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(goal.portfolio_id,goal.user_id).first();
+        const raw0=String(cur&&cur.pending_orders||""),list=goalPendingOrders(raw0),hit=list.find(x=>x.key===o.key&&x.at===o.at);
+        if(!hit||hit.reachedAt)continue;
+        hit.reachedAt=o.reachedAt=nowIso();
+        const upd=await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=? AND pending_orders=?").bind(JSON.stringify(list),goal.portfolio_id,goal.user_id,raw0).run();
+        if(!(upd&&upd.meta&&upd.meta.changes>0))continue;
         await pushGoal(goal,{title:"¿Se ha ejecutado tu orden? · "+(o.ticker||o.txTicker),message:"El precio de compra ha llegado a tu límite ("+String(o.limitNative??o.limitEur).replace(".",",")+" "+(o.currency||"EUR")+"). Compruébalo en tu bróker y confírmalo en la app; hasta entonces no se registra la compra.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
       }
       const reservedCashEur=pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0);

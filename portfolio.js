@@ -2066,7 +2066,8 @@ function goalPendingOrderHtml(o,ctx){
   const askN=q?num(q.ask):null,limN=num(o.limitNative)??o.limitEur,reached=askN!==null&&(o.currency&&q&&String(q.currency||"").toUpperCase()===String(o.currency).toUpperCase()?askN<=limN+1e-9:askE!==null&&askE<=o.limitEur+1e-9);
   const days=(Date.now()-Date.parse(o.at||""))/86400e3,stale=days>7?'<small class="goal2-order-status">Lleva más de 7 días: si tu orden caducó en el bróker, cancélala aquí.</small>':'';
   const live=askE===null?'<small class="goal2-order-status">Sin precio de compra en vivo ahora: compruébala en tu bróker.</small>'
-    :reached?'<small class="goal2-order-status ok">Nuestro precio de compra ('+esc(formatMoney(askE,"EUR"))+') ha llegado a tu límite. Tu bróker usa su «mejor precio», que puede ser distinto: ¿se ha ejecutado allí?</small>'
+    :reached?'<small class="goal2-order-status ok">Nuestro precio de compra ('+esc(formatMoney(askE,"EUR"))+') ha llegado a tu límite. Tu bróker usa su «mejor precio», que puede ser distinto: ¿se ha ejecutado allí? Si es así, pulsa «✓ Ejecutada».</small>'
+    :o.reachedAt?'<small class="goal2-order-status ok">El '+esc(new Date(o.reachedAt).toLocaleString("es-ES",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}))+' nuestro precio de compra llegó a tu límite (ahora '+esc(formatMoney(askE,"EUR"))+'). ¿Se llegó a ejecutar en tu bróker? Si es así, pulsa «✓ Ejecutada».</small>'
     :'<small class="goal2-order-status">Precio de compra ahora '+esc(formatMoney(askE,"EUR"))+' (+'+esc(formatNumber((askE/o.limitEur-1)*100,1))+' % sobre tu límite): aún no se ejecuta. Te preguntaré cuando llegue.</small>';
   const currency=q&&q.currency||(preferTr?"EUR":"USD"),price=portfolioConvertAmount(o.limitEur,"EUR",currency,ctx.fx)??o.limitEur;
   let reg=s?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(s),units:o.units,price,fees:num(o.feeEur)||0,currency,preferTr,executable:true,sleeve:o.sleeve||""}):'';
@@ -2077,10 +2078,10 @@ function goalPendingOrderHtml(o,ctx){
     '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong>'+
     '<span class="goal2-action-what">Orden puesta · '+esc(qty)+(Number(o.units)===1?' acción':' acciones')+' · límite <b>'+esc(num(o.limitNative)!==null&&o.currency&&o.currency!=="EUR"?formatMoney(o.limitNative,o.currency)+' (≈ '+formatMoney(o.limitEur,"EUR")+')':formatMoney(o.limitEur,"EUR"))+'</b></span></div>'+
     '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+stale+
-    '<div class="goal2-action-buttons">'+(o.stockKey?'<button type="button" class="goal2-btn goal2-btn-primary" data-goal-confirm-fill="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">✓ Ejecutada</button>':reg)+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
+    '<div class="goal2-action-buttons">'+reg+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
 }
-// «Orden puesta»: a qué precio límite y cuántas acciones pusiste la orden en tu bróker. Cuando el precio de compra
-// llegue a ese límite, la compra se registra sola en la cartera (al límite) y cuenta para el resto del plan.
+// «Orden puesta»: a qué precio límite y cuántas acciones pusiste la orden en tu bróker. Su importe se aparta; cuando
+// nuestro precio llegue al límite se pregunta si se ejecutó (la compra solo se registra con la confirmación del usuario).
 function openGoalOrderModal(d){
   const s=stockByKey(d.goalPlaceOrder),preferTr=lastGoalCtx?!!lastGoalCtx.preferTr:true,fx=lastGoalCtx?lastGoalCtx.fx:null;
   if(!s)return toast("No se encuentra el valor de esta orden.",true);
@@ -2088,7 +2089,7 @@ function openGoalOrderModal(d){
   const limitNative=portfolioConvertAmount(num(d.limit),"EUR",currency,fx)??num(d.limit),dec=Math.abs(limitNative)<10?3:2;
   openModal("Orden puesta · "+(d.ticker||s.ticker||""),
     '<form id="goalOrderForm" class="portfolio-form" data-key="'+esc(d.goalPlaceOrder)+'" data-ticker="'+esc(d.ticker||"")+'" data-name="'+esc(d.name||"")+'" data-sleeve="'+esc(d.sleeve||"")+'" data-currency="'+esc(currency)+'">'+
-      '<p class="portfolio-form-note">Pon los datos de la orden que lanzaste en tu bróker. Cuando el precio de compra (ASK) llegue a tu límite, la app registra la compra en tu cartera al precio límite y te avisa; puedes corregirla después.</p>'+
+      '<p class="portfolio-form-note">Pon los datos de la orden que lanzaste en tu bróker. Su importe queda apartado. Cuando nuestro precio de compra llegue a tu límite te avisaré; como tu bróker usa su «mejor precio», confirma tú si se ejecutó con «✓ Ejecutada» (pondrás la hora y el precio reales).</p>'+
       '<div class="portfolio-form-grid">'+
         '<label><span>Precio límite ('+esc(currency)+')</span><input name="limit" type="number" inputmode="decimal" step="any" min="0" value="'+esc(String(Number(limitNative.toFixed(dec))))+'" required></label>'+
         '<label><span>Acciones</span><input name="units" type="number" inputmode="decimal" step="any" min="0.000001" value="'+esc(String(num(d.units)||""))+'" required></label>'+
@@ -2107,7 +2108,7 @@ document.addEventListener("submit",event=>{
   const fee=brokerFeeInCurrency(broker,units,limitNative,d.currency,"BUY",exchange).fee;
   goalPendingPatch({pendingOrder:{key:d.key,ticker:d.ticker,name:d.name,units,limitEur,feeEur:portfolioConvertAmount(num(fee)||0,d.currency,"EUR",fx)||0,sleeve:d.sleeve||"",
     stockKey:portfolioStockKey(s),txTicker:(preferTr&&s.trTicker)||s.ticker||d.ticker,exchange,isin:preferTr?(s.trIsin||s.isin||""):(s.usIsin||s.isin||""),preferTr:preferTr?1:0,currency:d.currency,limitNative,broker}},
-    (d.ticker||"Orden")+": orden guardada. Su importe queda apartado; cuando el precio de compra llegue a tu límite se registrará la compra.");
+    (d.ticker||"Orden")+": orden guardada. Su importe queda apartado; cuando se ejecute en tu bróker, pulsa «✓ Ejecutada».");
   closeModal();
 });
 // «✓ Ejecutada» de una orden puesta (lo confirma el usuario): se registra la compra al límite en el servidor
@@ -2133,8 +2134,9 @@ function goalAutoFillRows(portfolioId){
     goalAutoFillCache.loading=true;
     api("/api/transactions?portfolioId="+encodeURIComponent(pid)+"&limit=60").then(r=>r.ok?r.json():null).then(d=>{
       const since=Date.now()-7*86400e3;
+      const before=goalAutoFillCache.pid===pid?goalAutoFillCache.rows.map(t=>t.id).join(","):"";
       Object.assign(goalAutoFillCache,{at:Date.now(),pid,loading:false,rows:((d&&d.transactions)||[]).filter(t=>t.origin==="goal-order"&&t.side==="BUY"&&Date.parse(t.executed_at||"")>since)});
-      if(goalAutoFillCache.rows.length&&state.primaryTab==="goal")renderGoalApp();
+      if(goalAutoFillCache.rows.map(t=>t.id).join(",")!==before&&state.primaryTab==="goal")renderGoalApp();
     }).catch(()=>{goalAutoFillCache.loading=false;goalAutoFillCache.at=Date.now()});
   }
   return goalAutoFillCache.pid===pid?goalAutoFillCache.rows:[];
@@ -2155,7 +2157,7 @@ async function goalUndoFill(txId,key,limitEur,ticker){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo deshacer.");
     if(data.goal){state.goals[String(state.selectedPortfolioId)]=data.goal;state.goal=data.goal}
-    goalAutoFillCache.at=0;await loadAll();
+    goalAutoFillCache.rows=goalAutoFillCache.rows.filter(t=>t.id!==txId);goalAutoFillCache.at=0;await loadAll();
     toast((ticker||"Compra")+": compra deshecha. El efectivo ha vuelto y la orden queda puesta.");
   }catch(error){toast(error.message||"No se pudo deshacer.",true)}
   goalPlanCache=null;renderGoalApp();
