@@ -2757,3 +2757,7 @@ html body .goal2-simple .goal2-sleeve-next .goal2-btn{height:38px!important;min-
 html body #view-portfolios .goal2-simple .goal2-btn,html[data-native-app="1"] body #view-portfolios .goal2-simple .goal2-btn{height:38px!important;min-height:38px!important;font-size:13.5px!important;padding:0 16px!important;border-radius:12px!important;margin-top:0!important}
 .goal2-waitlist{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px;font-size:13.5px}
 .goal2-waitlist small{color:var(--muted,#8ea0bf)}
+/* Siguiente compra de las huchas medio y bajo: mismos botones que las ideas de la alto, en varias filas si no caben. */
+html body .goal2-simple .goal2-sleeve-next>*{min-width:0}
+html body .goal2-simple .goal2-sleeve-next>.goal2-action-buttons{display:flex;gap:8px;flex-wrap:wrap}
+html body .goal2-simple .goal2-sleeve-next .goal2-btn{flex:1 1 auto!important;padding:0 14px!important}
