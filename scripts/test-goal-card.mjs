@@ -63,13 +63,14 @@ assert.ok(card.includes('Precio de compra ahora 42,85 €')&&card.includes('aún
 assert.ok(card.includes('✓ Ejecutada')&&card.includes('data-goal-price="42.61"')&&card.includes('data-goal-cancel-order="TSE:9101"'),'Executed registers at the limit; the order can be cancelled');
 context.goalExecutionQuote=()=>({ask:42.5,currency:'EUR'});
 card=context.goalPendingOrderHtml(order,{preferTr:true,fx:1});
-assert.ok(card.includes('ya está en tu límite o por debajo: puede haberse ejecutado'),'Live ask at or below the limit: it may have filled');
+assert.ok(card.includes('ha llegado a tu límite')&&card.includes('¿se ha ejecutado allí?'),'Live ask at the limit: the user is asked, nothing is registered on its own');
+assert.ok(context.goalPendingOrderHtml({...order,stockKey:'TSE:9101'},{preferTr:true,fx:1}).includes('data-goal-confirm-fill="TSE:9101"'),'«✓ Ejecutada» asks the server to register only on confirmation');
 assert.equal(Math.round(context.goalPendingOrderEur(order)*100)/100,43.61,'An order reserves units × limit + fee');
 const old={...order,at:new Date(Date.now()-8*86400e3).toISOString()};
 assert.equal(context.goalPendingOrders({pending_orders:JSON.stringify([old])}).length,1,'Orders are kept until cancelled or filled (the app cannot know the broker expiry)');
 assert.ok(context.goalPendingOrderHtml(old,{preferTr:true,fx:1}).includes('Lleva más de 7 días'),'Old orders ask the user to cancel them if they expired');
 context.goalExecutionQuote=()=>({ask:101,currency:'USD'});
 const usd={...order,currency:'USD',limitNative:100,limitEur:95};
-assert.ok(!context.goalPendingOrderHtml(usd,{preferTr:false,fx:0.9}).includes('puede haberse ejecutado'),'USD orders compare the ask in dollars: a weaker dollar does not fill them');
+assert.ok(!context.goalPendingOrderHtml(usd,{preferTr:false,fx:0.9}).includes('¿se ha ejecutado allí?'),'USD orders compare the ask in dollars: a weaker dollar does not fill them');
 if(process.env.CARD_ORDER){context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});fs.writeFileSync(process.env.CARD_ORDER,'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · 1</small>'+context.goalPendingOrderHtml(order,{preferTr:true,fx:1})+'</div>'+liveCard)}
 console.log('Goal card tests: OK');

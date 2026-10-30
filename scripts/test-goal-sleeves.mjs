@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {createTransactionRecord,deleteTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup,goalFillPendingOrder} from '../backend.js';
+import {createTransactionRecord,deleteTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup,goalFillPendingOrder,handlePortfolioGoal} from '../backend.js';
 import {exportBackup} from '../backup-store.js';
 
 function d1(){
@@ -114,8 +114,20 @@ assert.ok(f.status<300,'the filled order is registered as a buy');
 assert.equal(txN(),1);assert.equal(db.raw.prepare("SELECT price p FROM transactions WHERE stock_key='XETRA:NYK'").get().p,42.61,'registered at the limit');
 assert.ok(Math.abs(cash()-(cashBefore-42.61-f.body.transaction.fees))<1e-6,'cash drops by the buy and its fee');
 assert.equal(db.raw.prepare("SELECT pending_orders o FROM portfolio_goals WHERE portfolio_id='pf'").get().o,'','the order leaves the list');
+const filledTx=f.body.transaction.id;
 f=await goalFillPendingOrder(env,'u','pf',order,JSON.stringify([order]));
 assert.equal(txN(),1,'a second detection (app and server) does not duplicate the buy');
+// Deshacer una compra registrada por una orden que no se ejecutó: se borra, vuelve el efectivo y la orden queda puesta.
+const patch=body=>handlePortfolioGoal(new Request('https://app/api/portfolio-goal',{method:'PATCH',body:JSON.stringify(body)}),env,user,json,new URL('https://app/api/portfolio-goal'));
+const undo=await patch({portfolioId:'pf',undoFill:filledTx,order:{key:'XETRA:NYK',limitEur:42.61}});
+assert.equal(undo.status,200,'undo works');assert.equal(txN(),0,'the buy is deleted');
+assert.ok(Math.abs(cash()-cashBefore)<1e-6,'cash is back');
+const back=JSON.parse(db.raw.prepare("SELECT pending_orders o FROM portfolio_goals WHERE portfolio_id='pf'").get().o);
+assert.equal(back.length,1);assert.equal(back[0].key,'XETRA:NYK');assert.equal(back[0].limitNative,42.61,'the order is pending again at its limit');
+const manualTx=(await createTransactionRecord(env,user,trade({stockKey:'XETRA:MAN',ticker:'MAN',isin:'US0000000009',quantity:1,price:5,executedAt:new Date().toISOString()}))).body.transaction.id;
+assert.equal((await patch({portfolioId:'pf',undoFill:manualTx})).status,409,'manual buys cannot be undone this way');
+// Vuelve a dejar la lista como antes para el resto del test.
+db.raw.prepare("UPDATE portfolio_goals SET pending_orders='' WHERE portfolio_id='pf'").run();
 assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,stockKey:''},'')).status,409,'orders without the data to register are left to the user');
 assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,key:'NASDAQ:USD1',stockKey:'NASDAQ:USD1',currency:'USD',limitNative:10,at:'x'},'')).status,409,'a USD order in a EUR portfolio needs an exchange rate to debit cash');
 console.log('Goal sleeves tests: OK');

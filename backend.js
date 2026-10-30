@@ -5101,7 +5101,7 @@ async function goalWithPositionState(env,userId,goal){
   const {results}=await env.DB.prepare("SELECT stock_key,peak_eur,stop_eur,updated_at FROM portfolio_goal_position_state WHERE user_id=? AND portfolio_id=?").bind(userId,goal.portfolio_id).all();
   return{...goal,position_state:results||[],sleeves:await goalSleeveState(env,userId,goal.portfolio_id,goal.sleeves_started_at||"")};
 }
-async function handlePortfolioGoal(request,env,user,json,url){
+export async function handlePortfolioGoal(request,env,user,json,url){
   await ensurePortfolioGoalSchema(env);
   await ensurePortfolioGoalNotificationStateSchema(env);
   await ensureGoalSleeveSchema(env);
@@ -5138,6 +5138,20 @@ async function handlePortfolioGoal(request,env,user,json,url){
       return json({goal:await goalWithPositionState(env,user.id,goal)});
     }
     // Orden límite puesta en el bróker (pendiente de ejecutar) o su cancelación.
+    if(body.undoFill!==undefined){
+      const txId=trimText(body.undoFill,80),o=body.order||{},key=trimText(o.key,120),limitEur=finiteNumber(o.limitEur);
+      const tx=txId?await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=? AND portfolio_id=?").bind(txId,user.id,portfolioId).first():null;
+      if(!tx||tx.origin!=="goal-order"||tx.side!=="BUY")return json({error:"Solo se pueden deshacer compras registradas por una orden puesta."},409);
+      const del=await deleteTransactionRecord(env,user,txId);
+      if(del.status>=400)return json(del.body,del.status);
+      const row=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
+      const orderKey=key||tx.stock_key,orders=goalPendingOrders(row&&row.pending_orders).filter(x=>x.key!==orderKey);
+      orders.push({key:orderKey,ticker:tx.ticker,name:tx.name,units:finiteNumber(tx.quantity),limitEur:limitEur>0?limitEur:finiteNumber(tx.price),feeEur:finiteNumber(tx.fees)||0,sleeve:goalSleeveName(tx.sleeve),at:nowIso(),
+        stockKey:tx.stock_key,txTicker:tx.ticker,exchange:tx.exchange||"",isin:tx.isin||"",preferTr:booleanInt(tx.prefer_tr),currency:tx.currency||"EUR",limitNative:finiteNumber(tx.price),broker:tx.broker||""});
+      await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify(orders),portfolioId,user.id).run();
+      const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
+      return json({goal:await goalWithPositionState(env,user.id,goal),undone:true});
+    }
     if(body.pendingOrder!==undefined||body.cancelOrder!==undefined||body.fillOrder!==undefined){
       const row=await env.DB.prepare("SELECT pending_orders FROM portfolio_goals WHERE portfolio_id=? AND user_id=?").bind(portfolioId,user.id).first();
       if(!row)return json({error:"Goal not found"},404);
@@ -8585,7 +8599,7 @@ export async function goalFillPendingOrder(env,userId,portfolioId,order,rawOrder
   if(cashFxRate===undefined)return{status:409,body:{error:"Falta el cambio de divisa para descontar el efectivo; regístrala con «✓ Ejecutada»."}};
   const result=await createTransactionRecord(env,{id:userId},{portfolioId,stockKey:order.stockKey,ticker:order.txTicker,name:order.name||order.txTicker,exchange:order.exchange||"",isin:order.isin||"",
     preferTr:booleanInt(order.preferTr),side:"BUY",quantity:finiteNumber(order.units),price:finiteNumber(order.limitNative),fees:null,currency:order.currency||"EUR",cashFxRate,executedAt:nowIso(),
-    notes:"Orden límite ejecutada: el precio de compra llegó a tu límite ("+String(order.limitNative).replace(".",",")+" "+(order.currency||"EUR")+"). Registrada automáticamente al límite; corrige el precio si tu bróker te dio otro.",
+    notes:"Orden límite ejecutada (confirmada por ti) al límite de "+String(order.limitNative).replace(".",",")+" "+(order.currency||"EUR")+"; corrige el precio si tu bróker te dio otro.",
     positionId:"",broker:order.broker||"",sleeve:goalSleeveName(order.sleeve)},{origin:"goal-order",externalId:"goal-order:"+portfolioId+":"+order.key+":"+order.at,defaultFees:finiteNumber(order.feeEur)});
   if(result.status>=400)return result;
   const left=goalPendingOrders(rawOrders).filter(o=>o.key!==order.key);
@@ -8750,9 +8764,8 @@ async function scanPortfolioGoalNotifications(env,services){
       const held=new Set([...enginePositions.map(p=>p.key),...lockedKeys]);
       let cashEur=Math.max(0,finiteNumber(goal.cash_balance)??0);
       if(String(goal.base_currency||"EUR").toUpperCase()==="USD")cashEur=usdToEur===null?0:cashEur*usdToEur;
-      // Órdenes puestas: si el precio de compra en vivo (cotización verificada de los últimos 20 min) ya está en el
-      // límite o por debajo, la orden se ha ejecutado: se registra la compra y se avisa. Las demás siguen apartando
-      // su importe y no se vuelven a proponer.
+      // Órdenes puestas: si el precio de compra en vivo (cotización verificada de los últimos 20 min) llega al límite,
+      // se avisa para que el usuario confirme si se ejecutó (no se registra sola). Siguen apartando su importe.
       let pendingOrders=goalPendingOrders(goal.pending_orders);
       for(const o of [...pendingOrders]){
         const st=byKey.get(o.key);if(!st||!services.loadQuote)continue;
@@ -8764,12 +8777,12 @@ async function scanPortfolioGoalNotifications(env,services){
         // Se compara en la divisa de la orden: un cambio de divisa no puede «ejecutar» una orden en dólares.
         const askNative=finiteNumber(raw.ask),limitNative=finiteNumber(o.limitNative)??finiteNumber(o.limitEur);
         if(askEur===null||askNative===null||!(Number.isFinite(ts)&&Date.now()-ts<=20*60e3)||askNative>limitNative+1e-9)continue;
-        const r=await goalFillPendingOrder(env,goal.user_id,goal.portfolio_id,o,JSON.stringify(pendingOrders),{usdToEur}).catch(()=>({status:500}));
-        if(r.status>=400)continue;
-        pendingOrders=pendingOrders.filter(x=>x.key!==o.key);
-        cashEur=Math.max(0,cashEur-goalPendingOrderEur(o));// ya es una compra: el efectivo salió de verdad
-        if(sleeveInput&&o.sleeve==="alto")sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-goalPendingOrderEur(o));
-        await pushGoal(goal,{title:"Orden ejecutada · "+(o.ticker||o.txTicker),message:"El precio de compra llegó a tu límite: compra de "+o.units+" a "+String(o.limitEur).replace(".",",")+" € registrada en la cartera. Revisa el precio real en tu bróker.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
+        // Nuestro precio no es el «mejor precio» del bróker (que junta varias bolsas): no se da por ejecutada. Se avisa
+        // una vez para que el usuario lo confirme en la app; la compra solo se registra con su confirmación.
+        if(o.reachedAt)continue;
+        o.reachedAt=nowIso();
+        await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(JSON.stringify(pendingOrders),goal.portfolio_id,goal.user_id).run();
+        await pushGoal(goal,{title:"¿Se ha ejecutado tu orden? · "+(o.ticker||o.txTicker),message:"El precio de compra ha llegado a tu límite ("+String(o.limitNative??o.limitEur).replace(".",",")+" "+(o.currency||"EUR")+"). Compruébalo en tu bróker y confírmalo en la app; hasta entonces no se registra la compra.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
       }
       const reservedCashEur=pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0);
       if(sleeveInput){const altoOrders=pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0);sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-altoOrders);sleeveInput.alto.ordersEur=altoOrders}

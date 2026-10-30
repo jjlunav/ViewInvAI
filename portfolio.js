@@ -2066,9 +2066,8 @@ function goalPendingOrderHtml(o,ctx){
   const askN=q?num(q.ask):null,limN=num(o.limitNative)??o.limitEur,reached=askN!==null&&(o.currency&&q&&String(q.currency||"").toUpperCase()===String(o.currency).toUpperCase()?askN<=limN+1e-9:askE!==null&&askE<=o.limitEur+1e-9);
   const days=(Date.now()-Date.parse(o.at||""))/86400e3,stale=days>7?'<small class="goal2-order-status">Lleva más de 7 días: si tu orden caducó en el bróker, cancélala aquí.</small>':'';
   const live=askE===null?'<small class="goal2-order-status">Sin precio de compra en vivo ahora: compruébala en tu bróker.</small>'
-    :reached?'<small class="goal2-order-status ok">El precio de compra ('+esc(formatMoney(askE,"EUR"))+') ya está en tu límite o por debajo: '+(q.quoteFresh&&o.stockKey?'registrando la compra…':'puede haberse ejecutado. Compruébalo en tu bróker.')+'</small>'
-    :'<small class="goal2-order-status">Precio de compra ahora '+esc(formatMoney(askE,"EUR"))+' (+'+esc(formatNumber((askE/o.limitEur-1)*100,1))+' % sobre tu límite): aún no se ejecuta. Se registrará sola cuando llegue.</small>';
-  if(reached&&q.quoteFresh&&o.stockKey)setTimeout(()=>goalAutoFillOrder(o),0);
+    :reached?'<small class="goal2-order-status ok">Nuestro precio de compra ('+esc(formatMoney(askE,"EUR"))+') ha llegado a tu límite. Tu bróker usa su «mejor precio», que puede ser distinto: ¿se ha ejecutado allí?</small>'
+    :'<small class="goal2-order-status">Precio de compra ahora '+esc(formatMoney(askE,"EUR"))+' (+'+esc(formatNumber((askE/o.limitEur-1)*100,1))+' % sobre tu límite): aún no se ejecuta. Te preguntaré cuando llegue.</small>';
   const currency=q&&q.currency||(preferTr?"EUR":"USD"),price=portfolioConvertAmount(o.limitEur,"EUR",currency,ctx.fx)??o.limitEur;
   let reg=s?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(s),units:o.units,price,fees:num(o.feeEur)||0,currency,preferTr,executable:true,sleeve:o.sleeve||""}):'';
   reg=reg.replace(/class="[^"]*portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>[^<]*<\/button>$/,'>✓ Ejecutada</button>');
@@ -2078,7 +2077,7 @@ function goalPendingOrderHtml(o,ctx){
     '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong>'+
     '<span class="goal2-action-what">Orden puesta · '+esc(qty)+(Number(o.units)===1?' acción':' acciones')+' · límite <b>'+esc(num(o.limitNative)!==null&&o.currency&&o.currency!=="EUR"?formatMoney(o.limitNative,o.currency)+' (≈ '+formatMoney(o.limitEur,"EUR")+')':formatMoney(o.limitEur,"EUR"))+'</b></span></div>'+
     '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+stale+
-    '<div class="goal2-action-buttons">'+reg+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
+    '<div class="goal2-action-buttons">'+(o.stockKey?'<button type="button" class="goal2-btn goal2-btn-primary" data-goal-confirm-fill="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">✓ Ejecutada</button>':reg)+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
 }
 // «Orden puesta»: a qué precio límite y cuántas acciones pusiste la orden en tu bróker. Cuando el precio de compra
 // llegue a ese límite, la compra se registra sola en la cartera (al límite) y cuenta para el resto del plan.
@@ -2111,8 +2110,8 @@ document.addEventListener("submit",event=>{
     (d.ticker||"Orden")+": orden guardada. Su importe queda apartado; cuando el precio de compra llegue a tu límite se registrará la compra.");
   closeModal();
 });
-// Detección en la app (con el precio en vivo): el precio de compra llegó al límite de una orden puesta → se registra
-// la compra en el servidor (idempotente: si el servidor ya la registró, no se duplica). Una vez por orden.
+// «✓ Ejecutada» de una orden puesta (lo confirma el usuario): se registra la compra al límite en el servidor
+// (idempotente: una segunda pulsación no la duplica).
 const goalFillingOrders=new Set();
 async function goalAutoFillOrder(o){
   const id=o.key+"|"+o.at;if(goalFillingOrders.has(id))return;goalFillingOrders.add(id);
@@ -2121,8 +2120,44 @@ async function goalAutoFillOrder(o){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo registrar la compra.");
     if(data.goal){state.goals[String(state.selectedPortfolioId)]=data.goal;state.goal=data.goal}
-    if(data.filled){await loadAll();toast((o.ticker||"Orden")+": el precio de compra llegó a tu límite. Compra registrada a "+formatMoney(o.limitEur,"EUR")+"; revisa el precio real en tu bróker.")}
+    if(data.filled){await loadAll();goalAutoFillCache.at=0;toast((o.ticker||"Orden")+": compra registrada a tu límite ("+formatMoney(o.limitEur,"EUR")+"). Si tu bróker te dio otro precio, corrígelo en la operación.")}
   }catch(error){goalFillingOrders.delete(id);toast((error.message||"No se pudo registrar la compra.")+" Regístrala con «✓ Ejecutada».",true)}
+  goalPlanCache=null;renderGoalApp();
+}
+// Compras que versiones anteriores registraron solas al llegar el precio al límite: se pueden deshacer si la orden
+// no se ejecutó en el bróker (se borra la compra, vuelve el efectivo y la orden queda puesta otra vez).
+const goalAutoFillCache={at:0,pid:"",rows:[],loading:false};
+function goalAutoFillRows(portfolioId){
+  const pid=String(portfolioId||"");
+  if(!goalAutoFillCache.loading&&(goalAutoFillCache.pid!==pid||Date.now()-goalAutoFillCache.at>60000)){
+    goalAutoFillCache.loading=true;
+    api("/api/transactions?portfolioId="+encodeURIComponent(pid)+"&limit=60").then(r=>r.ok?r.json():null).then(d=>{
+      const since=Date.now()-7*86400e3;
+      Object.assign(goalAutoFillCache,{at:Date.now(),pid,loading:false,rows:((d&&d.transactions)||[]).filter(t=>t.origin==="goal-order"&&t.side==="BUY"&&Date.parse(t.executed_at||"")>since)});
+      if(goalAutoFillCache.rows.length&&state.primaryTab==="goal")renderGoalApp();
+    }).catch(()=>{goalAutoFillCache.loading=false;goalAutoFillCache.at=Date.now()});
+  }
+  return goalAutoFillCache.pid===pid?goalAutoFillCache.rows:[];
+}
+function goalAutoFillsHtml(portfolioId,ctx){
+  const rows=goalAutoFillRows(portfolioId);if(!rows.length)return'';
+  return '<div class="goal2-orders"><small class="goal2-orders-title">Compras registradas por una orden</small>'+rows.map(t=>{
+    const s=stockByKey(t.stock_key),key=s?goalStockKey(s):t.stock_key,limitEur=String(t.currency||"EUR").toUpperCase()==="EUR"?num(t.price):portfolioPriceToEur(num(t.price),t.currency,ctx.fx);
+    return '<div class="goal2-action goal2-order"><div class="goal2-action-top"><div class="goal2-action-main"><strong>'+esc(t.name||t.ticker)+'</strong>'+
+      '<span class="goal2-action-what">Compra de '+esc(formatNumber(num(t.quantity),num(t.quantity)%1?4:0))+' a '+esc(formatMoney(num(t.price),t.currency||"EUR"))+'</span></div></div>'+
+      '<small class="goal2-order-status">Registrada al llegar nuestro precio a tu límite. Si en tu bróker la orden sigue abierta, deshazla: se borra la compra, vuelve el efectivo y la orden queda puesta.</small>'+
+      '<div class="goal2-action-buttons"><button type="button" class="goal2-btn" data-goal-undo-fill="'+esc(t.id)+'" data-key="'+esc(key)+'" data-limit="'+esc(String(limitEur??""))+'" data-ticker="'+esc(t.ticker||"")+'">No se ejecutó: deshacer</button></div></div>';
+  }).join('')+'</div>';
+}
+async function goalUndoFill(txId,key,limitEur,ticker){
+  try{
+    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId:state.selectedPortfolioId,undoFill:txId,order:{key,limitEur}})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"No se pudo deshacer.");
+    if(data.goal){state.goals[String(state.selectedPortfolioId)]=data.goal;state.goal=data.goal}
+    goalAutoFillCache.at=0;await loadAll();
+    toast((ticker||"Compra")+": compra deshecha. El efectivo ha vuelto y la orden queda puesta.");
+  }catch(error){toast(error.message||"No se pudo deshacer.",true)}
   goalPlanCache=null;renderGoalApp();
 }
 function goalDiscardedTodayHtml(portfolioId,goal,ctx){
@@ -2137,6 +2172,10 @@ function goalDiscardedTodayHtml(portfolioId,goal,ctx){
 document.addEventListener("click",event=>{
   const po=event.target.closest&&event.target.closest("[data-goal-place-order]");
   if(po){event.preventDefault();event.stopPropagation();openGoalOrderModal(po.dataset);return}
+  const cf=event.target.closest&&event.target.closest("[data-goal-confirm-fill]");
+  if(cf){event.preventDefault();event.stopPropagation();const o=goalPendingOrders(selectedPortfolioGoal()).find(x=>x.key===cf.dataset.goalConfirmFill);if(o){cf.disabled=true;goalAutoFillOrder(o)}return}
+  const uf=event.target.closest&&event.target.closest("[data-goal-undo-fill]");
+  if(uf){event.preventDefault();event.stopPropagation();uf.disabled=true;goalUndoFill(uf.dataset.goalUndoFill,uf.dataset.key,num(uf.dataset.limit),uf.dataset.ticker);return}
   const co=event.target.closest&&event.target.closest("[data-goal-cancel-order]");
   if(co){event.preventDefault();event.stopPropagation();co.disabled=true;goalPendingPatch({cancelOrder:co.dataset.goalCancelOrder},(co.dataset.goalOrderTicker||"Orden")+": orden cancelada; su efectivo vuelve a estar libre.");return}
   const r=event.target.closest&&event.target.closest("[data-goal-restore]");
@@ -2480,7 +2519,14 @@ function portfolioGoalViewHtml(){
   // las que calcula el móvil al momento irían cambiando con cada dato. Las ideas fijadas en espera se calculan aquí.
   let serverWaits=[];
   try{const sp=JSON.parse((selectedPortfolioGoal()||{}).plan_json||"{}");if(Date.now()-Date.parse(sp.at||"")<3600e3)serverWaits=plan.pace.status==="reached"?[]:(sp.waits||[]).filter(w=>w&&!w.committed&&!plan.actions.some(a=>a.key===w.key))}catch(_){}
-  const visibleDecisions=[...plan.actions,...(plan.waits||[]).filter(w=>w.committed),...serverWaits];
+  // «Hoy toca» solo lleva lo que se puede hacer (y las ideas fijadas). Las esperas que calculó el servidor van a
+  // «Otras opciones» con su motivo; las de «sin cotización en vivo» se quitan si ahora sí hay precio en vivo.
+  serverWaits=serverWaits.filter(w=>{
+    if(!/sin cotizaci[oó]n en vivo|no hay cotizaci[oó]n en vivo|SIN PRECIO EN VIVO/i.test(goalWaitTag(w)+" "+String(w.text||"")+" "+(w.reasons||[]).join(" ")))return true;
+    const st=stockByKey(w.key);if(!st)return true;
+    return !goalExecutionQuote(st,ctx.preferTr,"BUY",ctx.fx,"",1).quoteRecent;
+  });
+  const visibleDecisions=[...plan.actions,...(plan.waits||[]).filter(w=>w.committed)];
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
     :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
   const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?(ctx.positions.find(p=>String(p.positionId)===String(h.positionId))||ctx.positions.find(p=>p.key===h.key)):null;
@@ -2514,7 +2560,10 @@ function portfolioGoalViewHtml(){
   state.pendingGoalHistory=goalPlanHistorySnapshot(metrics,plan);
   // Orden: lo que toca hacer hoy arriba; el resto, en desplegables cerrados con un resumen de una línea.
   const sleevesBody=goalSleevesHtml(metrics,positionRows,goal,ctx);
-  const alts=goalAlternativesHtml(plan,ctx,new Set(visibleDecisions.map(d=>String(d.key)))),altCount=((plan.alternatives||[]).filter(x=>!visibleDecisions.some(d=>String(d.key)===String(x.key)))).length;
+  const waitsHtml=serverWaits.length?'<div class="goal2-alts"><small class="goal2-orders-title">En espera</small><ul class="goal2-waitlist">'+serverWaits.map(w=>{
+      const label=String(w.name||w.ticker||w.key),tag=goalWaitTag(w);
+      return '<li>'+goalLinkedText(label,[goalCandidateLink(ctx,w.key,label)])+' <small>'+esc(tag.charAt(0)+tag.slice(1).toLowerCase())+'</small></li>'}).join('')+'</ul></div>':'';
+  const alts=waitsHtml+goalAlternativesHtml(plan,ctx,new Set([...visibleDecisions,...serverWaits].map(d=>String(d.key)))),altCount=serverWaits.length+((plan.alternatives||[]).filter(x=>![...visibleDecisions,...serverWaits].some(d=>String(d.key)===String(x.key)))).length;
   const trend=ctx.sleeves?'':goalTrendHtml(ctx,ctx.preferTr,new Set([...(ctx.positions||[]).map(p=>String(p.key)),...(input.lockedKeys||[]).map(String)]));
   const sb=goalScoreboard.data,sbN=num(sb&&sb.signals);
   const sub='<small class="goal2-sub">'+esc(portfolioMarketLabel(metrics.marketScope))+' · horizonte 1–5 sesiones · riesgo '+esc((engine.RISK[metrics.goalConfig.riskProfile]||{}).label||"")+' · '+esc(String(num(goal.max_positions)??5))+' acciones'+(goal.target_date?' · hasta '+esc(new Date(goal.target_date+"T12:00:00Z").toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})):'')+'</small>';
@@ -2525,7 +2574,7 @@ function portfolioGoalViewHtml(){
     goalPaceMiniHtml(plan.pace,metrics)+
     goalRenewalHtml(plan)+
     (plan.defensive?'<div class="goal2-defensive">Modo defensivo: la cartera está un '+formatNumber(plan.drawdownPct,1)+' % por debajo de su máximo. No se abren compras hasta que se recupere; los stops siguen activos.</div>':'')+
-    '<section class="goal2-today"><h3><span>Hoy toca</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+(ctx.sleeves&&nDec?'<small class="goal2-today-sleeve">Corto plazo (1–5 sesiones) con el dinero de la '+goalSleevePill("alto")+'</small>':'')+pendingHtml+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
+    '<section class="goal2-today"><h3><span>Hoy toca</span>'+(nDec?'<small>'+nDec+(nDec===1?' idea':' ideas')+'</small>':'')+'</h3>'+(ctx.sleeves&&nDec?'<small class="goal2-today-sleeve">Corto plazo (1–5 sesiones) con el dinero de la '+goalSleevePill("alto")+'</small>':'')+goalAutoFillsHtml(portfolio.id,ctx)+pendingHtml+today+goalWhyNoBuyHtml(plan,portfolio)+goalDiscardedTodayHtml(portfolio.id,goal,ctx)+'</section>'+
     '<section class="goal2-more"><h3>Más información</h3>'+
       goalFoldHtml("sleeves","Tus huchas",esc(ctx.sleeveHint||""),sleevesBody)+
       (ctx.sleeves?'':goalFoldHtml("positions","Tus posiciones",String(positionRows.length),posList))+
