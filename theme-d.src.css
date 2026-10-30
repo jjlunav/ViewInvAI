@@ -836,7 +836,7 @@
 
 /* Vista sencilla: fuera lo que solo entiende un experto. El interruptor está en el menú lateral y en «Más». */
 @simple .vi-expert,@simple .list-copy-isin,@simple .quant-tag,@simple .quote-updated,@simple .asset-investing-extended,
-@simple .catalog-mobile-groups,@simple .scr-views{display:none!important}
+@simple .catalog-mobile-groups,@simple .scr-views,@simple .quant-group{display:none!important}
 
 /* Interruptor Sencilla / Experta */
 @ .vi-detail-switch{display:grid;gap:6px;margin:14px 10px 6px;padding:10px;border:1px solid var(--d-hair-2);border-radius:14px;background:var(--d-surf)}

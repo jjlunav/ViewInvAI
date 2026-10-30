@@ -801,7 +801,7 @@ function portfolioInsightsHtml(portfolio){
       '<span class="insights-chips"><b class="'+(alerts.length?'warn':'')+'">'+(alerts.length?'⚠ Concentración':'Diversificada')+'</b><b class="vi-expert">β '+formatNumber(d.beta,2)+'</b><b>Div. ≈ '+formatMoney(d.dividends,'EUR')+'/año</b></span></summary>'+
     '<div class="insights-body">'+
       (alerts.length?'<p class="insights-alert">'+alerts.join(' · ')+'.</p>':'')+
-      '<div class="insights-scenario"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
+      '<div class="insights-scenario vi-expert"><small>ESCENARIO</small><strong>Si el Nasdaq cae un 10 %</strong><b class="negative">'+formatMoney(shock,'EUR')+'</b><span>β ponderada '+formatNumber(d.beta,2)+(d.betaCoverage<0.999?' · sin beta en '+formatNumber((1-d.betaCoverage)*100,0)+'% (se toma 1)':'')+'</span></div>'+
       '<div class="insights-scenario"><small>DIVIDENDOS ESTIMADOS</small><strong>≈ '+formatMoney(d.dividends,'EUR')+' al año</strong><b>'+formatNumber(d.dividends/d.total*100,2)+'%</b><span>Con la rentabilidad por dividendo actual; antes de retenciones.</span></div>'+
       '<div class="insights-group"><small>POR POSICIÓN</small>'+insightBars(d.positions)+'</div>'+
       '<div class="insights-group"><small>POR SECTOR</small>'+insightBars(d.sectors)+'</div>'+
@@ -880,8 +880,10 @@ function portfolioPerformanceHtml(portfolio){
   if(!m)return'';
   // Con operaciones duplicadas o mal importadas la curva sale absurda (−99 %, caída −100 %). En vez de
   // enseñar un número imposible, pedimos revisar primero: un dato así hace que no te fíes del resto.
+  // perfMetrics devuelve proporciones (−0,99 = −99 %). Los avisos de operaciones son posibles errores, no seguros:
+  // solo se nombran si además el resultado es imposible.
   const txIssues=Number(state.portfolioTxIssues&&state.portfolioTxIssues[id])||0;
-  if(txIssues||(Number.isFinite(m.dd)&&m.dd<=-99)||(Number.isFinite(m.twr)&&m.twr<=-95)){
+  if((Number.isFinite(m.dd)&&m.dd<=-0.99)||(Number.isFinite(m.twr)&&m.twr<=-0.95)){
     return shell('<b class="warn">Pendiente de revisar</b>','<p class="perf-note">No mostramos la rentabilidad porque '+(txIssues?'hay '+txIssues+(txIssues===1?' operación':' operaciones')+' que parecen duplicadas o con un precio erróneo':'el cálculo da un resultado imposible, seguramente por alguna operación mal importada')+'. Revísalas y la calcularemos de nuevo.</p><p><button type="button" class="perf-retry" data-portfolio-history="'+esc(id)+'">Revisar operaciones</button></p>');
   }
   const labels=p.benchmarkLabels||{msci:'MSCI World',sp500:'S&P 500'};

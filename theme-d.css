@@ -974,7 +974,8 @@ html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not
 html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quote-updated,
 html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .asset-investing-extended,
 html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .catalog-mobile-groups,
-html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-views {display:none!important}
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .scr-views,
+html[data-design="d"][data-detail="simple"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .quant-group {display:none!important}
 
 /* Interruptor Sencilla / Experta */
 html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .vi-detail-switch {display:grid;gap:6px;margin:14px 10px 6px;padding:10px;border:1px solid var(--d-hair-2);border-radius:14px;background:var(--d-surf)}

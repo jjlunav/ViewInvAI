@@ -24,6 +24,10 @@
    try{root.ViewInvAIUiPreferences&&root.ViewInvAIUiPreferences.save(SCOPE,{mode})}catch(_){}
   }
   paintSwitches();
+  // La pestaña Técnico se oculta en la vista sencilla: si estaba abierta, la ficha vuelve a General.
+  if(mode==='simple')document.querySelectorAll('[data-profile-tab="technical"][aria-selected="true"]').forEach(t=>{
+   const g=t.parentElement&&t.parentElement.querySelector('[data-profile-tab="general"]');if(g)g.click();
+  });
   if(changed&&render){
    try{if(typeof root.renderCurrentView==='function')root.renderCurrentView()}catch(_){}
    root.dispatchEvent(new CustomEvent('viewinvai:detail-changed',{detail:{mode}}));
@@ -40,6 +44,8 @@
  }
  function paintSwitches(){document.querySelectorAll('.vi-detail-switch').forEach(el=>{el.innerHTML=switchHtml()})}
  function mountSwitches(){
+  // Solo el diseño D sabe ocultar datos: en el clásico el interruptor no haría nada.
+  if(html.dataset.design!=='d'){document.querySelectorAll('.vi-detail-switch').forEach(el=>el.remove());return}
   const side=document.querySelector('#sidebar');
   if(side&&!side.querySelector('.vi-detail-switch')){
    const el=document.createElement('div');el.className='vi-detail-switch';el.innerHTML=switchHtml();
