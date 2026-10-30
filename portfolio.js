@@ -1722,6 +1722,8 @@ function goalEngineInput(metrics,positionRows){
   if(!idle)refreshGoalIdeas();
   // Órdenes puestas en el bróker y aún sin ejecutar: su importe ya no está libre y no se vuelven a proponer.
   const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
+  // Precio en vivo también para las acciones con orden puesta (ya no son candidatas y no se suscribían).
+  if(preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-orders",pending.filter(o=>Number(o.preferTr)!==0).map(o=>{const st=stockByKey(o.stockKey||o.key)||stockByKey(o.key);return st?portfolioStockKey(st):(o.stockKey||o.key)}));
   // Una orden puesta de un valor que aún no tienes ocupa un hueco de «nº de acciones» hasta que se ejecuta o se cancela.
   const heldNow=new Set([...positions.map(p=>String(p.key)),...lockedKeys.map(String)]),pendingSlots=pending.filter(o=>!heldNow.has(String(o.key))).length;
   const altoOrders=pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0);
@@ -2059,7 +2061,7 @@ async function goalPendingPatch(body,okText){
 // Tarjeta de una orden puesta: cuánto, a qué límite y, con el precio en vivo, si ya puede haberse ejecutado
 // (una compra límite se ejecuta al precio de compra —ASK— en cuanto este llega a tu límite o por debajo).
 function goalPendingOrderHtml(o,ctx){
-  const s=stockByKey(o.key),preferTr=!!ctx.preferTr;
+  const s=stockByKey(o.stockKey||o.key)||stockByKey(o.key),preferTr=!!ctx.preferTr;
   const q=s?goalExecutionQuote(s,preferTr,"BUY",ctx.fx,"",o.units):null,askE=q?portfolioPriceToEur(num(q.ask),q.currency||"EUR",ctx.fx):null;
   const mins=Math.max(0,Math.round((Date.now()-Date.parse(o.at||""))/60000)),ago=mins<60?'hace '+mins+' min':mins<1440?'hace '+Math.round(mins/60)+' h':'hace '+Math.round(mins/1440)+' d';
   // Se compara en la divisa de la orden (un cambio de divisa no puede «ejecutar» una orden en dólares).
@@ -2529,8 +2531,9 @@ function portfolioGoalViewHtml(){
     return !goalExecutionQuote(st,ctx.preferTr,"BUY",ctx.fx,"",1).quoteRecent;
   });
   const visibleDecisions=[...plan.actions,...(plan.waits||[]).filter(w=>w.committed)];
+  const hasWhy=!!((plan.whyNoBuy||[]).length&&!plan.defensive&&(plan.whyNoBuy[0]||{}).code!=="reached");
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
-    :'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
+    :hasWhy?'':'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
   const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?(ctx.positions.find(p=>String(p.positionId)===String(h.positionId))||ctx.positions.find(p=>p.key===h.key)):null;
     return '<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+
       (pos?' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(pos.row.p.id)+'">Cambiar</button>':'')+'</li>'}).join('')+'</ul>':'';
