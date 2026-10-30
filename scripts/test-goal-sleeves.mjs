@@ -117,4 +117,5 @@ assert.equal(db.raw.prepare("SELECT pending_orders o FROM portfolio_goals WHERE 
 f=await goalFillPendingOrder(env,'u','pf',order,JSON.stringify([order]));
 assert.equal(txN(),1,'a second detection (app and server) does not duplicate the buy');
 assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,stockKey:''},'')).status,409,'orders without the data to register are left to the user');
+assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,key:'NASDAQ:USD1',stockKey:'NASDAQ:USD1',currency:'USD',limitNative:10,at:'x'},'')).status,409,'a USD order in a EUR portfolio needs an exchange rate to debit cash');
 console.log('Goal sleeves tests: OK');

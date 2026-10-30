@@ -1722,11 +1722,13 @@ function goalEngineInput(metrics,positionRows){
   if(!idle)refreshGoalIdeas();
   // Órdenes puestas en el bróker y aún sin ejecutar: su importe ya no está libre y no se vuelven a proponer.
   const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
+  // Una orden puesta de un valor que aún no tienes ocupa un hueco de «nº de acciones» hasta que se ejecuta o se cancela.
+  const heldNow=new Set([...positions.map(p=>String(p.key)),...lockedKeys.map(String)]),pendingSlots=pending.filter(o=>!heldNow.has(String(o.key))).length;
   if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0))};
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,cashEur:Math.max(0,(num(metrics.cashEur)||0)-pendingEur),...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
+    positions,candidates:goalMarkNoFractions(candidates,goal),lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings:lockedHoldings+pendingSlots,cashEur:num(metrics.cashEur)||0,reservedCashEur:pendingEur,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:num(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,preferTr,
     extraValueEur:metrics.includeCrypto?metrics.cryptoEur:null,stickyKeys:goalClientStickyKeys(metrics.portfolio&&metrics.portfolio.id,goal),committed,discarded:[...new Set([...goalTodayDiscarded(metrics.portfolio&&metrics.portfolio.id,goal),...pending.map(o=>o.key)])],requireReview:true,
     market:(()=>{try{const p=JSON.parse(goal.plan_json||"{}");return Date.now()-Date.parse(p.at||"")<3600e3?p.market||null:null}catch(_){return null}})()};
 }
@@ -2035,10 +2037,11 @@ async function goalRestoreIdea(key,ticker){
   }catch(error){toast(error.message||"No se pudo guardar en el servidor.",true)}
   goalPlanCache=null;renderGoalApp();
 }
-// Órdenes límite puestas en el bróker y pendientes de ejecutar (servidor, como mucho 7 días).
+// Órdenes límite puestas en el bróker y pendientes de ejecutar (servidor).
 function goalPendingOrders(goal){
-  try{const list=JSON.parse(goal&&goal.pending_orders||"[]"),limit=Date.now()-7*86400e3;
-    return Array.isArray(list)?list.filter(o=>o&&o.key&&num(o.units)>0&&num(o.limitEur)>0&&Date.parse(o.at||"")>limit):[]}catch(_){return[]}
+  // Se conservan hasta que las canceles o se ejecuten: la app no sabe cuándo caduca una orden en tu bróker.
+  try{const list=JSON.parse(goal&&goal.pending_orders||"[]");
+    return Array.isArray(list)?list.filter(o=>o&&o.key&&num(o.units)>0&&num(o.limitEur)>0):[]}catch(_){return[]}
 }
 function goalPendingOrderEur(o){return (num(o.units)||0)*(num(o.limitEur)||0)+(num(o.feeEur)||0)}
 async function goalPendingPatch(body,okText){
@@ -2058,10 +2061,13 @@ function goalPendingOrderHtml(o,ctx){
   const s=stockByKey(o.key),preferTr=!!ctx.preferTr;
   const q=s?goalExecutionQuote(s,preferTr,"BUY",ctx.fx,"",o.units):null,askE=q?portfolioPriceToEur(num(q.ask),q.currency||"EUR",ctx.fx):null;
   const mins=Math.max(0,Math.round((Date.now()-Date.parse(o.at||""))/60000)),ago=mins<60?'hace '+mins+' min':mins<1440?'hace '+Math.round(mins/60)+' h':'hace '+Math.round(mins/1440)+' d';
+  // Se compara en la divisa de la orden (un cambio de divisa no puede «ejecutar» una orden en dólares).
+  const askN=q?num(q.ask):null,limN=num(o.limitNative)??o.limitEur,reached=askN!==null&&(o.currency&&q&&String(q.currency||"").toUpperCase()===String(o.currency).toUpperCase()?askN<=limN+1e-9:askE!==null&&askE<=o.limitEur+1e-9);
+  const days=(Date.now()-Date.parse(o.at||""))/86400e3,stale=days>7?'<small class="goal2-order-status">Lleva más de 7 días: si tu orden caducó en el bróker, cancélala aquí.</small>':'';
   const live=askE===null?'<small class="goal2-order-status">Sin precio de compra en vivo ahora: compruébala en tu bróker.</small>'
-    :askE<=o.limitEur+1e-9?'<small class="goal2-order-status ok">El precio de compra ('+esc(formatMoney(askE,"EUR"))+') ya está en tu límite o por debajo: '+(q.quoteFresh&&o.stockKey?'registrando la compra…':'puede haberse ejecutado. Compruébalo en tu bróker.')+'</small>'
+    :reached?'<small class="goal2-order-status ok">El precio de compra ('+esc(formatMoney(askE,"EUR"))+') ya está en tu límite o por debajo: '+(q.quoteFresh&&o.stockKey?'registrando la compra…':'puede haberse ejecutado. Compruébalo en tu bróker.')+'</small>'
     :'<small class="goal2-order-status">Precio de compra ahora '+esc(formatMoney(askE,"EUR"))+' (+'+esc(formatNumber((askE/o.limitEur-1)*100,1))+' % sobre tu límite): aún no se ejecuta. Se registrará sola cuando llegue.</small>';
-  if(askE!==null&&askE<=o.limitEur+1e-9&&q.quoteFresh&&o.stockKey)setTimeout(()=>goalAutoFillOrder(o),0);
+  if(reached&&q.quoteFresh&&o.stockKey)setTimeout(()=>goalAutoFillOrder(o),0);
   const currency=q&&q.currency||(preferTr?"EUR":"USD"),price=portfolioConvertAmount(o.limitEur,"EUR",currency,ctx.fx)??o.limitEur;
   let reg=s?goalOperationButtonHtml({side:"BUY",portfolioId:state.selectedPortfolioId,broker:"",stockKey:portfolioStockKey(s),units:o.units,price,fees:num(o.feeEur)||0,currency,preferTr,executable:true,sleeve:o.sleeve||""}):'';
   reg=reg.replace(/class="[^"]*portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>[^<]*<\/button>$/,'>✓ Ejecutada</button>');
@@ -2070,7 +2076,7 @@ function goalPendingOrderHtml(o,ctx){
   return '<div class="goal2-action goal2-order" data-open-stock="'+esc(s?portfolioStockKey(s):o.key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
     '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong>'+
     '<span class="goal2-action-what">Orden puesta · '+esc(qty)+(Number(o.units)===1?' acción':' acciones')+' · límite <b>'+esc(num(o.limitNative)!==null&&o.currency&&o.currency!=="EUR"?formatMoney(o.limitNative,o.currency)+' (≈ '+formatMoney(o.limitEur,"EUR")+')':formatMoney(o.limitEur,"EUR"))+'</b></span></div>'+
-    '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+
+    '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+stale+
     '<div class="goal2-action-buttons">'+reg+'<button type="button" class="goal2-btn" data-goal-cancel-order="'+esc(o.key)+'" data-goal-order-ticker="'+esc(o.ticker||nm)+'">Cancelar orden</button></div></div>';
 }
 // «Orden puesta»: a qué precio límite y cuántas acciones pusiste la orden en tu bróker. Cuando el precio de compra
@@ -2110,7 +2116,7 @@ const goalFillingOrders=new Set();
 async function goalAutoFillOrder(o){
   const id=o.key+"|"+o.at;if(goalFillingOrders.has(id))return;goalFillingOrders.add(id);
   try{
-    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId:state.selectedPortfolioId,fillOrder:o.key})});
+    const response=await api("/api/portfolio-goal",{method:"PATCH",body:JSON.stringify({portfolioId:state.selectedPortfolioId,fillOrder:o.key,fxUsdEur:lastGoalCtx?num(lastGoalCtx.fx):null})});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||"No se pudo registrar la compra.");
     if(data.goal){state.goals[String(state.selectedPortfolioId)]=data.goal;state.goal=data.goal}

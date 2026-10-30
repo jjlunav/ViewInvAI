@@ -65,6 +65,11 @@ context.goalExecutionQuote=()=>({ask:42.5,currency:'EUR'});
 card=context.goalPendingOrderHtml(order,{preferTr:true,fx:1});
 assert.ok(card.includes('ya está en tu límite o por debajo: puede haberse ejecutado'),'Live ask at or below the limit: it may have filled');
 assert.equal(Math.round(context.goalPendingOrderEur(order)*100)/100,43.61,'An order reserves units × limit + fee');
-assert.equal(context.goalPendingOrders({pending_orders:JSON.stringify([{...order,at:new Date(Date.now()-8*86400e3).toISOString()}])}).length,0,'Orders older than 7 days expire');
+const old={...order,at:new Date(Date.now()-8*86400e3).toISOString()};
+assert.equal(context.goalPendingOrders({pending_orders:JSON.stringify([old])}).length,1,'Orders are kept until cancelled or filled (the app cannot know the broker expiry)');
+assert.ok(context.goalPendingOrderHtml(old,{preferTr:true,fx:1}).includes('Lleva más de 7 días'),'Old orders ask the user to cancel them if they expired');
+context.goalExecutionQuote=()=>({ask:101,currency:'USD'});
+const usd={...order,currency:'USD',limitNative:100,limitEur:95};
+assert.ok(!context.goalPendingOrderHtml(usd,{preferTr:false,fx:0.9}).includes('puede haberse ejecutado'),'USD orders compare the ask in dollars: a weaker dollar does not fill them');
 if(process.env.CARD_ORDER){context.goalExecutionQuote=()=>({ask:42.85,currency:'EUR'});fs.writeFileSync(process.env.CARD_ORDER,'<div class="goal2-orders"><small class="goal2-orders-title">Órdenes puestas · 1</small>'+context.goalPendingOrderHtml(order,{preferTr:true,fx:1})+'</div>'+liveCard)}
 console.log('Goal card tests: OK');

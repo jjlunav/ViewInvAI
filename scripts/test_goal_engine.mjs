@@ -522,3 +522,13 @@ console.log("Goal engine tests: OK");
   assert.ok(wide.riskEur<=1000*G.RISK.aggressive.riskPerTradePct/100+1e-6,"spread included, the loss still fits the risk budget");
   assert.ok(Math.abs(wide.roundTripCostPct-(wide.roundTripFeePct+1.8))<0.02,"round-trip cost = fees + spread");
 }
+
+// Órdenes puestas: su importe sigue en el valor de la cartera (sin falsos modos defensivos) pero no se gasta.
+{
+  const c={...base,key:"NASDAQ:ORD",ticker:"ORD"};
+  const free=G.plan({...input([c]),cashEur:1000,peakValueEur:1000});
+  const held=G.plan({...input([c]),cashEur:1000,peakValueEur:1000,reservedCashEur:900});
+  assert.equal(held.defensive,false,"reserved order cash still counts in the portfolio value");
+  const spent=p=>p.actions.filter(a=>a.type==="BUY").reduce((s,a)=>s+a.ticketEur,0);
+  assert.ok(spent(held)<=100+1e-6&&spent(held)<spent(free),"new buys only use the cash not reserved by pending orders");
+}

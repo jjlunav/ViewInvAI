@@ -5146,7 +5146,7 @@ async function handlePortfolioGoal(request,env,user,json,url){
         // El precio de compra llegó al límite (lo detecta la app con el precio en vivo): se registra la compra.
         const key=trimText(body.fillOrder,120),order=orders.find(o=>o.key===key);
         if(!order)return json({goal:await goalWithPositionState(env,user.id,await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first()),filled:false});
-        const result=await goalFillPendingOrder(env,user.id,portfolioId,order,row.pending_orders);
+        const result=await goalFillPendingOrder(env,user.id,portfolioId,order,row.pending_orders,{usdToEur:finiteNumber(body.fxUsdEur)});
         if(result.status>=400)return json(result.body,result.status);
         const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
         return json({goal:await goalWithPositionState(env,user.id,goal),filled:true,transaction:result.body.transaction||null});
@@ -5164,7 +5164,8 @@ async function handlePortfolioGoal(request,env,user,json,url){
         if(!(limitNative>0))return json({error:"limitNative must be greater than zero"},400);
         orders=[...orders.filter(x=>x.key!==key),{key,ticker:trimText(o.ticker,24),name:trimText(o.name,120),units:Math.round(units*1e6)/1e6,limitEur:Math.round(limitEur*1e4)/1e4,feeEur:Math.round(feeEur*100)/100,sleeve,at:nowIso(),
           stockKey:trimText(o.stockKey,80).toUpperCase(),txTicker:trimText(o.txTicker,20).toUpperCase(),exchange:trimText(o.exchange,40).toUpperCase(),isin:trimText(o.isin,24).toUpperCase(),preferTr:booleanInt(o.preferTr),
-          currency,limitNative:Math.round(limitNative*1e4)/1e4,broker:trimText(o.broker,80)}].slice(-8);
+          currency,limitNative:Math.round(limitNative*1e4)/1e4,broker:trimText(o.broker,80)}];
+        if(orders.length>30)return json({error:"Tienes 30 órdenes puestas: cancela alguna antes de añadir otra."},409);
       }
       await env.DB.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id=? AND user_id=?").bind(orders.length?JSON.stringify(orders):"",portfolioId,user.id).run();
       const goal=await env.DB.prepare(GOAL_SELECT+"WHERE g.portfolio_id=? AND g.user_id=?").bind(portfolioId,user.id).first();
@@ -8565,18 +8566,25 @@ async function goalMarketContext(services){
   return out;
 }
 // Ideas descartadas hoy (hora de Madrid) tras un cambio de recomendación; las de otro día ya no cuentan.
-// Órdenes puestas pendientes de ejecutar (como mucho 7 días: después se dan por caducadas).
+// Órdenes puestas pendientes de ejecutar. Se conservan hasta que se cancelan o se ejecutan: la app no sabe cuándo
+// caduca una orden en el bróker y darla por caducada liberaría su efectivo mientras sigue viva.
 function goalPendingOrders(raw){
-  try{const list=JSON.parse(raw||"[]"),limit=Date.now()-7*86400e3;
-    return Array.isArray(list)?list.filter(o=>o&&o.key&&finiteNumber(o.units)>0&&finiteNumber(o.limitEur)>0&&Date.parse(o.at||"")>limit).slice(-8):[]}catch(_){return[]}
+  try{const list=JSON.parse(raw||"[]");
+    return Array.isArray(list)?list.filter(o=>o&&o.key&&finiteNumber(o.units)>0&&finiteNumber(o.limitEur)>0):[]}catch(_){return[]}
 }
 // Registra la compra de una orden puesta que se ha ejecutado (el precio de compra llegó al límite) y la quita de
 // la lista en el mismo paso. Idempotente: la compra lleva un identificador propio de la orden, así que una segunda
 // detección (app y servidor a la vez) no la duplica. Precio = el límite (una compra límite nunca se paga más cara).
-export async function goalFillPendingOrder(env,userId,portfolioId,order,rawOrders){
+export async function goalFillPendingOrder(env,userId,portfolioId,order,rawOrders,{usdToEur=null}={}){
   if(!order.stockKey||!order.txTicker)return{status:409,body:{error:"La orden no tiene los datos para registrar la compra; regístrala a mano."}};
+  // Orden en otra divisa que la cartera: el efectivo se descuenta convertido; sin cambio fiable no se registra
+  // (quedaría la compra sin restar el efectivo y el plan lo gastaría dos veces).
+  const pf=await env.DB.prepare("SELECT base_currency FROM portfolios WHERE id=? AND user_id=?").bind(portfolioId,userId).first();
+  const base=String(pf&&pf.base_currency||"EUR").toUpperCase(),cur=String(order.currency||"EUR").toUpperCase(),fx=finiteNumber(usdToEur);
+  const cashFxRate=base===cur?null:cur==="USD"&&base==="EUR"&&fx>0?fx:cur==="EUR"&&base==="USD"&&fx>0?1/fx:undefined;
+  if(cashFxRate===undefined)return{status:409,body:{error:"Falta el cambio de divisa para descontar el efectivo; regístrala con «✓ Ejecutada»."}};
   const result=await createTransactionRecord(env,{id:userId},{portfolioId,stockKey:order.stockKey,ticker:order.txTicker,name:order.name||order.txTicker,exchange:order.exchange||"",isin:order.isin||"",
-    preferTr:booleanInt(order.preferTr),side:"BUY",quantity:finiteNumber(order.units),price:finiteNumber(order.limitNative),fees:null,currency:order.currency||"EUR",cashFxRate:null,executedAt:nowIso(),
+    preferTr:booleanInt(order.preferTr),side:"BUY",quantity:finiteNumber(order.units),price:finiteNumber(order.limitNative),fees:null,currency:order.currency||"EUR",cashFxRate,executedAt:nowIso(),
     notes:"Orden límite ejecutada: el precio de compra llegó a tu límite ("+String(order.limitNative).replace(".",",")+" "+(order.currency||"EUR")+"). Registrada automáticamente al límite; corrige el precio si tu bróker te dio otro.",
     positionId:"",broker:order.broker||"",sleeve:goalSleeveName(order.sleeve)},{origin:"goal-order",externalId:"goal-order:"+portfolioId+":"+order.key+":"+order.at,defaultFees:finiteNumber(order.feeEur)});
   if(result.status>=400)return result;
@@ -8748,17 +8756,22 @@ async function scanPortfolioGoalNotifications(env,services){
       let pendingOrders=goalPendingOrders(goal.pending_orders);
       for(const o of [...pendingOrders]){
         const st=byKey.get(o.key);if(!st||!services.loadQuote)continue;
-        const ask=await quoteEur(st,Number(o.preferTr)===1,"BUY");
-        const raw=(quoteCache.get((Number(o.preferTr)===1?"tr:":"us:")+goalServerKey(st))||{}).quote||{},ts=Date.parse(raw.timestamp||"");
-        if(ask===null||!(Number.isFinite(ts)&&Date.now()-ts<=20*60e3)||ask>finiteNumber(o.limitEur)+1e-9)continue;
-        const r=await goalFillPendingOrder(env,goal.user_id,goal.portfolio_id,o,JSON.stringify(pendingOrders)).catch(()=>({status:500}));
+        const askEur=await quoteEur(st,Number(o.preferTr)===1,"BUY");
+        const raw=(quoteCache.get((Number(o.preferTr)===1?"tr:":"us:")+goalServerKey(st))||{}).quote||{};
+        // Marca de tiempo en milisegundos (Trade Republic), segundos o texto ISO.
+        const tRaw=raw.timestamp,tNum=typeof tRaw==="number"?tRaw:/^\d+(\.\d+)?$/.test(String(tRaw||""))?Number(tRaw):NaN;
+        const ts=Number.isFinite(tNum)?(tNum<1e12?tNum*1000:tNum):Date.parse(tRaw||"");
+        // Se compara en la divisa de la orden: un cambio de divisa no puede «ejecutar» una orden en dólares.
+        const askNative=finiteNumber(raw.ask),limitNative=finiteNumber(o.limitNative)??finiteNumber(o.limitEur);
+        if(askEur===null||askNative===null||!(Number.isFinite(ts)&&Date.now()-ts<=20*60e3)||askNative>limitNative+1e-9)continue;
+        const r=await goalFillPendingOrder(env,goal.user_id,goal.portfolio_id,o,JSON.stringify(pendingOrders),{usdToEur}).catch(()=>({status:500}));
         if(r.status>=400)continue;
         pendingOrders=pendingOrders.filter(x=>x.key!==o.key);
-        cashEur=Math.max(0,cashEur-goalPendingOrderEur(o));
+        cashEur=Math.max(0,cashEur-goalPendingOrderEur(o));// ya es una compra: el efectivo salió de verdad
         if(sleeveInput&&o.sleeve==="alto")sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-goalPendingOrderEur(o));
         await pushGoal(goal,{title:"Orden ejecutada · "+(o.ticker||o.txTicker),message:"El precio de compra llegó a tu límite: compra de "+o.units+" a "+String(o.limitEur).replace(".",",")+" € registrada en la cartera. Revisa el precio real en tu bróker.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
       }
-      cashEur=Math.max(0,cashEur-pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0));
+      const reservedCashEur=pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0);
       if(sleeveInput)sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0));
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
@@ -8812,7 +8825,7 @@ async function scanPortfolioGoalNotifications(env,services){
       const input={config:{target:finiteNumber(goal.target_value_eur),deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:finiteNumber(goal.start_value_eur),startDate:finiteNumber(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
           risk:goal.risk_profile,maxPositions:finiteNumber(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(finiteNumber(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
           investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
-        positions:enginePositions,candidates,cashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
+        positions:enginePositions,candidates,cashEur,reservedCashEur,lockedValueEur,lockedHighRiskEur,lockedKeys,lockedHoldings:lockedHoldings+pendingOrders.filter(o=>!held.has(o.key)).length,...(sleeveInput?{sleeves:sleeveInput}:{}),peakValueEur:finiteNumber(goal.peak_value_eur),wasDefensive:Number(goal.defensive)===1,
         // El progreso solo cuenta lo invertido y Mi cripto (si se incluye); el efectivo para el objetivo no es avance.
         extraValueEur:Number(goal.include_crypto)===1?cryptoByUser.get(goal.user_id)??null:null,
         stickyKeys:goalStickyBuyKeys(prev&&prev.plan_json),committed,discarded:[...new Set([...goalDiscardedToday(goal.discarded_ideas),...pendingOrders.map(o=>o.key)])]};

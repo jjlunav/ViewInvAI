@@ -351,7 +351,8 @@
   function isIdle(input={}){
     const cfg=input.config||{};
     const sleeveCash=input.sleeves&&input.sleeves.alto?n(input.sleeves.alto.cashEur):null;
-    if((sleeveCash!==null?Math.min(Math.max(0,n(input.cashEur)||0),sleeveCash):usableCash(cfg,input.cashEur))>=1)return false;
+    const orders=Math.max(0,n(input.reservedCashEur)||0);
+    if((sleeveCash!==null?Math.min(Math.max(0,(n(input.cashEur)||0)-orders),sleeveCash):usableCash(cfg,input.cashEur)-orders)>=1)return false;
     const open=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
     return open.length>0&&open.every(p=>p.hold&&p.hold.mode&&p.hold.mode!=='better');
   }
@@ -378,7 +379,7 @@
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
     const minScore=b.minScore+adj.score,minQuality=b.minQuality;
     const actions=[],holds=[],notes=[],waits=[];
-    let pool=cash;
+    let pool=cash-Math.min(cash,Math.max(0,n(input.reservedCashEur)||0));
     const remaining=[];
     // Capital que el usuario deja invertir: cifra y/o % del efectivo (lo más restrictivo). El resto queda apartado.
     const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
@@ -387,7 +388,10 @@
     // Huchas: el plan de ideas cortas (estrategia de catalizadores) solo gasta el efectivo de la hucha de riesgo alto;
     // las acciones de las huchas medio y bajo no las toca (llegan como congeladas) y lo que se venda vuelve a la hucha alta.
     const sleeveMode=!!(input.sleeves&&input.sleeves.alto&&n(input.sleeves.alto.cashEur)!==null);
-    const usable=sleeveMode?Math.min(cash,Math.max(0,n(input.sleeves.alto.cashEur))):usableCash(cfg,cash);
+    // Órdenes puestas en el bróker: su importe sigue siendo efectivo (cuenta en el valor de la cartera) pero no se
+    // puede gastar en otra compra.
+    const orderCash=Math.min(cash,Math.max(0,n(input.reservedCashEur)||0));
+    const usable=Math.max(0,sleeveMode?Math.min(cash-orderCash,Math.max(0,n(input.sleeves.alto.cashEur))):usableCash(cfg,cash)-orderCash);
     const paused=isIdle(input);
     const reserved=Math.max(0,cash-usable);
     const allowFractions=cfg.allowFractions!==false;
@@ -729,9 +733,9 @@
         if(slots<=0||spend<=0)break;
         if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
-        // Horquilla: al salir por el stop se vende al BID, por debajo del precio de entrada. Con horquilla estrecha la
-        // orden va al ASK y se pierde la horquilla entera; con horquilla amplia el límite va a mitad y se pierde la mitad.
-        const spr=Math.max(0,n(c.spreadPct)||0),spreadLoss=spr<=1.2?spr:spr/2,lossPct=c.stopPct+spreadLoss;
+        // Horquilla: al salir por el stop se vende al BID, por debajo del precio de entrada.
+        // (La orden puede acabar al ASK aunque el límite vaya a mitad: se cuenta la horquilla entera, lo prudente.)
+        const spr=Math.max(0,n(c.spreadPct)||0),lossPct=c.stopPct+spr;
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
         const highCapacity=c.riskTier==='alto'?Math.max(0,valueEur*highRiskPct/100-highExposure):Infinity;
