@@ -320,8 +320,9 @@ def crash_stats(ev, key):
 
 # ---------- 6. Trade Republic / LSX (valores que no cotizan en EE. UU.) ----------
 def tr_history(isins):
-    """Histórico diario de 5 años en LSX por la API pública de cotizaciones de Trade Republic
-    (la misma que usa la app; sin cuenta ni PIN). Devuelve {isin: arrays}."""
+    """Histórico diario en LSX por la API pública de cotizaciones de Trade Republic (la misma que usa la app;
+    sin cuenta ni PIN). Desde octubre de 2026 no acepta «resolution»: el diario llega solo con «1y» (5y/max son
+    velas semanales), así que se pide un año. Devuelve {isin: arrays}."""
     out = {}
     todo = [i for i in isins if not (CACHE / ("tr_" + i + ".npz")).exists() or
             (date.today() - date.fromisoformat(str(np.load(CACHE / ("tr_" + i + ".npz"))["fetched"]))).days > 3]
@@ -342,7 +343,7 @@ def tr_history(isins):
             for isin in batch:
                 sid += 1
                 pending[str(sid)] = isin
-                ws.send("sub %d %s" % (sid, json.dumps({"type": "aggregateHistoryLight", "id": isin + ".LSX", "range": "5y", "resolution": 86400000}, separators=(",", ":"))))
+                ws.send("sub %d %s" % (sid, json.dumps({"type": "aggregateHistoryLight", "id": isin + ".LSX", "range": "1y"}, separators=(",", ":"))))
             deadline = time.time() + 30
             while pending and time.time() < deadline:
                 try:
