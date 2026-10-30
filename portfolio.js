@@ -1724,7 +1724,8 @@ function goalEngineInput(metrics,positionRows){
   const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
   // Una orden puesta de un valor que aún no tienes ocupa un hueco de «nº de acciones» hasta que se ejecuta o se cancela.
   const heldNow=new Set([...positions.map(p=>String(p.key)),...lockedKeys.map(String)]),pendingSlots=pending.filter(o=>!heldNow.has(String(o.key))).length;
-  if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0))};
+  const altoOrders=pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0);
+  if(sleeveInput&&sleeveInput.alto)sleeveInput.alto={...sleeveInput.alto,cashEur:Math.max(0,(num(sleeveInput.alto.cashEur)||0)-altoOrders),ordersEur:altoOrders};
   return{config:{target:cfg.target,deadline:goal.target_date?goal.target_date+"T23:59:59Z":"",startValue:num(goal.start_value_eur),startDate:num(goal.start_value_eur)!==null?goal.start_date||goal.created_at:"",
       risk:cfg.riskProfile,maxPositions:num(goal.max_positions)??5,specMode:Math.max(0,Math.min(3,Math.round(num(goal.allow_spec)??1))),allowSpec:Number(goal.allow_spec)!==0,
       investCapEur:num(goal.invest_cap_eur),investCapPct:num(goal.invest_cap_pct),investReserveEur:num(goal.invest_reserve_eur),allowFractions:Number(goal.allow_fractions)!==0},
@@ -2202,7 +2203,7 @@ function goalAlternativesHtml(plan,ctx,shown){
 function goalWhyNoBuyHtml(plan,portfolio){
   const why=(plan&&plan.whyNoBuy)||[];if(!why.length||plan.defensive)return'';
   const w=why[0];if(w.code==='reached')return '';
-  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':w.code==='sleeve'&&!/órdenes puestas/.test(String(w.text))?' <button type="button" class="goal2-btn goal2-why-btn" data-goal-sleeve-cash>Cambiar reparto</button>':'';
+  const cashBtn=w.code==='cash'?' <button type="button" class="btn small" data-portfolio-cash-edit="'+esc(portfolio.id)+'">↻ Actualizar efectivo</button>':w.code==='cap'?' <button type="button" class="btn small" data-goal-wizard>✎ Cambiar capital</button>':w.code==='sleeve'?' <button type="button" class="goal2-btn goal2-why-btn" data-goal-sleeve-cash>Cambiar reparto</button>':'';
   return '<div class="goal2-why" role="note"><b>¿Por qué no hay compras?</b> '+esc(w.text)+cashBtn+'</div>';
 }
 // ----- Huchas del Objetivo: alto / medio / bajo, cada una con su efectivo, sus acciones y su estrategia -----
@@ -2342,7 +2343,7 @@ function goalSleevesHtml(metrics,positionRows,goal,ctx){
       const ticker=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||""),name=row.stock&&row.stock.name||row.p.name||"";
       const status=(ctx.posStatus&&ctx.posStatus.get(String(row.p.id)))||(exit?'<i class="goal2-sleeve-exit goal2-sleeve-exit-'+esc(exit.tag.toLowerCase())+'">'+esc(exit.tag)+'</i> '+esc(exit.text):'');
       return '<li class="goal2-posrow" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'">'+
-        '<div class="goal2-posrow-head"><b data-open-name>'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
+        '<div class="goal2-posrow-head"><b data-open-name role="link" tabindex="0">'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
         '<span class="'+(ret===null?'':ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span></div>'+
         '<small class="goal2-posrow-status">'+esc(value===null?'sin precio':formatMoney(value,"EUR"))+(status?' · '+status:'')+'</small>'+
         '<details class="goal2-sleeve-movebox"><summary>Cambiar de hucha</summary><select class="goal2-sleeve-move" data-goal-sleeve-assign="'+esc(row.p.id)+'" data-goal-sleeve-value="'+esc(String(value??""))+'" aria-label="Cambiar de hucha">'+goalSleeveOptions(k)+'</select></details></li>'}).join('')+'</ul>':'';
@@ -2492,10 +2493,12 @@ function portfolioGoalViewHtml(){
   // nombre, resultado y su estado (stop, decisión «mantener» con «Cambiar», hucha o congelada).
   const statusOf=row=>{
       const p=input.positions.find(x=>String(x.positionId)===String(row.p.id));
-      const h=p?plan.holds.find(x=>x.holdMode&&(String(x.positionId)===String(row.p.id)||x.key===p.key)):null;
+      const h=p?plan.holds.find(x=>x.holdMode&&(x.positionId!==undefined&&x.positionId!==null&&x.positionId!==""?String(x.positionId)===String(row.p.id):x.key===p.key)):null;
       if(h)return esc(String(h.text||"").replace(/^Mantener [^:]*: /,"Mantener: "))+' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(row.p.id)+'">Cambiar</button>';
-      if(p){const st=engine.positionStop(p,input.config.risk);return 'Stop '+(st.stopEur!==null?esc(formatMoney(st.stopEur,"EUR")):'—')+(st.trailing?' · sube con el precio':'')}
-      if(positionFrozenQty(row.p)>0)return '🔒 Congelada hasta el '+esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short"}))+': el plan no la toca';
+      const fq=Math.min(num(row.qty)||0,positionFrozenQty(row.p)),until=fq>0?esc(new Date(String(row.p.frozen_until).slice(0,10)+"T12:00:00").toLocaleDateString("es-ES",{day:"numeric",month:"short"})):'';
+      // Congelada solo en parte: el stop es del resto y se indica cuántas están congeladas y hasta cuándo.
+      if(p){const st=engine.positionStop(p,input.config.risk);return 'Stop '+(st.stopEur!==null?esc(formatMoney(st.stopEur,"EUR")):'—')+(st.trailing?' · sube con el precio':'')+(fq>0?' · 🔒 '+esc(formatNumber(fq,fq%1?4:0))+' congeladas hasta el '+until:'')}
+      if(fq>0)return '🔒 Congelada hasta el '+until+': el plan no la toca';
       return '';
     };
   ctx.posStatus=new Map(positionRows.map(row=>[String(row.p.id),statusOf(row)]));
@@ -2504,7 +2507,7 @@ function portfolioGoalViewHtml(){
       const ticker=String(row.stock&&(row.preferTr?row.stock.trTicker:row.stock.ticker)||row.p.ticker||""),name=row.stock&&row.stock.name||row.p.name||"";
       const status=ctx.posStatus.get(String(row.p.id))||"";
       return '<li class="goal2-posrow" data-open-stock="'+esc(row.p.stock_key)+'" data-position-prefer-tr="'+(row.preferTr?'1':'0')+'">'+
-        '<div class="goal2-posrow-head"><b data-open-name>'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
+        '<div class="goal2-posrow-head"><b data-open-name role="link" tabindex="0">'+esc(ticker)+'</b><small data-open-name>'+esc(name)+'</small>'+
         '<span class="'+(ret===null?'':ret>=0?'pnl-up':'pnl-down')+'">'+(ret===null?'—':(ret>0?'+':'')+formatNumber(ret,1)+' %')+'</span></div>'+
         (status?'<small class="goal2-posrow-status">'+status+'</small>':'')+'</li>';
     }).join('')+'</ul>':'';

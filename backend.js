@@ -8772,7 +8772,7 @@ async function scanPortfolioGoalNotifications(env,services){
         await pushGoal(goal,{title:"Orden ejecutada · "+(o.ticker||o.txTicker),message:"El precio de compra llegó a tu límite: compra de "+o.units+" a "+String(o.limitEur).replace(".",",")+" € registrada en la cartera. Revisa el precio real en tu bróker.",severity:"info",stockKey:o.stockKey,ticker:o.txTicker,preferTr:Number(o.preferTr)===1?1:0}).catch(()=>false);
       }
       const reservedCashEur=pendingOrders.reduce((s,o)=>s+goalPendingOrderEur(o),0);
-      if(sleeveInput)sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0));
+      if(sleeveInput){const altoOrders=pendingOrders.filter(o=>o.sleeve==="alto").reduce((s,o)=>s+goalPendingOrderEur(o),0);sleeveInput.alto.cashEur=Math.max(0,sleeveInput.alto.cashEur-altoOrders);sleeveInput.alto.ordersEur=altoOrders}
       // Sin efectivo invertible y con todas las posiciones en «mantener»: no se buscan candidatas ni se consulta
       // a ninguna IA; solo se vigilan los precios objetivo y los stops de emergencia de las posiciones.
       const idle=typeof engine.isIdle==="function"&&engine.isIdle({config:{investCapEur:finiteNumber(goal.invest_cap_eur),investCapPct:finiteNumber(goal.invest_cap_pct),investReserveEur:finiteNumber(goal.invest_reserve_eur)},cashEur,positions:enginePositions,sleeves:sleeveInput});
