@@ -1032,3 +1032,4 @@ html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .shell-icon-button {min-height:40px;min-width:40px}
  html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-pills button {min-height:34px}
 }
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-row-cells .d-cell-sub {display:block;margin-top:2px;font-size:11.5px;font-weight:600;color:var(--d-mut)}

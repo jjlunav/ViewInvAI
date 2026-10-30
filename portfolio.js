@@ -3693,7 +3693,9 @@ function transactionRowsHtml(rows, currency) {
         : formatNumber(tx.quantity, 4) + ' × ' + formatMoney(tx.price, txCurrency)) +
       '</strong><small>' + esc(when) + (fees ? ' · comisión ' + esc(formatMoney(fees, txCurrency)) : '') + '</small></div>' +
       '<div class="transaction-total"><strong>' + (isAdjustment ? 'Saldo corregido' : formatMoney((num(tx.quantity) || 0) * (num(tx.price) || 0), txCurrency)) + '</strong><small>' + esc(tx.ticker || '') + (tx.notes ? ' · <span translate="no">' + esc(tx.notes) + '</span>' : '') + '</small></div>' +
-      (['manual','position-adjustment'].includes(origin) ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') +
+      // ✎ en todas (también las importadas y la inicial): se corrigen para que cuadren con el bróker.
+      '<span class="transaction-actions"><button type="button" class="transaction-edit" data-transaction-edit="' + esc(tx.id) + '" data-qty="' + esc(String(tx.quantity ?? '')) + '" data-price="' + esc(String(tx.price ?? '')) + '" data-fees="' + esc(String(fees ?? 0)) + '" data-at="' + esc(executed && !isNaN(executed) ? localDateTimeValue(executed) : '') + '" data-notes="' + esc(String(tx.notes || '')) + '" data-currency="' + esc(txCurrency) + '" data-adjust="' + (isAdjustment ? '1' : '') + '" aria-label="Corregir operación" title="Corregir para que cuadre con tu bróker">✎</button>' +
+      (['manual','position-adjustment'].includes(origin) ? '<button type="button" class="transaction-delete" data-transaction-delete="' + esc(tx.id) + '" aria-label="Eliminar operación">×</button>' : '') + '</span>' +
     '</div>';
   }).join('');
 }
@@ -4160,6 +4162,52 @@ async function saveGoalOperationForm(form){
     toast(error.message||"No se pudo registrar la operación.",true);
   }finally{
     delete form.dataset.saving;if(button&&button.isConnected){button.disabled=false;button.textContent="Registrar estrategia"}
+  }
+}
+
+// Corregir una operación: el formulario sustituye a la fila; al guardar se recalculan la posición y el efectivo.
+function openTransactionEdit(btn) {
+  const row = btn.closest('.transaction-row');if (!row) return;
+  const d = btn.dataset,cur = d.currency || 'EUR',adj = d.adjust === '1';
+  row.classList.add('editing');
+  // La fecha solo se envía si se cambia (el control no lleva segundos y moverla podría reordenar operaciones).
+  row.innerHTML = '<form class="transaction-edit-form portfolio-form" data-transaction-edit-form="' + esc(d.transactionEdit) + '" data-at="' + esc(d.at) + '">' +
+    '<div class="portfolio-form-grid">' +
+      '<label><span>' + (adj ? 'Acciones' : 'Cantidad') + '</span><input name="quantity" type="number" inputmode="decimal" step="any" min="0.00000001" value="' + esc(d.qty) + '" required></label>' +
+      '<label><span>' + (adj ? 'Precio medio' : 'Precio') + ' (' + esc(cur) + ')</span><input name="price" type="number" inputmode="decimal" step="any" min="0" value="' + esc(d.price) + '" required></label>' +
+    '</div><div class="portfolio-form-grid">' +
+      // Un ajuste fija acciones y precio medio; su comisión no cuenta en el coste, así que no se edita.
+      (adj ? '<input name="fees" type="hidden" value="' + esc(d.fees) + '">' : '<label><span>Comisión (' + esc(cur) + ')</span><input name="fees" type="number" inputmode="decimal" step="any" min="0" value="' + esc(d.fees) + '" required></label>') +
+      '<label><span>Fecha y hora</span><input name="executedAt" type="datetime-local" value="' + esc(d.at) + '" required></label>' +
+    '</div>' +
+    '<label><span>Nota</span><input name="notes" maxlength="1000" value="' + esc(d.notes) + '" placeholder="Opcional"></label>' +
+    '<small class="broker-fee-hint">Pon los datos tal como aparecen en tu bróker. La posición, su precio medio y el efectivo se recalculan.</small>' +
+    '<div class="transaction-edit-buttons"><button type="submit" class="btn">Guardar</button><button type="button" class="btn ghost" data-transaction-edit-cancel>Cancelar</button></div>' +
+  '</form>';
+  const first = row.querySelector('input[name="price"]');if (first) first.focus();
+}
+async function saveTransactionEdit(form) {
+  const id = form.dataset.transactionEditForm,fd = new FormData(form);
+  const ledger = document.querySelector('[data-transaction-position]'),positionId = ledger && ledger.dataset.transactionPosition;
+  const beforePosition = positionId ? transactionPosition(positionId) : null,portfolioId = beforePosition && beforePosition.portfolio_id || null;
+  const atRaw = String(fd.get('executedAt') || ''),when = new Date(atRaw);
+  const body = {quantity:num(fd.get('quantity')),price:num(fd.get('price')),fees:num(fd.get('fees')),notes:String(fd.get('notes') || '')};
+  if (atRaw !== String(form.dataset.at || '')) { if (Number.isNaN(when.getTime())) return toast('Revisa la fecha.', true); body.executedAt = when.toISOString(); }
+  if (!(body.quantity > 0) || body.price === null || body.price < 0 || body.fees === null || body.fees < 0) return toast('Revisa la cantidad, el precio y la comisión.', true);
+  const button = form.querySelector('button[type="submit"]');if (button) button.disabled = true;
+  try {
+    const response = await api('/api/transactions/' + encodeURIComponent(id), {method:'PATCH',body:JSON.stringify(body)});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'No se pudo corregir la operación.');
+    toast('Operación corregida: posición y efectivo recalculados');
+    await loadAll();
+    const activePositionId = data.position && Number(data.position.active) !== 0 ? data.position.id : null;
+    if (portfolioId && portfolioHasGoal(portfolioId)) scheduleGoalPortfolioReview(portfolioId, activePositionId);
+    if (activePositionId) await openTransactionsModal(activePositionId);
+    else if (positionId) closeModal();
+  } catch (error) {
+    if (button) button.disabled = false;
+    toast(error.message || 'No se pudo corregir la operación.', true);
   }
 }
 
@@ -5205,6 +5253,16 @@ function bind() {
       return;
     }
 
+    const editTx = event.target.closest?.("[data-transaction-edit]");
+    if (editTx) { event.preventDefault(); event.stopPropagation(); openTransactionEdit(editTx); return; }
+    const cancelEdit = event.target.closest?.("[data-transaction-edit-cancel]");
+    if (cancelEdit) {
+      event.preventDefault(); event.stopPropagation();
+      const ledger = document.querySelector('[data-transaction-position]');
+      if (ledger && ledger.dataset.transactionPosition) openTransactionsModal(ledger.dataset.transactionPosition);
+      return;
+    }
+
     const deleteTx = event.target.closest?.("[data-transaction-delete]");
     if (deleteTx) {
       event.preventDefault();
@@ -5231,6 +5289,7 @@ function bind() {
   });
 
   document.addEventListener("submit", async event => {
+    if(event.target.dataset&&event.target.dataset.transactionEditForm){event.preventDefault();saveTransactionEdit(event.target);return}
     if(event.target.id==="portfolioGoalForm"){
       event.preventDefault();const form=event.target,fd=new FormData(form),target=num(fd.get("targetValueEur")),portfolioId=form.dataset.portfolioId||state.selectedPortfolioId,status=form.querySelector("[data-goal-form-status]"),riskProfile=String(fd.get("riskProfile")||"aggressive");
       const setGoalStatus=(message,error=false)=>{if(status){status.textContent=message||"";status.classList.toggle("error",!!error)}};
@@ -5591,7 +5650,9 @@ function dRowDetailHtml(r,open=false){
     // Arriba, la posición entera (valor y cambio de hoy); aquí, el precio de UNA acción: se rotula para no confundirlos.
     '<div class="d-row-quote"><small class="d-row-quote-h">Precio por '+(r.etf?'participación':'acción')+'</small>'+quote+'</div>'+
     '<div class="d-row-cells">'+
-      cell("Precio medio",esc(formatMoney(avg,cur)))+cell("Coste",esc(formatMoney(cost,cur)))+cell("Comisiones",esc(formatMoney(fees,cur)))+
+      // Los brókers como Trade Republic enseñan el precio medio con la comisión de compra incluida (coste ÷ acciones):
+      // se muestran los dos para que se pueda cuadrar.
+      cell("Precio medio",esc(formatMoney(avg,cur))+(cost!==null&&qty>0&&avg!==null&&Math.abs(cost/qty-avg)>=0.005?'<span class="d-cell-sub">'+esc(formatMoney(cost/qty,cur))+' con comisión</span>':''))+cell("Coste",esc(formatMoney(cost,cur)))+cell("Comisiones",esc(formatMoney(fees,cur)))+
       cell("Precio vs. media",vsAvg===null?"—":(vsAvg>0?"+":"")+formatNumber(vsAvg,2)+" %",vsAvg===null?"":vsAvg>=0?"d-pos":"d-neg")+
       (String(p.broker||"").trim()?cell("Bróker",esc(String(p.broker).trim())):"")+
     '</div>'+positionDecisionChip(p,avg,cur,unitNow)+
