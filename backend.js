@@ -2677,6 +2677,43 @@ export async function deleteTransactionRecord(env,user,id,{extraStatements=[]}={
   return txResult({deleted:true,position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger,cashAdjustment});
 }
 
+// Corregir una operación ya registrada (cantidad, precio, comisión, fecha o nota) para que cuadre con el bróker.
+// Vale para cualquier origen (manual, importada, del Objetivo o la inicial de la posición). Se recalcula la posición
+// y, si la operación movió efectivo, el efectivo cambia en la misma proporción (se conserva el cambio de divisa).
+export async function updateTransactionRecord(env,user,id,patch){
+  await ensurePositionDecisionsSchema(env);
+  const revision=await financialRevision(env.DB,user.id);
+  const existing=await env.DB.prepare("SELECT * FROM transactions WHERE id=? AND user_id=?").bind(id,user.id).first();
+  if(!existing)return txResult({error:"Transaction not found"},404);
+  const quantity=patch.quantity===undefined?finiteNumber(existing.quantity):finiteNumber(patch.quantity);
+  const price=patch.price===undefined?finiteNumber(existing.price):finiteNumber(patch.price);
+  const fees=patch.fees===undefined?Math.max(0,finiteNumber(existing.fees)||0):finiteNumber(patch.fees);
+  let executedAt=existing.executed_at;
+  if(patch.executedAt!==undefined){const d=new Date(String(patch.executedAt||""));if(!Number.isFinite(d.getTime()))return txResult({error:"Fecha no válida."},400);executedAt=d.toISOString()}
+  const notes=patch.notes===undefined?existing.notes:trimText(patch.notes,1000);
+  if(!(quantity>0)||price===null||price<0||fees===null||fees<0)return txResult({error:"Revisa la cantidad, el precio y la comisión."},400);
+  const position=await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(existing.position_id,user.id).first();
+  if(!position)return txResult({error:"Position not found"},409);
+  const now=nowIso(),updated={...existing,quantity,price,fees,executed_at:executedAt,notes,updated_at:now};
+  const others=(await env.DB.prepare("SELECT * FROM transactions WHERE position_id=? AND user_id=? AND id<>?").bind(position.id,user.id,id).all()).results||[];
+  let ledger;try{ledger=calculateTransactionLedger([...others,updated])}catch(_){return txResult({error:"No cuadra: con estos datos venderías más acciones de las que tenías en alguna fecha."},409)}
+  // Efectivo: solo si la operación lo movió al registrarse; el nuevo importe guarda la misma relación (divisa incluida).
+  const recorded=finiteNumber(existing.cash_delta)||0,oldGross=transactionCashDelta(existing.side,existing.quantity,existing.price,existing.fees),newGross=transactionCashDelta(existing.side,quantity,price,fees);
+  const newRecorded=recorded&&oldGross?recorded*newGross/oldGross:0;
+  updated.cash_delta=newRecorded;
+  const portfolio=await onePortfolio(env,user.id,existing.portfolio_id);
+  const statements=[env.DB.prepare("UPDATE transactions SET quantity=?,price=?,fees=?,executed_at=?,notes=?,cash_delta=?,updated_at=? WHERE id=? AND user_id=?")
+    .bind(quantity,price,fees,executedAt,notes,newRecorded,now,id,user.id)];
+  let cashAdjustment={adjusted:false};
+  if(portfolio&&Math.abs(newRecorded-recorded)>1e-9){
+    cashAdjustment=cashChange(portfolio,existing.cash_currency||existing.currency,existing.side,quantity,price,fees,{recordedDelta:newRecorded-recorded});
+    if(cashAdjustment.adjusted)statements.push(cashStatement(env,user.id,portfolio,cashAdjustment,now));
+  }
+  statements.push(...positionLedgerStatements(env,user.id,existing.portfolio_id,existing.stock_key,position.id,position,ledger,orderedTransactions([...others,updated])[0],now));
+  await financialBatch(env.DB,user.id,revision,statements);
+  return txResult({transaction:{...updated},position:await env.DB.prepare("SELECT * FROM positions WHERE id=? AND user_id=?").bind(position.id,user.id).first(),summary:ledger,cashAdjustment});
+}
+
 async function handleTransactions(request, env, user, json, parts, url) {
   await ensurePositionBrokerSchema(env);
   await ensureTransactionsSchema(env);
@@ -2740,6 +2777,13 @@ async function handleTransactions(request, env, user, json, parts, url) {
 
   if (request.method === "DELETE") {
     const result=await deleteTransactionRecord(env,user,id);
+    return json(result.body,result.status);
+  }
+
+  if (request.method === "PATCH") {
+    const body=await readJson(request),patch={};
+    for(const k of ["quantity","price","fees","executedAt","notes"])if(body&&body[k]!==undefined)patch[k]=body[k];
+    const result=await updateTransactionRecord(env,user,id,patch);
     return json(result.body,result.status);
   }
 

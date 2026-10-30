@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {createTransactionRecord,deleteTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup,goalFillPendingOrder,handlePortfolioGoal} from '../backend.js';
+import {createTransactionRecord,deleteTransactionRecord,updateTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup,goalFillPendingOrder,handlePortfolioGoal} from '../backend.js';
 import {exportBackup} from '../backup-store.js';
 
 function d1(){
@@ -130,4 +130,23 @@ assert.equal((await patch({portfolioId:'pf',undoFill:manualTx})).status,409,'man
 db.raw.prepare("UPDATE portfolio_goals SET pending_orders='' WHERE portfolio_id='pf'").run();
 assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,stockKey:''},'')).status,409,'orders without the data to register are left to the user');
 assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,key:'NASDAQ:USD1',stockKey:'NASDAQ:USD1',currency:'USD',limitNative:10,at:'x'},'')).status,409,'a USD order in a EUR portfolio needs an exchange rate to debit cash');
+// Corregir una operación para cuadrarla con el bróker: la posición y el efectivo se recalculan.
+{
+  const c0=cash();
+  let t=await createTransactionRecord(env,user,trade({stockKey:'XETRA:FIX',ticker:'FIX',isin:'US0000000009',quantity:3,price:7,fees:1,executedAt:later(9000)}));
+  assert.equal(t.status,201);const txId=t.body.transaction.id,posId=t.body.position.id;
+  assert.equal(cash(),c0-22);
+  let u=await updateTransactionRecord(env,user,txId,{price:7.35,fees:1});
+  assert.equal(u.status,200);
+  const pos=db.raw.prepare('SELECT quantity,avg_price,cost_basis FROM positions WHERE id=?').get(posId);
+  assert.equal(pos.quantity,3);assert.ok(Math.abs(pos.cost_basis-23.05)<1e-9,'coste = 3 × 7,35 + 1');
+  assert.ok(Math.abs(cash()-(c0-23.05))<1e-9,'el efectivo se corrige por la diferencia');
+  assert.equal((await updateTransactionRecord(env,user,txId,{quantity:0})).status,400,'cantidad 0 no vale');
+  assert.equal((await updateTransactionRecord(env,user,txId,{executedAt:'no'})).status,400,'fecha no válida');
+  // Una venta posterior: la compra no puede quedar por debajo de lo vendido.
+  t=await createTransactionRecord(env,user,trade({stockKey:'XETRA:FIX',ticker:'FIX',isin:'US0000000009',positionId:posId,side:'SELL',quantity:3,price:8,fees:1,executedAt:later(10000)}));
+  assert.equal(t.status,201);
+  assert.equal((await updateTransactionRecord(env,user,txId,{quantity:2})).status,409,'no se puede vender más de lo comprado');
+  assert.equal((await updateTransactionRecord(env,user,'nope',{price:1})).status,404);
+}
 console.log('Goal sleeves tests: OK');
