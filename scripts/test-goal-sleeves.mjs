@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {createTransactionRecord,deleteTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup} from '../backend.js';
+import {createTransactionRecord,deleteTransactionRecord,handleGoalSleeves,goalSleeveState,handleBackup,goalFillPendingOrder} from '../backend.js';
 import {exportBackup} from '../backup-store.js';
 
 function d1(){
@@ -104,4 +104,18 @@ assert.equal(await handleGoalSleeves(env,user,json,'pf',{sleeves:{disable:true}}
 assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM transactions').get().n,txBefore);
 assert.equal(db.raw.prepare("SELECT COUNT(*) n FROM positions WHERE sleeve<>''").get().n,0);
 assert.equal(db.raw.prepare("SELECT sleeves_started_at s FROM portfolio_goals WHERE portfolio_id='pf'").get().s,null);
+// Orden puesta que se ejecuta: se registra la compra al límite una sola vez y se quita de la lista.
+try{db.raw.exec("ALTER TABLE portfolio_goals ADD COLUMN pending_orders TEXT NOT NULL DEFAULT ''")}catch(_){}
+const order={key:'XETRA:NYK',ticker:'NYKA',name:'Nippon Yusen',units:1,limitEur:42.61,feeEur:1,sleeve:'',at:new Date().toISOString(),stockKey:'XETRA:NYK',txTicker:'NYKA',exchange:'LSX',isin:'JP3753000003',preferTr:1,currency:'EUR',limitNative:42.61,broker:''};
+db.raw.prepare("UPDATE portfolio_goals SET pending_orders=? WHERE portfolio_id='pf'").run(JSON.stringify([order]));
+const cashBefore=cash(),txN=()=>db.raw.prepare("SELECT COUNT(*) n FROM transactions WHERE stock_key='XETRA:NYK'").get().n;
+let f=await goalFillPendingOrder(env,'u','pf',order,JSON.stringify([order]));
+assert.ok(f.status<300,'the filled order is registered as a buy');
+assert.equal(txN(),1);assert.equal(db.raw.prepare("SELECT price p FROM transactions WHERE stock_key='XETRA:NYK'").get().p,42.61,'registered at the limit');
+assert.ok(Math.abs(cash()-(cashBefore-42.61-f.body.transaction.fees))<1e-6,'cash drops by the buy and its fee');
+assert.equal(db.raw.prepare("SELECT pending_orders o FROM portfolio_goals WHERE portfolio_id='pf'").get().o,'','the order leaves the list');
+f=await goalFillPendingOrder(env,'u','pf',order,JSON.stringify([order]));
+assert.equal(txN(),1,'a second detection (app and server) does not duplicate the buy');
+assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,stockKey:''},'')).status,409,'orders without the data to register are left to the user');
+assert.equal((await goalFillPendingOrder(env,'u','pf',{...order,key:'NASDAQ:USD1',stockKey:'NASDAQ:USD1',currency:'USD',limitNative:10,at:'x'},'')).status,409,'a USD order in a EUR portfolio needs an exchange rate to debit cash');
 console.log('Goal sleeves tests: OK');

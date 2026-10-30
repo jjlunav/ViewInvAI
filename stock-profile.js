@@ -422,26 +422,28 @@ function profileHeroQuoteHtml(s,se=currentMarketSession(),isTr=false){
  }
  return '<div class="profile-quote-stack profile-quote-stack-us"><div class="profile-quote-current" data-us-current-hero-key="'+E(stockKey(s))+'">'+currentUsPrimaryHtml(s,se)+'</div></div>';
 }
-// Header strip: the AI verdict (taps through to the IA tab) and two key session figures,
-// so the essentials are visible without switching tabs.
+// Resumen de la lectura IA al abrir la pestaña IA: anillo con la puntuación, el nivel del Radar y el
+// volumen frente a su media. Es información, no un botón (ya estás en la pestaña IA).
 function profileAiStripHtml(s,isTr=false){
- let chip='';
+ let ring='',label='',tone='wait';
  try{
   const mode=isTr?'tr':'us',a=recommendationAnalysis(s,mode),score=N(a.score),q=stockDataQuality(s,mode,false);
   if(score!==null){
    // Mismo nivel que en el Radar AI (no una etiqueta propia por puntuación).
    let tier='';try{tier=typeof window.ViewInvAIRadarTier==='function'?window.ViewInvAIRadarTier(s,isTr):''}catch(_){}
-   const tone=q.score<55?'wait':tier==='high'?'high':tier==='opportunity'||tier==='spec'?'watch':tier==='watch'?'watch':'wait';
-   const label=q.score<55?'Datos insuficientes':{high:'Alta convicción',opportunity:'Oportunidad',watch:'Vigilancia',spec:'Especulativo'}[tier]||'Fuera del Radar';
-   chip='<button type="button" class="profile-ai-verdict '+tone+'" data-profile-tab="ai" aria-label="Ver lectura IA: '+E(label)+' '+F(score,0)+' de 100"><span>✦ IA</span><b>'+E(label)+'</b><em>'+F(score,0)+'</em></button>';
+   tone=q.score<55?'wait':tier==='high'?'high':tier==='opportunity'||tier==='spec'||tier==='watch'?'watch':'wait';
+   label=q.score<55?'Datos insuficientes':{high:'Alta convicción',opportunity:'Oportunidad',watch:'Vigilancia',spec:'Especulativo'}[tier]||'Fuera del Radar';
+   const pct=Math.max(0,Math.min(100,score));
+   ring='<span class="profile-ai-ring" style="--p:'+pct.toFixed(0)+'" aria-hidden="true"><b>'+F(score,0)+'</b></span>';
   }
  }catch(e){}
  const lo=N(s.dayLow),hi=N(s.dayHigh),vol=N(s.volume),avg=N(s.avgVolume);
  const facts=[];
- if(!isTr&&lo!==null&&hi!==null)facts.push('<span><small>Rango</small><b>'+F(lo,2)+' – '+F(hi,2)+'</b></span>');
- if(vol!==null&&avg)facts.push('<span><small>Vol.</small><b>'+F(vol/avg,2)+'×</b></span>');
- if(!chip&&!facts.length)return'';
- return '<div class="profile-ai-strip">'+chip+facts.join('')+'</div>';
+ if(vol!==null&&avg)facts.push('Volumen '+F(vol/avg,1)+'× su media');
+ if(!isTr&&lo!==null&&hi!==null)facts.push('rango del día '+F(lo,2)+' – '+F(hi,2));
+ if(!ring&&!facts.length)return'';
+ return '<div class="profile-ai-summary '+tone+'" role="group" aria-label="Lectura IA">'+ring+
+  '<div><small>LECTURA IA</small><b>'+E(label||'Sin puntuación')+'</b>'+(facts.length?'<span>'+E(facts.join(' · '))+'</span>':'')+'</div></div>';
 }
 
 // «¿Por qué se mueve hoy?»: une en una frase lo que ya sabemos del valor (noticias de
@@ -489,9 +491,9 @@ function profileWhyMovingHtml(s,isTr=false){
  }
  const cause=earnings?'por sus resultados':news[0]?'tras una noticia':rel!==null&&rel>=2?'con volumen alto':sec&&Math.abs(sec.median)>=1&&Math.sign(sec.median)===Math.sign(chg)?'junto a su sector':'sin noticia clara';
  const head=(up?'Sube':'Cae')+' un '+F(Math.abs(chg),1)+'% '+cause;
- return '<details class="profile-why"><summary><span class="profile-why-icon '+(up?'up':'down')+'">'+(up?'▲':'▼')+'</span><span><small>¿POR QUÉ SE MUEVE HOY?</small><b>'+E(head)+'</b></span></summary>'+
+ return '<details class="profile-why"'+keepOpenAttr('why')+'><summary><span class="profile-why-icon '+(up?'up':'down')+'">'+(up?'▲':'▼')+'</span><span><small>¿POR QUÉ SE MUEVE HOY?</small><b>'+E(head)+'</b></span></summary>'+
   '<ul>'+reasons.map(r=>'<li><em>'+E(r.k)+'</em><span>'+E(r.t)+'</span></li>').join('')+'</ul>'+
-  (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Pregunta a la IA en la pestaña ✦ IA para un análisis más amplio.</p>')+
+  (news.length?'':'<p>Sin noticias registradas en los últimos 3 días: puede responder a flujos, rumores o al mercado. Para un análisis más amplio, usa «Preguntar a AI» más abajo.</p>')+
  '</details>';
 }
 
@@ -530,7 +532,7 @@ function profileGoalPlanHtml(g){
   if(g.action)note='<p class="plan-note">'+E(g.action.text)+'</p>';
   if(g.holdText){head='⏳ '+String(g.holdText).replace(/^Mantener [^:]*: /,'');note+='<p class="plan-note">'+E(g.holdText)+'</p>'}
  }
- return '<details class="profile-plan" data-profile-plan data-plan-source="goal"'+keepOpenAttr('goal-plan')+'><summary><span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
+ return '<details class="profile-plan" data-profile-plan data-plan-source="goal"'+keepOpenAttr('goal-plan')+'><summary>'+'<span class="profile-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg></span>'+'<span><small>PLAN DEL OBJETIVO · '+E(String(g.portfolioName||'').toUpperCase())+'</small><b>'+E(head)+'</b></span></summary>'+
   '<div class="plan-body">'+(grid?'<div class="plan-grid">'+grid+'</div>':'')+note+frozenNote+
   '<p class="plan-note">Es el mismo plan que «Hoy toca» en el Objetivo de esta cartera (importes en €).</p></div></details>';
 }
@@ -543,7 +545,7 @@ function profileEventInsightHtml(s){
  const memo=eventInsightMemo.get(key);
  setTimeout(()=>{const box=document.querySelector('[data-event-insight="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');
   if(memo&&Date.now()-memo.at<15*60e3){if(box)eventInsightRender(box,memo.data)}else loadEventInsight(key,true)},0);
- return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"'+keepOpenAttr('event:'+key)+'><summary><span><small>PRÓXIMO EVENTO</small><b data-event-head data-i18n-content>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
+ return '<details class="profile-plan profile-event-insight" hidden data-event-insight="'+E(key)+'"'+keepOpenAttr('event:'+key)+'><summary>'+'<span class="profile-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span>'+'<span><small>PRÓXIMO EVENTO</small><b data-event-head data-i18n-content>Buscando el próximo catalizador…</b></span></summary><div class="plan-body" data-event-body></div></details>';
 }
 const eventInsightMemo=new Map();
 function eventInsightRender(box,data){
@@ -629,7 +631,7 @@ function profileTradePlanHtml(s,isTr=false){
  }else sizing='<div class="plan-size"><small>TAMAÑO</small><b>Inicia sesión y añade tu cartera</b><span>El tamaño se calcula con el '+F(band.risk,1)+'% de tu cartera como riesgo máximo.</span></div>';
  const chips=Object.entries(PLAN_BANDS).map(([k,b])=>'<button type="button" class="plan-risk'+(k===key?' active':'')+'" data-plan-risk="'+k+'" aria-pressed="'+(k===key)+'">'+b.label+'</button>').join('');
  const px=v=>F(v,v<10?3:2)+' '+sym;
- return '<details class="profile-plan"'+(window.__planOpen?' open':'')+' data-profile-plan><summary><span><small>PLAN DE OPERACIÓN · ORIENTATIVO</small><b>Stop '+px(stop)+' (−'+F(stopPct,1)+'%) · Objetivo '+px(target)+' (+'+F(band.rr*stopPct,1)+'%)</b></span></summary>'+
+ return '<details class="profile-plan"'+(window.__planOpen?' open':'')+' data-profile-plan><summary>'+'<span class="profile-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg></span>'+'<span><small>PLAN DE OPERACIÓN · ORIENTATIVO</small><b>Stop '+px(stop)+' (−'+F(stopPct,1)+'%) · Objetivo '+px(target)+' (+'+F(band.rr*stopPct,1)+'%)</b></span></summary>'+
   '<div class="plan-body">'+
    '<div class="plan-risk-row" role="group" aria-label="Nivel de riesgo">'+chips+'</div>'+
    (spec.speculative?'<p class="plan-warn">⚠ Especulativo ('+E(spec.reasons.join(', '))+'): el tamaño se reduce a la mitad.</p>':'')+

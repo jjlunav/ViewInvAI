@@ -2678,3 +2678,50 @@ html body .goal2-simple .goal2-action>.goal2-action-buttons{flex-wrap:wrap}
   html body .goal2-simple .goal2-action>.goal2-action-top{flex-wrap:wrap}
   html body .goal2-simple .goal2-action .goal2-action-side{order:3;flex-basis:100%;flex-direction:row;justify-content:flex-start;padding-left:50px}
 }
+/* Pestaña IA de la ficha: resumen fijo (no es un botón) y tarjetas desplegables con el mismo patrón
+   icono · texto · flecha, para que se vea qué se puede abrir. */
+.profile-ai-summary{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:18px;border:1px solid rgba(140,170,255,.16);background:linear-gradient(135deg,rgba(124,108,255,.14),rgba(47,211,176,.06))}
+.profile-ai-summary>div{display:grid;gap:2px;min-width:0}
+.profile-ai-summary small{font-size:10.5px;letter-spacing:.12em;font-weight:800;color:#9d8cff}
+.profile-ai-summary b{font-size:17px;line-height:1.2}
+.profile-ai-summary span:not(.profile-ai-ring){font-size:13px;color:var(--muted,#8ea0bf)}
+.profile-ai-ring{--c:#9d8cff;flex:none;width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),rgba(255,255,255,.08) 0)}
+.profile-ai-ring b{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#0c1724;font-size:17px!important;font-weight:800}
+.profile-ai-summary.high .profile-ai-ring{--c:#2fd39a}.profile-ai-summary.watch .profile-ai-ring{--c:#f3ca52}.profile-ai-summary.wait .profile-ai-ring{--c:#8ea0bf}
+.profile-ai-overview .profile-why,.profile-ai-overview .profile-plan{border-radius:16px;border:1px solid rgba(140,190,210,.16);background:rgba(255,255,255,.03)}
+.profile-ai-overview .profile-why>summary,.profile-ai-overview .profile-plan>summary{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.profile-ai-overview .profile-why>summary>span:last-child,.profile-ai-overview .profile-plan>summary>span:not(.profile-card-icon){flex:1;min-width:0;display:grid;gap:2px}
+.profile-ai-overview .profile-why-icon,.profile-card-icon{flex:none;width:36px;height:36px;border-radius:12px;display:grid;place-items:center}
+.profile-card-icon{color:#9d8cff;background:rgba(157,140,255,.14)}
+.profile-card-icon svg{width:18px;height:18px}
+.profile-ai-overview .profile-why-icon{border-radius:12px}
+.profile-ai-overview .profile-why b,.profile-ai-overview .profile-plan b{font-size:14.5px;line-height:1.3}
+.profile-ai-overview .profile-why>summary::after,.profile-ai-overview .profile-plan>summary::after{content:"";flex:0 0 28px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(140,190,210,.2);background:rgba(255,255,255,.04) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/16px no-repeat;opacity:1;transition:transform .2s}
+.profile-ai-overview .profile-why[open]>summary::after,.profile-ai-overview .profile-plan[open]>summary::after{transform:rotate(180deg)}
+.profile-ai-overview .profile-why>summary:active,.profile-ai-overview .profile-plan>summary:active{background:rgba(255,255,255,.04)}
+html[data-theme="light"] .profile-ai-summary{background:linear-gradient(135deg,#efecff,#e8f8f5);border-color:#dfe3f3}
+html[data-theme="light"] .profile-ai-summary small,html[data-theme="light"] .profile-card-icon{color:#4f46e5}
+html[data-theme="light"] .profile-card-icon{background:#eef0ff}
+html[data-theme="light"] .profile-ai-ring b{background:#fff}
+html[data-theme="light"] .profile-ai-ring{background:conic-gradient(var(--c) calc(var(--p)*1%),#e3e7f2 0)}
+html[data-theme="light"] .profile-ai-overview .profile-why,html[data-theme="light"] .profile-ai-overview .profile-plan{background:#fff;border-color:#dde3ee}
+.goal2-spread-note{display:block;margin-top:8px;font-size:12.5px;line-height:1.4;color:#f5b142}
+html[data-theme="light"] .goal2-spread-note{color:#b26b00}
+.goal2-orders{display:grid;gap:8px}
+.goal2-orders-title{font-size:11px;letter-spacing:.1em;font-weight:800;text-transform:uppercase;color:var(--muted,#8ea0bf)}
+.goal2-simple .goal2-action.goal2-order{border-color:rgba(157,140,255,.35)}
+.goal2-order-pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(157,140,255,.16);color:#b9adff;white-space:nowrap}
+.goal2-order-status{display:block;margin-top:8px;font-size:12.5px;line-height:1.4;color:var(--muted,#8ea0bf)}
+.goal2-order-status.ok{color:#2fd39a}
+html[data-theme="light"] .goal2-order-pill{background:#eef0ff;color:#4f46e5}
+html[data-theme="light"] .goal2-order-status.ok{color:#0f8a5f}
+.goal2-live{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--muted,#8ea0bf)}
+.goal2-live i{width:7px;height:7px;border-radius:50%;background:#2fd39a;box-shadow:0 0 0 3px rgba(47,211,154,.18);flex:none}
+.goal2-live.stale i{background:#8ea0bf;box-shadow:none}
+.goal2-today-sleeve{display:block;font-size:12.5px;line-height:1.5;color:var(--muted,#8ea0bf)}
+.goal2-today-sleeve .goal2-sleeve-pill{font-size:10px}
+/* Solo el nombre abre la ficha en las tarjetas con botones: el nombre se ve pulsable, el resto no. */
+.goal2-simple .goal2-action[data-open-stock]{cursor:default}
+.goal2-simple .goal2-action-main>strong,.goal2-simple .goal2-logo,.goal2-pos>b{cursor:pointer}
+.goal2-simple .goal2-action-main>strong::after{content:"›";margin-left:6px;color:var(--muted,#8ea0bf);font-weight:700}
+.goal2-simple .goal2-action-main>strong:hover{text-decoration:underline;text-underline-offset:3px}

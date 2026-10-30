@@ -10,7 +10,7 @@
 (function(root){
   'use strict';
 
-  const VERSION='2026.10.29-g20-held-cap';
+  const VERSION='2026.10.30-g21-spread-cost';
   const RISK={
     conservative:{label:'Bajo',minScore:74,minQuality:65,minBurst:78,maxWeight:30,riskPerTradePct:1,maxRoundTripFeePct:1,maxSpreadPct:2,maxExtensionPct:4,maxDayChangePct:6,maxWeekPerfPct:10,minTiming:78,stopK:2,rr:2.2,minHoldDays:2,stagnantDays:6,maxHoldDays:10},
     balanced:{label:'Medio',minScore:70,minQuality:60,minBurst:74,maxWeight:35,riskPerTradePct:1.5,maxRoundTripFeePct:1.5,maxSpreadPct:3,maxExtensionPct:5.5,maxDayChangePct:8,maxWeekPerfPct:15,minTiming:72,stopK:2.2,rr:2,minHoldDays:1.5,stagnantDays:5,maxHoldDays:8},
@@ -351,7 +351,8 @@
   function isIdle(input={}){
     const cfg=input.config||{};
     const sleeveCash=input.sleeves&&input.sleeves.alto?n(input.sleeves.alto.cashEur):null;
-    if((sleeveCash!==null?Math.min(Math.max(0,n(input.cashEur)||0),sleeveCash):usableCash(cfg,input.cashEur))>=1)return false;
+    const orders=Math.max(0,n(input.reservedCashEur)||0);
+    if((sleeveCash!==null?Math.min(Math.max(0,(n(input.cashEur)||0)-orders),sleeveCash):usableCash(cfg,input.cashEur)-orders)>=1)return false;
     const open=(input.positions||[]).filter(p=>(n(p.units)||0)>0);
     return open.length>0&&open.every(p=>p.hold&&p.hold.mode&&p.hold.mode!=='better');
   }
@@ -378,7 +379,7 @@
     const adj=pc.status==='ahead'?{score:2,size:.9}:{score:0,size:1};
     const minScore=b.minScore+adj.score,minQuality=b.minQuality;
     const actions=[],holds=[],notes=[],waits=[];
-    let pool=cash;
+    let pool=cash-Math.min(cash,Math.max(0,n(input.reservedCashEur)||0));
     const remaining=[];
     // Capital que el usuario deja invertir: cifra y/o % del efectivo (lo más restrictivo). El resto queda apartado.
     const capEur=n(cfg.investCapEur),capPct=n(cfg.investCapPct);
@@ -387,7 +388,10 @@
     // Huchas: el plan de ideas cortas (estrategia de catalizadores) solo gasta el efectivo de la hucha de riesgo alto;
     // las acciones de las huchas medio y bajo no las toca (llegan como congeladas) y lo que se venda vuelve a la hucha alta.
     const sleeveMode=!!(input.sleeves&&input.sleeves.alto&&n(input.sleeves.alto.cashEur)!==null);
-    const usable=sleeveMode?Math.min(cash,Math.max(0,n(input.sleeves.alto.cashEur))):usableCash(cfg,cash);
+    // Órdenes puestas en el bróker: su importe sigue siendo efectivo (cuenta en el valor de la cartera) pero no se
+    // puede gastar en otra compra.
+    const orderCash=Math.min(cash,Math.max(0,n(input.reservedCashEur)||0));
+    const usable=Math.max(0,sleeveMode?Math.min(cash-orderCash,Math.max(0,n(input.sleeves.alto.cashEur))):usableCash(cfg,cash)-orderCash);
     const paused=isIdle(input);
     const reserved=Math.max(0,cash-usable);
     const allowFractions=cfg.allowFractions!==false;
@@ -729,6 +733,9 @@
         if(slots<=0||spend<=0)break;
         if(c.speculative&&specCount>=spec.maxCount)continue;
         const ask=n(c.askEur)??n(c.priceEur),feeB=feeOf(c,'BUY'),feeS=feeOf(c,'SELL');
+        // Horquilla: al salir por el stop se vende al BID, por debajo del precio de entrada.
+        // (La orden puede acabar al ASK aunque el límite vaya a mitad: se cuenta la horquilla entera, lo prudente.)
+        const spr=Math.max(0,n(c.spreadPct)||0),lossPct=c.stopPct+spr;
         const maxW=(c.speculative?spec.maxWeight:b.maxWeight)/100;
         const specCapacity=c.speculative?Math.max(0,valueEur*spec.maxTotalWeight/100-specExposure):Infinity;
         const highCapacity=c.riskTier==='alto'?Math.max(0,valueEur*highRiskPct/100-highExposure):Infinity;
@@ -741,7 +748,7 @@
         const share=Math.min(spend/fillable*adj.size,hardCap)*fundK;
         // El riesgo de la operación (hasta el stop) no pasa del % de la cartera que marca el perfil.
         const riskBudget=valueEur*b.riskPerTradePct/100;
-        const riskCap=Math.max(0,(riskBudget-feeB-feeS)/(c.stopPct/100));
+        const riskCap=Math.max(0,(riskBudget-feeB-feeS)/(lossPct/100));
         const budget=Math.max(0,Math.min(share-feeB,riskCap));
         // Fracciones: se invierte el importe, no un número entero de acciones (salvo que el valor no las admita).
         const fractional=allowFractions&&!c.noFractions;
@@ -751,7 +758,7 @@
         if(fractional&&units>=1&&Math.floor(units+1e-9)>=units*.6)units=Math.floor(units+1e-9);
         // Sin fracciones, cartera pequeña: una sola acción puede pasar del reparto por hueco; se permite si cabe en el peso
         // máximo, el efectivo y el riesgo elegido, incluidas las comisiones de entrada y salida.
-        if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*c.stopPct/100+feeB+feeS<=riskBudget)units=1;
+        if(!fractional&&units<1&&ask+feeB<=hardCap&&ask*lossPct/100+feeB+feeS<=riskBudget)units=1;
         if(fractional&&units<=0){notes.push(label(c)+': no queda importe suficiente para invertir.');continue}
         if(units<1&&!fractional){
           const why=ask+feeB>spend?'el efectivo disponible ('+money(spend)+')':ask+feeB>valueEur*maxW?'el peso máximo por posición ('+money(valueEur*maxW)+')':ask+feeB>specCapacity?'el cupo especulativo ('+money(specCapacity)+')':'el riesgo máximo por operación hasta el stop';
@@ -776,17 +783,17 @@
           stopEur:r2(ask*(1-c.stopPct/100)),stopPct:r2(c.stopPct),targetPct:r2(c.targetPct),moveRangePct:n(c.moveRangePct),speculative:!!c.speculative,aiVerdict:c.aiVerdict||'',
           burstScore:r2(c.burstScore),burstPhase:c.burstPhase||'',burstReasons:c.burstReasons||[],aiScoutReason:c.aiIdeaThesis?('Analista IA: '+c.aiIdeaThesis+(c.aiScoutReason?' · '+c.aiScoutReason:'')):(c.aiScoutReason||''),aiIdeaSources:c.aiIdeaSources||[],
           // Lo que se arriesga si salta el stop (importe × stop + comisiones) y los argumentos a favor y en contra.
-          riskEur:r2(ticket*c.stopPct/100+feeB+feeS),riskPct:r2(c.stopPct),
+          riskEur:r2(ticket*lossPct/100+feeB+feeS),riskPct:r2(c.stopPct),spreadPct:spr>0?r2(spr):null,
           pros:(c.burstReasons||[]).filter(t=>/ \+\d+$/.test(t)).map(t=>t.replace(/ \+\d+$/,'')).slice(0,5),
           cons:[...(c.burstReasons||[]).filter(t=>/ -\d+$/.test(t)).map(t=>t.replace(/ -\d+$/,'')),
             ...(n(c.earningsDays)!==null&&n(c.earningsDays)<=12?['resultados '+(c.earningsDate?'el '+c.earningsDate:'en '+n(c.earningsDays)+' días')]:[]),
             ...(fundK<1?['cara y en pérdidas: importe a la mitad']:[]),...(c.speculative?['especulativa']:[]),
-            ...(feePct>b.maxRoundTripFeePct?['comisión de ida y vuelta '+(Math.round(feePct*10)/10).toLocaleString('es-ES')+' % del importe']:[])].slice(0,6),
-          roundTripFeePct:r2(feePct),
+            ...(feePct+spr>b.maxRoundTripFeePct?['coste de ida y vuelta '+(Math.round((feePct+spr)*10)/10).toLocaleString('es-ES')+' % del importe ('+(spr>0?'comisiones '+(Math.round(feePct*10)/10).toLocaleString('es-ES')+' % + horquilla '+(Math.round(spr*10)/10).toLocaleString('es-ES')+' %':'comisiones')+')']:[])].slice(0,6),
+          roundTripFeePct:r2(feePct),roundTripCostPct:r2(feePct+spr),
           facts:{earningsDate:c.earningsDate||'',earningsDays:n(c.earningsDays),analystConsensus:c.analystConsensus||'',analystUpsidePct:n(c.analystUpsidePct),analysts:n(c.analystCount),
             epsBeats:n(c.epsBeats),epsLastSurprisePct:n(c.epsLastSurprisePct),fundamentalsChecked:c.fundamentalsChecked===true},
           orderType:'LIMIT',limitPriceEur:limitEur,
-          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones, fracción) con límite máximo '+money(limitEur)+' si tu bróker lo permite en fracciones; si solo deja a mercado, revisa la horquilla y evita la apertura':'Comprar '+unitsText+' × '+label(c)+' con orden límite a '+money(limitEur)+' (≈ '+money(ticket)+')')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
+          text:(isFraction?'Comprar '+money(ticket)+' de '+label(c)+' (≈ '+unitsText+' acciones, fracción) con límite máximo '+money(limitEur)+' si tu bróker lo permite en fracciones; si solo deja a mercado, revisa la horquilla y evita la apertura':'Comprar '+unitsText+' × '+label(c)+' con orden límite a '+money(limitEur)+' (precio que pones en la orden; pagas como mucho '+money(units*limitEur)+' + comisión)')+' · oportunidad '+Math.round(c.burstScore||0)+'/100'+(c.burstPhase==='early'?' temprana':'')+' · stop '+money(ask*(1-c.stopPct/100))+' (−'+(Math.round(c.stopPct*10)/10).toLocaleString('es-ES')+' %).'});
       }
     }
     // Por qué no hay compras (si no las hay): el primer motivo que lo impide, en lenguaje claro.
