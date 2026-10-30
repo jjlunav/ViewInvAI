@@ -829,4 +829,4 @@
 @light .profile-ai-overview .profile-why,@light .profile-ai-overview .profile-plan{background:#fff!important;border-color:#dde3ee!important}
 
 /* Posiciones de Carteras: la línea de la IA («Mantener · stop …») no se corta: pasa a dos líneas. */
-@ .d-position .d-row-ai{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+@ .d-position .d-row-ai{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:block}

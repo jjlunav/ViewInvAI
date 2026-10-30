@@ -962,4 +962,4 @@ html[data-design="d"][data-theme="light"]:root:root body:not(#d1):not(#d2):not(#
 html[data-design="d"][data-theme="light"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .profile-ai-overview .profile-plan {background:#fff!important;border-color:#dde3ee!important}
 
 /* Posiciones de Carteras: la línea de la IA («Mantener · stop …») no se corta: pasa a dos líneas. */
-html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-position .d-row-ai {white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+html[data-design="d"]:root:root body:not(#d1):not(#d2):not(#d3):not(#d4):not(#d5):not(#d6) .d-position .d-row-ai {white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.3;display:block}

@@ -1723,7 +1723,7 @@ function goalEngineInput(metrics,positionRows){
   // Órdenes puestas en el bróker y aún sin ejecutar: su importe ya no está libre y no se vuelven a proponer.
   const pending=goalPendingOrders(goal),pendingEur=pending.reduce((a,o)=>a+goalPendingOrderEur(o),0);
   // Precio en vivo también para las acciones con orden puesta (ya no son candidatas y no se suscribían).
-  if(preferTr&&window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-orders",pending.filter(o=>Number(o.preferTr)!==0).map(o=>{const st=stockByKey(o.stockKey||o.key)||stockByKey(o.key);return st?portfolioStockKey(st):(o.stockKey||o.key)}));
+  if(window.ViewInvAI&&typeof window.ViewInvAI.pinTrLiveKeys==="function")window.ViewInvAI.pinTrLiveKeys("goal-orders",pending.filter(o=>o.preferTr===undefined||o.preferTr===null?preferTr:Number(o.preferTr)!==0).map(o=>{const st=stockByKey(o.stockKey||o.key)||stockByKey(o.key);return st?portfolioStockKey(st):(o.stockKey||o.key)}));
   // Una orden puesta de un valor que aún no tienes ocupa un hueco de «nº de acciones» hasta que se ejecuta o se cancela.
   const heldNow=new Set([...positions.map(p=>String(p.key)),...lockedKeys.map(String)]),pendingSlots=pending.filter(o=>!heldNow.has(String(o.key))).length;
   const altoOrders=pending.filter(o=>o.sleeve==="alto").reduce((a,o)=>a+goalPendingOrderEur(o),0);
@@ -2061,7 +2061,8 @@ async function goalPendingPatch(body,okText){
 // Tarjeta de una orden puesta: cuánto, a qué límite y, con el precio en vivo, si ya puede haberse ejecutado
 // (una compra límite se ejecuta al precio de compra —ASK— en cuanto este llega a tu límite o por debajo).
 function goalPendingOrderHtml(o,ctx){
-  const s=stockByKey(o.stockKey||o.key)||stockByKey(o.key),preferTr=!!ctx.preferTr;
+  // Se valora en el mercado en el que se puso la orden; si es EE. UU., la tarjeta pide su cotización al sondeo de EE. UU.
+  const s=stockByKey(o.stockKey||o.key)||stockByKey(o.key),preferTr=o.preferTr===undefined||o.preferTr===null?!!ctx.preferTr:Number(o.preferTr)!==0;
   const q=s?goalExecutionQuote(s,preferTr,"BUY",ctx.fx,"",o.units):null,askE=q?portfolioPriceToEur(num(q.ask),q.currency||"EUR",ctx.fx):null;
   const mins=Math.max(0,Math.round((Date.now()-Date.parse(o.at||""))/60000)),ago=mins<60?'hace '+mins+' min':mins<1440?'hace '+Math.round(mins/60)+' h':'hace '+Math.round(mins/1440)+' d';
   // Se compara en la divisa de la orden (un cambio de divisa no puede «ejecutar» una orden en dólares).
@@ -2076,7 +2077,7 @@ function goalPendingOrderHtml(o,ctx){
   reg=reg.replace(/class="[^"]*portfolio-goal-register"/,'class="goal2-btn goal2-btn-primary portfolio-goal-register"').replace(/>[^<]*<\/button>$/,'>✓ Ejecutada</button>');
   const nm=String(o.name||o.ticker||o.key),initials=nm.replace(/[^\p{L}\p{N} ]/gu,"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase()||"·";
   const qty=Math.abs(o.units-Math.round(o.units))>1e-9?o.units.toLocaleString("es-ES",{maximumFractionDigits:6}):formatNumber(o.units,0);
-  return '<div class="goal2-action goal2-order" data-open-stock="'+esc(s?portfolioStockKey(s):o.key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'" role="button" tabindex="0">'+
+  return '<div class="goal2-action goal2-order" data-open-stock="'+esc(s?portfolioStockKey(s):o.key)+'" data-position-prefer-tr="'+(preferTr?'1':'0')+'"'+(!preferTr&&s?' data-us-poll-key="'+esc(portfolioStockKey(s))+'"':'')+' role="button" tabindex="0">'+
     '<div class="goal2-action-top"><span class="goal2-logo" aria-hidden="true">'+esc(initials)+'</span><div class="goal2-action-main"><strong>'+esc(nm)+'</strong>'+
     '<span class="goal2-action-what">Orden puesta · '+esc(qty)+(Number(o.units)===1?' acción':' acciones')+' · límite <b>'+esc(num(o.limitNative)!==null&&o.currency&&o.currency!=="EUR"?formatMoney(o.limitNative,o.currency)+' (≈ '+formatMoney(o.limitEur,"EUR")+')':formatMoney(o.limitEur,"EUR"))+'</b></span></div>'+
     '<span class="goal2-action-side"><span class="goal2-order-pill">'+esc(ago)+'</span></span></div>'+live+stale+
@@ -2541,7 +2542,7 @@ function portfolioGoalViewHtml(){
   const visibleDecisions=[...plan.actions,...(plan.waits||[]).filter(w=>w.committed)];
   const hasWhy=!!((plan.whyNoBuy||[]).length&&!plan.defensive&&(plan.whyNoBuy[0]||{}).code!=="reached");
   const today=visibleDecisions.length?visibleDecisions.map(a=>goalActionHtml(a,ctx)).join('')
-    :hasWhy?'':'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
+    :hasWhy||plan.defensive||(plan.pace&&plan.pace.status==="reached")?'':'<div class="portfolio-goal-no-action"><strong>Nada que hacer ahora.</strong> '+esc(plan.defensive?'Modo defensivo activo.':plan.pace&&plan.pace.status==="reached"?'Objetivo alcanzado: el plan no fuerza operaciones.':'Ninguna acción supera ahora el filtro o no queda efectivo ni hueco libre; se revisa en cuanto cambie el mercado.')+'</div>';
   const holds=plan.holds.length?'<ul class="goal2-notes">'+plan.holds.map(h=>{const pos=h.holdMode?(ctx.positions.find(p=>String(p.positionId)===String(h.positionId))||ctx.positions.find(p=>p.key===h.key)):null;
     return '<li>'+goalLinkedText(h.text,[goalPositionLink(ctx,h.key,h.label),goalCandidateLink(ctx,h.altKey,h.altLabel)])+
       (pos?' <button type="button" class="goal2-decide-change" data-goal-decide="'+esc(pos.row.p.id)+'">Cambiar</button>':'')+'</li>'}).join('')+'</ul>':'';
@@ -5346,7 +5347,7 @@ function bind() {
     // Las ideas de «Hoy toca» y las órdenes puestas también se recalculan con cada precio (no solo las posiciones):
     // el importe, el límite y el aviso de horquilla tienen que ser los del momento en que pones la orden.
     const k=String(event.detail.key||"");
-    const inGoal=state.primaryTab==="goal"&&((lastGoalCtx&&(lastGoalCtx.candidates||[]).some(c=>sameStockRef(c.stock&&portfolioStockKey(c.stock)||c.key,k)||sameStockRef(c.key,k)))||goalPendingOrders(selectedPortfolioGoal()).some(o=>sameStockRef(o.key,k)));
+    const inGoal=state.primaryTab==="goal"&&((lastGoalCtx&&(lastGoalCtx.candidates||[]).some(c=>sameStockRef(c.stock&&portfolioStockKey(c.stock)||c.key,k)||sameStockRef(c.key,k)))||goalPendingOrders(selectedPortfolioGoal()).some(o=>sameStockRef(o.stockKey||o.key,k)||sameStockRef(o.key,k)));
     if (!inGoal && !state.positions.some(p => sameStockRef(p.stock_key, k))) return;
     state.goalCandidateCache={at:0,key:"",rows:[]};
     if(!document.querySelector("#view-portfolios.active")||document.hidden)return;
