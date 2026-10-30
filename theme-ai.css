@@ -2755,3 +2755,5 @@ html[data-theme="light"] .goal2-sleeve-next>small:first-child{color:#4f46e5}
 html body .goal2-simple .goal2-sleeve-next .goal2-btn{height:38px!important;min-height:38px!important;font-size:13.5px!important;padding:0 18px!important;border-radius:12px!important;width:auto!important}
 /* Los botones del Objetivo simple mandan sobre las reglas antiguas de #view-portfolios (botón de registrar diminuto). */
 html body #view-portfolios .goal2-simple .goal2-btn,html[data-native-app="1"] body #view-portfolios .goal2-simple .goal2-btn{height:38px!important;min-height:38px!important;font-size:13.5px!important;padding:0 16px!important;border-radius:12px!important;margin-top:0!important}
+.goal2-waitlist{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px;font-size:13.5px}
+.goal2-waitlist small{color:var(--muted,#8ea0bf)}
