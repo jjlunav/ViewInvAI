@@ -25,7 +25,8 @@ const buy={type:'BUY',limitPriceEur:17.59,key:'TSE:7203',ticker:'TOM',name:'Toyo
   text:'Comprar 5 × TOM (Toyota Motor Corp.) con orden límite a 17,59 € (≈ 87,70 €).',pros:['volumen acelera'],cons:['resultados el 2026-11-05','comisión de ida y vuelta 2,3 % del importe']};
 const html=context.goalActionHtml(buy,ctx);
 assert.ok(html.includes('Comprar 5 acciones · límite <b>17,59 €</b> · total máx. 87,95 €'),'One price on the card: the order limit, plus the most you would pay');
-assert.ok(context.goalActionHtml({...buy,units:1,ticketEur:42.45,limitPriceEur:42.58},ctx).includes('Comprar 1 acción · límite <b>42,58 €</b></span>'),'With one share only the limit is shown');
+assert.ok(context.goalActionHtml({...buy,units:1,ticketEur:42.45,limitPriceEur:42.58},ctx).includes('Comprar 1 acción · límite <b>42,58 €</b> · stop <b>40,03 €</b></span>'),'With one share: the limit and the stop to set in the broker (−6 % of the limit)');
+assert.ok(html.includes('total máx. 87,95 € · stop <b>16,53 €</b>'),'The stop is on the card, next to the limit');
 const frac=context.goalActionHtml({...buy,fractional:true,units:4.987,committed:false},{...ctx,committed:[]});
 assert.ok(frac.includes('(fracción) · límite <b>17,59 €</b> si tu bróker lo permite'));
 const sell=context.goalActionHtml({type:'SELL',reason:'stop',key:'NASDAQ:SPRO',ticker:'SPRO',name:'Spero',units:0.4,text:'Vender'},{...ctx,positions:[]});
